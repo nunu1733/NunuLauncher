@@ -7,6 +7,45 @@
 
 ## Current evidence
 
+### Re-entry update (2026-09-23; follow-up capture lifecycle)
+
+- Issue #304 body and all 24 comments, Issue #418 body and all 7 comments, plus
+  current `origin/main` were re-read at approximately 2026-09-23T10:49Z. The
+  analysis baseline is `3b5c926e43de0f3316738488e5a40b28a7121201`, which includes
+  merged PRs #313 (failure evidence helper and lane wiring) and #316 (bounded
+  evidence capture). This spec and plan remain `draft`; Issue #304 AC-3 remains
+  open. The latest #304 snapshot also recorded the capture-ordering follow-up as
+  pending, not as a root-cause conclusion.
+- Full-workflow run
+  [35828114497 attempt 11](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497/attempts/11)
+  on PR #416 head `16688d1b5d4a6d8edc9f965ba054804e65f83cba` failed in the Issue
+  52 lane after 7/133 tests failed. The first focus-gate failure observed
+  `Application Not Responding: com.google.android.apps.nexuslauncher`; this is
+  an observed focused-window signature, not evidence of the preceding boot or
+  ANR mechanism. Other #418 signatures (Compose lazy-list index errors, Compose
+  timeouts, and an intermittent unit-test timeout) remain separately tracked;
+  this update does not attribute them to the same cause.
+- The failure-time [report artifact](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497/artifacts/10744225417)
+  and [emulator evidence artifact](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497/artifacts/10744255439)
+  were created, but the capture manifest says capture began at 2026-09-23T10:15:28Z
+  after `emulator-5554` had disappeared. Device ADB commands returned
+  `device 'emulator-5554' not found`; logcat timed out. Thus the artifact has no
+  ANR stack or live device snapshots. This repeats the ordering defect first
+  recorded in [#304 comment 20](https://github.com/nunu1733/NunuLauncher/issues/304#issuecomment-5676627394).
+- In the baseline workflow, `Capture Issue 52/53 failure-time emulator evidence`
+  was a separate step after `reactivecircus/android-emulator-runner@v2`. The
+  action documents its lifecycle as running the custom script and then killing
+  the emulator ([upstream README](https://github.com/ReactiveCircus/android-emulator-runner#purpose));
+  the device-not-found result confirms why the post-action capture cannot collect
+  failure-time device state.
+- Owner accepted a narrow diagnostic fix in
+  [#418 comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5793503691):
+  exercise the lifecycle with a red-capable test, invoke the Issue 52/53 capture
+  helper from inside the live runner script, preserve the original test status,
+  and record the result in a separate PR referencing #418 and #304. This repairs
+  evidence timing only; it does not explain or stabilize the distinct #418 test
+  failures and does not close either issue.
+
 ### Re-entry update
 
 - 2026-09-13 の追加調査は、PR #311 merge後の `origin/main`=`37e3dd8feb9240e90587620e8175330b48604e19`
@@ -272,8 +311,10 @@ boot/runner操作の因果は保持されない。
 **判断: failure時の追加証拠保全を導入する。** `tools/ci/capture-emulator-failure-evidence.sh`
 を追加し、API36のIssue #52/#53 instrumentation laneで、テストstepが失敗した場合だけ
 best-effort収集を実行してartifactへ保存する。収集コマンドの失敗は元のテスト失敗を
-置き換えず、各snapshotへ終了statusとして記録する。最初の自然再発までは、実際のCI
-artifactが取得できること自体は未確認である。収集対象は次の通りである。
+置き換えず、各snapshotへ終了statusとして記録する。追跡上の不具合は、helper自体ではなく
+既存workflowがemulator-runner action終了後にhelperを呼び、live deviceを失っている順序である。
+Issue #418のfollow-upでは、runnerの`script`内からfailure-only wrapperを呼び、action cleanup前
+にhelperを実行して元のtest終了statusを保持する。収集対象は次の通りである。
 
 2026-09-13にIssue #53 laneを自然条件のまま再試行したが、instrumentationは成功し、
 failure-time capture/uploadは実行されなかった。したがって現時点で確認できたのは、
@@ -293,7 +334,10 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 のどれかを判別できないためである。既存のCI captureを破棄する判断ではなく、現行の
 1失敗+証拠を維持したまま、次の再発で機構を確定できる追加観測を残す判断である。
 収集helper自体はローカルfake-`adb` smoke testで、成功・失敗コマンドの双方をartifactへ
-残して元の処理を継続することを確認する。
+残して元の処理を継続することを確認する。lifecycle wrapperは別のfake-runner/fake-`adb`
+testで、失敗captureがemulator teardown前に走ること、capture failureでも元の終了statusを
+保つこと、成功時にはcaptureしないことを検証する。実GitHub-hosted emulatorでfailure-time
+snapshotが得られることと、Issue #304のroot-cause判別に十分な内容が得られることは別途未確認。
 
 ## 残存リスク受容の判断基準（root cause 未確定のまま完了する場合）
 
@@ -324,6 +368,8 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 | `.github/workflows/ci.yml` | API36 Issue #52/#53 laneのfailure-time captureとartifact upload |
 | `tools/ci/capture-emulator-failure-evidence.sh` | emulatorのwindow/activity/ANR/logcat等のbest-effort収集 |
 | `tools/ci/test_capture_emulator_failure_evidence.sh` | fake-`adb`によるhelper smoke test |
+| `tools/ci/run-emulator-command-with-failure-capture.sh` | emulator-runnerの生存期間内でfailure captureを呼び、元のcommand statusを返す |
+| `tools/ci/test_emulator_failure_capture_lifecycle.sh` | fake runner/adbによるcapture ordering/status testとIssue #52/#53 workflow wiring check |
 | 本 Issue | 結論・判断・分類表・run link の記録 |
 
 production source、dependency、runtime test implementation は変更しない。
@@ -342,6 +388,25 @@ production source、dependency、runtime test implementation は変更しない�
 停滞を観測できた。しかしCIと同じx86_64 image/runnerでANR traceまたはboot内遷移を取得
 できておらず、ローカルの反証（CI相当resource条件では0/3）もあるため、H2を有力仮説へ
 更新しただけでroot cause確定・残存リスク受容のいずれにも進めない。
+
+**2026-09-23 re-entry update**: AC-3 remains incomplete. Attempt 11's observed
+Nexus Launcher ANR window classifies the terminal focus holder, but the emulator
+was gone before capture, so no ANR stack, window z-order, role/resolve, activity,
+or logcat transition evidence was obtained. The #418 lifecycle correction can
+make the next natural failure observable; it does not itself establish why that
+boot failed.
+
+#### Follow-up lifecycle verification (Issue #418)
+
+- `bash tools/ci/test_emulator_failure_capture_lifecycle.sh` -> PASS. It first
+  checks both workflow jobs call the wrapper from the runner's `script`; then a
+  fake emulator-runner lifecycle confirms failure capture occurs while ADB is
+  alive, original statuses 23 and 37 survive normal and failed ADB capture, and
+  successful commands do not capture.
+- `bash tools/ci/test_capture_emulator_failure_evidence.sh` -> PASS. The helper's
+  timeout, output-cap, and partial-artifact behavior remains covered.
+- A real GitHub-hosted emulator failure after the workflow correction has not
+  yet been observed; capture contents on that runtime remain unverified.
 
 含めるべき観点のうち、unit/contract/property/DB-integration は本 Issue の対象外
 （調査のみ）。修正は失敗を再現するテストを伴う規約については、本 Issue の成果が
@@ -504,11 +569,11 @@ production source、dependency、runtime test implementation は変更しない�
 - **NotificationShadeの自然発生機構は未確定**: ローカルではfocus保持とtest失敗の因果対照を
   取れたが、reboot後のclean stateでは再現しなかった。CIでの表示開始時刻とboot/runner
   操作の証拠がない限り、dirty state・boot race・外部入力のいずれかを選べない。
-- **failure-time artifact未実証**: failure時のlogcat/dumpsys artifact導入は実装し、
-  自然条件のIssue #53再試行では緑時非干渉を確認したが、失敗時captureはまだ発火していない。
-  次の自然発生captureまでは、GitHub-hosted emulator上で全snapshotがartifactとして保存される
-  こと、また各commandの権限不足が欠落なく記録されることは未確認である。failure時の
-  遷移・z-order・role state・ANR traceを取得できるまでは、H1/H1'とH2のCI上の機構を確定できない。
+- **failure-time artifactのdevice data未確認**: attempt 11ではartifact自体が作られたが、
+  action cleanup後のcaptureでdeviceが既に消えており、ANR trace等の実データは含まれなかった。
+  Issue #418のlifecycle testはshell上の順序とstatusを検証するが、修正後のGitHub-hosted emulator
+  failure captureは未実証である。failure bootから遷移・z-order・role state・ANR traceを取得するまでは、
+  H1/H1'とH2のCI上の機構を確定できない。
 
 ## Explicitly unverified areas
 
