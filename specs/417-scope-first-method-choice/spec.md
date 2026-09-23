@@ -51,7 +51,7 @@ updated: 2026-09-24
 - 正規journeyの順序変更（**manual triggerのrunに限定**）: 入口（方法選択を含まない）→ run admission → 候補検出 → 対象選択（候補あり時）→ **scope確定（凍結）** → **方法選択面「整理案の作り方」** → 同一scopeでcapture/plan。onboarding提案（D-16固定経路・`ONBOARDING_PROPOSAL`）は現行どおり方法選択を経ずplanningへ直行する。
 - 方法選択面の新設: 「このまま整理」（deterministic planner）と「AIに相談」（scope凍結後の依頼作成〜取り込み）を兄弟分岐として同一面に提示する。既存run-in scoped exchange flow（T-15〜T-18の契約）を、この面から開く形へ再配置する。
 - idle AI相談（run外・pre-run request）の**新規作成**入口を廃止する（Retire）。entry面のexchange hostingは「既存active依頼の状況表示と回答取り込み」のみを提供するimport-only面となり、既存のdurable依頼・取り込み済み提案のimport・再開契約（#374/#375、IDLE由来のunchecked復元を含む）は維持する。
-- **import provenanceとattach authorityの2軸分離**: (軸1) export sessionにscope origin（その依頼がscope選択ありのrun内で作られたか: `IDLE` / `RUN_IN`）をdurableに保持する（additive拡張）。`entryKind` の正本はこのdurable originであり、実行時のrun state推定は廃止する。(軸2) 生存runへのdirect attach authorityは、process-localな「このrunの`ScopeConfirmed`で生成したexact exportId」の束縛でのみ成立し、scope一致だけでは同一runと判定しない。live ownerが存在する場合のみowning-run fence＋`attachIntent`を使い、ownerを欠くRUN_IN originの取り込み（process死後のhub経由等）はRUN_IN pendingとしてdurable保存され、継続はdirect attachせず `Hub → ImportReview` rebind 1経路に限定される。加えて、方法選択面からの取り込みは「この面の確定scopeから作成された依頼」に限定し、同一scopeでも別run由来・legacy IDLE由来の依頼は依頼の作り直し（既存置換確認経由）へ案内する。
+- **import provenanceとattach authorityの2軸分離**: (軸1) export sessionにscope origin（その依頼がscope選択ありのrun内で作られたか: `IDLE` / `RUN_IN`）をdurableに保持する（additive拡張）。`entryKind` の正本はこのdurable originであり、実行時のrun state推定は廃止する。(軸2) 生存runへのdirect attach authorityは、process-localな「このrunの`ScopeConfirmed`で生成したexact exportId」の束縛でのみ成立し、scope一致だけでは同一runと判定しない。束縛の正本はactive operation（`ScopeConfirmed`）が保持するprocess-localな`boundExportId`であり、生成開始時にrunId＋凍結scope identity＋generation attemptをsnapshotし、session保存成功後にrun lock（session mutationとの順序は`ExchangeMutationGate`）の下で「同一active operationかつ同一`ScopeConfirmed`」の場合にのみbindする。選択面への復帰・中断・run終了・scope-bound依頼破棄で束縛をclearし、置換生成では旧束縛を置換する。遅延して到着した古い生成結果（stale settle）が後続runへ束縛を付与することはない。live ownerが存在する場合のみowning-run fence＋`attachIntent`を使い、ownerを欠くRUN_IN originの取り込み（process死後のhub経由等）はRUN_IN pendingとしてdurable保存され、その保存成功後の面はdirect-attach用の取り込み成功状態ではなく既存の取り込み済み提案の確認面（ImportReview、既存reconcile契約で読み直し）へ切り替わる。継続は `Hub → ImportReview` rebind 1経路に限定され、新規のrebind/start seamは作らない。加えて、方法選択面からの取り込みは「この面の確定scopeから作成された依頼」に限定し、同一scopeでも別run由来・legacy IDLE由来の依頼は依頼の作り直し（既存置換確認経由）へ案内する。
 - **scope-bound依頼破棄の契約化**: 凍結scopeの再編集のためにactive依頼を捨てる操作を1つの明示operationとして定義し、既存の`ExchangeMutationGate`配下で実行する。session無効化はfailure-awareなprimitive（`invalidateIf(expectedExportId) -> Committed / NoMatch / WriteFailed` 相当。spec 204 Amendで追加）で観測可能にし、`Committed` / `NoMatch` の後のみ従属する取り込み済み提案の処理（既存reconcile契約）と選択面への復帰へ進む。`WriteFailed` ではsession・pending・`ScopeConfirmed`を保持し、typedで再試行可能な失敗を表示する。
 - 候補0件時（manual run）: 対象選択面をstate層で介在させず方法選択面へ進む（現行のdisplay層pass-throughと「内部で`Selecting(空)`に入る」契約を置換する）。0件でもAIに相談できる（export subjectsは配置済みのみ）。
 - 選択面上で0件のまま続行することを明示操作とし、「未配置アプリを追加せず整理する」旨を提示する。
@@ -134,6 +134,7 @@ When ユーザーが対象選択面へ戻ろうとする（system Back）
 Then 「依頼を破棄するか」のscope-bound依頼破棄確認（D-13）が表示される
 And 承認すると、`ExchangeMutationGate`配下で (1) session storeのfailure-aware無効化（`invalidateIf(expectedExportId)`）、(2) 無効化が `Committed` / `NoMatch` だった場合のみ、従属する取り込み済み提案の既存reconcile契約に沿った処理、の順に実行され、その後に限り選択面が編集可能な状態で再表示される
 And 無効化が `WriteFailed` だった場合はsession・取り込み済み提案・凍結scopeのすべてが保持され、方法選択面にtypedで再試行可能な失敗が表示される
+And 破棄が成立した場合はprocess-localなattach authorityの束縛（`boundExportId`）も同時にclearされる
 
 ### Scenario: durableなactive依頼はrun admissionを妨げない
 
@@ -163,12 +164,25 @@ When 新しいmanual runで同一scopeを確定し、方法選択面からexchan
 Then この依頼を現在のrunへdirect attachする導線はなく、作り直しへ案内される（scope一致だけでは同一runと判定しない）
 And この判定はprocess-localな「run↔exact exportId」束縛に基づき、durableなscope一致のみでは成立しない
 
-### Scenario: ownerを欠くRUN_IN originの取り込みはRUN_IN pendingとして保存される
+### Scenario: ownerを欠くRUN_IN originの取り込みはRUN_IN pendingとしてImportReviewへ接続される
 
 Given 方法選択面から作成したRUN_IN originの依頼へ回答した後、processが死に、liveなowning runが存在しない
 When hub（entry面のimport-only hosting）から回答を取り込む
 Then 取り込みはdurable pendingとしてRUN_IN origin付きで保存され、owning-run fenceによってdirect attachは行われない
-And 継続は `Hub → ImportReview` rebind 1経路のみに接続される
+And 保存成功後に表示されるのはdirect-attach用の取り込み成功状態ではなく、既存の取り込み済み提案の確認面（ImportReview）であり、「この提案で続ける」はそこからのみ実行される
+And 継続は `Hub → ImportReview` rebind 1経路のみに接続され（既存#375のadmission anchorを再利用）、新しいrebind/start seamは作られない
+
+### Scenario: 置換生成後は新しい依頼だけがattachできる
+
+Given 同一runの方法選択面で依頼E1を作成した後、置換確認を経て依頼E2を生成した
+When E1の回答とE2の回答をそれぞれ取り込む
+Then direct attach authorityはE2にのみ存在し、E1の回答はattachできない（束縛は置換生成で置換される）
+
+### Scenario: 中断済みrunへの遅延生成完了はauthorityを与えない
+
+Given 方法選択面から依頼生成を開始した後、session保存の完了を待たずにrunを中断した
+When 遅延して生成完了（session保存成功）が到着した
+Then そのexportIdはどのrunにも束縛されず、後続runの方法選択面からdirect attachできない（durable依頼としてはhub経由で取り込み可能なまま、挙動はimport-only契約に従う）
 
 ### Scenario: 取り込み後のplanning段階でのscope不一致
 
@@ -232,11 +246,11 @@ And この経路のrunがscope-firstの新stateへ到達することはない
 - [ ] AC-3: 候補0件時（manual run）、対象選択面を表示せず（内部stateにも`Selecting(空)`を介在させずに）方法選択面へ進み、AIに相談できる（export subjectsは配置済みのみ）。
 - [ ] AC-4: 選択面上の0件続行は「未配置アプリを追加せず整理する」旨の明示を伴い、暗黙の未確定状態と区別される。
 - [ ] AC-5: 選択コントロールが編集不可になるのは「AI依頼が確定scopeを参照している間」のみであり、その理由（依頼の存在と状態）がUI上に表示される。Exchange内部stateのみを理由とする不可解な無効化は発生しない。依頼が存在しない選択面では、編集は常に可能である。凍結解除（選択面への復帰）は、scope-bound依頼破棄のfailure-aware無効化が `Committed` / `NoMatch` になった後にのみ許可され（`WriteFailed` では凍結維持・再試行）、候補0件のrunでは選択面への復帰導線が存在しない。durableなactive依頼はrun admissionを妨げない（Busyは生存runのRUN lease保持に限定される）。
-- [ ] AC-6: run外のidle依頼の新規作成入口は撤去され、entry面のexchange hostingはimport-only（既存依頼の状況表示と取り込みのみ）となる。export sessionはdurableなentry originを保持し、import recordの`entryKind`はoriginから導出される（実行時run state推定に依存しない）。direct attach authorityはprocess-localな「このrunの`ScopeConfirmed`で生成したexact exportId」の束縛に限定され、scope一致だけでは同一runと判定しない。ownerを欠くRUN_IN originの取り込みはdirect attachせずRUN_IN pendingとして保存され、継続はrebind 1経路のみである。方法選択面からの取り込みは「この面の確定scopeから作成された依頼」に限定され、同一scopeでも別run由来・legacy IDLE由来の依頼は作り直しへ案内される。既存のdurable依頼・取り込み済み提案は #374/#375 契約（`Hub → ImportReview` 1経路、IDLE由来のunchecked復元を含む）どおりimport・再開できる。
+- [ ] AC-6: run外のidle依頼の新規作成入口は撤去され、entry面のexchange hostingはimport-only（既存依頼の状況表示と取り込みのみ）となる。export sessionはdurableなentry originを保持し、import recordの`entryKind`はoriginから導出される（実行時run state推定に依存しない。同一sessionへの再取り込みで`entryKind`が変化することはない）。direct attach authorityはprocess-localな「このrunの`ScopeConfirmed`で生成したexact exportId」の束縛（`boundExportId`）に限定され、束縛は生成開始時のsnapshot→session保存成功後のrun lock下bind（同一operation・同一`ScopeConfirmed`のみ）→復帰/中断/終了/破棄でclear→置換生成で置換、というlifetimeを持つ。scope一致だけでは同一runと判定しない。ownerを欠くRUN_IN originの取り込みはdirect attachせずRUN_IN pendingとして保存され、保存成功後はImportReviewへ切り替わり、継続はrebind 1経路のみ（既存#375 anchorの再利用、新seam不設置）である。方法選択面からの取り込みは「この面の確定scopeから作成された依頼」に限定され、同一scopeでも別run由来・legacy IDLE由来の依頼は作り直しへ案内される。既存のdurable依頼・取り込み済み提案は #374/#375 契約（`Hub → ImportReview` 1経路、IDLE由来のunchecked復元を含む）どおりimport・再開できる。
 - [ ] AC-7: 検出cutより後のHome変化により候補がstaleになった場合、composition時のfail-closed検証が作動し、zero-writeのtyped失敗と再試行案内が返る。古いcaptureから確定したscopeでplanは作られない。
-- [ ] AC-8: instrumentationで次のjourneyが固定される: (a) empty Home → 全候補選択 → AI依頼 → import → preview、(b) empty Home → 全候補選択 → このまま整理 → preview、(c) AI依頼存在下のBack → scope-bound依頼破棄（`Committed`後は選択面へ復帰、`WriteFailed`時は方法選択面に残留・凍結維持・再試行）、(d) Back/中断/process recreation後にscope ownership（どのscopeがどの依頼・runに紐づくか）が曖昧にならず、legacy IDLE依頼がactiveな状態でもmanual runはadmissionされ、その方法選択面からの取り込みは遮断される、(e) 候補0件runで方法選択面からBackすると選択面を経ずに中断される、(f) onboarding提案のrunに方法選択面が現れない、(g) 同一runで生成→import→attachが成功する、(h) RUN_IN依頼作成後にowning runを失ってhub経由で取り込むと、RUN_IN pendingが保存されdirect attachは発生せずrebindへ接続される、(i) 同一scopeでも別run由来のactive依頼は方法選択面からattachできない。
+- [ ] AC-8: instrumentationで次のjourneyが固定される: (a) empty Home → 全候補選択 → AI依頼 → import → preview、(b) empty Home → 全候補選択 → このまま整理 → preview、(c) AI依頼存在下のBack → scope-bound依頼破棄（`Committed`後は選択面へ復帰、`WriteFailed`時は方法選択面に残留・凍結維持・再試行）、(d) Back/中断/process recreation後にscope ownership（どのscopeがどの依頼・runに紐づくか）が曖昧にならず、legacy IDLE依頼がactiveな状態でもmanual runはadmissionされ、その方法選択面からの取り込みは遮断される、(e) 候補0件runで方法選択面からBackすると選択面を経ずに中断される、(f) onboarding提案のrunに方法選択面が現れない、(g) 同一runで生成→import→attachが成功する、(h) RUN_IN依頼作成後にowning runを失ってhub経由で取り込むと、RUN_IN pendingが保存されImportReviewへ切り替わり（direct attach・direct-attach用成功状態とも不発）、rebindへ接続される、(i) 同一scopeでも別run由来のactive依頼は方法選択面からattachできない、(j) 生成のsession保存完了をbarrierで止めたうえでrunを中断/再開し、遅延settleしても旧exportIdにdirect attach authorityが生えない、(k) 同一runでE1→E2の置換生成後、E1の回答はattachできずE2のみattachできる。
 - [ ] AC-9: 自動oracleとして、新設・変更面のsemantics（name/role/state）、live region告知、focus traversal・復元、200% font scaleでのclipping/overlap不在が検証される。さらに実機evidenceとして、TalkBack / キーボード / Switch Accessでscope確定・方法選択・凍結理由・次操作が理解できることを記録する。
-- [ ] AC-10: `docs/product/organizer-to-be-ux.md` へのrevision追記（D-04/D-05/D-06/D-17/§5.1/§5.2/§5.3の改訂、D-16不変の明記）、`docs/product/organizer-disposition-migration.md` のsupersession mapへの#417行追記、spec 369（RD-3・D-06節・状態対応表・0候補scenarioの本文Amend）、spec 372/331/367（Amend/Supersede標記と該当規定の改訂）、spec 204（session origin追加）、spec 374/375（scope-bound破棄・origin読み替えのAmend）が、production変更のcommitより先に同一PR内で適用される。
+- [ ] AC-10: `docs/product/organizer-to-be-ux.md` へのrevision追記（D-04/D-05/D-06/D-17/§5.1/§5.2/§5.3の改訂、D-16不変の明記）、`docs/product/organizer-disposition-migration.md` のsupersession mapへの#417行追記、spec 369（RD-3・D-06節・状態対応表・0候補scenarioの本文Amend）、spec 372/331/367（Amend/Supersede標記と該当規定の改訂）、spec 204（session origin追加・failure-aware invalidation追加）、spec 374（scope-bound破棄の消失原因追加・「same-processの取り込み成功CTAはlive-owner direct attach時のみ。ownerless RUN_INはImportReview rebind」の明記）、spec 375（attach authority 2軸分離の明記・「同一session再取り込みでentryKindだけflipする」既存scenario/SR-AC-07該当oracleの廃止と「再取り込みはentryKindを保持する」回帰への置換）が、production変更のcommitより先に同一PR内で適用される。
 - [ ] AC-11: #331 scope binding gate（完全一致・candidate projection digest・typed `SCOPE_MISMATCH`・zero-write）、spec 348/327のinstruction・interview契約、spec 374/375のdurable・rebind契約、spec 228 D-1、spec 53/370のD-16固定経路（onboardingが方法選択面へ到達しない回帰oracleを含む）の既存test回帰が維持される。加えて新規のfailure注入oracle: scope-bound破棄の`WriteFailed`（session・pending・凍結scopeの不変とtyped再試行）、owning run喪失後のRUN_IN origin取り込み（pending保存・direct attach不発）、process死を挟む同等シナリオがすべて通る。
 
 ## Test oracle
@@ -248,9 +262,9 @@ And この経路のrunがscope-firstの新stateへ到達することはない
 | AC-3 | unit: 0候補時に`Selecting`を介さず`ScopeConfirmed(空)`へ到達。instrumentation: 方法選択面へ進むassert |
 | AC-4 | unit + instrumentation: 0件続行の表示と空additions組成 |
 | AC-5 | unit: 凍結条件（依頼存在との対応）・reopen guard（依頼あり拒否・0候補拒否）・`WriteFailed`時の凍結維持。instrumentation: (c)(e) journey |
-| AC-6 | unit: origin書込みと`entryKind`導出（origin保持なし→IDLE）・run↔exportId束縛によるattach判定・方法選択面の他由来取り込み遮断・owner欠落RUN_IN pending保存・entry面creation不在。instrumentation: hub経由のlegacy import、(g)(h)(i) journey |
+| AC-6 | unit: origin書込み・`entryKind`導出（origin保持なし→IDLE・再取り込みで不変）・`boundExportId`のbind/clear/置換lifetime・他由来取り込み遮断・owner欠落RUN_IN pending保存とImportReview遷移・entry面creation不在。instrumentation: hub経由のlegacy import、(g)〜(k) journey |
 | AC-7 | unit: composition時stale検出の既存契約 + instrumentation: Home変化後のtyped再試行 |
-| AC-8 | instrumentation: (a)〜(i)。失敗注入: scope-bound破棄の`WriteFailed`でsession/pending/凍結scopeが不変であること、owning run喪失後のRUN_IN取り込みでdirect attachが不発であること |
+| AC-8 | instrumentation: (a)〜(k)。失敗注入: scope-bound破棄の`WriteFailed`でsession/pending/凍結scopeが不変であること、owning run喪失後のRUN_IN取り込みでdirect attachとdirect-attach用成功状態が不発であること、遅延settleが後続runへ束縛を付与しないこと |
 | AC-9 | instrumentation: semantics/live region/focus/200%の自動assert + 実機TalkBack・キーボード・Switch Accessの操作evidence（記録をPRへ添付） |
 | AC-10 | PR diffのcommit順序（docs commitがproduction commitより先）とreview確認 |
 | AC-11 | 既存回帰（scope binding gate・durable import・rebind・selection既定値・onboarding D-16） + 新規failure注入oracle（`WriteFailed`・owning run喪失・process死） |
@@ -266,3 +280,4 @@ organizer JVM gate（`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests
 - 2026-09-24: Draft created for #417.
 - 2026-09-24: PR #423 1回目review（Changes requested）対応。blocking指摘3点（legacy import provenance / scope-bound破棄のdurable契約 / onboarding D-16回帰）と非blocking指摘3点（D-06・spec 369本文改訂 / 0候補Back / a11y evidence分離）を反映: session origin追加、scope-bound依頼破棄の契約化、対象をmanual triggerへ限定、改訂対象の列挙拡充、reopen guard、oracle分割。
 - 2026-09-24: PR #423 2回目review（Changes requested）対応。RUN_INを「durable provenance（entry origin）」と「生存runへのdirect attach authority（process-localなrunId↔exportId束縛）」の2軸へ分離し、owner欠落RUN_IN取り込みのpending保存とrebind限定、同一scope別run由来のattach不許可を契約化。session storeへfailure-aware invalidation（`invalidateIf` 相当）を追加し、破棄を`Committed`/`NoMatch`/`WriteFailed`で観測可能に。downgrade契約を実装実態（未知keyでdecode失敗→no-session fail-closed＋pending reconcile失効の許容）へ修正。durable active依頼はRUN leaseを保持しないためadmissionを妨げないことを明記。
+- 2026-09-24: PR #423 3回目review（Changes requested）対応。`boundExportId`束縛の線形化点とlifetimeを契約化（生成開始snapshot→保存成功後のrun lock下bind→復帰/中断/終了/破棄でclear→置換で置換、stale settleは後続runへ不付与。oracle (j)(k)追加）。ownerless RUN_IN保存成功後の表示遷移をImportReview（既存reconcile読み直し・#375 anchor再利用・新seam不設置）へ固定し、spec 374へのCTA条件明記とspec 375のentryKind-flip scenario/SR-AC-07置換をAC-10へ追加。
