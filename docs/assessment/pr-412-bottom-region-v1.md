@@ -90,3 +90,13 @@ test名は監査sessionがtest本文を実読し、assert内容と受入条件�
 2. **AC-11のfoldable/two-panel固有gridは個別fixtureを持たない。** 導出関数がrowsのみに依存することの直接assertと4 grid matrixで充足と判断したが、spec scenario 6の列挙（foldable/two-panel）をそのまま命名したfixtureではない。既存 `BottomFirstStrategyTest` のorientation matrixと同型の範囲。
 3. **`PlanningPlacement.kt` candidate tail分岐に内容が重複する「Issue #398」コメントblockが2連続で残る**（旧案の記載〔「非1×1 span含む領域に入れないcandidateはunplaced」〕とレビュー修正後の記載〔「幾何的に適合しないspanのみunplaced、適合spanでのnullはloud」〕が並存）。実装は修正後の記載どおり（`scopeComposedAllocationFailureCannotBecomeUnplacedRows` testで固定済み）であり挙動に影響しないが、旧コメント段落は削除対象の文書残骸である。docs-onlyでない修正は再監査を要するため、本PRでは指摘の記録に留め、後続のcleanup（テスト変更と無関係な整理Issue）に分離することを推奨する。
 4. **本監査の有効範囲。** 本記録はHead SHA `067acd3aafc351ae23b2ee9d19b4ac4455a745cd` を対象とする。以後にcode変更（docs/以外）が入った場合は監査を無効とし再監査を要する（`validate_high_risk_evidence.py` のdocs-only規則どおり）。AC-12の解消は本監査の他の判定を変更させない。
+
+## Addendum — AC-12決議の記録（2026-09-23、監査記録push後）
+
+上記AC-12の判定（未充足・merge-blocking）は監査時点の状態として保持する。その後、spec 398 AC-12が許容する唯一の代替手続が履行された:
+
+1. **Issue #398本文のAC改訂**: checkbox を `[x]` へ更新し、merge時点のevidence充足を **representative emulator evidence**（`docs/assessment/evidence/pr-412-bottom-region-v1/`）へ明示改訂。物理デバイスでの追加evidenceは **#413** へ委譲（#351/#345前例）。編集履歴はIssue上で確認可能。
+2. **Owner decision comment**: [Issue #398コメント](https://github.com/nunu1733/NunuLauncher/issues/398#issuecomment-5787512051)（2026-09-23）。root判断・根拠・残余（#413）を記載。
+3. **emulator evidence**: 実UI経由（Settings → Home screen → Organizer hub → strategy picker で `Bottom-half layout` 選択 → `Organize as is` → selection面で全candidate選択 → usage access JIT をSkip → preview確認 → `Apply reviewed organization` → `Organization was applied and verified.`）で before / strategy picker / preview / after の4枚を取得。afterは全配置アイコンが下部優先領域（0-based rows 2-4）内・rows 0-1が意図的余白・既存Google folderが元位置保持（`Kept in place by the strategy: 1`）を示す。
+
+以上により、監査Head SHA上で有効な他の全AC判定と合わせ、AC-12は改訂後の受入条件どおり充足と判定する。なおvalidatorの「監査後はdocs-only」規則に従い、本追記とevidence（`docs/assessment/evidence/` 配下）はdocs-only commitとしている。
