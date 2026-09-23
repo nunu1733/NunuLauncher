@@ -1,6 +1,6 @@
 ---
 issue: "#417"
-status: draft
+status: accepted
 requirements: [FR-006, FR-017, NFR-009]
 risk: []
 updated: 2026-09-24
@@ -29,6 +29,9 @@ updated: 2026-09-24
 > [spec 53](../53-onboarding-organization-proposal/spec.md) / [spec 370](../370-onboarding-hub-connection/spec.md)（D-16固定経路）,
 > [spec 375](../375-scope-remedy-rebind/spec.md) のrebind 1経路・完全一致gate・fail-closed。
 > 本specは[Issue #417][1]の成果物である。
+> Status: **accepted** (2026-09-24) — Phase1 review 11回（head `bc459e9fa0` 時点で最終
+> [Approved](https://github.com/nunu1733/NunuLauncher/pull/423#issuecomment-5802041454)。
+> 各roundの指摘と解消は [PR #423](https://github.com/nunu1733/NunuLauncher/pull/423) コメント群に記録）。
 
 ## Problem
 
