@@ -54,6 +54,28 @@ class LayoutStrategySelectionStoreTest {
     }
 
     @Test
+    fun issue398BottomRegionSelectionWritesAndReadsBackThroughTheSameContract() {
+        // Issue #398: the new runtime-supported ID goes through the identical
+        // validated write command — no store schema change, generation/digest
+        // contract unchanged.
+        val directory = tempDirectory()
+        try {
+            val access = access(File(directory, "selection-v1"))
+
+            val result = access.select(StrategyId("BOTTOM_REGION_V1"))
+            assertTrue(result is LayoutStrategySelectionWriteResult.Committed)
+            val committed = result as LayoutStrategySelectionWriteResult.Committed
+
+            assertEquals(StrategyId("BOTTOM_REGION_V1"), committed.snapshot.selection)
+            val read = access.read() as LayoutStrategySelectionReadResult.Ready
+            assertEquals(StrategyId("BOTTOM_REGION_V1"), read.snapshot.selection)
+            assertEquals(committed.snapshot.identity, read.snapshot.identity)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun unsupportedStrategyIsRejectedAtWriteTimeWithoutTouchingStorage() {
         val directory = tempDirectory()
         try {

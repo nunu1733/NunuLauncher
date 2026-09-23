@@ -43,11 +43,13 @@ object BuiltInOrganizerPolicyBundleSource : OrganizerPolicyBundleSource {
         // CATEGORY_CONTIGUOUS_V1; issue #237: -v2.5 for GLOBAL_COMPACT_V2 —
         // spec 182 V1 semantics stay normative and selectable). Issue #235
         // enables both widget-relocating successors on one mainline:
-        // -v2.6 for STABLE_PAGE_TIDY_V2 and BOTTOM_FIRST_V2.
+        // -v2.6 for STABLE_PAGE_TIDY_V2 and BOTTOM_FIRST_V2. Issue #398
+        // enables the lower-region successor: -v2.7 for BOTTOM_REGION_V1.
         val layoutStrategies = LayoutStrategyCatalog(
             runtimeSupported = listOf(
                 app.lawnchair.organizer.planning.StrategyId("BOTTOM_FIRST_V1"),
                 app.lawnchair.organizer.planning.StrategyId("BOTTOM_FIRST_V2"),
+                app.lawnchair.organizer.planning.StrategyId("BOTTOM_REGION_V1"),
                 app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
                 app.lawnchair.organizer.planning.StrategyId("CATEGORY_CONTIGUOUS_V1"),
                 app.lawnchair.organizer.planning.StrategyId("GLOBAL_COMPACT_V1"),
