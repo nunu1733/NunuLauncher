@@ -100,6 +100,8 @@ jobs:
         run: python3 tools/repo-contract/test_validate_repo_contract.py
       - name: Test emulator failure evidence capture helper
         run: bash tools/ci/test_capture_emulator_failure_evidence.sh
+      - name: Test emulator failure evidence lifecycle
+        run: bash tools/ci/test_emulator_failure_capture_lifecycle.sh
       - name: High-risk gate self-tests
         run: python3 tools/repo-contract/test_validate_high_risk_evidence.py
       - name: Validate Deck retirement repo contract
@@ -459,10 +461,8 @@ jobs:
           profile: pixel_7_pro
           disable-animations: true
           emulator-boot-timeout: 900
-          script: |
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest,app.lawnchair.organizer.ui.OrganizerHubPreferencesInstrumentationTest,app.lawnchair.organizer.ui.StrategyPickerInstrumentationTest,app.lawnchair.organizer.ui.MissingAppSelectionInstrumentationTest,app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest,app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessInstrumentationTest,app.lawnchair.ui.preferences.destinations.StrategyPickerFreezeInstrumentationTest,app.lawnchair.ui.preferences.OrganizerDiagnosticsRouteInstrumentationTest
-            mkdir -p build/issue52-ui-evidence
-            adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
+          script: >-
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/issue52-failure-time-evidence -- bash tools/ci/run-issue52-instrumentation.sh
       - name: Upload Issue 52 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -473,13 +473,6 @@ jobs:
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
-      - name: Capture Issue 52 failure-time emulator evidence
-        if: failure()
-        continue-on-error: true
-        # Issue #315: the helper is bounded internally (per-command timeout and
-        # a 150s budget); this step-level timeout is the absolute backstop so a
-        # wedged capture can never consume the job budget before the upload.
-        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/issue52-failure-time-evidence
       - name: Upload Issue 52 failure-time emulator evidence
         if: failure()
         uses: actions/upload-artifact@v6
@@ -630,8 +623,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: >-
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest,app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/issue53-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest,app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
       - name: Upload Issue 53 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -642,11 +634,6 @@ jobs:
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
-      - name: Capture Issue 53 failure-time emulator evidence
-        if: failure()
-        continue-on-error: true
-        # Issue #315: bounded internally; step-level timeout is the absolute backstop.
-        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/issue53-failure-time-evidence
       - name: Upload Issue 53 failure-time emulator evidence
         if: failure()
         uses: actions/upload-artifact@v6
