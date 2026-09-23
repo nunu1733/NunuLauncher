@@ -461,14 +461,8 @@ jobs:
           profile: pixel_7_pro
           disable-animations: true
           emulator-boot-timeout: 900
-          script: |
-            bash tools/ci/run-emulator-command-with-failure-capture.sh \
-              emulator-5554 build/issue52-failure-time-evidence \
-              -- bash -e -c '
-                ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest,app.lawnchair.organizer.ui.OrganizerHubPreferencesInstrumentationTest,app.lawnchair.organizer.ui.StrategyPickerInstrumentationTest,app.lawnchair.organizer.ui.MissingAppSelectionInstrumentationTest,app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest,app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessInstrumentationTest,app.lawnchair.ui.preferences.destinations.StrategyPickerFreezeInstrumentationTest,app.lawnchair.ui.preferences.OrganizerDiagnosticsRouteInstrumentationTest
-                mkdir -p build/issue52-ui-evidence
-                adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
-              '
+          script: >-
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/issue52-failure-time-evidence -- bash tools/ci/run-issue52-instrumentation.sh
       - name: Upload Issue 52 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -628,11 +622,8 @@ jobs:
           profile: pixel_7_pro
           disable-animations: true
           emulator-boot-timeout: 900
-          script: |
-            bash tools/ci/run-emulator-command-with-failure-capture.sh \
-              emulator-5554 build/issue53-failure-time-evidence \
-              -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest,app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
+          script: >-
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/issue53-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest,app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
       - name: Upload Issue 53 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

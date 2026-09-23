@@ -45,6 +45,16 @@
   and record the result in a separate PR referencing #418 and #304. This repairs
   evidence timing only; it does not explain or stabilize the distinct #418 test
   failures and does not close either issue.
+- Review of the first #419 head found that `android-emulator-runner@v2`'s
+  [`parseScript`](https://github.com/ReactiveCircus/android-emulator-runner/blob/v2/src/script-parser.ts)
+  splits `script` on physical newlines and executes each non-empty line in a
+  separate `sh -c` ([action execution loop](https://github.com/ReactiveCircus/android-emulator-runner/blob/v2/src/main.ts#L1034-L1056)).
+  The reviewed multiline shell continuation would therefore not invoke the
+  wrapper as one command. The corrected workflow gives each Issue 52/53 runner
+  exactly one physical command line; Issue 52's unchanged Gradle/UI-pull
+  sequence is kept in `tools/ci/run-issue52-instrumentation.sh`. The lifecycle
+  test mirrors the line-splitting rule and checks both actual wrapper command
+  prefixes before exercising their fake-runner lifecycles.
 
 ### Re-entry update
 
@@ -369,6 +379,7 @@ snapshotが得られることと、Issue #304のroot-cause判別に十分な内�
 | `tools/ci/capture-emulator-failure-evidence.sh` | emulatorのwindow/activity/ANR/logcat等のbest-effort収集 |
 | `tools/ci/test_capture_emulator_failure_evidence.sh` | fake-`adb`によるhelper smoke test |
 | `tools/ci/run-emulator-command-with-failure-capture.sh` | emulator-runnerの生存期間内でfailure captureを呼び、元のcommand statusを返す |
+| `tools/ci/run-issue52-instrumentation.sh` | Issue #52の既存instrumentation commandとUI evidence pullをrunner scriptの単一commandから実行する |
 | `tools/ci/test_emulator_failure_capture_lifecycle.sh` | fake runner/adbによるcapture ordering/status testとIssue #52/#53 workflow wiring check |
 | 本 Issue | 結論・判断・分類表・run link の記録 |
 

@@ -11,17 +11,19 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKFLOW="$ROOT_DIR/.github/workflows/ci.yml"
 WRAPPER_REL="tools/ci/run-emulator-command-with-failure-capture.sh"
 WRAPPER="$ROOT_DIR/$WRAPPER_REL"
-CAPTURE="$ROOT_DIR/tools/ci/capture-emulator-failure-evidence.sh"
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-python3 - "$WORKFLOW" "$WRAPPER_REL" <<'PY'
+python3 - "$WORKFLOW" "$WRAPPER_REL" "$TEMP_DIR" <<'PY'
 import re
+import shlex
 import sys
 from pathlib import Path
 
 workflow = Path(sys.argv[1]).read_text()
 wrapper = sys.argv[2]
+action_command_dir = Path(sys.argv[3]) / "action-commands"
+action_command_dir.mkdir()
 
 for job, capture_name, artifact_name in (
     ("organizer-instrumentation-issue52-tests", "Capture Issue 52 failure-time emulator evidence", "issue52-failure-time-emulator-evidence"),
@@ -36,12 +38,45 @@ for job, capture_name, artifact_name in (
     block = match.group(1)
     if "uses: reactivecircus/android-emulator-runner@v2" not in block:
         raise SystemExit(f"FAIL: {job} no longer uses the expected emulator runner")
-    script = re.search(r"(?ms)^          script:\s*[|>][-+]?\s*\n((?:^            .*\n|^            \n)+)", block)
-    if script is None or wrapper not in script.group(1):
+    script_header = re.search(r"(?m)^          script:[ \t]*[|>][-+]?[ \t]*\n", block)
+    if script_header is None:
+        raise SystemExit(f"FAIL: {job} runner script input was not found")
+    script_lines = []
+    for line in block[script_header.end():].splitlines():
+        if line.startswith("            "):
+            script_lines.append(line[12:])
+        elif not line.strip():
+            script_lines.append("")
+        else:
+            break
+    # android-emulator-runner@v2's parseScript (src/script-parser.ts) trims and
+    # splits the input on physical newlines, then executes each non-empty line
+    # with its own `sh -c`:
+    # https://github.com/ReactiveCircus/android-emulator-runner/blob/v2/src/script-parser.ts
+    # Treat the source lines as that action does, so a shell continuation is
+    # caught here instead of passing a test that only invokes the wrapper
+    # directly.
+    action_commands = [
+        line.strip()
+        for line in script_lines
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if len(action_commands) != 1:
+        raise SystemExit(
+            f"FAIL: {job} has {len(action_commands)} non-empty physical lines in the runner script; "
+            "android-emulator-runner@v2 executes each line as a separate sh -c command, "
+            "so multiline continuations do not form one wrapper invocation"
+        )
+    command = action_commands[0]
+    if wrapper not in command:
         raise SystemExit(
             f"FAIL: {job} does not invoke {wrapper} inside android-emulator-runner's script; "
             "the post-step capture runs after emulator teardown"
         )
+    tokens = shlex.split(command)
+    if len(tokens) < 6 or tokens[0] != "bash" or tokens[1] != wrapper or "--" not in tokens:
+        raise SystemExit(f"FAIL: {job} runner line is not one complete wrapper shell command")
+    action_command_dir.joinpath(f"{job}.txt").write_text(command + "\n")
     if capture_name in block:
         raise SystemExit(f"FAIL: {job} still captures emulator evidence after the runner step")
     if artifact_name not in block or "actions/upload-artifact@v6" not in block:
@@ -86,17 +121,28 @@ FAKE_TEST_SCRIPT
 chmod +x "$FAKE_TEST"
 
 run_fake_runner() {
-    local output_dir="$1"
-    local fake_test_exit="$2"
-    local fake_adb_fail="$3"
+    local action_command_file="$1"
+    local output_dir="$2"
+    local fake_test_exit="$3"
+    local fake_adb_fail="$4"
+    local action_command wrapper_invocation
+    action_command="$(cat "$action_command_file")"
+    wrapper_invocation="${action_command%% -- *}"
+    if [ "$wrapper_invocation" = "$action_command" ]; then
+        printf 'FAIL: action command has no wrapper delimiter\n' >&2
+        return 1
+    fi
+    # Keep the complete wrapper command line discovered in the workflow, but
+    # replace its build output directory and test command with temp fakes.
+    wrapper_invocation="${wrapper_invocation% *} $output_dir"
     touch "$EMULATOR_ALIVE"
     printf 'runner:emulator-start\n' >>"$EVENT_LOG"
     local command_status=0
     set +e
     EMULATOR_ALIVE="$EMULATOR_ALIVE" EVENT_LOG="$EVENT_LOG" FAKE_TEST_EXIT="$fake_test_exit" \
-        FAKE_ADB_FAIL="$fake_adb_fail" ADB_BIN="$FAKE_ADB" \
+        FAKE_ADB_FAIL="$fake_adb_fail" ADB_BIN="$FAKE_ADB" FAKE_TEST="$FAKE_TEST" \
         CAPTURE_COMMAND_TIMEOUT_SECONDS=1 CAPTURE_TOTAL_BUDGET_SECONDS=30 CAPTURE_MAX_BYTES_PER_FILE=4096 \
-        bash "$WRAPPER" emulator-5554 "$output_dir" -- "$FAKE_TEST"
+        sh -c "$wrapper_invocation -- \"\$FAKE_TEST\""
     command_status=$?
     set -e
     printf 'runner:emulator-kill\n' >>"$EVENT_LOG"
@@ -107,7 +153,7 @@ run_fake_runner() {
 # Failure path: capture must run while the fake emulator is alive, and the
 # runner must receive the exact original test status after the evidence call.
 failure_output="$TEMP_DIR/failure-evidence"
-if run_fake_runner "$failure_output" 23 false; then
+if run_fake_runner "$TEMP_DIR/action-commands/organizer-instrumentation-issue52-tests.txt" "$failure_output" 23 false; then
     failure_status=0
 else
     failure_status=$?
@@ -123,11 +169,28 @@ kill_line="$(grep -n '^runner:emulator-kill$' "$EVENT_LOG" | head -n 1 | cut -d:
 last_capture_line="$(grep -n '^adb:live:' "$EVENT_LOG" | tail -n 1 | cut -d: -f1)"
 test "$last_capture_line" -lt "$kill_line"
 
+# The Issue 53 lane's own action command line must also route a test failure
+# through the same live emulator wrapper.
+: >"$EVENT_LOG"
+issue53_failure_output="$TEMP_DIR/issue53-failure-evidence"
+if run_fake_runner "$TEMP_DIR/action-commands/organizer-instrumentation-issue53-tests.txt" "$issue53_failure_output" 29 false; then
+    issue53_failure_status=0
+else
+    issue53_failure_status=$?
+fi
+test "$issue53_failure_status" -eq 29
+test -s "$issue53_failure_output/capture-manifest.tsv"
+grep -q '^adb:live:.*devices -l$' "$EVENT_LOG"
+if grep -q '^adb:device-gone:' "$EVENT_LOG"; then
+    printf 'FAIL: Issue 53 evidence capture ran after emulator teardown\n' >&2
+    exit 1
+fi
+
 # Capture itself is best-effort: a failing adb must not replace the original
 # test exit code.
 : >"$EVENT_LOG"
 failed_capture_output="$TEMP_DIR/failed-capture-evidence"
-if run_fake_runner "$failed_capture_output" 37 true; then
+if run_fake_runner "$TEMP_DIR/action-commands/organizer-instrumentation-issue52-tests.txt" "$failed_capture_output" 37 true; then
     failed_capture_status=0
 else
     failed_capture_status=$?
@@ -142,7 +205,7 @@ fi
 # Success path must not trigger failure-time evidence collection.
 : >"$EVENT_LOG"
 success_output="$TEMP_DIR/success-evidence"
-if run_fake_runner "$success_output" 0 false; then
+if run_fake_runner "$TEMP_DIR/action-commands/organizer-instrumentation-issue52-tests.txt" "$success_output" 0 false; then
     success_status=0
 else
     success_status=$?
