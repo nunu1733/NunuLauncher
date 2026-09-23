@@ -3,7 +3,8 @@
 > Issue: #417
 > Spec: [spec.md](./spec.md)
 > Status: draft
-> Revision 2（2026-09-24）: PR #423 1回目review（Changes requested）対応。session origin追加、scope-bound依頼破棄の契約化、manual trigger限定、D-06/spec 369本文Amend、reopen guard、oracle分割を反映。
+> Revision 3（2026-09-24）: PR #423 2回目review（Changes requested）対応。RUN_INの「durable provenance」と「生存runへのdirect attach authority」の2軸分離、session storeへのfailure-aware invalidation追加、downgrade契約の実態化、durable active依頼とRUN leaseの区別を反映。
+> Revision 2（2026-09-24）: PR #423 1回目review（Changes requested）対応。session origin追加、scope-bound依頼破棄の契約化、manual trigger限定、D-06/spec 369本文Amend、reopen guard、oracle分割。
 
 ## Current evidence
 
@@ -16,7 +17,10 @@
 - **確認とcomposeの結合**: `ManualOrganizationRun.confirmSelection`（`ManualOrganizationRun.kt:807-867`）は早期scope gateの後、直接`runComposedPhase(operation, selection)`を呼ぶ。intentがboundされたrun（rebind/取り込み継続）のみ確認時に早期一致検証が効く。0候補はdisplay層pass-through（face mapping、`ManualOrganizationPreferences.kt:616`）で内部stateは`Selecting(空)`に入る。
 - **attach契約**: `attachIntent`（`ManualOrganizationRun.kt:917-929`）は`State.Selecting`のみで束縛し、single-shot。`connectRun`（`ExchangeFlowUi.kt:1412-1452`）はRUN_INで生存runに`attachIntent`、IDLEで`run.start(intent)`。
 - **entryKindは実行時推定でprovenanceが壊れ得る**: `beginImportAttempt`（`ExchangeFlowUi.kt:1099-1110`）が `entryKind = if (selecting != null) RUN_IN else IDLE`（1104行）とimport時点のrun stateから決める。このため (a) legacy IDLE依頼をrun内surfaceから取り込むとRUN_INに誤記され、(b) 逆にrun内で作成した依頼をprocess死後にhub経由で取り込むとIDLEに落ちる。#375は `entryKind` により選択復元初期値の有無を決めるため、これはrebind意味論の誤分類であり、正本をsession保持のoriginに置く必要がある。
-- **session無効化・mutation gateのprimitiveは既存**: 置換確認つき生成（`confirmReplacementAndGenerate`/`startGeneration`、`ExchangeFlowUi.kt:524/592`）、未送信sessionの破棄（`closeDisclosure`、722行）、置換時のin-process提案無効化（`invalidateImportedIntentForReplacement`、696行）、process-wide `ExchangeMutationGate`（340行）が存在する。scope-bound依頼破棄はこれらの再利用で契約化する（新primitiveの発明ではない）。
+- **RUN_INのattach authorityは3箇所のfenceで守られている**: (a) `beginImportAttempt`が`State.Selecting`から`owningRunId`を記録、(b) validation settle後のdurable save時にowning-run fence（ownerを欠くRUN_INはpending保存しない側へ倒す）、(c) `connectRun`（`ExchangeFlowUi.kt:1412-1452`）で同一runIdの生存runを再確認して`attachIntent`。import面を`ScopeConfirmed`へ移す場合、この3箇所の契約をscope-first側に合わせて更新しないと、正規の新規依頼のattachが（`State.Selecting`要求により）不能になり、逆に死後hub取り込みのRUN_IN pendingがfenceで落ちてrebindへ届かなくなる。
+- **session store primitiveはfailure非観測**: `ExportSessionStore.invalidate(exportId): Unit` は成功/NoMatch/WriteFailedを区別できず、`AndroidExportSessionStore`の`AtomicFile.delete()`後もdurable成否を返さない（#375のpending側 `discardIf -> Committed / NoMatch / WriteFailed` と非対称）。scope-bound破棄の「永続化失敗を観測して凍結維持・再試行」には、failure-aware invalidationの追加が必要である。
+- **session record codecは未知keyでfail-closed**: `AndroidExportSessionStore`は`Json`既定設定で`SessionRecord`をdecodeするため、未知fieldを含むrecordは旧buildでdecode失敗→no-sessionとなる（`categoryRefs` fieldの既存コメントが同一挙動を明記）。downgrade時の継続性を「旧buildが新しいfieldを無視する」ものとして主張してはならない。
+- **session無効化・mutation gateの既存primitive**: 置換確認つき生成（`confirmReplacementAndGenerate`/`startGeneration`、`ExchangeFlowUi.kt:524/592`）、未送信sessionの破棄（`closeDisclosure`、722行）、置換時のin-process提案無効化（`invalidateImportedIntentForReplacement`、696行）、process-wide `ExchangeMutationGate`（340行）が存在する。scope-bound依頼破棄はこれらの再利用＋failure-aware invalidation追加で契約化する。
 - **検出とfreshness**: 検出はadmission時1回のfresh capture（`LayoutApplicationModule.detectMissingAppCandidates`、`LayoutApplicationModule.kt:182`）。composition時に`OrganizationInputComposer.kt:246-264`がfresh captureと再照合し、`CANDIDATE_SELECTION_STALE`でfail-closed。preview staleは`StaleOrigin.DETECTED_BEFORE_REVIEW`（`ManualOrganizationRun.kt:1232-1236`）。
 - **onboarding固定経路**: `Trigger.ONBOARDING_PROPOSAL`（D-16、spec 53/370）はT-07を省略してadmissionし、方法は「そのまま整理」固定でplanning直行する。本変更でこの経路に方法選択面を出現させてはならない。
 - **既存test資産**: `ManualOrganizationRunTest.kt`（attach/scope-binding）、`ExchangeFlowStateHolderTest.kt`、`MissingAppSelectionInstrumentationTest.kt`（0候補pass-through含む）、`ManualOrganizationPreferencesInstrumentationTest.kt`（T-07 AI行の存在assert `t07AiConsultationOpensTheRequestFaceWithoutRunAdmission`、418行 — 本specで置換される旧oracle）、`ExchangeImportSurfaceInstrumentationTest.kt`（scoped entry）。
@@ -34,19 +38,21 @@
   - `attachIntent`: 受理条件を`State.Selecting`に加えて`State.ScopeConfirmed`へ拡張。`ScopeConfirmed`での受理時は、確認時早期gateと同一のpure derivation（`ScopeBindingCauseDerivation.deriveConfirmMismatch`を確定selectionに対して実行）で一致検証し、不一致はtyped拒否（layout zero-write、方法選択面にrejection表示）。一致時はintentを束縛し`runComposedPhase`へ進む（取り込み成功CTA「この提案で続ける」が明示consent点であり、attach後の追加確認は挟まない）。
   - 新規`fun reopenSelection(): Boolean`: `State.ScopeConfirmed`で候補cutが**非空**のときだけ`State.Selecting`へ戻る（layout書込みなし、選択内容はUI stateが保持）。候補0件の`ScopeConfirmed`では常に拒否する（UIのBackは中断へ倒す）。依頼がactiveな場合の受理可否はstate machine自身は判定せず、UI層はscope-bound依頼破棄の成功後にのみ呼ぶ（下記の順序契約）。
   - `State.Selecting`の契約は不変（未確定の選択面。exchange flowのhostからは外れる）。
-- **export sessionのscope origin（provenanceの正本）**
-  - session保存時に、その依頼が「run内・scope選択ありで作成された」かを示すfieldを1つ追加する（書込みはsession生成時の1回のみ、immutable）。既存recordは「origin保持なし＝IDLE読み替え」で読む。追加はadditiveであり、schema/validator/framing/privacy tierは不変（spec 204 Amend）。
-  - `beginImportAttempt`の`entryKind`（`ExchangeFlowUi.kt:1104`）を実行時run state推定から「session保持originの読み出し」へ変更する。origin保持なし→IDLE。これによりlegacy IDLE依頼の誤RUN_IN記録と、run内作成依頼のprocess死後hub経由取り込みによるIDLE落ち（現行の潜在誤分類）の双方が閉じる。`connectRun`（1412-1452行）とpending storeの`PendingImportEntryKind`変換（1172-1174行）はorigin導出結果を消費するだけで、契約は不変。
-  - **方法選択面からの取り込み制限**: 方法選択面にhostするflowは、取り込み対象sessionが「この面の確定scopeから作成された依頼」（in-processでこのrunの`ScopeConfirmed`から`generateScoped`されたもの、またはdurable originが当該scopeと一致するもの）のときのみimport導線を出す。それ以外のactive依頼（legacy IDLE由来・他run由来）は「このscope用に依頼を作り直す」（既存置換確認経由の新規生成）へ案内し、この面から取り込みできない。
-- **scope-bound依頼破棄（新規operation・既存primitiveの順序付け）**
-  - `ExchangeFlowStateHolder`に、active依頼（session）と従属物を破棄する明示operationを1つ追加する。`ExchangeMutationGate`配下で次の順で実行する: (1) active sessionのdurable無効化commit（既存の置換/session無効化primitiveと同じ書込み）、(2) 従属する取り込み済み提案の処理 — 既存`invalidateImportedIntentForReplacement`と同一のin-process無効化＋durable側は既存read-time reconcile契約に委譲、(3) 完了後にUIへ成功を返す。
-  - (1)の永続化に失敗した場合は何も変えず、方法選択面にtypedで再試行可能な失敗を表示する。成功後でのみUIは`reopenSelection()`を呼んでよい。layout/workspace DBへの書込みは生じないが、このoperation自体はdurable mutationである（「全新経路がzero-write」ではない。AC-5/AC-8の失敗注入oracleで固定する）。
-  - spec 374（消失原因の追加）・spec 375（mutation gate適用範囲の明確化）へのAmendをAC-10の対象に含める。
+- **export sessionのdurable entry originと、生存runへのattach authorityの2軸**
+  - (軸1: durable provenance) session保存時に、その依頼のentry origin（`IDLE` / `RUN_IN`）を1 fieldとして追加する（書込みはsession生成時の1回のみ、immutable）。既存recordは「origin保持なし＝IDLE読み替え」で読む。追加はadditiveであり、schema/validator/framing/privacy tierは不変（spec 204 Amend）。`beginImportAttempt`の`entryKind`（`ExchangeFlowUi.kt:1104`）を実行時run state推定から「durable originの読み出し」へ変更する。origin保持なし→IDLE。
+  - (軸2: direct attach authority) 生存runへのdirect attachは、process-localな「このrunの`ScopeConfirmed`で`generateScoped`したexact exportId」の束縛でのみ成立する。scope一致（origin＋scopeCandidatesの等価）だけでは同一runと判定しない（同一scopeの別run由来sessionのattachを防ぐ）。
+  - **fence 3箇所のscope-first側への更新**: (a) `beginImportAttempt`は「live owner」と「durable provenance」を別々に保持する — live ownerは方法選択面の現在runのrunId＋束縛されたexportId（`ScopeConfirmed`から読む。旧`State.Selecting`要求は更新）、(b) durable save時のowning-run fenceは「live ownerが生存するRUN_IN import」にのみ適用し、ownerを欠くRUN_IN origin importは **RUN_IN pendingとしてdurable保存する**（fenceで落とさない。continuationはdirect attachせずrebindのみ）、(c) `connectRun`のRUN_IN生存確認は`State.ScopeConfirmed`＋同一runId＋同一exportId束縛へ更新する。
+  - **方法選択面からの取り込み制限**: 取り込み対象は「この面の確定scopeから作成された依頼」— in-processならこのrunの`ScopeConfirmed`で生成（束縛exportId一致）、それ以外は不可（同一scopeでも別run由来・legacy IDLE由来は不可）。「このscope用に依頼を作り直す」（既存置換確認経由の新規生成）へ案内する。
+- **scope-bound依頼破棄（failure-aware invalidationの追加と順序付け）**
+  - `ExportSessionStore` / `AndroidExportSessionStore`へ、gate内で線形化できるfailure-aware invalidationを追加する: `invalidateIf(expectedExportId) -> Committed / NoMatch / WriteFailed`（AtomicFile上でのatomic record更新またはtombstoneにより成否を観測可能にする。#375のpending側`discardIf`と対称な契約）。
+  - `ExchangeFlowStateHolder`に、active依頼（session）と従属物を破棄する明示operationを1つ追加する。`ExchangeMutationGate`配下で次の順で実行する: (1) `invalidateIf(expectedExportId)`、(2) 結果が`Committed` / `NoMatch`の場合のみ、従属する取り込み済み提案の処理 — 既存`invalidateImportedIntentForReplacement`と同一のin-process無効化＋durable側は既存read-time reconcile契約に委譲、(3) 完了後にUIへ成功を返す。
+  - (1)が`WriteFailed`の場合はsession・pending・`ScopeConfirmed`のすべてを保持し、方法選択面にtypedで再試行可能な失敗を表示する。成功後でのみUIは`reopenSelection()`を呼んでよい。layout/workspace DBへの書込みは生じないが、このoperation自体はdurable mutationである。AC-8(c)/AC-11のfailure注入oracle（process死を挟むものを含む）で固定する。
+  - spec 204（invalidation primitive追加）・spec 374（消失原因の追加）・spec 375（mutation gate適用範囲・2軸分離の明記）へのAmendをAC-10の対象に含める。
 - **`ExchangeFlowStateHolder` / `ExchangeFlowUi`（hosting再配置）**
   - 生成入力の供給源を「UI選択state」から「確定scope（`State.ScopeConfirmed`のselection + labels）」へ変更する。`generateScoped`のinterface（selection+labelsを受け取る）は不変で、呼び出し側の供給が変わる。
   - `ExchangeScopedEntryRow`（選択面上のentry行）と`Closed` branchのscoped entry rowを撤去する。`exchangeFlowItems`のhostは (a) 方法選択面branch（scoped、作成+取り込み）と (b) `Idle/Cancelled`面（**import-only**）の2箇所になる。
   - entry面hostingはimport-onlyとする: 既存active依頼の状況表示・回答取り込み・既存破棄操作のみで、新規依頼作成（T-15の生成・T-16送出）の導線を持たない。#372のT-15情報表示（active依頼の存在・残時間・置換要否）は維持し、作り直しは「整理の中で」（方法選択面）へ案内する。hub request row（`ExchangeOpen.REQUEST`）の遷移先はこのimport-only hostingへ解決される。
-  - `importAttemptActive`によるidle開始行の凍結は、開始行が「方法選択を含まない入口」になることで意味を失うため、入口面の整理とともに撤去する。依頼がactiveでもrun外からの新規run開始はRUN lease競合でBusyになるだけであり、凍結ではなくBusy表示で理由を説明できる（AC-5）。
+  - `importAttemptActive`によるidle開始行の凍結は、開始行が「方法選択を含まない入口」になることで意味を失うため、入口面の整理とともに撤去する。**Busyは生存runがRUN leaseを保持している場合のみ**であり、durableなactive依頼（legacy IDLE依頼・owning runを失ったRUN_IN session）はRUN leaseを持たないため、単独ではmanual run admissionを妨げない。依頼がscope形成を隠れて凍結する構造を再導入しない（AC-5/AC-8(d)）。
 - **UI面の再配置（`ManualOrganizationPreferences.kt` / `MissingAppSelectionScreen.kt` / hub）**
   - 入口面（Idle/Cancelled + T-07前置き面の後継）: scope summary（既存`manual_organization_preamble_scope`を維持）+ 開始CTA 1行のみ。CTA labelは方法を示さない「整理を開始」系の新文字列へ変更し、「そのまま整理」labelをscope選択入口から撤去する。AI行は置かない。
   - `State.Selecting`面: 選択項目 + 全選択/解除 + 「続行」。exchange flow items・scoped entry rowをhostしない。`editsEnabled`は常にtrue（凍結はこの面の外へ出る）。0件のまま「続行」した場合の明示helper文言（「未配置アプリを追加せず整理します」系）を`onConfirm`直前に表示する（新文字列）。
@@ -67,7 +73,9 @@ error: 早期/composition scope gate不一致はtyped `SCOPE_MISMATCH`（zero-wr
 
 - **代替案B（idle AIを「追加アプリを含めない別機能」として残存）**: Issue #417 Outcome「AIだけ別のscope形成タイミングを持たせない」に正面衝突するため却下。
 - **代替案Cのrun外実装（admission前に検出・選択を行うpre-run scope formation面）**: 同じ順序を実現するが、検出・選択の面とstateをrun外に二重化する必要があり、RUN lease・中断・process死の意味が二重のstate machine交差を続けるため不採用。既存run内で同一順序を実現する。
-- **`entryKind`を実行時surface/run state推定のまま維持（format不変で回避）**: import面と依頼由来の組合せで誤分類が残る（legacy依頼のrun内取り込み→誤RUN_IN、run内作成依頼の死後hub取り込み→誤IDLE）。#375の復元意味論に直結するためprovenanceはsession originへ置くのが正しく、推定では修復できないため却下。
+- **`entryKind`を実行時surface/run state推定のまま維持（format不変で回避）**: import面と依頼由来の組合せで誤分類が残る（legacy依頼のrun内取り込み→誤RUN_IN、run内作成依頼の死後hub取り込み→誤IDLE）。#375の復元意味論に直結するためprovenanceはdurable originへ置くのが正しく、推定では修復できないため却下。
+- **「durable origin＋scope一致」でsame-run判定を行う方式**: 同一scopeの別run由来sessionをattachでき、same-run invariant（spec 331 §5/#375）を破る。direct attach authorityはprocess-localなrunId↔exportId束縛に限定する（2軸分離）。
+- **downgrade継続性のためにsidecar/versioningへ設計変更する方式**: 旧codecが未知keyでfail-closedする実態を迂回するための追加format機構であり、no-session fail-closed＋pending reconcile失効という安全側の挙動で十分（既存`categoryRefs`と同様の既知の許容）であるため不採用。
 - **方法選択面からのBack禁止（中断のみ）**: 状態機械は単純になるが、依頼なしのscope確定ミス時に選択をやり直すためにrun全体の中断・再検出・再選択を強いる。zero-writeで安全に戻れる経路を残す方を採用（0候補時はBack＝中断）。
 - **`State.Selecting`にconfirmed flagを追加する代案**: 新state `ScopeConfirmed`とし、凍結の状態を型で区別する（flag合流だとattach/editable条件が再びboolean合成になり、#417の問題を構造内に残す）。
 
@@ -80,11 +88,12 @@ error: 早期/composition scope gate不一致はtyped `SCOPE_MISMATCH`（zero-wr
 | `specs/417-.../spec.md` 本spec | status遷移（draft→accepted→implemented）とChange history | 同一PRで更新（specs/README規則） |
 | `specs/369` | RD-3・D-06節・20状態→8状態対応表・0候補scenarioを本文レベルでAmend（manual/onboardingの区別を明記） | 旧normative本文を標記だけ残さない（review指摘） |
 | `specs/372`, `specs/331`, `specs/367` | Amend/Supersede標記＋該当規定の改訂（372: EX-AC-01/T-07二択、331: §5 idle entry・run-in一般化、367: secondary entry記述） | 既存specの正確な状態表示 |
-| `specs/204` | export sessionへのscope origin追加（additive・既存record読み替え・rollback degrade）をAmend | session契約の所有者 |
+| `specs/204` | export sessionへのdurable entry origin追加と、session storeへのfailure-aware invalidation（`invalidateIf` 相当）追加をAmend | session契約・storeの所有者 |
+| `lawnchair/.../organizer/personalization/` の `ExportSessionStore` / `AndroidExportSessionStore` | `invalidateIf(expectedExportId) -> Committed / NoMatch / WriteFailed` の追加（atomic record更新またはtombstoneで成否を観測可能に） | scope-bound破棄のfailure観測点 |
 | `specs/374`, `specs/375` | 消失原因へのscope-bound破棄追加・mutation gate適用範囲明確化・origin読み替えをAmend | durable契約の所有者 |
 | `CONTEXT.md` | 「対象scope凍結」「方法選択面」「scope-bound依頼破棄」の用語追加 | ドメイン語の正本 |
 | `lawnchair/.../organizer/ui/ManualOrganizationRun.kt` | `State.ScopeConfirmed`新設、`confirmSelection`分岐（manual限定・onboarding直行）、0候補state pass-through（manual限定）、`planWithConfirmedScope`、`attachIntent`拡張、`reopenSelection`（非空候補guard） | run state machineの唯一の正 |
-| `lawnchair/.../organizer/ui/exchange/ExchangeFlowUi.kt` | session originの記録/読み出し、`entryKind`導出変更、方法選択面の他由来取り込み遮断、scope-bound破棄operation（mutation gate配下）、scoped entry行撤去、entry面import-only hosting、`connectRun`条件 | exchange flow正本 |
+| `lawnchair/.../organizer/ui/exchange/ExchangeFlowUi.kt` | durable originの記録/読み出し、`entryKind`導出変更、live owner（runId＋束縛exportId）とdurable provenanceの分離保持、durable save時owning-run fenceの更新（owner欠落RUN_IN pending保存）、`connectRun`の生存確認更新（`ScopeConfirmed`＋同runId＋同exportId）、方法選択面の他由来取り込み遮断、scope-bound破棄operation（mutation gate配下）、scoped entry行撤去、entry面import-only hosting | exchange flow正本 |
 | `lawnchair/.../organizer/integration/exchange/ExchangeInputAdapter.kt` 関連 | session保存時にoriginを書く（生成seamに追加する1 field） | provenanceの書込み点 |
 | `lawnchair/.../ui/preferences/destinations/ManualOrganizationPreferences.kt` | 入口面の方法選択撤去・CTA改名、方法選択面branch新設、`exchangeBusy`凍結の撤去、hosting再配置（方法選択面/entry面import-only）、Back経路 | 画面正本 |
 | `lawnchair/.../organizer/ui/MissingAppSelectionScreen.kt` | 0件続行helper文言、exchange hostの分離 | 選択面の契約（編集常時可） |
@@ -94,9 +103,9 @@ error: 早期/composition scope gate不一致はtyped `SCOPE_MISMATCH`（zero-wr
 
 ## Migration and recovery
 
-- schema/rule migration: なし（export sessionへの1 field追加のみ。additiveで既存recordはorigin保持なし＝IDLE読み替え）。
-- failure中のrollback: layout/workspace書込みは全新経路でzero。scope-bound依頼破棄のみdurable mutation（既存primitive、mutation gate配下）を含み、失敗時は方法選択面に留まり再試行できる。
-- release rollback/downgrade: 旧buildは追加fieldを無視してorigin保持なしとして読むため、scope-firstで作成した依頼はIDLE読み替えへ安全にdegradeする（unchecked初期値側に倒れ、完全一致gateは維持）。process-localの新stateは死ぬと消えるのみ。
+- schema/rule migration: なし（export sessionへの1 field追加のみ。既存recordはorigin保持なし＝IDLE読み替え）。
+- failure中のrollback: layout/workspace書込みは全新経路でzero。scope-bound依頼破棄のみdurable mutation（failure-aware invalidation＋既存reconcile、mutation gate配下）を含み、`WriteFailed`時はsession・pending・凍結scopeを保持して再試行できる。
+- release rollback/downgrade: **現行codecの実態どおり、旧buildは未知fieldを含むsession recordをdecodeできず、scope-firstで作成したsessionはno-sessionとしてfail-closedになる**（従属するpendingもread-time reconcileで失効し得る）。この安全側への倒れ込みを明示的に許容する（既存`categoryRefs` fieldと同一の既知挙動。`SET_MISMATCH`等のfail-closed gateは維持される）。旧record（origin保持なし）は従来どおり読める。継続性を要求する場合のsidecar設計は本specでは採用しない（代替案rejected参照）。
 - backup/restore compatibility: durable store（export session・pending intent）は既存formatのadditive拡張。restore後のreconcile契約（spec 374/376）は不変。
 
 ## Verification
@@ -107,13 +116,13 @@ error: 早期/composition scope gate不一致はtyped `SCOPE_MISMATCH`（zero-wr
 | AC-2 | unit: export組成（`ContextExportBuilderTest`拡張）とplanner入力の同一scope contract test | 同上 |
 | AC-3 | unit: 0候補→`ScopeConfirmed(空)`直接遷移。instrumentation: 方法選択面assert | 両seam |
 | AC-4 | unit + instrumentation: 0件続行の表示と空additions | 両seam |
-| AC-5 | unit: 凍結条件・reopen guard（依頼あり拒否/0候補拒否）。instrumentation: (c)(e) journey | 両seam |
-| AC-6 | unit: origin書込み・`entryKind`導出（origin保持なし→IDLE）・取り込み遮断・entry面creation不在。instrumentation: hub経由のlegacy import | 両seam |
+| AC-5 | unit: 凍結条件・reopen guard（依頼あり拒否/0候補拒否）・`WriteFailed`時の凍結維持・durable依頼単独ではadmission可能。instrumentation: (c)(e) journey | 両seam |
+| AC-6 | unit: origin書込み・`entryKind`導出（origin保持なし→IDLE）・run↔exportId束縛によるattach判定・他由来取り込み遮断・owner欠落RUN_IN pending保存・entry面creation不在。instrumentation: hub経由のlegacy import、(g)(h)(i) journey | 両seam |
 | AC-7 | unit: `CANDIDATE_SELECTION_STALE`既存契約回帰 + instrumentation: Home変化後typed再試行 | 両seam |
-| AC-8 | instrumentation: (a) empty Home→全選択→AI→import→preview、(b) empty Home→全選択→このまま整理→preview、(c) 破棄成功/失敗のBack、(d) 中断・process recreation＋legacy遮断、(e) 0候補Back、(f) onboardingに方法選択面が現れない | connected test lane |
+| AC-8 | instrumentation: (a) empty Home→全選択→AI→import→preview、(b) empty Home→全選択→このまま整理→preview、(c) 破棄`Committed`/`WriteFailed`のBack、(d) 中断・process recreation＋legacy依頼active下でのadmissionと取り込み遮断、(e) 0候補Back、(f) onboardingに方法選択面が現れない、(g) 同一run生成→import→attach成功、(h) owning run喪失後のhub取り込み→RUN_IN pending→rebind、(i) 同一scope別run由来のattach不発 | connected test lane |
 | AC-9 | instrumentation: semantics/live region/focus/200%の自動assert + 実機TalkBack・キーボード・Switch Accessの操作evidence | 両seam + 実機 |
 | AC-10 | PR diffのcommit順序確認（docs→production） | review |
-| AC-11 | 既存回帰（scope binding gate・durable import・rebind・selection既定値・onboarding D-16）＋破棄失敗注入oracle | 両seam |
+| AC-11 | 既存回帰（scope binding gate・durable import・rebind・selection既定値・onboarding D-16）＋新規failure注入oracle（破棄`WriteFailed`、owning run喪失後のRUN_IN取り込み、process死を挟む同等シナリオ） | 両seam |
 
 含めるべき観点: unit/contract（state machine・provenance・scope対応）、UI/accessibility（新面・凍結理由・破棄確認）、failure injection（scope mismatch・stale・取り込み失敗・破棄永続化失敗）。performanceは対象外（計算量変更なし）。
 
