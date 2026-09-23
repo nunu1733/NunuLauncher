@@ -97,6 +97,7 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -187,6 +188,36 @@ fun ManualOrganizationPreferences(
     val focusTargetReady = remember(state) { mutableStateOf(false) }
     val focusTargetModifier = Modifier.onGloballyPositioned {
         focusTargetReady.value = true
+    }
+    // Temporary Issue #418 observation only: correlate displayed run/state
+    // swaps with the existing LazyListState and the measured item/key set.
+    LaunchedEffect(
+        coordinator,
+        state,
+        listState,
+        focusTargetIndex,
+        focusTargetReady.value,
+    ) {
+        androidx.compose.runtime.snapshotFlow {
+            val layoutInfo = listState.layoutInfo
+            val visibleItems = layoutInfo.visibleItemsInfo.joinToString(
+                prefix = "[",
+                postfix = "]",
+            ) { "${it.index}:${it.key}" }
+            "runId=${System.identityHashCode(coordinator)} " +
+                "state=${state.javaClass.simpleName} " +
+                "listStateId=${System.identityHashCode(listState)} " +
+                "itemCount=${layoutInfo.totalItemsCount} " +
+                "firstVisible=${listState.firstVisibleItemIndex} " +
+                "firstVisibleOffset=${listState.firstVisibleItemScrollOffset} " +
+                "visibleItems=$visibleItems " +
+                "focusReady=${focusTargetReady.value} focusTarget=${focusTargetIndex ?: -1}"
+        }.collect { snapshot ->
+            android.util.Log.i(
+                "Issue418LazyListState",
+                "elapsedRealtimeNanos=${android.os.SystemClock.elapsedRealtimeNanos()} $snapshot",
+            )
+        }
     }
 
     // Issue #271: the durable status projection is rendered only while no run
