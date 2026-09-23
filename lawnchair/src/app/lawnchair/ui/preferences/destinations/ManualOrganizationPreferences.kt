@@ -189,37 +189,6 @@ fun ManualOrganizationPreferences(
     val focusTargetModifier = Modifier.onGloballyPositioned {
         focusTargetReady.value = true
     }
-    // Temporary Issue #418 observation only: correlate displayed run/state
-    // swaps with the existing LazyListState and the measured item/key set.
-    LaunchedEffect(
-        coordinator,
-        state,
-        listState,
-        focusTargetIndex,
-        focusTargetReady.value,
-    ) {
-        androidx.compose.runtime.snapshotFlow {
-            val layoutInfo = listState.layoutInfo
-            val visibleItems = layoutInfo.visibleItemsInfo.joinToString(
-                prefix = "[",
-                postfix = "]",
-            ) { "${it.index}:${it.key}" }
-            "runId=${System.identityHashCode(coordinator)} " +
-                "state=${state.javaClass.simpleName} " +
-                "listStateId=${System.identityHashCode(listState)} " +
-                "itemCount=${layoutInfo.totalItemsCount} " +
-                "firstVisible=${listState.firstVisibleItemIndex} " +
-                "firstVisibleOffset=${listState.firstVisibleItemScrollOffset} " +
-                "visibleItems=$visibleItems " +
-                "focusReady=${focusTargetReady.value} focusTarget=${focusTargetIndex ?: -1}"
-        }.collect { snapshot ->
-            android.util.Log.i(
-                "Issue418LazyListState",
-                "elapsedRealtimeNanos=${android.os.SystemClock.elapsedRealtimeNanos()} $snapshot",
-            )
-        }
-    }
-
     // Issue #271: the durable status projection is rendered only while no run
     // operation is active (Idle/Cancelled). It is re-read on each transition
     // into those states — an in-place cancel re-reads, not only the first
@@ -332,6 +301,37 @@ fun ManualOrganizationPreferences(
         manualOrganizationFace(state) == ManualOrganizationFace.FAILURE -> 2
 
         else -> 1
+    }
+
+    // Temporary Issue #418 observation only: correlate displayed run/state
+    // swaps with the existing LazyListState and the measured item/key set.
+    LaunchedEffect(
+        coordinator,
+        state,
+        listState,
+        focusTargetIndex,
+        focusTargetReady.value,
+    ) {
+        androidx.compose.runtime.snapshotFlow {
+            val layoutInfo = listState.layoutInfo
+            val visibleItems = layoutInfo.visibleItemsInfo.joinToString(
+                prefix = "[",
+                postfix = "]",
+            ) { "${it.index}:${it.key}" }
+            "runId=${System.identityHashCode(coordinator)} " +
+                "state=${state.javaClass.simpleName} " +
+                "listStateId=${System.identityHashCode(listState)} " +
+                "itemCount=${layoutInfo.totalItemsCount} " +
+                "firstVisible=${listState.firstVisibleItemIndex} " +
+                "firstVisibleOffset=${listState.firstVisibleItemScrollOffset} " +
+                "visibleItems=$visibleItems " +
+                "focusReady=${focusTargetReady.value} focusTarget=${focusTargetIndex ?: -1}"
+        }.collect { snapshot ->
+            android.util.Log.i(
+                "Issue418LazyListState",
+                "elapsedRealtimeNanos=${android.os.SystemClock.elapsedRealtimeNanos()} $snapshot",
+            )
+        }
     }
 
     // Issue #195: the concrete change list is planned once per preview state.
