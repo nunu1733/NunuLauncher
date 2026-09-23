@@ -12,4 +12,13 @@ if ! adb logcat -d -v epoch -s Issue418LazyListTest:I Issue418LazyListState:I \
     printf 'Issue 418 state log capture failed; preserving the passing test result\n' >&2
     rm -f build/issue52-ui-evidence/issue418-lazylist-timeline.log || true
 fi
-adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
+ui_evidence_path=/sdcard/Pictures/Issue52-ui-evidence
+if adb shell test -d "$ui_evidence_path"; then
+    adb pull "$ui_evidence_path" build/issue52-ui-evidence
+else
+    if ! adb get-state >/dev/null; then
+        printf 'ADB became unavailable while checking optional Issue 52 UI evidence\n' >&2
+        exit 1
+    fi
+    printf 'Optional Issue 52 UI evidence directory was not produced; skipping pull\n'
+fi
