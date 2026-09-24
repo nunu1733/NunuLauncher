@@ -4,7 +4,7 @@ status: draft
 requirements:
   - FR-010
   - NFR-009
-updated: 2026-09-19
+updated: 2026-09-24
 ---
 
 # CustomCategoryPreferences instrumentationをCI merge gateへ接続し、カテゴリ管理UIのa11y項目を自動assertに固定する
@@ -15,25 +15,25 @@ updated: 2026-09-19
 
 Issue #336で追加されたカテゴリ管理UI（`CustomCategoryPreferences`）のinstrumentation test `CustomCategoryPreferencesInstrumentationTest` は、`.github/workflows/ci.yml` のどのinstrumentation laneのclass listにも含まれておらず、CI上で一度も実行されていない（compile-gatedのみ）。mainで壊れていてもmerge gateは検出しない。
 
-また、spec 336 AC-13（TalkBack label/role、focus復帰、keyboard/DPAD、Switch Access、非色状態、200% font scale、raw ID非表示）のうち、この管理UI表面で自動assertされている項目は実質ない。現状の担保は「coordinator unit test（CI実行済み）+ 手動emulator evidence 8枚（commit `927ef95e07`）」であり、監査記録はAC-13をPARTIALと判定し、自動a11y検証を後続作業（本Issue）として分離した。さらに既存test内のraw ID非表示確認は `onAllNodesWithText(userId.value).fetchSemanticsNodes().isEmpty()` という**結果を捨てる式文**であり、assertionとして機能していない（test本文実読による。失敗しても検出できない）。
+また、spec 336 AC-13（TalkBack label、focus復帰、keyboard/DPAD、Switch Access、非色状態、200% font scale、raw ID非表示）のうち、この管理UI表面で自動assertされている項目は実質ない。現状の担保は「coordinator unit test（CI実行済み）+ 手動emulator evidence 8枚（commit `927ef95e07`）」であり、監査記録はAC-13をPARTIALと判定し、自動a11y検証を後続作業（本Issue）として分離した。さらに既存test内のraw ID非表示確認は `onAllNodesWithText(userId.value).fetchSemanticsNodes().isEmpty()` という**結果を捨てる式文**であり、assertionとして機能していない（test file 306行中の92-93行目に実読で確認。失敗しても検出できない）。
 
 ## Outcome
 
-`CustomCategoryPreferencesInstrumentationTest` がsource/workflow変更PRごとの必須CI merge gate（`CI / final-status` を構成するinstrumentation job）上で常時実行され、失敗がmergeをblockする。同じtest class内に、カテゴリ管理UI（作成・改名・削除・partial deleteの各flow）のspec 336 AC-13相当項目—TalkBack用label/role、focus復帰、keyboard/DPAD、Switch Access等価なsemantics起動、非色状態、200% font scale、raw ID非表示—の明示的な自動assertが追加され、以後は手動evidenceなしでも回帰がCIで検出される。production code、UIの見た目・振る舞い、文字列、依存関係は変更しない。
+`CustomCategoryPreferencesInstrumentationTest` がsource/workflow変更PRごとの必須CI merge gate（`CI / final-status` を構成するinstrumentation job）上で常時実行され、失敗がmergeをblockする。同じtest class内に、カテゴリ管理UI（作成・改名・削除・partial deleteの各flow）のspec 336 AC-13相当項目—名前付きで操作可能なclick action、Compose/keyboard input focus復帰、keyboard/DPAD、Switch Access等価なsemantics起動、非色状態、200% font scale、raw ID非表示—の明示的な自動assertが追加され、以後は手動evidenceなしでも回帰がCIで検出される。production code、UIの見た目・振る舞い、文字列、依存関係は変更しない。
 
 ## Scope
 
-- `CustomCategoryPreferencesInstrumentationTest` を既存API 36 instrumentation lane（`organizer-instrumentation-issue99-tests`）のclass listへ追加し、CI merge gateの常設対象にする。
+- `CustomCategoryPreferencesInstrumentationTest` を既存API 36 instrumentation lane（`organizer-instrumentation-category-override-tests`）のclass listへ追加し、CI merge gateの常設対象にする。
 - 同test classへ、管理UI表面に対する次の自動assertを追加する（対象UIは `CustomCategoryPreferences.kt`、駆動seamは既存testと同じ `UserDefinedCategoryAuthoringCoordinator` + in-memory fake store）:
-  - **TalkBack label/role**: entry行が「`Rename <名前>`」のlocalized `contentDescription` とclick actionを持ち、delete行が「`Delete <名前>`」のそれを持つこと。status/summary nodeがpolite live regionのsemanticsを持ち、typed feedbackがテキストで読み上げ対象になること。
-  - **focus復帰**: 作成保存後・改名保存後・cancel後・delete確定後・partial deleteの「Back to categories」後など、editor/dialogを離れた時点でsummary nodeへaccessibility focusが戻ること（既存 `LaunchedEffect` の `FocusRequester` 挙動の固定）。
+  - **名前付きで操作可能なclick action**: entry行が「`Rename <名前>`」のlocalized `contentDescription` とclick actionを持ち、delete行が「`Delete <名前>`」のそれを持つこと。status/summary nodeがpolite live regionのsemanticsを持ち、typed feedbackがテキストで読み上げ対象になること。semantic `Role` は本Issueの契約に含めない（productionの `CategoryEntryRow` は `.clickable` + `contentDescription` のみで明示的Roleを持たず、Role要求はproduction変更を強いAC-7に反するため）。
+  - **Compose/keyboard input focus復帰**: 作成保存後・改名保存後・cancel後・delete確定後・partial deleteの「Back to categories」後など、editor/dialogを離れた時点で既存 `FocusRequester` によりsummary nodeへCompose/keyboard input focusが戻ること（`assertIsFocused()` で検証）。これはTalkBackのaccessibility focus復帰の証明ではない。TalkBack側のこの表面のcoverageは名前付きclick actionとpolite live regionのsemantics assertが担う。
   - **keyboard/DPAD**: keyboard入力モードでsummaryからDPAD移動が最初の操作可能行へ到達し、Center keyでeditorが開くこと。
-  - **Switch Access等価**: `SemanticsActions.OnClick` によるsemantics起動でentry行から改名editorが開くこと（issue99 lane testの確立patternと同一）。
+  - **Switch Access等価**: `SemanticsActions.OnClick` によるsemantics起動でentry行から改名editorが開くこと（category-override lane testの確立patternと同一）。
   - **非色状態**: 各user-defined entry行に「Custom」テキストmarkerが色に依らず存在すること。typed error（duplicate name等）がテキストとして提示されること。
   - **200% font scale**: `fontScale = 2f` で、50 code pointの最大長display nameを持つentry行と作成actionが表示・到達可能であり、削除確認dialogが操作可能であること。
   - **48dp touch target**: entry行の高さが48dp以上であること（spec 336のaccessibility barが引き継ぐ項目）。
-  - **raw ID非表示**: list・editor・dialogの全状態でraw `UserCategoryId` 値がsemantics treeに現れないことを、**実assertion**として確認する（既存のvacuous式文を置き換える）。
-- lane責務の正本 `docs/engineering/ci-test-portfolio.md` のownership表に、#336管理UI表面を追加実行対象として記載する。
+  - **raw ID非表示**: list・作成editor・改名editor・削除確認dialog・partial delete状態の5状態で、raw `UserCategoryId` 値がsemantics treeに現れないことを、共有contains-based helper `assertNoRawIdsPresent(seedId, mintedId)` による**実assertion**として確認する（既存のvacuous式文を置き換える）。helperは全semantics nodeの `Text`・`EditableText`・`ContentDescription` をsubstring/contains一致（exact一致ではない）で走査し、seed IDと作成pathでmintされたIDの両方を検査する。
+- lane責務の正本 `docs/engineering/ci-test-portfolio.md` のcategory-override laneのhuman-readable lane説明行に、#336管理UI表面をclass listのco-occupantとして追記する。lane↔surface edgeのnormative正本 `tools/repo-contract/ci_portfolio_map.yml` は同一surface内のclass追加ではedgeが変わらないため編集不要であることを検証する。
 
 ## Non-goals
 
@@ -47,7 +47,8 @@ Issue #336で追加されたカテゴリ管理UI（`CustomCategoryPreferences`�
 ## Domain language
 
 - **CI merge gate常設対象**: `.github/workflows/ci.yml` のinstrumentation jobの `-Pandroid.testInstrumentationRunnerArguments.class=` class listに列挙され、`final-status` の成否に効くことをいう。
-- それ以外の用語（user-defined category、`UserCategoryId`、partial delete等）はspec 336の定義に従う。本specは新用語を追加しない。
+- **名前付きで操作可能なclick action**: localized `contentDescription` label（例: 「Rename <名前>」）とclick actionを併せ持つsemantics nodeをいう。semantic `Role` の有無は含まない。
+- それ以外の用語（user-defined category、`UserCategoryId`、partial delete等）はspec 336の定義に従う。本specは上記以外の新用語を追加しない。
 
 ## Behavior scenarios
 
@@ -58,18 +59,18 @@ When source pathまたはworkflow pathを含むPRが出る
 Then 当該lane jobがAPI 36 emulator上で当該classを実行し、job結果が `final-status` に反映される
 And test classのcompile漏れ・実行時失敗はmerge gateを失敗させる
 
-### Scenario: TalkBack label/role
+### Scenario: 名前付きで操作可能なclick actionとlive region
 
 Given カタログにuser-defined category「Commute」がある
 When 管理UIが表示される
 Then 「Rename Commute」のcontentDescriptionを持つclick可能なnodeと「Delete Commute」のそれが存在する
 And summary nodeはpolite live regionを持ち、duplicate name等のtyped feedbackがテキストで存在する
 
-### Scenario: focus復帰
+### Scenario: Compose/keyboard focus復帰
 
 Given 作成または改名editor、あるいは削除確認dialogが開いている
 When 保存・cancel・確定のいずれかでeditor/dialogを離れる
-Then summary nodeがaccessibility focusを回復する
+Then summary nodeがCompose/keyboard input focusを回復する（既存 `FocusRequester` の挙動の固定）
 And editor内でのみ意味を持つfocusが残存しない
 
 ### Scenario: keyboard/DPADとSwitch Access等価
@@ -89,9 +90,9 @@ And entry行の高さは48dp以上である
 
 ### Scenario: raw IDはどの状態でも現れない
 
-Given list・editor・削除確認dialog・partial delete状態のいずれかが表示されている
-When semantics tree内の全text/contentDescriptionを走査する
-Then どの `UserCategoryId` 値（seedしたIDと作成でmintされたIDの両方）も現れない
+Given list・作成editor・改名editor・削除確認dialog・partial delete状態の5状態のいずれかが表示されている
+When 共有helper `assertNoRawIdsPresent(seedId, mintedId)` が全semantics nodeのText・EditableText・ContentDescriptionをsubstring一致で走査する
+Then どの `UserCategoryId` 値（seedしたIDと作成でmintされたIDの両方）も、exact形でも `Delete <raw-id>` のような埋め込み形でも現れない
 And この確認は失敗し得る実assertionである
 
 ### Failure / rejection
@@ -122,12 +123,12 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 ## Acceptance criteria
 
 - [ ] **AC-1** — `CustomCategoryPreferencesInstrumentationTest` が `ci.yml` のinstrumentation lane class listに列挙され、source/workflow変更PRの必須CI merge gate上でAPI 36 emulator上で実行される。lane失敗は `final-status` 失敗としてmergeをblockする。
-- [ ] **AC-2** — TalkBack label/role: entry行・delete行がlocalized action contentDescriptionとclick actionを持ち、summary nodeがpolite live regionを持つことが自動assertされている。
-- [ ] **AC-3** — focus復帰: editor（作成・改名）と削除確認dialogを離れた後、summary nodeへfocusが戻ることが自動assertされている。
+- [ ] **AC-2** — 名前付きで操作可能なclick action: entry行・delete行がlocalized action contentDescriptionとclick actionを持ち、summary nodeがpolite live regionを持つことが自動assertされている。semantic `Role` は要求しない（productionは明示的Roleを持たない）。
+- [ ] **AC-3** — Compose/keyboard input focus復帰: editor（作成・改名）と削除確認dialogを離れた後、既存 `FocusRequester` によりsummary nodeへCompose/keyboard input focusが戻ることが `assertIsFocused()` で自動assertされている。これはTalkBack accessibility focus復帰の証明を主張しない。
 - [ ] **AC-4** — keyboard/DPADとSwitch Access等価: DPAD移動+Center起動、およびsemantics `OnClick` 起動の経路が自動assertされている。
 - [ ] **AC-5** — 非色状態と200% font scale: 「Custom」テキストmarkerの存在、typed feedbackのテキスト提示、fontScale 2fでの最大長名・作成action・削除dialogの到達可能性、48dp touch targetが自動assertされている。
-- [ ] **AC-6** — raw ID非表示が、list/editor/dialog全状態を走査する実assertionに置き換わっている（既存の結果を捨てる式文は残存しない）。
-- [ ] **AC-7** — production source・UI実装・文字列resource・依存関係のdiffはゼロである。変更はtest class、`ci.yml` のlane class list（と近接comment）、`ci-test-portfolio.md` のownership記載に限定される。
+- [ ] **AC-6** — raw ID非表示が、5状態（list・作成editor・改名editor・削除確認dialog・partial delete）から呼ばれる共有contains-based helper `assertNoRawIdsPresent(seedId, mintedId)` による実assertionに置き換わっている。helperは全semantics nodeのText・EditableText・ContentDescriptionをsubstring一致で走査し、seed IDとminted IDの両方を検査する（既存の結果を捨てる式文は残存しない）。
+- [ ] **AC-7** — production source・UI実装・文字列resource・依存関係のdiffはゼロである。変更はtest class、`ci.yml` のlane class list（と近接comment）、`ci-test-portfolio.md` のlane説明行追記に限定される。
 - [ ] **AC-8** — 実装PRのCI runで、当該laneが追加classを含めて成功し、`final-status` が成功している。
 
 ## Test oracle
@@ -135,18 +136,22 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 | AC | Evidence |
 |---|---|
 | AC-1 | 実装PRの `pull_request` CI run: lane job logに当該classの実行記録、`final-status` success |
-| AC-2〜AC-6 | 同CI run内の当該class成功（新assert method名で確認可能）。局所再現はAPI 36 emulator上で `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest` |
+| AC-2 | `onNodeWithContentDescription(rename/delete label).assertHasClickAction()` + summary `LiveRegion == Polite` の成功（TalkBack側coverageはこのsemantics assertが担う） |
+| AC-3 | `assertIsFocused()` によるCompose/keyboard input focus復帰の成功（accessibility focusの証拠としては扱わない） |
+| AC-4〜AC-5 | 同CI run内の当該class成功（新assert method名で確認可能）。局所再現はAPI 36 emulator上で `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest` |
+| AC-6 | 5状態からの `assertNoRawIdsPresent` 呼び出し成功。局所再現はAC-4〜AC-5と同じcommand |
 | AC-7 | PR diffの `--name-status` 確認（test 1 file + ci.yml + portfolio docのみ） |
 | AC-8 | GitHub Actions run URL + `gh api` によるhead SHA照合（merge gate evidence） |
 
 ## Open questions
 
-実装開始前に解消すべき問いはない。参考として非blockingな観察: `docs/engineering/ci-test-portfolio.md` のownership表にはissue99 lane自体の行が存在しない（docの更新がlane追加に追従していない既存状態）。2026-09-17の初版作成後も、PR #355がissue52 laneのclass listへ2 classを追加した際にownership表は更新されず、stalenessは継続している。本Issueでは #336管理UI分の記載追加に限定し、他lane分の網羅は別途追跡する。
+実装開始前に解消すべき問いはない。参考として非blockingな観察: `docs/engineering/ci-test-portfolio.md` はIssue #422でPortfolio model + lane↔surface map（human mirror）へ書き換えられ、旧ownership表は存在しない。normative edge正本は `tools/repo-contract/ci_portfolio_map.yml`（category-override lane → surface_organizer_ui）であり、同一surface内のclass追加ではedge変更もmap file編集も不要である。本Issueではcategory-override laneのhuman-readable説明行への#336管理UI追記に限定し、他lane分の拡充は別途追跡する。
 
 ## Change history
 
 - 2026-09-17: Draft created for #342 (spec/plan preparation task; baseline main `8fd05a40d51abd24b40a7b93579bb9b76d046f75`)。
 - 2026-09-19: Re-entry検証。current main `3076bdae7ebf8dbb086f251203968c06e9986258`（前回baseline `8fd05a40d51a` 以降の差分はPR #350/#353/#355/#363/#364で、exchange / #327/#328/#337 と Organizer UX文書domain）に対してProblem/Outcome/Scope/ACの全事実を再確認した。対象test file・対象UI・`organizer_custom_category_*` 文字列・issue99 lane構成・spec 336 AC-12/AC-13（spec 337による改訂はexchange投影のみでauthoring契約は不変とspec 336自身が明記）・FR-010/NFR-009・portfolio docはいずれも変化せず、契約の変更は不要だった。
+- 2026-09-24: Re-entry改訂（review findings 1-4対応）。baselineを `origin/main` の `b146a63557` へ更新。Finding 1: AC-3/Scope/ScenarioをCompose/keyboard input focus復帰へ狭め、TalkBack accessibility focus証明の主張を除去。Finding 2: label/role契約を名前付きで操作可能なclick action（contentDescription + click action、Role要求なし）へ再定義。Finding 3: AC-6/Scope/Scenarioを共有contains-based helper `assertNoRawIdsPresent`（Text・EditableText・ContentDescriptionのsubstring走査、seed+minted両検査、5状態から呼出し）へ具体化。Finding 4: lane名をIssue #422による改名 `organizer-instrumentation-category-override-tests`（ci.yml 779行目、class list 814行目、`final-status` 970行目/needs 982行目）へ更新、test file 306行・vacuous文92-93行目を確認、portfolio docの#422書換え（Portfolio model + human mirror、normativeは `ci_portfolio_map.yml` 44-46行目）に合わせた記載へ修正。Statusはdraftのまま。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/342 "Issue #342"
 [2]: https://github.com/nunu1733/NunuLauncher/pull/341 "PR #341 — user-defined categories"
