@@ -2,7 +2,7 @@
 
 > Issue: #422
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted (PR #424 round-7 Approved, 2026-09-24)
 
 ## Current evidence
 

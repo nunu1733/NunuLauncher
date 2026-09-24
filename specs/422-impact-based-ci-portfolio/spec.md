@@ -1,6 +1,6 @@
 ---
 issue: "#422"
-status: draft
+status: accepted
 requirements:
   - AC-422-01
   - AC-422-02
@@ -298,3 +298,6 @@ None。UI を変更しないため（CI / docs のみの変更）。
 - 2026-09-24: PR #424 round-6 re-review (Changes requested) 対応: Data flow の
   `validate-repo-contract` を every run（docs-only 含む常時実行）として Permanent
   source gates から分離。
+- 2026-09-24: PR #424 round-7 re-review にて Approved（head `edafcdb14a`、
+  [review comment](https://github.com/nunu1733/NunuLauncher/pull/424#issuecomment-5805396423)）。
+  status を accepted へ移行。
