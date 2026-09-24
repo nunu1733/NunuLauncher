@@ -470,3 +470,5 @@ internal fun pageRefComparator(pageOrderMap: Map<PageId, PageOrder>): Comparator
     }
     a.pageId.compareTo(b.pageId)
 }
+
+// Issue 422 demo: planner surface self-verification.
