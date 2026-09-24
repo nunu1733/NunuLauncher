@@ -39,19 +39,24 @@ def build_workflow(
     surfaces_defined: list[str],
     final_needs: list[str] | None = None,
     drop_capture: str | None = None,
+    live_capture: set[str] | None = None,
 ) -> str:
     import yaml
 
     jobs: dict[str, object] = {
         "changes": {
             "runs-on": "ubuntu-latest",
-            "outputs": {name: "${{ steps.filter.outputs." + name + " }}" for name in surfaces_defined},
+            "outputs": {
+                name: "${{ steps.filter.outputs." + name + " }}"
+                for name in surfaces_defined
+            },
         },
         "validate-repo-contract": {"runs-on": "ubuntu-latest"},
         "check-style": {"runs-on": "ubuntu-latest"},
         "build-debug-apk": {"runs-on": "ubuntu-latest"},
         "organizer-unit-tests": {"runs-on": "ubuntu-latest"},
     }
+    live_capture = live_capture or set()
     for lane, surfaces in lanes.items():
         steps: list[dict[str, object]] = [
             {"name": "Run tests", "run": "./gradlew connectedTest"},
@@ -60,6 +65,18 @@ def build_workflow(
                 "run": "timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/x",
             },
         ]
+        if lane in live_capture:
+            steps = [
+                {
+                    "name": "Run tests inside live emulator",
+                    "with": {
+                        "script": (
+                            "bash tools/ci/run-emulator-command-with-failure-capture.sh "
+                            "emulator-5554 build/x -- ./run-tests.sh"
+                        )
+                    },
+                },
+            ]
         if drop_capture and lane == drop_capture:
             steps = steps[:1]
         jobs[lane] = {
@@ -151,6 +168,7 @@ class PortfolioValidatorTest(unittest.TestCase):
         permanent_only: list[str] | None = None,
         final_needs: list[str] | None = None,
         drop_capture: str | None = None,
+        live_capture: set[str] | None = None,
         doc_lines: list[str] | None = None,
     ):
         if map_lanes is None:
@@ -176,6 +194,7 @@ class PortfolioValidatorTest(unittest.TestCase):
                     surfaces_defined,
                     final_needs=final_needs,
                     drop_capture=drop_capture,
+                    live_capture=live_capture,
                 )
             )
         with open(self.map_path, "w", encoding="utf-8") as handle:
@@ -269,6 +288,13 @@ class PortfolioValidatorTest(unittest.TestCase):
             drop_capture="organizer-instrumentation-db-migration-tests",
         )
         self.assert_problem("capture step is missing")
+
+    def test_live_capture_wrapper_in_runner_script_is_accepted(self):
+        self.write_fixtures(
+            CONSISTENT_LANES,
+            live_capture={"organizer-instrumentation-manual-organization-ui-tests"},
+        )
+        self.assertEqual(vcp.validate(), [])
 
     def test_doc_missing_lane_and_surface_detected(self):
         doc_lines = ["| lane | surface |", "|---|---|"]

@@ -18,7 +18,8 @@ Compares .github/workflows/ci.yml against tools/repo-contract/ci_portfolio_map.y
 5. map.permanent_gates equals the fixed set bound to
    validate_high_risk_evidence.py, and those jobs plus final-status exist in
    the workflow.
-6. Every instrumentation lane has a bounded failure-evidence capture step.
+6. Every instrumentation lane has a bounded failure-evidence capture step,
+   either as a post-run helper or inside the live emulator-runner wrapper.
 7. docs/engineering/ci-test-portfolio.md mentions every lane ID and every
    surface name (existence check; content review owns the prose).
 
@@ -47,6 +48,7 @@ FIXED_PERMANENT_GATES = {"organizer-unit-tests", "check-style", "build-debug-apk
 FIXED_AGGREGATION_JOB = "final-status"
 CHANGES_JOB = "changes"
 EVERY_RUN_JOB = "validate-repo-contract"
+LIVE_CAPTURE_WRAPPER = "run-emulator-command-with-failure-capture.sh"
 
 SURFACE_OUTPUT_RE = re.compile(r"needs\.changes\.outputs\.(surface_[a-z0-9_]+)")
 
@@ -176,9 +178,16 @@ def validate() -> list[str]:
     # 6. Every instrumentation lane carries the bounded capture step.
     for lane in sorted(wf_lanes):
         steps = jobs[lane].get("steps", [])
-        has_capture = any(
-            "capture-emulator-failure-evidence.sh" in str(step.get("run", ""))
+        step_commands = [str(step.get("run", "")) for step in steps]
+        step_commands.extend(
+            str(step.get("with", {}).get("script", ""))
             for step in steps
+            if isinstance(step.get("with"), dict)
+        )
+        has_capture = any(
+            "capture-emulator-failure-evidence.sh" in command
+            or LIVE_CAPTURE_WRAPPER in command
+            for command in step_commands
         )
         if not has_capture:
             problems.append(f"lane {lane}: failure-evidence capture step is missing")

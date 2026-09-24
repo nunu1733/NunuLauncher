@@ -295,6 +295,31 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 収集helper自体はローカルfake-`adb` smoke testで、成功・失敗コマンドの双方をartifactへ
 残して元の処理を継続することを確認する。
 
+### Issue #422後のcapture-order再検証（2026-09-24）
+
+- Issue #422（PR #425/#433）のmerge後の現行mainは
+  `0c2914c144e6f0ad775a778e69dfc77aefcf9e32` である。impact-based portfolioへの再編後も、
+  `manual-organization-ui`（Issue #52相当）と `onboarding-proposal`（Issue #53相当）は
+  `reactivecircus/android-emulator-runner@v2` の`script`でGradleを実行し、runner step完了後の
+  別stepで`capture-emulator-failure-evidence.sh`を起動していた。
+- [PR #425のrun 35947132661](https://github.com/nunu1733/NunuLauncher/actions/runs/35947132661)
+  のfailure-time artifact `10787591922`を確認した。READMEのcapture時刻後の
+  `adb-devices.txt`は`List of devices attached`だけで、window/activity/home-role等は
+  1件、logcatは15秒timeoutだった。これはfailure-time artifactの保存自体は成功したが、
+  emulator teardown後のmetadata中心でlive window証拠を取得できていないことを示す。
+- [run 35960396387](https://github.com/nunu1733/NunuLauncher/actions/runs/35960396387)でも、
+  manual laneのGradle失敗後に`adb -s emulator-5554 emu kill`が実行され、その約2.5秒後に
+  runner外captureが開始されていた。artifact `10792636632`もadb queryがdevice-not-found
+  となり、同じordering defectを再確認した。
+- したがって、現行mainで検証すべき最小修正は、#52/#53のテストcommandをlive emulator-runner
+  `script`内で実行し、command失敗時にcaptureを呼び、captureの終了statusで元のテストstatusを
+  置き換えず返すことである。成功時はcaptureを実行せず、runner外の重複captureは置かない。
+  この変更は診断経路だけを対象とし、production source、instrumentation test実装、
+  emulator provisioning、他7 laneのcapture方式は変更しない。
+- 実装候補の検証は、wrapperのshell syntax、fake-`adb`によるlive device / device-goneの
+  status保持、success時の無capture、既存capture helper、CI portfolio contractで行う。
+  新しいhosted CI runはOwner gateで定めたrun capと停止条件を記録してから開始する。
+
 ## 残存リスク受容の判断基準（root cause 未確定のまま完了する場合）
 
 次のすべてを満たす場合、受容の判断を記録して完了できる:
