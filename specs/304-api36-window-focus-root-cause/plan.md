@@ -324,7 +324,9 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   重複captureは置かない。
   この変更は診断経路だけを対象とし、production source、instrumentation test実装、
   emulator provisioning、他7 laneのcapture方式は変更しない。残り7 laneのlive化は別Owner
-  gateで、同一PRに含めるかfollow-up Issueへ分離するかを決める。
+  gateで、同一PRに含めるかfollow-up Issueへ分離するかを決める。対象は
+  `shared-writer`、`db-migration`、`restore-capture`、`production-input`、
+  `reservation-recovery`、`exchange-import-ui`、`method-choice-journey`である。
 - 実装候補の検証は、wrapperのshell syntax、fake-`adb`によるlive device / device-goneの
   status保持、success時の無capture、既存capture helper、CI portfolio contractで行う。
   新しいhosted CI runはOwner gateで定めたrun capと停止条件を記録してから開始する。
