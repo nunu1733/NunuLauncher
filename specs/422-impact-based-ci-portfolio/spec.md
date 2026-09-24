@@ -1,6 +1,6 @@
 ---
 issue: "#422"
-status: accepted
+status: implemented
 requirements:
   - AC-422-01
   - AC-422-02
@@ -301,3 +301,9 @@ None。UI を変更しないため（CI / docs のみの変更）。
 - 2026-09-24: PR #424 round-7 re-review にて Approved（head `edafcdb14a`、
   [review comment](https://github.com/nunu1733/NunuLauncher/pull/424#issuecomment-5805396423)）。
   status を accepted へ移行。
+- 2026-09-24: 実装 PR #425 を head `f1bec52471` で merge（AC-422-01〜09 実証、ChatGPT
+  review 3 回を経て Approved、独立監査
+  [docs/assessment/pr-425-impact-based-ci-portfolio.md](../../docs/assessment/pr-425-impact-based-ci-portfolio.md)）。
+  merge 後の main push 全量 sweep run [35950633020](https://github.com/nunu1733/NunuLauncher/actions/runs/35950633020)
+  green。status を implemented へ移行。初回週次 scheduled run は Issue #422 の
+  follow-up evidence として追跡する。
