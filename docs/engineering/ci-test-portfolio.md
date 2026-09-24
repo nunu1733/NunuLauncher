@@ -35,6 +35,11 @@ instrumentation_enabled = !smoke
   `src/` 直下の未 mapping file、build script、`Android.bp` 等）があれば全 source lane が
   起動する。mapped / unmapped 混在でも発火する。mapping の隙間が gate の静かな skip と
   して現れないための保守 default である。
+- **event ごとの差分評価**: 増分単位の conditional 判定は `pull_request` event が所有
+  する（PR files API）。`push` event（`*-dev` branch）では dorny/paths-filter は
+  branch と default branch の差分を評価する（増分の上位集合のため常に安全側へ働く。
+  実測: 2026-09-24 の `422-demo-dev` run）。main push は常に全量、schedule /
+  workflow_call / workflow_dispatch は paths 判定を使わない。
 - test path は directory 粒度で surface 割り当てており、隣接 lane の過剰起動（over-trigger）
   を意図的に許容する（list 二重管理による取りこぼしより安全側である）。ただし各 lane が
   実行する test class の path はその lane の surface に必ず含み、**test のみの変更でも
