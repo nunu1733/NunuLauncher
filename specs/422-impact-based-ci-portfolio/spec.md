@@ -151,7 +151,10 @@ Then 変更 path にかかわらず全 portfolio（Permanent gate を含む全 l
 And PR で conditional 化した coverage が main / scheduled で継続検証される
 
 `workflow_dispatch` の `full-portfolio=false` は repository contract + Permanent gate
-のみ（instrumentation なし）の高速 smoke 実行を意味し、mapping 判定には関与しない。
+のみ（instrumentation 全 skip）の決定的な高速 smoke 実行を意味する。smoke 実行では
+paths-filter の mapping 出力を downstream の起動判断に一切使わず、Permanent gate の全起
+動と instrumentation lane の全 skip が event 条件のみから決定する。`workflow_dispatch`
+以外の event では smoke 状態は発生しない。
 
 ### Scenario: required lane の intermittent failure
 
@@ -173,8 +176,11 @@ And conditional 化が coverage の喪失として無検出にならない
 ## Data and state
 
 - 恒続 data は持たない。impact surface 定義（path filter）の正本は `ci.yml` の `changes`
-  job、lane↔surface 対応と fan-out の正本は `docs/engineering/ci-test-portfolio.md` とし、
-  両者の整合を repo-contract validator が検証する。
+  job、lane↔surface 対応と fan-out の唯一の normative 正本は
+  `tools/repo-contract/ci_portfolio_map.yml` とする。`docs/engineering/ci-test-portfolio.md`
+  は contract の説明・監査情報（分類、実測費用、過去 failure、審査記録）を持つ
+  human-readable な mirror であり、edge の正本ではない。repo-contract validator が
+  map file と workflow の整合（edge 完全一致）を検証する。
 - migration、backup/restore、product data への影響はない（CI orchestration と docs のみ）。
 
 ## Permissions, privacy, and security
@@ -207,9 +213,12 @@ None。UI を変更しないため（CI / docs のみの変更）。
       変更 PR は全 source job を自己実行する。
 - [ ] AC-422-05: main push、scheduled trigger、`workflow_call`、および
       `workflow_dispatch`（`full-portfolio` default）は、変更 path によらず Permanent
-      gate を含む全 portfolio を実行する。acceptance oracle は schedule trigger の定義と
-      `workflow_dispatch` による同一全量経路の実行であり、merge 後の実際の scheduled run
-      は後続の追跡 evidence として Issue へ記録する。
+      gate を含む全 portfolio を実行する。`workflow_dispatch(full-portfolio=false)` は
+      明示的な smoke 状態として Permanent gate 全起動・instrumentation 全 skip を event
+      条件のみから決定的に実現し、paths 判定に依存しない。acceptance oracle は schedule
+      trigger の定義、`workflow_dispatch` による全量経路の実行、および smoke 実行で
+      Permanent gate が全起動し instrumentation が全 skip されることである。merge 後の
+      実際の scheduled run は後続の追跡 evidence として Issue へ記録する。
 - [ ] AC-422-06: Issue 番号由来の lane job ID を contract-based ID に改名し、canonical
       docs の参照を更新する。validator と結合する job ID（`organizer-unit-tests` /
       `check-style` / `build-debug-apk` / `final-status`）は改名せず、high-risk gate は
@@ -237,7 +246,7 @@ None。UI を変更しないため（CI / docs のみの変更）。
 |---|---|
 | AC-422-01, 02 | `ci-test-portfolio.md` の監査表（review）と AC-422-09 の validator による表↔workflow 整合検証 |
 | AC-422-03, 04 | 実装 PR の CI run（`ci` filter による全 job 自己実行）+ dev branch 上の代表 surface demo run（docs-only / planner-only / UI-only / 未 mapping / mapped+未mapping 混在）における起動・skip の確認、run link を PR に記録 |
-| AC-422-05 | `ci.yml` trigger 定義 + `workflow_dispatch`（`full-portfolio=true`）による全量経路の実行 run。merge 後の main push run と初回 scheduled run は後続 evidence として Issue へ記録する |
+| AC-422-05 | `ci.yml` trigger 定義 + `workflow_dispatch`（`full-portfolio=true`）による全量経路の実行 run + `workflow_dispatch`（`full-portfolio=false`）smoke run で Permanent 全起動・instrumentation 全 skip の確認。merge 後の main push run と初回 scheduled run は後続 evidence として Issue へ記録する |
 | AC-422-06 | rename 後の CI run 上の job 一覧、canonical docs の参照更新（grep）、実装 PR 上の high-risk-gate 結果 |
 | AC-422-07 | `ci.yml` の capture step 定義 + `quality-strategy.md` の方針（review）。capture 動作自体は #315 の self-test が既に検証する bounded helper の再利用 |
 | AC-422-08 | `github-workflow.md` / `quality-strategy.md` / `AGENTS.md` の該当 section（review） |
@@ -260,3 +269,9 @@ None。UI を変更しないため（CI / docs のみの変更）。
   （mapped/unmapped 混在検出）へ契約変更、Permanent gate の全量実行時強制起動と
   `full-portfolio=false` の意味定義、mapping の機械正本（map file）と edge 完全一致
   検証、`workflow_call` 維持、AC-422-05 oracle を dispatch 実証ベースへ変更。
+- 2026-09-24: PR #424 re-review (Changes requested) 対応: `full-portfolio=false` を
+  paths 判定に依存しない明示的な smoke 状態として再定義（Permanent 全起動・
+  instrumentation 全 skip を event 条件のみで決定）、lane↔surface edge の normative
+  正本を `ci_portfolio_map.yml` に一意化し `ci-test-portfolio.md` を human-readable
+  mirror に明確化、`list-files: json` + 安全な集約経路（shell interpolation 禁止）を
+  plan に固定。

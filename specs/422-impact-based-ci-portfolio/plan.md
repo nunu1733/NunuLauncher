@@ -108,25 +108,45 @@ test class の path を含む。test のみの変更（production 無変更）�
 「JVM test / planner のみの変更が保守 default を発火させない」ために必要である。
 
 **per-path fail-closed（AC-422-04 の中核）**: paths-filter に workflow level で
-`list-files: shell` を設定し、`source_files` と各 `surface_*_files` を取得する。集約
-step で次を計算する。
+`list-files: json` を設定し、`source_files` と各 `surface_*_files` を JSON array として
+取得する。集合差分の計算は安全な経路でのみ行う。
+
+- `*_files` output は GitHub expression を `run:` へ直接埋め込まず、`env:` 経由で
+  （または一時 file 経由で）集約 script へ渡す。shell `eval` と式の直接 interpolation は
+  禁止する（[dorny/paths-filter の警告](https://github.com/dorny/paths-filter#notes)に
+  従う。`*_files` は PR 由来の filename を含むため信頼できない入力として扱う）。
+- 集約は Python（PyYAML 同梱環境で追加依存なし）で JSON array を parse し集合差分を
+  取る。quote・空白・shell metacharacter を含む filename で判定が壊れないことを
+  self-test で検証する。
 
 ```text
 unmapped_files = source_files - (∪ surface_*_files)
-full = (ci == true)
+smoke = event == workflow_dispatch && inputs.full-portfolio == false
+full  = !smoke && ( (ci == true)
     || (unmapped_files が 1 件でも存在する)      # mapped/unmapped 混在でも発火
     || event == schedule
     || event == workflow_call
-    || (event == push && ref == refs/heads/main)
-    || (event == workflow_dispatch && inputs.full-portfolio == true)
+    || (event == push && ref == refs/heads/main) )
+
+permanent_run = source || ci || full || smoke
+lanes_run     = !smoke && (full || いずれかの surface)
 ```
 
 PR 単位の surface boolean（`source && 全 surface false`）は使わない。mapped path と
 未 mapping path の混在 PR が保守 default を回避することを防ぐためである。
 
-`organizer-unit-tests` / `check-style` / `build-debug-apk` は
-`source || ci || full` で起動する。全量実行（main push / schedule / workflow_call /
-dispatch full）では docs-only 変更でも Permanent gate を含む全 portfolio が走る。
+`smoke`（`workflow_dispatch(full-portfolio=false)`）では paths-filter の出力を
+downstream の起動判断に一切使わない。Permanent gate の全起動と instrumentation の全
+skip が event 条件のみから決定的に決まる。paths-filter は非 PR event（dispatch 等）で
+直近 commit を変更集合と扱いうるため、dispatch 時の mapping 出力は無視する。
+
+各 job の `if` は次を参照する。
+
+- Permanent gate（`organizer-unit-tests` / `check-style` / `build-debug-apk`）:
+  `needs.changes.outputs.permanent_run == 'true'`（= `source || ci || full || smoke`）
+- instrumentation lane:
+  `needs.changes.outputs.lanes_run == 'true' || needs.changes.outputs.<surface> == 'true'`
+  （lane 個別の surface 起動は smoke 時も抑制されるよう、`lanes_run` に `!smoke` を含む）
 
 #### 2. lane の conditional 化と改名
 
@@ -134,7 +154,7 @@ dispatch full）では docs-only 変更でも Permanent gate を含む全 portfo
 
 ```yaml
 if: >-
-  needs.changes.outputs.full == 'true' ||
+  needs.changes.outputs.lanes_run == 'true' ||
   needs.changes.outputs.surface_layout_write == 'true'
 ```
 
@@ -153,9 +173,10 @@ job ID と surface 対応（v1）。**`organizer-unit-tests` / `check-style` / `
 | organizer-instrumentation-issue332-tests | organizer-instrumentation-exchange-import-ui-tests | surface_organizer_ui |
 | organizer-instrumentation-issue53-tests | organizer-instrumentation-onboarding-proposal-tests | surface_organizer_ui |
 
-fan-out（同一 surface が複数 lane を起動する）はこの表で定義され、AC-422-03 の正本は
-`ci-test-portfolio.md` に同名の表を置く。`surface_organizer_ui` が UI 4 lane を同時起動す
-るのは v1 の意図的な group 化である（spec Non-goals の通り画面単位分割は後続）。
+fan-out（同一 surface が複数 lane を起動する）はこの表で定義され、edge（lane→surface
+対応）の normative 正本は後述の `ci_portfolio_map.yml` である（次節 Design 5）。本表は
+`ci-test-portfolio.md` に説明つきで mirror する。`surface_organizer_ui` が UI 4 lane を同時
+起動するのは v1 の意図的な group 化である（spec Non-goals の通り画面単位分割は後続）。
 
 #### 3. trigger と全量 sweep
 
@@ -183,7 +204,9 @@ on:
   により Permanent gate を含む全 lane が実行される。paths-filter は非 PR event で base を
   取れない場合に備え、`full` の event 条件が優先するため出力に依存しない。
 - `workflow_dispatch` の `full-portfolio=false` は repository contract + Permanent gate
-  のみ（instrumentation なし）の高速 smoke 実行を意味する。mapping 判定には関与しない。
+  のみ（instrumentation 全 skip）の決定的な smoke 実行を意味する。paths-filter の出力に
+  依存せず event 条件のみで Permanent gate 全起動・instrumentation 全 skip が決定する
+  （Design 1 の `smoke` 定義）。
 - main push も `full = true` とし、merge 毎に全 portfolio の regression sweep を行う。
 - concurrency group は現行（ref 単位・cancel-in-progress）。scheduled run が main push で
   cancel されても push 側が全量を実行するため許容する。
@@ -197,8 +220,10 @@ issue52 / issue53 lane と同一パターン（`continue-on-error: true` +
 #### 5. mapping の機械正本と repo-contract validator
 
 lane→surface 対応の機械正本として `tools/repo-contract/ci_portfolio_map.yml` を置く
-（AC-422-03）。人間向けの監査表（contract の説明・分類・実測費用・過去 failure）は引き
-続き `ci-test-portfolio.md` が正本である。
+（AC-422-03）。**edge の normative 正本はこの map file が唯一である**。
+`ci-test-portfolio.md` は contract の説明・分類・実測費用・過去 failure・審査記録を持つ
+human-readable な mirror であり、edge の正本ではない（docs 側の表と map file が食い違う
+場合は map file が正である）。
 
 ```yaml
 # tools/repo-contract/ci_portfolio_map.yml
@@ -266,9 +291,9 @@ permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が�
 
 ```text
 push/PR/schedule/dispatch/workflow_call
-  → changes job（paths-filter list-files + unmapped 計算 + full 計算）
-  → permanent gate（validate-repo-contract / style / build / unit）: source||ci||full
-  → conditional lane: full || 自分の surface
+  → changes job（paths-filter list-files(json) + 安全な集約 script で unmapped/smoke/full 計算）
+  → permanent gate（validate-repo-contract / style / build / unit）: permanent_run（source||ci||full||smoke）
+  → conditional lane: lanes_run（!smoke && (full||surface)）|| 自分の surface（smoke 時は抑制）
   → final-status: needs = permanent + repo-contract + 全 lane、skip は成功扱い（現行 grep 逻辑変更なし）
 ```
 
@@ -288,7 +313,7 @@ push/PR/schedule/dispatch/workflow_call
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `.github/workflows/ci.yml` | surface filter 追加、list-files による per-path unmapped 計算、`full` 計算、lane `if` 条件、Permanent gate の `source\|\|ci\|\|full` 化、job 改名、schedule/dispatch/workflow_call trigger、capture step 全 lane 装備 | 本 Issue の実装本体 |
+| `.github/workflows/ci.yml` | surface filter 追加、list-files(json) による per-path unmapped 計算、`smoke`/`full`/`permanent_run`/`lanes_run` 計算、lane `if` 条件、Permanent gate の full/smoke 起動化、job 改名、schedule/dispatch/workflow_call trigger、capture step 全 lane 装備 | 本 Issue の実装本体 |
 | `tools/repo-contract/ci_portfolio_map.yml` | lane→surface / permanent gate / permanent-only surface の機械正本 | AC-422-03, 09 の比較基準 |
 | `docs/engineering/ci-test-portfolio.md` | 監査・分類・mapping/fan-out・failure 実績の正本へ再編（map file と同じ対応の人間向け表を含む） | AC-422-01〜03, 06 の正本 |
 | `docs/engineering/quality-strategy.md` | CI gates section 更新、failure 分類・retry 方針、test/CI 追加審査ルール | AC-422-07, 08 |
@@ -313,7 +338,7 @@ push/PR/schedule/dispatch/workflow_call
 |---|---|---|
 | AC-422-01, 02 | 監査表の review + 表↔workflow 整合は AC-422-09 validator | `python3 tools/repo-contract/validate_ci_portfolio.py` |
 | AC-422-03, 04 | 実装 PR の CI run（`ci` filter で全 job 自己実行）。代表 surface demo は `*-dev` branch への push で起動/非起動を実証: (a) docs-only (b) planner-only (c) organizer-ui のみ (d) 未 mapping path のみ (e) mapped+未 mapping の混在（fail-closed 発火）。各 run の started/skipped job 一覧を PR に記録 | GitHub Actions（push event on `422-*-dev` demo branches） |
-| AC-422-05 | `ci.yml` trigger 定義 + `workflow_dispatch`（`full-portfolio=true`）による全量経路の実行 run。merge 後の main push run と初回 scheduled run は後続 evidence として Issue comment へ記録する（scheduled は週次のため初回が翌週以降になる点は分離して扱う） | GitHub Actions |
+| AC-422-05 | `ci.yml` trigger 定義 + `workflow_dispatch`（`full-portfolio=true`）による全量経路の実行 run + `workflow_dispatch`（`full-portfolio=false`）smoke run で Permanent gate 全起動・instrumentation 全 skip を直接確認。merge 後の main push run と初回 scheduled run は後続 evidence として Issue comment へ記録する（scheduled は週次のため初回が翌週以降になる点は分離して扱う） | GitHub Actions |
 | AC-422-06 | rename 後 run の job 一覧、`grep -rn "organizer-instrumentation-issue" docs/ AGENTS.md` が canonical docs で空、実装 PR 上の high-risk-gate green | gh run view / grep |
 | AC-422-07 | capture step 定義の review + validator 検査 6.、`quality-strategy.md` 方針の review | `python3 tools/repo-contract/test_validate_ci_portfolio.py` |
 | AC-422-08 | 3 文書の該当 section review | — |
@@ -337,12 +362,16 @@ dev branch demo の注意: 新規 branch 初 push で paths-filter の base が�
 
 - [ ] 現行 lane 全てについて監査表を作成（contract・起動条件・実測時間・過去 failure 分類）。
 - [ ] surface filter の path list を実装確認（実在 path・test class の所在）。
-- [ ] `ci.yml` 変更（surface・list-files による per-path unmapped・full・rename・schedule・
-      workflow_call 維持・Permanent gate の full 起動化・capture）。
-- [ ] map file + validator + self-test 追加、`validate-repo-contract` job へ組込み。
+- [ ] `ci.yml` 変更（surface・list-files(json) による安全な per-path unmapped 計算・
+      smoke/full・rename・schedule・workflow_call 維持・Permanent gate の full/smoke 起動化・
+      capture）。
+- [ ] map file + validator + self-test 追加、`validate-repo-contract` job へ組込み
+      （filename 安全性の test を含む）。
 - [ ] docs 再編（portfolio / quality-strategy / github-workflow / AGENTS）。
 - [ ] 実装 PR の CI 全量 green を確認。
 - [ ] dev branch demo（docs-only / planner-only / ui-only / unmapped / 混在）で起動・skip 実証。
-- [ ] `workflow_dispatch`（full-portfolio=true）run で全量経路を実証。
+- [ ] `workflow_dispatch`（full-portfolio=true）run で全量経路を、
+      `workflow_dispatch`（full-portfolio=false）smoke run で Permanent 全起動・
+      instrumentation 全 skip を実証。
 - [ ] merge 後: main push run と初回 scheduled run を Issue へ記録（後続 evidence）し、
       残課題を分離。
