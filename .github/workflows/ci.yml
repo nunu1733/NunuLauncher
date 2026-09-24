@@ -775,7 +775,8 @@ jobs:
   # Category override authoring UI lane (ex Issue #99 lane). It runs on an
   # independent clean emulator so semantics, focus, font-scale, and mutation
   # interactions are verified rather than only compiled alongside the other
-  # Organizer suites.
+  # Organizer suites. Co-occupant since #342: CustomCategoryPreferences
+  # management UI (#336 AC-12/AC-13) shares this surface lane.
   organizer-instrumentation-category-override-tests:
     needs: changes
     if: >-
@@ -811,7 +812,7 @@ jobs:
           emulator-boot-timeout: 900
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest,app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest
       - name: Upload category-override instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
