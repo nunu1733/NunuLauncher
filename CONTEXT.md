@@ -25,8 +25,12 @@ _Avoid_: 全アプリ（対象範囲が曖昧な場合）
 _Avoid_: 設定、XMLルール
 
 **レイアウトストラテジー (Layout Strategy)**:
-対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、選択identityがpolicy provenanceへ参加する ([spec 182](./specs/182-layout-strategy-catalog/spec.md))。
+対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、選択identityがpolicy provenanceへ参加する ([spec 182](./specs/182-layout-strategy-catalog/spec.md))。primary success metricは「ユーザーが選んだ/表明したHome構成意図との一致」であり、page/folder/density等の数量指標は補助指標・tie-breakerである ([spec 398](./specs/398-strategy-intent-first-bottom-region/spec.md))。
 _Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、OrderingPolicy (旧単一値の型名)
+
+**下部優先領域 (lower preferred region)**:
+layout strategyが配置候補cellを制限するために、device profileの行数から決定的に導出する、page下部の行帯。`BOTTOM_REGION_V1` が採用し、pageの下 `ceil(rows/2)` 行を主な配置領域として上側を意図的余白として保持する。`regionAffinity` のBOTTOM band（行数3等分区の下带）とは別の、strategy構造の正本概念である ([spec 398](./specs/398-strategy-intent-first-bottom-region/spec.md))。
+_Avoid_: widget band（captured widget帯との混同）、region band（intent hintの行帯との混同）、下段（行数非依存の概念であることの不明瞭化）
 
 **ストラテジー固定unit (strategy-fixed unit)**:
 あるlayout strategyが「本来はmovableだが、そのstrategyの意図として動かさない」と決めたtop-level unit。配置上の占有を維持し、自然に保持されたunitとは別の理由として扱う ([spec 237](./specs/237-global-compact-v2-folder-relocation/spec.md))。

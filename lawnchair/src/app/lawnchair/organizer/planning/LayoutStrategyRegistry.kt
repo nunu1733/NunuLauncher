@@ -26,6 +26,27 @@ internal sealed interface WidgetPlacementPolicy {
 }
 
 /**
+ * Issue #398: the region of each page a strategy reserves for its own shape —
+ * the only cells where its app/folder stream may place units, never outside.
+ * The region is derived deterministically from the device profile rows; a
+ * strategy without one places wherever its page scope and traversal admit.
+ */
+internal sealed interface PreferredRegion {
+    /**
+     * `BOTTOM_REGION_V1`: the bottom `ceil(rows/2)` rows of every page — the
+     * lower preferred region. Upper rows stay open as intentional whitespace;
+     * overflow continues on the next page's region.
+     */
+    data object LowerHalf : PreferredRegion
+}
+
+/** Issue #398: the lower preferred region of a `rows`-tall page: bottom `ceil(rows/2)` rows. */
+internal fun lowerPreferredRegion(rows: Int): IntRange {
+    val lowerRows = (rows + 1) / 2
+    return (rows - lowerRows) until rows
+}
+
+/**
  * Internal curated catalog of built-in layout strategies (spec 182 / ADR-0012).
  * One executable [StrategyDefinition] per accepted catalog member; there is no
  * plugin surface and strategies cannot bypass the shared validation, allocator,
@@ -48,6 +69,12 @@ internal data class StrategyDefinition(
     val cellTraversal: CellTraversal,
     /** Issue #235: non-null makes eligible widgets movable under this strategy. */
     val widgetPolicy: WidgetPlacementPolicy? = null,
+    /**
+     * Issue #398: non-null restricts the strategy's app/folder stream to the
+     * declared region of every page (its own executor; never another
+     * strategy's layout). Existing strategies leave it null.
+     */
+    val preferredRegion: PreferredRegion? = null,
     val placeFullRun: (FullRunContext) -> PlacementOutput,
 ) {
     /**
@@ -71,6 +98,14 @@ internal enum class UnitOrdering {
 
     /** Captured visual order across all pages (cross-page strategies). */
     CAPTURED_VISUAL_GLOBAL,
+
+    /**
+     * Issue #398 BOTTOM_REGION_V1: reverse captured visual order
+     * `(PageOrder, PageId, cell.y DESC, cell.x, ItemId)` across all pages —
+     * the mirrored consumption order that a bottom-up sweep restores from the
+     * materialized layout (spec 398 idempotence argument).
+     */
+    CAPTURED_VISUAL_GLOBAL_REVERSED,
 
     /** Per page: `(profile, category with fallback last, canonical target key, ItemId)` (spec 182 CATEGORY_CONTIGUOUS_V1). */
     CATEGORY_CONTIGUOUS_PAGE_LOCAL,
@@ -157,6 +192,26 @@ internal object LayoutStrategyRegistry {
      * the unchanged `PREFERRED_THEN_NEW` scope.
      */
     val BOTTOM_FIRST_V2 = StrategyId("BOTTOM_FIRST_V2")
+
+    /**
+     * Issue #398 BOTTOM_REGION_V1 (spec 398): lower-preferred-region sweep —
+     * the bottom `ceil(rows/2)` rows of every page are the main placement
+     * area and the upper rows stay open as intentional whitespace. Eligible
+     * movable `1×1` singletons sweep the regions of captured pages
+     * (PageOrder), then already-created new pages, then new pages; a full
+     * region never fills upper rows — the next page's region is used instead
+     * (page growth is a legitimate outcome). Otherwise the GLOBAL_COMPACT_V1
+     * shape: non-`1×1` movable units and existing folders are
+     * `STRATEGY_PRESERVED`; folder formation (canonical P-04/P-05 + intent
+     * `groupSemantic`) applies to the eligible `1×1` candidates only and the
+     * formed folders are placed after the sweeping units. Widgets stay fixed
+     * (`PreserveReason.WIDGET`). Consumed as the mirrored positional order
+     * `CAPTURED_VISUAL_GLOBAL_REVERSED`, whose materialized reading restores
+     * the consumption order (spec 398 idempotence argument). Overflow to
+     * upper rows never happens — the strategy's visual identity survives
+     * dense input.
+     */
+    val BOTTOM_REGION_V1 = StrategyId("BOTTOM_REGION_V1")
 
     private val definitions: Map<StrategyId, StrategyDefinition> = mapOf(
         CANONICAL_PAGE_COMPACT_V1 to StrategyDefinition(
@@ -247,6 +302,19 @@ internal object LayoutStrategyRegistry {
             cellTraversal = CellTraversal.BOTTOM_UP_ROW_MAJOR,
             widgetPolicy = WidgetPlacementPolicy.PageLocalTopAnchored,
             placeFullRun = FullRunExecution::executeWithWidgetStream,
+        ),
+        BOTTOM_REGION_V1 to StrategyDefinition(
+            identity = BOTTOM_REGION_V1,
+            createsFolders = true,
+            eligibleUnitFilter = { item ->
+                (item.kind == ItemKind.APPLICATION || item.kind == ItemKind.DEEP_SHORTCUT) &&
+                    (item.placement as? CapturedPlacement.Workspace)?.span == GridSpan(1, 1)
+            },
+            unitOrder = UnitOrdering.CAPTURED_VISUAL_GLOBAL_REVERSED,
+            pageScope = PageScope.CAPTURED_THEN_NEW,
+            cellTraversal = CellTraversal.BOTTOM_UP_ROW_MAJOR,
+            preferredRegion = PreferredRegion.LowerHalf,
+            placeFullRun = FullRunExecution::executeRegionSweep,
         ),
     )
 
