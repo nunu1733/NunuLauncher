@@ -265,13 +265,19 @@ permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が�
    edge 記述は #7 の存在検査のみで、内容の整合は review が所有する）。global 制御
    flag（`full` / `instrumentation_enabled` / `permanent_run` 等の `surface_*` 以外の
    参照）は比較対象から除外する。
-3. `ci.yml` の `changes` job に定義された全 `surface_*` output が、map file 上でいずれか
-   の lane または `permanent_only_surfaces` に紐づく（未使用 surface / 幽霊 surface 検出）。
-4. `final-status` の `needs` == {changes, validate-repo-contract, build-debug-apk,
-   check-style, organizer-unit-tests} ∪ 全 instrumentation lane（exact set 比較。Permanent
-   gate の集約漏れも検出する）。
-5. `organizer-unit-tests` / `check-style` / `build-debug-apk` / `final-status` job が存在
-   する（high-risk validator 結合の固定点）。
+3. surface vocabulary の**双方向 exact set 比較**:
+   `defined_surfaces`（`changes` job が output として定義する `surface_*` の集合） ==
+   `declared_surfaces`（`union(map.lanes[*].surfaces) ∪ set(map.permanent_only_surfaces)`）。
+   changes 側の未使用 surface と、map / lane `if` 側の typo・未知 surface の両方を検出す
+   る（map と lane `if` が同じ typo で一致していても、vocabulary 比較が検出する）。
+   self-test に「map と lane `if` が同じ未知 surface を参照し、別 lane は正しい surface
+   を使っている」case を含める。
+4. `final-status` の `needs` == {changes, validate-repo-contract} ∪
+   `map.permanent_gates` ∪ 全 instrumentation lane（exact set 比較。Permanent gate の
+   集約漏れも検出する）。
+5. `map.permanent_gates` == {`organizer-unit-tests`, `check-style`, `build-debug-apk`}
+   （high-risk validator 結合の固定点。map file 側の drift も検出する）かつ、これらの job
+   と `final-status` が workflow に実在する。
 6. 全 instrumentation lane が capture step（`capture-emulator-failure-evidence.sh` 参照）
    を持つ。
 7. `docs/engineering/ci-test-portfolio.md` が全 lane ID と全 surface 名を含む

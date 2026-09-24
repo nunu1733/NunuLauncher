@@ -237,11 +237,14 @@ None。UI を変更しないため（CI / docs のみの変更）。
 - [ ] AC-422-09: 次を機械検証する repo-contract validator（self-test 付き）を
       `validate-repo-contract` job に追加する: (a) map file の lane 集合と `ci.yml` の
       instrumentation lane 集合の一致、(b) 各 lane の surface 集合が workflow の `if`
-      条件の参照と完全一致、(c) `ci.yml` に定義された全 surface が map file で lane または
-      Permanent gate に紐づく、(d) `final-status` の `needs` が Permanent gate と全 lane
-      の必須集合と完全一致、(e) validator 結合 job ID（`organizer-unit-tests` /
-      `check-style` / `build-debug-apk` / `final-status`）の存在、(f) 全 instrumentation
-      lane の capture step 装備、(g) `ci-test-portfolio.md` が全 lane と全 surface を含む。
+      条件の参照と完全一致、(c) surface vocabulary の双方向完全一致（`changes` job が定義
+      する `surface_*` 集合 == map file が lane / permanent-only として宣言する集合。typo・
+      未使用 surface を両方向で検出）、(d) `final-status` の `needs` が
+      `map.permanent_gates` と全 lane を含む必須集合と完全一致、(e)
+      `map.permanent_gates` が validator 結合 job ID（`organizer-unit-tests` /
+      `check-style` / `build-debug-apk`）と一致しそれらの job が実在する、(f) 全
+      instrumentation lane の capture step 装備、(g) `ci-test-portfolio.md` が全 lane と
+      全 surface を含む。
 
 ## Test oracle
 
@@ -288,3 +291,7 @@ None。UI を変更しないため（CI / docs のみの変更）。
   「mapping 正本」残存文言の削除、validator #2 の drift 検出先を map file↔workflow へ
   修正、Verification の AC-422-01/02 を同じ表現へ統一、Change set の廃止済み
   `lanes_run` を `instrumentation_enabled` へ置換。
+- 2026-09-24: PR #424 round-5 re-review (Changes requested) 対応: surface vocabulary
+  を双方向 exact set 比較（defined == declared）へ強化し typo・未知・未使用 surface を
+  両方向検出、`map.permanent_gates` を validator 期待集合の導出元かつ固定点として
+  exact compare する契約に変更、当該 case の self-test 要求を追加。
