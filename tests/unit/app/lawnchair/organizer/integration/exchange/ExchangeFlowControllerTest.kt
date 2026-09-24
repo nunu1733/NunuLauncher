@@ -6,6 +6,7 @@ import app.lawnchair.organizer.personalization.BuiltExport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
 import app.lawnchair.organizer.personalization.ExportInputs
+import app.lawnchair.organizer.personalization.ExportInvalidationResult
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.IntentCodec
@@ -76,6 +77,12 @@ class ExchangeFlowControllerTest {
 
         override fun invalidate(exportId: String) {
             if (session?.exportId == exportId) session = null
+        }
+
+        override fun invalidateIf(expectedExportId: String): ExportInvalidationResult {
+            if (session?.exportId != expectedExportId) return ExportInvalidationResult.NoMatch
+            session = null
+            return ExportInvalidationResult.Committed
         }
     }
 
@@ -397,5 +404,175 @@ class ExchangeFlowControllerTest {
             controller.generate(PrivacyTier.EXTERNAL_REDACTED),
         )
         assertNull(fixture.store.session)
+    }
+
+    // ---- Issue #417: the generation seam's prepare / durable-mutation split ----
+
+    /** A pending-store fake observing the #374 replacement invalidation. */
+    private class FakePendingStore : app.lawnchair.organizer.personalization.PendingImportedIntentStore {
+        var deleteCalls = 0
+        var record: app.lawnchair.organizer.personalization.DurablePendingIntent? = null
+
+        override fun save(proposal: app.lawnchair.organizer.personalization.DurablePendingIntent): Boolean {
+            record = proposal
+            return true
+        }
+
+        override fun load(): app.lawnchair.organizer.personalization.DurablePendingIntent? = record
+
+        override fun discard(): Boolean {
+            record = null
+            return true
+        }
+
+        override fun delete() {
+            deleteCalls++
+            record = null
+        }
+
+        override fun deleteIf(proposal: app.lawnchair.organizer.personalization.DurablePendingIntent): Boolean {
+            if (record == proposal) {
+                record = null
+                return true
+            }
+            return false
+        }
+
+        override fun discardIf(expected: app.lawnchair.organizer.personalization.DurablePendingIntent): app.lawnchair.organizer.personalization.DiscardIfResult {
+            record = null
+            return app.lawnchair.organizer.personalization.DiscardIfResult.Committed
+        }
+    }
+
+    @Test
+    fun prepareScopedGenerationTagsTheSessionWithTheRunInOrigin() {
+        val fixture = Fixture()
+        val controller = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+            composeScopedExportInputs = { t, _, _ -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+        )
+        val prepared = controller.prepareScopedGeneration(
+            PrivacyTier.EXTERNAL_REDACTED,
+            emptyList(),
+            emptyMap(),
+        ) as ExchangeGenerationPreparation.Prepared
+        // Issue #417: the durable origin is written exactly once at the
+        // prepare seam and is immutable afterwards.
+        assertEquals(
+            app.lawnchair.organizer.personalization.ExportEntryOrigin.RUN_IN,
+            prepared.session.entryOrigin,
+        )
+        assertEquals(
+            app.lawnchair.organizer.personalization.ExportEntryOrigin.RUN_IN,
+            prepared.session.resolvedEntryOrigin,
+        )
+        // Prepare is lock-free and store-free: nothing was saved.
+        assertNull(fixture.store.session)
+    }
+
+    @Test
+    fun legacyIdleGenerationSessionsCarryNoExplicitOriginAndDecodeAsIdle() {
+        val fixture = Fixture()
+        val session = generated(fixture.newController().generate(PrivacyTier.EXTERNAL_REDACTED)).session
+        // The legacy decode rule: absent origin + empty scope = IDLE.
+        assertNull(session.entryOrigin)
+        assertEquals(
+            app.lawnchair.organizer.personalization.ExportEntryOrigin.IDLE,
+            session.resolvedEntryOrigin,
+        )
+    }
+
+    @Test
+    fun commitPreparedSessionSavesThenInvalidatesThePendingAndFailsClosed() {
+        val fixture = Fixture()
+        val pendingStore = FakePendingStore()
+        val controller = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+            composeScopedExportInputs = { t, _, _ -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+            pendingImportStore = pendingStore,
+        )
+        val prepared = controller.prepareScopedGeneration(
+            PrivacyTier.EXTERNAL_REDACTED,
+            emptyList(),
+            emptyMap(),
+        ) as ExchangeGenerationPreparation.Prepared
+
+        // Committed: the new session is durable FIRST, then the #374 old
+        // pending invalidation.
+        assertEquals(
+            SessionPersistOutcome.Committed,
+            controller.commitPreparedSession(prepared),
+        )
+        assertEquals(prepared.session.exportId, fixture.store.session!!.exportId)
+        assertEquals(1, pendingStore.deleteCalls)
+
+        // WriteFailed: fail-closed — nothing saved, and the #374 invalidation
+        // never runs (the replacement commit did not happen).
+        fixture.store.failSave = true
+        assertEquals(
+            SessionPersistOutcome.WriteFailed,
+            controller.commitPreparedSession(prepared),
+        )
+        assertEquals("a failed save never deletes the pending record", 1, pendingStore.deleteCalls)
+    }
+
+    @Test
+    fun encodePreparedComposesThePackageAndTypesTheFailure() {
+        val fixture = Fixture()
+        val prepared = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+            composeScopedExportInputs = { t, _, _ -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+        ).prepareScopedGeneration(PrivacyTier.EXTERNAL_REDACTED, emptyList(), emptyMap()) as ExchangeGenerationPreparation.Prepared
+
+        val encoded = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+            composeScopedExportInputs = { t, _, _ -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+        ).encodePrepared(prepared) as ExchangePreparedEncodeResult.Encoded
+        assertTrue(
+            ExchangePackageComposer.parsePackageStructure(encoded.packageText) is PackageStructureResult.Valid,
+        )
+
+        val failing = ExchangeFlowController(
+            composeExportInputs = { t -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(fixture.structural) },
+            composeScopedExportInputs = { t, _, _ -> ExchangeInputResult.ExportReady(exportInputsOf(fixture.structural, t)) },
+            store = fixture.store,
+            allocator = SequentialIdAllocator(),
+            clock = { fixture.clock },
+            encodeExport = { app.lawnchair.organizer.personalization.ContextExportResult.Failure(app.lawnchair.organizer.personalization.ExportEncodeProblem.Oversize) },
+        ).encodePrepared(prepared)
+        assertTrue(failing is ExchangePreparedEncodeResult.Failure)
+    }
+
+    @Test
+    fun invalidateSessionIfObservesCommittedAndNoMatch() {
+        val fixture = Fixture()
+        val controller = fixture.newController()
+        val e1 = generated(controller.generate(PrivacyTier.EXTERNAL_REDACTED))
+        assertEquals(
+            ExportInvalidationResult.Committed,
+            controller.invalidateSessionIf(e1.session.exportId),
+        )
+        // Already gone / replaced: nothing stale can resurface.
+        assertEquals(
+            ExportInvalidationResult.NoMatch,
+            controller.invalidateSessionIf(e1.session.exportId),
+        )
     }
 }

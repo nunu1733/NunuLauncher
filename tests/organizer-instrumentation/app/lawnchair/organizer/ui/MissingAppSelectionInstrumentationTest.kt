@@ -3,6 +3,7 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -159,6 +160,54 @@ class MissingAppSelectionInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_select_all)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_clear_all)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).assertIsDisplayed()
+
+        // Issue #417 (AC-5): the exchange flow no longer shares this surface —
+        // no freeze notice, no request face, no scoped entry. Edits are always
+        // enabled (the toggles below prove it for the rows; the search and
+        // bulk actions are exercised by their own oracles).
+        composeRule.onNodeWithTag("exchange-scoped-freeze-notice").assertDoesNotExist()
+        composeRule.onNodeWithTag("exchange-request-title").assertDoesNotExist()
+        composeRule.onNodeWithTag("exchange-scoped-entry-open").assertDoesNotExist()
+    }
+
+    /**
+     * Issue #417 (AC-4, rendered-UI oracle): the explicit zero-selection
+     * disclosure is shown exactly while nothing is selected, and continuing
+     * with nothing selected composes WITHOUT additions (the plain full
+     * organize — the empty confirmed scope), only once the method choice's
+     * このまま整理 arm runs.
+     */
+    @Test
+    fun zeroSelectionContinueShowsTheDisclosureAndComposesWithoutAdditions() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = SelectingFakeApplication(listOf(mail, maps, music))
+        val runner = launch(application)
+
+        // Nothing selected: the disclosure precedes the continue affordance.
+        composeRule.onNodeWithTag("missing-app-selection-empty-continue").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_missing_apps_empty_continue),
+        ).assertIsDisplayed()
+
+        // A selection clears it; clearing the selection brings it back.
+        composeRule.onNodeWithText(mail.label).performClick()
+        composeRule.onNodeWithTag("missing-app-selection-empty-continue").assertDoesNotExist()
+        composeRule.onNodeWithText(mail.label).performClick()
+        composeRule.onNodeWithTag("missing-app-selection-empty-continue").assertIsDisplayed()
+
+        // Continue with nothing selected: the frozen scope is the explicit
+        // empty one; the method-choice face parks the run and NOTHING composes
+        // until the method choice.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+        assertEquals(0, application.scopeComposeCalls)
+        assertEquals(0, application.plainComposeCalls)
+
+        // このまま整理: the empty scope keeps the plain full composition
+        // (no unplaced apps are added).
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_method_plain)).performClick()
+        composeRule.waitUntil(5_000) { application.plainComposeCalls == 1 }
+        assertEquals(0, application.scopeComposeCalls)
     }
 
     @Test
@@ -227,12 +276,14 @@ class MissingAppSelectionInstrumentationTest {
 
     @Test
     fun zeroCandidatesContinuesWithoutShowingTheSelectionSurface() {
-        // Issue #369 (TO-BE D-06, RUN-AC-05): the empty cut never shows the
-        // selection surface — the run continues to the composed phase (the
-        // fake composition is NotReady, so the run surfaces that state). The
-        // former oracle asserted the empty notice and a required Continue tap;
-        // it is obsolete because V-09 is resolved by D-05/D-06 (無意味な
-        // 1 tapの廃止) — see the PR obsolete-oracle record.
+        // Issue #369 (TO-BE D-06, RUN-AC-05), amended by Issue #417 (spec
+        // AC-3): the empty cut never shows the selection surface — a manual
+        // run now parks at the state-level `ScopeConfirmed(empty)` (the
+        // method-choice state) instead of passing through Selecting into the
+        // composed phase. Nothing composes until the method choice; the
+        // former oracle asserted the continuation into InputUnavailable via
+        // the display-level pass-through — replaced by the scope-first
+        // contract.
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = SelectingFakeApplication(emptyList())
         val runner = ManualOrganizationRun(
@@ -245,12 +296,39 @@ class MissingAppSelectionInstrumentationTest {
             }
         }
         runner.start()
-        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
 
         // Negative observation: the selection surface never renders.
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_title)).assertDoesNotExist()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).assertDoesNotExist()
-        org.junit.Assert.assertEquals(1, application.plainComposeCalls)
+        org.junit.Assert.assertEquals(0, application.plainComposeCalls)
         org.junit.Assert.assertEquals(0, application.scopeComposeCalls)
+
+        // Issue #417 (AC-5, journey e): with an empty cut the method-choice
+        // face has NO route back to the selection surface — system Back is
+        // the 中断 (zero-write) and the selection face never appears.
+        pressSystemBack()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Cancelled }
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_title)).assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_method_title)).assertDoesNotExist()
+        org.junit.Assert.assertEquals(0, application.plainComposeCalls)
+        org.junit.Assert.assertEquals(0, application.scopeComposeCalls)
+    }
+
+    /**
+     * Issue #417: system Back through the resumed activity's dispatcher —
+     * the bare compose harness hosts no nav stack, so the surface's own Back
+     * callback is the observable.
+     */
+    private fun pressSystemBack() {
+        composeRule.runOnUiThread {
+            val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                .getInstance()
+                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                .filterIsInstance<androidx.activity.ComponentActivity>()
+                .firstOrNull()
+            checkNotNull(resumed).onBackPressedDispatcher.onBackPressed()
+        }
+        composeRule.waitForIdle()
     }
 }

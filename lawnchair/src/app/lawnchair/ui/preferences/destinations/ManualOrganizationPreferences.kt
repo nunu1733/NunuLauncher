@@ -43,7 +43,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -189,6 +188,24 @@ fun ManualOrganizationPreferences(
         focusTargetReady.value = true
     }
 
+    // Issue #417: the method-choice face's process-local UI state — the
+    // D-13 scope-bound discard confirmation (raised by system Back while a
+    // request references the frozen scope) and its typed retryable failure.
+    // Both reset per run.
+    val scopeConfirmedState = state as? ManualOrganizationRun.State.ScopeConfirmed
+    var scopeDiscardFailed by remember(scopeConfirmedState?.runId) { mutableStateOf(false) }
+    var pendingScopeDiscard by remember { mutableStateOf(false) }
+
+    // Issue #417: the entry/idle face hosts the exchange flow IMPORT-ONLY
+    // (spec 205 V1 + the #417 Retire). A flow left open by an earlier
+    // method-choice visit must never offer the creation UI here, so the face
+    // resets the holder's host mode whenever it is shown.
+    val idleLike = state is ManualOrganizationRun.State.Idle ||
+        state is ManualOrganizationRun.State.Cancelled
+    LaunchedEffect(idleLike) {
+        if (idleLike) exchangeHolder.resetToImportOnlyHostMode()
+    }
+
     // Issue #271: the durable status projection is rendered only while no run
     // operation is active (Idle/Cancelled). It is re-read on each transition
     // into those states — an in-place cancel re-reads, not only the first
@@ -293,6 +310,12 @@ fun ManualOrganizationPreferences(
             // start row.
             1 + (if (showCheckingRow) 1 else 0) + durableStatusItemCount(durableStatus) + 1
 
+        // Issue #417: the method-choice face's focus lands on its headline
+        // (after the rejection/failure rows when one renders above it).
+        manualOrganizationFace(state) == ManualOrganizationFace.METHOD_CHOICE ->
+            1 + (if ((state as? ManualOrganizationRun.State.ScopeConfirmed)?.scopeRejection != null) 1 else 0) +
+                (if (scopeDiscardFailed) 1 else 0)
+
         // T-09/T-13: the scroll reveals the face from its headline / cause;
         // the FocusRequester sits on the headline (T-09) and the cause row
         // (T-13) respectively.
@@ -385,6 +408,21 @@ fun ManualOrganizationPreferences(
     }
 
     fun onSystemBack() {
+        // Issue #417: Back on the method-choice face. 候補0件のrunは選択面への
+        // 復帰導線そのものを持たない — Back＝中断（zero-write）。依頼がこの面の
+        // 確定scopeを参照している間は scope-bound 依頼破棄の確認（D-13）を1回
+        // 挟み、破棄（Committed/NoMatch）が成立した後にだけ選択面へ戻る。
+        // WriteFailed では面に残留し typed で再試行可能な失敗を表示する。
+        // 依頼なしで候補がある場合は確認なしで選択面へ戻る（layout書込みなし）。
+        val scopeConfirmed = state as? ManualOrganizationRun.State.ScopeConfirmed
+        if (scopeConfirmed != null) {
+            when {
+                scopeConfirmed.candidates.isEmpty() -> interruptAndNavigate()
+                coordinator.hasBoundScopeRequest() -> pendingScopeDiscard = true
+                else -> execute { coordinator.reopenSelection() }
+            }
+            return
+        }
         // 破棄を伴うときのみ1回確認（D-13）: a selection, a proposal, or an
         // apply not yet past its checkpoint. T-09 (nothing to lose), terminal
         // faces, and the recovery preview's no-confirm cancel go straight.
@@ -516,14 +554,15 @@ fun ManualOrganizationPreferences(
                 )
             }
             when (val currentState = state) {
-                // Issue #369 (TO-BE T-07, transitional構成 — spec RD-1): the
-                // run preamble face. The scope summary is built only from facts
-                // available before admission (RD-5: no detection/composition
-                // lookahead); the primary CTA「そのまま整理」selects the
-                // deterministic path and performs run admission (RUN lease).
-                // The AI choice row belongs to #372's final two-choice T-07 and
-                // is NOT created here (capability先取り禁止); the existing
-                // exchange idle entry stays hosted on this face (spec 205 V1).
+                // Issue #369 (TO-BE T-07) as reshaped by #417 (spec 417
+                // Retire/Amend): the method-neutral entry face — the scope
+                // summary (RD-5: no detection/composition lookahead) and ONE
+                // start CTA that performs run admission (RUN lease). The AI
+                // choice row is gone from this face: the AI arm lives on the
+                // post-scope method-choice face so both arms consume the SAME
+                // frozen scope. A durable import attempt no longer freezes the
+                // start row either — a durable active request holds no RUN
+                // lease and never blocks admission (AC-5/AC-8(d)).
                 ManualOrganizationRun.State.Idle,
                 ManualOrganizationRun.State.Cancelled,
                 -> {
@@ -540,47 +579,14 @@ fun ManualOrganizationPreferences(
                     item {
                         SummaryText(stringResource(R.string.manual_organization_preamble_scope))
                     }
-                    // Issue #328: while an import attempt lives (validation or
-                    // the success state), the idle start row is frozen — a new
-                    // run could otherwise carry the pending intent's success
-                    // state onto a different run (spec 328 競合affordance).
-                    val importAttemptActive = exchangeHolder.importAttemptActive
                     item {
                         ClickablePreference(
                             label = stringResource(R.string.manual_organization_start),
-                            subtitle = if (importAttemptActive) {
-                                stringResource(R.string.exchange_start_frozen_import)
-                            } else {
-                                null
-                            },
                             modifier = Modifier
                                 .focusRequester(focusRequester)
                                 .focusable()
-                                .then(
-                                    if (importAttemptActive) {
-                                        Modifier.semantics { disabled() }
-                                    } else {
-                                        Modifier
-                                    },
-                                )
                                 .then(focusTargetModifier),
-                            onClick = {
-                                if (!importAttemptActive) execute { coordinator.start(trigger) }
-                            },
-                        )
-                    }
-                    // Issue #372 (D-04/D-17): the AI consultation method choice
-                    // of the T-07 preamble (spec 369 RD-1 hands this row to
-                    // #372). Opening the request flow performs NO run
-                    // admission — no RUN lease, no start(trigger) — so the
-                    // constant-authoring guarantee of the idle exchange holds.
-                    // Deliberately NOT frozen by importAttemptActive (same
-                    // treatment as the removed idle entry row).
-                    item(key = "exchange-method-consult") {
-                        ClickablePreference(
-                            label = stringResource(R.string.exchange_method_consult),
-                            subtitle = stringResource(R.string.exchange_entry_subtitle),
-                            onClick = exchangeHolder::openFlow,
+                            onClick = { execute { coordinator.start(trigger) } },
                         )
                     }
                 }
@@ -608,6 +614,84 @@ fun ManualOrganizationPreferences(
                     onInterrupt = { interruptAndNavigate() },
                 )
 
+                // Issue #417 (spec 417, AC-1): the method-choice face. The
+                // scope is frozen; the sibling arms consume the SAME confirmed
+                // scope — 「このまま整理」 (the deterministic planner via
+                // planWithConfirmedScope) and 「AIに相談」 (the scoped exchange
+                // flow, whose creation/import states render on this face
+                // through the hosting below; the holder enters METHOD_CHOICE
+                // mode via openMethodChoiceFlow). A refused attach re-renders
+                // the typed rejection row (zero-write); a failed scope-bound
+                // discard keeps the face with a typed retryable failure row.
+                is ManualOrganizationRun.State.ScopeConfirmed -> {
+                    currentState.scopeRejection?.let { rejection ->
+                        item(key = "method-choice-scope-mismatch") {
+                            Text(
+                                text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(rejection),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .semantics { liveRegion = LiveRegionMode.Assertive }
+                                    .testTag("method-choice-scope-mismatch"),
+                            )
+                        }
+                    }
+                    if (scopeDiscardFailed) {
+                        // Issue #417 (AC-5): the scope-bound discard's store
+                        // write failed — session, proposal and frozen scope
+                        // are ALL kept; the retry is the discard confirmation
+                        // again (Back). Assertive so the frozen state is
+                        // announced without a focus change.
+                        item(key = "scope-discard-failed") {
+                            Text(
+                                text = stringResource(R.string.exchange_scope_discard_failed),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .semantics { liveRegion = LiveRegionMode.Assertive }
+                                    .testTag("scope-discard-failed"),
+                            )
+                        }
+                    }
+                    item(key = "method-choice-headline") {
+                        FocusTargetText(
+                            text = stringResource(R.string.manual_organization_method_title),
+                            focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
+                        )
+                    }
+                    item(key = "method-choice-plain") {
+                        ClickablePreference(
+                            label = stringResource(R.string.manual_organization_method_plain),
+                            onClick = { execute { coordinator.planWithConfirmedScope() } },
+                        )
+                    }
+                    item(key = "method-choice-consult") {
+                        ClickablePreference(
+                            label = stringResource(R.string.exchange_method_consult),
+                            subtitle = stringResource(R.string.exchange_entry_subtitle),
+                            onClick = exchangeHolder::openMethodChoiceFlow,
+                        )
+                    }
+                    exchangeFlowItems(
+                        holder = exchangeHolder,
+                        onDiscardRequest = { pendingExchangeDiscard = true },
+                        discardFocus = exchangeDiscardFocus,
+                        onOpenDiagnostics = onOpenDiagnostics,
+                        onImportDiscardRequest = { pendingImportDiscard = true },
+                        importDiscardFocus = importDiscardFocus,
+                        clipboardTransport = { ctx: android.content.Context, text: String ->
+                            ClipboardExchangeTransport(ctx).copy(text)
+                        },
+                        shareTransport = { ctx: android.content.Context, text: String ->
+                            ShareSheetExchangeTransport().share(ctx, text)
+                        },
+                        fileTransport = FileExchangeTransport(context),
+                    )
+                }
+
                 // Issue #369 (RD-7/D-06): the face mapping gates the selection surface
                 // BEFORE any raw composition — the internal zero-candidate
                 // pass-through composes the preparation face, so no collector
@@ -626,16 +710,13 @@ fun ManualOrganizationPreferences(
                         // changes; Select all matches the filtered set, Clear all
                         // clears the whole candidate set (spec §2).
                         //
-                        // Issue #331: the run-in exchange entry shares the
-                        // surface. While an exchange step is in progress the
-                        // selection is frozen (the export scope is the frozen
-                        // selection); the bound intent's scope size guides
-                        // re-selection (never auto-selects).
-                        val exchangeBusy = exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed
-                        val scopedSelection = missingAppSelection.selected.toList()
-                        val scopedLabels = missingAppSelection.candidates
-                            .map { it.target to it.label }
-                            .toMap()
+                        // Issue #417 (AC-5): the selection is never frozen by
+                        // the exchange flow — the hosting (and the freeze it
+                        // explained) left this face entirely; edits are always
+                        // enabled here and the freeze reason renders on the
+                        // method-choice face while a request references the
+                        // frozen scope.
+                        //
                         // Issue #331: the accepted typed SCOPE_MISMATCH failure from
                         // the scope binding gate (17th unified failure outcome),
                         // rendered with the re-export guidance.
@@ -683,24 +764,10 @@ fun ManualOrganizationPreferences(
                             },
                             intentScopeCount = currentState.intentScopeCount,
                             diff = scopeDiff,
-                            editsEnabled = !exchangeBusy,
-                        )
-                        exchangeFlowItems(
-                            holder = exchangeHolder,
-                            scopedSelection = scopedSelection,
-                            scopedLabels = scopedLabels,
-                            onDiscardRequest = { pendingExchangeDiscard = true },
-                            discardFocus = exchangeDiscardFocus,
-                            onOpenDiagnostics = onOpenDiagnostics,
-                            onImportDiscardRequest = { pendingImportDiscard = true },
-                            importDiscardFocus = importDiscardFocus,
-                            clipboardTransport = { ctx: android.content.Context, text: String ->
-                                ClipboardExchangeTransport(ctx).copy(text)
-                            },
-                            shareTransport = { ctx: android.content.Context, text: String ->
-                                ShareSheetExchangeTransport().share(ctx, text)
-                            },
-                            fileTransport = FileExchangeTransport(context),
+                            // Issue #417 (AC-4): the explicit zero-selection
+                            // disclosure — continuing with nothing selected is
+                            // a deliberate scope, not an undecided surface.
+                            showEmptySelectionNotice = missingAppSelection.selected.isEmpty(),
                         )
                     }
                 }
@@ -1123,9 +1190,9 @@ fun ManualOrganizationPreferences(
             }
             // Issue #205: the external agent exchange surface closes the list.
             // The entry is a secondary affordance hosted only while the run
-            // is idle/cancelled (spec 205 V1 rule).
-            val idleLike = state is ManualOrganizationRun.State.Idle ||
-                state is ManualOrganizationRun.State.Cancelled
+            // is idle/cancelled (spec 205 V1 rule). Issue #417: the hosting
+            // is IMPORT-ONLY here — the hoisted effect above keeps the
+            // holder's host mode reset for this face.
             if (idleLike) {
                 exchangeFlowItems(
                     holder = exchangeHolder,
@@ -1174,6 +1241,35 @@ fun ManualOrganizationPreferences(
                 pendingExchangeDiscard = false
                 exchangeDiscardFocus.requestFocus()
             },
+        )
+    }
+
+    // Issue #417 (spec 417 D-13): the scope-bound request discard
+    // confirmation — raised by system Back on the method-choice face while a
+    // request references the frozen scope. Confirm runs the run-owned ONE
+    // seam (holder.discardScopeBoundRequest): `Discarded` clears the session
+    // and the binding and re-opens the editable selection face;
+    // `WriteFailed` keeps the session, the proposal and the frozen scope —
+    // the face stays with the typed retryable failure row. Dismiss keeps the
+    // face (the retry is Back again).
+    if (pendingScopeDiscard) {
+        ManualOrganizationDiscardConfirmDialog(
+            onConfirm = {
+                pendingScopeDiscard = false
+                exchangeHolder.discardScopeBoundRequest { outcome ->
+                    when (outcome) {
+                        ManualOrganizationRun.ScopeDiscardOutcome.Discarded -> {
+                            scopeDiscardFailed = false
+                            execute { coordinator.reopenSelection() }
+                        }
+
+                        ManualOrganizationRun.ScopeDiscardOutcome.WriteFailed -> scopeDiscardFailed = true
+
+                        ManualOrganizationRun.ScopeDiscardOutcome.NotDiscardable -> Unit
+                    }
+                }
+            },
+            onDismiss = { pendingScopeDiscard = false },
         )
     }
 

@@ -17,32 +17,57 @@ import org.junit.Test
  * awaiting screen carries the attempt token, and owner destruction follows
  * the gate's state-specific rules (release while un-presented,
  * abandon-resolve once presented).
+ *
+ * Issue #417: the kickoff under test is the scoped generation
+ * ([ExchangeFlowStateHolder.generateScoped]) — the only creation entry the
+ * hosted faces retain — so the fixture run is driven to its frozen scope
+ * (`State.ScopeConfirmed`) first. The controller is never touched while the
+ * pause holds (the factory throws if reached), exactly as before.
  */
 class ExchangeFlowJitGateTest {
 
     private val tier = PrivacyTier.EXTERNAL_REDACTED
+    private val candidate = ManualOrganizationRunTestSupport.readyDetectionCandidate
 
     /** Production never reaches the controller while the JIT pause holds. */
     private fun explodingScope(): CoroutineScope = CoroutineScope(
         Dispatchers.IO + CoroutineExceptionHandler { _, _ -> },
     )
 
-    @Test
-    fun ungrantedGateSuspendsGenerationAtTheAwaitingScreen() {
-        val gate = UsageAccessJitGate(isGranted = { false })
+    /** A holder whose run holds its frozen scope — the scoped generation's claim source. */
+    private fun newConfirmedScopeHolder(
+        gate: UsageAccessJitGate,
+        controllerFactory: () -> app.lawnchair.organizer.integration.exchange.ExchangeFlowController = {
+            error("controller must not run while paused")
+        },
+    ): ExchangeFlowStateHolder {
+        val run = ManualOrganizationRunTestSupport.newReadyDetectionRun()
         val holder = ExchangeFlowStateHolder(
-            controllerFactory = { error("controller must not run while paused") },
-            run = ManualOrganizationRunTestSupport.newRun(),
+            controllerFactory = controllerFactory,
+            run = run,
             scope = explodingScope(),
             usageAccessGate = gate,
         )
+        run.start()
+        run.confirmSelection(setOf(candidate))
+        return holder
+    }
 
-        holder.requestGeneration(tier = tier)
+    private fun requestGeneration(holder: ExchangeFlowStateHolder) {
+        holder.generateScoped(tier, listOf(candidate), mapOf(candidate to "c1"))
+    }
+
+    @Test
+    fun ungrantedGateSuspendsGenerationAtTheAwaitingScreen() {
+        val gate = UsageAccessJitGate(isGranted = { false })
+        val holder = newConfirmedScopeHolder(gate)
+
+        requestGeneration(holder)
 
         val awaiting = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
         assertTrue(awaiting.isPresenter)
         assertEquals(tier, awaiting.tier)
-        assertEquals(null, awaiting.scoped)
+        assertEquals(listOf(candidate), awaiting.scoped!!.first)
         // The controller was never touched (factory throws if reached).
         assertTrue(gate.ownedPhase(ExchangeJitAttemptOwner(awaiting.attemptToken)) == UsageAccessJitGate.Phase.Reserved)
     }
@@ -50,14 +75,12 @@ class ExchangeFlowJitGateTest {
     @Test
     fun grantedGateProceedsStraightToGeneration() {
         val gate = UsageAccessJitGate(isGranted = { true })
-        val holder = ExchangeFlowStateHolder(
+        val holder = newConfirmedScopeHolder(
+            gate,
             controllerFactory = { error("background generation failure is out of scope here") },
-            run = ManualOrganizationRunTestSupport.newRun(),
-            scope = explodingScope(),
-            usageAccessGate = gate,
         )
 
-        holder.requestGeneration(tier = tier)
+        requestGeneration(holder)
 
         assertEquals(ExchangeScreen.Generating, holder.screen)
         assertEquals(UsageAccessJitGate.Phase.Resolved, gate.snapshot.value.phase)
@@ -66,13 +89,8 @@ class ExchangeFlowJitGateTest {
     @Test
     fun closeWhileUnpresentedReleasesTheOpportunity() {
         val gate = UsageAccessJitGate(isGranted = { false })
-        val holder = ExchangeFlowStateHolder(
-            controllerFactory = { error("controller must not run while paused") },
-            run = ManualOrganizationRunTestSupport.newRun(),
-            scope = explodingScope(),
-            usageAccessGate = gate,
-        )
-        holder.requestGeneration(tier = tier)
+        val holder = newConfirmedScopeHolder(gate)
+        requestGeneration(holder)
         val awaiting = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
 
         holder.close()
@@ -85,13 +103,8 @@ class ExchangeFlowJitGateTest {
     @Test
     fun closeAfterPresentationResolvesSoWaitersProceed() {
         val gate = UsageAccessJitGate(isGranted = { false })
-        val owner = ExchangeFlowStateHolder(
-            controllerFactory = { error("controller must not run while paused") },
-            run = ManualOrganizationRunTestSupport.newRun(),
-            scope = explodingScope(),
-            usageAccessGate = gate,
-        )
-        owner.requestGeneration(tier = tier)
+        val owner = newConfirmedScopeHolder(gate)
+        requestGeneration(owner)
         val awaiting = owner.screen as ExchangeScreen.AwaitingUsageAccessJit
         gate.markPresented(ExchangeJitAttemptOwner(awaiting.attemptToken))
 
@@ -101,31 +114,24 @@ class ExchangeFlowJitGateTest {
         // generation is never resumed.
         assertEquals(UsageAccessJitGate.Phase.Resolved, gate.snapshot.value.phase)
 
-        val waiter = ExchangeFlowStateHolder(
+        val waiter = newConfirmedScopeHolder(
+            gate,
             controllerFactory = { error("waiter proceeds without presenting") },
-            run = ManualOrganizationRunTestSupport.newRun(),
-            scope = explodingScope(),
-            usageAccessGate = gate,
         )
-        waiter.requestGeneration(tier = tier)
+        requestGeneration(waiter)
         assertEquals(ExchangeScreen.Generating, waiter.screen)
     }
 
     @Test
     fun staleResumeAfterCloseAndRegenerateIsDropped() {
         val gate = UsageAccessJitGate(isGranted = { false })
-        val holder = ExchangeFlowStateHolder(
-            controllerFactory = { error("controller must not run while paused") },
-            run = ManualOrganizationRunTestSupport.newRun(),
-            scope = explodingScope(),
-            usageAccessGate = gate,
-        )
-        holder.requestGeneration(tier = tier)
+        val holder = newConfirmedScopeHolder(gate)
+        requestGeneration(holder)
         val staleToken = (holder.screen as ExchangeScreen.AwaitingUsageAccessJit).attemptToken
         holder.close()
 
         // A second attempt under the same conditions mints a fresh token.
-        holder.requestGeneration(tier = tier)
+        requestGeneration(holder)
         val fresh = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
         assertTrue(fresh.attemptToken != staleToken)
 
@@ -141,15 +147,13 @@ class ExchangeFlowJitGateTest {
     @Test
     fun continueResolvesAndGeneratesExactlyOnce() {
         val gate = UsageAccessJitGate(isGranted = { false })
-        val holder = ExchangeFlowStateHolder(
+        val holder = newConfirmedScopeHolder(
+            gate,
             // The resume path's background generation is out of scope here —
             // the screen assertions below are synchronous.
             controllerFactory = { error("background generation failure is out of scope here") },
-            run = ManualOrganizationRunTestSupport.newRun(),
-            scope = explodingScope(),
-            usageAccessGate = gate,
         )
-        holder.requestGeneration(tier = tier)
+        requestGeneration(holder)
         val awaiting = holder.screen as ExchangeScreen.AwaitingUsageAccessJit
         gate.markPresented(ExchangeJitAttemptOwner(awaiting.attemptToken))
 
@@ -169,17 +173,12 @@ class ExchangeFlowJitGateTest {
     @Test
     fun staleAttemptTeardownDoesNotActOnANewerAttempt() {
         val gate = UsageAccessJitGate(isGranted = { false })
-        val holder = ExchangeFlowStateHolder(
-            controllerFactory = { error("controller must not run while paused") },
-            run = ManualOrganizationRunTestSupport.newRun(),
-            scope = explodingScope(),
-            usageAccessGate = gate,
-        )
-        holder.requestGeneration(tier = tier)
+        val holder = newConfirmedScopeHolder(gate)
+        requestGeneration(holder)
         val tokenA = (holder.screen as ExchangeScreen.AwaitingUsageAccessJit).attemptToken
         // A second request under the same conditions mints a new attempt (the
         // first still owns the reservation, so this one waits).
-        holder.requestGeneration(tier = tier)
+        requestGeneration(holder)
         val tokenB = (holder.screen as ExchangeScreen.AwaitingUsageAccessJit).attemptToken
         assertTrue(tokenA != tokenB)
 

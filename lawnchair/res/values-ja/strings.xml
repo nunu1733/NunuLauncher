@@ -128,7 +128,12 @@
     <!-- Issue #52: explicit manual full organization -->
     <string name="manual_organization_title">ホームレイアウトを整理</string>
     <string name="manual_organization_explainer">適用前に整理案を確認できます。現在のレイアウトは自動的に変更されません。</string>
-    <string name="manual_organization_start">そのまま整理</string>
+    <!-- Issue #417: 方法を選ばない開始CTA（run admissionのみ。方法選択は
+         scope確定後の方法選択面へ移動）。 -->
+    <string name="manual_organization_start">整理を開始</string>
+    <!-- Issue #417: 方法選択面（scope確定後に表示。両肢とも同じ凍結scopeを消費する）。 -->
+    <string name="manual_organization_method_title">整理案の作り方</string>
+    <string name="manual_organization_method_plain">このまま整理</string>
     <string name="manual_organization_start_again">新しい整理案を確認</string>
     <string name="manual_organization_retry">再試行</string>
     <string name="manual_organization_capturing">現在のホームレイアウトを読み込んでいます…</string>
@@ -293,7 +298,7 @@
     <string name="manual_organization_preview_details_unavailable">今回、具体的な変更一覧を用意できませんでした。適用前に下の件数サマリーを確認してください。</string>
     <!-- Issue #228: missing-app selection and Add rows -->
     <string name="manual_organization_detecting_missing_apps">ホーム画面にないアプリを確認しています…</string>
-    <!-- Issue #369: transitional T-07 preamble（方法選択＋scope要約。RD-1/RD-5） -->
+    <!-- Issue #369 RD-1/RD-5、#417で再配置: 入口面 — scope要約のみ（方法選択は方法選択面へ移動）。 -->
     <string name="manual_organization_preamble_scope">この確認ではホーム画面全体を対象に整理案を作ります。確認する前に適用されることはありません。</string>
     <!-- Issue #369: T-09統合準備中面 -->
     <string name="manual_organization_preparation">準備中</string>
@@ -313,6 +318,8 @@
     <string name="manual_organization_missing_apps_select_all">すべて選択</string>
     <string name="manual_organization_missing_apps_clear_all">選択を解除</string>
     <string name="manual_organization_missing_apps_continue">続行</string>
+    <!-- Issue #417 (AC-4): 何も選択せずに続行する際の明示的な告知。 -->
+    <string name="manual_organization_missing_apps_empty_continue">未選択で続行します。未配置アプリを追加せずに整理します。</string>
     <string name="manual_organization_missing_apps_state_checked">選択済み</string>
     <string name="manual_organization_missing_apps_state_unchecked">未選択</string>
     <string name="manual_organization_preview_unavailable_add">新しいアプリを追加するこの提案の変更一覧を表示できませんでした。ホーム画面は変更されていません。追加は、変更一覧を確認できてから行われます。</string>
@@ -421,9 +428,10 @@
     <string name="backup_page_summary_unavailable">保存されたページの詳細を表示できません。</string>
 
     <!-- Issue #205: External Agent Exchange -->
-    <!-- Issue #372: the idle entry row is gone (D-04). The subtitle survives
-         as the short description of the T-07 「AIに相談」 method choice; the
-         import label survives as the T-15 import lead-in and the run-in entry. -->
+    <!-- Issue #372: the idle entry row is gone (D-04), and #417 moved the AI
+         choice onto the method-choice face. The subtitle survives as the
+         short description of that face's 「AIに相談」 row; the import label
+         survives as the T-15 import lead-in. -->
     <string name="exchange_entry_subtitle">ChatGPT等の外部AIへの依頼文を作成し、回答を検証付きで取り込めます。</string>
     <string name="exchange_method_consult">AIに相談</string>
     <!-- Issue #327: user-facing capability explanation (ja正本) -->
@@ -573,10 +581,16 @@
     <string name="exchange_rebind_anchor_refused">この提案は利用できなくなりました。ホームのハブから開き直してください。</string>
     <string name="exchange_rebind_start_failed">この提案で続行できませんでした。もう一度お試しください。</string>
     <string name="exchange_failure_unknown_category_ref">回答が参照したカテゴリは現在利用できません。依頼を再作成して、もう一度回答を得てください。</string>
-    <string name="exchange_scoped_entry_title">選択したアプリをAIの依頼に含める</string>
-    <string name="exchange_scoped_entry_subtitle">現在のホームと選択したアプリをまとめて依頼文に含め、AIにすべての対象を判断してもらえます。</string>
-    <string name="exchange_scoped_entry_open">依頼文を作成</string>
     <string name="exchange_scoped_freeze_notice">AI依頼の作成中はアプリの選択を変更できません。取り消すと再編集できます。</string>
+    <!-- Issue #417: 取り込み専用の入口面、方法選択面の他由来依頼の作り直し案内、
+         run所有のcleanup/破棄のtypedな再試行可能失敗。 -->
+    <string name="exchange_entry_import_only_notice">この依頼はここで取り込めます。凍結した選択用の新しい依頼の作成は、整理を開始して「AIに相談」から行えます。</string>
+    <string name="exchange_generation_not_confirmed">整理の実行が確定済みの選択を保持していません。何も作成されていません。</string>
+    <string name="exchange_export_cleanup_failed">未使用の依頼を破棄できませんでした。何も送信されていません。もう一度お試しください。</string>
+    <string name="exchange_scope_discard_failed">依頼を破棄できませんでした。選択はロックされたままです。もう一度お試しください。</string>
+    <string name="exchange_recreate_request_title">この回答は別の依頼のものです</string>
+    <string name="exchange_recreate_request_body">取り込んだ回答は、この整理の実行で確定した選択から作成されたものではないため、ここでは利用できません。この選択用に依頼を作り直してください。</string>
+    <string name="exchange_recreate_request_action">依頼を作り直す</string>
     <plurals name="exchange_scope_intent_count">
         <item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するにはそれらを選択してください。</item>
     </plurals>
@@ -603,7 +617,8 @@
     <string name="exchange_import_review_unavailable">取り込み済みの提案を開けませんでした。期限切れまたは無効になっています。</string>
     <string name="exchange_import_summary_global_minimize">全体方針: 現状の配置をなるべく維持する</string>
             <string name="exchange_import_cta_failed">整理を開始できませんでした。もう一度お試しください。</string>
-    <string name="exchange_start_frozen_import">取り込みを確認中のため、整理を開始できません。</string>
+    <!-- Issue #417: `exchange_start_frozen_import` は削除 — durableなactive依頼は
+         入口面の開始行を凍結しない (AC-5)。 -->
             <plurals name="exchange_import_summary_recognized">
         <item quantity="other">提案から%1$d件の希望を認識しました。</item>
     </plurals>

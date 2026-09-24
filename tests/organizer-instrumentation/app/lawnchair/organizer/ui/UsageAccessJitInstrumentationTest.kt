@@ -42,6 +42,7 @@ import app.lawnchair.organizer.integration.InputCompositionCode
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.integration.UsageAccess
+import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
 import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.OrganizationPlanner
@@ -51,6 +52,7 @@ import app.lawnchair.organizer.ui.exchange.ExchangeScreen
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -319,7 +321,10 @@ class UsageAccessJitInstrumentationTest {
     @Test
     fun crossOriginExchangePresentationPausesTheRunUntilResolution() {
         val context = context()
-        val application = NotReadyApplication(context)
+        // Issue #417: the empty cut parks the manual run at the method-choice
+        // face (AC-3) — the face whose scoped hosting now owns the exchange
+        // flow's creation entry.
+        val application = NotReadyApplication(context, emptyCutDetection = true)
         val generationAttempts = AtomicInteger(0)
         val exchangeScope = CoroutineScope(
             Dispatchers.IO + CoroutineExceptionHandler { _, _ -> },
@@ -331,11 +336,19 @@ class UsageAccessJitInstrumentationTest {
         )
         // The exchange origin acquires the process's request first; its
         // background generation is out of scope (the screen transition is the
-        // observable), so attempts are counted through the factory.
+        // observable), so attempts are counted through the export build.
         val exchangeHolder = ExchangeFlowStateHolder(
             controllerFactory = {
-                generationAttempts.incrementAndGet()
-                error("background generation is out of scope for this oracle")
+                ExchangeFlowController(
+                    composeExportInputs = {
+                        generationAttempts.incrementAndGet()
+                        error("background generation is out of scope for this oracle")
+                    },
+                    currentStructuralInputs = { error("import is not exercised by this oracle") },
+                    store = InertExportSessionStore,
+                    allocator = app.lawnchair.organizer.personalization.SequentialIdAllocator(),
+                    clock = { 1_000_000L },
+                )
             },
             run = runner,
             scope = exchangeScope,
@@ -347,30 +360,41 @@ class UsageAccessJitInstrumentationTest {
             }
         }
 
-        // The exchange origin acquires first: its dialog presents on the Idle
-        // face (the exchange section hosts it).
-        exchangeHolder.requestGeneration(
-            tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
-        )
+        // Park the run at the frozen-scope method-choice face first: the
+        // scoped hosting (and its dialog host) renders there.
+        runner.start()
+        composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+
+        // The exchange origin acquires first, through the scoped entry
+        // (openMethodChoiceFlow → the confirmed scope supplies the generation):
+        // its dialog presents on the method-choice face.
+        composeRule.runOnUiThread {
+            exchangeHolder.openMethodChoiceFlow()
+            exchangeHolder.requestGeneration(app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED)
+        }
         composeRule.waitUntil(timeoutMillis = 30_000) {
             exchangeHolder.screen is ExchangeScreen.AwaitingUsageAccessJit &&
                 composeRule.onAllNodesWithTag("usage_access_jit_dialog").fetchSemanticsNodes().size == 1
         }
 
-        // The run origin evaluates second: it must pause as a waiter.
-        runner.start()
+        // The run origin evaluates second — the method choice's
+        // このまま整理 arm enters the composed phase and must pause as a
+        // waiter.
+        val composedWorker = thread(start = true) { runner.planWithConfirmedScope() }
         composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit }
         assertFalse((runner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit).isOwner)
 
-        // The run's pause leaves the Idle face, so the exchange section (and
-        // its dialog host) unmounts. The unmount applies the owner-destruction
-        // rules — the presented request resolves as an abandon resolution —
-        // which unblocks the run waiter through its observation seam (the test
-        // never calls the waiter's continue), while the abandoned attempt's
-        // generation is invalidated and never starts.
+        // The run's pause leaves the method-choice face, so the exchange
+        // section (and its dialog host) unmounts. The unmount applies the
+        // owner-destruction rules — the presented request resolves as an
+        // abandon resolution — which unblocks the run waiter through its
+        // observation seam (the test never calls the waiter's continue),
+        // while the abandoned attempt's generation is invalidated and never
+        // starts.
         composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
         assertEquals(ExchangeScreen.Closed, exchangeHolder.screen)
         assertEquals(0, generationAttempts.get())
+        composedWorker.join(5_000)
     }
 
     @Test
@@ -409,9 +433,14 @@ class UsageAccessJitInstrumentationTest {
  * Minimal application double for the JIT oracles: detection unavailable
  * (plain full compose), composition typed-NotReady, planner never reached.
  * Records whether the production usage predicate was granted at the moment
- * the composition actually read it.
+ * the composition actually read it. [emptyCutDetection] switches the
+ * detector to a Ready(empty) cut — the #417 manual-run contract parks such a
+ * run at the method-choice state instead of composing.
  */
-private class NotReadyApplication(private val context: Context) : ManualOrganizationApplication {
+private class NotReadyApplication(
+    private val context: Context,
+    private val emptyCutDetection: Boolean = false,
+) : ManualOrganizationApplication {
     val events = mutableListOf<RunEvent>()
     var usageGrantedAtCompose: Boolean? = null
     private val recordingDiagnostics = object : DiagnosticsPort {
@@ -426,9 +455,13 @@ private class NotReadyApplication(private val context: Context) : ManualOrganiza
 
     override fun newRunId() = app.lawnchair.organizer.application.public.RunId("371aaaa371aaaa371aaaa371aaaa371a")
 
-    override fun detectMissingAppCandidates() = CandidateDetectionResult.Unavailable(
-        DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
-    )
+    override fun detectMissingAppCandidates() = if (emptyCutDetection) {
+        CandidateDetectionResult.Ready(emptyList())
+    } else {
+        CandidateDetectionResult.Unavailable(
+            DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+    }
 
     override fun composeFullOrganization(): OrganizationInputComposition {
         usageGrantedAtCompose = UsageAccess.isGranted(context)
@@ -477,4 +510,22 @@ private class TestLifecycleOwner : LifecycleOwner {
     val registry = LifecycleRegistry(this)
 
     override val lifecycle: Lifecycle get() = registry
+}
+
+/**
+ * Issue #417: the inert session store behind the crossOrigin oracle's
+ * controller — only the T-15 read paths touch it (the generation attempt is
+ * abandoned while awaiting the JIT gate, so no save/invalidate runs).
+ */
+private object InertExportSessionStore : app.lawnchair.organizer.personalization.ExportSessionStore {
+    override fun save(session: app.lawnchair.organizer.personalization.ExportSession) = error("no generation may start in this oracle")
+
+    override fun load(exportId: String): app.lawnchair.organizer.personalization.ExportSession? = null
+
+    override fun active(nowEpochMs: Long): app.lawnchair.organizer.personalization.ExportSession? = null
+
+    override fun invalidate(exportId: String) = Unit
+
+    override fun invalidateIf(expectedExportId: String): app.lawnchair.organizer.personalization.ExportInvalidationResult =
+        app.lawnchair.organizer.personalization.ExportInvalidationResult.NoMatch
 }

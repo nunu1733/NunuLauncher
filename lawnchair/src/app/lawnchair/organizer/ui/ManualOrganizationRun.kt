@@ -36,6 +36,7 @@ import app.lawnchair.organizer.integration.CandidateDetectionResult
 import app.lawnchair.organizer.integration.DetectedCandidate
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule
 import app.lawnchair.organizer.personalization.CandidateScopeProjection
 import app.lawnchair.organizer.personalization.ScopeMismatchCause
 import app.lawnchair.organizer.personalization.exchange.DetectedCandidateScope
@@ -198,6 +199,18 @@ internal object ManualOrganizationModule {
                     application,
                     operationGate = OrganizationOperationLease,
                     usageAccessGate = usageAccessGate,
+                    // Issue #417 (spec 417, oracle (s)): the run's gate-held
+                    // transaction capability shares THE process-wide exchange
+                    // mutation gate (PendingImportedIntentModule.gate() is the
+                    // process-wide singleton the exchange holder/controller
+                    // also pass), so the atomic generation commit, the bound
+                    // export cleanup and the scope-bound discard always run
+                    // their bind/clear inside the same gate hold that
+                    // serializes every other durable exchange mutation —
+                    // lock order run lock → gate, never the reverse.
+                    exchangeGateTransaction = ManualOrganizationRun.gateHeldExchangeGateTransaction(
+                        PendingImportedIntentModule.gate(),
+                    ),
                 ).also { instance = it }
             }
         }
@@ -238,6 +251,14 @@ class ManualOrganizationRun internal constructor(
     // Public read access: the hosting surface collects the gate snapshot for
     // waiter wakeup and drives the dialog from it (RunUsageAccessJitDialogHost).
     val usageAccessGate: UsageAccessJitGate = UsageAccessJitGate(isGranted = { true }),
+    // Issue #417 (spec 417): the gate-held transaction capability owned by the
+    // exchange side. The run keeps its lock held and hands the durable
+    // mutation to this capability, which acquires the exchange mutation gate
+    // and invokes the run-provided bind/clear callback inside the gate hold —
+    // lock order run lock → gate, never the reverse. The default executes the
+    // mutation without a gate so embedders/tests that never wire the exchange
+    // side keep today's behavior.
+    private val exchangeGateTransaction: ExchangeGateTransaction = DirectExchangeGateTransaction,
 ) {
     enum class DismissalOutcome {
         CancelledAndMayNavigate,
@@ -312,6 +333,131 @@ class ManualOrganizationRun internal constructor(
         PLAN,
     }
 
+    /**
+     * Issue #417 (spec 417): process-local authority token for one generation
+     * on this run's frozen scope. Owned by the active [Operation]
+     * ([Operation.generationEpoch]); claimed/advanced under the run lock at
+     * generation start and replacement ([claimGenerationEpoch]), invalidated
+     * by interruption, run end and the scope-bound request discard
+     * ([invalidateGenerationEpoch]). A generation completion whose epoch is
+     * not the operation's current one ([isCurrentEpoch]) is discarded
+     * zero-write — no session save, no binding update. The record carries the
+     * runId, operationId and the frozen scope identity, so record equality IS
+     * the same-operation/same-scope check.
+     */
+    data class GenerationEpoch(
+        val runId: RunId,
+        val operationId: String,
+        /** The frozen scope identity (the sorted confirmed selection) the generation was claimed against. */
+        val scopeIdentity: List<CandidateTarget.AppKey>,
+        val epoch: Long,
+    )
+
+    /**
+     * Issue #417 (spec 417, oracle (s)): the gate-held transaction capability
+     * injected from the exchange side. The run calls [withinGate] while
+     * HOLDING its run lock; the implementation acquires the process-wide
+     * exchange mutation gate, runs [withinGate]'s `durableMutation` inside the
+     * gate, invokes `onGateHeld` with the mutation's result while the gate is
+     * still held, and returns the result after releasing it. The lock order
+     * run lock → gate is therefore structural: the run never takes a lock
+     * inside a gate hold, and the bind/clear callbacks run on the same thread
+     * that already owns the run lock — a gate→run-lock acquisition cannot
+     * exist.
+     */
+    interface ExchangeGateTransaction {
+        fun <R> withinGate(durableMutation: () -> R, onGateHeld: (R) -> Unit): R
+    }
+
+    /**
+     * Issue #417 (spec 417): outcome of the durable mutation the exchange
+     * side supplies to [commitGeneratedSession] (the session save inside the
+     * gate). [Committed] is the only outcome that binds.
+     */
+    enum class PersistOutcome { Committed, WriteFailed }
+
+    /**
+     * Issue #417 (spec 417): outcome of the failure-aware store invalidation
+     * (`invalidateIf(expectedExportId) -> Committed / NoMatch / WriteFailed`,
+     * spec 204 Amend) the exchange side supplies to [cleanupBoundExport] /
+     * [discardScopeBoundRequest].
+     */
+    enum class StoreInvalidationOutcome { Committed, NoMatch, WriteFailed }
+
+    /** Issue #417 (spec 417): typed result of [commitGeneratedSession]. */
+    sealed interface GenerationCommitOutcome {
+        data object Committed : GenerationCommitOutcome
+
+        data class Rejected(val reason: GenerationCommitRejection) : GenerationCommitOutcome
+
+        data object WriteFailed : GenerationCommitOutcome
+    }
+
+    enum class GenerationCommitRejection {
+        /** No live confirmed scope on this run (wrong state or dead operation). */
+        NOT_CONFIRMED,
+
+        /** [GenerationEpoch] is not the operation's current one — zero-write discard. */
+        STALE_EPOCH,
+    }
+
+    /** Issue #417 (spec 417): typed result of [cleanupBoundExport]. */
+    sealed interface ExportCleanupOutcome {
+        /** `Committed` (invalidated) or `NoMatch` (already gone) against the matching binding — the binding was cleared. */
+        data object Cleared : ExportCleanupOutcome
+
+        /** Stale cleanup — the current binding is another export (or none): typed no-op, current binding kept. */
+        data object Superseded : ExportCleanupOutcome
+
+        /** Store write failed — session and binding kept; retryable with the same expectedExportId. */
+        data object WriteFailed : ExportCleanupOutcome
+    }
+
+    /** Issue #417 (spec 417): typed result of [discardScopeBoundRequest]. */
+    sealed interface ScopeDiscardOutcome {
+        /** `Committed`/`NoMatch` on the current binding — binding cleared; the epoch was already invalidated. */
+        data object Discarded : ScopeDiscardOutcome
+
+        /** No live confirmed scope on this run — typed no-op. */
+        data object NotDiscardable : ScopeDiscardOutcome
+
+        /** Store write failed — session, binding and frozen scope kept; retryable. */
+        data object WriteFailed : ScopeDiscardOutcome
+    }
+
+    companion object {
+        /**
+         * Issue #417 (spec 417): the safe default capability — the durable
+         * mutation runs directly and `onGateHeld` right after it, with no
+         * process-wide gate. Embedders and tests that never wire the exchange
+         * side keep today's single-machine semantics.
+         */
+        val DirectExchangeGateTransaction: ExchangeGateTransaction = object : ExchangeGateTransaction {
+            override fun <R> withinGate(durableMutation: () -> R, onGateHeld: (R) -> Unit): R {
+                val result = durableMutation()
+                onGateHeld(result)
+                return result
+            }
+        }
+
+        /**
+         * Issue #417 (spec 417, oracle (s)): the gate-held capability built
+         * over a caller-owned [gate] — the production wiring of
+         * [exchangeGateTransaction]. The same shape as [DirectExchangeGateTransaction]
+         * with the process-wide exchange mutation gate acquired around the
+         * durable mutation and the run-provided `onGateHeld` callback, so the
+         * bind/clear callbacks always execute while the gate is held and the
+         * lock order stays run lock → gate.
+         */
+        fun gateHeldExchangeGateTransaction(gate: app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate): ExchangeGateTransaction = object : ExchangeGateTransaction {
+            override fun <R> withinGate(durableMutation: () -> R, onGateHeld: (R) -> Unit): R = gate.withGate {
+                val result = durableMutation()
+                onGateHeld(result)
+                result
+            }
+        }
+    }
+
     sealed interface State {
         data object Idle : State
         data object Capturing : State
@@ -335,6 +481,11 @@ class ManualOrganizationRun internal constructor(
          * non-empty cut, or for an empty cut under an intent-bound run whose
          * export scope still holds candidates (the spec 331 mismatch path).
          *
+         * Issue #417 (spec 417, AC-3): the empty-cut pass-through remains for
+         * `ONBOARDING_PROPOSAL` runs only (D-16). A manual run with an empty
+         * cut never enters this state — it publishes [ScopeConfirmed] directly
+         * and waits for the method choice.
+         *
          * Issue #331: [intentScopeCount] is the export scope's candidate
          * count when a validated intent is bound to this run (guidance only —
          * the user still selects explicitly, D-1); [scopeRejection] carries
@@ -356,6 +507,41 @@ class ManualOrganizationRun internal constructor(
             val scopeRejection: app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch? = null,
             val intentScopeCandidates: Set<CandidateTarget.AppKey> = emptySet(),
             val restoredSelection: Set<CandidateTarget.AppKey> = emptySet(),
+        ) : State
+
+        /**
+         * Issue #417 (spec 417, AC-1): the frozen organization scope of a
+         * manual run — the method-choice face's state. Published by
+         * [confirmSelection] (manual trigger, no bound intent) or directly by
+         * detection completion on an empty cut (AC-3); the run stops here
+         * until the method choice consumes it: [planWithConfirmedScope]
+         * ("このまま整理") or the scoped exchange flow ("AIに相談"). Nothing
+         * composes and nothing is written on entry.
+         *
+         * [candidates] is the detection-time cut (deterministic display order)
+         * and [candidateLabels] its display labels, supplied to exchange
+         * generation; [selection] is the confirmed (sorted) selection — an
+         * empty one is an explicit zero-selection scope, never an undecided
+         * surface (AC-4).
+         *
+         * The direct attach authority of this state lives on the active
+         * operation ([Operation.boundExportId] / [Operation.generationEpoch]);
+         * it is process-local and never part of the published state.
+         *
+         * [intentScopeCount]/[intentScopeCandidates] mirror [Selecting]'s
+         * display fields once an intent is attached here; [scopeRejection]
+         * carries the typed refusal of [attachIntent] for the face's rejection
+         * display (zero-write — the face re-renders with the re-export
+         * guidance).
+         */
+        data class ScopeConfirmed(
+            val runId: RunId,
+            val candidates: List<DetectedCandidate>,
+            val selection: List<CandidateTarget.AppKey>,
+            val candidateLabels: Map<CandidateTarget.AppKey, String>,
+            val intentScopeCount: Int = 0,
+            val intentScopeCandidates: Set<CandidateTarget.AppKey> = emptySet(),
+            val scopeRejection: app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch? = null,
         ) : State
 
         /**
@@ -703,15 +889,39 @@ class ManualOrganizationRun internal constructor(
                     if (!acceptDetection(operation, detection)) return started
                     val exportedScopeCandidates = operation.intent?.session?.scopeCandidates
                     if (detection.candidates.isEmpty() && exportedScopeCandidates.isNullOrEmpty()) {
-                        // Issue #369 (TO-BE D-06, spec RD-3): an empty cut
-                        // never shows the selection surface. The machine still
-                        // enters `Selecting` (transition contract unchanged —
-                        // disposition §3.3) and the coordinator itself drives
-                        // the continuation an explicit empty confirmation
-                        // would take; the composed-phase gate below re-checks
-                        // cancellation.
-                        setIfActive(operation, State.Selecting(operation.runId, detection.candidates, intentScopeCount = 0))
-                        continueWithEmptySelection(operation)
+                        if (operation.trigger != Trigger.ONBOARDING_PROPOSAL && operation.intent == null) {
+                            // Issue #417 (spec 417, AC-3): a manual run's empty
+                            // cut skips the selection surface at the STATE
+                            // level — `ScopeConfirmed(empty)` publishes
+                            // directly and the composed phase waits for the
+                            // method choice. Zero write, zero composition
+                            // here; an empty confirmed scope is the explicit
+                            // zero-selection scope (AC-4), never undecided.
+                            setIfActive(
+                                operation,
+                                State.ScopeConfirmed(
+                                    runId = operation.runId,
+                                    candidates = emptyList(),
+                                    selection = emptyList(),
+                                    candidateLabels = emptyMap(),
+                                ),
+                            )
+                        } else {
+                            // Issue #369 (TO-BE D-06, spec RD-3): an empty cut
+                            // never shows the selection surface. The machine still
+                            // enters `Selecting` (transition contract unchanged —
+                            // disposition §3.3) and the coordinator itself drives
+                            // the continuation an explicit empty confirmation
+                            // would take; the composed-phase gate below re-checks
+                            // cancellation.
+                            //
+                            // Issue #417 (spec 417): since the manual empty cut
+                            // publishes [State.ScopeConfirmed] directly, this
+                            // continuation is reached only by an onboarding run
+                            // (D-16 fixed path).
+                            setIfActive(operation, State.Selecting(operation.runId, detection.candidates, intentScopeCount = 0))
+                            continueWithEmptySelection(operation)
+                        }
                     } else {
                         // Issue #375: a PreviousExplicit rebind restores the
                         // resolvable subset of the export scope as the
@@ -780,6 +990,10 @@ class ManualOrganizationRun internal constructor(
      * composed-phase gate re-checks cancellation, so a cancel during detection
      * still wins; a cancel after the gate sees a started journal and emits
      * `USER_CANCELLED` per the existing contract.
+     *
+     * Issue #417 (spec 417, AC-3): reached by onboarding runs only (D-16) —
+     * a manual run's empty cut publishes [State.ScopeConfirmed] directly and
+     * waits for the method choice instead of continuing here.
      */
     private fun continueWithEmptySelection(operation: Operation) {
         synchronized(lock) {
@@ -799,10 +1013,16 @@ class ManualOrganizationRun internal constructor(
 
     /**
      * Issue #228: confirms the selection surface and continues the run. An
-     * empty selection is valid and composes the plain full organization; a
-     * non-empty selection composes the scope-composed run. The state
-     * transition happens under the lock so a second confirmation of the same
-     * surface cannot double-run the compose/plan/preview phase.
+     * empty selection is valid (the explicit zero-selection scope, spec AC-4);
+     * a non-empty selection scopes the run to the selected candidates. The
+     * state transition happens under the lock so a second confirmation of the
+     * same surface cannot double-run the compose/plan/preview phase.
+     *
+     * Issue #417 (spec 417, AC-1): only an onboarding run (D-16) and an
+     * intent-bound manual run (rebind / import continuation) continue straight
+     * into the composed phase from here. A manual run without a bound intent
+     * stops at [State.ScopeConfirmed] — the frozen scope is published and the
+     * method choice decides when (and whether) the composed phase runs.
      */
     fun confirmSelection(selection: Set<CandidateTarget.AppKey>) {
         val sortedSelection = selection.sortedWith(
@@ -847,15 +1067,36 @@ class ManualOrganizationRun internal constructor(
                     intentScopeCandidates = intent.session.scopeCandidates.toSet(),
                 )
                 null
-            } else {
+            } else if (current.trigger == Trigger.ONBOARDING_PROPOSAL || current.intent != null) {
+                // Issue #417 (spec 417, D-16): an onboarding run — regardless
+                // of intent — and an intent-bound manual run (the rebind /
+                // import continuation) never reach the method-choice face;
+                // the early gate's pass flows straight into the composed
+                // phase, unchanged.
+                //
                 // Issue #371: the visible capture commit moved into
                 // runComposedPhase's RD-6 lock section (authoritative for all
-                // three entry paths), so the JIT pause at that entry can never
+                // entry paths), so the JIT pause at that entry can never
                 // show a capture that has not started. The state stays
                 // `Selecting` until the composed phase actually begins; the
                 // phase-before-state ordering (RD-7) is preserved in the
                 // entry's lock section.
                 current
+            } else {
+                // Issue #417 (spec 417, AC-1): a manual run without a bound
+                // intent stops here — the frozen scope is published and the
+                // method choice (このまま整理 / AIに相談) happens on the
+                // [State.ScopeConfirmed] face. No composition, no write;
+                // [planWithConfirmedScope] and [attachIntent] continue from
+                // here.
+                val cut = current.detectedCandidates.orEmpty()
+                stateHolder.value = State.ScopeConfirmed(
+                    runId = current.runId,
+                    candidates = cut,
+                    selection = sortedSelection,
+                    candidateLabels = cut.associate { it.target to it.label },
+                )
+                null
             }
         } ?: return
         try {
@@ -864,6 +1105,53 @@ class ManualOrganizationRun internal constructor(
             abort(operation)
             throw failure
         }
+    }
+
+    /**
+     * Issue #417 (spec 417, AC-1): the "このまま整理" arm of the method-choice
+     * face. From [State.ScopeConfirmed] the composed phase runs with the
+     * frozen selection — an empty selection keeps the plain full organization
+     * (the null-selection legacy composition path). A wrong state or a dead
+     * operation is a no-op: nothing is composed, nothing is written.
+     */
+    fun planWithConfirmedScope() {
+        val claimed = synchronized(lock) {
+            val current = state as? State.ScopeConfirmed ?: return
+            val operation = activeOperation ?: return
+            if (operation.runId != current.runId || !isActiveLocked(operation)) return
+            operation to current.selection
+        }
+        val (operation, selection) = claimed
+        try {
+            runComposedPhase(operation, selection = selection.ifEmpty { null })
+        } catch (failure: Throwable) {
+            abort(operation)
+            throw failure
+        }
+    }
+
+    /**
+     * Issue #417 (spec 417, AC-5): re-opens the selection surface from
+     * [State.ScopeConfirmed], republishing [State.Selecting] with the same
+     * detection cut — the UI state keeps the selection; no layout write. Only
+     * a NON-EMPTY cut re-opens: an empty-cut `ScopeConfirmed` always refuses
+     * (Back from the method-choice face is an interruption there, zero-write).
+     * Whether an active AI request must be discarded first is NOT decided
+     * here — the hosting surface calls this only after the scope-bound request
+     * discard ([discardScopeBoundRequest]) succeeded.
+     */
+    fun reopenSelection(): Boolean = synchronized(lock) {
+        val current = state as? State.ScopeConfirmed ?: return@synchronized false
+        val operation = activeOperation ?: return@synchronized false
+        if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized false
+        if (current.candidates.isEmpty()) return@synchronized false
+        stateHolder.value = State.Selecting(
+            current.runId,
+            current.candidates,
+            intentScopeCount = current.intentScopeCount,
+            intentScopeCandidates = current.intentScopeCandidates,
+        )
+        true
     }
 
     /**
@@ -913,25 +1201,299 @@ class ManualOrganizationRun internal constructor(
      * holding the selection surface (the run-in exchange entry). Single-shot:
      * a run binds at most one intent, and only while the selection surface is
      * open. Zero-write; the validated intent is not retained on refusal.
+     *
+     * Issue #417 (spec 417): also accepts while the run holds the frozen
+     * scope ([State.ScopeConfirmed] — the method-choice face). There the same
+     * pure derivation as the confirm-time early gate
+     * ([ScopeBindingCauseDerivation.deriveConfirmMismatch]) runs against the
+     * confirmed selection: a mismatch is a typed
+     * [AttachIntentOutcome.Rejected] (zero-write; the face re-renders with
+     * [State.ScopeConfirmed.scopeRejection]), a match binds the intent and
+     * proceeds straight into the composed phase — the import-success CTA is
+     * the explicit consent point, so no additional confirmation is inserted.
      */
-    fun attachIntent(intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent): AttachIntentOutcome = synchronized(lock) {
-        val current = state as? State.Selecting
-        val operation = activeOperation
-        if (current == null || operation == null || !isActiveLocked(operation) || operation.intent != null) {
-            return@synchronized AttachIntentOutcome.NotAttachable
+    fun attachIntent(intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent): AttachIntentOutcome {
+        val claimed: Triple<AttachIntentOutcome, Operation?, List<CandidateTarget.AppKey>> = synchronized(lock) {
+            when (val current = state) {
+                is State.Selecting -> {
+                    val operation = activeOperation
+                    if (operation == null || !isActiveLocked(operation) || operation.intent != null) {
+                        Triple(AttachIntentOutcome.NotAttachable, null, emptyList<CandidateTarget.AppKey>())
+                    } else {
+                        operation.intent = intent
+                        stateHolder.value = current.copy(
+                            intentScopeCount = intent.session.scopeCandidates.size,
+                            intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                        )
+                        Triple(AttachIntentOutcome.Attached, null, emptyList<CandidateTarget.AppKey>())
+                    }
+                }
+
+                is State.ScopeConfirmed -> {
+                    val operation = activeOperation
+                    if (operation == null || !isActiveLocked(operation) || operation.intent != null ||
+                        operation.runId != current.runId
+                    ) {
+                        Triple(AttachIntentOutcome.NotAttachable, null, emptyList<CandidateTarget.AppKey>())
+                    } else {
+                        val cause = ScopeBindingCauseDerivation.deriveConfirmMismatch(
+                            sessionScope = intent.session.scopeCandidates,
+                            detected = current.candidates.map { candidate ->
+                                DetectedCandidateScope(candidate.target, candidate.availability)
+                            },
+                            selected = current.selection.toSet(),
+                        )
+                        if (cause != null) {
+                            val failure =
+                                app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(cause)
+                            stateHolder.value = current.copy(scopeRejection = failure)
+                            Triple(AttachIntentOutcome.Rejected(failure), null, emptyList<CandidateTarget.AppKey>())
+                        } else {
+                            operation.intent = intent
+                            stateHolder.value = current.copy(
+                                intentScopeCount = intent.session.scopeCandidates.size,
+                                intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                                scopeRejection = null,
+                            )
+                            Triple(AttachIntentOutcome.Attached, operation, current.selection)
+                        }
+                    }
+                }
+
+                else -> Triple(AttachIntentOutcome.NotAttachable, null, emptyList<CandidateTarget.AppKey>())
+            }
         }
-        operation.intent = intent
-        stateHolder.value = current.copy(
-            intentScopeCount = intent.session.scopeCandidates.size,
-            intentScopeCandidates = intent.session.scopeCandidates.toSet(),
-        )
-        AttachIntentOutcome.Attached
+        val (outcome, operation, selection) = claimed
+        if (operation != null) {
+            try {
+                runComposedPhase(operation, selection = selection.ifEmpty { null })
+            } catch (failure: Throwable) {
+                abort(operation)
+                throw failure
+            }
+        }
+        return outcome
     }
 
     sealed interface AttachIntentOutcome {
         data object Attached : AttachIntentOutcome
 
         data object NotAttachable : AttachIntentOutcome
+
+        /**
+         * Issue #417 (spec 417): the confirmed-scope attach refusal — typed,
+         * zero-write; [State.ScopeConfirmed] was republished with
+         * [State.ScopeConfirmed.scopeRejection] for the method-choice face.
+         */
+        data class Rejected(
+            val failure: app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch,
+        ) : AttachIntentOutcome
+    }
+
+    /**
+     * Issue #417 (spec 417, AC-6): claims the generation epoch for a new (or
+     * replacement) generation against the frozen scope. Each claim ADVANCES
+     * the counter, so a new claim invalidates the previous epoch — a delayed
+     * completion of the old generation is rejected zero-write later. Returns
+     * null when there is no live [State.ScopeConfirmed] on this run or
+     * [scopeIdentity] is not exactly the confirmed selection (fail-closed).
+     */
+    fun claimGenerationEpoch(scopeIdentity: List<CandidateTarget.AppKey>): GenerationEpoch? = synchronized(lock) {
+        val current = state as? State.ScopeConfirmed ?: return@synchronized null
+        val operation = activeOperation ?: return@synchronized null
+        if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized null
+        if (scopeIdentity != current.selection) return@synchronized null
+        val next = GenerationEpoch(
+            runId = operation.runId,
+            operationId = operation.operationId,
+            scopeIdentity = scopeIdentity,
+            epoch = (operation.generationEpoch?.epoch ?: 0L) + 1L,
+        )
+        operation.generationEpoch = next
+        next
+    }
+
+    /**
+     * Issue #417 (spec 417, AC-6): invalidates the current generation epoch.
+     * Interruption and run end invalidate the epoch with the whole operation;
+     * this explicit invalidation exists for the paths that keep the operation
+     * alive — most notably [discardScopeBoundRequest], which runs it under the
+     * run lock BEFORE the capability call. A fresh generation simply claims
+     * (and advances) again.
+     */
+    fun invalidateGenerationEpoch() {
+        synchronized(lock) {
+            activeOperation?.generationEpoch = null
+        }
+    }
+
+    /**
+     * Issue #417 (spec 417): whether [epoch] is the active operation's current
+     * generation epoch. The commit path re-verifies this under the run lock;
+     * this read is the cheap stale-check for completion/cleanup paths.
+     */
+    fun isCurrentEpoch(epoch: GenerationEpoch): Boolean = synchronized(lock) {
+        activeOperation?.generationEpoch == epoch
+    }
+
+    /**
+     * Issue #417 (spec 417, AC-6): the atomic generation commit — session
+     * save, epoch re-verification and the [Operation.boundExportId] update in
+     * ONE critical section (run lock → exchange mutation gate; there is no
+     * save→bind window, so a saved session always has its binding). Requires
+     * the live [State.ScopeConfirmed] of this run. Under the run lock the
+     * epoch is re-verified first — record equality covers runId, operationId
+     * and the frozen scope identity (the same-operation/same-scope check); a
+     * stale epoch or a dead confirmed scope is a zero-write
+     * [GenerationCommitOutcome.Rejected] and [commit] is never invoked. On
+     * success the capability runs [commit] inside the gate and — still inside
+     * the gate hold, via the run-provided callback — binds [exportId] ONLY on
+     * [PersistOutcome.Committed]; a store save failure never binds.
+     */
+    fun commitGeneratedSession(
+        epoch: GenerationEpoch,
+        exportId: String,
+        commit: ExchangeGateTransaction.() -> PersistOutcome,
+    ): GenerationCommitOutcome = synchronized(lock) {
+        val current = state as? State.ScopeConfirmed
+        val operation = activeOperation
+        if (current == null || operation == null || !isActiveLocked(operation) || operation.runId != current.runId) {
+            return@synchronized GenerationCommitOutcome.Rejected(GenerationCommitRejection.NOT_CONFIRMED)
+        }
+        if (operation.generationEpoch != epoch) {
+            return@synchronized GenerationCommitOutcome.Rejected(GenerationCommitRejection.STALE_EPOCH)
+        }
+        val persisted = exchangeGateTransaction.withinGate(
+            durableMutation = { exchangeGateTransaction.commit() },
+            onGateHeld = { outcome ->
+                if (outcome == PersistOutcome.Committed) {
+                    operation.boundExportId = exportId
+                }
+            },
+        )
+        when (persisted) {
+            PersistOutcome.Committed -> GenerationCommitOutcome.Committed
+            PersistOutcome.WriteFailed -> GenerationCommitOutcome.WriteFailed
+        }
+    }
+
+    /**
+     * Issue #417 (spec 417, AC-6 oracle (t)): the cleanup seam for paths that
+     * retire the CURRENTLY bound session itself (encode failure, pre-send
+     * discard). The conditional invalidation and the binding clear run only
+     * when the current binding equals [expectedExportId]; a stale cleanup (the
+     * run already moved to another export, or none is bound) is an
+     * [ExportCleanupOutcome.Superseded] typed no-op — the store is not touched
+     * and the current binding is kept. `NoMatch` counts as cleared ONLY here,
+     * against the current binding (never generalized to historical cleanup).
+     * A write failure keeps session and binding — the caller retries with the
+     * same [expectedExportId] instead of settling (the UI owner is not lost).
+     */
+    fun cleanupBoundExport(
+        expectedExportId: String,
+        commit: ExchangeGateTransaction.() -> StoreInvalidationOutcome,
+    ): ExportCleanupOutcome = synchronized(lock) {
+        val operation = activeOperation
+        val bound = operation?.boundExportId
+        if (operation == null || state !is State.ScopeConfirmed || bound != expectedExportId) {
+            return@synchronized ExportCleanupOutcome.Superseded
+        }
+        val outcome = exchangeGateTransaction.withinGate(
+            durableMutation = { exchangeGateTransaction.commit() },
+            onGateHeld = { result ->
+                when (result) {
+                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> operation.boundExportId = null
+                    StoreInvalidationOutcome.WriteFailed -> Unit
+                }
+            },
+        )
+        when (outcome) {
+            StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> ExportCleanupOutcome.Cleared
+            StoreInvalidationOutcome.WriteFailed -> ExportCleanupOutcome.WriteFailed
+        }
+    }
+
+    /**
+     * Issue #417 (spec 417, AC-5 / oracle (v)): the scope-bound request
+     * discard — the one seam that retires the AI request created from this
+     * frozen scope so the selection can be re-edited. Order fixed by the
+     * accepted plan: (a) under the run lock and BEFORE the capability call the
+     * current generation epoch is invalidated (a same-run generation commit
+     * needs the run lock, so it cannot interleave — the epoch invalidation
+     * therefore precedes the gate-held store invalidation; it is not rolled
+     * back on failure: a retry discards, a fresh request claims anew);
+     * (b) the capability runs `invalidateIf(boundExportId)` inside the gate;
+     * (c) on `Committed`/`NoMatch` the gate-held callback clears
+     * [Operation.boundExportId] — the `NoMatch`-as-success proof is limited to
+     * this current-binding discard. A write failure keeps the session, the
+     * binding and [State.ScopeConfirmed] (typed retryable failure; the
+     * method-choice face stays). The dependent imported-proposal handling
+     * stays with the exchange side, which proceeds only on
+     * [ScopeDiscardOutcome.Discarded]; the hosting surface calls
+     * [reopenSelection] only afterwards.
+     */
+    fun discardScopeBoundRequest(
+        commit: ExchangeGateTransaction.(boundExportId: String) -> StoreInvalidationOutcome,
+    ): ScopeDiscardOutcome = synchronized(lock) {
+        val current = state as? State.ScopeConfirmed
+        val operation = activeOperation
+        if (current == null || operation == null || !isActiveLocked(operation) || operation.runId != current.runId) {
+            return@synchronized ScopeDiscardOutcome.NotDiscardable
+        }
+        operation.generationEpoch = null
+        val bound = operation.boundExportId
+        if (bound == null) {
+            // Nothing durable is bound: an uncommitted generation was already
+            // cut off by the epoch invalidation above — no store call needed.
+            return@synchronized ScopeDiscardOutcome.Discarded
+        }
+        val outcome = exchangeGateTransaction.withinGate(
+            durableMutation = { exchangeGateTransaction.commit(bound) },
+            onGateHeld = { result ->
+                when (result) {
+                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> operation.boundExportId = null
+                    StoreInvalidationOutcome.WriteFailed -> Unit
+                }
+            },
+        )
+        when (outcome) {
+            StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> ScopeDiscardOutcome.Discarded
+            StoreInvalidationOutcome.WriteFailed -> ScopeDiscardOutcome.WriteFailed
+        }
+    }
+
+    /**
+     * Issue #417 (spec 417, fences (a)/(c)): read-only direct-attach
+     * authority check for an import of a RUN_IN-origin session — true only
+     * when this run's CURRENT frozen scope is live ([State.ScopeConfirmed])
+     * AND owned by [runId] AND the process-local binding equals
+     * [expectedExportId] (the exact exportId this run's confirmed scope
+     * generated and is still bound to). Scope equality alone never
+     * establishes same-run ([GenerationEpoch]/`boundExportId` carry the
+     * authority); this query is the small additive hook that lets the
+     * exchange side ASK without reaching into the run-private
+     * `Operation.boundExportId`.
+     */
+    fun isLiveScopeOwner(runId: RunId, expectedExportId: String): Boolean = synchronized(lock) {
+        val current = state as? State.ScopeConfirmed ?: return@synchronized false
+        val operation = activeOperation ?: return@synchronized false
+        operation.runId == runId && isActiveLocked(operation) && operation.boundExportId == expectedExportId
+    }
+
+    /**
+     * Issue #417 (spec 417, AC-5): read-only UI routing fact — whether the
+     * live [State.ScopeConfirmed]'s operation currently holds a scope-bound
+     * request (a session generated from this very frozen scope). The
+     * method-choice face raises the scope-bound discard confirmation on Back
+     * ONLY while this is true: a durable legacy IDLE request never references
+     * the confirmed scope, so it must never freeze it (the Back path then
+     * re-opens the selection without a 破棄確認). Pure read — no mutation, no
+     * store access.
+     */
+    fun hasBoundScopeRequest(): Boolean = synchronized(lock) {
+        val current = state as? State.ScopeConfirmed ?: return@synchronized false
+        val operation = activeOperation ?: return@synchronized false
+        operation.runId == current.runId && isActiveLocked(operation) && operation.boundExportId != null
     }
 
     /**
@@ -1300,7 +1862,10 @@ class ManualOrganizationRun internal constructor(
             if (state !is State.Preview && state !is State.Capturing && state !is State.CandidateDetection &&
                 state !is State.Selecting && state !is State.Planning && state !is State.Applying &&
                 state !is State.PreviewUnavailable && state !is State.AwaitingUsageAccessJit &&
-                state !is State.ResumingUsageAccessJit
+                state !is State.ResumingUsageAccessJit &&
+                // Issue #417: the method-choice face is interruptible — an
+                // empty-cut run's Back is an interruption (zero-write).
+                state !is State.ScopeConfirmed
             ) {
                 return
             }
@@ -1956,5 +2521,29 @@ class ManualOrganizationRun internal constructor(
          */
         @Volatile
         var journalStarted: Boolean = false
+
+        /**
+         * Issue #417 (spec 417): process-local id distinguishing this
+         * operation's authority records ([GenerationEpoch.operationId]).
+         */
+        val operationId: String = java.util.UUID.randomUUID().toString()
+
+        /**
+         * Issue #417 (spec 417, AC-6): the exact exportId this run's frozen
+         * scope generated and is still bound to — the direct attach authority.
+         * Set ONLY inside the gate-held callback of [commitGeneratedSession]
+         * (this operation's run lock is held by the binding thread), cleared
+         * by [cleanupBoundExport] / [discardScopeBoundRequest]. Process-local,
+         * never persisted.
+         */
+        var boundExportId: String? = null
+
+        /**
+         * Issue #417 (spec 417, AC-6): the current generation epoch — claimed
+         * under the run lock at generation start/replacement, invalidated by
+         * interruption, run end and the scope-bound request discard. Null
+         * while no generation is claimed.
+         */
+        var generationEpoch: GenerationEpoch? = null
     }
 }
