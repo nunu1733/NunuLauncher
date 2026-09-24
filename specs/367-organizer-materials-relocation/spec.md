@@ -21,6 +21,9 @@ updated: 2026-09-19
 > 段階契約: 本specはdisposition §7.2の段階(b)「材料集約」であり、D-01の完全実現
 > （設定側organizer由来row = 入口row 1件）は#370が所有するmanual organization直行rowの
 > 廃止まで完了しない（本spec Contract notes 1）。
+> Superseded by #417 (head `bc459e9fa0` / spec 417 accepted): 維持secondary entry
+> 「選択面からのrun-in AI相談」は [spec 417](../417-scope-first-method-choice/spec.md) が置換する
+> （選択面にAI entryは現れず、AI相談はscope確定後の方法選択面から開く）。
 
 ## Problem
 
@@ -339,6 +342,7 @@ And 本Issueは新しい永続化を一切導入しないため、process死で�
 
 ## Change history
 
+- 2026-09-24: **Superseded by #417**（accepted spec [spec 417](../417-scope-first-method-choice/spec.md)、head `bc459e9fa0`）: 維持secondary entry「選択面からのrun-in AI相談」はspec 417が置換する（選択面にAI entryは現れず、AI相談はscope確定後の方法選択面から開く）。
 - 2026-09-19: Draft created for #367（spec/plan整備task、branch `issue-367-spec-plan`
   `a50f074a`）。accepted TO-BE契約（organizer-to-be-ux.md @ main `3076bdae7e`）、
   #366 spec/plan draft（`bf00f96175`）、現行実装調査を入力に作成。

@@ -11,6 +11,8 @@ updated: 2026-09-16
 # External Agent Exchangeの対象scopeに未配置アプリ候補を含められる
 
 > Status: **implemented** (2026-09-16) — [PR #333](https://github.com/nunu1733/NunuLauncher/pull/333) merge (commit `addb25d8181e`) によりmainに取り込まれた。受入経緯: 起草revision (head `defaf666bc`) へのChatGPT review "Changes requested" を解消したrevision (head `41252343d4`) に対しChatGPT re-review **Approved**、実装はChatGPT implementation review 2回の "Changes requested" (typed SCOPE_MISMATCH接続・選択状態復帰・session store v2移行) を解消し **Approved** (head `780fdd6bd728`)。独立監査は [docs/assessment/pr-333-exchange-target-scope-coupling.md](../../docs/assessment/pr-333-exchange-target-scope-coupling.md) (Approve、CI run 35087139174 / high-risk gate run 35088536685 success)。AC-11 (instrumentation) とAC-12 (TalkBack等manual a11y evidence) は後続evidence PRの対象。
+>
+> Amended by #417 (head `bc459e9fa0` / spec 417 accepted): [spec 417](../417-scope-first-method-choice/spec.md) が §5 idle entry / run-in entry構造をAmendする（idle新規作成はRetire・run-inはscope確定後の方法選択面へ一般化）。gate契約 D-2/D-4/D-5 は不変。
 
 ## Problem
 
@@ -306,6 +308,8 @@ CI class filter (`ci.yml` connected-test lanes) への新instrumentation test cl
 2. **candidate宛preferenceのplanner消費詳細** (importance順序の同点tie-break等): plannerが既に持つpreference消費機構 (`FullRunExecution` / `PlacementAllocator`) の拡張としてplanで確定する。新機構の導入は本specの範囲外。
 
 ## Change history
+
+- 2026-09-24: **Amended by #417** (accepted spec [spec 417](../417-scope-first-method-choice/spec.md), head `bc459e9fa0`): §5 idle entry / run-in entry構造をAmend（idle新規作成はRetire・run-inはscope確定後の方法選択面へ一般化）。gate契約 D-2/D-4/D-5 は不変。
 
 - 2026-09-22: **Amended by Issue #375** (accepted disposition §3.16/§4.1/§5 更新順序 #9): D-2のremedyを原因別 (`SET_MISMATCH` = 選択修正で同じ提案を続行 / `CANDIDATE_UNRESOLVED`・`PROJECTION_MISMATCH` = 依頼の作り直し) へ分割 (gate規則・D-5単一class構造・zero-write・fail-closedは不変)、§5のprocess death復帰経路を `Hub → ImportReview` 1経路＋rebind契約へ更新、run-in attach契約の生存範囲 (同一processの選択面が開いている間) を明記。
 
