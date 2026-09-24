@@ -95,10 +95,10 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 | 実装PRの `pull_request` CI runでlane jobが新classを実行し成功。`gh api repos/nunu1733/NunuLauncher/actions/runs/<id>` でhead SHA照合 — **done** run 35989680999 / 実装head `c6e7bb70f7` / category-override pass（round2 review対応後の再実行） | GitHub Actions（API 36 emulator job） |
+| AC-1 | 実装PRの `pull_request` CI runでlane jobが新classを実行し成功。`gh api repos/nunu1733/NunuLauncher/actions/runs/<id>` でhead SHA照合 — **done** run 36001437587 / 実装head `d4b4a53db6` / category-override pass（round3 review対応後の再実行、初回成功） | GitHub Actions（API 36 emulator job） |
 | AC-2〜AC-6 | 新assert methodを含むclassの成功。局所再現は実機/emulatorで実行 — **done** 同runで `CustomCategoryPreferencesInstrumentationTest` 含む2 class pass | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest`（API 36 emulator）。compile確認は `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` |
 | AC-7 | `git diff --name-status <base>..<head>` が**実装delta 3 path**（test + ci.yml + portfolio doc）+ 本spec/planの2 path = 5 pathを示すこと（spec AC-7の境界どおり。production/`res/`/`tools/`差分はゼロ。spec/planの同梱は#417 PR #432と同じ運用）— **done** 実装delta 3 path + spec/plan 2 pathで確認 | local |
-| AC-8 | lane成功 + `final-status` successのrun URL — **done** [run 35989680999](https://github.com/nunu1733/NunuLauncher/actions/runs/35989680999) `conclusion=success`（実装head `c6e7bb70f7`）/ final-status pass。最終headのmerge gate runはPR記録参照 | GitHub Actions |
+| AC-8 | lane成功 + `final-status` successのrun URL — **done** [run 36001437587](https://github.com/nunu1733/NunuLauncher/actions/runs/36001437587) `conclusion=success`（実装head `d4b4a53db6`）/ final-status pass。最終headのmerge gate runはPR記録参照 | GitHub Actions |
 
 共通gate: `./gradlew spotlessCheck`（test fileのformatting）、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`（既存unit suiteへの無影響確認）。
 
@@ -128,6 +128,6 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 ## Explicitly unverified areas
 
-- ~~新assertがCI emulator上で通ること~~ — 2026-09-24に PR #436 実装head `c6e7bb70f7` の category-override lane（[run 35989680999](https://github.com/nunu1733/NunuLauncher/actions/runs/35989680999)。round2 review対応で追加した作成保存後・改名保存後focus assertを含む）で検証済み。round1 head `d4a46ed7b0`（run 35977667938）でも検証済み。
-- ~~class追加によるlane実行時間の増分~~ — CI実測 8m50s（実装head `c6e7bb70f7`、run 35989680999。round1実測 10m11s。portfolio baseline 8.1 分比 +約1〜2分で、目安 +1〜3分の範囲内）。portfolio の timing 行は本Issueの scope 外のため未更新。
+- ~~新assertがCI emulator上で通ること~~ — 2026-09-24に PR #436 実装head `d4b4a53db6` の category-override lane（[run 36001437587](https://github.com/nunu1733/NunuLauncher/actions/runs/36001437587)。round2の保存後focus assert + round3のexit前focus pinを含む）で検証済み。round1 `d4a46ed7b0`（run 35977667938）/ round2 `c6e7bb70f7`（run 35989680999）でも検証済み。
+- ~~class追加によるlane実行時間の増分~~ — CI実測 10m13s（実装head `d4b4a53db6`、run 36001437587。round1実測 10m11s / round2実測 8m50s。portfolio baseline 8.1 分比 +約1〜2分で、目安 +1〜3分の範囲内）。portfolio の timing 行は本Issueの scope 外のため未更新。
 - `ci-test-portfolio.md` の他lane行の欠落（旧ownership表時代のstaleness観察は#422書換えによりobsolete。現docの他lane記載の不足は本Issueで直さない）。

@@ -11,7 +11,7 @@ updated: 2026-09-24
 
 > **Status:** **accepted** (2026-09-24) — Phase1 re-review [Approved](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5810304096)（snapshot `06441db265`）。関連契約: [spec 336](../336-user-defined-categories/spec.md) AC-12 / AC-13、監査記録 [docs/assessment/pr-341-user-defined-categories.md](../../docs/assessment/pr-341-user-defined-categories.md) Finding 1。本specは [PR #341][2] で特定されたnon-blocking残課題を、test表面とCI構成の変更だけで解消することを契約化する。productionの振る舞いは一切変更しない。
 >
-> **Phase2 evidence:** PR [#436](https://github.com/nunu1733/NunuLauncher/pull/436) 実装head `c6e7bb70f7` / CI [run 35989680999](https://github.com/nunu1733/NunuLauncher/actions/runs/35989680999) `conclusion=success`（category-override pass、final-status pass）。AC-1〜AC-8 全checked。round2 review（Changes requested [issuecomment-5812364270](https://github.com/nunu1733/NunuLauncher/pull/436#issuecomment-5812364270)）対応済み。証跡: [issuecomment-5811509597](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5811509597)。
+> **Phase2 evidence:** PR [#436](https://github.com/nunu1733/NunuLauncher/pull/436) 実装head `d4b4a53db6` / CI [run 36001437587](https://github.com/nunu1733/NunuLauncher/actions/runs/36001437587) `conclusion=success`（category-override pass、final-status pass）。AC-1〜AC-8 全checked。round2/round3 review（[Changes requested](https://github.com/nunu1733/NunuLauncher/pull/436#issuecomment-5812364270)、[re-review Changes requested](https://github.com/nunu1733/NunuLauncher/pull/436#issuecomment-5814260463)）対応済み。証跡: [issuecomment-5811509597](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5811509597)。
 
 ## Problem
 
@@ -138,13 +138,13 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 
 | AC | Evidence |
 |---|---|
-| AC-1 | 実装PRの `pull_request` CI run: lane job logに当該classの実行記録、`final-status` success — [run 35989680999](https://github.com/nunu1733/NunuLauncher/actions/runs/35989680999)（category-override job pass / final-status pass。job linkはPR記録参照） |
+| AC-1 | 実装PRの `pull_request` CI run: lane job logに当該classの実行記録、`final-status` success — [run 36001437587](https://github.com/nunu1733/NunuLauncher/actions/runs/36001437587)（category-override job pass / final-status pass。job linkはPR記録参照） |
 | AC-2 | `onNodeWithContentDescription(rename/delete label).assertHasClickAction()` + summary `LiveRegion == Polite` の成功（TalkBack側coverageはこのsemantics assertが担う）— 同runで `rowsExposeLocalizedActionLabelsAndLiveRegion` 成功 |
-| AC-3 | `assertIsFocused()` によるCompose/keyboard input focus復帰の成功。対象は**作成保存後・改名保存後・cancel後・削除確定後の4遷移**（accessibility focusの証拠としては扱わない）— 同runで `editorAndDialogTransitionsRestoreInputFocusToTheSummaryNode` 成功 |
+| AC-3 | `assertIsFocused()` によるCompose/keyboard input focus復帰の成功。対象は**作成保存後・改名保存後・cancel後・削除確定後の4遷移**で、cancel/confirm遷移はexit前にeditor/dialog内node（name field / dialog button）へのfocus固定 `requestFocus().assertIsFocused()` を含み、summary復帰が真のfocus遷移として検証される（accessibility focusの証拠としては扱わない）— 同runで `editorAndDialogTransitionsRestoreInputFocusToTheSummaryNode` 成功 |
 | AC-4〜AC-5 | 同CI run内の当該class成功（新assert method名で確認可能）。局所再現はAPI 36 emulator上で `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest` — 同runで `keyboardDpadActivates...` / `switchEquivalentSemantics...` / `rowsRemainReachableAtTwoHundredPercentFontScale` / `entryRowMeetsMinimumFortyEightDpTouchTarget` 成功 |
 | AC-6 | 5状態からの `assertNoRawIdsPresent` 呼び出し成功。局所再現はAC-4〜AC-5と同じcommand — 同runでhelper 5呼び出しを含むclass成功 |
 | AC-7 | `git diff --name-status base..head` の確認: **実装delta**（本spec/planを除くPR差分）は test class + ci.yml + portfolio docの3 pathのみで、production/`res/`/`tools/`への差分はゼロ。spec/plan 2 pathを含むPR diff全体は5 path（AC-7本文の境界どおり）— 最終headで確認 |
-| AC-8 | GitHub Actions run URL + `gh api` によるhead SHA照合（merge gate evidence）— [run 35989680999](https://github.com/nunu1733/NunuLauncher/actions/runs/35989680999) `conclusion=success`、`head_sha=c6e7bb70f786af8e65aa84812efc3658ac560dc8`（実装head）。最終headのmerge gate runはPR記録参照 |
+| AC-8 | GitHub Actions run URL + `gh api` によるhead SHA照合（merge gate evidence）— [run 36001437587](https://github.com/nunu1733/NunuLauncher/actions/runs/36001437587) `conclusion=success`、`head_sha=d4b4a53db6786bd947dd69fbe3b45aeb44c6853a`（実装head）。最終headのmerge gate runはPR記録参照 |
 
 ## Open questions
 
@@ -159,6 +159,7 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 - 2026-09-24: statusをdraft→acceptedへ遷移。snapshot `06441db265` へのRe-review [Approved](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5810304096) を受領。Phase 2実装は本契約に従う。
 - 2026-09-24: Phase 2検証完了。PR [#436](https://github.com/nunu1733/NunuLauncher/pull/436) head `d4a46ed7b0` のCI run [35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) `conclusion=success`（category-override pass 10m11s / final-status pass）で AC-1〜AC-8 を検証。証跡: [issuecomment-5811509597](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5811509597)。AC checkboxを [x] へ遷移。初回runの `manual-organization-ui` flakeは本diff外で failed-job rerun 後 pass。
 - 2026-09-24: round2 review対応（PR #436 head `7ee1e2c34a` へのChanges requested [issuecomment-5812364270](https://github.com/nunu1733/NunuLauncher/pull/436#issuecomment-5812364270) の2点）。Finding 1: AC-3のtest oracleがplan method 2の契約（作成保存後・改名保存後・cancel後・削除確定後）に対しcancel経路しか検証していなかったため、`editorAndDialogTransitionsRestoreInputFocusToTheSummaryNode` へcreate editor保存後・rename editor保存後の `awaitSummaryFocus` assertを追加（実装head `c6e7bb70f7`、run 35989680999でcategory-override lane pass）。AC-3/Scope本文の契約変更は不要（「離れた時点（保存・cancel・確定）」のまま）。Finding 2: AC-7/Test oracle/plan Verificationの「3 path」表記を、実装delta（本spec/plan文書を除くPR差分）3 path + spec/plan 2 path = PR diff全体5 pathへ明確化。spec/planの実装PR同梱は#417 PR #432と同じ運用である。本revisionも実装PR内で行い、契約境界の修正を含めてre-reviewへ出す。
+- 2026-09-24: round3 review対応（head `6a629e421c` へのre-review [Changes requested](https://github.com/nunu1733/NunuLauncher/pull/436#issuecomment-5814260463)。前回2指摘は解消確認済み、新規1点）。cancel/confirm遷移ではexit前にeditor/dialog内nodeへのfocus固定がなく、summaryがfocusを保持したままでもassertが通る余地があったため、create/rename editor cancelではname fieldへ、delete dialog cancel/confirmではdialog内buttonへ `requestFocus().assertIsFocused()` をexit前に追加し、AC-3のsummary復帰assertを真のfocus遷移の証明へ強化（AC-3本文の契約変更は不要。Test oracleへ同内容を追記）。実装head `d4b4a53db6`、run 36001437587でcategory-override lane pass（初回成功）。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/342 "Issue #342"
 [2]: https://github.com/nunu1733/NunuLauncher/pull/341 "PR #341 — user-defined categories"
