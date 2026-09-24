@@ -131,11 +131,19 @@ jobs:
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/planning/**'
             surface_db_schema:
               # LauncherProvider / schema upgrade / grid migration ownership and
-              # the Deck retirement startup migration.
+              # the Deck retirement startup migration. The four schema test
+              # files are listed explicitly: they live under the broad
+              # com/.../organizer/ glob owned by surface_layout_write, and the
+              # db-migration lane must self-trigger when its own tests change
+              # (overlap with surface_layout_write is the safe direction).
               - 'src/com/android/launcher3/provider/**'
               - 'src/com/android/launcher3/model/DatabaseHelper.java'
               - 'src/com/android/launcher3/model/GridSizeMigrationUtil.java'
               - 'lawnchair/src/app/lawnchair/migration/**'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/MigrationTransactionOwnershipTest.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/DatabaseHelperSchema33Test.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/DowngradeSchema33Test.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/InactiveGridDbNormalizationTest.java'
               - 'tests/organizer-instrumentation/com/android/launcher3/organizer/rollback32/**'
               - 'tests/organizer-instrumentation/com/android/launcher3/model/**'
               - 'tests/organizer-instrumentation/app/lawnchair/migration/**'

@@ -36,7 +36,10 @@ instrumentation_enabled = !smoke
   起動する。mapped / unmapped 混在でも発火する。mapping の隙間が gate の静かな skip と
   して現れないための保守 default である。
 - test path は directory 粒度で surface 割り当てており、隣接 lane の過剰起動（over-trigger）
-  を意図的に許容する（list 二重管理による取りこぼしより安全側である）。
+  を意図的に許容する（list 二重管理による取りこぼしより安全側である）。ただし各 lane が
+  実行する test class の path はその lane の surface に必ず含み、**test のみの変更でも
+  当該 lane が自己検証される**（db-migration の schema 4 test file は広い glob と重複
+  しても明示指定する）。
 - `source` filter は docs / specs / `.github` / `tools/repo-contract` 等を除外する広い
   母集合（Issue #8 由来）。未知の上流 module は自動的に unmapped → full となる。
 
@@ -59,7 +62,7 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 | Surface | 主な path | 備考 |
 |---|---|---|
 | surface_layout_write | `LayoutWriteCoordinator.java`、`ModelWriter.java`、`ModelDbController.java`、`organizer/application/**` + 該当 test 群 | apply / recovery / store seam。fan-out 先 2 lane + production-input lane |
-| surface_db_schema | `provider/**`、`DatabaseHelper.java`、`GridSizeMigrationUtil.java`、`lawnchair/src/app/lawnchair/migration/**` + 該当 test 群 | |
+| surface_db_schema | `provider/**`、`DatabaseHelper.java`、`GridSizeMigrationUtil.java`、`lawnchair/src/app/lawnchair/migration/**` + 該当 test 群（schema 4 test file は明示指定で self-trigger を保証。`com/.../organizer/` 直下は surface_layout_write の広い glob と重複するため） | |
 | surface_backup_restore | `lawnchair/src/app/lawnchair/backup/**`、`LauncherBackupAgent.java` + 該当 test 群 | |
 | surface_production_input | `organizer/integration/**` + 該当 test 群 | API 35 互換契約 |
 | surface_organizer_ui | `organizer/ui/**`、`organizer/*`（root file 群）、`lawnchair/src/app/lawnchair/ui/**`、`organizer/personalization/**`、`lawnchair/res/**` + 該当 test 群 | v1 は UI 4 lane を同一 group とする（画面単位分割は後続） |
@@ -96,10 +99,19 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 
 `tests/organizer-instrumentation/` には CI lane の class list に含まれない instrumentation
 test が存在する（例: `application/store/*Inspection*`、`locks/*`、`diagnostics/export/*`、
-`DeckRetirement*`、`GridMigration*`、usage probe 系、`NovaRestoreGridApplicationTest` 等）。
-これらは現状 unmapped source として扱われ、変更時は保守 default（全量起動）で実行される
-ため取りこぼしはないが、常時 gate からは外れている。恒久 lane への routing または明示的な
-diagnostic 分類は後続 Issue が所有する（本 Issue の範囲外: test の移動・追加は行わない）。
+`DeckRetirement*`、usage probe 系、`NovaRestoreGridApplicationTest` 等）。
+
+重要な制約: 各 lane の Gradle invocation は明示的な class filter で実行するため、
+**未 routing の class は full portfolio でも実行されない**。per-path fail-closed が保証
+するのは「既存 9 lane の全起動」であり、未 routing test 自身の oracle ではない。した
+がってこれらの test は現状 CI では一切実行されず、local / 手動実行のみの diagnostic
+扱いである。恒久 lane への routing（または明示的な diagnostic 分類の記録）は後続 Issue
+が所有する（本 Issue の Non-goal: test の移動・追加は行わない）。
+
+なお `tests/organizer-instrumentation/com/android/launcher3/model/**`（GridMigration 系）
+は `surface_db_schema` へ mapping されているが、db-migration lane はこれらを class list
+に含まない。この mapping は「変更時に schema 契約 lane を起動する」over-trigger であり、
+当該 class 自身の実行を意味しない（上記の未 routing 制約と同じ）。
 
 ## intermittent failure の分類と evidence・retry 方針
 
