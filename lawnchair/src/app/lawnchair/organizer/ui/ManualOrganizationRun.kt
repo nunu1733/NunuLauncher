@@ -1463,6 +1463,46 @@ class ManualOrganizationRun internal constructor(
     }
 
     /**
+     * Issue #417 (spec 417, AC-6 oracles (l)/(s); implementation-review fix):
+     * the live-owner pending-import save — the run-owned twin of
+     * [commitGeneratedSession]. The run lock is acquired FIRST and kept for
+     * the whole critical section; under it the gate-held transaction
+     * capability runs the exchange-side [save] (the attempt-fenced durable
+     * write) inside the exchange mutation gate, and — still inside the gate
+     * hold, via the run-provided [onGateHeld] callback — hands the callback
+     * the save result TOGETHER WITH the ownership re-verification (same
+     * runId, live [State.ScopeConfirmed], `boundExportId ==
+     * expectedExportId`), so a holder-side conditional tombstone for a
+     * dropped owner lands in the SAME critical section. The verdict cannot go
+     * stale under the hold — every binding mutation ([Operation.boundExportId]
+     * and the confirmed-scope lifetime) requires this very run lock, which the
+     * calling thread keeps throughout — and no code path acquires the run
+     * lock while holding the gate: the lock order stays run lock → gate (the
+     * former gate-held `isLiveScopeOwner` read from the holder's own
+     * `withGate` block was the gate→run-lock inversion a rebind admission
+     * could ABBA-deadlock against).
+     */
+    fun <T, R> savePendingImportForLiveOwner(
+        ownerRunId: RunId,
+        expectedExportId: String,
+        save: ExchangeGateTransaction.() -> T,
+        onGateHeld: ExchangeGateTransaction.(saveResult: T, ownedByLiveScope: Boolean) -> R,
+    ): R {
+        var settled: R? = null
+        synchronized(lock) {
+            exchangeGateTransaction.withinGate(
+                durableMutation = { exchangeGateTransaction.save() },
+                onGateHeld = { saveResult ->
+                    settled = exchangeGateTransaction.onGateHeld(saveResult, isLiveScopeOwnerLocked(ownerRunId, expectedExportId))
+                },
+            )
+        }
+        // `withinGate` always invokes the gate-held callback before returning
+        // (both capability implementations do), so the outcome is settled.
+        return settled ?: error("the gate-held save callback did not settle an outcome")
+    }
+
+    /**
      * Issue #417 (spec 417, fences (a)/(c)): read-only direct-attach
      * authority check for an import of a RUN_IN-origin session — true only
      * when this run's CURRENT frozen scope is live ([State.ScopeConfirmed])
@@ -1475,9 +1515,14 @@ class ManualOrganizationRun internal constructor(
      * `Operation.boundExportId`.
      */
     fun isLiveScopeOwner(runId: RunId, expectedExportId: String): Boolean = synchronized(lock) {
-        val current = state as? State.ScopeConfirmed ?: return@synchronized false
-        val operation = activeOperation ?: return@synchronized false
-        operation.runId == runId && isActiveLocked(operation) && operation.boundExportId == expectedExportId
+        isLiveScopeOwnerLocked(runId, expectedExportId)
+    }
+
+    /** The [isLiveScopeOwner] verdict; callers hold [lock]. */
+    private fun isLiveScopeOwnerLocked(runId: RunId, expectedExportId: String): Boolean {
+        val current = state as? State.ScopeConfirmed ?: return false
+        val operation = activeOperation ?: return false
+        return operation.runId == runId && isActiveLocked(operation) && operation.boundExportId == expectedExportId
     }
 
     /**

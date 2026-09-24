@@ -830,8 +830,10 @@ class ExchangeFlowStateHolder(
      * persistence failure is surfaced and the SAME expectedExportId cleanup
      * stays retryable through [retryExportCleanup] (session, binding and UI
      * owner stay consistent). A `Superseded` cleanup (stale binding or no
-     * live owner) falls back to the existing gate-held invalidation —
-     * exact-exportId-conditional itself, so it never touches a replacement.
+     * live owner) falls back to the gate-held failure-aware exact
+     * invalidation (`invalidateIf`, never a bare delete) —
+     * exportId-conditional itself, so it never touches a replacement, and a
+     * fallback `WriteFailed` keeps the same retryable state.
      */
     private fun settleExportCleanup(exportId: String, afterTerminal: () -> Unit) {
         scope.launch(Dispatchers.IO) {
@@ -855,18 +857,59 @@ class ExchangeFlowStateHolder(
 
             ManualOrganizationRun.ExportCleanupOutcome.Superseded -> {
                 // Stale binding or no live owner: the run-owned seam is a
-                // typed no-op — the legacy gate-held invalidation (exact-
-                // exportId-conditional itself, so it never touches a
-                // replacement) keeps the no-ghost-session contract.
+                // typed no-op. The fallback keeps the no-ghost-session
+                // contract through the SAME failure-aware primitive as the
+                // main path — the exact `invalidateIf(expectedExportId)` under
+                // the gate — so a persistence failure is OBSERVED and stays
+                // retryable instead of an unobserved best-effort delete
+                // (implementation-review finding 3). The retry re-runs this
+                // fallback (the run-owned seam stays `Superseded` once the
+                // binding is gone — only the exact invalidation can reach a
+                // terminal outcome), and it is exact-exportId-conditional
+                // itself, so it never touches a replacement.
                 pendingExportCleanup = null
-                scope.launch(Dispatchers.IO) {
-                    controller.invalidateSession(exportId)
-                    withContext(uiDispatcher) { afterTerminal() }
-                }
+                launchSupersededExportFallback(exportId, afterTerminal)
             }
 
             ManualOrganizationRun.ExportCleanupOutcome.WriteFailed -> {
                 pendingExportCleanup = { settleExportCleanup(exportId, afterTerminal) }
+                status = ExchangeStatus(ExchangeStatus.Kind.EXPORT_CLEANUP_FAILED)
+            }
+        }
+    }
+
+    /**
+     * The gate-held fallback of a `Superseded` run-owned cleanup (stale
+     * binding or no live owner): the exact `invalidateIf(expectedExportId)`.
+     * `Committed`/`NoMatch` are terminal; a `WriteFailed` keeps the typed
+     * retryable state with the SAME anchor contract as the main cleanup path
+     * (the session, the UI owner and the retryable handle stay consistent
+     * until the invalidation lands).
+     */
+    private fun launchSupersededExportFallback(exportId: String, afterTerminal: () -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val fallback = exchangeMutationGate.withGate {
+                toStoreInvalidationOutcome(controller.invalidateSessionIf(exportId))
+            }
+            withContext(uiDispatcher) { settleSupersededExportFallback(exportId, fallback, afterTerminal) }
+        }
+    }
+
+    private fun settleSupersededExportFallback(
+        exportId: String,
+        fallback: ManualOrganizationRun.StoreInvalidationOutcome,
+        afterTerminal: () -> Unit,
+    ) {
+        when (fallback) {
+            ManualOrganizationRun.StoreInvalidationOutcome.Committed,
+            ManualOrganizationRun.StoreInvalidationOutcome.NoMatch,
+            -> {
+                pendingExportCleanup = null
+                afterTerminal()
+            }
+
+            ManualOrganizationRun.StoreInvalidationOutcome.WriteFailed -> {
+                pendingExportCleanup = { launchSupersededExportFallback(exportId, afterTerminal) }
                 status = ExchangeStatus(ExchangeStatus.Kind.EXPORT_CLEANUP_FAILED)
             }
         }
@@ -1550,12 +1593,27 @@ class ExchangeFlowStateHolder(
      *
      * Issue #417 (fence (b), spec 417 AC-6): the RUN_IN fence splits by
      * direct-attach authority — a LIVE OWNER (the run still holds its frozen
-     * scope, same runId, AND `isLiveScopeOwner` matches the record's
-     * exportId) keeps the existing adopt-and-attach behavior; an OWNERLESS
-     * RUN_IN origin (no owner observed at begin, or the owner died) saves as
-     * a plain RUN_IN pending WITHOUT any attach requirement — the save-success
-     * face becomes the ImportReview resume path, never the direct-attach
-     * success state.
+     * scope, same runId, AND the binding matches the record's exportId) keeps
+     * the existing adopt-and-attach behavior; an OWNERLESS RUN_IN origin (no
+     * owner observed at begin) saves as a plain RUN_IN pending WITHOUT any
+     * attach requirement — the save-success face becomes the ImportReview
+     * resume path, never the direct-attach success state.
+     *
+     * Issue #417 (implementation-review fix, oracles (l)/(s)): the lock order
+     * is the accepted 正順 — the run owns its lock FIRST. A LIVE-OWNER RUN_IN
+     * save is the run-owned transaction
+     * [ManualOrganizationRun.savePendingImportForLiveOwner]: the run lock is
+     * taken before the gate-held critical section opens and kept across the
+     * whole hold; the ownership verdict is (re-)verified under that lock in
+     * the gate-held callback that also runs the conditional tombstone — the
+     * binding cannot change under the hold, because its mutations need the
+     * very run lock this thread holds. The former shape (this holder opening
+     * the gate and calling `run.isLiveScopeOwner` inside the hold) was a
+     * gate→run-lock acquisition: a rebind admission holding the run lock and
+     * waiting on the gate crossed it as an ABBA deadlock. Ownerless RUN_IN
+     * and IDLE saves stay gate-only — no run lock is involved there, and no
+     * `withGate` block in this holder touches a run seam that takes the run
+     * lock.
      *
      * The gate is RELEASED before the UI settle runs: the settle is a pure
      * screen/state projection (it never touches the store — spec 375
@@ -1564,43 +1622,75 @@ class ExchangeFlowStateHolder(
      */
     private fun launchDurablePendingIntentSave(attempt: ImportAttempt, record: DurablePendingIntent) {
         scope.launch(Dispatchers.IO) {
-            val outcome: DurableSaveOutcome = exchangeMutationGate.withGate<DurableSaveOutcome> {
-                // Fence 1.
-                if (activeAttempt?.token != attempt.token) {
-                    return@withGate DurableSaveOutcome.FencedBeforeWrite
-                }
-                val saved = pendingImportStore.save(record)
-                val stillCurrent = activeAttempt?.token == attempt.token
-                if (!stillCurrent) {
-                    // Fence 2: a stale landed write is INVALIDATED inside the
-                    // same gate hold via the conditional tombstone (the
-                    // accepted spec's invalidation commit — `Committed`/
-                    // `NoMatch` are invalidation successes; `WriteFailed`
-                    // leaves the proposal valid and stays typed/retryable).
-                    // A newer attempt's record is never the victim (full
-                    // equality). The in-memory slots already belong to the
-                    // successor attempt — the settle must not touch them.
-                    val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
-                    return@withGate DurableSaveOutcome.FencedAfterWrite(record, invalidation)
-                }
-                // Issue #417: RUN_IN-origin fence (b). The live-owner path
-                // keeps the old adopt-or-fence behavior; the ownerless path
-                // (no owner observed at begin) is the legitimate durable
-                // recovery save and has NO run-state requirement.
-                if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
-                    val owningRunId = attempt.owningRunId
-                    if (owningRunId == null) {
-                        return@withGate DurableSaveOutcome.Written(saved)
-                    }
-                    if (!run.isLiveScopeOwner(owningRunId, record.exportId)) {
-                        val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
-                        return@withGate DurableSaveOutcome.OwningRunDropped(record, invalidation)
+            val outcome: DurableSaveOutcome = if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN && attempt.owningRunId != null) {
+                // Live-owner RUN_IN save: run lock → gate (the run-owned
+                // transaction), never gate → run lock. The ownership verdict
+                // handed to the gate-held callback is re-verified under the
+                // run lock AFTER the save body — the lock is held across the
+                // whole hold, so it is exactly as fresh as the binding.
+                run.savePendingImportForLiveOwner(
+                    attempt.owningRunId!!,
+                    record.exportId,
+                    save = { attemptFencedDurableSave(attempt, record) },
+                ) { provisional, ownedByLiveScope ->
+                    when {
+                        provisional is DurableSaveOutcome.Written && !ownedByLiveScope -> {
+                            // Issue #417 fence (b): the owner observed at begin
+                            // no longer binds this exact export — the landed
+                            // write is invalidated INSIDE the same gate hold
+                            // (a store failure keeps the record as the
+                            // invalidation retry anchor).
+                            val invalidation = if (provisional.saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
+                            DurableSaveOutcome.OwningRunDropped(record, invalidation)
+                        }
+
+                        else -> provisional
                     }
                 }
-                DurableSaveOutcome.Written(saved)
+            } else {
+                // Ownerless RUN_IN / IDLE save: gate-only, no run lock taken.
+                exchangeMutationGate.withGate<DurableSaveOutcome> {
+                    attemptFencedDurableSave(attempt, record)
+                }
             }
             withContext(uiDispatcher) { settlePendingIntentSave(attempt, outcome) }
         }
+    }
+
+    /**
+     * The attempt-fenced durable body of one pending-import save, executed
+     * inside the exchange gate hold (via the run-owned transaction for a
+     * live-owner RUN_IN save, via the holder's `withGate` otherwise).
+     *
+     * - Fence 1 (pre-write currency): an attempt already invalidated before
+     *   the gate was granted never writes at all;
+     * - Fence 2 (post-write currency): a write that LANDED while its attempt
+     *   went stale is INVALIDATED by `discardIf(record)` (conditional
+     *   tombstone — `Committed`/`NoMatch` settle it; `WriteFailed` keeps the
+     *   proposal valid as the invalidation retry anchor) inside the SAME gate
+     *   hold — never a newer attempt's record. The live-owner fence itself
+     *   runs in the run-owned callback that wraps this body.
+     */
+    private fun attemptFencedDurableSave(attempt: ImportAttempt, record: DurablePendingIntent): DurableSaveOutcome {
+        // Fence 1.
+        if (activeAttempt?.token != attempt.token) {
+            return DurableSaveOutcome.FencedBeforeWrite
+        }
+        val saved = pendingImportStore.save(record)
+        val stillCurrent = activeAttempt?.token == attempt.token
+        if (!stillCurrent) {
+            // Fence 2: a stale landed write is INVALIDATED inside the
+            // same gate hold via the conditional tombstone (the
+            // accepted spec's invalidation commit — `Committed`/
+            // `NoMatch` are invalidation successes; `WriteFailed`
+            // leaves the proposal valid and stays typed/retryable).
+            // A newer attempt's record is never the victim (full
+            // equality). The in-memory slots already belong to the
+            // successor attempt — the settle must not touch them.
+            val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
+            return DurableSaveOutcome.FencedAfterWrite(record, invalidation)
+        }
+        return DurableSaveOutcome.Written(saved)
     }
 
     /** Pure result of the gate-held durable save critical section. */
@@ -1611,7 +1701,7 @@ class ExchangeFlowStateHolder(
         /** The write landed but the attempt went stale mid-flight; invalidated inside the gate. */
         data class FencedAfterWrite(val record: DurablePendingIntent, val invalidation: DiscardIfResult) : DurableSaveOutcome
 
-        /** The run-in owning run lost its surface; the write was invalidated inside the gate. */
+        /** The run-in owning run lost its binding; the landed write was invalidated inside the same gate hold. */
         data class OwningRunDropped(val record: DurablePendingIntent, val invalidation: DiscardIfResult) : DurableSaveOutcome
 
         /** The write landed for a still-current attempt; settle adopts/fails per [saved]. */

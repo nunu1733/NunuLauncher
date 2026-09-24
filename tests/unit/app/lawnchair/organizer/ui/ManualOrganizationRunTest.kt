@@ -3064,6 +3064,91 @@ class ManualOrganizationRunTest {
     }
 
     @Test
+    fun savePendingImportForLiveOwnerVerifiesTheExactBindingUnderItsOwnLockFirst() {
+        // Issue #417 (review finding 1, oracles (l)/(s)): the live-owner
+        // pending-import save is the run-owned transaction — the run lock is
+        // held across the gate hold and the ownership verdict reaches the
+        // holder's gate-held callback from under that lock, so the holder
+        // never asks for the run lock inside a gate hold.
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val confirmed = runner.state as ManualOrganizationRun.State.ScopeConfirmed
+        runner.commitGeneratedSession(
+            epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!,
+            exportId = "export-e1",
+        ) { ManualOrganizationRun.PersistOutcome.Committed }
+
+        // Live owner, exact export: the save runs inside the capability and
+        // the gate-held callback sees the Owned verdict plus the save result.
+        var callbackSaveResult: String? = null
+        val saved = runner.savePendingImportForLiveOwner(
+            confirmed.runId,
+            "export-e1",
+            save = { "store-write" },
+        ) { saveResult, owned ->
+            check(owned) { "the bound export must verify as live-owner owned" }
+            callbackSaveResult = saveResult
+            "save-result"
+        }
+        assertEquals("save-result", saved)
+        assertEquals("store-write", callbackSaveResult)
+
+        // A different exportId than the current binding: the save still runs
+        // (the holder's fences live in the gate-held section) but the verdict
+        // is Dropped.
+        runner.savePendingImportForLiveOwner(
+            confirmed.runId,
+            "export-e2",
+            save = { "other-write" },
+        ) { _, owned ->
+            assertFalse("a non-bound export must not verify as owned", owned)
+            "dropped-result"
+        }
+
+        // The binding cleared (cleanup): the same export no longer verifies.
+        runner.cleanupBoundExport("export-e1") { ManualOrganizationRun.StoreInvalidationOutcome.Committed }
+        runner.savePendingImportForLiveOwner(
+            confirmed.runId,
+            "export-e1",
+            save = { "after-cleanup-write" },
+        ) { _, owned ->
+            assertFalse("a cleared binding must not verify as owned", owned)
+            "after-cleanup"
+        }
+
+        // The owner left the frozen scope: no ownership, no crash.
+        runner.reopenSelection()
+        runner.savePendingImportForLiveOwner(
+            confirmed.runId,
+            "export-e1",
+            save = { "after-reopen-write" },
+        ) { _, owned ->
+            assertFalse(owned)
+            "after-reopen"
+        }
+    }
+
+    @Test
+    fun savePendingImportForLiveOwnerOnAnIdleRunIsDroppedWithoutASaveLockError() {
+        val runner = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            OrganizationPlanner { error("planner must not run") },
+        )
+        var invoked = false
+        runner.savePendingImportForLiveOwner(
+            RunId(RUN_ID),
+            "export-e1",
+            save = { "idle-write" },
+        ) { saveResult, owned ->
+            invoked = true
+            assertFalse(owned)
+            assertEquals("idle-write", saveResult)
+            "idle-result"
+        }
+        assertTrue(invoked)
+    }
+
+    @Test
     fun discardScopeBoundRequestCommittedClearsTheBindingAndInvalidatesTheEpochFirst() {
         val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
         val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })

@@ -106,6 +106,19 @@ class ExchangeFlowStateHolderTest {
         var failInvalidateIf = false
 
         /**
+         * Review finding 3: which exportId the failure-aware conditional
+         * invalidation last saw — proves the Superseded fallback goes through
+         * `invalidateIf` (never the bare `invalidate` delete), and that the
+         * retry targets the SAME expectedExportId.
+         */
+        @Volatile
+        var lastInvalidatedIfExportId: String? = null
+
+        /** Review finding 3: the bare-delete path is never used by the fallback. */
+        @Volatile
+        var bareInvalidateCalls = 0
+
+        /**
          * Issue #372 review: a controllable gate that parks the invalidate
          * BEFORE it clears the session, so the settle-pending boundary is
          * deterministic in the busy-close regression.
@@ -115,6 +128,13 @@ class ExchangeFlowStateHolderTest {
 
         @Volatile
         var invalidateEntered = false
+
+        /** Review finding 3: the same parking gate on the failure-aware path. */
+        @Volatile
+        var invalidateIfGate: CountDownLatch? = null
+
+        @Volatile
+        var invalidateIfEntered = false
 
         override fun save(session: ExportSession): Boolean {
             saveCalls++
@@ -134,6 +154,7 @@ class ExchangeFlowStateHolderTest {
         override fun active(nowEpochMs: Long): ExportSession? = session?.takeIf { !it.isExpired(nowEpochMs) }
 
         override fun invalidate(exportId: String) {
+            bareInvalidateCalls++
             if (session?.exportId == exportId) {
                 invalidateEntered = true
                 invalidateGate?.await(5, TimeUnit.SECONDS)
@@ -142,6 +163,9 @@ class ExchangeFlowStateHolderTest {
         }
 
         override fun invalidateIf(expectedExportId: String): ExportInvalidationResult {
+            lastInvalidatedIfExportId = expectedExportId
+            invalidateIfEntered = true
+            invalidateIfGate?.await(5, TimeUnit.SECONDS)
             if (failInvalidateIf) return ExportInvalidationResult.WriteFailed
             if (session?.exportId != expectedExportId) return ExportInvalidationResult.NoMatch
             session = null
@@ -1628,42 +1652,55 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun runInSettleAfterTheOwningRunIsGoneFencesTheCommittedRecordAway() {
-        // Issue #374 attempt-fence, run-in anchor + Issue #417 fence (b): a
-        // live-owner run-in validation that passes, whose durable save
-        // COMMITS, but whose owning run lost its frozen scope before the
-        // settle — the adoption is dropped AND the committed record is fenced
-        // away, so the dropped proposal never resurfaces as the durable
-        // status-card truth.
-        val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
+    fun runInImportTheLiveOwnerNeverBoundFencesTheCommittedRecordAway() {
+        // Issue #374 attempt-fence + Issue #417 fence (b) through the
+        // run-owned save: an entry-face import of a RUN_IN-origin reply whose
+        // exportId the live confirmed scope NEVER bound (a foreign request's
+        // session) lands its write, and the run-owned transaction's
+        // gate-held ownership re-verification fences it away INSIDE the same
+        // critical section — the dropped proposal never resurfaces as the
+        // durable status-card truth. (Review finding 1: the ownership
+        // re-verification runs under the run lock in the gate-held callback —
+        // owner death can no longer interleave mid-save, so the fence is
+        // exercised by the never-bound export, which is deterministic.)
+        val pendingStore = FakePendingIntentStore()
         val fixture = newFixture(
             detectionReady = true,
             scopedStructural = true,
             pendingStore = pendingStore,
         )
         confirmScopedCandidate(fixture)
+        val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+        // The live owner binds E1…
         fixture.holder.generateScoped(
             PrivacyTier.EXTERNAL_REDACTED,
             listOf(scopedCandidate),
             mapOf(scopedCandidate to "c1"),
         )
         awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
-        fixture.holder.openImport()
-        fixture.holder.import(scopedReplyFor(fixture.store.session!!))
-        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 } // the write is parked in the gated store
+        val boundExportId = fixture.store.session!!.exportId
+        fixture.holder.close()
+        // …while the imported reply belongs to a foreign scoped session (its
+        // legacy-compat origin decodes RUN_IN; the run never bound it).
+        val foreign = fixture.controller.generateForSelection(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        ) as ExchangeGenerationResult.Generated
 
-        fixture.run.cancel() // the owning run loses its frozen scope
-        pendingStore.saveGate!!.countDown() // the write commits anyway
+        fixture.holder.openImport() // the entry face: IMPORT_ONLY hosting
+        fixture.holder.import(scopedReplyFor(foreign.session))
         awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
 
-        Thread.sleep(200)
         assertFalse(fixture.holder.screen is ExchangeScreen.ImportSuccess)
         assertFalse(fixture.holder.screen is ExchangeScreen.ImportPersistenceFailure)
         assertFalse(fixture.holder.importAttemptActive)
-        assertNull("the dropped run-in proposal's record must be fenced away", pendingStore.record)
+        assertNull("the never-bound run-in proposal's record must be fenced away", pendingStore.record)
         // Issue #375: the fence invalidation goes through the conditional
         // tombstone commit (`discardIf`), not a bare physical delete.
         assertTrue("the committed record was invalidated by discardIf", pendingStore.discardIfCalls >= 1)
+        // The owner's own binding is untouched.
+        assertTrue(fixture.run.isLiveScopeOwner(runId, boundExportId))
     }
 
     @Test
@@ -3202,15 +3239,19 @@ class ExchangeFlowStateHolderTest {
             ExchangeDisclosureState(generated.session, generated.packageText, PrivacyTier.EXTERNAL_REDACTED),
         )
 
-        // A blocking store: the invalidate is provably unfinished while the
-        // gate holds, making the settle-pending boundary deterministic.
+        // A blocking store: the invalidation is provably unfinished while it
+        // holds, making the settle-pending boundary deterministic. Review
+        // finding 3: the unsent-disclosure session is not run-bound, so its
+        // cleanup is a `Superseded` no-op and the retire goes through the
+        // failure-aware exact invalidation (`invalidateIf`) — the hooks
+        // below pin THAT path.
         val gate = CountDownLatch(1)
-        store.invalidateGate = gate
+        store.invalidateIfGate = gate
         holder.closeDisclosure()
         assertTrue(currentDisclosureState(holder).cancelling)
-        awaitScreen(holder) { store.invalidateEntered }
+        awaitScreen(holder) { store.invalidateIfEntered }
 
-        // A second close while the invalidate is in flight: refused — the
+        // A second close while the invalidation is in flight: refused — the
         // face is retained and nothing is left mid-settle.
         holder.closeDisclosure()
         assertTrue(
@@ -3219,10 +3260,11 @@ class ExchangeFlowStateHolderTest {
         )
 
         // The gate releases: exactly then the flow closes and only the
-        // confirmed unsent session is invalidated.
+        // confirmed unsent session is invalidated (no bare delete ran).
         gate.countDown()
         awaitScreen(holder) { holder.screen is ExchangeScreen.Closed }
         assertNull(store.session)
+        assertEquals(0, store.bareInvalidateCalls)
     }
 
     @Test
@@ -3490,6 +3532,62 @@ class ExchangeFlowStateHolderTest {
         awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
         assertEquals(ManualOrganizationRun.ScopeDiscardOutcome.Discarded, outcome)
         assertNull(fixture.store.session)
+    }
+
+    @Test
+    fun supersededCleanupFallbackInvalidatesThroughTheFailureAwarePathAndSettles() {
+        // Review finding 3: a `Superseded` run-owned cleanup (owner-loss
+        // shape — the binding is gone) falls back to the FAILURE-AWARE exact
+        // invalidation (`invalidateIf`, never the bare delete) under the gate;
+        // a fallback success is terminal.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        confirmScopedCandidate(fixture)
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+        val boundSession = fixture.store.session!!
+        fixture.run.cancel() // the owning run is gone: the cleanup is Superseded
+
+        fixture.holder.closeDisclosure()
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+        assertNull("the fallback invalidation retired the session", fixture.store.session)
+        assertEquals(boundSession.exportId, fixture.store.lastInvalidatedIfExportId)
+        assertEquals("the fallback never used the bare delete", 0, fixture.store.bareInvalidateCalls)
+        assertEquals("the typed terminal status replaced the cancel flow", null, fixture.holder.status)
+    }
+
+    @Test
+    fun supersededCleanupFallbackWriteFailedKeepsTheRetryableStateUntilTheRetry() {
+        // Review finding 3 fault injection: owner-loss + delete failure —
+        // the fallback `WriteFailed` does NOT settle: the session, the
+        // cancelling face and the SAME retryable handle stay consistent, and
+        // the retry reaches the terminal.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        fixture.store.failInvalidateIf = true
+        confirmScopedCandidate(fixture)
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+        val boundSession = fixture.store.session!!
+        fixture.run.cancel() // owner-loss shape: the run-owned cleanup is Superseded
+
+        fixture.holder.closeDisclosure()
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.EXPORT_CLEANUP_FAILED }
+        assertNotNull("the failed fallback keeps the session", fixture.store.session)
+        assertTrue("the cancelling disclosure face is kept (no settle)", currentDisclosureOrNull(fixture.holder)?.cancelling == true)
+        assertEquals("the fallback used the failure-aware invalidation", boundSession.exportId, fixture.store.lastInvalidatedIfExportId)
+        assertEquals("the fallback never used the bare delete", 0, fixture.store.bareInvalidateCalls)
+
+        fixture.store.failInvalidateIf = false
+        fixture.holder.retryExportCleanup()
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+        assertNull("the retry's terminal invalidation cleared the session", fixture.store.session)
     }
 
     @Test

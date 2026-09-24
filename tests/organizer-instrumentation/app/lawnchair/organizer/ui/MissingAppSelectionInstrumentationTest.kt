@@ -284,6 +284,9 @@ class MissingAppSelectionInstrumentationTest {
         // former oracle asserted the continuation into InputUnavailable via
         // the display-level pass-through — replaced by the scope-first
         // contract.
+        //
+        // AC-8(e): with the empty cut the method-choice face has NO route
+        // back to a selection surface — system Back is the 中断 (zero-write).
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = SelectingFakeApplication(emptyList())
         val runner = ManualOrganizationRun(
