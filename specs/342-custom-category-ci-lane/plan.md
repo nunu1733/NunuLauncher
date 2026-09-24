@@ -2,7 +2,7 @@
 
 > Issue: #342
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted（2026-09-24。Phase1 re-review [Approved](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5810304096)、snapshot `06441db265`。Phase 2実装は本契約に従う）
 
 ## Current evidence
 
@@ -104,7 +104,7 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 ## Documentation updates
 
-- [x] spec status/history（本spec: draft）
+- [x] spec status/history（本spec: accepted 2026-09-24）
 - [ ] CONTEXT.md — domain language変更なしのため不要
 - [ ] DESIGN.md — system structure変更なしのため不要
 - [ ] ADR — lane接続判断は変更困難な判断でないため不要（portfolio docへ記録）
