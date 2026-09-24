@@ -284,3 +284,7 @@ None。UI を変更しないため（CI / docs のみの変更）。
   のみ・full 時のみ全 lane・smoke 時は全 skip を式として成立）、edge 正本を map file に
   一意化する記述を Scope / Scenario / Design / Change set / Alternatives 全体へ統一、
   validator の edge 比較は `surface_*` flag のみ（global flag 除外）と明確化。
+- 2026-09-24: PR #424 round-4 re-review (Changes requested) 対応: plan Design 6 の
+  「mapping 正本」残存文言の削除、validator #2 の drift 検出先を map file↔workflow へ
+  修正、Verification の AC-422-01/02 を同じ表現へ統一、Change set の廃止済み
+  `lanes_run` を `instrumentation_enabled` へ置換。

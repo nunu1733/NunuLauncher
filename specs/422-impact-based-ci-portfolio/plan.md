@@ -261,7 +261,8 @@ permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が�
 
 1. map file の lane 集合 == `ci.yml` の `organizer-instrumentation-*` job 集合。
 2. 各 lane の `surfaces` 集合 == その job の `if` 条件内の `surface_*` flag 参照集合
-   （**edge 完全一致比較**。docs↔workflow の mapping drift を検出する）。global 制御
+   （**edge 完全一致比較**。map file↔workflow 間の mapping drift を検出する。docs の
+   edge 記述は #7 の存在検査のみで、内容の整合は review が所有する）。global 制御
    flag（`full` / `instrumentation_enabled` / `permanent_run` 等の `surface_*` 以外の
    参照）は比較対象から除外する。
 3. `ci.yml` の `changes` job に定義された全 `surface_*` output が、map file 上でいずれか
@@ -281,10 +282,10 @@ permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が�
 #### 6. docs 再編
 
 - `ci-test-portfolio.md`: Issue #96 時代の内容を前提とした現状記述を、本 Issue の監査表
-  （contract・監査情報の正本、かつ map file の human-readable mirror）へ再編
-  mapping 正本へ再編（status: Implemented → 更新日付と本 Issue への参照を更新）。全 job の
-  監査表（AC-422-01 の項目）、分類、mapping/fan-out 表、failure 分類の実績、代表 run の
-  実測時間を記録する。
+  （contract・監査情報の正本、かつ map file と同じ edge の human-readable mirror）へ再編
+  する（status: Implemented → 更新日付と本 Issue への参照を更新）。全 job の監査表
+  （AC-422-01 の項目）、分類、mapping/fan-out の mirror 表、failure 分類の実績、代表 run
+  の実測時間を記録する。
 - `quality-strategy.md`: CI gates section を新構成へ更新。intermittent failure の分類
   category・証拠保持・retry 方針、および「新規 test / CI lane 追加時の審査ルール」section
   を追加。
@@ -321,7 +322,7 @@ push/PR/schedule/dispatch/workflow_call
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `.github/workflows/ci.yml` | surface filter 追加、list-files(json) による per-path unmapped 計算、`smoke`/`full`/`permanent_run`/`lanes_run` 計算、lane `if` 条件、Permanent gate の full/smoke 起動化、job 改名、schedule/dispatch/workflow_call trigger、capture step 全 lane 装備 | 本 Issue の実装本体 |
+| `.github/workflows/ci.yml` | surface filter 追加、list-files(json) による per-path unmapped 計算、`smoke`/`full`/`permanent_run`/`instrumentation_enabled` 計算、lane `if` 条件、Permanent gate の full/smoke 起動化、job 改名、schedule/dispatch/workflow_call trigger、capture step 全 lane 装備 | 本 Issue の実装本体 |
 | `tools/repo-contract/ci_portfolio_map.yml` | lane→surface / permanent gate / permanent-only surface の機械正本 | AC-422-03, 09 の比較基準 |
 | `docs/engineering/ci-test-portfolio.md` | 監査・分類・failure 実績の正本へ再編し、map file と同じ edge の human-readable mirror 表を含む | AC-422-01, 02, 06 の正本（edge は map file が正本） |
 | `docs/engineering/quality-strategy.md` | CI gates section 更新、failure 分類・retry 方針、test/CI 追加審査ルール | AC-422-07, 08 |
@@ -344,7 +345,7 @@ push/PR/schedule/dispatch/workflow_call
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-422-01, 02 | 監査表の review + 表↔workflow 整合は AC-422-09 validator | `python3 tools/repo-contract/validate_ci_portfolio.py` |
+| AC-422-01, 02 | 監査表は review、edge 整合は AC-422-09 validator による map file↔workflow 検証（docs は lane/surface の存在検査） | `python3 tools/repo-contract/validate_ci_portfolio.py` |
 | AC-422-03, 04 | 実装 PR の CI run（`ci` filter で全 job 自己実行）。代表 surface demo は `*-dev` branch への push で起動/非起動を実証: (a) docs-only (b) planner-only (c) organizer-ui のみ (d) 未 mapping path のみ (e) mapped+未 mapping の混在（fail-closed 発火）。各 run の started/skipped job 一覧を PR に記録 | GitHub Actions（push event on `422-*-dev` demo branches） |
 | AC-422-05 | `ci.yml` trigger 定義 + `workflow_dispatch`（`full-portfolio=true`）による全量経路の実行 run + `workflow_dispatch`（`full-portfolio=false`）smoke run で Permanent gate 全起動・instrumentation 全 skip を直接確認。merge 後の main push run と初回 scheduled run は後続 evidence として Issue comment へ記録する（scheduled は週次のため初回が翌週以降になる点は分離して扱う） | GitHub Actions |
 | AC-422-06 | rename 後 run の job 一覧、`grep -rn "organizer-instrumentation-issue" docs/ AGENTS.md` が canonical docs で空、実装 PR 上の high-risk-gate green | gh run view / grep |
