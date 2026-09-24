@@ -806,8 +806,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: >-
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest,app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/category-override-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest,app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest
       - name: Upload category-override instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

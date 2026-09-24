@@ -26,6 +26,7 @@ manual_helper = sys.argv[3]
 
 jobs = (
     ("organizer-instrumentation-manual-organization-ui-tests", manual_helper),
+    ("organizer-instrumentation-category-override-tests", None),
     ("organizer-instrumentation-onboarding-proposal-tests", None),
 )
 for job, helper in jobs:
