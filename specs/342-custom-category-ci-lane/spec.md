@@ -10,6 +10,8 @@ updated: 2026-09-24
 # CustomCategoryPreferences instrumentationをCI merge gateへ接続し、カテゴリ管理UIのa11y項目を自動assertに固定する
 
 > **Status:** **accepted** (2026-09-24) — Phase1 re-review [Approved](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5810304096)（snapshot `06441db265`）。関連契約: [spec 336](../336-user-defined-categories/spec.md) AC-12 / AC-13、監査記録 [docs/assessment/pr-341-user-defined-categories.md](../../docs/assessment/pr-341-user-defined-categories.md) Finding 1。本specは [PR #341][2] で特定されたnon-blocking残課題を、test表面とCI構成の変更だけで解消することを契約化する。productionの振る舞いは一切変更しない。
+>
+> **Phase2 evidence:** PR [#436](https://github.com/nunu1733/NunuLauncher/pull/436) head `d4a46ed7b0` / CI [run 35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) `conclusion=success`（category-override pass 10m11s、final-status pass）。AC-1〜AC-8 全checked。証跡: [issuecomment-5811509597](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5811509597)。
 
 ## Problem
 
@@ -136,13 +138,13 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 
 | AC | Evidence |
 |---|---|
-| AC-1 | 実装PRの `pull_request` CI run: lane job logに当該classの実行記録、`final-status` success |
-| AC-2 | `onNodeWithContentDescription(rename/delete label).assertHasClickAction()` + summary `LiveRegion == Polite` の成功（TalkBack側coverageはこのsemantics assertが担う） |
-| AC-3 | `assertIsFocused()` によるCompose/keyboard input focus復帰の成功（accessibility focusの証拠としては扱わない） |
-| AC-4〜AC-5 | 同CI run内の当該class成功（新assert method名で確認可能）。局所再現はAPI 36 emulator上で `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest` |
-| AC-6 | 5状態からの `assertNoRawIdsPresent` 呼び出し成功。局所再現はAC-4〜AC-5と同じcommand |
-| AC-7 | PR diffの `--name-status` 確認（test 1 file + ci.yml + portfolio docのみ） |
-| AC-8 | GitHub Actions run URL + `gh api` によるhead SHA照合（merge gate evidence） |
+| AC-1 | 実装PRの `pull_request` CI run: lane job logに当該classの実行記録、`final-status` success — [run 35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) / [category-override job](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938/job/107566822877) pass / [final-status](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938/job/107572621473) pass |
+| AC-2 | `onNodeWithContentDescription(rename/delete label).assertHasClickAction()` + summary `LiveRegion == Polite` の成功（TalkBack側coverageはこのsemantics assertが担う）— 同runで `rowsExposeLocalizedActionLabelsAndLiveRegion` 成功 |
+| AC-3 | `assertIsFocused()` によるCompose/keyboard input focus復帰の成功（accessibility focusの証拠としては扱わない）— 同runで `editorAndDialogTransitionsRestoreInputFocusToTheSummaryNode` 成功 |
+| AC-4〜AC-5 | 同CI run内の当該class成功（新assert method名で確認可能）。局所再現はAPI 36 emulator上で `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest` — 同runで `keyboardDpadActivates...` / `switchEquivalentSemantics...` / `rowsRemainReachableAtTwoHundredPercentFontScale` / `entryRowMeetsMinimumFortyEightDpTouchTarget` 成功 |
+| AC-6 | 5状態からの `assertNoRawIdsPresent` 呼び出し成功。局所再現はAC-4〜AC-5と同じcommand — 同runでhelper 5呼び出しを含むclass成功 |
+| AC-7 | PR diffの `--name-status` 確認（test 1 file + ci.yml + portfolio docのみ）— head `d4a46ed7b0` で確認済み（accepted spec/plan を除く実質3 path） |
+| AC-8 | GitHub Actions run URL + `gh api` によるhead SHA照合（merge gate evidence）— [run 35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) `conclusion=success`、`head_sha=d4a46ed7b0064e045076cb79a039a44daff77e2d` |
 
 ## Open questions
 
@@ -155,7 +157,7 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 - 2026-09-24: Re-entry改訂（review findings 1-4対応）。baselineを `origin/main` の `b146a63557` へ更新。Finding 1: AC-3/Scope/ScenarioをCompose/keyboard input focus復帰へ狭め、TalkBack accessibility focus証明の主張を除去。Finding 2: label/role契約を名前付きで操作可能なclick action（contentDescription + click action、Role要求なし）へ再定義。Finding 3: AC-6/Scope/Scenarioを共有contains-based helper `assertNoRawIdsPresent`（Text・EditableText・ContentDescriptionのsubstring走査、seed+minted両検査、5状態から呼出し）へ具体化。Finding 4: lane名をIssue #422による改名 `organizer-instrumentation-category-override-tests`（ci.yml 779行目、class list 814行目、`final-status` 970行目/needs 982行目）へ更新、test file 306行・vacuous文92-93行目を確認、portfolio docの#422書換え（Portfolio model + human mirror、normativeは `ci_portfolio_map.yml` 44-46行目）に合わせた記載へ修正。Statusはdraftのまま。
 - 2026-09-24: Re-review対応（snapshot `a7c66be43a` へのChanges requested 1点）。Scopeのfocus復帰例から「partial deleteのBack to categories」を削除し、AC-3/plan method 2と同じeditor/dialog exitに統一。現productionのfocus `LaunchedEffect` key（`creating, editorTarget, pendingDelete, statusMessage`）に `partialDeleteTarget` が含まれず当該経路の復帰が保証されないため、Non-goalsへ明示的に対象外を追加（要求する場合は別Issueでproduction変更とAC-7再判断）。AC-3/Scenario/planのfocus対象は従来どおりeditor/dialogのみで変更なし。
 - 2026-09-24: statusをdraft→acceptedへ遷移。snapshot `06441db265` へのRe-review [Approved](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5810304096) を受領。Phase 2実装は本契約に従う。
-- 2026-09-24: Phase 2実装完了。PR [#436](https://github.com/nunu1733/NunuLauncher/pull/436) head `d4a46ed7b0` のCI run [35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) で AC-1〜AC-8 を検証（category-override pass 10m11s / final-status pass）。証跡: [Issue comment](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5811509597)。AC checkboxを [x] へ遷移。
+- 2026-09-24: Phase 2検証完了。PR [#436](https://github.com/nunu1733/NunuLauncher/pull/436) head `d4a46ed7b0` のCI run [35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) `conclusion=success`（category-override pass 10m11s / final-status pass）で AC-1〜AC-8 を検証。証跡: [issuecomment-5811509597](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5811509597)。AC checkboxを [x] へ遷移。初回runの `manual-organization-ui` flakeは本diff外で failed-job rerun 後 pass。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/342 "Issue #342"
 [2]: https://github.com/nunu1733/NunuLauncher/pull/341 "PR #341 — user-defined categories"

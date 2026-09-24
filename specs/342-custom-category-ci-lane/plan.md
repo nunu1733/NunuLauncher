@@ -93,10 +93,10 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 | 実装PRの `pull_request` CI runでlane jobが新classを実行し成功。`gh api repos/nunu1733/NunuLauncher/actions/runs/<id>` でhead SHA照合 | GitHub Actions（API 36 emulator job） |
-| AC-2〜AC-6 | 新assert methodを含むclassの成功。局所再現は実機/emulatorで実行 | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest`（API 36 emulator）。compile確認は `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` |
-| AC-7 | `git diff --name-status <base>..<head>` が3 pathのみを示す | local |
-| AC-8 | lane成功 + `final-status` successのrun URL | GitHub Actions |
+| AC-1 | 実装PRの `pull_request` CI runでlane jobが新classを実行し成功。`gh api repos/nunu1733/NunuLauncher/actions/runs/<id>` でhead SHA照合 — **done** run 35977667938 / head `d4a46ed7b0` / category-override pass 10m11s | GitHub Actions（API 36 emulator job） |
+| AC-2〜AC-6 | 新assert methodを含むclassの成功。局所再現は実機/emulatorで実行 — **done** 同runで `CustomCategoryPreferencesInstrumentationTest` 含む2 class pass | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest`（API 36 emulator）。compile確認は `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` |
+| AC-7 | `git diff --name-status <base>..<head>` が3 pathのみを示す — **done** test + ci.yml + portfolio + accepted spec/plan | local |
+| AC-8 | lane成功 + `final-status` successのrun URL — **done** [run 35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) `conclusion=success` / final-status pass | GitHub Actions |
 
 共通gate: `./gradlew spotlessCheck`（test fileのformatting）、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`（既存unit suiteへの無影響確認）。
 
