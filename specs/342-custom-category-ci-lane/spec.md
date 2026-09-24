@@ -123,14 +123,14 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 
 ## Acceptance criteria
 
-- [ ] **AC-1** — `CustomCategoryPreferencesInstrumentationTest` が `ci.yml` のinstrumentation lane class listに列挙され、source/workflow変更PRの必須CI merge gate上でAPI 36 emulator上で実行される。lane失敗は `final-status` 失敗としてmergeをblockする。
-- [ ] **AC-2** — 名前付きで操作可能なclick action: entry行・delete行がlocalized action contentDescriptionとclick actionを持ち、summary nodeがpolite live regionを持つことが自動assertされている。semantic `Role` は要求しない（productionは明示的Roleを持たない）。
-- [ ] **AC-3** — Compose/keyboard input focus復帰: editor（作成・改名）と削除確認dialogを離れた後、既存 `FocusRequester` によりsummary nodeへCompose/keyboard input focusが戻ることが `assertIsFocused()` で自動assertされている。これはTalkBack accessibility focus復帰の証明を主張しない。
-- [ ] **AC-4** — keyboard/DPADとSwitch Access等価: DPAD移動+Center起動、およびsemantics `OnClick` 起動の経路が自動assertされている。
-- [ ] **AC-5** — 非色状態と200% font scale: 「Custom」テキストmarkerの存在、typed feedbackのテキスト提示、fontScale 2fでの最大長名・作成action・削除dialogの到達可能性、48dp touch targetが自動assertされている。
-- [ ] **AC-6** — raw ID非表示が、5状態（list・作成editor・改名editor・削除確認dialog・partial delete）から呼ばれる共有contains-based helper `assertNoRawIdsPresent(seedId, mintedId)` による実assertionに置き換わっている。helperは全semantics nodeのText・EditableText・ContentDescriptionをsubstring一致で走査し、seed IDとminted IDの両方を検査する（既存の結果を捨てる式文は残存しない）。
-- [ ] **AC-7** — production source・UI実装・文字列resource・依存関係のdiffはゼロである。変更はtest class、`ci.yml` のlane class list（と近接comment）、`ci-test-portfolio.md` のlane説明行追記に限定される。
-- [ ] **AC-8** — 実装PRのCI runで、当該laneが追加classを含めて成功し、`final-status` が成功している。
+- [x] **AC-1** — `CustomCategoryPreferencesInstrumentationTest` が `ci.yml` のinstrumentation lane class listに列挙され、source/workflow変更PRの必須CI merge gate上でAPI 36 emulator上で実行される。lane失敗は `final-status` 失敗としてmergeをblockする。
+- [x] **AC-2** — 名前付きで操作可能なclick action: entry行・delete行がlocalized action contentDescriptionとclick actionを持ち、summary nodeがpolite live regionを持つことが自動assertされている。semantic `Role` は要求しない（productionは明示的Roleを持たない）。
+- [x] **AC-3** — Compose/keyboard input focus復帰: editor（作成・改名）と削除確認dialogを離れた後、既存 `FocusRequester` によりsummary nodeへCompose/keyboard input focusが戻ることが `assertIsFocused()` で自動assertされている。これはTalkBack accessibility focus復帰の証明を主張しない。
+- [x] **AC-4** — keyboard/DPADとSwitch Access等価: DPAD移動+Center起動、およびsemantics `OnClick` 起動の経路が自動assertされている。
+- [x] **AC-5** — 非色状態と200% font scale: 「Custom」テキストmarkerの存在、typed feedbackのテキスト提示、fontScale 2fでの最大長名・作成action・削除dialogの到達可能性、48dp touch targetが自動assertされている。
+- [x] **AC-6** — raw ID非表示が、5状態（list・作成editor・改名editor・削除確認dialog・partial delete）から呼ばれる共有contains-based helper `assertNoRawIdsPresent(seedId, mintedId)` による実assertionに置き換わっている。helperは全semantics nodeのText・EditableText・ContentDescriptionをsubstring一致で走査し、seed IDとminted IDの両方を検査する（既存の結果を捨てる式文は残存しない）。
+- [x] **AC-7** — production source・UI実装・文字列resource・依存関係のdiffはゼロである。変更はtest class、`ci.yml` のlane class list（と近接comment）、`ci-test-portfolio.md` のlane説明行追記に限定される。
+- [x] **AC-8** — 実装PRのCI runで、当該laneが追加classを含めて成功し、`final-status` が成功している。
 
 ## Test oracle
 
@@ -155,6 +155,7 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 - 2026-09-24: Re-entry改訂（review findings 1-4対応）。baselineを `origin/main` の `b146a63557` へ更新。Finding 1: AC-3/Scope/ScenarioをCompose/keyboard input focus復帰へ狭め、TalkBack accessibility focus証明の主張を除去。Finding 2: label/role契約を名前付きで操作可能なclick action（contentDescription + click action、Role要求なし）へ再定義。Finding 3: AC-6/Scope/Scenarioを共有contains-based helper `assertNoRawIdsPresent`（Text・EditableText・ContentDescriptionのsubstring走査、seed+minted両検査、5状態から呼出し）へ具体化。Finding 4: lane名をIssue #422による改名 `organizer-instrumentation-category-override-tests`（ci.yml 779行目、class list 814行目、`final-status` 970行目/needs 982行目）へ更新、test file 306行・vacuous文92-93行目を確認、portfolio docの#422書換え（Portfolio model + human mirror、normativeは `ci_portfolio_map.yml` 44-46行目）に合わせた記載へ修正。Statusはdraftのまま。
 - 2026-09-24: Re-review対応（snapshot `a7c66be43a` へのChanges requested 1点）。Scopeのfocus復帰例から「partial deleteのBack to categories」を削除し、AC-3/plan method 2と同じeditor/dialog exitに統一。現productionのfocus `LaunchedEffect` key（`creating, editorTarget, pendingDelete, statusMessage`）に `partialDeleteTarget` が含まれず当該経路の復帰が保証されないため、Non-goalsへ明示的に対象外を追加（要求する場合は別Issueでproduction変更とAC-7再判断）。AC-3/Scenario/planのfocus対象は従来どおりeditor/dialogのみで変更なし。
 - 2026-09-24: statusをdraft→acceptedへ遷移。snapshot `06441db265` へのRe-review [Approved](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5810304096) を受領。Phase 2実装は本契約に従う。
+- 2026-09-24: Phase 2実装完了。PR [#436](https://github.com/nunu1733/NunuLauncher/pull/436) head `d4a46ed7b0` のCI run [35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) で AC-1〜AC-8 を検証（category-override pass 10m11s / final-status pass）。証跡: [Issue comment](https://github.com/nunu1733/NunuLauncher/issues/342#issuecomment-5811509597)。AC checkboxを [x] へ遷移。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/342 "Issue #342"
 [2]: https://github.com/nunu1733/NunuLauncher/pull/341 "PR #341 — user-defined categories"

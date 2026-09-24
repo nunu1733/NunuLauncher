@@ -104,21 +104,21 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 ## Documentation updates
 
-- [x] spec status/history（本spec: accepted 2026-09-24）
-- [ ] CONTEXT.md — domain language変更なしのため不要
-- [ ] DESIGN.md — system structure変更なしのため不要
-- [ ] ADR — lane接続判断は変更困難な判断でないため不要（portfolio docへ記録）
-- [ ] AGENTS.md — verified command変更なしのため不要
-- [ ] spec 336 — 本Issueでは編集しない（status: implementedのまま。実装完了後のAC-12/AC-13自動検証部分の充足はIssue #342のPR記録で示す）
+- [x] spec status/history（本spec: accepted 2026-09-24、AC検証 checkbox は Phase 2 CI 証跡後に [x]）
+- [x] CONTEXT.md — domain language変更なしのため不要
+- [x] DESIGN.md — system structure変更なしのため不要
+- [x] ADR — lane接続判断は変更困難な判断でないため不要（portfolio docへ記録）
+- [x] AGENTS.md — verified command変更なしのため不要
+- [x] spec 336 — 本Issueでは編集しない（status: implementedのまま。実装完了後のAC-12/AC-13自動検証部分の充足はIssue #342のPR記録で示す）
 
 ## Execution checklist
 
-- [ ] 現状の再現確認: class listに当該classが無いこと（`grep CustomCategoryPreferences .github/workflows/ci.yml` → exit 1）とvacuous assertの所在を実装branch上で確認。
-- [ ] 新assertを先に追加し、意図的な失敗（例: 一時的にliveRegion assertを外す等）で検出性を確認してから通す（失敗を再現するテストの規約。本質が「未接続だった」こと自体はAC-1のCI実行記録が代替証拠になる）。
-- [ ] class list追加 + lane comment更新。
-- [ ] portfolio doc更新。
-- [ ] local verification（上表）実行、PRへ結果記録。
-- [ ] 実装PRは `Refs #342` とし、Issue終了条件を満たす最終PRのみ `Closes #342` を含める。
+- [x] 現状の再現確認: class listに当該classが無いこと（`grep CustomCategoryPreferences .github/workflows/ci.yml` → exit 1）とvacuous assertの所在を実装branch上で確認。
+- [x] 新assertを先に追加し、意図的な失敗（例: 一時的にliveRegion assertを外す等）で検出性を確認してから通す（失敗を再現するテストの規約。本質が「未接続だった」こと自体はAC-1のCI実行記録が代替証拠になる）— 手順上の意図的失敗は省略し、AC-1のCI実行記録を代替証拠として採用（plan本文の代替規定どおり）。
+- [x] class list追加 + lane comment更新。
+- [x] portfolio doc更新。
+- [x] local verification（上表）実行、PRへ結果記録。
+- [x] 実装PRは `Refs #342` とし、Issue終了条件を満たす最終PRのみ `Closes #342` を含める — PR #436がAC-1〜AC-8充足の最終PRのため `Closes #342` へ更新。
 
 ## Stop conditions
 
@@ -126,6 +126,6 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 ## Explicitly unverified areas
 
-- 新assertがCI emulator上で通ること（font scale・focusの挙動は同一patternのcategory-override lane testがCI成功済みという間接証拠のみ。本準備taskではdevice実行をしていない。再entry検証（2026-09-24）も文書taskであり、新assertのdevice実行とlane runtime増分は依然未検証）。
-- class追加によるlane実行時間の増分（目安 +1〜3分。PRのCI実測で確認する）。
+- ~~新assertがCI emulator上で通ること~~ — 2026-09-24に PR #436 head `d4a46ed7b0` の category-override lane（run 35977667938, pass 10m11s）で検証済み。
+- ~~class追加によるlane実行時間の増分~~ — CI実測 10m11s（portfolio baseline 8.1 分比 +約2分。目安 +1〜3分の範囲内）。portfolio の timing 行は本Issueの scope 外のため未更新。
 - `ci-test-portfolio.md` の他lane行の欠落（旧ownership表時代のstaleness観察は#422書換えによりobsolete。現docの他lane記載の不足は本Issueで直さない）。
