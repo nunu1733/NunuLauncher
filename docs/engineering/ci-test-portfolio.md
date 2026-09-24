@@ -15,7 +15,7 @@
 | 分類 | 対象 | どこで走るか |
 |---|---|---|
 | Permanent PR gate | `validate-repo-contract`、`check-style`、`build-debug-apk`、`organizer-unit-tests` | `validate-repo-contract` は全 run（docs-only 含む）。残り 3 つは `permanent_run`（source \|\| ci \|\| full \|\| smoke） |
-| Conditional PR gate | 9 本の instrumentation lane | `instrumentation_enabled && (full \|\| own surface)`。surface は変更 diff から `changes` job が判定 |
+| Conditional PR gate | 10 本の instrumentation lane | `instrumentation_enabled && (full \|\| own surface)`。surface は変更 diff から `changes` job が判定 |
 | Main / scheduled regression | 同一 portfolio 全量 | main push・週次 schedule・`workflow_call`・`workflow_dispatch(full-portfolio=true)` は path にかかわらず全 lane（Permanent gate を含む） |
 | Smoke | repository contract + Permanent gate のみ | `workflow_dispatch(full-portfolio=false)`。paths 判定に依存しない決定的実行（instrumentation 全 skip） |
 | Diagnostic only | planner stress matrix、#418 系の診断 run | merge gate に恒久追加しない。`planner-stress.yml`（週次 / manual）と個別診断 branch |
@@ -97,8 +97,8 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 | exchange-import-ui lane | 10.2 分。exchange import surface の Compose 検証（#345 で local-only から昇格。CI green の実績あり） | Conditional（surface_organizer_ui） |
 | method-choice-journey lane | method-choice face の connected journey（#417 AC-8 (g)-(v) evidence。scope-first で凍結した scope 上の AI依頼作成 → 取り込み → attach を固定する per-class lane） | Conditional（surface_organizer_ui） |
 | onboarding-proposal lane | 9.7 分。proposal lifecycle / Back / focus / recreation / review admission。実入力注入は focus 観測を前提とする（#300 accepted、#304/#418 で環境系 failure 実績） | Conditional（surface_organizer_ui） |
-| failure-time evidence capture | 全 9 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。manual-organization-ui / category-override / onboarding-proposal は live emulator-runner wrapper内で実行し、残り6 laneはrunner後のcaptureを継続している（follow-up対象）。validator が装備を機械検証 | 補助（各 lane） |
-| failure capture lifecycle self-test | `validate-repo-contract` で全 run（docs-only 含む）に起動する 0.1 分未満の契約test。既存のcapture helper smoke testが各adb commandのtimeout・budget・出力上限を検証するのに対し、本testは `android-emulator-runner@v2` のrunner `script`が物理行単位で実行される境界、failure captureがemulator teardown前に走ること、元command statusの保持、success時の無capture、#52/#53/#99のworkflow wiringを検証する。分類は CI wrapper / artifact handling。9 laneのimpact surfaceを新設せず、既存のfailure-time capture補助処理の全lane契約を検査するため、既存testとの重複はない | 補助（`validate-repo-contract` 全 run） |
+| failure-time evidence capture | 全 10 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。manual-organization-ui / category-override / onboarding-proposal は live emulator-runner wrapper内で実行し、残り7 laneはrunner後のcaptureを継続している（follow-up対象）。validator が装備を機械検証 | 補助（各 lane） |
+| failure capture lifecycle self-test | `validate-repo-contract` で全 run（docs-only 含む）に起動する 0.1 分未満の契約test。既存のcapture helper smoke testが各adb commandのtimeout・budget・出力上限を検証するのに対し、本testは `android-emulator-runner@v2` のrunner `script`が物理行単位で実行される境界、failure captureがemulator teardown前に走ること、元command statusの保持、success時の無capture、#52/#53/#99のworkflow wiringを検証する。分類は CI wrapper / artifact handling。10 laneのimpact surfaceを新設せず、既存のfailure-time capture補助処理の全lane契約を検査するため、既存testとの重複はない | 補助（`validate-repo-contract` 全 run） |
 | final-status | 「当該 run に必要と判定された gate が完了したこと」を集約。skip は成功扱い、failure/cancelled のみ fail。needs の必須集合は validator が map file と突き合わせ | 集約（branch protection required check） |
 | planner-stress.yml | 8 seed × 512 case の exploration matrix。週次 / manual のみで PR gate でない（#46 の時点から分類適合） | Scheduled / Diagnostic |
 | high-risk-gate.yml | risk label / 高リスク path PR への独立 audit 記録検証。job ID 結合（`organizer-unit-tests` / `check-style` / `build-debug-apk` / `final-status`）は map file の `permanent_gates` 固定点として validator が保護 | Permanent（label/path 条件付き） |
@@ -111,7 +111,7 @@ test が存在する（例: `application/store/*Inspection*`、`locks/*`、`diag
 
 重要な制約: 各 lane の Gradle invocation は明示的な class filter で実行するため、
 **未 routing の class は full portfolio でも実行されない**。per-path fail-closed が保証
-するのは「既存 9 lane の全起動」であり、未 routing test 自身の oracle ではない。した
+するのは「既存 10 lane の全起動」であり、未 routing test 自身の oracle ではない。した
 がってこれらの test は現状 CI では一切実行されず、local / 手動実行のみの diagnostic
 扱いである。恒久 lane への routing（または明示的な diagnostic 分類の記録）は後続 Issue
 が所有する（本 Issue の Non-goal: test の移動・追加は行わない）。
@@ -143,7 +143,7 @@ test が存在する（例: `application/store/*Inspection*`、`locks/*`、`diag
 起動条件は既存のrepo-contract検証と同じくdocs-onlyを含む全runで、実emulator laneの再実行を
 発生させない。既存の`test_capture_emulator_failure_evidence.sh`はhelper内部のsnapshot収集契約を
 検査し、本testはrunner actionのteardown境界とworkflow wiring（現在は#52/#53/#99）を検査するため、
-責務は重複しない。残り6 laneのlive化は別Owner gateで扱う。
+責務は重複しない。残り7 laneのlive化は別Owner gateで扱う。
 
 ## 実測（参考値）
 

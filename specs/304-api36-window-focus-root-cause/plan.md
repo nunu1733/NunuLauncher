@@ -312,14 +312,18 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 - [run 35960396387](https://github.com/nunu1733/NunuLauncher/actions/runs/35960396387)でも、
   manual laneのGradle失敗後に`adb -s emulator-5554 emu kill`が実行され、その約2.5秒後に
   runner外captureが開始されていた。artifact `10792636632`もadb queryがdevice-not-found
-  となり、同じordering defectを再確認した。
+  となり、同じordering defectを再確認した。なお、同runのtest failureは
+  `OrganizerDiagnosticsRouteInstrumentationTest.issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute`
+  の`openRequestRowAndAwaitT15` 5秒`ComposeTimeout`（140 tests中1 failure）であり、#418元の
+  LazyList `Index 4,size 4`やfocus gate failureとは別signatureである。capture-orderの証拠として
+  は有効だが、root causeを同一視しない。
 - したがって、現行mainで検証すべき最小修正は、#52/#53のテストcommandをlive emulator-runner
   `script`内で実行し、command失敗時にcaptureを呼び、captureの終了statusで元のテストstatusを
   置き換えず返すことである。#425のcategory-override artifactが同じdevice不在を示したため、
   #99相当のcategory-override laneも同じwrapperへ含める。成功時はcaptureを実行せず、runner外の
   重複captureは置かない。
   この変更は診断経路だけを対象とし、production source、instrumentation test実装、
-  emulator provisioning、他6 laneのcapture方式は変更しない。残り6 laneのlive化は別Owner
+  emulator provisioning、他7 laneのcapture方式は変更しない。残り7 laneのlive化は別Owner
   gateで、同一PRに含めるかfollow-up Issueへ分離するかを決める。
 - 実装候補の検証は、wrapperのshell syntax、fake-`adb`によるlive device / device-goneの
   status保持、success時の無capture、既存capture helper、CI portfolio contractで行う。
