@@ -1,7 +1,7 @@
 # Quality Strategy
 
 > Status: Accepted
-> Updated: 2026-09-09 (bugreport JVM test filter added to organizer unit-test gate, Issue #242; current CI and high-risk gates verified in Issues #41 and #43; operational handoff contract recorded in Issue #251)
+> Updated: 2026-09-24 (Issue #422: impact-based CI portfolio、intermittent failure 分類・retry 方針、新規 test/CI lane 審査ルールを追加)
 
 ## Quality order
 
@@ -117,13 +117,78 @@ Issue #41 で organizer JVM test gateをCIに追加した。`.github/workflows/c
 
 ## Organizer connected-test CI gate
 
-Issue #83、#52、#53 の production/Launcher-host evidence は `.github/workflows/ci.yml` の独立した focused instrumentation job が source-changing PR で実行する。これらは `final-status` の required evidence であり、JVM gate の代替ではない。API 35 の #83 evidence と API 36 の #52/#53 evidence の責務、baseline、状態隔離、変更候補の判断は [ci-test-portfolio.md](./ci-test-portfolio.md) を正本とする。
+Issue #422 により、CI portfolio は impact-based 起動へ移行した。各 instrumentation
+lane は「変更が影響しうる impact surface に対応するとき」だけ PR で起動し、全 lane 実行
+は main push・週次 scheduled sweep・`workflow_call`・`workflow_dispatch(full-portfolio)` が
+担う。lane↔surface 対応の正本は [tools/repo-contract/ci_portfolio_map.yml](../../tools/repo-contract/ci_portfolio_map.yml)、
+各 lane の契約・分類・実測費用・過去 failure 分類を含む監査表の正本は
+[ci-test-portfolio.md](./ci-test-portfolio.md) である。以下は運用上の要点である。
 
-shared-writer seam の coordinator/transaction 回帰、Issue #119 の実Launcher modelを使うreload supersession回帰、Issue #120 のrestore helper lifecycle/file-set replacementは、独立した API 36 instrumentation job `organizer-instrumentation-shared-writer-tests` のrequired evidenceである。coordinator/transaction/restore caseはisolated fixture DBを使い、reload caseは実Launcher modelを使う。job全体をUI laneのapp stateとは別のclean emulatorで実行する。lane 責務の正本は [ci-test-portfolio.md](./ci-test-portfolio.md) である。
+- PR merge gate の中心条件は「開発によって変更された箇所、およびその変更によって影響
+  されうる既存 contract が検証できていること」である。file path ではなく impact
+  surface / production contract 単位で必要 test set を選ぶ。
+- 起動判定は `tools/ci/compute_ci_gating.py` が持つ per-path fail-closed 規則による。
+  diff に 1 件でも未 mapping の source file があれば全 source lane が起動する
+  （mapped / unmapped 混在でも発火）。mapping の隙間が gate の静かな skip として
+  現れないことを機械で保証する。
+- `organizer-unit-tests`・`check-style`・`build-debug-apk` は Permanent gate として
+  `permanent_run`（source || ci || full || smoke）で起動する。`validate-repo-contract`
+  は docs-only を含む全 run で実行する。
+- `.github/workflows/**` を変更する PR は `ci` filter により全量を自己実行する。
+  workflow-only change がその変更対象の gate を skip したまま merge されることを
+  許可しない。
+- Issue #52/#53 由来の状態隔離（lane ごとの clean emulator、database-heavy fixture
+  の非共有）は維持する。lane の改名（Issue 番号ベース → contract ベース）により job ID
+  は変わったが、class filter・clean-state 要件・coverage ownership は変更していない。
 
-Issue #52 と #53 は同じ API 36 emulator または target application state を共有しない。独立 job による clean emulator を各 suite に与え、source-changing PR の critical path から直列 emulator provisioning を除く。database-heavy fixture state、class-filtered Gradle invocation、coverage ownership は統合しない。
+## Intermittent failure の分類・証拠・retry 方針
 
-`.github/workflows/**` を変更する PR は、source-path filter が false でも同じ build、JVM、connected-test jobs を実行する。workflow-only change がその変更対象の gate を skip したまま merge されることを許可しない。
+Issue #422 で確立した方針。背景は #304 / #352 / #418（いずれも変更対象外の lane の
+failure が merge evidence を阻害した実績）。
+
+失敗は再実行の前に、次の分類のいずれかに割り当てる。
+
+1. **product regression** — production code の欠陥。修正は対象契約の最も低い層で
+   再現する regression test を伴う。
+2. **deterministic test defect** — test 自体の論理 bug（毎回失敗する）。
+3. **test synchronization / test harness defect** — 待ち合わせ・timeout・focus 等の
+   test harness 側の欠陥。
+4. **CI wrapper / artifact handling defect** — workflow・script・artifact 系の欠陥。
+5. **emulator / runner / platform environment defect** — SystemUI ANR・boot 不調等の
+   環境 signature。#418 が追跡中の代表例。
+6. **unknown / investigation required** — 上記に確定できないもの。tracking Issue を
+   分離する。
+
+運用規則:
+
+- 全 instrumentation lane が bounded failure-time evidence capture
+  （#315 実装の `tools/ci/capture-emulator-failure-evidence.sh`、continue-on-error）
+  を持ち、失敗時の証拠が rerun 前に artifact として残る。
+- 「rerun で green になった」ことのみを分類なしの merge evidence として扱わない。
+  rerun は分類の記録（Issue/PR コメントへの signature と分類の記載）を伴う。
+- 既知 environment signature を merge gate から無条件に除外しない。除外する場合は
+  対象 signature・根拠・検出条件を tracking Issue に記録し、portfolio 文書へ反映する。
+- 一時的 failure = production 無関係、という前提を置かない。再現性の低さと原因分類は
+  別問題である。
+
+## 新規 test / CI lane 追加時の審査ルール
+
+新しい test を追加するときは、PR で次を記載する。
+
+1. 既存 test / lane でその contract をカバーできない理由。
+2. regression oracle は可能な限り最も低く・速く・決定的な層に置いたこと。instrumentation
+   / emulator が必要な理由の明示（実 framework・実 process・実 storage に依存する等）。
+3. 新 test がどの impact surface に属し、どの変更で起動するか。既存 lane への統合で
+   済む場合は独立 lane を作らない。独立 lane が必要な場合は clean-state 要件を満たせ
+   ない理由。
+4. 既存 CI のどの lane と重複しないか。
+5. 恒久 PR gate に昇格する場合、scheduled sweep では不足する理由。
+6. `tools/repo-contract/ci_portfolio_map.yml` と
+   [ci-test-portfolio.md](./ci-test-portfolio.md) の監査表を同じ PR で更新する
+   （`validate_ci_portfolio.py` が map↔workflow の整合を強制する）。
+
+Issue 完了時の一時的 diagnostic test を、そのまま恒久 PR gate に昇格させない。
+obsolete / duplicated test の削除・降格も通常の保守として許容する。
 
 ## High-risk independent-evidence gate
 
