@@ -81,6 +81,8 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 | `.github/workflows/ci.yml` | `organizer-instrumentation-category-override-tests` のclass listへ `app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest` を追加、lane commentに#336管理UIの追記（AC-1） | merge gate常設化の正本構成。`final-status` は既存needsで効果を受ける |
 | `docs/engineering/ci-test-portfolio.md` | category-override laneのhuman-readable説明行へ#336管理UIのco-occupant追記（map fileのedge変更なしを検証） | Issue参考欄がlane責務の正本と指定するdoc。変更と同じPRで更新 |
 
+上記3 pathに加え、本PRは本spec/plan文書自体を同梱する（accepted snapshotのAC検証・証跡更新、およびAC-7境界の「実装delta 3 path + spec/plan 2 path」への明確化。#417 PR #432と同じ運用）。実装deltaの判定ではspec/planを除外する。
+
 ## Migration and recovery
 
 - schema/rule migration: なし。
@@ -93,10 +95,10 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 | 実装PRの `pull_request` CI runでlane jobが新classを実行し成功。`gh api repos/nunu1733/NunuLauncher/actions/runs/<id>` でhead SHA照合 — **done** run 35977667938 / head `d4a46ed7b0` / category-override pass 10m11s | GitHub Actions（API 36 emulator job） |
+| AC-1 | 実装PRの `pull_request` CI runでlane jobが新classを実行し成功。`gh api repos/nunu1733/NunuLauncher/actions/runs/<id>` でhead SHA照合 — **done** run 35989680999 / 実装head `c6e7bb70f7` / category-override pass（round2 review対応後の再実行） | GitHub Actions（API 36 emulator job） |
 | AC-2〜AC-6 | 新assert methodを含むclassの成功。局所再現は実機/emulatorで実行 — **done** 同runで `CustomCategoryPreferencesInstrumentationTest` 含む2 class pass | `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest`（API 36 emulator）。compile確認は `./gradlew assembleLawnWithQuickstepGithubDebugAndroidTest` |
-| AC-7 | `git diff --name-status <base>..<head>` が3 pathのみを示す — **done** test + ci.yml + portfolio + accepted spec/plan | local |
-| AC-8 | lane成功 + `final-status` successのrun URL — **done** [run 35977667938](https://github.com/nunu1733/NunuLauncher/actions/runs/35977667938) `conclusion=success` / final-status pass | GitHub Actions |
+| AC-7 | `git diff --name-status <base>..<head>` が**実装delta 3 path**（test + ci.yml + portfolio doc）+ 本spec/planの2 path = 5 pathを示すこと（spec AC-7の境界どおり。production/`res/`/`tools/`差分はゼロ。spec/planの同梱は#417 PR #432と同じ運用）— **done** 実装delta 3 path + spec/plan 2 pathで確認 | local |
+| AC-8 | lane成功 + `final-status` successのrun URL — **done** [run 35989680999](https://github.com/nunu1733/NunuLauncher/actions/runs/35989680999) `conclusion=success`（実装head `c6e7bb70f7`）/ final-status pass。最終headのmerge gate runはPR記録参照 | GitHub Actions |
 
 共通gate: `./gradlew spotlessCheck`（test fileのformatting）、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`（既存unit suiteへの無影響確認）。
 
@@ -126,6 +128,6 @@ test内に完結: fake storeのseed → coordinator注入 → Compose操作 → 
 
 ## Explicitly unverified areas
 
-- ~~新assertがCI emulator上で通ること~~ — 2026-09-24に PR #436 head `d4a46ed7b0` の category-override lane（run 35977667938, pass 10m11s）で検証済み。
-- ~~class追加によるlane実行時間の増分~~ — CI実測 10m11s（portfolio baseline 8.1 分比 +約2分。目安 +1〜3分の範囲内）。portfolio の timing 行は本Issueの scope 外のため未更新。
+- ~~新assertがCI emulator上で通ること~~ — 2026-09-24に PR #436 実装head `c6e7bb70f7` の category-override lane（[run 35989680999](https://github.com/nunu1733/NunuLauncher/actions/runs/35989680999)。round2 review対応で追加した作成保存後・改名保存後focus assertを含む）で検証済み。round1 head `d4a46ed7b0`（run 35977667938）でも検証済み。
+- ~~class追加によるlane実行時間の増分~~ — CI実測 8m50s（実装head `c6e7bb70f7`、run 35989680999。round1実測 10m11s。portfolio baseline 8.1 分比 +約1〜2分で、目安 +1〜3分の範囲内）。portfolio の timing 行は本Issueの scope 外のため未更新。
 - `ci-test-portfolio.md` の他lane行の欠落（旧ownership表時代のstaleness観察は#422書換えによりobsolete。現docの他lane記載の不足は本Issueで直さない）。
