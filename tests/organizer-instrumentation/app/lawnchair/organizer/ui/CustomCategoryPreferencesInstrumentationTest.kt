@@ -1,19 +1,42 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.requestFocus
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
@@ -44,24 +67,32 @@ import app.lawnchair.organizer.rules.storedSnapshot
 import app.lawnchair.ui.preferences.destinations.CustomCategoryPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Issue #336 management-surface evidence (compile-gated here; device runs are
- * CI's job): create/rename/delete flows, the typed duplicate-name feedback,
- * the delete confirmation's assignment count + automatic-classification
- * wording with no remap option, the truthful partial-delete rendering, and the
- * "Custom" marker in the assignment selector — never a raw category ID.
+ * Issue #336 management-surface evidence + spec 336 AC-13 automated a11y
+ * asserts (issue #342; compile-gated here, device runs are CI's job):
+ * create/rename/delete flows with typed feedback, localized
+ * "Rename <name>"/"Delete <name>" click actions, a polite live region on the
+ * summary, Compose/keyboard input focus restore on editor and dialog exits,
+ * keyboard/DPAD and Switch Access equivalent activation, the color-independent
+ * "Custom" marker, 200%-font-scale reachability with a 48dp touch target, and
+ * a real contains-based raw-ID semantics scan — never a raw category ID.
  */
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalTestApi::class)
 class CustomCategoryPreferencesInstrumentationTest {
 
     @get:Rule
     val composeRule = createComposeRule()
 
     private val userId = UserCategoryId("3f2b8c4e-1234-4abc-9de0-1234567890ab")
+
+    private val mintedId = "00000000-0000-4000-8000-000000000001"
 
     @Test
     fun createFlowRendersTypedDuplicateFeedbackAndListsTheCreatedEntry() {
@@ -89,8 +120,8 @@ class CustomCategoryPreferencesInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_save)).performClick()
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_error_duplicate_name)).assertIsDisplayed()
 
-        // Raw IDs never render anywhere on the surface.
-        composeRule.onAllNodesWithText(userId.value).fetchSemanticsNodes().isEmpty()
+        // AC-6 state 2: the create editor's full semantics tree carries no raw id.
+        assertNoRawIdsPresent(userId.value, mintedId)
     }
 
     @Test
@@ -152,6 +183,8 @@ class CustomCategoryPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_retry)).fetchSemanticsNodes().isNotEmpty()
         }
+        // AC-6 state 5: the partial-delete view carries no raw id either.
+        assertNoRawIdsPresent(userId.value, mintedId)
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_retry)).performClick()
 
         composeRule.waitUntil(5_000) {
@@ -183,6 +216,281 @@ class CustomCategoryPreferencesInstrumentationTest {
 
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Morning routine").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    // ---- spec 336 AC-13 asserts (issue #342) --------------------------------
+
+    @Test
+    fun rowsExposeLocalizedActionLabelsAndLiveRegion() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val catalog = FakeCatalogStore().apply { seed(listOf(UserDefinedCategory(userId, "Commute"))) }
+        composeRule.setContent {
+            LawnchairTheme {
+                CustomCategoryPreferences(coordinator = UserDefinedCategoryAuthoringCoordinator(catalog, FakeOverrideStore()))
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription(
+            context.getString(R.string.organizer_custom_category_rename_action, "Commute"),
+        ).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithContentDescription(
+            context.getString(R.string.organizer_custom_category_delete_action, "Commute"),
+        ).assertIsDisplayed().assertHasClickAction()
+        val summaryConfig = composeRule.onNodeWithText(
+            context.getString(R.string.organizer_custom_category_summary),
+        ).fetchSemanticsNode().config
+        assertTrue(
+            "The summary node must declare a polite live region",
+            summaryConfig.contains(SemanticsProperties.LiveRegion) &&
+                summaryConfig[SemanticsProperties.LiveRegion] == LiveRegionMode.Polite,
+        )
+        // AC-6 state 1: the plain list carries no raw id.
+        assertNoRawIdsPresent(userId.value, mintedId)
+    }
+
+    @Test
+    fun editorAndDialogTransitionsRestoreInputFocusToTheSummaryNode() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val summary = context.getString(R.string.organizer_custom_category_summary)
+        val cancel = context.getString(R.string.organizer_custom_category_cancel)
+        val catalog = FakeCatalogStore().apply { seed(listOf(UserDefinedCategory(userId, "Commute"))) }
+        val overrides = FakeOverrideStore().apply { seed(mapOf(key("com.a") to CategoryIdentity.UserDefined(userId))) }
+        composeRule.setContent {
+            LawnchairTheme {
+                CustomCategoryPreferences(coordinator = UserDefinedCategoryAuthoringCoordinator(catalog, overrides))
+            }
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(summary).fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Create editor → cancel.
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_create)).performClick()
+        composeRule.onNodeWithTag("custom-category-name-field").assertIsDisplayed()
+        composeRule.onNodeWithText(cancel).performClick()
+        awaitSummaryFocus(summary)
+
+        // Rename editor → cancel.
+        composeRule.onNodeWithContentDescription(
+            context.getString(R.string.organizer_custom_category_rename_action, "Commute"),
+        ).performClick()
+        composeRule.onNodeWithTag("custom-category-name-field").assertIsDisplayed()
+        // AC-6 state 3: the rename editor carries no raw id.
+        assertNoRawIdsPresent(userId.value, mintedId)
+        composeRule.onNodeWithText(cancel).performClick()
+        awaitSummaryFocus(summary)
+
+        // Delete dialog → cancel.
+        composeRule.onNodeWithContentDescription(
+            context.getString(R.string.organizer_custom_category_delete_action, "Commute"),
+        ).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_title)).assertIsDisplayed()
+        // AC-6 state 4: the delete confirmation dialog carries no raw id.
+        assertNoRawIdsPresent(userId.value, mintedId)
+        composeRule.onNodeWithText(cancel).performClick()
+        awaitSummaryFocus(summary)
+
+        // Delete dialog → confirm.
+        composeRule.onNodeWithContentDescription(
+            context.getString(R.string.organizer_custom_category_delete_action, "Commute"),
+        ).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_confirm)).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isEmpty()
+        }
+        awaitSummaryFocus(summary)
+    }
+
+    @Test
+    fun keyboardDpadActivatesCreateActionFromTheSummaryNode() {
+        var inputModeManager: InputModeManager? = null
+        composeRule.setContent {
+            inputModeManager = LocalInputModeManager.current
+            LawnchairTheme {
+                CustomCategoryPreferences(coordinator = UserDefinedCategoryAuthoringCoordinator(FakeCatalogStore(), FakeOverrideStore()))
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val create = context.getString(R.string.organizer_custom_category_create)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(create).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.runOnIdle {
+            requireNotNull(inputModeManager).requestInputMode(InputMode.Keyboard)
+        }
+        val summary = composeRule.onNodeWithText(
+            context.getString(R.string.organizer_custom_category_summary),
+        )
+        summary.requestFocus().assertIsFocused()
+        // The create action is the first item under the summary, so one
+        // DirectionDown from the summary must land on it.
+        summary.performKeyInput {
+            keyDown(Key.DirectionDown)
+            keyUp(Key.DirectionDown)
+        }
+        composeRule.onNodeWithText(create).assertIsFocused()
+        composeRule.onNodeWithText(create).performKeyInput {
+            keyDown(Key.DirectionCenter)
+            keyUp(Key.DirectionCenter)
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("custom-category-name-field").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("custom-category-name-field").assertIsDisplayed()
+    }
+
+    @Test
+    fun switchEquivalentSemanticsActivationOpensTheRenameEditor() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val catalog = FakeCatalogStore().apply { seed(listOf(UserDefinedCategory(userId, "Commute"))) }
+        composeRule.setContent {
+            LawnchairTheme {
+                CustomCategoryPreferences(coordinator = UserDefinedCategoryAuthoringCoordinator(catalog, FakeOverrideStore()))
+            }
+        }
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithContentDescription(
+            context.getString(R.string.organizer_custom_category_rename_action, "Commute"),
+        ).assertHasClickAction().performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_rename_confirm)).assertIsDisplayed()
+    }
+
+    @Test
+    fun rowsRemainReachableAtTwoHundredPercentFontScale() {
+        // Exactly 50 code points, the accepted AC-5 maximum-length fixture.
+        val longName = "N".repeat(50)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val catalog = FakeCatalogStore().apply { seed(listOf(UserDefinedCategory(userId, longName))) }
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme {
+                    CustomCategoryPreferences(coordinator = UserDefinedCategoryAuthoringCoordinator(catalog, FakeOverrideStore()))
+                }
+            }
+        }
+
+        val renameLabel = context.getString(R.string.organizer_custom_category_rename_action, longName)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithContentDescription(renameLabel).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription(renameLabel))
+        composeRule.onNodeWithContentDescription(renameLabel).assertIsDisplayed().assertHasClickAction()
+
+        // Non-color state: the row's marker is the "Custom" text itself.
+        assertTrue(
+            "The entry row must carry the Custom text marker",
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_category_override_custom_marker))
+                .fetchSemanticsNodes().isNotEmpty(),
+        )
+
+        val deleteLabel = context.getString(R.string.organizer_custom_category_delete_action, longName)
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithContentDescription(deleteLabel).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription(deleteLabel))
+        // The delete confirmation is readable and operable at 200%.
+        composeRule.onNodeWithContentDescription(deleteLabel).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_title)).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.resources.getQuantityString(
+                R.plurals.organizer_custom_category_delete_text,
+                0,
+                longName,
+                0,
+            ),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_confirm))
+            .assertIsDisplayed()
+            .assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_cancel))
+            .assertHasClickAction()
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        // The create action stays reachable at 200%, and typed feedback is text.
+        val create = context.getString(R.string.organizer_custom_category_create)
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(create))
+        composeRule.onNodeWithText(create).assertIsDisplayed()
+        composeRule.onNodeWithText(create).performClick()
+        composeRule.onNodeWithTag("custom-category-name-field").performTextInput(longName)
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_save)).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_error_duplicate_name))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_error_duplicate_name)).assertIsDisplayed()
+    }
+
+    @Test
+    fun entryRowMeetsMinimumFortyEightDpTouchTarget() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val catalog = FakeCatalogStore().apply { seed(listOf(UserDefinedCategory(userId, "Commute"))) }
+        composeRule.setContent {
+            LawnchairTheme {
+                CustomCategoryPreferences(coordinator = UserDefinedCategoryAuthoringCoordinator(catalog, FakeOverrideStore()))
+            }
+        }
+
+        val entryRow = composeRule.onNodeWithContentDescription(
+            context.getString(R.string.organizer_custom_category_rename_action, "Commute"),
+        )
+        composeRule.waitUntil(5_000) {
+            try {
+                entryRow.fetchSemanticsNode()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+        val height = entryRow.fetchSemanticsNode().boundsInRoot.height
+        val minimumHeight = with(composeRule.density) { 48.dp.toPx() }
+        assertTrue("The custom-category entry row must provide a 48dp touch target", height >= minimumHeight)
+    }
+
+    // ---- shared helpers ------------------------------------------------------
+
+    private fun awaitSummaryFocus(summary: String) {
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(summary).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
+    }
+
+    private fun collectSemanticsStrings(node: SemanticsNode, out: MutableList<String>) {
+        val config = node.config
+        if (config.contains(SemanticsProperties.EditableText)) {
+            out += config[SemanticsProperties.EditableText].text
+        }
+        if (config.contains(SemanticsProperties.Text)) {
+            config[SemanticsProperties.Text].forEach { out += it.text }
+        }
+        if (config.contains(SemanticsProperties.ContentDescription)) {
+            out += config[SemanticsProperties.ContentDescription]
+        }
+        node.children.forEach { collectSemanticsStrings(it, out) }
+    }
+
+    private fun assertNoRawIdsPresent(seedId: String, mintedId: String) {
+        val forbidden = listOf(seedId, mintedId)
+        val strings = mutableListOf<String>()
+        composeRule.onAllNodes(isRoot()).fetchSemanticsNodes().forEach { root ->
+            collectSemanticsStrings(root, strings)
+        }
+        for (value in forbidden) {
+            for (candidate in strings) {
+                assertFalse("Raw category id '$value' must not surface in semantics text '$candidate'", candidate.contains(value))
+            }
         }
     }
 

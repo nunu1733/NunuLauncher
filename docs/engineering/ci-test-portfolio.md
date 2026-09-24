@@ -58,7 +58,7 @@ instrumentation_enabled = !smoke
 | organizer-instrumentation-production-input-tests | surface_production_input, surface_layout_write | production input composer / 実 adapter 互換（#83、API 35）+ nested transaction の API 版依存回帰 |
 | organizer-instrumentation-manual-organization-ui-tests | surface_organizer_ui | manual organization E2E / hub / strategy picker / exchange import success / diagnostics route（#52 系の広い UI sweep） |
 | organizer-instrumentation-reservation-recovery-tests | surface_layout_write | QSB reservation / recovery store / overlap gate / #265/#269 の実 writer oracle（#155 系） |
-| organizer-instrumentation-category-override-tests | surface_organizer_ui | category override authoring UI（#99） |
+| organizer-instrumentation-category-override-tests | surface_organizer_ui | category override authoring UI（#99）+ custom category management UI（#336/#342） |
 | organizer-instrumentation-exchange-import-ui-tests | surface_organizer_ui | exchange import surface UI（#332/#345） |
 | organizer-instrumentation-method-choice-journey-tests | surface_organizer_ui | method-choice face の connected journey（scope確定後の AI依頼作成・取り込み・attach、#417 AC-8 (g)-(v)） |
 | organizer-instrumentation-onboarding-proposal-tests | surface_organizer_ui | onboarding proposal lifecycle / 実入力 environment（#53/#300） |
@@ -93,7 +93,7 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 | production-input lane | 9.3 分（API 35）。実 platform での production input composer 互換（#83）。API 36 で代替できない根拠は未取得（#96 からの繰越判断）。category override atomic file の restart writer/reader も実 filesystem 必須 | Conditional（surface_production_input + surface_layout_write） |
 | manual-organization-ui lane | 8.7 分。manual organization の縦切り E2E（capture→plan→apply→recovery→UI）。DB heavy fixture を他 lane と共有しない。UI evidence 画像を常時 upload | Conditional（surface_organizer_ui） |
 | reservation-recovery lane | 9.4 分。QSB 予約・recovery store lifecycle・overlap acceptance gate・#265/#269 の実 writer/recovery oracle。独立 storage を扱うため clean emulator 必須 | Conditional（surface_layout_write） |
-| category-override lane | 8.1 分。authoring UI の semantics / focus / font-scale / touch target。Compose UI 検証は JVM で代替不能 | Conditional（surface_organizer_ui） |
+| category-override lane | 8.1 分。authoring UI の semantics / focus / font-scale / touch target。#342 で #336 管理UI（`CustomCategoryPreferences`）を co-occupant として追加（同一 surface 内 class 追加のため map edge 変更なし）。Compose UI 検証は JVM で代替不能 | Conditional（surface_organizer_ui） |
 | exchange-import-ui lane | 10.2 分。exchange import surface の Compose 検証（#345 で local-only から昇格。CI green の実績あり） | Conditional（surface_organizer_ui） |
 | method-choice-journey lane | method-choice face の connected journey（#417 AC-8 (g)-(v) evidence。scope-first で凍結した scope 上の AI依頼作成 → 取り込み → attach を固定する per-class lane） | Conditional（surface_organizer_ui） |
 | onboarding-proposal lane | 9.7 分。proposal lifecycle / Back / focus / recreation / review admission。実入力注入は focus 観測を前提とする（#300 accepted、#304/#418 で環境系 failure 実績） | Conditional（surface_organizer_ui） |
