@@ -79,3 +79,30 @@ CI run 35952398740（`pull_request` event、head `f37b7330dd9f`）のjob別結�
 ## Verdict
 
 **NO-GO / not merge-ready（head `f37b7330dd9fd9b4916f25c67ffe1124186d6b7f`）。** 実装本体（state machine・session store primitive・unit oracle群）は本auditの独立JVM gate再実行（1782/0）とsource照合で健全に見えるが、(1) CI merge gate `final-status` が11 failuresで失敗している（うち5件は既存production E2E oracleの未改訂、1件は決定的疑いの強いLazyColumn重複key crash）、(2) AC-8 (g)〜(v)のconnected evidenceがCI laneに存在しない、(3) AC-9実機evidenceが未実施、の3点がmerge条件の未充足である。修正・CI再実行・新headでの再review・本auditのやり直しのうえ、`CI / final-status` が成功したrunを対象にauditを更新すること。
+
+## Addendum（2026-09-24）: 新head `7aa5c7f157` での追試
+
+> Status: addendum（追試結果: 初回記録時の **NO-GOは解消**。ただしdelta再review（round 5）未完 — merge前のowner判断項目。下記「Verdict更新」参照）
+> Addendum date: 2026-09-24
+
+- 追試対象head: `7aa5c7f157d65a1484bbf69be36686d9b14b284e`（旧head `f37b7330dd9fd9b4916f25c67ffe1124186d6b7f` からのdeltaは本audit記録のdocs commit `f882aebc11` ＋是正commit群。内容は下記Delta要約のとおり）
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/35962531277 — **SUCCESS**（`pull_request` event、head `7aa5c7f157d`、2026-09-24T06:01:23Z開始）。**全16 job green・`CI / final-status` success**。新lane `organizer-instrumentation-method-choice-journey-tests` を含みsuccess。manual-organization-ui laneもsuccess — 初回Findings 1の11 failuresとFindings 2（AC-8 (g)〜(v)がCIで実行されない）はいずれも本runで解消。
+- High-risk gate run: https://github.com/nunu1733/NunuLauncher/actions/runs/35962531280 — **success**。
+- 本addendumの検証根拠: `gh run view` による両runのmetadata・job別conclusion確認、両head間のfirst-parent commit一覧・commit message・diff確認、`.github/workflows/ci.yml` のlane↔class wiring確認（`MethodChoiceConnectedJourneyInstrumentationTest` → `organizer-instrumentation-method-choice-journey-tests` lane）。gradleによるJVM/instrumentationの再実行は本addendumでは行っておらず、上記CI runに依拠する。
+
+### Delta内容の要約（`f37b7330dd` → `7aa5c7f157`）
+
+first-parentは docs `f882aebc11` → fix `e43f4cd056` → main merge `898152f571` → test追従 `7aa5c7f157`。
+
+- **production修正2件**（`e43f4cd056`。いずれも再現→修正）:
+  1. **選択面remember keyのrun-id化** — 確定→method-choice面→Back（reopenSelection）の往復でremember keyが`runId → null → runId`と変わり、確定済み選択が黙って消失していた。ScopeConfirmed駐在中の選択保持違反（planの「選択内容はUI stateが保持」に反する）であり、選択を所有するrunのrunIdにkeyを固定して修正。新runは従来どおり未選択で開始する。
+  2. **exchangeFlowItems二重hostの修正** — Idle/Cancelled面のhostingとScopeConfirmed面のhostingが同一item listへ同時emissionし、LazyColumn重複key（`exchange-usage-access-jit`）でframe crashしていた（初回Findings 1の`UsageAccessJitInstrumentationTest` failureに対応）。hosting判定をlambda内の単一state読み`faceState`に統一し、両hostを1 frameで排他的にした。
+- **旧契約テスト更新**: `ManualOrganizationProductionE2EInstrumentationTest` 5 journey — `startPlain()`→`State.Preview`直行を前提とする旧journeyを正規scope-first flow（確認→ScopeConfirmed停止→このまま整理 `planWithConfirmedScope`）へ更新。0候補も`NoChanges`到達からAC-3どおり`ScopeConfirmed(空)`直行を同一arm経由で固定する形へ変更。`MissingAppSelectionInstrumentationTest` 1件（`confirmForwardsTheSelectedIdentitiesToTheScopeComposedCompose`をscope-first flowへ）。`Issue265ManualEditRecoveryInstrumentationTest` 5件（`7aa5c7f157` — main merge後にreservation-recovery laneで初実行され、ScopeConfirmed停止でAppliedに到達できなかったjourneyをrunStart helperへのこのまま整理arm追加で正規flow観測へ更新）。
+- **tap geometry修正**: `ManualOrganizationPreferencesInstrumentationTest` の`performScrollToNode`後CTAがviewport最下部に張り付き、tap中心がsystem navigation gesture zoneに落ちてonClickが発火しない（API 36 emulator geometryで決定的）失敗への対処 — 初回Findings 1のPrefs lane 4 failuresに対応。
+- **MethodChoiceクラス用新CI lane追加＋portfolio同期＋main merge解決**: `MethodChoiceConnectedJourneyInstrumentationTest` をper-class lane `organizer-instrumentation-method-choice-journey-tests` として新設（#332の前例、surface_organizer_ui）。final-status needs・`ci_portfolio_map` edge・portfolio doc rowへ登録。#422のlane再構築（`compute_ci_gating.py`・portfolio validator等）と同期し、main merge（#422/#425/#433、#415/352）を取り込み。
+
+### Verdict更新
+
+- 初回記録時（head `f37b7330dd`・CI赤）の**NO-GOは解消**。現時点のstate: CI merge gate（`final-status`）green、Phase 2 review round1-4（Issue #417コメント）、round4 **Approved**（head `f37b7330dd`。初回Findings 5参照）。
+- **delta再review（round 5）はChatGPT側のstream errorで未完**（試行: 会話2本・retry1回。status pending）。**merge前のowner判断項目として明記する。** round 4 approvalの対象はhead `f37b7330dd`までであり、以降のdelta（`f882aebc11`..`7aa5c7f157`）は承認範囲外である。
+- 未確認範囲は初回記載を維持: AC-9の実機device evidence（TalkBack・キーボード・Switch Access）未実施、AC-8(o)は実OSのprocess deathではなくin-process durable fault injectionである点等（初回Findings 3/4）。
