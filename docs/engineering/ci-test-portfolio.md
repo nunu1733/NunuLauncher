@@ -149,3 +149,5 @@ PR に記載し、`ci_portfolio_map.yml` と本監査表を同じ PR で更新�
 PR #97（9分02秒、lane 分割による直列待ち解消、runner 総量は増加）への計測と判断の経緯は
 git 履歴（Issue #96 実装時点の本文）を参照。API 35/36 統合・artifact reuse・path filter
 狭小化の保留判断は本監査が引き継いだ（上記の監査表の通り、統合は見送り・reuse は独立維持）。
+
+<!-- 422 demo: docs-only surface verification -->
