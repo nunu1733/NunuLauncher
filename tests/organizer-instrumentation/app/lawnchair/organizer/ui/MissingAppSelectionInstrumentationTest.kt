@@ -118,6 +118,7 @@ class MissingAppSelectionInstrumentationTest {
             error("not reached in the selection tests")
 
         override fun readDurableOrganizerStatus() = app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = null
 
         override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
             kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
@@ -214,7 +215,10 @@ class MissingAppSelectionInstrumentationTest {
         val runner = launch(application)
 
         composeRule.onNodeWithText(maps.label).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).performClick()
+        // Issue #369 (D-13): with a selection present the cancel side is 中断 —
+        // one discard confirmation, then the run stops.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_interrupt)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
 
         composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Cancelled }
         assertEquals(0, application.scopeComposeCalls)
@@ -222,17 +226,30 @@ class MissingAppSelectionInstrumentationTest {
     }
 
     @Test
-    fun zeroCandidatesShowsTheEmptyNoticeAndStillContinues() {
+    fun zeroCandidatesContinuesWithoutShowingTheSelectionSurface() {
+        // Issue #369 (TO-BE D-06, RUN-AC-05): the empty cut never shows the
+        // selection surface — the run continues to the composed phase (the
+        // fake composition is NotReady, so the run surfaces that state). The
+        // former oracle asserted the empty notice and a required Continue tap;
+        // it is obsolete because V-09 is resolved by D-05/D-06 (無意味な
+        // 1 tapの廃止) — see the PR obsolete-oracle record.
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = SelectingFakeApplication(emptyList())
-        val runner = launch(application)
-
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_empty)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
-
-        // An empty confirmed selection continues as the plain full organize
-        // (the fake composition is NotReady, so the run surfaces that state).
+        val runner = ManualOrganizationRun(
+            application,
+            app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run in the selection tests") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
         composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+
+        // Negative observation: the selection surface never renders.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_title)).assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).assertDoesNotExist()
         org.junit.Assert.assertEquals(1, application.plainComposeCalls)
         org.junit.Assert.assertEquals(0, application.scopeComposeCalls)
     }

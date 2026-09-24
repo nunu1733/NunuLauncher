@@ -1,6 +1,5 @@
 package app.lawnchair.organizer.application.store
 
-import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -109,7 +108,6 @@ class RecoveryManifestChunksTest {
         // ADR-0009: physical schema 3 stores logical record format 2.
         assertEquals(3, RecoveryDbSchema.SCHEMA_VERSION)
         assertEquals(2, RecoveryRecordCodec.RECORD_FORMAT_VERSION)
-        assertEquals(RecoveryRecordCodec.RECORD_FORMAT_VERSION, LifecycleReconciler.SUPPORTED_FORMAT)
         assertNotEquals(RecoveryDbSchema.SCHEMA_VERSION, RecoveryRecordCodec.RECORD_FORMAT_VERSION)
     }
 

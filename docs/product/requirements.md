@@ -1,7 +1,7 @@
 # Product Requirements
 
 > Status: Accepted — 要件ごとの実装・evidence・deferred dispositionは [MVP release readiness](./mvp-release-readiness.md) を正本とする。
-> Updated: 2026-09-15
+> Updated: 2026-09-19
 
 ## Functional requirements
 
@@ -12,7 +12,7 @@
 | FR-003 | MVP | implemented | ロック配置と占有領域を保持し、満たせないplanは適用不能として説明する |
 | FR-004 | Foundation | implemented | 適用前にrecovery pointを作り、失敗時とユーザー操作時に復旧できる |
 | FR-005 | Foundation | implemented | staleでない検証済みplanだけを原子的に適用し、適用後に再検証する |
-| FR-006 | MVP | implemented | 明示的なユーザー操作から全体整理を開始し、差分・警告・未配置itemを確認できる |
+| FR-006 | MVP | implemented | 明示的なユーザー操作から全体整理を開始し、差分・警告・未配置itemを確認できる。ユーザー可視の入口はOrganizer hub経由へ改訂される（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-01/D-03。hub導入は後続実装Issueが行う） |
 | FR-007 | MVP | implemented | onboardingで整理を提案できるが、既存layoutの無確認な全体変更を行わない |
 | FR-008 | Later | deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) | 新しいlaunchable appをuser/profile identityを保ったまま増分配置できる。package eventによるincremental placementはMVP外であり、将来のaccepted product decisionとspecが必要である。 |
 | FR-009 | Later | deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) | 増分配置はfull organizationと収束し、update/restoreを新規installと誤認しない。FR-008と不可分のためMVP外とする。 |
@@ -22,8 +22,8 @@
 | FR-013 | Later | input implemented ([spec 203](../../specs/203-usage-implicit-preference-signals/spec.md), [Issue #203](https://github.com/nunu1733/NunuLauncher/issues/203)) | usage signalを明示的な許可の下で利用し、取得不能時も動作できる。normalized signal snapshot (`PersonalizationSignalSnapshot`) と usage access の明示的opt-in/opt-outを実装。usage-based strategy自体は#182 catalogの将来member |
 | FR-014 | Later | deferred | local分類が不明な場合だけ、明示的opt-inで外部分類adapterを利用できる |
 | FR-015 | MVP | implemented | 各移動、folder化、未配置、fallbackの主要理由を表示・診断できる |
-| FR-016 | Later | implemented ([spec 182](../../specs/182-layout-strategy-catalog/spec.md), [ADR-0012](../adr/0012-versioned-layout-strategy-catalog.md), [spec 237](../../specs/237-global-compact-v2-folder-relocation/spec.md)、widget移動対応の `STABLE_PAGE_TIDY_V2`/`BOTTOM_FIRST_V2` は [spec 235](../../specs/235-widget-strategy-placement/spec.md)) | ユーザーがversion付きの組み込みlayout strategyを選択でき、有効strategyのidentityと結果 (移動件数、新規folder/page、strategy固定item、警告) を確認前にpreviewできる。選択はversion付きで検証され、unsupported/破損/newer選択はfail-closedする。 |
-| FR-017 | Later | spec accepted ([spec 204](../../specs/204-ai-personalization-context-intent-contract/spec.md), [spec 205](../../specs/205-external-agent-exchange/spec.md), [spec 328](../../specs/328-exchange-import-success-state/spec.md), [spec 329](../../specs/329-import-normalizer/spec.md), Issues [#204](https://github.com/nunu1733/NunuLauncher/issues/204)/[#205](https://github.com/nunu1733/NunuLauncher/issues/205)/[#328](https://github.com/nunu1733/NunuLauncher/issues/328)/[#329](https://github.com/nunu1733/NunuLauncher/issues/329)) | ユーザーが明示的に選択した場合、local personalization contextから外部/内部AI等がsemantic organization intentを生成でき、その結果をvalidation・preview・confirmation後に既存safe planner/application pathで適用できる。**FR-014との境界**: FR-014は「local分類が不明な場合の外部分類adapter」であり、FR-017はlayout intent自体の提案 (personalization) である。provider接続 (#205/#206) は別Issue |
+| FR-016 | Later | implemented ([spec 182](../../specs/182-layout-strategy-catalog/spec.md), [ADR-0012](../adr/0012-versioned-layout-strategy-catalog.md), [spec 237](../../specs/237-global-compact-v2-folder-relocation/spec.md)、widget移動対応の `STABLE_PAGE_TIDY_V2`/`BOTTOM_FIRST_V2` は [spec 235](../../specs/235-widget-strategy-placement/spec.md)、下部領域successorの `BOTTOM_REGION_V1` は [spec 398](../../specs/398-strategy-intent-first-bottom-region/spec.md)) | ユーザーがversion付きの組み込みlayout strategyを選択でき、有効strategyのidentityと結果 (移動件数、新規folder/page、strategy固定item、警告) を確認前にpreviewできる。選択はversion付きで検証され、unsupported/破損/newer選択はfail-closedする。**strategyのprimary success metricは「ユーザーが選んだ/表明したHome構成意図との一致」であり、page/folder/density等の数量指標は意図一致を損なわない範囲の補助指標・tie-breakerである（[spec 398](../../specs/398-strategy-intent-first-bottom-region/spec.md) Strategy objective）。** |
+| FR-017 | Later | spec accepted ([spec 204](../../specs/204-ai-personalization-context-intent-contract/spec.md), [spec 205](../../specs/205-external-agent-exchange/spec.md), [spec 328](../../specs/328-exchange-import-success-state/spec.md), [spec 329](../../specs/329-import-normalizer/spec.md), Issues [#204](https://github.com/nunu1733/NunuLauncher/issues/204)/[#205](https://github.com/nunu1733/NunuLauncher/issues/205)/[#328](https://github.com/nunu1733/NunuLauncher/issues/328)/[#329](https://github.com/nunu1733/NunuLauncher/issues/329)) | ユーザーが明示的に選択した場合、local personalization contextから外部/内部AI等がsemantic organization intentを生成でき、その結果をvalidation・preview・confirmation後に既存safe planner/application pathで適用できる。**FR-014との境界**: FR-014は「local分類が不明な場合の外部分類adapter」であり、FR-017はlayout intent自体の提案 (personalization) である。provider接続 (#205/#206) は別Issue。ユーザー可視表現はOrganizer hub経由となり、AI相談は「整理案の作り方の1つ」として提示される（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-04/D-17。idle/run-inのrun境界改訂は後続実装Issueが行う） |
 
 ## Non-functional requirements
 
@@ -73,6 +73,7 @@
 ## Decision history
 
 - 2026-08-21: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected Option B. FR-008 and FR-009 move from MVP to Later/deferred; the current package-event behavior remains fail-closed and produces no incremental proposal.
+- 2026-09-19: [organizer-to-be-ux.md](./organizer-to-be-ux.md)（[Issue #361](https://github.com/nunu1733/NunuLauncher/issues/361)でaccepted）のD-01〜D-17を反映し、FR-006/FR-017のユーザー可視表現がOrganizer hub経由になる旨を追記した。新FR/NFRは起票しない: TO-BE決定は既存FRの達成経路・可視性・timingの改善であり、新たな観測可能要件となるのはD-08（取り込み済み提案のdurable化）とD-15（durable statusからの復元導線）由来のみで、それらは各実装Issueのspecが所有する（[Issue #365](https://github.com/nunu1733/NunuLauncher/issues/365)）。
 
 ## Traceability rule
 

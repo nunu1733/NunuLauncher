@@ -26,10 +26,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Issue #328 (spec AC-5, audit D-1): the strategy picker's frozen affordance —
- * a frozen picker disables every radio row (disabled semantics, not only a
- * visual change) and announces the reason in a live region; an enabled picker
- * shows no reason row and keeps the rows selectable.
+ * Issue #368 (spec AC-2/AC-8; formerly spec 328 AC-5): the strategy picker's
+ * frozen affordance on T-05 — a run/recovery operation in progress disables
+ * every radio row (disabled semantics, not only a visual change) and
+ * announces the reason in a live region; typed refusals from other authoring
+ * occupancy or write single flight announce their own retry copy, distinct
+ * from the frozen reason.
  */
 @RunWith(AndroidJUnit4::class)
 class StrategyPickerFreezeInstrumentationTest {
@@ -43,7 +45,7 @@ class StrategyPickerFreezeInstrumentationTest {
         StrategyId("STABLE_PAGE_TIDY_V1"),
     )
 
-    private fun setPicker(enabled: Boolean, frozenReason: String?) {
+    private fun setPicker(enabled: Boolean, frozenReason: String?, retryNotice: String? = null) {
         composeRule.setContent {
             app.lawnchair.ui.theme.LawnchairTheme {
                 LazyColumn {
@@ -52,6 +54,7 @@ class StrategyPickerFreezeInstrumentationTest {
                         selected = catalog.first(),
                         enabled = enabled,
                         frozenReason = frozenReason,
+                        retryNotice = retryNotice,
                         onSelect = {},
                     )
                 }
@@ -62,7 +65,7 @@ class StrategyPickerFreezeInstrumentationTest {
 
     @Test
     fun frozenPickerDisablesTheRadioRowsAndAnnouncesTheReason() {
-        val reason = context.getString(R.string.exchange_strategy_frozen_import)
+        val reason = context.getString(R.string.organizer_strategy_frozen_operation_active)
         setPicker(enabled = false, frozenReason = reason)
         composeRule.onNodeWithTag("strategy-picker-frozen-reason")
             .assertIsDisplayed()
@@ -80,18 +83,28 @@ class StrategyPickerFreezeInstrumentationTest {
             0,
             composeRule.onAllNodesWithTag("strategy-picker-frozen-reason").fetchSemanticsNodes().size,
         )
+        assertEquals(
+            "an unfrozen picker carries no retry notice",
+            0,
+            composeRule.onAllNodesWithTag("strategy-picker-retry-notice").fetchSemanticsNodes().size,
+        )
         val name = context.getString(R.string.organization_strategy_canonical_name)
         composeRule.onNode(hasText(name, substring = true) and isSelectable())
             .assertIsEnabled()
     }
 
     @Test
-    fun continuingFreezeUsesItsOwnReasonCopy() {
-        // The idle continuation freeze must not reuse the import copy.
-        val continuingReason = context.getString(R.string.exchange_strategy_frozen_continuing)
-        setPicker(enabled = false, frozenReason = continuingReason)
-        composeRule.onNodeWithText(continuingReason).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.exchange_strategy_frozen_import))
-            .assertDoesNotExist()
+    fun aTypedRefusalAnnouncesItsOwnRetryCopyDistinctFromTheFrozenReason() {
+        // Issue #368 AC-8: the retry notice for other-authoring occupancy or
+        // single flight must not reuse the run/recovery frozen copy.
+        val frozen = context.getString(R.string.organizer_strategy_frozen_operation_active)
+        val retry = context.getString(R.string.organizer_strategy_retry_when_busy)
+        setPicker(enabled = true, frozenReason = null, retryNotice = retry)
+        composeRule.onNodeWithTag("strategy-picker-retry-notice")
+            .assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        composeRule.onNodeWithText(frozen).assertDoesNotExist()
+        composeRule.onNode(hasText(context.getString(R.string.organization_strategy_canonical_name), substring = true) and isSelectable())
+            .assertIsEnabled()
     }
 }

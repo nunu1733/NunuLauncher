@@ -89,6 +89,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 - integration: package追加、work profile、grid変更、restore、プロセス再起動を対象にする。
 - UI: 確認、失敗、復旧、アクセシビリティを検証する。
 - 修正は失敗を再現するテストを伴う。テストできない場合は理由と代替証拠をPRに記載する。
+- 新規test/CI lane追加は、既存coverage・低層への配置・impact surface・重複・起動条件を審査してから行う。CI portfolioの監査表（[docs/engineering/ci-test-portfolio.md](./docs/engineering/ci-test-portfolio.md)）とlane↔surface map（`tools/repo-contract/ci_portfolio_map.yml`）を同じPRで更新する。詳細は [docs/engineering/quality-strategy.md](./docs/engineering/quality-strategy.md) に従う。
 
 ## 高リスクPRの独立エビデンス
 

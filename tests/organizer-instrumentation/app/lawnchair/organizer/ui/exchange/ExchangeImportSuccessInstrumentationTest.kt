@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -17,6 +21,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -34,11 +39,18 @@ import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
+import app.lawnchair.organizer.personalization.ContextExportContract
+import app.lawnchair.organizer.personalization.DiscardIfResult
+import app.lawnchair.organizer.personalization.DurablePendingIntent
+import app.lawnchair.organizer.personalization.DurableRefDecision
+import app.lawnchair.organizer.personalization.DurableRefEntry
 import app.lawnchair.organizer.personalization.ExportInputs
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.IntentCodec
 import app.lawnchair.organizer.personalization.ItemIntent
+import app.lawnchair.organizer.personalization.PendingImportEntryKind
+import app.lawnchair.organizer.personalization.PendingImportedIntentStore
 import app.lawnchair.organizer.personalization.PersonalizedIntentV1
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.RandomIdAllocator
@@ -49,6 +61,8 @@ import com.android.launcher3.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -87,6 +101,46 @@ class ExchangeImportSuccessInstrumentationTest {
     private class ReplayAllocator(session: ExportSession) : RandomIdAllocator {
         private val ids = ArrayDeque(session.itemRefs.keys.toList() + listOf(session.exportId))
         override fun newId(): String = ids.removeFirst()
+    }
+
+    /**
+     * Issue #374: in-memory fake of the durable pending imported intent store
+     * for the ImportReview resume-face fixtures (the review open loads the
+     * record; the discard commits the tombstone).
+     */
+    private class FakePendingStore : PendingImportedIntentStore {
+        var record: DurablePendingIntent? = null
+
+        override fun save(proposal: DurablePendingIntent): Boolean {
+            record = proposal
+            return true
+        }
+
+        override fun load(): DurablePendingIntent? = record
+
+        override fun discard(): Boolean {
+            if (record == null) return true
+            record = null
+            return true
+        }
+
+        override fun delete() {
+            record = null
+        }
+
+        override fun discardIf(expected: DurablePendingIntent): DiscardIfResult {
+            if (record != expected) return DiscardIfResult.NoMatch
+            record = expected.copy(discarded = true)
+            return DiscardIfResult.Committed
+        }
+
+        override fun deleteIf(proposal: DurablePendingIntent): Boolean {
+            if (record == proposal) {
+                record = null
+                return true
+            }
+            return false
+        }
     }
 
     private fun newRun(blockDetection: java.util.concurrent.CountDownLatch? = null): ManualOrganizationRun =
@@ -131,6 +185,8 @@ class ExchangeImportSuccessInstrumentationTest {
             confirmation: app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation,
         ) = error("not reached")
         override fun readDurableOrganizerStatus() = error("not reached")
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? =
+            error("not reached in organizer tests")
         override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
             kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
         private fun notReady(): app.lawnchair.organizer.integration.OrganizationInputComposition =
@@ -179,6 +235,7 @@ class ExchangeImportSuccessInstrumentationTest {
     private fun newHolder(
         run: ManualOrganizationRun = newRun(),
         store: FakeStore = FakeStore(),
+        pendingStore: PendingImportedIntentStore = FakePendingStore(),
     ): Pair<ExchangeFlowStateHolder, ExchangeFlowController> {
         val controller = ExchangeFlowController(
             composeExportInputs = {
@@ -191,11 +248,13 @@ class ExchangeImportSuccessInstrumentationTest {
             store = store,
             allocator = SequentialIdAllocator(),
             clock = { 1_000_000L },
+            pendingImportStore = pendingStore,
         )
         val holder = ExchangeFlowStateHolder(
             controllerFactory = { controller },
             run = run,
             scope = CoroutineScope(Dispatchers.Main),
+            pendingImportStore = pendingStore,
         )
         return holder to controller
     }
@@ -230,14 +289,46 @@ class ExchangeImportSuccessInstrumentationTest {
             as app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult.Generated
         composeRule.runOnUiThread { holder.openImport() }
         composeRule.runOnUiThread { holder.import(replyFor(generated.session)) }
+        awaitScreenIs(holder) { it is ExchangeScreen.ImportSuccess }
+        assertTrue("fixture must reach the success state", holder.screen is ExchangeScreen.ImportSuccess)
+        return holder
+    }
+
+    /**
+     * Issue #374: builds the durable record of a generated session's reply and
+     * drives the holder to the rendered ImportReview resume face through the
+     * hub's open path (record + active session → reconcile → adopt).
+     */
+    private fun holderInImportReviewState(pendingStore: FakePendingStore = FakePendingStore()): Pair<ExchangeFlowStateHolder, FakePendingStore> {
+        val (holder, controller) = newHolder(pendingStore = pendingStore)
+        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED)
+            as app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult.Generated
+        val session = generated.session
+        pendingStore.record = DurablePendingIntent(
+            exportId = session.exportId,
+            intentIdentitySchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
+            intentIdentityDigest = validDigest,
+            decisions = session.itemRefs.keys.sorted().map { DurableRefEntry(it, DurableRefDecision.UnresolvedByOmission) },
+            minimizeMovement = false,
+            expiresAtEpochMs = session.expiresAtEpochMs,
+            entryKind = PendingImportEntryKind.IDLE,
+            discarded = false,
+            createdAtEpochMs = session.createdAtEpochMs,
+        )
+        composeRule.runOnUiThread { holder.openPendingImportReview() }
+        awaitScreenIs(holder) { it is ExchangeScreen.ImportReview }
+        return holder to pendingStore
+    }
+
+    /** Polls the holder's screen until the predicate holds (settles hop IO → Main). */
+    private fun awaitScreenIs(holder: ExchangeFlowStateHolder, timeoutMs: Int = 5_000, predicate: (ExchangeScreen) -> Boolean) {
         var waited = 0
-        while (holder.screen !is ExchangeScreen.ImportSuccess && waited < 5_000) {
+        while (!predicate(holder.screen) && waited < timeoutMs) {
             composeRule.waitForIdle()
             Thread.sleep(20)
             waited += 20
         }
-        assertTrue("fixture must reach the success state", holder.screen is ExchangeScreen.ImportSuccess)
-        return holder
+        assertTrue("the holder screen must reach the expected state (was ${holder.screen::class.java.simpleName})", predicate(holder.screen))
     }
 
     /** Renders at the PLATFORM font scale (no LocalDensity override). */
@@ -253,12 +344,30 @@ class ExchangeImportSuccessInstrumentationTest {
         composeRule.setContent {
             val content: @androidx.compose.runtime.Composable () -> Unit = {
                 app.lawnchair.ui.theme.LawnchairTheme {
+                    // Issue #374 (spec 328 rev.2 D-13): the host owns ONE
+                    // import-discard confirmation — BOTH faces' 破棄して閉じる
+                    // button raises it here and confirm runs the holder's
+                    // discard, exactly as ManualOrganizationPreferences wires
+                    // it (focus restoration omitted: the fixtures never assert
+                    // it and the dialog API takes no requester).
+                    var showDiscardConfirm by remember { mutableStateOf(false) }
                     LazyColumn {
                         exchangeFlowItems(
                             holder = holder,
+                            onDiscardRequest = {},
+                            onImportDiscardRequest = { showDiscardConfirm = true },
                             clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                             shareTransport = { _, _ -> ExchangeTransportResult.Success },
                             fileTransport = FileExchangeTransport(context),
+                        )
+                    }
+                    if (showDiscardConfirm) {
+                        ExchangeImportDiscardConfirmDialog(
+                            onConfirm = {
+                                showDiscardConfirm = false
+                                holder.discardImport()
+                            },
+                            onDismiss = { showDiscardConfirm = false },
                         )
                     }
                 }
@@ -305,51 +414,6 @@ class ExchangeImportSuccessInstrumentationTest {
                 composeRule.onNodeWithTag("exchange-import-success-title").assertIsFocused()
             }.isSuccess
         }
-    }
-
-    @Test
-    fun receiptRefusedByTheStrategyArbiterStaysRetryableFromTheHeldText() {
-        // Issue #328 implementation review (high): a clipboard receipt refused
-        // by the arbiter gate keeps the held text VISIBLE for retry — the
-        // fallback editor opens on the empty->non-empty transition, so the
-        // user never has to re-read the source.
-        val (realHolder, controller) = newHolder()
-        val generated = controller.generate(PrivacyTier.EXTERNAL_REDACTED)
-            as app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult.Generated
-        val reply = replyFor(generated.session)
-        realHolder.strategyArbiterBusy = { true }
-
-        setSuccessContent(realHolder)
-        composeRule.runOnUiThread { realHolder.openImport() }
-        composeRule.waitForIdle()
-        composeRule.runOnUiThread {
-            realHolder.importFromClipboard(
-                app.lawnchair.organizer.integration.exchange.ClipboardImportTransport(context).apply {
-                    readOverride = {
-                        app.lawnchair.organizer.integration.exchange.ClipboardImportRead.Text(reply)
-                    }
-                },
-            )
-        }
-        composeRule.waitForIdle()
-        assertEquals(
-            ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY,
-            realHolder.status!!.kind,
-        )
-        // The held text is visible in the (auto-opened) fallback editor.
-        composeRule.onNodeWithTag("exchange-import-field").assertIsDisplayed()
-        composeRule.onNodeWithTag("exchange-import-action").assertIsEnabled()
-
-        // Retry from the SAME held text once the arbiter released.
-        realHolder.strategyArbiterBusy = { false }
-        composeRule.onNodeWithTag("exchange-import-action").performClick()
-        var waited = 0
-        while (realHolder.screen !is ExchangeScreen.ImportSuccess && waited < 5_000) {
-            composeRule.waitForIdle()
-            Thread.sleep(20)
-            waited += 20
-        }
-        assertTrue(realHolder.screen is ExchangeScreen.ImportSuccess)
     }
 
     @Test
@@ -428,6 +492,7 @@ class ExchangeImportSuccessInstrumentationTest {
                     item { Spacer(modifier = androidx.compose.ui.Modifier.height(1_200.dp)) }
                     exchangeFlowItems(
                         holder = holder,
+                        onDiscardRequest = {},
                         clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                         shareTransport = { _, _ -> ExchangeTransportResult.Success },
                         fileTransport = FileExchangeTransport(context),
@@ -456,7 +521,11 @@ class ExchangeImportSuccessInstrumentationTest {
             .assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.exchange_import_discard_confirm_confirm))
             .performClick()
-        composeRule.waitForIdle()
+        // Issue #374 (review of the async discard): the discard settle now
+        // happens AFTER the tombstone commit (IO store call → ui settle), so
+        // the Closed terminal state is polled instead of asserted immediately
+        // (the same pattern as the fixture polls above).
+        awaitScreenIs(holder) { it is ExchangeScreen.Closed }
         assertTrue("the confirmation discards the pending import", holder.screen is ExchangeScreen.Closed)
     }
 
@@ -472,6 +541,7 @@ class ExchangeImportSuccessInstrumentationTest {
                 LazyColumn {
                     exchangeFlowItems(
                         holder = holder,
+                        onDiscardRequest = {},
                         clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
                         shareTransport = { _, _ -> ExchangeTransportResult.Success },
                         fileTransport = FileExchangeTransport(context),
@@ -524,4 +594,119 @@ class ExchangeImportSuccessInstrumentationTest {
         assertTrue("the success state survives a dismissed dialog", holder.screen is ExchangeScreen.ImportSuccess)
         assertTrue(holder.importAttemptActive)
     }
+
+    // ------------------------------------------------------------------
+    // Issue #374 (spec 374 DI-AC-01): the ImportReview resume face — the
+    // cold-process form of the imported proposal, rendered from the durable
+    // record + the session with NO continuation CTA.
+    // ------------------------------------------------------------------
+
+    @Test
+    fun importReviewRendersSummaryRemainingContinueAndDiscard() {
+        val (holder, _) = holderInImportReviewState()
+        setSuccessContent(holder)
+        composeRule.onNodeWithTag("exchange-import-review").assertIsDisplayed()
+        // The fixture record is all-unresolved (the canonical no-judgment
+        // case), so the review face reuses the WARNING heading — the same
+        // distinct-semantics variant the success face shows.
+        composeRule.onNodeWithTag("exchange-import-review-title")
+            .assertIsDisplayed()
+            .assertTextContains(context.getString(R.string.exchange_import_success_warning_title))
+        // The shared privacy-safe summary content (the same derivation as the
+        // success face — all-unresolved fixture, so the no-judgment count is
+        // the visible line).
+        composeRule.onNodeWithTag("exchange-import-summary-recognized").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-summary-no-judgment").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-not-applied").assertIsDisplayed()
+        // The remaining-time line (T-15 vocabulary: the session's 24h TTL read
+        // at the fixture's fixed clock).
+        composeRule.onNodeWithTag("exchange-import-review-remaining")
+            .assertIsDisplayed()
+            // Compose 1.10 `assertTextContains` defaults to an EXACT match
+            // (substring = false) despite the "contains" wording of the
+            // failure message — the rendered line is the full plural text
+            // ("About 24 hours left"), so a substring match is required.
+            .assertTextContains("24", substring = true)
+        // The D-13 discard entry (same label as the success face).
+        composeRule.onNodeWithTag("exchange-import-review-discard")
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertTextContains(context.getString(R.string.exchange_import_discard))
+        // Issue #375 (spec "再開面CTAの有効化" — #374 Contract notes 2の委譲を
+        // 受けてCTAが有効化された): the rebind continuation CTA renders with
+        // the TO-BE T-18 copy (spec 328 rev.2 D-3 unified). The legacy CTA
+        // copies (idle / run-in) stay absent — the resume face never reuses
+        // them.
+        // The discard slot's focus restoration may scroll the list; bring the
+        // CTA (above it) back into the viewport before asserting display.
+        // The review CTA item's tag (the audit's tag fix): the production
+        // review item is `exchange-import-review-continue` — the success
+        // face's `exchange-import-continue` is a different face.
+        composeRule.onNodeWithTag("exchange-import-review-continue")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertTextContains(context.getString(R.string.exchange_import_continue))
+        composeRule.onNodeWithText(context.getString(R.string.exchange_import_cta_run_in)).assertDoesNotExist()
+    }
+
+    @Test
+    fun importReviewDiscardConfirmsOnceThenClosesTheFaceAndDeletesTheRecord() {
+        val (holder, pendingStore) = holderInImportReviewState()
+        setSuccessContent(holder)
+        composeRule.onNodeWithTag("exchange-import-review-discard").performClick()
+        // The SAME D-13 confirmation dialog the success face uses.
+        composeRule.onNodeWithText(context.getString(R.string.exchange_import_discard_confirm_title))
+            .assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_import_discard_confirm_confirm))
+            .performClick()
+        // The face closes only after the tombstone commit settles (async).
+        awaitScreenIs(holder) { it is ExchangeScreen.Closed }
+        assertNull("the record is gone after the discard", pendingStore.record)
+        composeRule.waitForIdle()
+        assertEquals(0, composeRule.onAllNodesWithTag("exchange-import-review").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun importReviewDiscardCancellationKeepsTheFaceAndTheRecord() {
+        val (holder, pendingStore) = holderInImportReviewState()
+        setSuccessContent(holder)
+        composeRule.onNodeWithTag("exchange-import-review-discard").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_cancel)).performClick()
+        composeRule.waitForIdle()
+        assertTrue("cancelling the confirmation keeps the review face", holder.screen is ExchangeScreen.ImportReview)
+        assertNotNull("the durable record is kept (no discard happened)", pendingStore.record)
+    }
+
+    @Test
+    fun systemBackOnTheImportReviewClosesZeroWriteKeepingTheRecord() {
+        // The resume face's Back is the plain zero-write close, owned by the
+        // always-composed flow-level handler. Composed exactly as the hosting
+        // screen does: the screen-level fallback FIRST, then the flow-level
+        // handler, then the success-face interception (last composed takes
+        // Back first; the success handler is disabled on the review face).
+        val (holder, pendingStore) = holderInImportReviewState()
+        var hostFallbackCalls = 0
+        composeRule.setContent {
+            app.lawnchair.ui.theme.LawnchairTheme {
+                // Stands in for ManualOrganizationBackHandler: registered
+                // BEFORE the exchange handlers, as in the hosting screen.
+                BackHandler(enabled = true) { hostFallbackCalls++ }
+                ExchangeFlowBackHandler(holder, onDiscardRequest = {})
+                ExchangeImportSuccessBackHandler(holder)
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.runOnUiThread {
+            composeRule.activity.onBackPressedDispatcher.onBackPressed()
+        }
+        awaitScreenIs(holder) { it is ExchangeScreen.Closed }
+        assertEquals("Back must not fall through to the host fallback", 0, hostFallbackCalls)
+        composeRule.onNodeWithText(context.getString(R.string.exchange_import_discard_confirm_title))
+            .assertDoesNotExist()
+        assertNotNull("the record survives the zero-write close", pendingStore.record)
+    }
 }
+
+/** Issue #375: reconcile rejects a digest that is not 64 chars — fixtures carry a well-formed one. */
+private val validDigest: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

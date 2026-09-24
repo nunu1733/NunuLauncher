@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import app.lawnchair.organizer.integration.DetectedCandidate
+import app.lawnchair.organizer.personalization.exchange.ScopeSelectionDiff
 import app.lawnchair.organizer.planning.CandidateTarget
 import com.android.launcher3.R
 import com.android.launcher3.pm.UserCache
@@ -98,6 +99,15 @@ fun LazyListScope.missingAppSelectionItems(
     /** Issue #331: a bound intent's export scope size — guidance only (D-1). */
     intentScopeCount: Int = 0,
     /**
+     * Issue #375 (spec SR-AC-01): the selection diff against the export scope
+     * (null = no bound intent). Rows in [ScopeSelectionDiff.missing] render
+     * the 「依頼では対象」 affordance, rows in [ScopeSelectionDiff.extra] the
+     * 「依頼外」 one; `unresolvable` has no row and is explained by the
+     * host's rejection text. The diff is computed by the pure
+     * scope-binding derivation — the UI never re-derives it.
+     */
+    diff: ScopeSelectionDiff? = null,
+    /**
      * Issue #331: false while the run-in exchange step holds the surface —
      * the export scope is the frozen selection, so edits (and confirm) are
      * disabled until the exchange completes or is abandoned. The typed
@@ -134,16 +144,19 @@ fun LazyListScope.missingAppSelectionItems(
         }
     }
     item(key = "missing-app-selection-count") {
+        // Issue #369 (TO-BE D-06): the zero-candidate notice is gone — the
+        // empty cut no longer reaches this surface through the plain flow
+        // (the internal continuation skips it), so the count row always reads
+        // as the whole-selection count (spec 228 §2, 全体選択数を正本とする).
+        // The surface still opens with an empty cut only under an intent-bound
+        // run whose export scope holds candidates (the spec 331 mismatch
+        // re-display), where the rejection text renders in the host surface.
         Text(
-            text = if (selection.candidates.isEmpty()) {
-                stringResource(R.string.manual_organization_missing_apps_empty)
-            } else {
-                pluralStringResource(
-                    R.plurals.manual_organization_missing_apps_selected_count,
-                    selection.selectedCount,
-                    selection.selectedCount,
-                )
-            },
+            text = pluralStringResource(
+                R.plurals.manual_organization_missing_apps_selected_count,
+                selection.selectedCount,
+                selection.selectedCount,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier
                 .padding(horizontal = 16.dp)
@@ -197,6 +210,13 @@ fun LazyListScope.missingAppSelectionItems(
             checked = candidate.target in selection.selected,
             onToggle = { if (editsEnabled) onSelectionChange(selection.toggle(candidate)) },
             enabled = editsEnabled,
+            // Issue #375: non-color-only highlight of the request diff.
+            diffRole = when {
+                diff == null -> null
+                candidate.target in diff.missing -> ScopeDiffRole.MISSING
+                candidate.target in diff.extra -> ScopeDiffRole.EXTRA
+                else -> null
+            },
         )
     }
     item(key = "missing-app-selection-actions") {
@@ -220,11 +240,18 @@ fun LazyListScope.missingAppSelectionItems(
                 enabled = editsEnabled,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(stringResource(R.string.manual_organization_cancel))
+                // Issue #369 (D-13): the cancel side of the selection pair is
+                // 中断 — the host routes it through the one-confirmation gate
+                // when a selection exists (the pair's visual structure is
+                // unchanged, spec 209).
+                Text(stringResource(R.string.manual_organization_interrupt))
             }
         }
     }
 }
+
+/** Issue #375: which side of the request diff a candidate row is on (non-color-only). */
+enum class ScopeDiffRole { MISSING, EXTRA }
 
 /** One multi-select candidate row; TalkBack reads label + checked state as one node. */
 @Composable
@@ -233,9 +260,15 @@ private fun MissingAppSelectionRow(
     checked: Boolean,
     onToggle: () -> Unit,
     enabled: Boolean = true,
+    diffRole: ScopeDiffRole? = null,
 ) {
     val checkedText = stringResource(R.string.manual_organization_missing_apps_state_checked)
     val uncheckedText = stringResource(R.string.manual_organization_missing_apps_state_unchecked)
+    val diffBadgeText = when (diffRole) {
+        ScopeDiffRole.MISSING -> stringResource(R.string.exchange_scope_diff_missing)
+        ScopeDiffRole.EXTRA -> stringResource(R.string.exchange_scope_diff_extra)
+        null -> null
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -247,17 +280,41 @@ private fun MissingAppSelectionRow(
                 onValueChange = { onToggle() },
             )
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag("missing-app-selection-row"),
+            .testTag(
+                when (diffRole) {
+                    ScopeDiffRole.MISSING -> "missing-app-selection-row-diff-missing"
+                    ScopeDiffRole.EXTRA -> "missing-app-selection-row-diff-extra"
+                    null -> "missing-app-selection-row"
+                },
+            ),
     ) {
         Checkbox(checked = checked, onCheckedChange = null)
         CandidateAppIcon(candidate = candidate, modifier = Modifier.padding(start = 8.dp))
-        Text(
-            text = candidate.label,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier
-                .padding(start = 8.dp)
-                .semantics { stateDescription = if (checked) checkedText else uncheckedText },
-        )
+        Column(modifier = Modifier.padding(start = 8.dp)) {
+            Text(
+                text = candidate.label,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.semantics {
+                    stateDescription = buildString {
+                        append(if (checked) checkedText else uncheckedText)
+                        diffBadgeText?.let {
+                            append(", ")
+                            append(it)
+                        }
+                    }
+                },
+            )
+            if (diffBadgeText != null) {
+                Text(
+                    text = diffBadgeText,
+                    style = MaterialTheme.typography.labelSmall,
+                    // Color is never the only carrier: the badge text itself
+                    // (and the row's state description) names the diff role.
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.testTag("missing-app-selection-row-diff-badge"),
+                )
+            }
+        }
     }
 }
 

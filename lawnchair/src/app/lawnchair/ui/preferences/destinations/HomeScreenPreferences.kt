@@ -16,24 +16,16 @@
 
 package app.lawnchair.ui.preferences.destinations
 
-import android.content.Intent
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.lawnchair.LawnchairApp
 import app.lawnchair.data.iconoverride.IconOverrideRepository
 import app.lawnchair.nexuslauncher.OverlayCallbackImpl
-import app.lawnchair.organizer.integration.UsageAccess
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.preferenceManager
 import app.lawnchair.preferences2.preferenceManager2
@@ -50,12 +42,8 @@ import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
-import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
-import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
-import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
-import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
-import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
 import app.lawnchair.util.collectAsStateBlocking
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
@@ -100,12 +88,18 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.infinite_scrolling_label),
                 description = stringResource(id = R.string.infinite_scrolling_description),
             )
-            // Issue #232: promoted above the Layout section so the persistent organizer entry
+            // Issue #232: kept above the Layout section so the persistent organizer entry
             // is re-discoverable without scrolling after the onboarding proposal's `Later`.
+            // Issue #370 (D-01 entry-row-only end state): this hub row is now the only
+            // organizer row in the settings; the manual run row that #367 staged next to
+            // it is removed, and a new run starts from the hub's start CTA (T-07 preamble).
+            // Issue #366: the Organizer hub (T-01) — the persistent organizing
+            // workspace and the settings-side route to the organizing
+            // materials, diagnostics, and the run surface.
             NavigationActionPreference(
-                label = stringResource(id = R.string.manual_organization_title),
-                destination = HomeScreenManualOrganization(),
-                subtitle = stringResource(id = R.string.manual_organization_summary),
+                label = stringResource(id = R.string.organizer_hub_title),
+                destination = HomeScreenOrganizer,
+                subtitle = stringResource(id = R.string.organizer_hub_summary),
             )
         }
         PreferenceGroup(heading = stringResource(id = R.string.home_screen_actions)) {
@@ -164,30 +158,10 @@ fun HomeScreenPreferences(
                 destination = HomeScreenGrid,
                 subtitle = stringResource(id = R.string.x_by_y, columns, rows),
             )
-            // Issue #38: placement lock management and unknown-state review.
-            NavigationActionPreference(
-                label = stringResource(id = R.string.organizer_lock_screen_title),
-                destination = HomeScreenPlacementLocks,
-                subtitle = stringResource(id = R.string.organizer_lock_screen_summary),
-            )
-            // Issue #138: supported release Settings route for diagnostics export.
-            NavigationActionPreference(
-                label = stringResource(id = R.string.organizer_diagnostics_title),
-                destination = HomeScreenOrganizerDiagnostics,
-                subtitle = stringResource(id = R.string.organizer_diagnostics_description),
-            )
-            NavigationActionPreference(
-                label = stringResource(id = R.string.organizer_category_overrides_title),
-                destination = HomeScreenCategoryOverrides,
-                subtitle = stringResource(id = R.string.organizer_category_overrides_summary),
-            )
-            // Issue #336: user-defined category management, adjacent to the
-            // #99 override editor.
-            NavigationActionPreference(
-                label = stringResource(id = R.string.organizer_custom_category_title),
-                destination = HomeScreenCustomCategories,
-                subtitle = stringResource(id = R.string.organizer_custom_category_summary),
-            )
+            // Issue #367: the organizer material rows (placement locks,
+            // diagnostics, category overrides, user-defined categories) and
+            // the Personalization group moved under the Organizer hub
+            // (TO-BE §5.2); they are reachable from the hub entry above.
             SwitchPreference(
                 adapter = lockHomeScreenAdapter,
                 label = stringResource(id = R.string.home_screen_lock),
@@ -197,43 +171,6 @@ fun HomeScreenPreferences(
                 adapter = prefs2.enableDotPagination.getAdapter(),
                 label = stringResource(id = R.string.show_dot_pagination_label),
                 description = stringResource(id = R.string.show_dot_pagination_description),
-            )
-        }
-        // Issue #203: personalization signals — the standing permission entry
-        // point (usage access app-op) with rationale, and the launcher-origin
-        // recording toggle. Organizing works fully without the permission;
-        // the granted state is shown as text (spec #203 U-2, accessibility).
-        PreferenceGroup(heading = stringResource(id = R.string.organizer_personalization_section)) {
-            SwitchPreference(
-                adapter = prefs2.organizerPersonalizationRecording.getAdapter(),
-                label = stringResource(id = R.string.organizer_personalization_recording_label),
-                description = stringResource(id = R.string.organizer_personalization_recording_description),
-            )
-            // Spec #203 U-2: the state is re-read on every resume so returning
-            // from the system usage-access settings refreshes the row. The
-            // predicate is the shared app-op semantics (2026-09-15 re-review
-            // Blocking 1).
-            val lifecycleOwner = LocalLifecycleOwner.current
-            var usageAccessGranted by remember { mutableStateOf(UsageAccess.isGranted(context)) }
-            DisposableEffect(lifecycleOwner) {
-                val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME) usageAccessGranted = UsageAccess.isGranted(context)
-                }
-                lifecycleOwner.lifecycle.addObserver(observer)
-                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-            }
-            ClickablePreference(
-                label = stringResource(id = R.string.organizer_personalization_usage_access_label),
-                subtitle = stringResource(
-                    id = if (usageAccessGranted) {
-                        R.string.organizer_personalization_usage_access_granted
-                    } else {
-                        R.string.organizer_personalization_usage_access_not_granted
-                    },
-                ),
-                onClick = {
-                    context.startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                },
             )
         }
         PreferenceGroup(heading = stringResource(id = R.string.popup_menu)) {

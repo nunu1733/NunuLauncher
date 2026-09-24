@@ -1,0 +1,69 @@
+# Independent Audit: PR #396 (issue #373)
+
+- Audit date: 2026-09-21
+- Auditor: Independent audit session (ZCode subagent、general-purpose agent)。実装PRを担当したsessionとは別の作業として実施。実装側の主張 (PR本文・evidence README) は参照したが依拠していない — 本記録の記載内容は監査sessionが自ら読んだdiff/test本文/spec本文と、自ら実行した検証の結果のみによる。
+- Target: PR https://github.com/nunu1733/NunuLauncher/pull/396 (base `main`、head `issue-373-implementation`)
+- Head SHA: `91596c4b5136062e863479ebe738a1744577823e` (base `5a57fa3695`)
+- 監査用checkout: `/Users/nunu/Documents/work2/NunuLauncher/worktree-373-impl` (branch `issue-373-implementation`、head `91596c4b51`、`git status` clean、GitHub remote確認はすべて `-R nunu1733/NunuLauncher` 付きで実施)
+- Referenced spec/plan: `specs/373-import-display-reprojection/{spec.md,plan.md}` — accepted (2026-09-21、PR #395。Phase1 review 3回対応後の最終 [Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756962168)。同コメントの存在を監査sessionがIssue comments APIで確認)
+- Review trail (すべてIssue #373コメント。ID存在を実確認済み): [実装サマリー](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5757948382) → 実装review 1回目 [Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758033715) → [対応packet](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758651159) → 再review [Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758731467) → [対応packet](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5759102939) → 実装review（再2）[**Approved**](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5759122578)
+
+## Verdict: Approve
+
+条件付きの注記つき。全10 ACの実装・test・記録を実diff・test本文の実読と監査session自身のlocal gate実行で確認した。ただし監査時点でCI merge gate (`final-status`) および`organizer-unit-tests` / 全instrumentation laneが**まだrunning**である (下記CI status参照)。mergeは`final-status`が同一head SHA上でsuccessになることを機械確認してから行うこと (AGENTS.mdの検証済み手順どおり)。この注記はコードの欠陥を示すものではなく、監査時刻のCI進行状況の記録である。
+
+根拠の要約:
+
+- 実装はaccepted spec/planのChange setと正確に一致する (diff 25 files、すべてspec/planの宣言範囲内。scope外fileへの接触0件)。
+- 20種typed失敗 → 手段別remedyのmappingは純粋関数1箇所にtable-drivenに固定され、網羅`when`に`else`が存在しない (runtime fallbackなし — review 1回目で確定した方針どおり)。20行のtable-driven unit oracle + primary面の否定的観測instrumentation + ja/en resource存在確認が揃う。
+- 「診断を開く」のprocess-scoped transient holderは非serializable・navigation saved state外であり、Activity recreation (同一process) での保持を`scenario.recreate()` + Activity自身の`setContent`で直接assertし、process death側を非serializable構造のunit oracleで固定した (spec revision 4の2面分離oracleどおり)。
+- IM-AC-07 (D-13既知未整合の#374所有記録) / IM-AC-08 (obsolete理由のPR本文 + test comment記録、旧4 stringのgrep 0件削除) / IM-AC-10 (spec 205/332改訂 + CONTEXT.md用語の同PR同梱) の「記録」要件がすべて実在する。
+- plan.mdのExplicitly unverified areas (実AT walkthrough未取得) はevidence README・PR本文でも正直に宣言されており、隠された未検証範囲はない。
+
+## AC-by-AC verification
+
+test名は監査sessionがtest本文を実読し、assert内容を確認したもの (名前のみの採用はしていない)。行番号はhead `91596c4b51`時点。
+
+- **IM-AC-01 (手段別primary・typed原因は詳細展開のみ・table-driven・compile-time網羅)**: PASS。`lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeImportFailureDisplay.kt` L56-217: `exchangeImportFailureDisplay` がenvelope 4 + normalization 2 + contract 14 = 20種全typedを網羅`when`でmappingし、**`else`分岐が存在しない** (監査sessionが全whenを実読。runtime fallbackなし。分類追加はcompile error)。20行はspec mapping表と1行ずつ一致することを照合した (InputOversize→RETRY_IMPORT、framing 3種/normalization 2種/schema/oversize/ref系/enum/forbidden/mobility/capability→REPASTE、export/session/context-stale/scope/unknown-category→RECREATE_REQUEST)。unit oracle: `tests/unit/.../ExchangeImportFailureDisplayTest.kt` `everyTypedFailureProjectsOntoTheAcceptedMappingTable` (remedy + primaryTextRes + detailTextRes + detailTypeNameを20行全件assert) / `allTwentyTypedClassificationsAreCovered` (20種・重複なし) / `actionLabelIsSinglePerRemedyCategory`。instrumentation: `ExchangeImportSurfaceInstrumentationTest#parseFirstOutcomeLeadsWithTheRemedyProjectionAndKeepsDetailCollapsedByDefault` — primary面がremedy copyのみでtyped copyの否定的観測 (`exchange_failure_export_mismatch` が面上に0 node)、認識情報・raw detailが展開前に0 node (default閉)、展開後に種別名/typed説明/認識3行が表示され高さ≤260px (bounded)。live region付きprimary面へのtyped文言の流出も`sourceLabelsAndTypedFailureAnnouncementAreExposed`内で否定観測 (L1143-1154)。詳細展開は`ExchangeFlowUi.kt` `ExchangeImportOutcome`再構成部分 (L2217-2414) で既存bounded pattern (`heightIn(max = 240.dp)` + verticalScroll) を継承。
+- **IM-AC-02 (CONTEXT_STALE = 「依頼の内容が古くなりました」+ 依頼を作り直す)**: PASS。`exchange_failure_primary_context_stale` = 「依頼の内容が古くなりました。依頼を作り直してください。」(ja正本。en "The request is out of date. Recreate the request.")。`ContextStale → RECREATE_REQUEST` (ExchangeImportFailureDisplay.kt L139-144、D-12コメント付き) とunit oracle該当行で固定。pipeline側fixtureは既存`ExchangeImportPipelineTest#structuralChangeAfterExportConvergesOnContextStale` (無編集・green) が構造digest不一致→CONTEXT_STALEを担保。rebase・部分適用の導線は失敗面に存在しない (再構成後の`ExchangeImportOutcome`に部分適用UIは不存在 — 実読による構造的確認)。
+- **IM-AC-03 (依頼を作り直す→openFlow()、再取り込み系→openImport()、zero-write)**: PASS。`ExchangeFlowUi.kt` のprimary action onClick: `RECREATE_REQUEST` → `holder.openFlow()`、それ以外 → `holder.openImport()` (コメント付き)。`openFlow()` (Ui.kt L309) / `openImport()` (L358、`Importing("")` = raw text破棄・spec 332 AC-7 boundary) は**既存seamの無変更再利用** (holder実装はdiff外)。session置換確認は依頼作成面の既存gateで効く (openFlowは`readActiveRequestIntoSelecting()`のみ。書込みなし)。instrumentation: `remedyActionsReachTheirSeamsAndDiagnosticsRecordsTheTypedCause` — no-session fixture → EXPORT_MISMATCH → action label「依頼を作り直す」をassertし押下で失敗面が置き換わることを確認。run-in entryのscope凍結復帰はhost第2call site (`ManualOrganizationPreferences.kt` L987、`onOpenDiagnostics = onOpenDiagnostics` 追加のみ) 経由で同一seamを使う。
+- **IM-AC-04 (中断する・診断を開く・lifecycle oracle 2面分離)**: PASS。「中断する」: `holder::close()` のTextButton (Ui.kt L2288-2294、zero-write close・確認dialogなし — `close()` L365は既存seam)。instrumentationが押下→確認dialogなしで面が即座に消えることをassert (`sourceLabelsAndTypedFailureAnnouncementAreExposed` L1156-1161)。依頼生存は既存無編集holder test `sentRequestSurvivesCloseAndTheT15PreDisplayShowsItAgain` が担保。「診断を開く」: 記録 (`ExchangeImportFailureDiagnostics.record`) → host callback (`onOpenDiagnostics`) の順。non-typed outcome (`InputNotReady`/unknown) では`clear()` — review 1回目確定の空化規則をunit (`diagnosticsHolderClearEmptiesTheRecording`) とinstrumentation (`staleTypedCauseIsNotShownAsTheCurrentAttemptOnNonTypedFailures` — 旧recordをseed→InputNotReady面→診断を開く→record null assert) の両方で固定。診断面補助行はholder保持時のみ (`OrganizerDiagnosticsPreferences.kt` L40-66、`recent?.let`)。routeは引数なしのまま (`PreferenceRoutes.kt` L112 `data object HomeScreenOrganizerDiagnostics`)。journal書込みなしは`recentImportFailureRowMirrorsTheTransientHolder`の`snapshotCalls == 0` assert。lifecycle oracle 2面分離: Activity recreationは`scenario.recreate()` + **Activity自身の`setContent`**で再composeし補助行の保持を直接assert (`recentImportFailureRowMirrorsTheTransientHolder`。ComposeTestRuleのsetContent once-per-test契約遵守 — review 2回目対応どおり)。process death側は`diagnosticsRecordingIsNotSerializable` (`RecentImportFailure`もholder objectも`java.io.Serializable`でない構造確認)。holderは`mutableStateOf`によるprocess memory上のobjectでnavigation saved state / `SavedStateHandle`への保存経路が存在しない (実読)。
+- **IM-AC-05 (T-17入力契約の不変回帰)**: PASS。diff --stat上`ExchangeImportField` (Ui.kt L1775) はdiff hunk外 (変更hunkはL1105-1129/L1217-1224/L2213-2414/L2485付近のみ)、`ExchangeImportPipeline.kt` / `ImportNormalizer.kt` / `IntentImportParser.kt` / validator / `ExchangeFlowController.kt` はdiff 0件 (`git diff --stat` で機械確認)。unit testの追加は新規`ExchangeImportFailureDisplayTest`のみで既存oracleは無編集。spec 332対応既存test群は監査実行でgreen (下記Test surface)。
+- **IM-AC-06 (T-18成功面の回帰)**: PASS。`ExchangeImportSuccess` composable (Ui.kt L2084) と`ExchangeImportSuccessBackHandler`はdiff hunk外 (変更は同composable終了後の`ExchangeImportOutcome`から開始 — hunk context行で確認)。成功面strings・`ExchangeImportSummary`・`ExchangeImportSuccessInstrumentationTest` はdiff 0件。success/anchor/discard系holder testは無編集でgreen (監査実行)。
+- **IM-AC-07 (D-13 §9準拠 + 既知未整合の記録)**: PASS。新規copy「中断する」はzero-write中止・確認不要 (code + instrumentation comment「D-13 §9 forbids one」)。詳細展開の開閉は確認dialogを伴わない。「破棄/キャンセル」語彙への混用なし (新規string 8種をja/enで実読)。成功面の取り込み破棄確認契約 (spec 328 D-2) は現行維持であり、それがD-13 §9に対する既知の未整合で#374 / spec 328 rev.2が解消を所有する旨が**PR本文に明記済み** (spec要件どおり本PRでは解消しない)。
+- **IM-AC-08 (旧oracle更新 + obsolete理由の記録)**: PASS。spec 348 content oracle `failureAndRetryGuidanceStaysWithinTheRecoveryBoundary` を手段別oracleへ書き換え: 対象を20種primary copy全体に拡大、allowed markerを手段別語彙 (再送/貼り直/作り直等) へ更新、forbidden marker (AI repair loop指標) は不変 — no-AI-repair-loop境界のassertion自体は維持。旧oracleが obsolete になった理由がtest comment (L943-950「IM-AC-08, oracle obsolete record」) とPR本文の両方に記録済み。旧string (`exchange_import_retry_hint` / `exchange_import_retry` / `exchange_import_raw_show` / `exchange_import_raw_hide`) はvalues/・values-ja/の双方から削除され、src/res/tests全体のgrepで参照0件 (唯一の一致はobsolete記録のtest comment文)。旧parse-first oracle `parseFirstOutcomeShowsRecognitionAndKeepsRawCollapsedByDefault` は手段別版へ置換 (削除29行に含まれることをdiff実読)。typed copies 20種は詳細展開のtyped原因説明として存続 (demote) — grep + strings実読で確認。
+- **IM-AC-09 (accessibility)**: PASS (範囲内) + 実AT未取得を宣言どおり記録。Compose semantics: primary copyのlive region Polite (assert済み)、詳細展開toggleの`stateDescription` (開閉状態。実読)、200% font test (`primaryActionsStayDisplayedAndEditorStaysBoundedAtTwoHundredPercentFont` — fontScale 2fでeditor bounded・主要操作表示)。device evidence: `docs/assessment/evidence/issue-373/` にPNG 10枚 + README (ja/default × light/dark、詳細展開開状態、200% font 2枚)。READMEは「診断を開く」rowがcapture構成では意図的に不在である旨 (safe absence) と**実AT (TalkBack読み上げ・Switch Access) walkthrough未取得**を明記 — plan.md Explicitly unverified areas・PR本文と一貫。Switch Access完結性の物理evidenceは存在しない (未取得範囲として正直に宣言)。
+- **IM-AC-10 (spec 205/332改訂 + 契約本体不変)**: PASS。同一PRに: spec 205 AC-5の表示面改訂 (手段別再投影 + test oracle行の更新 + change history 9th (2本目) に#373改訂記録)、spec 332の境界節 (T-17 = V-33後継・結果表示の正本はspec 205/328/#373側 + change history)、`CONTEXT.md` へ「手段別失敗投影 (Failure Remedy Projection)」用語追加 (spec Domain language節と同一文言。primary remedy/面レベル手段は定義内包)。validator/normalizer/envelope/framing契約本体はdiff 0件 (personalization配下の変更なしを機械確認)。spec 373のspec.md/plan.md自体も本PR内で改訂されているが、これはreview 1回目対応の契約整理 (holder空化規則・no-fallback方針) でありspec Change historyにreview link付きで記録済み — 受入後のspec変更が正当な手続き (対応review Approved) を経ていることを確認。
+
+## Test surface executed by the auditor
+
+監査session自らが実行 (head `91596c4b51`、worktree clean、JDK 21):
+
+- `./gradlew spotlessCheck` → **exit 0 / BUILD SUCCESSFUL** (タスクはUP-TO-DATE — 同一headで事前build済みのcheckoutのため入力不変性による再検証。同一head上のCI `check-style` jobが同commandでsuccess (10:49:34Z) しておりcovering)。
+- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` → **exit 0 / BUILD SUCCESSFUL (51s)**。test results XML (監査実行で新規生成されたものを確認): organizer配下**144 test class / 1606 tests / failures+errors 0**。新規`ExchangeImportFailureDisplayTest` 7件を含む (XMLで`tests="7"`を確認)。
+- instrumentationは監査sessionでは実行していない (emulator可用性の制約)。代わりに (a) PR本文が記録するlocal emulator (API 36) 実行 (issue332 lane PASS / issue52 lane相当PASS) と (b) CI laneの結果を依拠し、その状態は「CI status at audit time」に正直に記録した。`OrganizerDiagnosticsRouteInstrumentationTest` / `ExchangeImportSurfaceInstrumentationTest` / `ExchangeImportSuccessInstrumentationTest` のtest本文自体は監査sessionが実読しassert内容を確認済みである。
+
+## CI status at audit time
+
+2026-09-21 19:45-19:56 JST時点 (`gh pr checks 396 -R nunu1733/NunuLauncher` + checks API。run 35590672976の`head_sha == 91596c4b5136062e863479ebe738a1744577823e`をAPIで確認):
+
+- **SUCCESS (完了)**: `changes` / `high-risk-evidence` (別workflow "High-risk gate" run 35590672930、同head SHAでsuccess) / `validate-repo-contract` / `check-style`
+- **PENDING (running)**: `build-debug-apk` / `organizer-unit-tests` / `organizer-instrumentation-shared-writer-tests` / `-db-migration-tests` / `-issue299-tests` / `-api35-tests` / `-issue52-tests` / `-issue155-tests` / `-issue99-tests` / `-issue53-tests` / `-issue332-tests`
+- **`final-status` (merge gate)**: この時点では**まだrunしていない** (上位checkの完了待ち)。`mergeStateStatus: BLOCKED` (pending checks起因)
+- 本PRは表示のみの変更であり `risk: layout-data` / `risk: migration` labelは付いていない (PR labels空を確認。spec共通gateの自己分類と一致)。ただし`high-risk-gate` workflow自体はsuccessしている。
+
+監査結論は「CI完走後の`final-status` successをmerge前の機械条件とする」ことを条件にApproveとする。監査時点でCI greenを主張する記録は本監査では行わない。
+
+## Unverified / residual areas
+
+1. **実AT (TalkBack実機読み上げ・Switch Access scan) walkthrough**: 未取得。spec 332 AC-8と同一の合成入力制約。plan.md / evidence README / PR本文が同一の未取得宣言をしており、本監査もこれを「取得済み」として扱わない。IM-AC-09の機械検証可能部分 (semantics / 200% reflow / live region) はtestとdevice evidenceで確認済み。
+2. **instrumentationの監査session再実行**: 未実施 (CI lane + 実装側local runに依拠。test本文は実読済み)。
+3. **CONTEXT_STALEの失敗面 表示の直接instrumentation**: 存在しない。IM-AC-02は (a) pipeline unit fixture (既存、無編集) → (b) projection unit oracle行 → (c) 失敗面の同一描画path (class非依存。EXPORT_MISMATCH / SCHEMA_MISMATCH fixtureでinstrumented) の組合せで検証されており、diagnostics補助行にはCONTEXT_STALE fixtureが使われている。実害なし (table-driven projectionであり描画pathはtyped値で分岐しない) が、oracleの「instrumentation: 失敗面表示のcopy確認」をCONTEXT_STALE fixtureそのもので満たす記録にはなっていない点は残置として記録する。
+4. **「中断する」後の依頼生存 (再取り込み成立) のstatus経由確認**: 新規instrumentation内では行われず、既存無編集holder test (`sentRequestSurvivesCloseAndTheT15PreDisplayShowsItAgain`) が担保する分離構成。oracle記載の組合せとしては成立している。
+
+## Findings
+
+1. **(軽微・PR本文の数値誤り)** PR本文の検証節に「新規`ExchangeImportFailureDisplayTest` 8件」とあるが、実test数は**7件** (test results XML `tests="7"`。7つの@Testメソッドを監査sessionが数え直し)。全件greenであり実害なし。PR本文の修正は任意。
+2. **(観察・specのin-PR改訂)** accepted後のspec 373 (holder空化規則・runtime fallback廃止の方針) が実装PR内で改訂されている。spec Change historyにreview 1回目のChanges requestedへの対応としてlink付きで記録され、改訂後の契約上で実装review (再2) Approvedが得られているため手続き上の問題はないが、「accepted specの変更が実装PRに同梱される」構造であることは記録に値する。
+3. **(観察)** evidence capture testは実行時に`context.filesDir/evidence-373/`へPNGを書き出す (`captureWindowBitmap`)。commit済みevidence 10枚のfile名はharnessの命名format (`issue373-failure-$tag.png` / `issue373-failure-detail-$tag.png`) と一致することを確認した。
+4. **(重大な不一致なし)** scope外fileへの接触、`exchangeContractFailureText`の残り2 call site (#369/#375所有) への意図しない変更、runtime fallbackの混入、holderのserialization/saved state経路、journal書込み経路 — いずれも検出されなかった (diff全文実読 + grep機械確認)。

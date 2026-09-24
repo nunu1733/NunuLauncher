@@ -4,6 +4,7 @@ import android.content.Context
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.lifecycle.OrganizerDurableStatusDeriver
+import app.lawnchair.organizer.application.lifecycle.RestorableRecoveryPointSelector
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.FolderTitleResolver
 import app.lawnchair.organizer.application.public.OrganizerDurableStatus
@@ -17,6 +18,7 @@ import app.lawnchair.organizer.application.public.RecoveryPreviewUnavailable
 import app.lawnchair.organizer.application.public.RecoveryRejection
 import app.lawnchair.organizer.application.public.RecoveryRequest
 import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.application.public.RestorableRecoveryEntry
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.public.withCompositionCatalog
@@ -341,6 +343,45 @@ internal class LayoutApplicationModule<S>(
             }
         } catch (_: RuntimeException) {
             OrganizerDurableStatus.UNAVAILABLE
+        } finally {
+            ordinaryMutex.release(runId)
+        }
+    }
+
+    /**
+     * Issue #376 (D-15): read-only selection of the latest restorable recovery
+     * point for the hub status card's restore entry. Follows the exact
+     * fail-closed contract of [durableOrganizerStatus]: an unready gate,
+     * mutex contention, an unreadable snapshot, or any read failure maps to
+     * `null` — silent diagnostically, no write and no lifecycle mutation.
+     * The selection is only a hint; the #84 inspection re-validates and stays
+     * the authoritative gate. The UI must not run this read concurrently with
+     * [durableOrganizerStatus] (they share the same non-blocking mutex);
+     * callers serialize them (spec D6 read serialization).
+     */
+    fun readRestorableRecoveryEntry(): RestorableRecoveryEntry? = readinessGate.runWhenReady(
+        unavailable = { null },
+    ) {
+        val runId = operationIds.newRunId()
+        if (!ordinaryMutex.tryAcquire(runId)) return@runWhenReady null
+        try {
+            when (val read = store.readInspectionSnapshot()) {
+                is RecoveryStorePort.InspectionSnapshotRead.Value -> RestorableRecoveryPointSelector.select(
+                    records = read.records.map {
+                        RestorableRecoveryPointSelector.CandidateRecord(
+                            pointId = it.pointId,
+                            lifecycle = it.lifecycle,
+                            createdAtMs = it.createdAtMs,
+                            checksumValid = it.checksumValid,
+                        )
+                    },
+                    nowMs = clock.nowMillis(),
+                )
+
+                RecoveryStorePort.InspectionSnapshotRead.Unavailable -> null
+            }
+        } catch (_: RuntimeException) {
+            null
         } finally {
             ordinaryMutex.release(runId)
         }

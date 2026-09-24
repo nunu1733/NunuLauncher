@@ -25,8 +25,12 @@ _Avoid_: 全アプリ（対象範囲が曖昧な場合）
 _Avoid_: 設定、XMLルール
 
 **レイアウトストラテジー (Layout Strategy)**:
-対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、選択identityがpolicy provenanceへ参加する ([spec 182](./specs/182-layout-strategy-catalog/spec.md))。
+対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、選択identityがpolicy provenanceへ参加する ([spec 182](./specs/182-layout-strategy-catalog/spec.md))。primary success metricは「ユーザーが選んだ/表明したHome構成意図との一致」であり、page/folder/density等の数量指標は補助指標・tie-breakerである ([spec 398](./specs/398-strategy-intent-first-bottom-region/spec.md))。
 _Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、OrderingPolicy (旧単一値の型名)
+
+**下部優先領域 (lower preferred region)**:
+layout strategyが配置候補cellを制限するために、device profileの行数から決定的に導出する、page下部の行帯。`BOTTOM_REGION_V1` が採用し、pageの下 `ceil(rows/2)` 行を主な配置領域として上側を意図的余白として保持する。`regionAffinity` のBOTTOM band（行数3等分区の下带）とは別の、strategy構造の正本概念である ([spec 398](./specs/398-strategy-intent-first-bottom-region/spec.md))。
+_Avoid_: widget band（captured widget帯との混同）、region band（intent hintの行帯との混同）、下段（行数非依存の概念であることの不明瞭化）
 
 **ストラテジー固定unit (strategy-fixed unit)**:
 あるlayout strategyが「本来はmovableだが、そのstrategyの意図として動かさない」と決めたtop-level unit。配置上の占有を維持し、自然に保持されたunitとは別の理由として扱う ([spec 237](./specs/237-global-compact-v2-folder-relocation/spec.md))。
@@ -157,8 +161,24 @@ AI回答のvalidation通過後、run接続 (attach / fresh run開始) の前に�
 _Avoid_: 適用完了 (未適用であることとの混同)、プレビュー (#194 previewとの混同)
 
 **取り込み破棄 (Import Discard)**:
-取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。pendingなvalidated intentを破棄する (zero-write)。export sessionはinvalidateしないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は明示ボタン (追加確認なし) とsystem Back (確認dialog) の2つで、CTA処理中はどちらも不受理。
+取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md) rev.2、[spec 374](./specs/374-durable-imported-intent/spec.md))。取り込み済み提案のdurable recordを破棄する (tombstone 2段commit: `discarded=true` のatomic commit成功後にbest-effort物理削除。commit成功前に画面を閉じない)。export sessionはinvalidateしないため、依頼が有効の間は同じ回答textを再取り込みできる。入口は明示ボタンとsystem Backの2つで、ともに確認dialog 1回を経由 (D-13)。CTA処理中はどちらも不受理。
 _Avoid_: 取り消し (apply済み変更のrollbackとの混同。何も適用されていない)
+
+**手段別失敗投影 (Failure Remedy Projection)**:
+import失敗のtyped分類を、ユーザーの次の行動 (もう一度取り込む / 貼り直す / 依頼を作り直す / 中断する / 診断を開く) の語彙へ再投影した表示モデル ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-11、[#373](https://github.com/nunu1733/NunuLauncher/issues/373))。各typed失敗に1つのprimary remedy (class別のprimary copyと操作) を対応させ、typed失敗によらず常設される面レベル手段 (中断する・診断を開く) を併置する。primary面は手段別語彙のみを出し、typed分類名 (`CONTEXT_STALE`等) とtyped固有の説明は詳細展開と診断に格下げされる。
+_Avoid_: typed失敗一覧 (20種の列挙そのものはprimary面に現れない)、エラーコード表示 (分類名は補助情報に限る)
+
+**原因別remedy (Cause-Specific Remedy)**:
+`SCOPE_MISMATCH` の原因種別に対応づけられた救済action ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-17、[#375](https://github.com/nunu1733/NunuLauncher/issues/375))。選択集合の差 (`SET_MISMATCH`) は「選択を依頼時の集合へ戻して同じ提案で続行」、依頼時候補の解決不能 (`CANDIDATE_UNRESOLVED`) と候補投影の差 (`PROJECTION_MISMATCH`) は「同じ提案での続行を打ち切り、依頼を作り直す」。完全一致gate・zero-write・fail-closedの契約は不変。
+_Avoid_: 再export (単一remedyの旧語。re-exportは新依頼の作り直しに含まれる操作であり、remedy全体を指す語としては使わない)、リトライ (検証の再実行と混同)
+
+**rebind (process死後再開 / fresh run rebind)**:
+process死後 (および同じ1経路に集約される画面離脱後) に、durableな取り込み済み提案から「この提案で続ける」でfresh run admissionを行い、検出後の選択面で依頼時scopeとの完全一致検証を経て提案のpreferenceを新しいrunへ結合すること ([#375](https://github.com/nunu1733/NunuLauncher/issues/375))。admission直前のanchor再検証 (rebind admission anchor) と、recordに保存済みの `IntentIdentity` をそのまま用いるprovenance同一性 (import時と同一identity) を契約に含む。同一process内の生存runへのattachとは区別される。
+_Avoid_: 復元 (durable status/recoveryの復元 (D-15) と混同)、再接続 (attachの同義語に聞こえる)
+
+**選択復元初期値 (Selection Restore Initial Values)**:
+rebindの選択面で、依頼時の明示選択と一致する候補を初期選択値として設定すること ([#375](https://github.com/nunu1733/NunuLauncher/issues/375))。復元値は選択面の明示的confirm (1回) を経由してのみ確定し、confirm前の選択編集を妨げない。spec 228 D-1 (unchecked-by-default) の、依頼時集合を再現する目的に限定した例外である。
+_Avoid_: 自動選択 (confirmなしの確定を示唆する)、初期化 (全解除と混同)
 
 **判断なし項目 (no-judgment items)**:
 #330 v3 canonical representation (`CompletedPersonalIntent`) 上、`RefDecision.Authored` 以外の決定 (明示unresolved・bare entry正規化・未言及) を持つexport ref ([spec 328](./specs/328-exchange-import-success-state/spec.md))。3表現はsemantic identity・planner効果が同一 (#330 D-5/D-6) であり、UIでは合算1件数のみを表示してprovenanceを出さない。
@@ -187,3 +207,23 @@ _Avoid_: 仮配置 (配置の作成を示唆する)、新規アイテム (Add行
 **scope binding gate (scope束縛検証)**:
 validated intentをorganizer runへ適用する時点で、runの確定した対象scopeのcandidate集合がexchange exportの対象scopeと完全一致し、各候補の投影 (identity + availability + 解決済み分類) がexport時と一致することを検証するfail-closedな検証step ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。違反はtyped失敗 `SCOPE_MISMATCH` としてzero-write処理される。
 _Avoid_: staleチェック (配置構造変化の検出とは別段)、再検証 (availability再検証と混同)
+
+**Organizer hub (整理ハブ)**:
+Organizerの恒常作業領域かつprimary entry面 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-01/D-02、§5.2)。durable status・進行中のAI依頼・取り込み済み提案・最近のrun結果 (process内のみ) を示すstatus cardと、整理の開始、材料群、診断への導線を1面に集約する。設定側には入口rowだけを残す。onboarding提案 (T-19)・workspace長押しlock (T-20)・選択面からのAI相談・safe terminalからの診断等のsecondary entryは維持される。
+_Avoid_: 設定画面 (入口rowを指す場合)、ダッシュボード、唯一の入口 (secondary entryを否定する誤解)
+
+**材料 (organizer materials)**:
+分類・ロック・整理方針・使用状況ヒントの総称 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) §10)。run外の恒常storeへ即時保存されるauthoring対象であり、run中の恒常authoringは不可で「中断してから変更する」が唯一の規則である (D-03)。
+_Avoid_: 設定 (runと区別する語彙として使う場合)、プレファレンス
+
+**依頼 (AI相談の依頼)**:
+「AIに相談」で作る、export session (durableな対応記録) と送出文書 (交換パッケージ) の一組 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) §10)。active依頼は単一で24h有効であり、依頼作成時点のホームで固定される (D-09)。置換・未送信依頼の破棄・TTLで消える。
+_Avoid_: エクスポートセッション (構成要素の1つを指す既存語)、AI連携
+
+**取り込み済み提案 (取り込み済み・未適用の提案)**:
+AI回答のvalidation通過後、run接続の前に存在する提案状態 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-08、[spec 374](./specs/374-durable-imported-intent/spec.md))。依頼と同一の有効期限 (24h) を持つdurable artifactであり、process死・画面離脱で消えない。期限切れ・置換・破棄で無効になる。durable保存の成功が取り込み済み状態の成立条件であり、継続CTA成功後も保持される (継続後の再開は #375)。
+_Avoid_: 適用済み提案 (未適用である)、プレビュー (run接続後の確認対象と混同)
+
+**中断・破棄・キャンセル (中止語彙規約)**:
+ユーザー向け中止語彙の規約 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-13/§9)。不可逆に捨てる操作 (取り込み済み提案の破棄、依頼の置換、未送信依頼の無効化) は「破棄」ラベルと必須確認、zero-writeでrunを止めてhubへ戻るのは「中断」、何も壊さず中止するのは「キャンセル」(確認不要) とする。「キャンセル」ラベルの不可逆操作への混用を禁止し、現行のpre-send cancelは「破棄」へ改める (spec 205側の語彙改訂は後続実装Issueが行う)。
+_Avoid_: Cancelの混用 (zero-write中断と不可逆session無効化の同一ラベル化)
