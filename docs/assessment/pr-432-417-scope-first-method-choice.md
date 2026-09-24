@@ -104,5 +104,5 @@ first-parentは docs `f882aebc11` → fix `e43f4cd056` → main merge `898152f57
 ### Verdict更新
 
 - 初回記録時（head `f37b7330dd`・CI赤）の**NO-GOは解消**。現時点のstate: CI merge gate（`final-status`）green、Phase 2 review round1-4（Issue #417コメント）、round4 **Approved**（head `f37b7330dd`。初回Findings 5参照）。
-- **delta再review（round 5）はChatGPT側のstream errorで未完**（試行: 会話2本・retry1回。status pending）。**merge前のowner判断項目として明記する。** round 4 approvalの対象はhead `f37b7330dd`までであり、以降のdelta（`f882aebc11`..`7aa5c7f157`）は承認範囲外である。
+- **delta再review（round 5）完了: [Approved](https://github.com/nunu1733/NunuLauncher/issues/417#issuecomment-5809897430)（2026-09-24、head `7aa5c7f157`を対象にdelta `f882aebc11`..`7aa5c7f157`の2件のproduction修正・テスト追従・新CI laneを確認、新規指摘なし）。** 初回試行ではChatGPT側stream errorで2回中断したが、3回目の送信で完了。これにより本PR（head `17c970ddde` = `7aa5c7f157` + 本監査doc追記）はreview・CIとも現headで整合する。
 - 未確認範囲は初回記載を維持: AC-9の実機device evidence（TalkBack・キーボード・Switch Access）未実施、AC-8(o)は実OSのprocess deathではなくin-process durable fault injectionである点等（初回Findings 3/4）。
