@@ -114,17 +114,20 @@ import org.junit.runner.RunWith
  * - (j)  connected: [journeyJInterruptedRunRejectsTheLateCompletionZeroWrite]
  * - (k)  connected: [journeyKReplacementMovesTheAuthorityE1RefusedE2Attachable]
  * - (l)  connected: [journeyLCrossingRebindAdmissionAndGenerationCommitDoesNotDeadlock]
- *        (rebind admission holding the run lock × a GENERATION COMMIT gate acquisition, latch-sequenced;
- *        the live-owner pending-save crossing is pinned additionally by
- *        [rebindAdmissionAndLiveOwnerPendingSaveAlsoCrossesWithoutDeadlock]) (shared with (s))
+ *        (rebind admission holding the run lock × a GENERATION COMMIT of the SAME run — ONE
+ *        [ManualOrganizationRun], so with the correct order the commit blocks on the SAME run lock BEFORE
+ *        reaching the gate; latch-sequenced; the live-owner pending-save crossing is pinned on the same
+ *        single run lock by [rebindAdmissionAndLiveOwnerPendingSaveAlsoCrossesWithoutDeadlock]) (shared with (s))
  * - (m)  connected: [journeyMScopeDiscardDuringClaimedReplacementDropsE2AndReopens]
  * - (n)  connected: [journeyNOutOfOrderCompletionsCommitOnlyTheCurrentEpoch]; unit twin (additional):
  *        `ManualOrganizationRunTest.claimingAGenerationEpochInvalidatesThePreviousClaimZeroWrite`
  *        + `ManualOrganizationRunTest.invalidatingTheGenerationEpochRejectsThePendingCommit`
- * - (o)  connected: [journeyODeathBetweenDurableSaveAndBindingUpdateReconnectsOnlyThroughRebind] — the FAULT POINT
- *        (the durable session save landed inside the gate hold / the run-provided bind callback never ran) is
- *        exercised in-process by a gate transaction capability that drops the bind callback; process death itself
- *        remains device/crash-test territory. Unit twin (additional):
+ * - (o)  connected: [journeyODeathBetweenDurableSaveAndBindingUpdateReconnectsOnlyThroughRebind] — the DURABLE
+ *        fault point (the session save landed in the REAL `AndroidExportSessionStore` file inside the gate
+ *        hold / the commit never returned to its caller / the run-provided bind callback never ran) is
+ *        exercised in-process by a gate transaction capability that throws after the durable mutation; a fresh
+ *        store/controller/run/holder is rebuilt from the SAME durable file. Process death itself remains
+ *        device/crash-test territory. Unit twin (additional):
  *        `ExchangeFlowStateHolderTest.ownerlessRunInImportSavesThePendingAndProjectsToImportReviewWithoutAttach`
  * - (p)  connected: [journeyPActiveSessionAndBindingNeverDivergeAcrossFailurePaths] (store-save failure / encode
  *        failure / pre-send discard); unit twins (additional):
@@ -595,23 +598,64 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
     }
 
     /**
-     * Oracle (o): the deterministic in-process death injection at the atomic
-     * commit's fault point — the durable session save lands inside the gate
-     * hold, and the run-provided BIND callback (the binding update) NEVER
-     * runs. This is exactly the world a process death between the durable
-     * save and the binding update leaves behind.
+     * Oracle (o): the deterministic DURABLE death injection at the atomic
+     * commit's fault point, over the REAL store file — the gate-held durable
+     * mutation (the session save) RUNS and lands in the durable file, and the
+     * fault then THROWS: the commit never returns to its caller and the
+     * run-provided BIND callback (the binding update) never runs. This is
+     * exactly the world a process death between the durable save and the
+     * binding update leaves behind (process death itself remains
+     * device/crash-test territory).
      */
-    private class DeathAfterSaveTransaction(
+    private class DurableDeathTransaction(
         private val gate: app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate,
     ) : ManualOrganizationRun.ExchangeGateTransaction {
+        /** The injected death: the commit's caller never observes a return. */
+        class ProcessDeath : RuntimeException("the process died between the durable save and the binding update")
+
         override fun <R> withinGate(
             durableMutation: () -> R,
             onGateHeld: (R) -> Unit,
         ): R = gate.withGate {
-            // The durable mutation (the session save) lands inside the gate
-            // hold; the run-provided BIND callback never runs — the exact
-            // save-landed/binding-never-updated fault point.
+            // The durable mutation (the session save) lands in the REAL store
+            // file inside the gate hold…
             durableMutation()
+            // …and the process "dies": no run-provided callback, no return to
+            // the caller — the save-landed/binding-never-updated fault point.
+            throw ProcessDeath()
+        }
+    }
+
+    /**
+     * Oracle (l): the pre-gate boundary observer of the run-owned transaction.
+     * [ManualOrganizationRun] invokes [withinGate] only from inside its run
+     * lock critical section, so [entrySignal] firing at the boundary is
+     * latch-level evidence that the commit thread has ACQUIRED the run lock
+     * and is about to acquire the gate — observed via a latch, never via
+     * Thread.State. When [parkOnEntry] is set, the thread additionally parks
+     * AT the boundary — holding the run lock, before the gate acquisition —
+     * until released, or until it is interrupted (the interrupt unwinds the
+     * commit before any gate involvement, freeing the run lock with zero
+     * durable writes).
+     */
+    private class PreGateBoundaryTransaction(
+        private val gate: app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate,
+    ) : ManualOrganizationRun.ExchangeGateTransaction {
+        @Volatile
+        var entrySignal: CountDownLatch? = null
+
+        @Volatile
+        var parkOnEntry: CountDownLatch? = null
+
+        private val delegate = ManualOrganizationRun.gateHeldExchangeGateTransaction(gate)
+
+        override fun <R> withinGate(
+            durableMutation: () -> R,
+            onGateHeld: (R) -> Unit,
+        ): R {
+            entrySignal?.countDown()
+            parkOnEntry?.await()
+            return delegate.withinGate(durableMutation, onGateHeld)
         }
     }
 
@@ -924,90 +968,141 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
 
     @Test
     fun journeyODeathBetweenDurableSaveAndBindingUpdateReconnectsOnlyThroughRebind() {
-        // AC-8(o): save後・束縛更新前のfault point — exercised IN-PROCESS. The
-        // gate transaction capability of "process 1" performs the durable
-        // session save inside the REAL gate hold and deterministically DROPS
-        // the run-provided bind callback: the save landed, the binding was
-        // never updated — exactly the world a process death between the
-        // durable save and the binding update leaves behind. (Process death
-        // itself remains device/crash-test territory; this connected oracle
-        // pins the fault point's state and the recovery from it.)
+        // AC-8(o): save後・束縛更新前のprocess death — the DURABLE fault point,
+        // exercised against the REAL store file. "Process 1" drives a real
+        // scoped generation THROUGH the run-owned atomic commit over the REAL
+        // [AndroidExportSessionStore] on a temp file: inside the gate hold the
+        // durable mutation runs (the session save lands in the durable file)
+        // and the injected fault then THROWS, so the commit never returns to
+        // its caller and the run-provided bind callback never runs — exactly
+        // the world a process death between the durable save and the binding
+        // update leaves behind. The first world (holder face + run + claimed
+        // epoch + store) is abandoned exactly there: the durable file holds
+        // the RUN_IN session with NO bound run. (Process death itself remains
+        // device/crash-test territory; this connected oracle pins the durable
+        // fault point's on-disk state and the recovery from it.)
         //
-        // The "reboot" is a FRESH run+holder pair over the SAME durable
-        // stores: the reply is imported from the entry face, the RUN_IN
-        // pending is saved ownerless, the ImportReview face (never the
-        // direct-attach success state) adopts, and the rebind 1-path admits a
-        // fresh run with the #375 restore — the direct attach authority is
-        // never revived. Unit twin for the ownerless recovery halves
-        // (additional):
+        // The "reboot" rebuilds a FRESH store/controller/run/holder from the
+        // SAME durable file (no in-memory carryover): the reply is imported
+        // through the hub/import-only hosting, the ownerless RUN_IN pending is
+        // saved, the ImportReview face (never the direct-attach success state)
+        // adopts, and the rebind 1-path admits a fresh run with the #375
+        // restore — the direct attach authority never resurrects (the binding
+        // stays absent in the fresh world until the rebind's own admission).
+        // Unit twin for the ownerless recovery halves (additional):
         // `ExchangeFlowStateHolderTest.ownerlessRunInImportSavesThePendingAndProjectsToImportReviewWithoutAttach`.
-        val gate = app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate()
-        val store = FakeStore()
-        val pendingStore = FakePendingStore()
-        // "Process 1": the atomic commit runs THROUGH the death injection.
-        val firstRun = ManualOrganizationRun(
-            JourneyApplication(),
-            app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
-            exchangeGateTransaction = DeathAfterSaveTransaction(gate),
-        )
-        val firstHolder = ExchangeFlowStateHolder(
-            controllerFactory = { newJourneyController(store, pendingStore) },
-            run = firstRun,
-            scope = CoroutineScope(Dispatchers.Main),
-            pendingImportStore = pendingStore,
-            exchangeMutationGate = gate,
-        )
-        firstRun.start()
-        firstRun.confirmSelection(setOf(scopedCandidate))
-        composeRule.runOnUiThread {
-            firstHolder.generateScoped(PrivacyTier.EXTERNAL_REDACTED, listOf(scopedCandidate), mapOf(scopedCandidate to "c1"))
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val sessionFile = File(context.cacheDir, "issue417-o-death-${System.nanoTime()}.json")
+        try {
+            // ---- "Process 1": the scoped generation dies mid-commit ----
+            val firstGate = app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate()
+            val firstStore = AndroidExportSessionStore(sessionFile)
+            val firstPendingStore = FakePendingStore()
+            val firstRun = ManualOrganizationRun(
+                JourneyApplication(),
+                app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
+                exchangeGateTransaction = DurableDeathTransaction(firstGate),
+            )
+            val firstController = newJourneyController(firstStore, firstPendingStore)
+            val firstHolder = ExchangeFlowStateHolder(
+                controllerFactory = { firstController },
+                run = firstRun,
+                scope = CoroutineScope(Dispatchers.Main),
+                pendingImportStore = firstPendingStore,
+                exchangeMutationGate = firstGate,
+            )
+            firstRun.start()
+            firstRun.confirmSelection(setOf(scopedCandidate))
+            val runId1 = confirmedScopeRunId(firstRun)
+            composeRule.runOnUiThread { firstHolder.openMethodChoiceFlow() }
+            val epoch = firstRun.claimGenerationEpoch(listOf(scopedCandidate))!!
+            val prepared = firstController.prepareScopedGeneration(
+                PrivacyTier.EXTERNAL_REDACTED,
+                listOf(scopedCandidate),
+                mapOf(scopedCandidate to "c1"),
+            ) as ExchangeGenerationPreparation.Prepared
+            assertEquals("the scoped generation carries the RUN_IN origin", ExportEntryOrigin.RUN_IN, prepared.session.entryOrigin)
+
+            var death: Throwable? = null
+            val commitThread = thread(name = "process-1-generation-commit") {
+                try {
+                    firstRun.commitGeneratedSession(epoch, prepared.session.exportId) {
+                        when (firstController.commitPreparedSession(prepared)) {
+                            SessionPersistOutcome.Committed -> ManualOrganizationRun.PersistOutcome.Committed
+                            SessionPersistOutcome.WriteFailed -> ManualOrganizationRun.PersistOutcome.WriteFailed
+                        }
+                    }
+                } catch (failure: Throwable) {
+                    death = failure
+                }
+            }
+            commitThread.join(15_000)
+            assertTrue("the injected process death aborted the commit", death is DurableDeathTransaction.ProcessDeath)
+
+            // The fault point, asserted on the DURABLE truth: the save landed
+            // in the real file (read through a FRESH store instance — the
+            // bytes are on disk), the binding update never ran, and the first
+            // world is abandoned exactly there.
+            val durableAfterDeath = AndroidExportSessionStore(sessionFile)
+            val saved = durableAfterDeath.load(prepared.session.exportId)
+            assertNotNull("the durable file holds the saved session", saved)
+            assertEquals(ExportEntryOrigin.RUN_IN, saved!!.resolvedEntryOrigin)
+            assertFalse("the abandoned run never bound the saved session", firstRun.isLiveScopeOwner(runId1, prepared.session.exportId))
+            assertFalse("the abandoned run holds no binding", firstRun.hasBoundScopeRequest())
+            assertNull("the first world saved no pending either", firstPendingStore.record)
+            val reply = scopedReplyFor(prepared.session)
+
+            // ---- "Reboot": a fresh world rebuilt from the SAME durable file ----
+            val secondGate = app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate()
+            val secondStore = AndroidExportSessionStore(sessionFile)
+            val secondPendingStore = FakePendingStore()
+            val secondRun = ManualOrganizationRun(
+                JourneyApplication(),
+                app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
+                exchangeGateTransaction = ManualOrganizationRun.gateHeldExchangeGateTransaction(secondGate),
+            )
+            val secondHolder = ExchangeFlowStateHolder(
+                controllerFactory = { newJourneyController(secondStore, secondPendingStore) },
+                run = secondRun,
+                scope = CoroutineScope(Dispatchers.Main),
+                pendingImportStore = secondPendingStore,
+                exchangeMutationGate = secondGate,
+            )
+            assertEquals("the fresh world starts with no run and no binding", "Idle", secondRun.state::class.java.simpleName)
+            assertFalse(secondRun.hasBoundScopeRequest())
+
+            composeRule.runOnUiThread {
+                secondHolder.openImport() // the hub/import-only hosting shape
+                secondHolder.import(reply)
+            }
+            val review = awaitImportReview(secondHolder)
+            assertEquals(ExchangeImportEntryKind.RUN_IN, review.entryKind)
+            assertNotNull("the ownerless RUN_IN pending was saved", secondPendingStore.record)
+            assertEquals(PendingImportEntryKind.RUN_IN, secondPendingStore.record!!.entryKind)
+            assertTrue(secondHolder.screen !is ExchangeScreen.ImportSuccess)
+
+            // The rebind 1-path only: a fresh run is admitted; no direct attach.
+            composeRule.runOnUiThread { secondHolder.continuePendingImport() }
+            awaitScreenIs(secondHolder) { it is ExchangeScreen.Closed }
+            awaitRunState(secondRun) { it is ManualOrganizationRun.State.Selecting }
+            val selecting = secondRun.state as ManualOrganizationRun.State.Selecting
+            assertEquals("the rebind restores the export scope as the initial values", setOf(scopedCandidate), selecting.restoredSelection)
+            assertFalse("the direct attach authority was never revived", secondRun.isLiveScopeOwner(selecting.runId, prepared.session.exportId))
+        } finally {
+            sessionFile.delete()
+            File(sessionFile.path + ".new").delete()
+            File(sessionFile.path + ".bak").delete()
         }
-        awaitScreenIs(firstHolder) { it is ExchangeScreen.Disclosing }
-        val session = store.session!!
-        // The fault point, directly asserted: the durable save landed but the
-        // binding update (the run-provided callback) never ran.
-        assertFalse("the save landed but the binding never updated", firstRun.isLiveScopeOwner(confirmedScopeRunId(firstRun), session.exportId))
-        assertFalse(firstRun.hasBoundScopeRequest())
-        val reply = scopedReplyFor(session)
-
-        // "Reboot": a fresh run+holder pair over the SAME durable stores.
-        val secondRun = ManualOrganizationRun(
-            JourneyApplication(),
-            app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
-            exchangeGateTransaction = ManualOrganizationRun.gateHeldExchangeGateTransaction(gate),
-        )
-        val secondHolder = ExchangeFlowStateHolder(
-            controllerFactory = { newJourneyController(store, pendingStore) },
-            run = secondRun,
-            scope = CoroutineScope(Dispatchers.Main),
-            pendingImportStore = pendingStore,
-            exchangeMutationGate = gate,
-        )
-        assertEquals("Idle", secondRun.state::class.java.simpleName)
-
-        composeRule.runOnUiThread {
-            secondHolder.openImport() // the entry/hub hosting shape
-            secondHolder.import(reply)
-        }
-        val review = awaitImportReview(secondHolder)
-        assertEquals(ExchangeImportEntryKind.RUN_IN, review.entryKind)
-        assertNotNull("the ownerless RUN_IN pending was saved", pendingStore.record)
-        assertTrue(secondHolder.screen !is ExchangeScreen.ImportSuccess)
-
-        // The rebind 1-path only: a fresh run is admitted; no direct attach.
-        composeRule.runOnUiThread { secondHolder.continuePendingImport() }
-        awaitScreenIs(secondHolder) { it is ExchangeScreen.Closed }
-        awaitRunState(secondRun) { it is ManualOrganizationRun.State.Selecting }
-        val selecting = secondRun.state as ManualOrganizationRun.State.Selecting
-        assertEquals("the rebind restores the export scope as the initial values", setOf(scopedCandidate), selecting.restoredSelection)
-        assertFalse("the direct attach authority was never revived", secondRun.isLiveScopeOwner(selecting.runId, session.exportId))
     }
 
     /** The confirmed scope's runId of a run parked at the frozen scope. */
     private fun confirmedScopeRunId(run: ManualOrganizationRun): RunId =
         (run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
 
-    private fun newJourneyController(store: FakeStore, pendingStore: FakePendingStore): ExchangeFlowController = ExchangeFlowController(
+    private fun newJourneyController(
+        store: ExportSessionStore,
+        pendingStore: PendingImportedIntentStore,
+    ): ExchangeFlowController = ExchangeFlowController(
         composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(1_000_000L, withCandidate = false)) },
         currentStructuralInputs = { ExchangeStructuralResult.Ready(structural(withCandidate = true)) },
         composeScopedExportInputs = { _, _, _ -> ExchangeInputResult.ExportReady(exportInputs(1_000_000L, withCandidate = true)) },
@@ -1048,46 +1143,89 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
 
     @Test
     fun journeyLCrossingRebindAdmissionAndGenerationCommitDoesNotDeadlock() {
-        // AC-8(l): the rebind admission HOLDS the run lock and waits on the
-        // REAL process-wide gate (the #375 anchor shape) while a GENERATION
-        // COMMIT on a second run of the same process attempts the SAME gate
-        // acquisition from under its own run lock. A third party holds the
-        // gate so BOTH sides queue on it while each holds its run lock — the
-        // crossing state is asserted deterministically (exactly one gate
-        // holder, neither side inside), and both sides complete afterwards
-        // with bounded joins as the failure detector. No Thread.State
-        // discrimination anywhere.
+        // AC-8(l): the crossing is built on ONE [ManualOrganizationRun] — the
+        // rebind admission HOLDS that run's lock and waits on the REAL
+        // process-wide gate (the #375 anchor shape) while a GENERATION COMMIT
+        // of the SAME run is released against it. With the correct (run lock →
+        // gate) order the commit must BLOCK on the SAME run lock BEFORE
+        // reaching the gate; a gate-first regression (a gate→run-lock
+        // acquisition anywhere) would let the commit into the gate queue while
+        // the admission holds the lock and forms the ABBA cycle — caught by
+        // the not-entered latch assertions and, ultimately, by the bounded
+        // joins as the deadlock failure detector. No wall-clock sleeps for
+        // synchronization, no Thread.State discrimination anywhere.
         val sharedGate = app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate()
-        // Side B's run: a live confirmed scope with a claimed epoch and a
-        // prepared generation; its transaction signals the gate-attempt
-        // instant (B is then holding run B's lock).
-        val bAttemptingGate = CountDownLatch(1)
-        val bTransaction = object : ManualOrganizationRun.ExchangeGateTransaction {
-            private val delegate = ManualOrganizationRun.gateHeldExchangeGateTransaction(sharedGate)
+        val crossing = PreGateBoundaryTransaction(sharedGate)
+        val fixture = newFixture(driveToConfirmedScope = true, gateTransaction = crossing, gate = sharedGate)
+        val run = fixture.run
 
-            override fun <R> withinGate(durableMutation: () -> R, onGateHeld: (R) -> Unit): R {
-                bAttemptingGate.countDown()
-                return delegate.withinGate(durableMutation, onGateHeld)
-            }
-        }
-        val fixtureB = newFixture(driveToConfirmedScope = true, gateTransaction = bTransaction, gate = sharedGate)
-        val runBId = confirmedScopeRunId(fixtureB.run)
-        val epochB = fixtureB.run.claimGenerationEpoch(listOf(scopedCandidate))!!
-        val preparedB = fixtureB.controller.prepareScopedGeneration(
+        // The old operation's generation: the epoch is claimed and the
+        // lock-free prepare is done; the commit (the gate acquisition) is what
+        // gets parked/crossed below.
+        val epoch = run.claimGenerationEpoch(listOf(scopedCandidate))!!
+        val prepared = fixture.controller.prepareScopedGeneration(
             PrivacyTier.EXTERNAL_REDACTED,
             listOf(scopedCandidate),
             mapOf(scopedCandidate to "c1"),
         ) as ExchangeGenerationPreparation.Prepared
 
-        // Side A's run: idle — its rebind admission parks in the anchor.
-        val runA = ManualOrganizationRun(
-            JourneyApplication(),
-            app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
-            exchangeGateTransaction = ManualOrganizationRun.gateHeldExchangeGateTransaction(sharedGate),
+        // Phase 1 — the commit thread parks at its pre-gate boundary: it has
+        // ACQUIRED the run lock (the run invokes the transaction only from
+        // inside its lock section) and is about to acquire the gate. Positive
+        // latch observation — never thread state.
+        val commitPreGate = CountDownLatch(1)
+        val commitMayProceed = CountDownLatch(1)
+        crossing.entrySignal = commitPreGate
+        crossing.parkOnEntry = commitMayProceed
+        var parkedCommitDeath: Throwable? = null
+        val parkedCommit = thread(name = "parked-generation-commit-pre-gate") {
+            try {
+                run.commitGeneratedSession(epoch, prepared.session.exportId) {
+                    when (fixture.controller.commitPreparedSession(prepared)) {
+                        SessionPersistOutcome.Committed -> ManualOrganizationRun.PersistOutcome.Committed
+                        SessionPersistOutcome.WriteFailed -> ManualOrganizationRun.PersistOutcome.WriteFailed
+                    }
+                }
+            } catch (failure: Throwable) {
+                parkedCommitDeath = failure
+            }
+        }
+        assertTrue(
+            "the commit thread acquired the run lock and reached its pre-gate boundary",
+            commitPreGate.await(10, TimeUnit.SECONDS),
         )
+        // Interrupt/finish that commit operation: it unwinds BEFORE any gate
+        // involvement (zero durable writes) and frees the run lock.
+        parkedCommit.interrupt()
+        parkedCommit.join(15_000)
+        assertTrue("the parked commit unwound through the interruption", parkedCommitDeath is InterruptedException)
+        crossing.parkOnEntry = null
 
-        // The third party holds the shared gate: both sides will queue on it
-        // while each holds its own run lock.
+        // The old operation ends (the harness interrupt path): the epoch dies
+        // with it and the run lock is free — while a generation completion of
+        // the old operation stays parked pre-gate (it holds NO lock while
+        // parked).
+        run.cancel()
+        awaitRunState(run) { it is ManualOrganizationRun.State.Cancelled }
+
+        val commitMayStart = CountDownLatch(1)
+        val commitAttemptingRunLock = CountDownLatch(1)
+        val commitEnteredGate = CountDownLatch(1)
+        crossing.entrySignal = commitEnteredGate
+        var lateCommitOutcome: ManualOrganizationRun.GenerationCommitOutcome? = null
+        val lateCommit = thread(name = "parked-generation-commit") {
+            commitMayStart.await(15, TimeUnit.SECONDS)
+            commitAttemptingRunLock.countDown() // B's pre-gate observation: it is now attempting the commit
+            lateCommitOutcome = run.commitGeneratedSession(epoch, prepared.session.exportId) {
+                when (fixture.controller.commitPreparedSession(prepared)) {
+                    SessionPersistOutcome.Committed -> ManualOrganizationRun.PersistOutcome.Committed
+                    SessionPersistOutcome.WriteFailed -> ManualOrganizationRun.PersistOutcome.WriteFailed
+                }
+            }
+        }
+
+        // The third party holds the shared gate, so the rebind admission
+        // genuinely waits inside the gate queue.
         val holderInGate = CountDownLatch(1)
         val releaseGate = CountDownLatch(1)
         thread(name = "gate-holder") {
@@ -1098,20 +1236,20 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
         }
         assertTrue(holderInGate.await(10, TimeUnit.SECONDS))
 
-        // Side A — the rebind admission: inside the run's lock section (the
-        // anchor contract), it then attempts the shared gate while STILL
-        // holding the run lock.
+        // The rebind admission on the SAME run: inside the run's lock section
+        // (the anchor contract), it then attempts the gate while STILL holding
+        // THE run lock the parked commit needs.
         val aHoldsLock = CountDownLatch(1)
         val aMayProceed = CountDownLatch(1)
         val aAttemptingGate = CountDownLatch(1)
         val aEnteredGate = CountDownLatch(1)
         var aOutcome: ManualOrganizationRun.StartOutcome? = null
-        val threadA = thread(name = "rebind-admission") {
-            aOutcome = runA.start(
+        val rebindAdmission = thread(name = "rebind-admission") {
+            aOutcome = run.start(
                 app.lawnchair.organizer.diagnostics.model.Trigger.MANUAL_FULL,
                 intent = null,
                 admissionAnchor = { complete ->
-                    aHoldsLock.countDown() // A now holds run A's lock
+                    aHoldsLock.countDown() // A now holds the run's (only) lock
                     aMayProceed.await(15, TimeUnit.SECONDS)
                     aAttemptingGate.countDown() // A is about to queue on the gate
                     sharedGate.withGate {
@@ -1124,66 +1262,81 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
         }
         assertTrue("A must be holding the run lock", aHoldsLock.await(10, TimeUnit.SECONDS))
 
-        // Side B — the generation commit: takes run B's lock first, then
-        // queues on the SAME shared gate.
-        var bOutcome: ManualOrganizationRun.GenerationCommitOutcome? = null
-        val threadB = thread(name = "generation-commit") {
-            bOutcome = fixtureB.run.commitGeneratedSession(epochB, preparedB.session.exportId) {
-                when (fixtureB.controller.commitPreparedSession(preparedB)) {
-                    SessionPersistOutcome.Committed -> ManualOrganizationRun.PersistOutcome.Committed
-                    SessionPersistOutcome.WriteFailed -> ManualOrganizationRun.PersistOutcome.WriteFailed
-                }
-            }
-        }
-        assertTrue("B must reach its gate attempt under run B's lock", bAttemptingGate.await(10, TimeUnit.SECONDS))
-        aMayProceed.countDown()
-        assertTrue("A must reach its gate attempt under run A's lock", aAttemptingGate.await(10, TimeUnit.SECONDS))
+        // Release the parked commit: with the correct (run lock → gate) order
+        // it must BLOCK on the run lock BEFORE reaching the gate.
+        commitMayStart.countDown()
+        assertTrue("B must be attempting its commit", commitAttemptingRunLock.await(10, TimeUnit.SECONDS))
+        assertFalse(
+            "B must not have entered the gate while A held the run lock",
+            commitEnteredGate.await(3, TimeUnit.SECONDS),
+        )
 
-        // Deterministic crossing state: BOTH sides hold their run locks and
-        // queue on the gate; exactly ONE thread (the third party) is inside.
-        // A gate→run-lock acquisition anywhere would show up here as a second
-        // gate holder or a side already inside the gate.
-        assertEquals("only the third party holds the gate while both sides queue", 1, sharedGate.heldCount)
-        assertEquals("A has not entered the gate yet", 1L, aEnteredGate.count)
+        // The fully formed crossing: A queues on the gate under the run lock;
+        // B is still blocked on the same run lock, in front of the gate.
+        aMayProceed.countDown()
+        assertTrue("A must reach its gate attempt under the run lock", aAttemptingGate.await(10, TimeUnit.SECONDS))
+        assertFalse(
+            "B still has not entered the gate while the admission holds the lock and waits",
+            commitEnteredGate.await(3, TimeUnit.SECONDS),
+        )
+        assertEquals("only the third party holds the gate while both sides wait", 1, sharedGate.heldCount)
 
         // Both sides complete regardless of the monitor's wakeup order — the
-        // bounded joins are the deadlock failure detector.
+        // bounded joins are the deadlock failure detector. The admission
+        // finishes first (it holds the lock); the released commit then
+        // acquires the freed lock, fails the commit re-verification (the
+        // operation it committed against is gone) and settles as a typed
+        // zero-write reject BEFORE the gate.
         releaseGate.countDown()
-        threadA.join(15_000)
-        threadB.join(15_000)
-        assertTrue("the admission started the run", aOutcome is ManualOrganizationRun.StartOutcome.Started)
-        assertEquals("the generation commit committed", ManualOrganizationRun.GenerationCommitOutcome.Committed, bOutcome)
-        assertTrue("the commit bound its export on run B", fixtureB.run.isLiveScopeOwner(runBId, preparedB.session.exportId))
+        assertTrue(aEnteredGate.await(15, TimeUnit.SECONDS))
+        rebindAdmission.join(15_000)
+        lateCommit.join(15_000)
+        assertTrue("the rebind admission started a fresh operation on the same run", aOutcome is ManualOrganizationRun.StartOutcome.Started)
+        awaitRunState(run) { it is ManualOrganizationRun.State.Selecting }
+        val rejection = lateCommitOutcome as? ManualOrganizationRun.GenerationCommitOutcome.Rejected
+        assertEquals(
+            "the late commit settled as a typed reject",
+            ManualOrganizationRun.GenerationCommitRejection.NOT_CONFIRMED,
+            rejection?.reason,
+        )
+        assertEquals("the rejected commit never even entered the gate", 1L, commitEnteredGate.count)
+        // Zero-write: the store was never touched by either commit attempt.
+        assertNull("zero-write: no session was saved", fixture.store.session)
+        assertTrue("zero-write: the save order is empty", fixture.store.saveOrder.isEmpty())
         assertEquals("the gate was released with no leak", 0, sharedGate.heldCount)
     }
 
     @Test
     fun rebindAdmissionAndLiveOwnerPendingSaveAlsoCrossesWithoutDeadlock() {
         // Additional regression for the round-1 lock-inversion fix (not a
-        // letter's primary oracle): the same crossing as
+        // letter's primary oracle): the SAME single-run-lock crossing as
         // [journeyLCrossingRebindAdmissionAndGenerationCommitDoesNotDeadlock]
         // with the LIVE-OWNER PENDING SAVE as side B — the run-owned
-        // transaction takes run B's lock first and then the shared gate, and
-        // completes after the rebind admission crossed it. Latch-sequenced;
-        // no Thread.State discrimination.
+        // transaction takes THE run's lock first and then the shared gate, so
+        // while the rebind admission holds that lock and waits at the gate,
+        // the save must block on the run lock BEFORE reaching the gate, and it
+        // may only enter the gate after the admission released the lock.
+        // Latch-sequenced; no Thread.State discrimination.
         val sharedGate = app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate()
-        val bAttemptingGate = CountDownLatch(1)
-        val bTransaction = object : ManualOrganizationRun.ExchangeGateTransaction {
+        val saveEnteredGate = CountDownLatch(1)
+        val saveTransaction = object : ManualOrganizationRun.ExchangeGateTransaction {
             private val delegate = ManualOrganizationRun.gateHeldExchangeGateTransaction(sharedGate)
 
             override fun <R> withinGate(durableMutation: () -> R, onGateHeld: (R) -> Unit): R {
-                bAttemptingGate.countDown()
+                saveEnteredGate.countDown()
                 return delegate.withinGate(durableMutation, onGateHeld)
             }
         }
-        val fixtureB = newFixture(driveToConfirmedScope = true, gateTransaction = bTransaction, gate = sharedGate)
-        val runBId = confirmedScopeRunId(fixtureB.run)
+        val fixture = newFixture(driveToConfirmedScope = true, gateTransaction = saveTransaction, gate = sharedGate)
+        val run = fixture.run
+        val runId = confirmedScopeRunId(run)
 
-        val runA = ManualOrganizationRun(
-            JourneyApplication(),
-            app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
-            exchangeGateTransaction = ManualOrganizationRun.gateHeldExchangeGateTransaction(sharedGate),
-        )
+        // The old operation ends (the harness interrupt path) so the rebind
+        // admission can run on the SAME run — the pending save's crossing is
+        // then against that same run lock.
+        run.cancel()
+        awaitRunState(run) { it is ManualOrganizationRun.State.Cancelled }
+
         val holderInGate = CountDownLatch(1)
         val releaseGate = CountDownLatch(1)
         thread(name = "gate-holder") {
@@ -1198,8 +1351,8 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
         val aMayProceed = CountDownLatch(1)
         val aAttemptingGate = CountDownLatch(1)
         var aOutcome: ManualOrganizationRun.StartOutcome? = null
-        val threadA = thread(name = "rebind-admission") {
-            aOutcome = runA.start(
+        val rebindAdmission = thread(name = "rebind-admission") {
+            aOutcome = run.start(
                 app.lawnchair.organizer.diagnostics.model.Trigger.MANUAL_FULL,
                 intent = null,
                 admissionAnchor = { complete ->
@@ -1213,37 +1366,52 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
         }
         assertTrue(aHoldsLock.await(10, TimeUnit.SECONDS))
 
-        // Side B — the live-owner pending save: run lock first, then the gate.
-        val bDone = CountDownLatch(1)
-        var bOwned: Boolean? = null
-        var bSaveRan = false
-        val threadB = thread(name = "pending-save") {
-            fixtureB.run.savePendingImportForLiveOwner(
-                runBId,
+        // Side B — the live-owner pending save on the SAME run: parked pre-gate
+        // (it holds NO lock while parked), then released against the run lock
+        // the admission is holding.
+        val saveMayStart = CountDownLatch(1)
+        val saveAttemptingRunLock = CountDownLatch(1)
+        var saveOwned: Boolean? = null
+        var saveRan = false
+        val saveDone = CountDownLatch(1)
+        val pendingSave = thread(name = "pending-save") {
+            saveMayStart.await(15, TimeUnit.SECONDS)
+            saveAttemptingRunLock.countDown() // B's pre-gate observation: it is now attempting the save
+            run.savePendingImportForLiveOwner(
+                runId,
                 "export-x",
                 save = {
-                    bSaveRan = true
+                    saveRan = true
                     "saved"
                 },
                 onGateHeld = { _, owned ->
-                    bOwned = owned
-                    bDone.countDown()
+                    saveOwned = owned
+                    saveDone.countDown()
                     "settled"
                 },
             )
         }
-        assertTrue("B must reach its gate attempt under run B's lock", bAttemptingGate.await(10, TimeUnit.SECONDS))
+        saveMayStart.countDown()
+        assertTrue("B must be attempting its save", saveAttemptingRunLock.await(10, TimeUnit.SECONDS))
         aMayProceed.countDown()
-        assertTrue("A must reach its gate attempt under run A's lock", aAttemptingGate.await(10, TimeUnit.SECONDS))
-        assertEquals("only the third party holds the gate while both sides queue", 1, sharedGate.heldCount)
+        assertTrue("A must reach its gate attempt under the run lock", aAttemptingGate.await(10, TimeUnit.SECONDS))
+        assertFalse(
+            "B must not have entered the gate while A held the run lock",
+            saveEnteredGate.await(3, TimeUnit.SECONDS),
+        )
+        assertEquals("only the third party holds the gate while both sides wait", 1, sharedGate.heldCount)
 
         releaseGate.countDown()
-        threadA.join(15_000)
-        threadB.join(15_000)
+        rebindAdmission.join(15_000)
+        pendingSave.join(15_000)
         assertTrue("the admission started the run", aOutcome is ManualOrganizationRun.StartOutcome.Started)
-        assertTrue("the pending save completed (no deadlock)", bDone.await(15, TimeUnit.SECONDS))
-        assertTrue("the save's durable mutation ran", bSaveRan)
-        assertEquals("no live owner binds a foreign export", false, bOwned)
+        assertTrue("the pending save completed (no deadlock)", saveDone.await(15, TimeUnit.SECONDS))
+        assertTrue("the save's durable mutation ran", saveRan)
+        assertEquals("no live owner binds a foreign export", false, saveOwned)
+        assertTrue(
+            "the save entered the gate only after the run lock was freed",
+            saveEnteredGate.await(15, TimeUnit.SECONDS),
+        )
         assertEquals(0, sharedGate.heldCount)
     }
 
