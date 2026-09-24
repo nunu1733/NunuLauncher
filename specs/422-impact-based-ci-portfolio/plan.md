@@ -306,9 +306,10 @@ permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が�
 ```text
 push/PR/schedule/dispatch/workflow_call
   → changes job（paths-filter list-files(json) + 安全な集約 script で unmapped/smoke/full 計算）
-  → permanent gate（validate-repo-contract / style / build / unit）: permanent_run（source||ci||full||smoke）
+  → validate-repo-contract: every run（docs-only を含む常時実行。permanent_run では gate しない）
+  → Permanent source gates（style / build / unit）: permanent_run（source||ci||full||smoke）
   → conditional lane: instrumentation_enabled（!smoke）&&（full || own surface）
-  → final-status: needs = permanent + repo-contract + 全 lane、skip は成功扱い（現行 grep 逻辑変更なし）
+  → final-status: needs = changes + validate-repo-contract + permanent_gates + 全 lane、skip は成功扱い（現行 grep 逻辑変更なし）
 ```
 
 ### Alternatives rejected

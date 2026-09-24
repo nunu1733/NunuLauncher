@@ -295,3 +295,6 @@ None。UI を変更しないため（CI / docs のみの変更）。
   を双方向 exact set 比較（defined == declared）へ強化し typo・未知・未使用 surface を
   両方向検出、`map.permanent_gates` を validator 期待集合の導出元かつ固定点として
   exact compare する契約に変更、当該 case の self-test 要求を追加。
+- 2026-09-24: PR #424 round-6 re-review (Changes requested) 対応: Data flow の
+  `validate-repo-contract` を every run（docs-only 含む常時実行）として Permanent
+  source gates から分離。
