@@ -95,6 +95,9 @@ chmod +x "$FAKE_ADB"
 cat >"$FAKE_TEST" <<'FAKE_TEST'
 #!/usr/bin/env bash
 printf 'test:status=%s\n' "$FAKE_TEST_STATUS" >>"${EVENT_LOG:?}"
+if [ "${FAKE_TEST_REMOVE_EMULATOR:-false}" = true ]; then
+    rm -f "${EMULATOR_ALIVE:?}"
+fi
 exit "$FAKE_TEST_STATUS"
 FAKE_TEST
 chmod +x "$FAKE_TEST"
@@ -125,6 +128,25 @@ run_case() {
 
 run_case 23 false "$TEMP_DIR/failure-evidence"
 run_case 37 true "$TEMP_DIR/capture-failure-evidence"
+
+# Teardown race path: the failing command removes the emulator marker before
+# the wrapper starts capture. The capture must record device-gone statuses and
+# still return the original command status.
+: >"$EVENT_LOG"
+gone_output="$TEMP_DIR/device-gone-evidence"
+touch "$EMULATOR_ALIVE"
+set +e
+EVENT_LOG="$EVENT_LOG" EMULATOR_ALIVE="$EMULATOR_ALIVE" FAKE_TEST_STATUS=41 \
+    FAKE_TEST_REMOVE_EMULATOR=true ADB_BIN="$FAKE_ADB" \
+    CAPTURE_COMMAND_TIMEOUT_SECONDS=1 CAPTURE_TOTAL_BUDGET_SECONDS=20 \
+    CAPTURE_MAX_BYTES_PER_FILE=4096 \
+    bash "$WRAPPER" emulator-5554 "$gone_output" -- "$FAKE_TEST"
+gone_status=$?
+set -e
+test "$gone_status" -eq 41
+test -s "$gone_output/capture-manifest.tsv"
+test "$(grep -c '^adb:gone:' "$EVENT_LOG" || true)" -gt 0
+rm -f "$EMULATOR_ALIVE"
 
 : >"$EVENT_LOG"
 success_output="$TEMP_DIR/success-evidence"

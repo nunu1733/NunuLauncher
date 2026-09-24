@@ -358,6 +358,7 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 | `specs/304-api36-window-focus-root-cause/plan.md`（本書） | 試行証跡（Verification evidence）・分類表の追記 |
 | `specs/304-api36-window-focus-root-cause/spec.md` | 調査過程で契約の修正が必要になった場合の更新 |
 | `.github/workflows/ci.yml` | API36 Issue #52/#53/#99 laneのfailure-time captureとartifact upload |
+| `tools/repo-contract/ci_portfolio_map.yml` | lifecycle self-testのpath・command・owner・every-run trigger・impact metadata |
 | `tools/ci/capture-emulator-failure-evidence.sh` | emulatorのwindow/activity/ANR/logcat等のbest-effort収集 |
 | `tools/ci/test_capture_emulator_failure_evidence.sh` | fake-`adb`によるhelper smoke test |
 | `tools/ci/run-emulator-command-with-failure-capture.sh` | live runner内でfailure captureを呼び、元のcommand statusを返すwrapper |

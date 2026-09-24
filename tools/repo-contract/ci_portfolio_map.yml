@@ -8,8 +8,10 @@
 # validate_ci_portfolio.py compares every edge here against the lane `if`
 # conditions in .github/workflows/ci.yml (exact set comparison), checks the
 # surface vocabulary in both directions, and verifies the final-status
-# aggregation. Global control outputs (full / instrumentation_enabled /
-# permanent_run) are not surfaces and are excluded from the edge comparison.
+# aggregation. It also verifies the machine-readable ownership and trigger of
+# supporting contract tests. Global control outputs (full /
+# instrumentation_enabled / permanent_run) are not surfaces and are excluded
+# from the edge comparison.
 #
 # Surface meaning (path filters live in ci.yml's `changes` job):
 #   surface_layout_write      - layout write coordinator / ModelWriter / DB
@@ -65,3 +67,14 @@ permanent_gates:
 # Surfaces consumed only by permanent gates (no instrumentation lane).
 permanent_only_surfaces:
   - surface_jvm
+
+# Supporting contract tests are not instrumentation lanes and therefore do not
+# own an impact-surface edge. Their owner and trigger are still normative so a
+# new self-test cannot silently move out of the every-run repository gate.
+contract_tests:
+  emulator_failure_capture_lifecycle:
+    path: tools/ci/test_emulator_failure_capture_lifecycle.sh
+    command: bash tools/ci/test_emulator_failure_capture_lifecycle.sh
+    owner_job: validate-repo-contract
+    trigger: every_run
+    impact: ci-wrapper-artifact-handling

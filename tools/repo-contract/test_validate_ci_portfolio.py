@@ -40,6 +40,7 @@ def build_workflow(
     final_needs: list[str] | None = None,
     drop_capture: str | None = None,
     live_capture: set[str] | None = None,
+    drop_upload: str | None = None,
 ) -> str:
     import yaml
 
@@ -51,7 +52,12 @@ def build_workflow(
                 for name in surfaces_defined
             },
         },
-        "validate-repo-contract": {"runs-on": "ubuntu-latest"},
+        "validate-repo-contract": {
+            "runs-on": "ubuntu-latest",
+            "steps": [
+                {"run": "bash tools/ci/test_emulator_failure_capture_lifecycle.sh"}
+            ],
+        },
         "check-style": {"runs-on": "ubuntu-latest"},
         "build-debug-apk": {"runs-on": "ubuntu-latest"},
         "organizer-unit-tests": {"runs-on": "ubuntu-latest"},
@@ -64,11 +70,20 @@ def build_workflow(
                 "name": "Capture failure-time emulator evidence",
                 "run": "timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/x",
             },
+            {
+                "name": "Upload failure-time emulator evidence",
+                "uses": "actions/upload-artifact@v6",
+                "with": {
+                    "name": "failure-time-emulator-evidence",
+                    "path": "build/x-failure-time-evidence/**",
+                },
+            },
         ]
         if lane in live_capture:
             steps = [
                 {
                     "name": "Run tests inside live emulator",
+                    "uses": "reactivecircus/android-emulator-runner@v2",
                     "with": {
                         "script": (
                             "bash tools/ci/run-emulator-command-with-failure-capture.sh "
@@ -76,9 +91,23 @@ def build_workflow(
                         )
                     },
                 },
+                {
+                    "name": "Upload failure-time emulator evidence",
+                    "uses": "actions/upload-artifact@v6",
+                    "with": {
+                        "name": "failure-time-emulator-evidence",
+                        "path": "build/x-failure-time-evidence/**",
+                    },
+                },
             ]
         if drop_capture and lane == drop_capture:
-            steps = steps[:1]
+            steps = [step for step in steps if "Capture failure-time" not in step.get("name", "")]
+        if drop_upload and lane == drop_upload:
+            steps = [
+                step
+                for step in steps
+                if step.get("uses") != "actions/upload-artifact@v6"
+            ]
         jobs[lane] = {
             "needs": "changes",
             "if": lane_if(surfaces),
@@ -106,6 +135,7 @@ def build_map(
     lanes: dict[str, list[str]],
     permanent_gates: list[str] | None = None,
     permanent_only: list[str] | None = None,
+    contract_tests: dict[str, dict[str, str]] | None = None,
 ) -> str:
     import yaml
 
@@ -113,11 +143,22 @@ def build_map(
         permanent_gates = ["organizer-unit-tests", "check-style", "build-debug-apk"]
     if permanent_only is None:
         permanent_only = ["surface_jvm"]
+    if contract_tests is None:
+        contract_tests = {
+            "emulator_failure_capture_lifecycle": {
+                "path": "tools/ci/test_emulator_failure_capture_lifecycle.sh",
+                "command": "bash tools/ci/test_emulator_failure_capture_lifecycle.sh",
+                "owner_job": "validate-repo-contract",
+                "trigger": "every_run",
+                "impact": "ci-wrapper-artifact-handling",
+            }
+        }
     return yaml.safe_dump(
         {
             "lanes": {lane: {"surfaces": surfaces} for lane, surfaces in lanes.items()},
             "permanent_gates": permanent_gates,
             "permanent_only_surfaces": permanent_only,
+            "contract_tests": contract_tests,
         },
         sort_keys=False,
     )
@@ -131,6 +172,8 @@ ALL_SURFACES = [
     "surface_organizer_ui",
     "surface_jvm",
 ]
+
+CONTRACT_TEST_PATH = "tools/ci/test_emulator_failure_capture_lifecycle.sh"
 
 CONSISTENT_LANES = {
     "organizer-instrumentation-shared-writer-tests": ["surface_layout_write"],
@@ -169,6 +212,8 @@ class PortfolioValidatorTest(unittest.TestCase):
         final_needs: list[str] | None = None,
         drop_capture: str | None = None,
         live_capture: set[str] | None = None,
+        drop_upload: str | None = None,
+        contract_tests: dict[str, dict[str, str]] | None = None,
         doc_lines: list[str] | None = None,
     ):
         if map_lanes is None:
@@ -195,6 +240,7 @@ class PortfolioValidatorTest(unittest.TestCase):
                     final_needs=final_needs,
                     drop_capture=drop_capture,
                     live_capture=live_capture,
+                    drop_upload=drop_upload,
                 )
             )
         with open(self.map_path, "w", encoding="utf-8") as handle:
@@ -203,6 +249,7 @@ class PortfolioValidatorTest(unittest.TestCase):
                     map_lanes,
                     permanent_gates=permanent_gates,
                     permanent_only=permanent_only,
+                    contract_tests=contract_tests,
                 )
             )
         with open(self.doc_path, "w", encoding="utf-8") as handle:
@@ -214,6 +261,15 @@ class PortfolioValidatorTest(unittest.TestCase):
             any(fragment in problem for problem in problems),
             f"expected a problem containing {fragment!r}, got {problems}",
         )
+
+    def rewrite_workflow(self, mutate):
+        import yaml
+
+        with open(self.ci_path, encoding="utf-8") as handle:
+            workflow = yaml.safe_load(handle)
+        mutate(workflow)
+        with open(self.ci_path, "w", encoding="utf-8") as handle:
+            yaml.safe_dump(workflow, handle, sort_keys=False)
 
     def test_consistent_portfolio_passes(self):
         self.write_fixtures(CONSISTENT_LANES)
@@ -295,6 +351,78 @@ class PortfolioValidatorTest(unittest.TestCase):
             live_capture={"organizer-instrumentation-manual-organization-ui-tests"},
         )
         self.assertEqual(vcp.validate(), [])
+
+    def test_live_capture_wrapper_requires_runner_action_identity(self):
+        lane = "organizer-instrumentation-manual-organization-ui-tests"
+        self.write_fixtures(CONSISTENT_LANES, live_capture={lane})
+
+        def mutate(workflow):
+            workflow["jobs"][lane]["steps"][0]["uses"] = "example/emulator@v1"
+
+        self.rewrite_workflow(mutate)
+        self.assert_problem("failure-evidence capture step is missing")
+
+    def test_live_capture_wrapper_rejects_echo_substring(self):
+        lane = "organizer-instrumentation-manual-organization-ui-tests"
+        self.write_fixtures(CONSISTENT_LANES, live_capture={lane})
+
+        def mutate(workflow):
+            workflow["jobs"][lane]["steps"][0]["with"]["script"] = (
+                "echo bash tools/ci/run-emulator-command-with-failure-capture.sh "
+                "emulator-5554 build/x -- ./run-tests.sh"
+            )
+
+        self.rewrite_workflow(mutate)
+        self.assert_problem("failure-evidence capture step is missing")
+
+    def test_post_run_capture_rejects_echo_substring(self):
+        lane = "organizer-instrumentation-shared-writer-tests"
+        self.write_fixtures(CONSISTENT_LANES)
+
+        def mutate(workflow):
+            workflow["jobs"][lane]["steps"][1]["run"] = (
+                "echo timeout --kill-after=30 300 bash "
+                "tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/x"
+            )
+
+        self.rewrite_workflow(mutate)
+        self.assert_problem("failure-evidence capture step is missing")
+
+    def test_failure_time_upload_path_is_required(self):
+        lane = "organizer-instrumentation-shared-writer-tests"
+        self.write_fixtures(CONSISTENT_LANES, drop_upload=lane)
+        self.assert_problem("failure-time evidence upload path is missing")
+
+    def test_contract_test_metadata_is_required(self):
+        self.write_fixtures(CONSISTENT_LANES, contract_tests={})
+        self.assert_problem("contract_tests mapping is missing/empty")
+
+    def test_contract_test_owner_and_trigger_are_machine_checked(self):
+        metadata = {
+            "emulator_failure_capture_lifecycle": {
+                "path": CONTRACT_TEST_PATH,
+                "command": "bash tools/ci/test_emulator_failure_capture_lifecycle.sh",
+                "owner_job": "check-style",
+                "trigger": "pull_request",
+                "impact": "ci-wrapper-artifact-handling",
+            }
+        }
+        self.write_fixtures(CONSISTENT_LANES, contract_tests=metadata)
+        self.assert_problem("owner_job must be validate-repo-contract")
+        self.assert_problem("trigger must be every_run")
+
+    def test_contract_test_command_must_be_invoked(self):
+        metadata = {
+            "emulator_failure_capture_lifecycle": {
+                "path": CONTRACT_TEST_PATH,
+                "command": "bash tools/ci/missing-test.sh",
+                "owner_job": "validate-repo-contract",
+                "trigger": "every_run",
+                "impact": "ci-wrapper-artifact-handling",
+            }
+        }
+        self.write_fixtures(CONSISTENT_LANES, contract_tests=metadata)
+        self.assert_problem("command is not invoked by validate-repo-contract")
 
     def test_doc_missing_lane_and_surface_detected(self):
         doc_lines = ["| lane | surface |", "|---|---|"]

@@ -139,11 +139,18 @@ test が存在する（例: `application/store/*Inspection*`、`locks/*`、`diag
 
 `tools/ci/test_emulator_failure_capture_lifecycle.sh` は `validate-repo-contract` job 内の
 全run self-testであり、新しいinstrumentation lane、production surface、artifact routing edgeを
-追加しない。したがって `tools/repo-contract/ci_portfolio_map.yml` の更新は不要である。
-起動条件は既存のrepo-contract検証と同じくdocs-onlyを含む全runで、実emulator laneの再実行を
-発生させない。既存の`test_capture_emulator_failure_evidence.sh`はhelper内部のsnapshot収集契約を
-検査し、本testはrunner actionのteardown境界とworkflow wiring（現在は#52/#53/#99）を検査するため、
-責務は重複しない。残り7 laneのlive化は別Owner gateで扱う。
+追加しない。ただしquality-strategyの新規test規則に従い、`tools/repo-contract/ci_portfolio_map.yml`
+の`contract_tests` metadataにpath・command・owner・trigger・impactを記録し、validatorがworkflow
+invocationと一致することを検査する。
+
+| 審査項目 | 判定 |
+|---|---|
+| 既存testで不足する理由 | `test_capture_emulator_failure_evidence.sh` は fake `adb` によるsnapshot収集契約だけを検査する。runner actionが emulator をteardownする前に wrapper が capture を呼ぶこと、元のcommand statusを保持すること、workflowの実script/upload wiringを検査できないため、runner境界のlifecycle oracleを別に置く。 |
+| 分類・impact・所有 | deterministic repository contract self-test、impactは `ci-wrapper-artifact-handling`、ownerは `validate-repo-contract`。instrumentation laneやproduction behaviorのcoverageを所有しない。 |
+| 重複 | helper smokeはbounded snapshotのtimeout/budget/truncationを担当し、本testはwrapperのstatus保持、device-gone、runner action identity、実scriptの`--`、failure-time upload pathを担当する。別emulator laneのtestとは重複しない。 |
+| 起動条件 | `contract_tests` metadataの`trigger: every_run`に固定し、docs-onlyを含む全runで既存repo-contract jobから実行する。emulator laneの再実行は発生させない。 |
+
+残り7 laneのlive化は別Owner gateで扱う。
 
 ## 実測（参考値）
 
