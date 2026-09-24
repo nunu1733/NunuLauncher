@@ -122,14 +122,15 @@ test class の path を含む。test のみの変更（production 無変更）�
 ```text
 unmapped_files = source_files - (∪ surface_*_files)
 smoke = event == workflow_dispatch && inputs.full-portfolio == false
+instrumentation_enabled = !smoke
 full  = !smoke && ( (ci == true)
     || (unmapped_files が 1 件でも存在する)      # mapped/unmapped 混在でも発火
     || event == schedule
     || event == workflow_call
-    || (event == push && ref == refs/heads/main) )
+    || (event == push && ref == refs/heads/main)
+    || (event == workflow_dispatch && inputs.full-portfolio == true) )
 
 permanent_run = source || ci || full || smoke
-lanes_run     = !smoke && (full || いずれかの surface)
 ```
 
 PR 単位の surface boolean（`source && 全 surface false`）は使わない。mapped path と
@@ -140,13 +141,16 @@ downstream の起動判断に一切使わない。Permanent gate の全起動と
 skip が event 条件のみから決定的に決まる。paths-filter は非 PR event（dispatch 等）で
 直近 commit を変更集合と扱いうるため、dispatch 時の mapping 出力は無視する。
 
-各 job の `if` は次を参照する。
+各 job の `if` は次を参照する。global 制御 flag（`permanent_run` /
+`instrumentation_enabled` / `full`）と lane 個別の surface 判定を分離し、「通常 PR は
+own surface の lane のみ、`full=true` のときだけ全 lane、`smoke=true` では surface 出力に
+かかわらず全 instrumentation skip」を式として成立させる。
 
 - Permanent gate（`organizer-unit-tests` / `check-style` / `build-debug-apk`）:
   `needs.changes.outputs.permanent_run == 'true'`（= `source || ci || full || smoke`）
 - instrumentation lane:
-  `needs.changes.outputs.lanes_run == 'true' || needs.changes.outputs.<surface> == 'true'`
-  （lane 個別の surface 起動は smoke 時も抑制されるよう、`lanes_run` に `!smoke` を含む）
+  `needs.changes.outputs.instrumentation_enabled == 'true' && (needs.changes.outputs.full == 'true' || <own surface flag> == 'true' || ...)`
+  （global な「1 surface でも true なら全 lane」という条件は持たせない）
 
 #### 2. lane の conditional 化と改名
 
@@ -154,8 +158,9 @@ skip が event 条件のみから決定的に決まる。paths-filter は非 PR 
 
 ```yaml
 if: >-
-  needs.changes.outputs.lanes_run == 'true' ||
-  needs.changes.outputs.surface_layout_write == 'true'
+  needs.changes.outputs.instrumentation_enabled == 'true' &&
+  (needs.changes.outputs.full == 'true' ||
+   needs.changes.outputs.surface_layout_write == 'true')
 ```
 
 job ID と surface 対応（v1）。**`organizer-unit-tests` / `check-style` / `build-debug-apk` /
@@ -255,9 +260,10 @@ permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が�
 `ci.yml` と map file を parse し、次を検証する。
 
 1. map file の lane 集合 == `ci.yml` の `organizer-instrumentation-*` job 集合。
-2. 各 lane の `surfaces` 集合 == その job の `if` 条件内の
-   `needs.changes.outputs.<flag>` 参照集合（**edge 完全一致比較**。docs↔workflow の
-   mapping drift を検出する）。
+2. 各 lane の `surfaces` 集合 == その job の `if` 条件内の `surface_*` flag 参照集合
+   （**edge 完全一致比較**。docs↔workflow の mapping drift を検出する）。global 制御
+   flag（`full` / `instrumentation_enabled` / `permanent_run` 等の `surface_*` 以外の
+   参照）は比較対象から除外する。
 3. `ci.yml` の `changes` job に定義された全 `surface_*` output が、map file 上でいずれか
    の lane または `permanent_only_surfaces` に紐づく（未使用 surface / 幽霊 surface 検出）。
 4. `final-status` の `needs` == {changes, validate-repo-contract, build-debug-apk,
@@ -274,7 +280,8 @@ permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が�
 
 #### 6. docs 再編
 
-- `ci-test-portfolio.md`: Issue #96 時代の内容を前提とした現状記述を、本 Issue の監査・
+- `ci-test-portfolio.md`: Issue #96 時代の内容を前提とした現状記述を、本 Issue の監査表
+  （contract・監査情報の正本、かつ map file の human-readable mirror）へ再編
   mapping 正本へ再編（status: Implemented → 更新日付と本 Issue への参照を更新）。全 job の
   監査表（AC-422-01 の項目）、分類、mapping/fan-out 表、failure 分類の実績、代表 run の
   実測時間を記録する。
@@ -293,7 +300,7 @@ permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が�
 push/PR/schedule/dispatch/workflow_call
   → changes job（paths-filter list-files(json) + 安全な集約 script で unmapped/smoke/full 計算）
   → permanent gate（validate-repo-contract / style / build / unit）: permanent_run（source||ci||full||smoke）
-  → conditional lane: lanes_run（!smoke && (full||surface)）|| 自分の surface（smoke 時は抑制）
+  → conditional lane: instrumentation_enabled（!smoke）&&（full || own surface）
   → final-status: needs = permanent + repo-contract + 全 lane、skip は成功扱い（現行 grep 逻辑変更なし）
 ```
 
@@ -303,9 +310,10 @@ push/PR/schedule/dispatch/workflow_call
   coverage skip になる。Issue の「path mapping だけで安全性を判断せず」に反するため却下。
 - **scheduled 用に別 workflow file で lane 定義を複製**: 定義が drift するため却下。
   単一 `ci.yml` の event 条件で実現する。
-- **test class 単位の ownership registry（外部 YAML）**: mapping の正本が 2 箇所に増え、
-  `ci.yml` の `if` との整合検証が複雑化するため却下。v1 は `changes` job 内の filter と
-  docs 表で十分。
+- **test class 単位の ownership registry（外部 YAML）**: test class 単位の粒度は
+  `ci.yml` の class filter と二重管理になり、`--tests` 引数との整合検証が複雑化するため
+  却下。v1 は lane↔surface 単位の `ci_portfolio_map.yml`（`changes` job 内の path filter
+  と対になる）で十分。
 - **dorny/paths-filter の `some-with-excludes` を surface filter へ適用**: surface は
   excludes を持たないため不要。`source` filter のみ現行設定を踏襲する。
 
@@ -315,7 +323,7 @@ push/PR/schedule/dispatch/workflow_call
 |---|---|---|
 | `.github/workflows/ci.yml` | surface filter 追加、list-files(json) による per-path unmapped 計算、`smoke`/`full`/`permanent_run`/`lanes_run` 計算、lane `if` 条件、Permanent gate の full/smoke 起動化、job 改名、schedule/dispatch/workflow_call trigger、capture step 全 lane 装備 | 本 Issue の実装本体 |
 | `tools/repo-contract/ci_portfolio_map.yml` | lane→surface / permanent gate / permanent-only surface の機械正本 | AC-422-03, 09 の比較基準 |
-| `docs/engineering/ci-test-portfolio.md` | 監査・分類・mapping/fan-out・failure 実績の正本へ再編（map file と同じ対応の人間向け表を含む） | AC-422-01〜03, 06 の正本 |
+| `docs/engineering/ci-test-portfolio.md` | 監査・分類・failure 実績の正本へ再編し、map file と同じ edge の human-readable mirror 表を含む | AC-422-01, 02, 06 の正本（edge は map file が正本） |
 | `docs/engineering/quality-strategy.md` | CI gates section 更新、failure 分類・retry 方針、test/CI 追加審査ルール | AC-422-07, 08 |
 | `docs/project/github-workflow.md` | risk 比例 evidence 選択原則 | AC-422-08 |
 | `AGENTS.md` | テスト規約へ CI portfolio 審査の要点追記 | AC-422-08（運用の可視性） |

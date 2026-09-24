@@ -42,8 +42,9 @@ PR の merge gate は「常に必要な permanent gate（repo contract / style /
 contract test）」と「変更が影響しうる impact surface に対応する instrumentation lane」だけを
 起動する。全 lane 実行は main push と scheduled sweep が担い、conditional 化によって PR で
 常時走らなくなった coverage が失われない。各 lane と CI 補助処理は contract / 分類 /
-起動条件 / fan-out を `docs/engineering/ci-test-portfolio.md` の監査表として持ち、mapping と
-workflow の整合は repo-contract validator が機械検証する。intermittent failure は文書化された
+起動条件 / fan-out を `docs/engineering/ci-test-portfolio.md` の監査表（human-readable
+mirror）として持ち、lane↔surface 対応の normative 正本である map file と workflow の
+整合は repo-contract validator が機械検証する。intermittent failure は文書化された
 分類・証拠・retry 規約に従って扱われ、acceptance evidence は「full workflow N 連続 green」
 ではなく変更 risk と対象 surface に対応して選択される。今後の test / CI 追加は canonical
 docs に組み込まれた審査ルールを通る。
@@ -57,7 +58,7 @@ docs に組み込まれた審査ルールを通る。
 - Issue 番号由来 lane job ID の contract-based naming への改名と、canonical docs の参照更新。
 - 全 instrumentation lane への bounded failure-time evidence capture step の拡張（#315 の
   bounded helper を踏襲、continue-on-error）。
-- `docs/engineering/ci-test-portfolio.md` を現行 9 lane 構成の監査・mapping 正本として再編
+- `docs/engineering/ci-test-portfolio.md` を現行 9 lane 構成の監査表として再編
   する（全 job の contract、起動条件、fan-out、分類、過去 failure 分類、実行費用を記録）。
 - intermittent failure の分類・証拠・retry 方針と、新規 test / CI lane 追加時の審査ルール、
   risk 比例 evidence 選択原則の canonical docs（`quality-strategy.md`、
@@ -88,7 +89,8 @@ docs に組み込まれた審査ルールを通る。
 
 ## Domain language
 
-（CI 運用の用語は `docs/engineering/ci-test-portfolio.md` を正本とする。`CONTEXT.md` に
+（CI 運用の用語・監査情報の正本は `docs/engineering/ci-test-portfolio.md`、lane↔surface
+edge の正本は `tools/repo-contract/ci_portfolio_map.yml` である。`CONTEXT.md` に
 追加する domain 用語はない。）
 
 ## Behavior scenarios
@@ -121,8 +123,9 @@ input）は起動しない
 
 Given `lawnchair/src/app/lawnchair/organizer/application/**`、`src/com/android/launcher3/model/LayoutWriteCoordinator.java` 等、複数 lane が所有する shared contract の変更
 When CI が起動する
-Then `ci-test-portfolio.md` の mapping が定める fan-out 先 lane がすべて起動する
-And fan-out 先は mapping 表で機械検証可能な形で定義されている
+Then map file（`ci_portfolio_map.yml`）の mapping が定める fan-out 先 lane がすべて起動する
+And fan-out 先は map file と workflow の edge 完全一致比較で機械検証される
+  （`ci-test-portfolio.md` は同じ対応を説明つきで mirror する）
 
 ### Scenario: 未 mapping の source path を含む変更（保守 default）
 
@@ -244,7 +247,7 @@ None。UI を変更しないため（CI / docs のみの変更）。
 
 | AC | Evidence |
 |---|---|
-| AC-422-01, 02 | `ci-test-portfolio.md` の監査表（review）と AC-422-09 の validator による表↔workflow 整合検証 |
+| AC-422-01, 02 | `ci-test-portfolio.md` の監査表（review）と AC-422-09 の validator による map file↔workflow edge 整合検証（docs は lane/surface の存在検査） |
 | AC-422-03, 04 | 実装 PR の CI run（`ci` filter による全 job 自己実行）+ dev branch 上の代表 surface demo run（docs-only / planner-only / UI-only / 未 mapping / mapped+未mapping 混在）における起動・skip の確認、run link を PR に記録 |
 | AC-422-05 | `ci.yml` trigger 定義 + `workflow_dispatch`（`full-portfolio=true`）による全量経路の実行 run + `workflow_dispatch`（`full-portfolio=false`）smoke run で Permanent 全起動・instrumentation 全 skip の確認。merge 後の main push run と初回 scheduled run は後続 evidence として Issue へ記録する |
 | AC-422-06 | rename 後の CI run 上の job 一覧、canonical docs の参照更新（grep）、実装 PR 上の high-risk-gate 結果 |
@@ -275,3 +278,9 @@ None。UI を変更しないため（CI / docs のみの変更）。
   正本を `ci_portfolio_map.yml` に一意化し `ci-test-portfolio.md` を human-readable
   mirror に明確化、`list-files: json` + 安全な集約経路（shell interpolation 禁止）を
   plan に固定。
+- 2026-09-24: PR #424 round-3 re-review (Changes requested) 対応: `full` へ
+  `workflow_dispatch(full-portfolio=true)` 条件を復帰、global 制御 flag
+  （`instrumentation_enabled`）と lane 個別 surface 判定を分離（通常 PR は own surface
+  のみ・full 時のみ全 lane・smoke 時は全 skip を式として成立）、edge 正本を map file に
+  一意化する記述を Scope / Scenario / Design / Change set / Alternatives 全体へ統一、
+  validator の edge 比較は `surface_*` flag のみ（global flag 除外）と明確化。
