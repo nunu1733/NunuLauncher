@@ -1,0 +1,64 @@
+# CI portfolio lane<->surface map (Issue #422).
+#
+# Normative source of truth for which impact surfaces start which
+# instrumentation lane. docs/engineering/ci-test-portfolio.md mirrors this
+# mapping for humans and owns the audit information (contract, classification,
+# cost, failure history); when the two disagree, THIS file wins.
+#
+# validate_ci_portfolio.py compares every edge here against the lane `if`
+# conditions in .github/workflows/ci.yml (exact set comparison), checks the
+# surface vocabulary in both directions, and verifies the final-status
+# aggregation. Global control outputs (full / instrumentation_enabled /
+# permanent_run) are not surfaces and are excluded from the edge comparison.
+#
+# Surface meaning (path filters live in ci.yml's `changes` job):
+#   surface_layout_write      - layout write coordinator / ModelWriter / DB
+#                               controller seam + organizer application module
+#   surface_db_schema         - provider / schema upgrade / grid migration
+#   surface_backup_restore    - old-backup restore capture + backup agent
+#   surface_production_input  - production input composer / platform adapters
+#   surface_organizer_ui      - organizer UI group (manual org, onboarding,
+#                               category override, exchange import, prefs UI)
+#   surface_jvm               - planner/rules/diagnostics/locks + JVM test tree;
+#                               owned by the organizer-unit-tests permanent gate
+lanes:
+  organizer-instrumentation-shared-writer-tests:
+    surfaces:
+      - surface_layout_write
+  organizer-instrumentation-db-migration-tests:
+    surfaces:
+      - surface_db_schema
+  organizer-instrumentation-restore-capture-tests:
+    surfaces:
+      - surface_backup_restore
+  organizer-instrumentation-production-input-tests:
+    surfaces:
+      - surface_production_input
+      - surface_layout_write
+  organizer-instrumentation-manual-organization-ui-tests:
+    surfaces:
+      - surface_organizer_ui
+  organizer-instrumentation-reservation-recovery-tests:
+    surfaces:
+      - surface_layout_write
+  organizer-instrumentation-category-override-tests:
+    surfaces:
+      - surface_organizer_ui
+  organizer-instrumentation-exchange-import-ui-tests:
+    surfaces:
+      - surface_organizer_ui
+  organizer-instrumentation-onboarding-proposal-tests:
+    surfaces:
+      - surface_organizer_ui
+
+# Permanent PR gates that high-risk evidence validation
+# (tools/repo-contract/validate_high_risk_evidence.py) names explicitly. The
+# validator requires this set to equal exactly those three job IDs.
+permanent_gates:
+  - organizer-unit-tests
+  - check-style
+  - build-debug-apk
+
+# Surfaces consumed only by permanent gates (no instrumentation lane).
+permanent_only_surfaces:
+  - surface_jvm
