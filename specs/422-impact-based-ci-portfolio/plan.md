@@ -91,25 +91,42 @@ surface_organizer_ui:
   - 'lawnchair/src/app/lawnchair/organizer/ui/**'
   - 'lawnchair/src/app/lawnchair/ui/**'
   - 'lawnchair/src/app/lawnchair/organizer/personalization/**'
+  - 'lawnchair/res/**'
   - <UI 4 lane の test class 群>
+surface_jvm:                     # Permanent gate (organizer-unit-tests) が所有する領域
+  - 'lawnchair/src/app/lawnchair/organizer/planning/**'
+  - 'lawnchair/src/app/lawnchair/organizer/rules/**'
+  - 'lawnchair/src/app/lawnchair/organizer/diagnostics/**'
+  - 'lawnchair/src/app/lawnchair/organizer/locks/**'
+  - 'tests/unit/**'
 ```
 
 test source の変更が自分の lane を起動するよう、各 surface filter はその lane が実行する
 test class の path を含む。test のみの変更（production 無変更）でも当該 lane が自己検証
-される。
+される。`surface_jvm` は instrumentation lane を持たず Permanent gate（`source` 変更時に
+常に起動する `organizer-unit-tests`）が所有する領域を示す。後述の未 mapping 判定で
+「JVM test / planner のみの変更が保守 default を発火させない」ために必要である。
 
-`changes` job に集約 step を追加し、次の出力を計算する。
+**per-path fail-closed（AC-422-04 の中核）**: paths-filter に workflow level で
+`list-files: shell` を設定し、`source_files` と各 `surface_*_files` を取得する。集約
+step で次を計算する。
 
 ```text
+unmapped_files = source_files - (∪ surface_*_files)
 full = (ci == true)
-    || (source == true && 上記 surface すべて false)   # 未 mapping 保守 default
+    || (unmapped_files が 1 件でも存在する)      # mapped/unmapped 混在でも発火
     || event == schedule
-    || event == workflow_dispatch（full-portfolio input、default true）
+    || event == workflow_call
     || (event == push && ref == refs/heads/main)
+    || (event == workflow_dispatch && inputs.full-portfolio == true)
 ```
 
-`organizer-unit-tests` / `check-style` / `build-debug-apk` は現行通り
-`source || ci` で起動する（Permanent gate。`full` を見ない）。
+PR 単位の surface boolean（`source && 全 surface false`）は使わない。mapped path と
+未 mapping path の混在 PR が保守 default を回避することを防ぐためである。
+
+`organizer-unit-tests` / `check-style` / `build-debug-apk` は
+`source || ci || full` で起動する。全量実行（main push / schedule / workflow_call /
+dispatch full）では docs-only 変更でも Permanent gate を含む全 portfolio が走る。
 
 #### 2. lane の conditional 化と改名
 
@@ -155,11 +172,18 @@ on:
         description: 'Run the full lane portfolio regardless of changed paths'
         type: boolean
         default: true
+  workflow_call:
 ```
 
-- scheduled / dispatch は workflow 全体が起動し、`changes` の `full` 計算により全 lane が
-  実行される。paths-filter は非 PR event で base を取れない場合に備え、`full` の event 条
-  件が優先するため出力に依存しない。
+- `workflow_call` は現行から維持する（repository 内に直接 caller はないが、既存 workflow
+  interface の削除には当たらない。将来の release 評価 workflow 等のために保持し、呼び出
+  時は `full = true` で全 portfolio を実行する。廃止する場合は別 Issue で caller 有無の
+  監査と契約変更を行う）。
+- scheduled / dispatch / workflow_call は workflow 全体が起動し、`changes` の `full` 計算
+  により Permanent gate を含む全 lane が実行される。paths-filter は非 PR event で base を
+  取れない場合に備え、`full` の event 条件が優先するため出力に依存しない。
+- `workflow_dispatch` の `full-portfolio=false` は repository contract + Permanent gate
+  のみ（instrumentation なし）の高速 smoke 実行を意味する。mapping 判定には関与しない。
 - main push も `full = true` とし、merge 毎に全 portfolio の regression sweep を行う。
 - concurrency group は現行（ref 単位・cancel-in-progress）。scheduled run が main push で
   cancel されても push 側が全量を実行するため許容する。
@@ -170,23 +194,58 @@ issue52 / issue53 lane と同一パターン（`continue-on-error: true` +
 `timeout --kill-after=30 300`）の capture step と artifact upload step を残り 7 lane に追加
 する。helper 本体（#315 実装）は変更しない。
 
-#### 5. repo-contract validator: `tools/repo-contract/validate_ci_portfolio.py`
+#### 5. mapping の機械正本と repo-contract validator
 
-PyYAML で `ci.yml` を parse し、次を検証する（self-test: `test_validate_ci_portfolio.py`、
-既存 validator と同じ構成で `validate-repo-contract` job に step 追加）。
+lane→surface 対応の機械正本として `tools/repo-contract/ci_portfolio_map.yml` を置く
+（AC-422-03）。人間向けの監査表（contract の説明・分類・実測費用・過去 failure）は引き
+続き `ci-test-portfolio.md` が正本である。
 
-1. `changes` job の outputs に定義された `surface_*` flag が存在する。
-2. 全 instrumentation lane（`organizer-instrumentation-*`）の `if` 条件が
-   `needs.changes.outputs.` 参照のみで構成され、参照する flag が `changes` job に実在する。
-3. `organizer-unit-tests` / `check-style` / `build-debug-apk` / `final-status` job が存在
+```yaml
+# tools/repo-contract/ci_portfolio_map.yml
+lanes:
+  organizer-instrumentation-shared-writer-tests:
+    surfaces: [surface_layout_write]
+  organizer-instrumentation-db-migration-tests:
+    surfaces: [surface_db_schema]
+  organizer-instrumentation-restore-capture-tests:
+    surfaces: [surface_backup_restore]
+  organizer-instrumentation-production-input-tests:
+    surfaces: [surface_production_input, surface_layout_write]
+  organizer-instrumentation-manual-organization-ui-tests:
+    surfaces: [surface_organizer_ui]
+  organizer-instrumentation-reservation-recovery-tests:
+    surfaces: [surface_layout_write]
+  organizer-instrumentation-category-override-tests:
+    surfaces: [surface_organizer_ui]
+  organizer-instrumentation-exchange-import-ui-tests:
+    surfaces: [surface_organizer_ui]
+  organizer-instrumentation-onboarding-proposal-tests:
+    surfaces: [surface_organizer_ui]
+permanent_gates: [organizer-unit-tests, check-style, build-debug-apk]
+permanent_only_surfaces: [surface_jvm]   # lane を持たず Permanent gate が所有
+```
+
+`tools/repo-contract/validate_ci_portfolio.py`（self-test: `test_validate_ci_portfolio.py`、
+既存 validator と同じ構成で `validate-repo-contract` job に step 追加）が PyYAML で
+`ci.yml` と map file を parse し、次を検証する。
+
+1. map file の lane 集合 == `ci.yml` の `organizer-instrumentation-*` job 集合。
+2. 各 lane の `surfaces` 集合 == その job の `if` 条件内の
+   `needs.changes.outputs.<flag>` 参照集合（**edge 完全一致比較**。docs↔workflow の
+   mapping drift を検出する）。
+3. `ci.yml` の `changes` job に定義された全 `surface_*` output が、map file 上でいずれか
+   の lane または `permanent_only_surfaces` に紐づく（未使用 surface / 幽霊 surface 検出）。
+4. `final-status` の `needs` == {changes, validate-repo-contract, build-debug-apk,
+   check-style, organizer-unit-tests} ∪ 全 instrumentation lane（exact set 比較。Permanent
+   gate の集約漏れも検出する）。
+5. `organizer-unit-tests` / `check-style` / `build-debug-apk` / `final-status` job が存在
    する（high-risk validator 結合の固定点）。
-4. `final-status` の `needs` が全 instrumentation lane を含む（集約漏れ検出）。
-5. `docs/engineering/ci-test-portfolio.md` の mapping 表に `ci.yml` の全
-   instrumentation lane の新 job ID が登場する（docs↔workflow 同期）。
 6. 全 instrumentation lane が capture step（`capture-emulator-failure-evidence.sh` 参照）
    を持つ。
+7. `docs/engineering/ci-test-portfolio.md` が全 lane ID と全 surface 名を含む
+   （docs 同期の存在検査。各 cell の記述内容は review が所有する）。
 
-失敗時は即 exit 1。docs 表の詳細（各 cell の内容）は機械検証せず review が所有する。
+失敗時は即 exit 1。
 
 #### 6. docs 再編
 
@@ -206,11 +265,11 @@ PyYAML で `ci.yml` を parse し、次を検証する（self-test: `test_valida
 ### Data flow
 
 ```text
-push/PR/schedule/dispatch
-  → changes job（paths-filter + full 計算）
-  → permanent gate（validate-repo-contract / style / build / unit）: source||ci（schedule等は full）
+push/PR/schedule/dispatch/workflow_call
+  → changes job（paths-filter list-files + unmapped 計算 + full 計算）
+  → permanent gate（validate-repo-contract / style / build / unit）: source||ci||full
   → conditional lane: full || 自分の surface
-  → final-status: needs 全 job、skip は成功扱い（現行 grep 逻辑変更なし）
+  → final-status: needs = permanent + repo-contract + 全 lane、skip は成功扱い（現行 grep 逻辑変更なし）
 ```
 
 ### Alternatives rejected
@@ -229,12 +288,13 @@ push/PR/schedule/dispatch
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `.github/workflows/ci.yml` | surface filter 追加、`full` 計算、lane `if` 条件、job 改名、schedule/dispatch trigger、capture step 全 lane 装備 | 本 Issue の実装本体 |
-| `docs/engineering/ci-test-portfolio.md` | 監査・分類・mapping/fan-out・failure 実績の正本へ再編 | AC-422-01〜03, 06 の正本 |
+| `.github/workflows/ci.yml` | surface filter 追加、list-files による per-path unmapped 計算、`full` 計算、lane `if` 条件、Permanent gate の `source\|\|ci\|\|full` 化、job 改名、schedule/dispatch/workflow_call trigger、capture step 全 lane 装備 | 本 Issue の実装本体 |
+| `tools/repo-contract/ci_portfolio_map.yml` | lane→surface / permanent gate / permanent-only surface の機械正本 | AC-422-03, 09 の比較基準 |
+| `docs/engineering/ci-test-portfolio.md` | 監査・分類・mapping/fan-out・failure 実績の正本へ再編（map file と同じ対応の人間向け表を含む） | AC-422-01〜03, 06 の正本 |
 | `docs/engineering/quality-strategy.md` | CI gates section 更新、failure 分類・retry 方針、test/CI 追加審査ルール | AC-422-07, 08 |
 | `docs/project/github-workflow.md` | risk 比例 evidence 選択原則 | AC-422-08 |
 | `AGENTS.md` | テスト規約へ CI portfolio 審査の要点追記 | AC-422-08（運用の可視性） |
-| `tools/repo-contract/validate_ci_portfolio.py` | mapping↔workflow 整合・固定点検証 | AC-422-09 |
+| `tools/repo-contract/validate_ci_portfolio.py` | map file↔ci.yml edge 完全一致・`final-status` needs exact set・固定点検証 | AC-422-09 |
 | `tools/repo-contract/test_validate_ci_portfolio.py` | validator self-test | AC-422-09 |
 | `specs/422-impact-based-ci-portfolio/spec.md` | status 更新（accepted → implemented） | 状態管理 |
 
@@ -252,8 +312,8 @@ push/PR/schedule/dispatch
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-422-01, 02 | 監査表の review + 表↔workflow 整合は AC-422-09 validator | `python3 tools/repo-contract/validate_ci_portfolio.py` |
-| AC-422-03, 04 | 実装 PR の CI run（`ci` filter で全 job 自己実行）。代表 surface demo は `*-dev` branch への push で起動/非起動を実証: (a) docs-only (b) planner-only (c) organizer-ui のみ (d) 未 mapping path。各 run の started/skipped job 一覧を PR に記録 | GitHub Actions（push event on `422-*-dev` demo branches） |
-| AC-422-05 | `ci.yml` trigger 定義 + merge 後の main push run、および初回 scheduled run の link を Issue comment へ記録（初回 scheduled は merge 日の翌週になるため Issue で追跡） | GitHub Actions |
+| AC-422-03, 04 | 実装 PR の CI run（`ci` filter で全 job 自己実行）。代表 surface demo は `*-dev` branch への push で起動/非起動を実証: (a) docs-only (b) planner-only (c) organizer-ui のみ (d) 未 mapping path のみ (e) mapped+未 mapping の混在（fail-closed 発火）。各 run の started/skipped job 一覧を PR に記録 | GitHub Actions（push event on `422-*-dev` demo branches） |
+| AC-422-05 | `ci.yml` trigger 定義 + `workflow_dispatch`（`full-portfolio=true`）による全量経路の実行 run。merge 後の main push run と初回 scheduled run は後続 evidence として Issue comment へ記録する（scheduled は週次のため初回が翌週以降になる点は分離して扱う） | GitHub Actions |
 | AC-422-06 | rename 後 run の job 一覧、`grep -rn "organizer-instrumentation-issue" docs/ AGENTS.md` が canonical docs で空、実装 PR 上の high-risk-gate green | gh run view / grep |
 | AC-422-07 | capture step 定義の review + validator 検査 6.、`quality-strategy.md` 方針の review | `python3 tools/repo-contract/test_validate_ci_portfolio.py` |
 | AC-422-08 | 3 文書の該当 section review | — |
@@ -277,9 +337,12 @@ dev branch demo の注意: 新規 branch 初 push で paths-filter の base が�
 
 - [ ] 現行 lane 全てについて監査表を作成（contract・起動条件・実測時間・過去 failure 分類）。
 - [ ] surface filter の path list を実装確認（実在 path・test class の所在）。
-- [ ] `ci.yml` 変更（surface・full・rename・schedule・capture）。
-- [ ] validator + self-test 追加、`validate-repo-contract` job へ組込み。
+- [ ] `ci.yml` 変更（surface・list-files による per-path unmapped・full・rename・schedule・
+      workflow_call 維持・Permanent gate の full 起動化・capture）。
+- [ ] map file + validator + self-test 追加、`validate-repo-contract` job へ組込み。
 - [ ] docs 再編（portfolio / quality-strategy / github-workflow / AGENTS）。
 - [ ] 実装 PR の CI 全量 green を確認。
-- [ ] dev branch demo（docs-only / planner-only / ui-only / unmapped）で起動・skip 実証。
-- [ ] merge 後: main push run と初回 scheduled run を Issue へ記録し、残課題を分離。
+- [ ] dev branch demo（docs-only / planner-only / ui-only / unmapped / 混在）で起動・skip 実証。
+- [ ] `workflow_dispatch`（full-portfolio=true）run で全量経路を実証。
+- [ ] merge 後: main push run と初回 scheduled run を Issue へ記録（後続 evidence）し、
+      残課題を分離。
