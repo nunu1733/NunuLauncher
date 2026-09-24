@@ -341,8 +341,19 @@ fun ManualOrganizationPreferences(
     // even when the previous run's Selecting state is structurally equal.
     // Hoisted here because LazyListScope item builders are not composable
     // contexts.
+    //
+    // Issue #417 (AC-5, journey d): the confirmed selection survives the
+    // method-choice round trip. The selection face's state is keyed on the
+    // run id of the run THAT OWNS THE SELECTION — a run parked at
+    // [ManualOrganizationRun.State.ScopeConfirmed] still owns it (the
+    // reopenSelection arm re-opens the SAME run's face), so the key must not
+    // drop to null during the parked window: dropping it re-initialized this
+    // state and silently discarded the confirmed selection before Back.
+    // A genuinely new run publishes a new run id and starts unchecked again.
     val selectingState = state as? ManualOrganizationRun.State.Selecting
-    var missingAppSelection by remember(selectingState?.runId) {
+    val selectionOwnerRunId = selectingState?.runId
+        ?: (state as? ManualOrganizationRun.State.ScopeConfirmed)?.runId
+    var missingAppSelection by remember(selectionOwnerRunId) {
         // Issue #375 (spec "選択復元初期値"): a PreviousExplicit rebind seeds
         // the surface with the request-time explicit selection (the resolvable
         // subset of the export scope). It is an INITIAL VALUE only — the run's
@@ -553,7 +564,17 @@ fun ManualOrganizationPreferences(
                     modifier = Modifier.padding(16.dp),
                 )
             }
-            when (val currentState = state) {
+            // Issue #417 (cross-origin JIT oracle): ONE state read per content
+            // pass. This lambda runs inside the lazy list's measure-phase
+            // subcomposition, so a flag derived at composition time can be
+            // STALE relative to the state read here — the Idle/Cancelled
+            // hosting below and the ScopeConfirmed branch above then both
+            // emit in one item list and two equal LazyColumn keys crash the
+            // frame (reproduced with the flow's JIT pause hosted on the
+            // method-choice face while a stale Idle capture held). The face
+            // branch and the trailing hosting gate on this single value.
+            val faceState = state
+            when (val currentState = faceState) {
                 // Issue #369 (TO-BE T-07) as reshaped by #417 (spec 417
                 // Retire/Amend): the method-neutral entry face — the scope
                 // summary (RD-5: no detection/composition lookahead) and ONE
@@ -1193,7 +1214,14 @@ fun ManualOrganizationPreferences(
             // is idle/cancelled (spec 205 V1 rule). Issue #417: the hosting
             // is IMPORT-ONLY here — the hoisted effect above keeps the
             // holder's host mode reset for this face.
-            if (idleLike) {
+            //
+            // Issue #417 (cross-origin JIT oracle): gated on [faceState] —
+            // the SAME read the when above matched on, never the
+            // composition-time [idleLike] flag (stale-capture duplicate-key
+            // crash; see the note above).
+            if (faceState is ManualOrganizationRun.State.Idle ||
+                faceState is ManualOrganizationRun.State.Cancelled
+            ) {
                 exchangeFlowItems(
                     holder = exchangeHolder,
                     onDiscardRequest = { pendingExchangeDiscard = true },

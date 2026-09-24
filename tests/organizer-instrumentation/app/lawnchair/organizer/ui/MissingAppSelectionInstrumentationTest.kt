@@ -247,11 +247,19 @@ class MissingAppSelectionInstrumentationTest {
     fun confirmForwardsTheSelectedIdentitiesToTheScopeComposedCompose() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = SelectingFakeApplication(listOf(mail, maps, music))
-        launch(application)
+        val runner = launch(application)
 
         composeRule.onNodeWithText(maps.label).performClick()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
 
+        // Issue #417 (spec 417, AC-1): the confirmation freezes the scope and
+        // parks the run at the method-choice face; nothing composes there.
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+        assertEquals(0, application.scopeComposeCalls)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_method_plain)).performClick()
+
+        // このまま整理: the composed phase consumes the frozen selection —
+        // the confirmed identities are what the scope-composed compose saw.
         composeRule.waitUntil { application.scopeComposeCalls == 1 }
         assertEquals(listOf(maps.target), application.scopeSelection)
         assertEquals(0, application.applyCalls)

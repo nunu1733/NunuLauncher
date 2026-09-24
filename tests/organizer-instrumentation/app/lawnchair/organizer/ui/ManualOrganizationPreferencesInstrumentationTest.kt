@@ -546,8 +546,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("exchange-generate").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("exchange-generate"))
-        composeRule.onNodeWithTag("exchange-generate").performClick()
+        scrollToAndTap("exchange-generate")
         composeRule.waitUntil(10_000) { holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Disclosing }
         val session = store.session!!
         assertTrue(runner.hasBoundScopeRequest())
@@ -566,8 +565,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         // The same-run CTA attaches at the frozen scope; the composed phase
         // runs and the preview is reached. Nothing is written before the
         // explicit confirmation.
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("exchange-import-continue"))
-        composeRule.onNodeWithTag("exchange-import-continue").performClick()
+        scrollToAndTap("exchange-import-continue")
         awaitPreview(runner, context)
         assertEquals(0, application.applyCalls)
         assertFalse("the attached scope consumed the bound request", runner.hasBoundScopeRequest())
@@ -660,8 +658,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("exchange-generate").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("exchange-generate"))
-        composeRule.onNodeWithTag("exchange-generate").performClick()
+        scrollToAndTap("exchange-generate")
         composeRule.waitUntil(10_000) { holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Disclosing }
         assertTrue(runner.hasBoundScopeRequest())
         assertTrue(store.session != null)
@@ -725,8 +722,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("exchange-generate").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("exchange-generate"))
-        composeRule.onNodeWithTag("exchange-generate").performClick()
+        scrollToAndTap("exchange-generate")
         composeRule.waitUntil(10_000) { holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Disclosing }
         composeRule.runOnUiThread { holder.onTransportResult(app.lawnchair.organizer.integration.exchange.ExchangeTransportResult.Success) }
         composeRule.waitForIdle()
@@ -3187,6 +3183,23 @@ class ManualOrganizationPreferencesInstrumentationTest {
     private fun awaitDisplayed(text: String) {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithText(text).isDisplayed()
+        }
+    }
+
+    /**
+     * Issue #417 (AC-8 journeys): a CTA reached through
+     * [performScrollToNode] can sit flush with the viewport bottom, where
+     * the tap's center lands inside the system navigation gesture zone and
+     * never reaches the control — the API 36 emulator geometry makes the
+     * generate/import CTAs on the long method-choice face fail this way
+     * deterministically (the click "succeeds" while the button's onClick
+     * never fires). Brings the tagged target into view and taps within its
+     * upper half — the same user gesture on a full-width row.
+     */
+    private fun scrollToAndTap(tag: String) {
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(tag))
+        composeRule.onNodeWithTag(tag).performTouchInput {
+            click(Offset(width / 2f, height * 0.2f))
         }
     }
 

@@ -13,6 +13,21 @@ name: CI
 #     changes, so broken internal links and invalid Issue forms fail CI.
 #   - Permissions are declared per-job at least privilege.
 #
+# Portfolio model (Issue #422, specs/422-impact-based-ci-portfolio):
+#   - validate-repo-contract runs on every event (docs-only included).
+#   - Permanent source gates (style / build / unit) run on `permanent_run`
+#     (source || ci || full || smoke).
+#   - Instrumentation lanes are conditional: a lane runs when
+#     `instrumentation_enabled && (full || own surface)` per the lane<->surface
+#     map in tools/repo-contract/ci_portfolio_map.yml (the normative edge
+#     source; docs/engineering/ci-test-portfolio.md is the human-readable
+#     mirror). The `changes` job applies the per-path fail-closed rule: one
+#     unmapped source file anywhere in the diff forces the full portfolio.
+#   - main pushes, the weekly schedule, workflow_call, and
+#     workflow_dispatch(full-portfolio=true) run the full portfolio regardless
+#     of paths. workflow_dispatch(full-portfolio=false) is a deterministic
+#     smoke: permanent gates on, every instrumentation lane off.
+#
 # Upstream sync note: when merging a newer Lawnchair revision, reconcile this
 # file against the upstream ci.yml deliberately rather than overwriting it.
 
@@ -22,7 +37,14 @@ on:
       - main
       - '*-dev'
   pull_request:
+  schedule:
+    - cron: '30 19 * * 0'
   workflow_dispatch:
+    inputs:
+      full-portfolio:
+        description: 'Run the full lane portfolio regardless of changed paths'
+        type: boolean
+        default: true
   workflow_call:
 
 # Cancel superseded runs on the same ref so fast PR iteration does not queue
@@ -37,7 +59,10 @@ permissions:
 jobs:
   # Paths filter decides which downstream jobs are worth running. Keeping it in
   # one job lets every later job gate on a single output and avoids re-evaluating
-  # path globs in each if-condition.
+  # path globs in each if-condition. The filter only evaluates diffs for
+  # pull_request/push events; schedule, workflow_call, and workflow_dispatch
+  # runs force their behavior through the gate step and never read mapping
+  # outputs, so a non-PR event can never mis-gate a lane through paths-filter.
   changes:
     runs-on: ubuntu-latest
     permissions:
@@ -46,15 +71,31 @@ jobs:
     outputs:
       source: ${{ steps.filter.outputs.source }}
       ci: ${{ steps.filter.outputs.ci }}
+      permanent_run: ${{ steps.gate.outputs.permanent_run }}
+      instrumentation_enabled: ${{ steps.gate.outputs.instrumentation_enabled }}
+      full: ${{ steps.gate.outputs.full }}
+      surface_layout_write: ${{ steps.filter.outputs.surface_layout_write }}
+      surface_db_schema: ${{ steps.filter.outputs.surface_db_schema }}
+      surface_backup_restore: ${{ steps.filter.outputs.surface_backup_restore }}
+      surface_production_input: ${{ steps.filter.outputs.surface_production_input }}
+      surface_organizer_ui: ${{ steps.filter.outputs.surface_organizer_ui }}
+      surface_jvm: ${{ steps.filter.outputs.surface_jvm }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4.0.3
         id: filter
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         with:
           # The source filter combines a broad include with exclusions. The
           # default `some` would let `**` win by itself, so use v4's explicit
-          # include-match-with-no-exclusion predicate.
+          # include-match-with-no-exclusion predicate. Surface filters carry no
+          # excludes, so the quantifier behaves like `some` for them.
           predicate-quantifier: some-with-excludes
+          # File lists travel as JSON arrays through env into
+          # tools/ci/compute_ci_gating.py; no GitHub expression is interpolated
+          # into a shell, and filenames with spaces/quotes/metacharacters stay
+          # intact (dorny/paths-filter#notes treats *_files as untrusted).
+          list-files: json
           filters: |
             source:
               # Treat every non-documentation/tooling path as source. A broad
@@ -73,9 +114,98 @@ jobs:
               # otherwise workflow-only Pull Requests can skip the very gates
               # whose orchestration and commands they modify.
               - '.github/workflows/**'
+            surface_layout_write:
+              # Layout write coordinator / ModelWriter / DB controller seam and
+              # the organizer application module that drives apply + recovery.
+              # Test paths use directory granularity and deliberately
+              # over-trigger neighbouring lanes (safe direction) instead of
+              # maintaining a second per-class list that can drift.
+              - 'src/com/android/launcher3/model/LayoutWriteCoordinator.java'
+              - 'src/com/android/launcher3/model/ModelWriter.java'
+              - 'src/com/android/launcher3/model/ModelDbController.java'
+              - 'lawnchair/src/app/lawnchair/organizer/application/**'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/**'
+              - 'tests/organizer-instrumentation/com/android/launcher3/OrganizerReloadCompletionOrderingTest.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/hybridhotseat/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/organizer/application/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/organizer/planning/**'
+            surface_db_schema:
+              # LauncherProvider / schema upgrade / grid migration ownership and
+              # the Deck retirement startup migration. The four schema test
+              # files are listed explicitly: they live under the broad
+              # com/.../organizer/ glob owned by surface_layout_write, and the
+              # db-migration lane must self-trigger when its own tests change
+              # (overlap with surface_layout_write is the safe direction).
+              - 'src/com/android/launcher3/provider/**'
+              - 'src/com/android/launcher3/model/DatabaseHelper.java'
+              - 'src/com/android/launcher3/model/GridSizeMigrationUtil.java'
+              - 'lawnchair/src/app/lawnchair/migration/**'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/MigrationTransactionOwnershipTest.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/DatabaseHelperSchema33Test.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/DowngradeSchema33Test.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/InactiveGridDbNormalizationTest.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/rollback32/**'
+              - 'tests/organizer-instrumentation/com/android/launcher3/model/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/migration/**'
+            surface_backup_restore:
+              # Old-backup restore capture (Nova) and the backup agent seam.
+              - 'lawnchair/src/app/lawnchair/backup/**'
+              - 'src/com/android/launcher3/LauncherBackupAgent.java'
+              - 'tests/organizer-instrumentation/app/lawnchair/backup/**'
+            surface_production_input:
+              # Production organization input composer / platform evidence
+              # adapters (API 35 + 36 compatibility) and the category override
+              # atomic-file contract that needs a real framework filesystem.
+              - 'lawnchair/src/app/lawnchair/organizer/integration/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/organizer/integration/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/organizer/rules/**'
+            surface_organizer_ui:
+              # Organizer UI group: manual organization, onboarding proposal,
+              # category override authoring, exchange import, and the shared
+              # Compose preferences surface. v1 intentionally groups these four
+              # lanes (screen-level split is a later refinement).
+              - 'lawnchair/src/app/lawnchair/organizer/ui/**'
+              - 'lawnchair/src/app/lawnchair/organizer/*'
+              - 'lawnchair/src/app/lawnchair/ui/**'
+              - 'lawnchair/src/app/lawnchair/organizer/personalization/**'
+              - 'lawnchair/res/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/organizer/ui/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/ui/preferences/**'
+            surface_jvm:
+              # Surfaces whose regression oracle is the JVM unit/contract/property
+              # gate (planner corpus, rules, diagnostics, locks) plus the JVM
+              # test tree itself. No instrumentation lane consumes this surface;
+              # it exists so these paths count as mapped for the per-path
+              # fail-closed rule.
+              - 'lawnchair/src/app/lawnchair/organizer/planning/**'
+              - 'lawnchair/src/app/lawnchair/organizer/rules/**'
+              - 'lawnchair/src/app/lawnchair/organizer/diagnostics/**'
+              - 'lawnchair/src/app/lawnchair/organizer/locks/**'
+              - 'tests/unit/**'
+      - name: Compute portfolio gating (Issue #422)
+        id: gate
+        # Applies the per-path fail-closed rule (one unmapped source file in
+        # the diff forces the full portfolio) and the smoke/full event
+        # semantics. Inputs travel through env only; see the script header.
+        env:
+          GATING_EVENT: ${{ github.event_name }}
+          GATING_REF: ${{ github.ref }}
+          GATING_FULL_PORTFOLIO: ${{ inputs.full-portfolio }}
+          GATING_WORKFLOW_CALL: ${{ github.event_name == 'workflow_call' }}
+          GATING_SOURCE: ${{ steps.filter.outputs.source }}
+          GATING_CI: ${{ steps.filter.outputs.ci }}
+          GATING_SOURCE_FILES: ${{ steps.filter.outputs.source_files }}
+          GATING_SURFACE_LAYOUT_WRITE_FILES: ${{ steps.filter.outputs.surface_layout_write_files }}
+          GATING_SURFACE_DB_SCHEMA_FILES: ${{ steps.filter.outputs.surface_db_schema_files }}
+          GATING_SURFACE_BACKUP_RESTORE_FILES: ${{ steps.filter.outputs.surface_backup_restore_files }}
+          GATING_SURFACE_PRODUCTION_INPUT_FILES: ${{ steps.filter.outputs.surface_production_input_files }}
+          GATING_SURFACE_ORGANIZER_UI_FILES: ${{ steps.filter.outputs.surface_organizer_ui_files }}
+          GATING_SURFACE_JVM_FILES: ${{ steps.filter.outputs.surface_jvm_files }}
+        run: python3 tools/ci/compute_ci_gating.py
 
   # Always run: the repository contract (internal links, Issue forms, required
-  # files) is cheap and must gate every change, including docs-only PRs.
+  # files, CI portfolio consistency) is cheap and must gate every change,
+  # including docs-only PRs.
   validate-repo-contract:
     needs: changes
     runs-on: ubuntu-latest
@@ -114,12 +244,19 @@ jobs:
         run: python3 tools/repo-contract/validate_diagnostics_contract.py
       - name: Diagnostics contract self-tests
         run: python3 tools/repo-contract/test_validate_diagnostics_contract.py
+      - name: CI portfolio validator (Issue #422)
+        run: python3 tools/repo-contract/validate_ci_portfolio.py
+      - name: CI portfolio validator self-tests
+        run: python3 tools/repo-contract/test_validate_ci_portfolio.py
+      - name: CI gating computation self-tests (Issue #422)
+        run: python3 tools/ci/test_compute_ci_gating.py
 
-  # Source-only: style check. Skipped for docs-only PRs so they do not spin up
-  # a Gradle daemon.
+  # Permanent source gate: style check. Runs on permanent_run
+  # (source || ci || full || smoke); skipped for docs-only PRs so they do not
+  # spin up a Gradle daemon.
   check-style:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: needs.changes.outputs.permanent_run == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -134,12 +271,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       - run: ./gradlew spotlessCheck
 
-  # Source-only: build the GitHub Debug APK. This is the one variant the fork
-  # validates on every source PR; release/nightly variants belong to a future
-  # release-evaluation Issue, not to per-PR CI.
+  # Permanent source gate: build the GitHub Debug APK. This is the one variant
+  # the fork validates on every source PR; release/nightly variants belong to a
+  # future release-evaluation Issue, not to per-PR CI.
   build-debug-apk:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: needs.changes.outputs.permanent_run == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -161,15 +298,15 @@ jobs:
           path: build/outputs/apk/**/*.apk
           retention-days: 7
 
-  # Source-only: run the organizer JVM unit/contract/property suite. The
-  # --tests filter covers app.lawnchair.organizer.planning.* and the pure
-  # application tests, so new tests under that package tree join this gate
-  # automatically. The preference navigation retention tests (Issue #116) are
-  # listed explicitly. The focused real-adapter instrumentation seam is
-  # verified independently below on an emulator.
+  # Permanent source gate: run the organizer JVM unit/contract/property suite.
+  # The --tests filter covers app.lawnchair.organizer.* and the pure application
+  # tests, so new tests under that package tree join this gate automatically.
+  # The preference navigation retention tests (Issue #116), bugreport (Issue
+  # #242), and backup unit tests are listed explicitly. The focused real-adapter
+  # instrumentation seam is verified independently below on emulators.
   organizer-unit-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: needs.changes.outputs.permanent_run == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -205,12 +342,16 @@ jobs:
   # self-deadlock regression, lease admission/FIFO/Binder suites, the whole-unit
   # nested SQLiteTransaction contract, Issue #119 reload-supersession suite, and
   # Issue #156 Hotseat atomic-admission race suite run permanently here on their
-  # own clean API 36 emulator. Coordinator and
-  # transaction cases use isolated fixture DBs; the reload case uses the real
-  # Launcher model but stays independent from the UI lanes below.
+  # own clean API 36 emulator. Coordinator and transaction cases use isolated
+  # fixture DBs; the reload case uses the real Launcher model but stays
+  # independent from the UI lanes below. Issue #422 renamed the lane IDs to the
+  # contract they own; lane<->surface gating comes from ci_portfolio_map.yml.
   organizer-instrumentation-shared-writer-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_layout_write == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -251,6 +392,21 @@ jobs:
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
+      - name: Capture shared-writer failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        # Issue #315: the helper is bounded internally (per-command timeout and
+        # a 150s budget); this step-level timeout is the absolute backstop so a
+        # wedged capture can never consume the job budget before the upload.
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/shared-writer-failure-time-evidence
+      - name: Upload shared-writer failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: shared-writer-failure-time-emulator-evidence
+          path: build/shared-writer-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
 
   # DB migration transaction-ownership lane: the Issue #118 schema
   # upgrade/downgrade failure-semantics suites run permanently here on their own
@@ -259,7 +415,10 @@ jobs:
   # DBs and stay independent from the app-state-heavy UI lanes.
   organizer-instrumentation-db-migration-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_db_schema == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -300,18 +459,33 @@ jobs:
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
+      - name: Capture DB migration failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/db-migration-failure-time-evidence
+      - name: Upload DB migration failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: db-migration-failure-time-emulator-evidence
+          path: build/db-migration-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
 
-  # Issue #299 Nova restore -> Organizer capture regression lane. Each scenario
-  # class runs in its OWN `am instrument` invocation: the cross-process pair
-  # (Stage A commits the sanitized restored DB after its completion barrier
-  # settles the correlated reload; Stage B reads it read-only before model
-  # init) requires a fresh process per stage, and the single-restore-per-process
-  # contract keeps reload generations from overlapping. Verify the procedure
-  # note in docs/assessment/issue-299-nova-restore-capture-invalid.md before
-  # changing.
-  organizer-instrumentation-issue299-tests:
+  # Nova restore -> Organizer capture regression lane (ex Issue #299 lane).
+  # Each scenario class runs in its OWN `am instrument` invocation: the
+  # cross-process pair (Stage A commits the sanitized restored DB after its
+  # completion barrier settles the correlated reload; Stage B reads it
+  # read-only before model init) requires a fresh process per stage, and the
+  # single-restore-per-process contract keeps reload generations from
+  # overlapping. Verify the procedure note in
+  # docs/assessment/issue-299-nova-restore-capture-invalid.md before changing.
+  organizer-instrumentation-restore-capture-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_backup_restore == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -357,24 +531,41 @@ jobs:
             adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCrossProcessStageATest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
             adb shell am force-stop app.lawnchair.debug
             adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCrossProcessStageBTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
-      - name: Upload Nova restore instrumentation reports on failure
+      - name: Upload restore-capture instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: organizer-instrumentation-issue299-reports
+          name: organizer-instrumentation-restore-capture-reports
           path: |
             build/reports/androidTests/connected/**
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
+      - name: Capture restore-capture failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/restore-capture-failure-time-evidence
+      - name: Upload restore-capture failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: restore-capture-failure-time-emulator-evidence
+          path: build/restore-capture-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
 
-  # API 35 also runs the nested transaction contract so the project does not
+  # Production input compatibility lane (ex API 35 / Issue #83 lane). API 35
+  # also runs the nested transaction contract so the project does not
   # reintroduce an API-version-dependent SAVEPOINT expectation. The remaining
   # classes in this lane own the Issue #83 production-input compatibility
   # evidence.
-  organizer-instrumentation-api35-tests:
+  organizer-instrumentation-production-input-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_production_input == 'true' ||
+       needs.changes.outputs.surface_layout_write == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -393,7 +584,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run Issue 83 production seam instrumentation
+      - name: Run production input instrumentation (API 35)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -415,23 +606,41 @@ jobs:
             adb shell am instrument -w -r -e class app.lawnchair.organizer.rules.CategoryOverrideAtomicFileRestartReaderInstrumentationTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner | tee /tmp/category-override-restart-reader.txt
             grep -q 'OK (1 test)' /tmp/category-override-restart-reader.txt
             grep -q 'INSTRUMENTATION_CODE: -1' /tmp/category-override-restart-reader.txt
-      - name: Upload API 35 instrumentation reports on failure
+      - name: Upload production-input instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: organizer-instrumentation-api35-reports
+          name: organizer-instrumentation-production-input-reports
           path: |
             build/reports/androidTests/connected/**
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
+      - name: Capture production-input failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/production-input-failure-time-evidence
+      - name: Upload production-input failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-input-failure-time-emulator-evidence
+          path: build/production-input-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
 
-  # Issue #52 owns database-heavy fixtures and layout-data evidence. It receives
-  # a dedicated clean API 36 emulator rather than sharing target state or an
-  # instrumentation process with the onboarding suite.
-  organizer-instrumentation-issue52-tests:
+  # Manual organization UI lane (ex Issue #52 lane). It owns database-heavy
+  # fixtures and layout-data evidence on a dedicated clean API 36 emulator
+  # rather than sharing target state or an instrumentation process with the
+  # onboarding suite. The class list is the broad organizer UI sweep: manual
+  # organization E2E, hub, strategy picker, missing-app selection, usage access
+  # JIT, exchange import success, diagnostics route.
+  organizer-instrumentation-manual-organization-ui-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_organizer_ui == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -450,7 +659,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run Issue 52 manual organization instrumentation (API 36 / Platform 36.1)
+      - name: Run manual organization UI instrumentation (API 36 / Platform 36.1)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -461,53 +670,55 @@ jobs:
           emulator-boot-timeout: 900
           script: |
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest,app.lawnchair.organizer.ui.OrganizerHubPreferencesInstrumentationTest,app.lawnchair.organizer.ui.StrategyPickerInstrumentationTest,app.lawnchair.organizer.ui.MissingAppSelectionInstrumentationTest,app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest,app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessInstrumentationTest,app.lawnchair.ui.preferences.destinations.StrategyPickerFreezeInstrumentationTest,app.lawnchair.ui.preferences.OrganizerDiagnosticsRouteInstrumentationTest
-            mkdir -p build/issue52-ui-evidence
-            adb pull /sdcard/Pictures/Issue52-ui-evidence build/issue52-ui-evidence
-      - name: Upload Issue 52 instrumentation reports on failure
+            mkdir -p build/manual-organization-ui-evidence
+            adb pull /sdcard/Pictures/Issue52-ui-evidence build/manual-organization-ui-evidence
+      - name: Upload manual-organization-ui instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: organizer-instrumentation-issue52-reports
+          name: organizer-instrumentation-manual-organization-ui-reports
           path: |
             build/reports/androidTests/connected/**
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
-      - name: Capture Issue 52 failure-time emulator evidence
+      - name: Capture manual-organization-ui failure-time emulator evidence
         if: failure()
         continue-on-error: true
-        # Issue #315: the helper is bounded internally (per-command timeout and
-        # a 150s budget); this step-level timeout is the absolute backstop so a
-        # wedged capture can never consume the job budget before the upload.
-        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/issue52-failure-time-evidence
-      - name: Upload Issue 52 failure-time emulator evidence
+        # Issue #315: bounded internally; step-level timeout is the absolute backstop.
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/manual-organization-ui-failure-time-evidence
+      - name: Upload manual-organization-ui failure-time emulator evidence
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: issue52-failure-time-emulator-evidence
-          path: build/issue52-failure-time-evidence/**
+          name: manual-organization-ui-failure-time-emulator-evidence
+          path: build/manual-organization-ui-failure-time-evidence/**
           retention-days: 14
           if-no-files-found: warn
-      - name: Upload Issue 52 UI evidence
+      - name: Upload manual-organization-ui UI evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: issue52-ui-evidence
-          path: build/issue52-ui-evidence/**
+          name: manual-organization-ui-evidence
+          path: build/manual-organization-ui-evidence/**
           retention-days: 7
           if-no-files-found: warn
 
-  # Issue #155 reserves the platform-owned QSB/Smartspace first-screen cells as
-  # non-item organizer context. Its regression evidence requires a clean API 36
-  # emulator: the production adapter/page-ID seam, manifest-context validation,
-  # ordinary sanitizer separation, and RecoveryStore v1/v2 lifecycle matrix all
-  # mutate or inspect independent storage and must not inherit the Issue #52 UI
+  # Reservation / recovery lane (ex Issue #155 lane). The platform-owned
+  # QSB/Smartspace first-screen cells are reserved as non-item organizer
+  # context. Its regression evidence requires a clean API 36 emulator: the
+  # production adapter/page-ID seam, manifest-context validation, ordinary
+  # sanitizer separation, and RecoveryStore v1/v2 lifecycle matrix all mutate or
+  # inspect independent storage and must not inherit the manual-organization UI
   # fixture state. Issue #269's real writer/recovery oracle runs on this same
   # clean surface so its accepted AC-269-01..04 execution evidence is retained
   # by the pull-request merge gate.
-  organizer-instrumentation-issue155-tests:
+  organizer-instrumentation-reservation-recovery-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_layout_write == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -526,7 +737,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run Issue 155 QSB reservation instrumentation (API 36 / Platform 36.1)
+      - name: Run reservation/recovery instrumentation (API 36 / Platform 36.1)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -538,23 +749,39 @@ jobs:
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
             -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.ProductionPublicSeamInstrumentationTest,app.lawnchair.organizer.application.RealAdapterRowMatrixInstrumentationTest,app.lawnchair.organizer.application.SanitizerInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreLifecycleTest,app.lawnchair.organizer.application.OverlapAcceptanceGateSeamInstrumentationTest,app.lawnchair.organizer.planning.LoaderCursorOverlapAcceptanceContractTest,app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest
-      - name: Upload Issue 155 instrumentation reports on failure
+      - name: Upload reservation-recovery instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: organizer-instrumentation-issue155-reports
+          name: organizer-instrumentation-reservation-recovery-reports
           path: |
             build/reports/androidTests/connected/**
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
+      - name: Capture reservation-recovery failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/reservation-recovery-failure-time-evidence
+      - name: Upload reservation-recovery failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: reservation-recovery-failure-time-emulator-evidence
+          path: build/reservation-recovery-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
 
-  # Issue #99 owns profile-safe authoring UI evidence. It runs on an independent
-  # clean emulator so semantics, focus, font-scale, and mutation interactions are
-  # verified rather than only compiled alongside the other Organizer suites.
-  organizer-instrumentation-issue99-tests:
+  # Category override authoring UI lane (ex Issue #99 lane). It runs on an
+  # independent clean emulator so semantics, focus, font-scale, and mutation
+  # interactions are verified rather than only compiled alongside the other
+  # Organizer suites.
+  organizer-instrumentation-category-override-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_organizer_ui == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -573,7 +800,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run Issue 99 category override instrumentation (API 36 / Platform 36.1)
+      - name: Run category override instrumentation (API 36 / Platform 36.1)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -585,84 +812,40 @@ jobs:
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
             -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest
-      - name: Upload Issue 99 instrumentation reports on failure
+      - name: Upload category-override instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: organizer-instrumentation-issue99-reports
+          name: organizer-instrumentation-category-override-reports
           path: |
             build/reports/androidTests/connected/**
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
-
-  # Issue #53 needs a fresh API 36 Launcher process and persistent state so the
-  # proposal lifecycle, accessibility, recreation, and review-admission tests
-  # remain independent from the database-heavy Issue #52 fixture.
-  organizer-instrumentation-issue53-tests:
-    needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 50
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: true
-      - uses: actions/setup-java@v5
-        with:
-          distribution: 'zulu'
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@v5
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Run Issue 53 onboarding proposal instrumentation (API 36 / Platform 36.1)
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7_pro
-          disable-animations: true
-          emulator-boot-timeout: 900
-          script: >-
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest,app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
-      - name: Upload Issue 53 instrumentation reports on failure
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: organizer-instrumentation-issue53-reports
-          path: |
-            build/reports/androidTests/connected/**
-            build/outputs/androidTest-results/**
-          retention-days: 7
-          if-no-files-found: warn
-      - name: Capture Issue 53 failure-time emulator evidence
+      - name: Capture category-override failure-time emulator evidence
         if: failure()
         continue-on-error: true
-        # Issue #315: bounded internally; step-level timeout is the absolute backstop.
-        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/issue53-failure-time-evidence
-      - name: Upload Issue 53 failure-time emulator evidence
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/category-override-failure-time-evidence
+      - name: Upload category-override failure-time emulator evidence
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: issue53-failure-time-emulator-evidence
-          path: build/issue53-failure-time-evidence/**
+          name: category-override-failure-time-emulator-evidence
+          path: build/category-override-failure-time-evidence/**
           retention-days: 14
           if-no-files-found: warn
 
-  # Issue #332's Exchange import surface is a standalone Compose UI whose
-  # semantics, bounded-height, and clipboard-first behaviour assertions are
-  # machine-checked in one class. It runs on an independent clean emulator
-  # (#345: previously local-only evidence, now a CI merge gate).
-  organizer-instrumentation-issue332-tests:
+  # Exchange import surface lane (ex Issue #332 lane). The Exchange import
+  # surface is a standalone Compose UI whose semantics, bounded-height, and
+  # clipboard-first behaviour assertions are machine-checked in one class. It
+  # runs on an independent clean emulator (#345: previously local-only
+  # evidence, now a CI merge gate).
+  organizer-instrumentation-exchange-import-ui-tests:
     needs: changes
-    if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_organizer_ui == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -681,7 +864,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run Issue 332 exchange import surface instrumentation (API 36 / Platform 36.1)
+      - name: Run exchange import surface instrumentation (API 36 / Platform 36.1)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -693,20 +876,161 @@ jobs:
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
             -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.exchange.ExchangeImportSurfaceInstrumentationTest
-      - name: Upload Issue 332 instrumentation reports on failure
+      - name: Upload exchange-import-ui instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: organizer-instrumentation-issue332-reports
+          name: organizer-instrumentation-exchange-import-ui-reports
           path: |
             build/reports/androidTests/connected/**
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
+      - name: Capture exchange-import-ui failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/exchange-import-ui-failure-time-evidence
+      - name: Upload exchange-import-ui failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: exchange-import-ui-failure-time-emulator-evidence
+          path: build/exchange-import-ui-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
 
-  # Required status check: aggregates the jobs above so branch protection has a
-  # single gate. Jobs that were skipped (e.g. style on a docs PR) count as
-  # success; only actual failures fail the gate.
+  # Method-choice connected journey lane (Issue #417). It owns the AC-8
+  # (g)-(v) connected evidence — the scoped AI-request creation, import and
+  # attach journeys across the method-choice face — on a dedicated clean
+  # API 36 emulator, mirroring the per-class lane pattern of the exchange
+  # import surface lane (Issue #332 precedent).
+  organizer-instrumentation-method-choice-journey-tests:
+    needs: changes
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_organizer_ui == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run method-choice connected journey instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.exchange.MethodChoiceConnectedJourneyInstrumentationTest
+      - name: Upload method-choice-journey instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-method-choice-journey-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Capture method-choice-journey failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/method-choice-journey-failure-time-evidence
+      - name: Upload method-choice-journey failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: method-choice-journey-failure-time-emulator-evidence
+          path: build/method-choice-journey-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
+
+  # Onboarding proposal lane (ex Issue #53 lane). It needs a fresh API 36
+  # Launcher process and persistent state so the proposal lifecycle,
+  # accessibility, recreation, and review-admission tests remain independent
+  # from the database-heavy manual-organization fixture.
+  organizer-instrumentation-onboarding-proposal-tests:
+    needs: changes
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_organizer_ui == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run onboarding proposal instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest,app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
+      - name: Upload onboarding-proposal instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-onboarding-proposal-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Capture onboarding-proposal failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        # Issue #315: bounded internally; step-level timeout is the absolute backstop.
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/onboarding-proposal-failure-time-evidence
+      - name: Upload onboarding-proposal failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: onboarding-proposal-failure-time-emulator-evidence
+          path: build/onboarding-proposal-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
+
+  # Required status check: aggregates the gates that were judged required for
+  # this run (Issue #422). Jobs skipped by the impact mapping count as success;
+  # only actual failures fail the gate. The needs list is machine-checked
+  # against tools/repo-contract/ci_portfolio_map.yml by validate_ci_portfolio.py.
   final-status:
     needs:
       - changes
@@ -715,13 +1039,14 @@ jobs:
       - organizer-unit-tests
       - organizer-instrumentation-shared-writer-tests
       - organizer-instrumentation-db-migration-tests
-      - organizer-instrumentation-issue299-tests
-      - organizer-instrumentation-api35-tests
-      - organizer-instrumentation-issue52-tests
-      - organizer-instrumentation-issue155-tests
-      - organizer-instrumentation-issue99-tests
-      - organizer-instrumentation-issue332-tests
-      - organizer-instrumentation-issue53-tests
+      - organizer-instrumentation-restore-capture-tests
+      - organizer-instrumentation-production-input-tests
+      - organizer-instrumentation-manual-organization-ui-tests
+      - organizer-instrumentation-reservation-recovery-tests
+      - organizer-instrumentation-category-override-tests
+      - organizer-instrumentation-exchange-import-ui-tests
+      - organizer-instrumentation-method-choice-journey-tests
+      - organizer-instrumentation-onboarding-proposal-tests
       - build-debug-apk
     runs-on: ubuntu-latest
     if: always()
