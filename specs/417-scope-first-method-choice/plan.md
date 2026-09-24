@@ -2,7 +2,7 @@
 
 > Issue: #417
 > Spec: [spec.md](./spec.md)
-> Status: accepted（2026-09-24。Phase1 review 11回を経て[Approved](https://github.com/nunu1733/NunuLauncher/pull/423#issuecomment-5802041454)）
+> Status: implemented（2026-09-24。実装PR [#432](https://github.com/nunu1733/NunuLauncher/pull/432) merge（merge commit `c7bcc26e06`）で完了。Phase1 review 11回・実装review 5回を経てApproved）
 > Revision 11（2026-09-24）: PR #423 10回目review（Changes requested）対応。plan内の破棄順序残存記述（gate内epoch失効）の削除と正順への統一、cleanup条件の要約箇所へexact-binding/`Superseded`を明記、unit/connected evidence割当ての正本統一（AC-8は全journey connected固定＋一部unit oracle併設）。
 > Revision 10（2026-09-24）: PR #423 9回目review（Changes requested）対応。discardのepoch失効をrun lock下・capability呼出し前に確定、cleanupのexact-binding条件と`WriteFailed`後のsettle/retry契約、#374置換文言の強度修正、oracle (t)(u)(v)。
 > Revision 9（2026-09-24）: PR #423 8回目review（Changes requested）対応。transaction APIを「gate所有側が`withGate`内でrun提供callbackを実行する」形状へ固定（oracle (s)）、#374置換cleanupの分離（oracle (r)）、Migration節のlegacy decode統一。
