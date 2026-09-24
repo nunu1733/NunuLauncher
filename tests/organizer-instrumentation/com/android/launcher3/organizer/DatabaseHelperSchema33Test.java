@@ -194,3 +194,5 @@ public class DatabaseHelperSchema33Test {
     }
 
 }
+
+// Issue 422 demo: db-migration lane self-trigger verification.
