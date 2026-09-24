@@ -98,6 +98,7 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 | method-choice-journey lane | method-choice face の connected journey（#417 AC-8 (g)-(v) evidence。scope-first で凍結した scope 上の AI依頼作成 → 取り込み → attach を固定する per-class lane） | Conditional（surface_organizer_ui） |
 | onboarding-proposal lane | 9.7 分。proposal lifecycle / Back / focus / recreation / review admission。実入力注入は focus 観測を前提とする（#300 accepted、#304/#418 で環境系 failure 実績） | Conditional（surface_organizer_ui） |
 | failure-time evidence capture | 全 9 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。validator が装備を機械検証 | 補助（各 lane） |
+| failure capture lifecycle self-test | `validate-repo-contract` で全 run（docs-only 含む）に起動する 0.1 分未満の契約test。既存のcapture helper smoke testが各adb commandのtimeout・budget・出力上限を検証するのに対し、本testは `android-emulator-runner@v2` のrunner `script`が物理行単位で実行される境界、failure captureがemulator teardown前に走ること、元command statusの保持、success時の無capture、#52/#53のworkflow wiringを検証する。分類は CI wrapper / artifact handling。9 laneのimpact surfaceを新設せず、既存のfailure-time capture補助処理の全lane契約を検査するため、既存testとの重複はない | 補助（`validate-repo-contract` 全 run） |
 | final-status | 「当該 run に必要と判定された gate が完了したこと」を集約。skip は成功扱い、failure/cancelled のみ fail。needs の必須集合は validator が map file と突き合わせ | 集約（branch protection required check） |
 | planner-stress.yml | 8 seed × 512 case の exploration matrix。週次 / manual のみで PR gate でない（#46 の時点から分類適合） | Scheduled / Diagnostic |
 | high-risk-gate.yml | risk label / 高リスク path PR への独立 audit 記録検証。job ID 結合（`organizer-unit-tests` / `check-style` / `build-debug-apk` / `final-status`）は map file の `permanent_gates` 固定点として validator が保護 | Permanent（label/path 条件付き） |
@@ -133,6 +134,15 @@ test が存在する（例: `application/store/*Inspection*`、`locks/*`、`diag
 - Issue / PR の acceptance evidence は「full workflow N 連続 green」を機械的に要求せず、
   変更 risk と対象 surface に対応して選択する（[github-workflow.md](../project/github-workflow.md)
   の evidence 選択原則）。
+
+### Failure capture lifecycle self-test の追加判定
+
+`tools/ci/test_emulator_failure_capture_lifecycle.sh` は `validate-repo-contract` job 内の
+全run self-testであり、新しいinstrumentation lane、production surface、artifact routing edgeを
+追加しない。したがって `tools/repo-contract/ci_portfolio_map.yml` の更新は不要である。
+起動条件は既存のrepo-contract検証と同じくdocs-onlyを含む全runで、実emulator laneの再実行を
+発生させない。既存の`test_capture_emulator_failure_evidence.sh`はhelper内部のsnapshot収集契約を
+検査し、本testはrunner actionのteardown境界とworkflow wiringを検査するため、責務は重複しない。
 
 ## 実測（参考値）
 
