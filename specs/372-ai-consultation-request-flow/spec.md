@@ -40,6 +40,9 @@ updated: 2026-09-21
 > merge commit `7ec9e9d3fe`。spec 369 RD-1が「AIに相談」選択肢行の新設を#372に委ねる）。
 > 本改訂（2026-09-21 re-entry）のbaselineはmain `13c95eafe6`（PR #389 merge後。
 > #365/#368/#369/#370適用済み）である。
+> Amended/Superseded by #417 (head `bc459e9fa0` / spec 417 accepted):
+> [spec 417](../417-scope-first-method-choice/spec.md) が T-07方法選択・idle相談入口を置換する
+> （方法選択はscope確定後の方法選択面へ。idle新規作成はRetire、entry面hostingはimport-only）。
 
 ## Problem
 
@@ -597,6 +600,7 @@ Scope「active依頼の事前表示」の契約として固定済みである）
 
 ## Change history
 
+- 2026-09-24: **Amended/Superseded by #417**（accepted spec [spec 417](../417-scope-first-method-choice/spec.md)）: T-07方法選択・idle相談入口はspec 417が置換する（方法選択はscope確定後の方法選択面へ移る。idle新規作成はRetire、entry面hostingはimport-only）。
 - 2026-09-19: Draft created for #372（spec/plan整備task）。accepted TO-BE契約
   （organizer-to-be-ux.md @ main `a2b6aba318`、PR #364）、accepted処分文書
   （organizer-disposition-migration.md @ main `a2b6aba318`、PR #378、§3.11/§3.12/§4.1/§5/§7.2）、

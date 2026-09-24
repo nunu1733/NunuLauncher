@@ -22,12 +22,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -130,6 +133,8 @@ import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotEquals
 import org.junit.Rule
 import org.junit.Test
@@ -408,18 +413,25 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     /**
-     * Issue #372 (EX-AC-01/EX-AC-02, rendered-UI oracle): the T-07 preamble
-     * offers the 「AIに相談」 method choice next to 「そのまま整理」 — and
-     * choosing it opens the T-15 request face WITHOUT run admission: the
-     * coordinator stays `Idle`, no detection/composition runs (the planner
-     * below would throw), and the removed idle entry row renders nothing.
+     * Issue #417 (AC-1/AC-6, rendered-UI oracle; replaces the retired #372
+     * T-07 AI-row oracle): the entry face has NO 「AIに相談」 row and its start
+     * CTA reads the method-neutral label — admission only. The AI choice
+     * appears only on the method-choice face, AFTER the scope is confirmed
+     * (start → select → confirm), next to 「このまま整理」; opening it there
+     * reaches the request face through the scoped hosting while the run stays
+     * parked at `ScopeConfirmed` (no admission change, planner never runs).
      */
     @Test
-    fun t07AiConsultationOpensTheRequestFaceWithoutRunAdmission() {
+    fun entryFaceHasNoAiRowAndTheMethodChoiceFaceOffersItAfterConfirm() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                listOf(selectionCandidate("com.example.c1/.Main", "C1")),
+            )
+        }
         val runner = ManualOrganizationRun(
-            FakeApplication(),
-            OrganizationPlanner { error("planner must not run: AI相談 must not admit a run") },
+            application,
+            OrganizationPlanner { error("planner must not run: the AI row must not admit or compose a run") },
         )
         composeRule.setContent {
             LawnchairTheme {
@@ -427,21 +439,337 @@ class ManualOrganizationPreferencesInstrumentationTest {
             }
         }
         composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
-        // The method choices coexist on the T-07 preamble.
+        // The entry face: the method-neutral start CTA, no AI row, no
+        // exchange creation face.
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.exchange_entry_subtitle)).assertIsDisplayed()
-        // The removed idle entry row is gone.
-        composeRule.onAllNodesWithTag("exchange-entry-title").assertCountEquals(0)
+        composeRule.onAllNodesWithText(context.getString(R.string.exchange_method_consult)).assertCountEquals(0)
+        composeRule.onNodeWithTag("exchange-request-title").assertDoesNotExist()
 
+        // Drive the regular order: start → selection → confirm → the frozen
+        // scope parks the run at the method-choice face.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        awaitDisplayed(context.getString(R.string.manual_organization_missing_apps_title))
+        composeRule.onNodeWithText("C1").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+
+        // The method-choice face: headline + the two sibling arms.
+        awaitDisplayed(context.getString(R.string.manual_organization_method_title))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_method_plain)).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_entry_subtitle)).assertIsDisplayed()
+
+        // The AI arm opens the request face from THIS face (the scoped
+        // hosting); the run stays parked — no composition, no admission.
         composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isNotEmpty()
         }
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("exchange-scoped-freeze-notice"))
         composeRule.onNodeWithTag("exchange-request-title").assertIsDisplayed()
         composeRule.onNodeWithTag("exchange-request-capability").assertIsDisplayed()
-        // No run admission: still Idle (D-17 idle AI相談 = pre-run request flow).
-        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+        composeRule.onNodeWithTag("exchange-scoped-freeze-notice").assertIsDisplayed()
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+    }
+
+    /**
+     * Issue #417 (AC-8(b), journey b): empty home → select all → the
+     * method-choice face → 「このまま整理」 → the composed phase runs with the
+     * frozen selection and the preview is reached. The planner consumes the
+     * scope-composed input; nothing is written before the confirmation.
+     */
+    @Test
+    fun emptyHomeSelectAllMethodFaceThenThePlainArmReachesThePreview() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                listOf(
+                    selectionCandidate("com.example.c1/.Main", "C1"),
+                    selectionCandidate("com.example.c2/.Main", "C2"),
+                ),
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        composeRule.onNodeWithTag("missing-app-selection-select-all").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+        awaitDisplayed(context.getString(R.string.manual_organization_method_title))
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_method_plain)).performClick()
+        awaitPreview(runner, context)
+        assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * Issue #417 (AC-8(a), journey a): empty home → select all → the
+     * method-choice face → 「AIに相談」 → the scoped request is created (the
+     * run-owned atomic commit binds it to this run) → the reply is imported
+     * (transport-level, the exchange harness convention) → the same-run CTA
+     * attaches the validated intent at the frozen scope → the preview is
+     * reached with the composed phase consuming the confirmed scope.
+     */
+    @Test
+    fun emptyHomeSelectAllMethodFaceAiArmImportAttachReachesThePreview() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                listOf(selectionCandidate("com.example.c1/.Main", "C1")),
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        val store = ScopedExchangeStore()
+        val pendingStore = AiJourneyPendingStore()
+        val holder = aiJourneyHolder(runner, store, pendingStore)
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner, exchangeHolderOverride = holder)
+            }
+        }
+        runner.start()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        composeRule.onNodeWithTag("missing-app-selection-select-all").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+        awaitDisplayed(context.getString(R.string.manual_organization_method_title))
+
+        // The AI arm: the scoped request face → the creation runs the
+        // run-owned atomic commit (the session is durably saved AND bound).
+        composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("exchange-generate").fetchSemanticsNodes().isNotEmpty()
+        }
+        scrollToAndTap("exchange-generate")
+        composeRule.waitUntil(10_000) { holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Disclosing }
+        val session = store.session!!
+        assertTrue(runner.hasBoundScopeRequest())
+
+        // The reply import (transport-level): the same-run import gate passes
+        // the bound request and the durable RUN_IN pending is saved.
+        composeRule.runOnUiThread {
+            holder.openImport()
+            holder.import(aiJourneyReplyFor(session))
+        }
+        composeRule.waitUntil(10_000) {
+            holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.ImportSuccess
+        }
+        org.junit.Assert.assertNotNull("the durable RUN_IN pending was saved", pendingStore.record)
+
+        // The same-run CTA attaches at the frozen scope; the composed phase
+        // runs and the preview is reached. Nothing is written before the
+        // explicit confirmation.
+        scrollToAndTap("exchange-import-continue")
+        awaitPreview(runner, context)
+        assertEquals(0, application.applyCalls)
+        assertFalse("the attached scope consumed the bound request", runner.hasBoundScopeRequest())
+        org.junit.Assert.assertNotNull("継続成功は提案を消費しない", pendingStore.record)
+    }
+
+    /**
+     * AC-8(d) (Issue #417, AC-5, journey d): Back from the method-choice face
+     * with NO request bound to the frozen scope re-opens the selection face
+     * directly (no 破棄確認, no layout write) and the selection is preserved —
+     * scope ownership stays unambiguous across the round trip.
+     */
+    @Test
+    fun backFromTheMethodFaceWithoutARequestReopensTheEditableSelection() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                listOf(selectionCandidate("com.example.c1/.Main", "C1")),
+            )
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run in the Back journey") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        composeRule.onNodeWithText("C1").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+        awaitDisplayed(context.getString(R.string.manual_organization_method_title))
+
+        pressSystemBack()
+
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        awaitDisplayed(context.getString(R.string.manual_organization_missing_apps_title))
+        // The selection survived the round trip and the surface is editable:
+        // toggling still updates the whole-selection count.
+        composeRule.onNodeWithText(
+            context.resources.getQuantityString(R.plurals.manual_organization_missing_apps_selected_count, 1, 1),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("C1").performClick()
+        composeRule.onNodeWithText(
+            context.resources.getQuantityString(R.plurals.manual_organization_missing_apps_selected_count, 0, 0),
+        ).assertIsDisplayed()
+        // No scope-bound discard confirmation appeared.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard_confirm_title))
+            .assertDoesNotExist()
+    }
+
+    /**
+     * AC-8(c) (Issue #417, AC-5, journey c — success path): with an active
+     * request created from the method-choice face, system Back raises the
+     * scope-bound discard confirmation (D-13); confirming discards the
+     * request (the store record is invalidated, the binding cleared) and
+     * ONLY THEN re-opens the editable selection face.
+     */
+    @Test
+    fun backWithAnActiveRequestDiscardsItAndReopensTheSelection() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = ScopedExchangeStore()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                listOf(selectionCandidate("com.example.c1/.Main", "C1")),
+            )
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run in the discard journey") },
+        )
+        val holder = scopedExchangeHolder(runner, store)
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner, exchangeHolderOverride = holder)
+            }
+        }
+        runner.start()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        composeRule.onNodeWithText("C1").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+
+        // Create the request from THIS face: AI row → request face → generate
+        // (the scoped generation runs the run-owned atomic commit).
+        composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("exchange-generate").fetchSemanticsNodes().isNotEmpty()
+        }
+        scrollToAndTap("exchange-generate")
+        composeRule.waitUntil(10_000) { holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Disclosing }
+        assertTrue(runner.hasBoundScopeRequest())
+        assertTrue(store.session != null)
+
+        // Send the package (transport-level, the harness pattern), then Back
+        // closes the sent face zero-write — the request survives.
+        composeRule.runOnUiThread { holder.onTransportResult(app.lawnchair.organizer.integration.exchange.ExchangeTransportResult.Success) }
+        composeRule.waitForIdle()
+        pressSystemBack()
+        composeRule.waitUntil(10_000) { holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed }
+        assertTrue(runner.hasBoundScopeRequest())
+
+        // Back again: the scope-bound discard confirmation (D-13).
+        pressSystemBack()
+        awaitDisplayed(context.getString(R.string.manual_organization_discard_confirm_title))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
+
+        // Discarded → the binding cleared, the store record invalidated, and
+        // only then the editable selection face returns.
+        composeRule.waitUntil(10_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        awaitDisplayed(context.getString(R.string.manual_organization_missing_apps_title))
+        assertEquals(null, store.session)
+        assertEquals(false, runner.hasBoundScopeRequest())
+        composeRule.onNodeWithTag("scope-discard-failed").assertDoesNotExist()
+    }
+
+    /**
+     * AC-8(c) (Issue #417, AC-5/AC-11, journey c — failure injection): the
+     * scope-bound discard's store write failing keeps the session, the
+     * proposal and the frozen scope; the method-choice face stays and the
+     * typed retryable failure row is announced (assertive live region).
+     */
+    @Test
+    fun backDiscardWriteFailedKeepsTheFaceAndShowsTheTypedFailure() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = ScopedExchangeStore().apply {
+            invalidation = app.lawnchair.organizer.personalization.ExportInvalidationResult.WriteFailed
+        }
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                listOf(selectionCandidate("com.example.c1/.Main", "C1")),
+            )
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run in the discard journey") },
+        )
+        val holder = scopedExchangeHolder(runner, store)
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner, exchangeHolderOverride = holder)
+            }
+        }
+        runner.start()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        composeRule.onNodeWithText("C1").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+
+        composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("exchange-generate").fetchSemanticsNodes().isNotEmpty()
+        }
+        scrollToAndTap("exchange-generate")
+        composeRule.waitUntil(10_000) { holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Disclosing }
+        composeRule.runOnUiThread { holder.onTransportResult(app.lawnchair.organizer.integration.exchange.ExchangeTransportResult.Success) }
+        composeRule.waitForIdle()
+        pressSystemBack()
+        composeRule.waitUntil(10_000) { holder.screen is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed }
+
+        pressSystemBack()
+        awaitDisplayed(context.getString(R.string.manual_organization_discard_confirm_title))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_discard)).performClick()
+
+        // WriteFailed: the face stays, everything is kept, the typed failure
+        // is announced assertively, and the discard stays retryable.
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("scope-discard-failed").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("scope-discard-failed").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Assertive),
+        )
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+        assertTrue(runner.hasBoundScopeRequest())
+        assertTrue(store.session != null)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_title))
+            .assertDoesNotExist()
+    }
+
+    /**
+     * AC-8(f) (Issue #417, AC-1/D-16, journey f): an onboarding-proposal run
+     * NEVER shows the method-choice face — even with an empty candidate cut,
+     * which parks a MANUAL run at the method face, the onboarding run
+     * proceeds straight into the composed phase (D-16 fixed route).
+     */
+    @Test
+    fun onboardingRunNeverShowsTheMethodFace() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner, trigger = app.lawnchair.organizer.diagnostics.model.Trigger.ONBOARDING_PROPOSAL)
+            }
+        }
+        runner.start(app.lawnchair.organizer.diagnostics.model.Trigger.ONBOARDING_PROPOSAL)
+        awaitPreview(runner, context)
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_title)).assertCountEquals(0)
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_plain)).assertCountEquals(0)
     }
 
     /**
@@ -1866,9 +2194,13 @@ class ManualOrganizationPreferencesInstrumentationTest {
         pressDownUntilFocused(context.getString(R.string.manual_organization_interrupt))
 
         // Drive the DETECTION → CAPTURE phase transition: releasing the
-        // detector moves the projection to capture, and the composition latch
-        // holds it there — one polite node, renamed, detection gone.
+        // detector parks a manual run at the state-level ScopeConfirmed
+        // (Issue #417, AC-3 — the empty cut no longer continues on its own),
+        // and the "このまま整理" arm starts the composed phase. The harness
+        // drives that arm directly; the composition latch holds it at capture.
         application.detectRelease?.countDown()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+        val composedWorker = thread(start = true) { runner.planWithConfirmedScope() }
         composeRule.waitUntil(5_000) { application.composeStarted?.count == 0L }
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Capturing }
         awaitDisplayed(context.getString(R.string.manual_organization_capturing))
@@ -1904,6 +2236,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         // D-13: 中断 returns to the hub — production pops the nav stack; this
         // bare harness ends here, so the Cancelled state is the terminal oracle.
         worker.join(5_000)
+        composedWorker.join(5_000)
     }
 
     @Test
@@ -2851,6 +3184,285 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithText(text).isDisplayed()
         }
+    }
+
+    /**
+     * Issue #417 (AC-8 journeys): a CTA reached through
+     * [performScrollToNode] can sit flush with the viewport bottom, where
+     * the tap's center lands inside the system navigation gesture zone and
+     * never reaches the control — the API 36 emulator geometry makes the
+     * generate/import CTAs on the long method-choice face fail this way
+     * deterministically (the click "succeeds" while the button's onClick
+     * never fires). Brings the tagged target into view and taps within its
+     * upper half — the same user gesture on a full-width row.
+     */
+    private fun scrollToAndTap(tag: String) {
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag(tag))
+        composeRule.onNodeWithTag(tag).performTouchInput {
+            click(Offset(width / 2f, height * 0.2f))
+        }
+    }
+
+    /** Selection-face fixture candidate for the #417 surface journeys. */
+    private fun selectionCandidate(component: String, label: String) = app.lawnchair.organizer.integration.DetectedCandidate(
+        target = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+            app.lawnchair.organizer.planning.ComponentKey(component),
+            app.lawnchair.organizer.planning.ProfileId("0"),
+        ),
+        label = label,
+        availability = app.lawnchair.organizer.planning.Availability.AVAILABLE,
+    )
+
+    /**
+     * Issue #417: system Back through the resumed activity's dispatcher —
+     * the bare compose harness hosts no nav stack, so the surface's own Back
+     * callback is the observable.
+     */
+    private fun pressSystemBack() {
+        composeRule.runOnUiThread {
+            val resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<androidx.activity.ComponentActivity>()
+                .firstOrNull()
+            checkNotNull(resumed).onBackPressedDispatcher.onBackPressed()
+        }
+        composeRule.waitForIdle()
+    }
+
+    /**
+     * Issue #417: the store fake behind the method-choice journeys' scoped
+     * generation — the save always succeeds, the scope-bound invalidation
+     * result is injectable (the `WriteFailed` failure-injection oracle).
+     */
+    private class ScopedExchangeStore : app.lawnchair.organizer.personalization.ExportSessionStore {
+        var session: app.lawnchair.organizer.personalization.ExportSession? = null
+        var invalidation: app.lawnchair.organizer.personalization.ExportInvalidationResult =
+            app.lawnchair.organizer.personalization.ExportInvalidationResult.Committed
+
+        override fun save(session: app.lawnchair.organizer.personalization.ExportSession): Boolean {
+            this.session = session
+            return true
+        }
+
+        override fun load(exportId: String): app.lawnchair.organizer.personalization.ExportSession? =
+            session?.takeIf { it.exportId == exportId }
+
+        override fun active(nowEpochMs: Long): app.lawnchair.organizer.personalization.ExportSession? =
+            session?.takeIf { !it.isExpired(nowEpochMs) }
+
+        override fun invalidate(exportId: String) {
+            if (session?.exportId == exportId) session = null
+        }
+
+        override fun invalidateIf(expectedExportId: String): app.lawnchair.organizer.personalization.ExportInvalidationResult {
+            if (session?.exportId != expectedExportId) {
+                return app.lawnchair.organizer.personalization.ExportInvalidationResult.NoMatch
+            }
+            if (invalidation == app.lawnchair.organizer.personalization.ExportInvalidationResult.Committed) {
+                session = null
+            }
+            return invalidation
+        }
+    }
+
+    /**
+     * Issue #417: the export input the scoped generation composes (the
+     * lock-free prepare half) — a real two-item snapshot so the encode
+     * succeeds. [withCandidates] adds the stable detection candidate as the
+     * CANDIDATE projection, so the export scope equals the frozen selection
+     * the journey (a) confirms (the same-scope attach gate).
+     */
+    private fun scopedExchangeExportInputs(withCandidates: Boolean = false): app.lawnchair.organizer.integration.exchange.ExchangeInputResult {
+        fun app(id: String, x: Int = 0) = app.lawnchair.organizer.planning.CapturedItem(
+            id = ItemId(id),
+            profile = app.lawnchair.organizer.planning.ProfileId("p0"),
+            kind = app.lawnchair.organizer.planning.ItemKind.APPLICATION,
+            target = app.lawnchair.organizer.planning.TargetKey.AppKey(
+                app.lawnchair.organizer.planning.ComponentKey("com.example.$id"),
+                app.lawnchair.organizer.planning.ProfileId("p0"),
+            ),
+            placement = app.lawnchair.organizer.planning.CapturedPlacement.Workspace(
+                PageRef(PageId("p0")),
+                GridCell(x, 0),
+                GridSpan(1, 1),
+            ),
+            locked = false,
+            availability = app.lawnchair.organizer.planning.Availability.AVAILABLE,
+        )
+        val items = listOf(app("a"), app("b", x = 1))
+        val snapshot = LayoutSnapshot(
+            RevisionId("rev"),
+            PlannerDeviceCapabilities(4, 6, 5, 3, 5, Orientation.PORTRAIT),
+            listOf(Page(PageId("p0"), PageOrder(0))),
+            items,
+        )
+        val candidates = if (withCandidates) {
+            listOf(
+                app.lawnchair.organizer.planning.CandidateItem(
+                    id = ItemId("c1"),
+                    profile = app.lawnchair.organizer.planning.ProfileId("0"),
+                    kind = app.lawnchair.organizer.planning.CandidateKind.APPLICATION,
+                    target = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                        app.lawnchair.organizer.planning.ComponentKey("com.example.c1/.Main"),
+                        app.lawnchair.organizer.planning.ProfileId("0"),
+                    ),
+                    availability = app.lawnchair.organizer.planning.Availability.AVAILABLE,
+                    span = GridSpan(1, 1),
+                ),
+            )
+        } else {
+            emptyList()
+        }
+        return app.lawnchair.organizer.integration.exchange.ExchangeInputResult.ExportReady(
+            app.lawnchair.organizer.personalization.ExportInputs(
+                snapshot = snapshot,
+                targets = app.lawnchair.organizer.planning.TargetSet(
+                    items.map { app.lawnchair.organizer.planning.ExistingTargetMembership(it.id, app.lawnchair.organizer.planning.ExistingRole.Movable) },
+                    candidates,
+                ),
+                nowEpochMs = 1_000_000L,
+            ),
+        )
+    }
+
+    /** The CANDIDATE-bearing scoped export inputs (journey a's compose truth). */
+    private fun scopedExportInputsWithCandidate(): app.lawnchair.organizer.personalization.ExportInputs =
+        (scopedExchangeExportInputs(withCandidates = true)
+            as app.lawnchair.organizer.integration.exchange.ExchangeInputResult.ExportReady).inputs
+
+    /**
+     * Issue #417 (journey a): the pending-import store fake behind the AI
+     * arm's durable save (the save always succeeds).
+     */
+    private class AiJourneyPendingStore : app.lawnchair.organizer.personalization.PendingImportedIntentStore {
+        var record: app.lawnchair.organizer.personalization.DurablePendingIntent? = null
+
+        override fun save(proposal: app.lawnchair.organizer.personalization.DurablePendingIntent): Boolean {
+            record = proposal
+            return true
+        }
+
+        override fun load(): app.lawnchair.organizer.personalization.DurablePendingIntent? = record
+
+        override fun discard(): Boolean {
+            record = null
+            return true
+        }
+
+        override fun delete() {
+            record = null
+        }
+
+        override fun discardIf(expected: app.lawnchair.organizer.personalization.DurablePendingIntent): app.lawnchair.organizer.personalization.DiscardIfResult {
+            if (record != expected) return app.lawnchair.organizer.personalization.DiscardIfResult.NoMatch
+            record = expected.copy(discarded = true)
+            return app.lawnchair.organizer.personalization.DiscardIfResult.Committed
+        }
+
+        override fun deleteIf(proposal: app.lawnchair.organizer.personalization.DurablePendingIntent): Boolean {
+            if (record == proposal) {
+                record = null
+                return true
+            }
+            return false
+        }
+    }
+
+    /**
+     * Issue #417 (journey a): the method-choice holder with a REAL controller
+     * whose scoped prepare composes the CANDIDATE-bearing export and whose
+     * structural read serves the matching freshness truth — the same-scope
+     * import gate and the attach validation both pass against it.
+     */
+    private fun aiJourneyHolder(
+        runner: ManualOrganizationRun,
+        store: ScopedExchangeStore,
+        pendingStore: AiJourneyPendingStore,
+    ): app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder {
+        val controller = app.lawnchair.organizer.integration.exchange.ExchangeFlowController(
+            composeExportInputs = { error("the entry generation is retired (#417)") },
+            currentStructuralInputs = {
+                app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult.Ready(
+                    app.lawnchair.organizer.personalization.CanonicalStructuralInputs(
+                        scopedExportInputsWithCandidate().snapshot,
+                        scopedExportInputsWithCandidate().targets,
+                        emptyMap(),
+                    ),
+                )
+            },
+            composeScopedExportInputs = { _, _, _ -> scopedExchangeExportInputs(withCandidates = true) },
+            store = store,
+            allocator = app.lawnchair.organizer.personalization.SequentialIdAllocator(),
+            clock = { 1_000_000L },
+            pendingImportStore = pendingStore,
+        )
+        return app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = runner,
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main),
+            pendingImportStore = pendingStore,
+        )
+    }
+
+    /**
+     * Issue #417 (journey a): the marked reply of [session], rebuilt by
+     * replaying the CANDIDATE-bearing scoped export with the session's own id
+     * allocation (the validation and attach gates see the exact scope).
+     */
+    private fun aiJourneyReplyFor(
+        session: app.lawnchair.organizer.personalization.ExportSession,
+    ): String {
+        val built = app.lawnchair.organizer.personalization.ContextExportBuilder.build(
+            scopedExportInputsWithCandidate(),
+            session.tier,
+            object : app.lawnchair.organizer.personalization.RandomIdAllocator {
+                private val ids = ArrayDeque(session.itemRefs.keys.toList() + listOf(session.exportId))
+
+                override fun newId(): String = ids.removeFirst()
+            },
+        )
+        val intent = app.lawnchair.organizer.personalization.PersonalizedIntentV1(
+            exportId = built.export.exportId,
+            itemIntents = built.export.items.map { item ->
+                app.lawnchair.organizer.personalization.ItemIntent(
+                    ref = item.ref,
+                    preserve = if (item.mobility == app.lawnchair.organizer.personalization.Mobility.CANDIDATE) null else true,
+                )
+            },
+        )
+        return buildString {
+            append(app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_BEGIN_MARKER)
+            append('\n')
+            append(app.lawnchair.organizer.personalization.IntentCodec.encode(intent).decodeToString())
+            append('\n')
+            append(app.lawnchair.organizer.personalization.exchange.ExchangeContract.INTENT_END_MARKER)
+        }
+    }
+
+    /**
+     * Issue #417: the override holder for the method-choice journeys — a REAL
+     * [ExchangeFlowController] whose generation seams are faked (the same
+     * harness shape as the exchange surface instrumentation tests). The
+     * scoped generation runs the run-owned atomic commit against the parked
+     * `State.ScopeConfirmed`.
+     */
+    private fun scopedExchangeHolder(
+        runner: ManualOrganizationRun,
+        store: ScopedExchangeStore,
+    ): app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder {
+        val controller = app.lawnchair.organizer.integration.exchange.ExchangeFlowController(
+            composeExportInputs = { error("the entry generation is retired (#417)") },
+            currentStructuralInputs = { error("import is not exercised by the method-choice journeys") },
+            store = store,
+            allocator = app.lawnchair.organizer.personalization.SequentialIdAllocator(),
+            clock = { 1_000_000L },
+            composeScopedExportInputs = { _, _, _ -> scopedExchangeExportInputs() },
+        )
+        return app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = runner,
+            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main),
+        )
     }
 
     private fun awaitPreview(runner: ManualOrganizationRun, context: Context) {

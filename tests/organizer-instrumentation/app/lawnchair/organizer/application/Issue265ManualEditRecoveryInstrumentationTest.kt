@@ -397,6 +397,16 @@ class Issue265ManualEditRecoveryInstrumentationTest {
         (runner.state as? ManualOrganizationRun.State.Selecting)?.let {
             runner.confirmSelection(emptySet())
         }
+        // Issue #417 (spec 417, AC-1): the confirmed scope parks the run at
+        // the method-choice face; the plain organize continues through the
+        // 「このまま整理」 arm ([planWithConfirmedScope]). An empty cut reaches
+        // [State.ScopeConfirmed] directly (AC-3) and plans through the same
+        // arm, so the callers still observe Preview / NoChanges here. Other
+        // terminal outcomes (e.g. InputUnavailable) return unchanged so the
+        // callers' own oracles keep reporting them.
+        if (runner.state is ManualOrganizationRun.State.ScopeConfirmed) {
+            runner.planWithConfirmedScope()
+        }
         runnerStateSnapshot = runner.state
         return runner.state
     }

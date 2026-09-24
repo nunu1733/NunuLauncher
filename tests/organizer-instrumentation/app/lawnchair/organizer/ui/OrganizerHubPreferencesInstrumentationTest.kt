@@ -101,6 +101,7 @@ import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.DurableRefDecision
 import app.lawnchair.organizer.personalization.DurableRefEntry
+import app.lawnchair.organizer.personalization.ExportInvalidationResult
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.PendingImportEntryKind
@@ -467,6 +468,8 @@ class OrganizerHubPreferencesInstrumentationTest {
         override fun active(nowEpochMs: Long): ExportSession? = session?.takeIf { !it.isExpired(nowEpochMs) }
 
         override fun invalidate(exportId: String) = Unit
+
+        override fun invalidateIf(expectedExportId: String): ExportInvalidationResult = ExportInvalidationResult.NoMatch
     }
 
     private class HubFakePendingStore(var record: DurablePendingIntent?) : PendingImportedIntentStore {

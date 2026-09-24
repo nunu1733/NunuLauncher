@@ -3,6 +3,8 @@ package app.lawnchair.organizer.integration
 import android.content.Context
 import androidx.core.util.AtomicFile
 import app.lawnchair.organizer.personalization.CandidateScopeIdentity
+import app.lawnchair.organizer.personalization.ExportEntryOrigin
+import app.lawnchair.organizer.personalization.ExportInvalidationResult
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.PrivacyTier
@@ -80,14 +82,24 @@ class AndroidExportSessionStore : ExportSessionStore {
                     }
                 }
                 .sortedBy { it.ref },
+            // Issue #417 (spec 417 "Data and state"): the durable entry
+            // origin, written exactly once here at session creation and
+            // immutable afterwards — no store operation rewrites it. A null
+            // origin (an untagged record) stays encodable: the key is omitted
+            // and the record reads back through the legacy decode rule.
+            entryOrigin = session.entryOrigin?.name,
         )
+        return writeRecord(record)
+    }
+
+    private fun writeRecord(record: SessionRecord): Boolean {
         val bytes = json.encodeToString(SessionRecord.serializer(), record).encodeToByteArray()
         val out = try {
             atomicFile.startWrite()
         } catch (e: IOException) {
-            return@synchronized false
+            return false
         }
-        try {
+        return try {
             out.write(bytes)
             atomicFile.finishWrite(out)
             true
@@ -115,7 +127,40 @@ class AndroidExportSessionStore : ExportSessionStore {
         }
     }
 
-    private fun readSession(): ExportSession? {
+    override fun invalidateIf(expectedExportId: String): ExportInvalidationResult = synchronized(lock) {
+        // Issue #417 (spec 417 "scope-bound依頼破棄の契約化") conditional
+        // invalidation commit — the session-store mirror of the pending
+        // store's `discardIf` (spec 375): read-compare-tombstone, atomic
+        // against other store access. Only the exact expected session is
+        // tombstoned; a replaced/absent/already-invalidated record is
+        // `NoMatch` (nothing stale can resurface), and a failed atomic
+        // rewrite is `WriteFailed` — the session stays valid and the
+        // invalidation is retryable.
+        val record = readRecord() ?: return@synchronized ExportInvalidationResult.NoMatch
+        // A structurally invalid record already reads as "no session" to
+        // every reader, so there is nothing stale left to invalidate.
+        if (
+            record.invalidated ||
+            record.exportId != expectedExportId ||
+            record.toExportSession() == null
+        ) {
+            return@synchronized ExportInvalidationResult.NoMatch
+        }
+        val committed = writeRecord(record.copy(invalidated = true))
+        if (!committed) return@synchronized ExportInvalidationResult.WriteFailed
+        // The tombstone commit is the durable validity truth; the physical
+        // delete afterwards is best-effort (a tombstone the delete never
+        // reached still reads as "no session").
+        atomicFile.delete()
+        ExportInvalidationResult.Committed
+    }
+
+    /**
+     * The raw durable record read: null for true absence, an unreadable or
+     * corrupt body, or an unsupported schema (the pre-existing fail-closed
+     * shapes). Does not interpret the tombstone or the session structure.
+     */
+    private fun readRecord(): SessionRecord? {
         val stream = try {
             atomicFile.openRead()
         } catch (e: FileNotFoundException) {
@@ -132,34 +177,60 @@ class AndroidExportSessionStore : ExportSessionStore {
             json.decodeFromString(SessionRecord.serializer(), bytes.decodeToString())
         }.getOrNull() ?: return null
         if (record.schemaVersion != SCHEMA_VERSION) return null
-        return runCatching {
-            ExportSession(
-                exportId = record.exportId,
-                itemRefs = record.itemRefs.associate { it.ref to ItemId(it.itemId) },
-                tier = PrivacyTier.valueOf(record.tier),
-                sourceContextDigest = record.sourceContextDigest,
-                signalProvenance = record.signalProvenance?.let {
-                    SignalProvenance(schemaVersion = it.schemaVersion, contentDigest = it.contentDigest)
-                },
-                createdAtEpochMs = record.createdAtEpochMs,
-                expiresAtEpochMs = record.expiresAtEpochMs,
-                scopeCandidates = record.scopeCandidates.map {
-                    CandidateTarget.AppKey(ComponentKey(it.component), ProfileId(it.profile))
-                },
-                scopeCandidateDigest = record.scopeCandidateDigest.ifEmpty { CandidateScopeIdentity.EMPTY_DIGEST },
-                categoryRefs = record.categoryRefs.associate { entry ->
-                    // An unknown kind is a corrupted record, not a category:
-                    // the surrounding runCatching degrades it to "no session"
-                    // (fail-closed) instead of accepting it as user-defined.
-                    entry.ref to when (entry.kind) {
-                        "BUILT_IN" -> CategoryIdentity.BuiltIn(CategoryId(entry.id))
-                        "USER_DEFINED" -> CategoryIdentity.UserDefined(UserCategoryId(entry.id))
-                        else -> error("unknown category ref kind")
-                    }
-                },
-            )
-        }.getOrNull()
+        return record
     }
+
+    private fun readSession(): ExportSession? {
+        val record = readRecord() ?: return null
+        // Issue #417: a committed invalidation tombstone reads as absent —
+        // the mark survives even when the best-effort physical delete after
+        // the commit never landed (e.g. a process death right after it).
+        if (record.invalidated) return null
+        return record.toExportSession()
+    }
+
+    /**
+     * Decodes the durable record into the session read model, or null when
+     * the record is structurally invalid (fail-closed "no session").
+     *
+     * Issue #417 legacy decode rule (spec 417 "Data and state"): the raw
+     * `entryOrigin` is carried verbatim (`null` = absent on a record written
+     * before #417, and an unknown origin name is corruption, not a category
+     * guess — the surrounding runCatching degrades it to "no session"). The
+     * origin callers observe resolves on [ExportSession.resolvedEntryOrigin]:
+     * absent origin + non-empty `scopeCandidates` = legacy RUN_IN (uniquely
+     * recoverable from the durable scope, keeping #375's selection-restore
+     * semantics); absent origin + empty scope = IDLE (fail-safe); a present
+     * origin is respected as-is.
+     */
+    private fun SessionRecord.toExportSession(): ExportSession? = runCatching {
+        ExportSession(
+            exportId = exportId,
+            itemRefs = itemRefs.associate { it.ref to ItemId(it.itemId) },
+            tier = PrivacyTier.valueOf(tier),
+            sourceContextDigest = sourceContextDigest,
+            signalProvenance = signalProvenance?.let {
+                SignalProvenance(schemaVersion = it.schemaVersion, contentDigest = it.contentDigest)
+            },
+            createdAtEpochMs = createdAtEpochMs,
+            expiresAtEpochMs = expiresAtEpochMs,
+            scopeCandidates = scopeCandidates.map {
+                CandidateTarget.AppKey(ComponentKey(it.component), ProfileId(it.profile))
+            },
+            scopeCandidateDigest = scopeCandidateDigest.ifEmpty { CandidateScopeIdentity.EMPTY_DIGEST },
+            categoryRefs = categoryRefs.associate { entry ->
+                // An unknown kind is a corrupted record, not a category:
+                // the surrounding runCatching degrades it to "no session"
+                // (fail-closed) instead of accepting it as user-defined.
+                entry.ref to when (entry.kind) {
+                    "BUILT_IN" -> CategoryIdentity.BuiltIn(CategoryId(entry.id))
+                    "USER_DEFINED" -> CategoryIdentity.UserDefined(UserCategoryId(entry.id))
+                    else -> error("unknown category ref kind")
+                }
+            },
+            entryOrigin = entryOrigin?.let { ExportEntryOrigin.valueOf(it) },
+        )
+    }.getOrNull()
 
     @Serializable
     private data class SessionRecord(
@@ -174,6 +245,23 @@ class AndroidExportSessionStore : ExportSessionStore {
         @SerialName("scopeCandidates") val scopeCandidates: List<CandidateScopeRecord> = emptyList(),
         @SerialName("scopeCandidateDigest") val scopeCandidateDigest: String = "",
         @SerialName("categoryRefs") val categoryRefs: List<CategoryRefRecord> = emptyList(),
+        /**
+         * Issue #417 (spec 417 "Data and state"): the durable entry origin
+         * (see [ExportEntryOrigin]); null = absent on a record written before
+         * #417. Additive with a null default, so a pre-#417 record still
+         * decodes; a #417 record read by an older build fails to decode on
+         * the unknown key — the pre-existing "no session" fail-closed path
+         * (the same known behavior as `categoryRefs`), accepted by the spec.
+         * Written exactly once at save; no store operation mutates it.
+         */
+        @SerialName("entryOrigin") val entryOrigin: String? = null,
+        /**
+         * Issue #417: the invalidation tombstone of [invalidateIf] (the
+         * session-store mirror of the pending store's `discarded`). Additive
+         * with a false default; a committed tombstone reads as "no session"
+         * even when its best-effort physical delete never lands.
+         */
+        @SerialName("invalidated") val invalidated: Boolean = false,
     ) {
         init {
             require(exportId.isNotEmpty())

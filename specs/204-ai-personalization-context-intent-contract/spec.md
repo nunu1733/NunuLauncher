@@ -11,6 +11,8 @@ updated: 2026-09-15
 # AI personalization用 Context / PersonalizedIntent exchange contract
 
 > Status: **accepted** (2026-09-15) — 本specは契約 (contract) の定義のみを対象とし、provider実装・network・UIを含まない。新しい Later functional requirement (**FR-017**) を [requirements.md](../../docs/product/requirements.md) へ割り当て済み (受入PR)。1st〜5th review (いずれもRequest changes) の指摘と受入gate (Q1/Q3/Q4/Q6) を解決し、2026-09-15の6th review (**Approve**, snapshot `52b9097c` 基準、Issueコメント `5677382260`) で契約として固定された。実装childは「Execution checklist」(plan.md) に従う。
+>
+> Amended by #417 (head `bc459e9fa0` / spec 417 accepted): [spec 417](../417-scope-first-method-choice/spec.md) が export sessionへのdurableなentry origin追加・storeへのfailure-aware invalidation（`invalidateIf`）追加をAmendする（schema/validator/framing不変）。
 
 ## Problem
 
@@ -456,6 +458,8 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 未解決のOpen questionは存在しない。残る課題はすべて実装child issueの実装詳細 (internal canonical structural projectionのserialization、`RandomIdAllocator` production乱数源、`AndroidExportSessionStore` 具体実装) であり、契約受入の対象外である。
 
 ## Change history
+
+- 2026-09-24: **Amended by #417** (accepted spec [spec 417](../417-scope-first-method-choice/spec.md), head `bc459e9fa0`): export sessionへのdurableなentry origin追加・storeへのfailure-aware invalidation（`invalidateIf`）追加をAmend（schema/validator/framing不変）。
 
 - 2026-09-21: **UI語彙の2種固定 ([spec 372](../372-ai-consultation-request-flow/spec.md) 所有。accepted、PR #390)** — Issue #372のaccepted specによる文言Amend (disposition §3.11)。「privacy tier」節へ「外部workflowのUI選択肢は2種 (redacted / labels、TO-BE D-14語彙)。`LOCAL_FULL` は内部契約値 (将来のlocal LLM向け余地、#206) として維持し、外部workflowのUIに出現させない」を追記。tier matrix・schema・validator・契約値はすべて不変であり、本改訂は文言のみである。
 

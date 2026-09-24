@@ -18,6 +18,7 @@ import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.ExportInputs
+import app.lawnchair.organizer.personalization.ExportInvalidationResult
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.IntentCodec
@@ -98,6 +99,26 @@ class ExchangeFlowStateHolderTest {
         var saveCalls = 0
 
         /**
+         * Issue #417: injects `WriteFailed` into the failure-aware conditional
+         * invalidation (the run-owned cleanup / scope-bound discard oracles).
+         */
+        @Volatile
+        var failInvalidateIf = false
+
+        /**
+         * Review finding 3: which exportId the failure-aware conditional
+         * invalidation last saw — proves the Superseded fallback goes through
+         * `invalidateIf` (never the bare `invalidate` delete), and that the
+         * retry targets the SAME expectedExportId.
+         */
+        @Volatile
+        var lastInvalidatedIfExportId: String? = null
+
+        /** Review finding 3: the bare-delete path is never used by the fallback. */
+        @Volatile
+        var bareInvalidateCalls = 0
+
+        /**
          * Issue #372 review: a controllable gate that parks the invalidate
          * BEFORE it clears the session, so the settle-pending boundary is
          * deterministic in the busy-close regression.
@@ -107,6 +128,13 @@ class ExchangeFlowStateHolderTest {
 
         @Volatile
         var invalidateEntered = false
+
+        /** Review finding 3: the same parking gate on the failure-aware path. */
+        @Volatile
+        var invalidateIfGate: CountDownLatch? = null
+
+        @Volatile
+        var invalidateIfEntered = false
 
         override fun save(session: ExportSession): Boolean {
             saveCalls++
@@ -126,11 +154,22 @@ class ExchangeFlowStateHolderTest {
         override fun active(nowEpochMs: Long): ExportSession? = session?.takeIf { !it.isExpired(nowEpochMs) }
 
         override fun invalidate(exportId: String) {
+            bareInvalidateCalls++
             if (session?.exportId == exportId) {
                 invalidateEntered = true
                 invalidateGate?.await(5, TimeUnit.SECONDS)
                 session = null
             }
+        }
+
+        override fun invalidateIf(expectedExportId: String): ExportInvalidationResult {
+            lastInvalidatedIfExportId = expectedExportId
+            invalidateIfEntered = true
+            invalidateIfGate?.await(5, TimeUnit.SECONDS)
+            if (failInvalidateIf) return ExportInvalidationResult.WriteFailed
+            if (session?.exportId != expectedExportId) return ExportInvalidationResult.NoMatch
+            session = null
+            return ExportInvalidationResult.Committed
         }
     }
 
@@ -330,6 +369,11 @@ class ExchangeFlowStateHolderTest {
             run = RecordingRun.get(),
             scope = CoroutineScope(Dispatchers.IO),
             settleDispatcher = Dispatchers.IO,
+            // The cancel settle (and every display hop) must land in this
+            // worker: Dispatchers.Main is unusable without an Android looper,
+            // and a holder settle that dies on it silently skips the store
+            // mutation ordered behind it.
+            uiDispatcher = Dispatchers.IO,
         )
         return holder to controller
     }
@@ -580,17 +624,24 @@ class ExchangeFlowStateHolderTest {
         assertFalse(cancelling.cancelable)
         assertFalse(cancelling.transportAllowed)
 
-        // A transport racing after the accepted cancel is refused: no settle,
-        // no sent, and the cancel still lands.
+        // A transport racing after the accepted cancel is refused: it never
+        // starts or settles (a cancelling face ignores transport results, so
+        // no sent state can ever appear), and the accepted cancel still lands.
+        // The invalidated face CLOSES once the invalidation settles — the
+        // terminal of the accepted cancel — so beyond the synchronous refusal
+        // asserts above the face itself is not read mid-race; the oracle is
+        // "no sent, session invalidated".
         holder.startTransport { ExchangeTransportResult.Success }
-        assertFalse(currentDisclosureState(holder).sent)
         holder.onTransportResult(ExchangeTransportResult.Success)
-        assertFalse(currentDisclosureState(holder).sent)
         // The accepted cancel invalidates asynchronously on IO; yield to it.
         Thread.sleep(200)
         Thread.yield()
         Thread.sleep(200)
         assertNull(store.session)
+        assertFalse(
+            "a transport refused by the accepted cancel never marks the request sent",
+            (holder.screen as? ExchangeScreen.Disclosing)?.state?.sent == true,
+        )
     }
 
     private fun anyUri(): Uri? = null
@@ -1137,6 +1188,50 @@ class ExchangeFlowStateHolderTest {
         ProfileId("personal"),
     )
 
+    /**
+     * Issue #417: drives the fixture's run to the frozen scope
+     * (`State.ScopeConfirmed`) with the scoped candidate — the state the
+     * scoped generation is claimed from and the method-choice face hosts.
+     */
+    private fun confirmScopedCandidate(fixture: HolderFixture) {
+        fixture.run.start()
+        fixture.run.confirmSelection(setOf(scopedCandidate))
+    }
+
+    /**
+     * Issue #417: a fixture whose run holds a CONFIRMED SCOPE, for the
+     * method-choice replacement-gate oracles. The controller has no scoped
+     * composition seam (its default fails closed typed), so a confirmed
+     * generation settles as the typed InputNotReady without touching the
+     * store — exactly what those oracles need.
+     */
+    private fun newMethodFaceFixture(store: FakeStore, clock: MutableClock): HolderFixture {
+        val (run, application) = newExchangeRun(true)
+        val unhandled = mutableListOf<Throwable>()
+        val scope = CoroutineScope(
+            Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+                synchronized(unhandled) { unhandled.add(throwable) }
+            },
+        )
+        val controller = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(clock.nowMs)) },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
+            store = store,
+            allocator = SequentialIdAllocator(),
+            clock = { clock.nowMs },
+        )
+        val holder = ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = run,
+            scope = scope,
+            settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
+        )
+        run.start()
+        run.confirmSelection(setOf(scopedCandidate))
+        return HolderFixture(holder, controller, store, run, application, unhandled, scope, FakePendingIntentStore())
+    }
+
     private fun scopedTargets(): TargetSet = TargetSet(
         structural().targets.existing,
         listOf(
@@ -1502,39 +1597,51 @@ class ExchangeFlowStateHolderTest {
 
     @Test
     fun runInImportShowsTheScopedSummaryAndAttachesOnCta() {
-        // AC-1/AC-3 (run-in entry): the owning run holds the selection
-        // surface while the success state shows; the CTA attaches the intent
-        // to that run and the selection surface's guidance follows.
+        // AC-1/AC-3 (run-in entry), Issue #417: the scoped generation runs
+        // from the CONFIRMED scope through the atomic commit (so the session
+        // is BOUND to this run), the method-face import gate passes the bound
+        // request, and the CTA attaches the intent at ScopeConfirmed — the
+        // composed phase consumes the confirmed scope (the fixture's
+        // composition is NotReady → InputUnavailable).
         val fixture = newFixture(detectionReady = true, scopedStructural = true)
-        fixture.run.start()
-        val selectingBefore = fixture.run.state as app.lawnchair.organizer.ui.ManualOrganizationRun.State.Selecting
-        val generated = fixture.controller.generateForSelection(
+        confirmScopedCandidate(fixture)
+        fixture.holder.openMethodChoiceFlow()
+        fixture.holder.generateScoped(
             PrivacyTier.EXTERNAL_REDACTED,
             listOf(scopedCandidate),
             mapOf(scopedCandidate to "c1"),
-        ) as ExchangeGenerationResult.Generated
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+        val generatedSession = fixture.store.session!!
+
         fixture.holder.openImport()
-        fixture.holder.import(scopedReplyFor(generated.session))
+        fixture.holder.import(scopedReplyFor(generatedSession))
         val success = awaitImportSuccess(fixture.holder)
         assertEquals(ExchangeImportEntryKind.RUN_IN, success.entryKind)
         assertEquals(1, success.summary.scopeCandidateCount)
-        val selectingDuring = fixture.run.state as app.lawnchair.organizer.ui.ManualOrganizationRun.State.Selecting
-        assertEquals("the run state stays untouched while the success state shows", selectingBefore.runId, selectingDuring.runId)
+        assertEquals("the run state stays untouched while the success state shows", "ScopeConfirmed", fixture.run.state::class.java.simpleName)
 
         fixture.holder.continueImport()
         awaitClosed(fixture.holder)
-        val selectingAfter = fixture.run.state as app.lawnchair.organizer.ui.ManualOrganizationRun.State.Selecting
-        assertEquals("the validated intent binds to the owning run", 1, selectingAfter.intentScopeCount)
+        // The validated intent bound at ScopeConfirmed and the composed phase
+        // began (attach consumed the confirmed scope).
+        awaitRunState(fixture.run) { it is ManualOrganizationRun.State.InputUnavailable }
     }
 
     @Test
     fun runInLateSettleIsDroppedWhenTheOwningRunIsGone() {
-        // AC-1: a run-in settle whose owning run no longer holds the
-        // selection surface is dropped (defense-in-depth).
+        // AC-1: a live-owner run-in settle whose owning run no longer holds
+        // its frozen scope at the settle is dropped (defense-in-depth).
         val blocking = BlockingStructuralInputs()
-        val fixture = newFixture(detectionReady = true, blockingStructural = blocking)
-        fixture.run.start()
-        val reply = generatedReplyFixture(fixture)
+        val fixture = newFixture(detectionReady = true, scopedStructural = true, blockingStructural = blocking)
+        confirmScopedCandidate(fixture)
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+        val reply = scopedReplyFor(fixture.store.session!!)
         blocking.gate = CountDownLatch(1)
         fixture.holder.openImport()
         fixture.holder.import(reply)
@@ -1545,40 +1652,55 @@ class ExchangeFlowStateHolderTest {
     }
 
     @Test
-    fun runInSettleAfterTheOwningRunIsGoneFencesTheCommittedRecordAway() {
-        // Issue #374 attempt-fence, run-in anchor: a run-in validation that
-        // passes, whose durable save COMMITS, but whose owning run lost the
-        // selection surface before the settle — the adoption is dropped AND
-        // the committed record is fenced away, so the dropped proposal never
-        // resurfaces as the durable status-card truth.
-        val pendingStore = FakePendingIntentStore().apply { saveGate = CountDownLatch(1) }
+    fun runInImportTheLiveOwnerNeverBoundFencesTheCommittedRecordAway() {
+        // Issue #374 attempt-fence + Issue #417 fence (b) through the
+        // run-owned save: an entry-face import of a RUN_IN-origin reply whose
+        // exportId the live confirmed scope NEVER bound (a foreign request's
+        // session) lands its write, and the run-owned transaction's
+        // gate-held ownership re-verification fences it away INSIDE the same
+        // critical section — the dropped proposal never resurfaces as the
+        // durable status-card truth. (Review finding 1: the ownership
+        // re-verification runs under the run lock in the gate-held callback —
+        // owner death can no longer interleave mid-save, so the fence is
+        // exercised by the never-bound export, which is deterministic.)
+        val pendingStore = FakePendingIntentStore()
         val fixture = newFixture(
             detectionReady = true,
             scopedStructural = true,
             pendingStore = pendingStore,
         )
-        fixture.run.start()
-        val generated = fixture.controller.generateForSelection(
+        confirmScopedCandidate(fixture)
+        val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+        // The live owner binds E1…
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+        val boundExportId = fixture.store.session!!.exportId
+        fixture.holder.close()
+        // …while the imported reply belongs to a foreign scoped session (its
+        // legacy-compat origin decodes RUN_IN; the run never bound it).
+        val foreign = fixture.controller.generateForSelection(
             PrivacyTier.EXTERNAL_REDACTED,
             listOf(scopedCandidate),
             mapOf(scopedCandidate to "c1"),
         ) as ExchangeGenerationResult.Generated
-        fixture.holder.openImport()
-        fixture.holder.import(scopedReplyFor(generated.session))
-        awaitScreen(fixture.holder) { pendingStore.saveCalls >= 1 } // the write is parked in the gated store
 
-        fixture.run.cancel() // the owning run loses the selection surface
-        pendingStore.saveGate!!.countDown() // the write commits anyway
+        fixture.holder.openImport() // the entry face: IMPORT_ONLY hosting
+        fixture.holder.import(scopedReplyFor(foreign.session))
         awaitScreen(fixture.holder) { pendingStore.completedSaves >= 1 && pendingStore.record == null }
 
-        Thread.sleep(200)
         assertFalse(fixture.holder.screen is ExchangeScreen.ImportSuccess)
         assertFalse(fixture.holder.screen is ExchangeScreen.ImportPersistenceFailure)
         assertFalse(fixture.holder.importAttemptActive)
-        assertNull("the dropped run-in proposal's record must be fenced away", pendingStore.record)
+        assertNull("the never-bound run-in proposal's record must be fenced away", pendingStore.record)
         // Issue #375: the fence invalidation goes through the conditional
         // tombstone commit (`discardIf`), not a bare physical delete.
         assertTrue("the committed record was invalidated by discardIf", pendingStore.discardIfCalls >= 1)
+        // The owner's own binding is untouched.
+        assertTrue(fixture.run.isLiveScopeOwner(runId, boundExportId))
     }
 
     @Test
@@ -1586,14 +1708,15 @@ class ExchangeFlowStateHolderTest {
         // AC-3(h): the pre-attach owning-runId re-check refuses to attach
         // into a replacement run and keeps the success state operable.
         val fixture = newFixture(detectionReady = true, scopedStructural = true)
-        fixture.run.start()
-        val generated = fixture.controller.generateForSelection(
+        confirmScopedCandidate(fixture)
+        fixture.holder.generateScoped(
             PrivacyTier.EXTERNAL_REDACTED,
             listOf(scopedCandidate),
             mapOf(scopedCandidate to "c1"),
-        ) as ExchangeGenerationResult.Generated
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
         fixture.holder.openImport()
-        fixture.holder.import(scopedReplyFor(generated.session))
+        fixture.holder.import(scopedReplyFor(fixture.store.session!!))
         awaitImportSuccess(fixture.holder)
 
         fixture.run.cancel()
@@ -1786,15 +1909,16 @@ class ExchangeFlowStateHolderTest {
     fun aStartedRunIdMismatchSettlesAsFailureNotSuccess() {
         // AC-3 (audit D-3): the success settle applies only while the started
         // run still matches the live selection surface.
-        val fixture = newFixture(detectionReady = true)
-        fixture.run.start()
-        val generated = fixture.controller.generateForSelection(
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        confirmScopedCandidate(fixture)
+        fixture.holder.generateScoped(
             PrivacyTier.EXTERNAL_REDACTED,
             listOf(scopedCandidate),
             mapOf(scopedCandidate to "c1"),
-        ) as ExchangeGenerationResult.Generated
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
         fixture.holder.openImport()
-        fixture.holder.import(scopedReplyFor(generated.session))
+        fixture.holder.import(scopedReplyFor(fixture.store.session!!))
         awaitImportSuccess(fixture.holder)
 
         fixture.holder.connectRunOverride = {
@@ -2183,18 +2307,20 @@ class ExchangeFlowStateHolderTest {
 
     @Test
     fun scopedReplacementGenerationClearsTheRunInSuccessState() {
-        // DI-AC-03 (run-in entry): the same replacement invalidation covers
-        // the run-in (generateForSelection) path reachable while a proposal
-        // shows on the selection surface.
+        // DI-AC-03 (run-in entry) + Issue #417: the replacement generation
+        // runs from the confirmed scope through the atomic commit (E2 binds;
+        // E1's pending record is invalidated at the commit) and clears the
+        // in-process success state.
         val fixture = newFixture(detectionReady = true, scopedStructural = true)
-        fixture.run.start()
-        val generated = fixture.controller.generateForSelection(
+        confirmScopedCandidate(fixture)
+        fixture.holder.generateScoped(
             PrivacyTier.EXTERNAL_REDACTED,
             listOf(scopedCandidate),
             mapOf(scopedCandidate to "c1"),
-        ) as ExchangeGenerationResult.Generated
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
         fixture.holder.openImport()
-        fixture.holder.import(scopedReplyFor(generated.session))
+        fixture.holder.import(scopedReplyFor(fixture.store.session!!))
         val success = awaitImportSuccess(fixture.holder)
         assertEquals(ExchangeImportEntryKind.RUN_IN, success.entryKind)
         assertNotNull(fixture.pendingStore.record)
@@ -2730,7 +2856,9 @@ class ExchangeFlowStateHolderTest {
             "exchange_import_discarded_guidance",
             "exchange_import_summary_global_minimize",
             "exchange_import_cta_failed",
-            "exchange_start_frozen_import",
+            // Issue #417: `exchange_start_frozen_import` was removed with the
+            // entry face's start-row freeze (a durable request no longer
+            // blocks admission) — the locale audit no longer pins it.
             // Issue #374 (DI-AC-12/DI-AC-13): the persistence-failure face and
             // the discard-commit-failure notice must exist in BOTH locales.
             "exchange_import_persist_failed_title",
@@ -3051,26 +3179,15 @@ class ExchangeFlowStateHolderTest {
     fun replacementConfirmationIsReDerivedFromTheStoreOnEveryStart() {
         // Issue #372 implementation review (AC-13 TOCTOU + failure settle):
         // the gate decision must come from a fresh activeSession() read, never
-        // from the face snapshot.
+        // from the face snapshot. Issue #417: the generation supply is the
+        // run's confirmed scope (the fixture run holds one); the scoped
+        // composition seam is absent (fails closed typed), so the confirmed
+        // attempt settles InputNotReady with ZERO store writes.
         val clock = MutableClock(1_000_000L)
         val store = FakeStore()
         store.session = plainSession(clock)
-        val controller = ExchangeFlowController(
-            composeExportInputs = {
-                ExchangeInputResult.NotReady(app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending)
-            },
-            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
-            store = store,
-            allocator = SequentialIdAllocator(),
-            clock = { clock.nowMs },
-        )
-        val holder = ExchangeFlowStateHolder(
-            controllerFactory = { controller },
-            run = RecordingRun.get(),
-            scope = CoroutineScope(Dispatchers.IO),
-            settleDispatcher = Dispatchers.IO,
-            uiDispatcher = Dispatchers.IO,
-        )
+        val fixture = newMethodFaceFixture(store, clock)
+        val holder = fixture.holder
         holder.openFlow()
         assertTrue(selectings(holder)!!.replacementConfirmationRequired)
 
@@ -3098,7 +3215,8 @@ class ExchangeFlowStateHolderTest {
     fun sessionAppearingAfterTheFaceWasOpenedStillRequiresConfirmation() {
         val clock = MutableClock(1_000_000L)
         val store = FakeStore()
-        val (holder, _) = newHolderWithMutableClock(store, clock)
+        val fixture = newMethodFaceFixture(store, clock)
+        val holder = fixture.holder
         holder.openFlow()
         assertFalse(selectings(holder)!!.replacementConfirmationRequired)
 
@@ -3121,15 +3239,19 @@ class ExchangeFlowStateHolderTest {
             ExchangeDisclosureState(generated.session, generated.packageText, PrivacyTier.EXTERNAL_REDACTED),
         )
 
-        // A blocking store: the invalidate is provably unfinished while the
-        // gate holds, making the settle-pending boundary deterministic.
+        // A blocking store: the invalidation is provably unfinished while it
+        // holds, making the settle-pending boundary deterministic. Review
+        // finding 3: the unsent-disclosure session is not run-bound, so its
+        // cleanup is a `Superseded` no-op and the retire goes through the
+        // failure-aware exact invalidation (`invalidateIf`) — the hooks
+        // below pin THAT path.
         val gate = CountDownLatch(1)
-        store.invalidateGate = gate
+        store.invalidateIfGate = gate
         holder.closeDisclosure()
         assertTrue(currentDisclosureState(holder).cancelling)
-        awaitScreen(holder) { store.invalidateEntered }
+        awaitScreen(holder) { store.invalidateIfEntered }
 
-        // A second close while the invalidate is in flight: refused — the
+        // A second close while the invalidation is in flight: refused — the
         // face is retained and nothing is left mid-settle.
         holder.closeDisclosure()
         assertTrue(
@@ -3138,10 +3260,11 @@ class ExchangeFlowStateHolderTest {
         )
 
         // The gate releases: exactly then the flow closes and only the
-        // confirmed unsent session is invalidated.
+        // confirmed unsent session is invalidated (no bare delete ran).
         gate.countDown()
         awaitScreen(holder) { holder.screen is ExchangeScreen.Closed }
         assertNull(store.session)
+        assertEquals(0, store.bareInvalidateCalls)
     }
 
     @Test
@@ -3169,4 +3292,323 @@ class ExchangeFlowStateHolderTest {
     }
 
     // endregion
+
+    // ------------------------------------------------------------------
+    // Issue #417: scope-first hosting — the atomic scoped generation, the
+    // origin-derived provenance, the method-face import gate, the ownerless
+    // RUN_IN ImportReview projection, the run-owned cleanup and the
+    // scope-bound discard (spec 417 AC-6 unit oracles).
+    // ------------------------------------------------------------------
+
+    /** Generates one bound scoped session from the fixture's confirmed scope. */
+    private fun generateBoundScopedSession(fixture: HolderFixture): ExportSession {
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+        return fixture.store.session!!
+    }
+
+    @Test
+    fun hostModeFollowsTheOpenEntryAndTheEntryFaceIsImportOnly() {
+        // The entry/idle face (and the hub REQUEST pre-open) opens IMPORT-ONLY;
+        // only the method-choice open enables the creation+import hosting.
+        val fixture = newFixture()
+        assertEquals(ExchangeHostMode.IMPORT_ONLY, fixture.holder.hostMode)
+        fixture.holder.openMethodChoiceFlow()
+        assertEquals(ExchangeHostMode.METHOD_CHOICE, fixture.holder.hostMode)
+        fixture.holder.close()
+        fixture.holder.openFlow()
+        assertEquals("the entry face never re-enables the creation entry", ExchangeHostMode.IMPORT_ONLY, fixture.holder.hostMode)
+    }
+
+    @Test
+    fun scopedGenerationWithNoConfirmedScopeIsTypedAndZeroWrite() {
+        // The claim fails without a live `State.ScopeConfirmed` — a zero-write
+        // typed refusal, never a half-started generation.
+        val fixture = newFixture(detectionReady = true)
+        fixture.holder.openMethodChoiceFlow()
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.GENERATION_NOT_CONFIRMED }
+        assertNull("nothing was saved", fixture.store.session)
+        assertEquals(0, fixture.pendingStore.deleteCalls)
+    }
+
+    @Test
+    fun entryKindDerivesFromTheSessionOriginAndStaysStableAcrossReImports() {
+        // AC-6: the provenance is the session's durable origin — re-importing
+        // the same session keeps the entryKind (no flip), and the legacy idle
+        // decode rule (absent origin + empty scope) yields IDLE.
+        val fixture = newFixture()
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        val first = awaitImportSuccess(fixture.holder)
+        assertEquals(ExchangeImportEntryKind.IDLE, first.entryKind)
+
+        fixture.holder.discardImport()
+        awaitClosed(fixture.holder)
+        fixture.holder.import(reply)
+        val second = awaitImportSuccess(fixture.holder)
+        assertEquals("re-import never flips the entryKind", first.entryKind, second.entryKind)
+    }
+
+    @Test
+    fun ownerlessRunInImportSavesThePendingAndProjectsToImportReviewWithoutAttach() {
+        // AC-6 (owning run喪失): a RUN_IN-origin import with NO live owner at
+        // begin (the process-death/hub recovery shape) saves as a plain
+        // RUN_IN pending — the save-success face is the ImportReview resume
+        // face (the existing reconcile read-back), never the direct-attach
+        // success state, and no run seam is called.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        // The legacy-compat scoped session decodes as RUN_IN (absent origin +
+        // non-empty scope); the run stays Idle — the owner is gone.
+        val generated = fixture.controller.generateForSelection(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        ) as ExchangeGenerationResult.Generated
+        fixture.holder.openImport()
+        fixture.holder.import(scopedReplyFor(generated.session))
+        val review = awaitImportReview(fixture.holder)
+        assertEquals(ExchangeImportEntryKind.RUN_IN, review.entryKind)
+        assertNotNull("the durable RUN_IN pending was saved", fixture.pendingStore.record)
+        assertEquals("no run admission happened", "Idle", fixture.run.state::class.java.simpleName)
+        assertEquals(0, fixture.application.detectionCalls)
+        assertTrue(fixture.holder.screen !is ExchangeScreen.ImportSuccess)
+    }
+
+    @Test
+    fun methodFaceImportGateRefusesAForeignRequestAndSurfacesRecreationGuidance() {
+        // AC-6 (他由来取り込み遮断): on the method-choice face, a request NOT
+        // created from this run's confirmed scope (here: a legacy idle
+        // session) never enters the import path — nothing is saved, no run
+        // seam runs, and the 作り直し guidance surfaces instead.
+        val fixture = newFixture(detectionReady = true)
+        confirmScopedCandidate(fixture)
+        fixture.holder.openMethodChoiceFlow()
+        // The setup's own run.start() consumed the one legitimate detection
+        // call; the oracle is that the foreign import adds none (no fresh run
+        // admission from the import path).
+        val detectionCallsAtSetup = fixture.application.detectionCalls
+        val foreign = fixture.controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+
+        fixture.holder.import(replyFor(foreign.session))
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.RecreateRequestGuidance }
+        assertFalse(fixture.holder.importAttemptActive)
+        assertNull("nothing was durably saved for a foreign request", fixture.pendingStore.record)
+        assertEquals("the run stays untouched", "ScopeConfirmed", fixture.run.state::class.java.simpleName)
+        assertEquals("the foreign import never admits a run", detectionCallsAtSetup, fixture.application.detectionCalls)
+
+        // Back is the zero-write close.
+        assertEquals(ExchangeBackAction.CLOSE, exchangeBackAction(ExchangeScreen.RecreateRequestGuidance))
+    }
+
+    @Test
+    fun encodeFailureCleansTheBoundExportThroughTheRunOwnedSeam() {
+        // AC-6 / oracle (p): an encode failure after the atomic commit
+        // retires the committed session through the run-owned cleanup — the
+        // session is invalidated AND the binding is cleared (no divergence).
+        // E1 commits first (bound); the E2 replacement commits (the binding
+        // moves to E2) and its encode failure cleans exactly E2.
+        val encodeFails = java.util.concurrent.atomic.AtomicBoolean(false)
+        val fixture = newFixture(
+            detectionReady = true,
+            scopedStructural = true,
+            encodeExport = { export ->
+                if (encodeFails.get()) {
+                    app.lawnchair.organizer.personalization.ContextExportResult.Failure(
+                        app.lawnchair.organizer.personalization.ExportEncodeProblem.Oversize,
+                    )
+                } else {
+                    app.lawnchair.organizer.personalization.ContextExportCodec.encode(export)
+                }
+            },
+        )
+        confirmScopedCandidate(fixture)
+        val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+        val e1 = generateBoundScopedSession(fixture)
+        assertTrue(fixture.run.isLiveScopeOwner(runId, e1.exportId))
+
+        encodeFails.set(true) // only the encode fails; the E2 commit still lands
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.GENERATION_OVERSIZE }
+        assertNull("the committed E2 session was invalidated by the cleanup", fixture.store.session)
+        assertFalse("E1's stale binding no longer matches", fixture.run.isLiveScopeOwner(runId, e1.exportId))
+        assertTrue(fixture.holder.screen is ExchangeScreen.SelectingPrivacy)
+    }
+
+    @Test
+    fun exportCleanupWriteFailedKeepsTheSessionAndBindingAndRetries() {
+        // Oracle (u): a cleanup `WriteFailed` does NOT settle — the session,
+        // the binding and the typed retryable failure stay consistent, and
+        // the SAME expectedExportId cleanup retries to its terminal.
+        val encodeFails = java.util.concurrent.atomic.AtomicBoolean(true)
+        val fixture = newFixture(
+            detectionReady = true,
+            scopedStructural = true,
+            encodeExport = { export ->
+                if (encodeFails.get()) {
+                    app.lawnchair.organizer.personalization.ContextExportResult.Failure(
+                        app.lawnchair.organizer.personalization.ExportEncodeProblem.Oversize,
+                    )
+                } else {
+                    app.lawnchair.organizer.personalization.ContextExportCodec.encode(export)
+                }
+            },
+        )
+        fixture.store.failInvalidateIf = true
+        confirmScopedCandidate(fixture)
+        val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+        fixture.holder.openMethodChoiceFlow()
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.EXPORT_CLEANUP_FAILED }
+        val keptSession = fixture.store.session!!
+        assertTrue("the session survives the failed cleanup", fixture.store.session != null)
+        assertTrue("the binding is kept (no divergence)", fixture.run.isLiveScopeOwner(runId, keptSession.exportId))
+
+        fixture.store.failInvalidateIf = false
+        fixture.holder.retryExportCleanup()
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.GENERATION_OVERSIZE }
+        assertNull("the retry cleared the session", fixture.store.session)
+        assertFalse("the retry cleared the binding", fixture.run.isLiveScopeOwner(runId, keptSession.exportId))
+    }
+
+    @Test
+    fun scopeBoundDiscardSucceedsAndClearsTheSessionAndTheBinding() {
+        // AC-5/AC-8(c): the run-owned ONE seam retires the request — the
+        // session is invalidated, the binding is cleared, and the holder
+        // reports the typed success to the hosting surface.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        confirmScopedCandidate(fixture)
+        val session = generateBoundScopedSession(fixture)
+        val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+        assertTrue(fixture.run.isLiveScopeOwner(runId, session.exportId))
+
+        var outcome: ManualOrganizationRun.ScopeDiscardOutcome? = null
+        fixture.holder.discardScopeBoundRequest { outcome = it }
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+        assertEquals(ManualOrganizationRun.ScopeDiscardOutcome.Discarded, outcome)
+        assertNull("the session was invalidated", fixture.store.session)
+        assertFalse("the binding was cleared", fixture.run.isLiveScopeOwner(runId, session.exportId))
+        assertTrue(fixture.holder.screen is ExchangeScreen.Closed)
+    }
+
+    @Test
+    fun scopeBoundDiscardWriteFailedKeepsSessionScopeAndRetries() {
+        // AC-8(c) failure injection: a `WriteFailed` discard keeps the
+        // session, the binding AND the frozen scope — the typed retryable
+        // failure surfaces and the retry reaches the terminal.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        fixture.store.failInvalidateIf = true
+        confirmScopedCandidate(fixture)
+        val session = generateBoundScopedSession(fixture)
+        val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+
+        var outcome: ManualOrganizationRun.ScopeDiscardOutcome? = null
+        fixture.holder.discardScopeBoundRequest { outcome = it }
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.SCOPE_DISCARD_FAILED }
+        assertEquals(ManualOrganizationRun.ScopeDiscardOutcome.WriteFailed, outcome)
+        assertNotNull("the session is kept", fixture.store.session)
+        assertTrue("the binding is kept", fixture.run.isLiveScopeOwner(runId, session.exportId))
+        assertEquals("the frozen scope is kept", "ScopeConfirmed", fixture.run.state::class.java.simpleName)
+
+        fixture.store.failInvalidateIf = false
+        fixture.holder.discardScopeBoundRequest { outcome = it }
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+        assertEquals(ManualOrganizationRun.ScopeDiscardOutcome.Discarded, outcome)
+        assertNull(fixture.store.session)
+    }
+
+    @Test
+    fun supersededCleanupFallbackInvalidatesThroughTheFailureAwarePathAndSettles() {
+        // Review finding 3: a `Superseded` run-owned cleanup (owner-loss
+        // shape — the binding is gone) falls back to the FAILURE-AWARE exact
+        // invalidation (`invalidateIf`, never the bare delete) under the gate;
+        // a fallback success is terminal.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        confirmScopedCandidate(fixture)
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+        val boundSession = fixture.store.session!!
+        fixture.run.cancel() // the owning run is gone: the cleanup is Superseded
+
+        fixture.holder.closeDisclosure()
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+        assertNull("the fallback invalidation retired the session", fixture.store.session)
+        assertEquals(boundSession.exportId, fixture.store.lastInvalidatedIfExportId)
+        assertEquals("the fallback never used the bare delete", 0, fixture.store.bareInvalidateCalls)
+        assertEquals("the typed terminal status replaced the cancel flow", null, fixture.holder.status)
+    }
+
+    @Test
+    fun supersededCleanupFallbackWriteFailedKeepsTheRetryableStateUntilTheRetry() {
+        // Review finding 3 fault injection: owner-loss + delete failure —
+        // the fallback `WriteFailed` does NOT settle: the session, the
+        // cancelling face and the SAME retryable handle stay consistent, and
+        // the retry reaches the terminal.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        fixture.store.failInvalidateIf = true
+        confirmScopedCandidate(fixture)
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+        val boundSession = fixture.store.session!!
+        fixture.run.cancel() // owner-loss shape: the run-owned cleanup is Superseded
+
+        fixture.holder.closeDisclosure()
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.EXPORT_CLEANUP_FAILED }
+        assertNotNull("the failed fallback keeps the session", fixture.store.session)
+        assertTrue("the cancelling disclosure face is kept (no settle)", currentDisclosureOrNull(fixture.holder)?.cancelling == true)
+        assertEquals("the fallback used the failure-aware invalidation", boundSession.exportId, fixture.store.lastInvalidatedIfExportId)
+        assertEquals("the fallback never used the bare delete", 0, fixture.store.bareInvalidateCalls)
+
+        fixture.store.failInvalidateIf = false
+        fixture.holder.retryExportCleanup()
+        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed }
+        assertNull("the retry's terminal invalidation cleared the session", fixture.store.session)
+    }
+
+    @Test
+    fun generationScopeSupplyComesFromTheConfirmedStateNotLiveUiSelection() {
+        // AC-1/AC-2: the generation supply on the method-choice face is the
+        // run's confirmed scope (the claim verifies the exact selection) — a
+        // generation whose supply does not match the confirmed selection is
+        // refused typed and zero-write.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        confirmScopedCandidate(fixture)
+        fixture.holder.openMethodChoiceFlow()
+        val other = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+            ComponentKey("com.example.other"),
+            ProfileId("personal"),
+        )
+        fixture.holder.generateScoped(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(other),
+            mapOf(other to "other"),
+        )
+        awaitScreen(fixture.holder) { fixture.holder.status?.kind == ExchangeStatus.Kind.GENERATION_NOT_CONFIRMED }
+        assertNull(fixture.store.session)
+    }
 }

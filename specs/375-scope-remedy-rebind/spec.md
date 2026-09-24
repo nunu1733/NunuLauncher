@@ -29,6 +29,11 @@ updated: 2026-09-22
 > [comment `5740062562`][5]）への対応と、前提merge後のcurrent mainへのre-entryである。
 > 実装着手はdisposition §8依存graph（`#369 → … → #374 → #375`）の最後尾として、
 > owner指示（Phase 2実装進行）による。
+> Amended by #417 (head `bc459e9fa0` / spec 417 accepted):
+> [spec 417](../417-scope-first-method-choice/spec.md) が RUN_INをdurable provenanceと
+> 生存runへのdirect attach authorityの2軸へ分離し、scope-bound破棄へのmutation gate適用、
+> 「同一session再取り込みでentryKindだけflip」scenario/SR-AC-07該当oracleの
+> 「再取り込みでentryKind不変」回帰への置換をAmendする。
 
 ## Problem
 
@@ -661,6 +666,7 @@ exchange系）、CI `final-status` green。本Issueはpersistent state変更・D
 
 ## Change history
 
+- 2026-09-24: **Amended by #417**（accepted spec [spec 417](../417-scope-first-method-choice/spec.md)、head `bc459e9fa0`）: RUN_INをdurable provenanceと生存runへのdirect attach authorityの2軸へ分離、scope-bound破棄へのmutation gate適用、「同一session再取り込みでentryKindだけflip」scenario/SR-AC-07該当oracleを「再取り込みでentryKind不変」回帰へ置換することをAmend。
 - 2026-09-22: **Re-entry revision 8（8th review 2026-09-22 Changes requested 1件対応、
   [comment `5766986330`][12]）**。
   **(1) gate対象一覧の正本間一致（中）**: 7th対応でspecのgate対象列挙から通常のreconcile

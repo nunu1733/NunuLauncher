@@ -108,12 +108,14 @@ fun LazyListScope.missingAppSelectionItems(
      */
     diff: ScopeSelectionDiff? = null,
     /**
-     * Issue #331: false while the run-in exchange step holds the surface —
-     * the export scope is the frozen selection, so edits (and confirm) are
-     * disabled until the exchange completes or is abandoned. The typed
-     * `SCOPE_MISMATCH` rejection text renders in the host surface.
+     * Issue #417 (spec AC-4): shows the explicit zero-selection disclosure —
+     * continuing with nothing selected organizes the home WITHOUT adding
+     * unplaced apps. The host passes the live selection's emptiness so the
+     * disclosure reads as a statement about the pending confirmation, never
+     * about an undecided surface. The edits themselves are ALWAYS enabled on
+     * this face (#417 removed the exchange-flow freeze — AC-5).
      */
-    editsEnabled: Boolean = true,
+    showEmptySelectionNotice: Boolean = false,
 ) {
     item(key = "missing-app-selection-heading") {
         Text(
@@ -166,10 +168,9 @@ fun LazyListScope.missingAppSelectionItems(
     item(key = "missing-app-selection-search") {
         OutlinedTextField(
             value = selection.query,
-            onValueChange = { if (editsEnabled) onSelectionChange(selection.withQuery(it)) },
+            onValueChange = { onSelectionChange(selection.withQuery(it)) },
             label = { Text(stringResource(R.string.manual_organization_missing_apps_search_hint)) },
             singleLine = true,
-            enabled = editsEnabled,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -185,14 +186,14 @@ fun LazyListScope.missingAppSelectionItems(
         ) {
             FilledTonalButton(
                 onClick = { onSelectionChange(selection.selectAllMatching()) },
-                enabled = editsEnabled && selection.displayed.isNotEmpty(),
+                enabled = selection.displayed.isNotEmpty(),
                 modifier = Modifier.testTag("missing-app-selection-select-all"),
             ) {
                 Text(stringResource(R.string.manual_organization_missing_apps_select_all))
             }
             OutlinedButton(
                 onClick = { onSelectionChange(selection.clearAll()) },
-                enabled = editsEnabled && selection.selected.isNotEmpty(),
+                enabled = selection.selected.isNotEmpty(),
                 modifier = Modifier.testTag("missing-app-selection-clear-all"),
             ) {
                 Text(stringResource(R.string.manual_organization_missing_apps_clear_all))
@@ -208,8 +209,7 @@ fun LazyListScope.missingAppSelectionItems(
         MissingAppSelectionRow(
             candidate = candidate,
             checked = candidate.target in selection.selected,
-            onToggle = { if (editsEnabled) onSelectionChange(selection.toggle(candidate)) },
-            enabled = editsEnabled,
+            onToggle = { onSelectionChange(selection.toggle(candidate)) },
             // Issue #375: non-color-only highlight of the request diff.
             diffRole = when {
                 diff == null -> null
@@ -226,9 +226,20 @@ fun LazyListScope.missingAppSelectionItems(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (showEmptySelectionNotice) {
+                // Issue #417 (AC-4): the explicit zero-selection disclosure —
+                // announced so the deliberate empty scope is never mistaken
+                // for an undecided surface.
+                Text(
+                    text = stringResource(R.string.manual_organization_missing_apps_empty_continue),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                        .testTag("missing-app-selection-empty-continue"),
+                )
+            }
             Button(
                 onClick = { onConfirm(selection.selected) },
-                enabled = editsEnabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("missing-app-selection-confirm"),
@@ -237,7 +248,6 @@ fun LazyListScope.missingAppSelectionItems(
             }
             OutlinedButton(
                 onClick = onCancel,
-                enabled = editsEnabled,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 // Issue #369 (D-13): the cancel side of the selection pair is
@@ -259,7 +269,6 @@ private fun MissingAppSelectionRow(
     candidate: DetectedCandidate,
     checked: Boolean,
     onToggle: () -> Unit,
-    enabled: Boolean = true,
     diffRole: ScopeDiffRole? = null,
 ) {
     val checkedText = stringResource(R.string.manual_organization_missing_apps_state_checked)
@@ -276,7 +285,6 @@ private fun MissingAppSelectionRow(
             .toggleable(
                 value = checked,
                 role = Role.Checkbox,
-                enabled = enabled,
                 onValueChange = { onToggle() },
             )
             .padding(horizontal = 16.dp, vertical = 8.dp)

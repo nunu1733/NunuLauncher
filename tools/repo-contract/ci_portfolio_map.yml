@@ -47,6 +47,9 @@ lanes:
   organizer-instrumentation-exchange-import-ui-tests:
     surfaces:
       - surface_organizer_ui
+  organizer-instrumentation-method-choice-journey-tests:
+    surfaces:
+      - surface_organizer_ui
   organizer-instrumentation-onboarding-proposal-tests:
     surfaces:
       - surface_organizer_ui
