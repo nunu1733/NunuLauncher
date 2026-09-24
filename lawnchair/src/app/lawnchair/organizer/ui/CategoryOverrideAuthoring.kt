@@ -218,3 +218,5 @@ private class AndroidCategoryOverrideAppInventory(
         )
     }
 }
+
+// Issue 422 demo: organizer-ui surface self-verification.
