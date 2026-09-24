@@ -218,3 +218,5 @@ private class AndroidCategoryOverrideAppInventory(
         )
     }
 }
+
+// Issue 422 demo: mixed mapped+unmapped diff.
