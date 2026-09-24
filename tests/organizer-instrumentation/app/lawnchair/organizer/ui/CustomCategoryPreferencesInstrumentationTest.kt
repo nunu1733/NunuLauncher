@@ -271,9 +271,11 @@ class CustomCategoryPreferencesInstrumentationTest {
             composeRule.onAllNodesWithText(summary).fetchSemanticsNodes().isNotEmpty()
         }
 
-        // Create editor → cancel.
+        // Create editor → cancel. Focus is pinned inside the editor before
+        // exiting so the summary assert proves a real focus restore.
         composeRule.onNodeWithText(create).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").assertIsDisplayed()
+        composeRule.onNodeWithTag("custom-category-name-field").requestFocus().assertIsFocused()
         composeRule.onNodeWithText(cancel).performClick()
         awaitSummaryFocus(summary)
 
@@ -286,11 +288,12 @@ class CustomCategoryPreferencesInstrumentationTest {
         }
         awaitSummaryFocus(summary)
 
-        // Rename editor → cancel.
+        // Rename editor → cancel. Same pin: focus provably on the field.
         composeRule.onNodeWithContentDescription(
             context.getString(R.string.organizer_custom_category_rename_action, "Commute"),
         ).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").assertIsDisplayed()
+        composeRule.onNodeWithTag("custom-category-name-field").requestFocus().assertIsFocused()
         // AC-6 state 3: the rename editor carries no raw id.
         assertNoRawIdsPresent(userId.value, mintedId)
         composeRule.onNodeWithText(cancel).performClick()
@@ -308,21 +311,26 @@ class CustomCategoryPreferencesInstrumentationTest {
         }
         awaitSummaryFocus(summary)
 
-        // Delete dialog → cancel.
+        // Delete dialog → cancel. Focus is pinned on the dialog's cancel
+        // button before exiting so the summary assert proves a real restore.
         composeRule.onNodeWithContentDescription(
             context.getString(R.string.organizer_custom_category_delete_action, "Commute"),
         ).performClick()
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_title)).assertIsDisplayed()
         // AC-6 state 4: the delete confirmation dialog carries no raw id.
         assertNoRawIdsPresent(userId.value, mintedId)
+        composeRule.onNodeWithText(cancel).requestFocus().assertIsFocused()
         composeRule.onNodeWithText(cancel).performClick()
         awaitSummaryFocus(summary)
 
-        // Delete dialog → confirm.
+        // Delete dialog → confirm. Focus pinned on the confirm button first.
         composeRule.onNodeWithContentDescription(
             context.getString(R.string.organizer_custom_category_delete_action, "Commute"),
         ).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_confirm)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_confirm))
+            .requestFocus()
+            .assertIsFocused()
+            .performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isEmpty()
         }
