@@ -53,7 +53,7 @@ production interface・seamの変更は**ない**。変更はtest sourceとworkf
 既存patternに倣い、1個以上の新test methodとして追加する。method構成の目安（実装時に1:1である必要はないが、spec AC-2〜AC-6の各項がどのmethodで満たされるかをPRで対応付ける）:
 
 1. `rowsExposeLocalizedActionLabelsAndLiveRegion` — entry行・delete行の `contentDescription`（`rename_action` / `delete_action` を名前補間で解決）とclick action、summary nodeの `SemanticsProperties.LiveRegion == Polite` をassert。semantic `Role` はassertしない（productionに明示的Roleがなく、要求すればproduction変更が必要になりstop条件に触れる）。
-2. `editorAndDialogTransitionsRestoreInputFocusToTheSummaryNode` — 作成保存後・改名保存後・cancel後・削除確定後に `onNodeWithText(organizer_custom_category_summary)` が `assertIsFocused()` になることを `waitUntil` で確認（category-override laneの `cancelRestoresFocus...` / `editorIsReadable...RestoresFocusAfterSave` と同型）。**注意: `assertIsFocused()` はCompose/keyboard input focusの検証であり、TalkBack accessibility focusの証拠として扱わない。** TalkBack側のcoverageはmethod 1のlabel+click actionとlive region assertが担う。
+2. `editorAndDialogTransitionsRestoreInputFocusToTheSummaryNode` — 作成保存後・改名保存後・cancel後・削除確定後に `onNodeWithText(organizer_custom_category_summary)` が `assertIsFocused()` になることを `waitUntil` で確認（category-override laneの `cancelRestoresFocus...` / `editorIsReadable...RestoresFocusAfterSave` と同型）。**対象はeditor/dialog exitに限定する。** partial delete状態の「Back to categories」後はassertしない（現productionのfocus `LaunchedEffect` keyが `creating, editorTarget, pendingDelete, statusMessage` で `partialDeleteTarget` を含まず、当該経路ではkeyが変化しないためfocus requestが発火しない。spec Non-goals対象。要求する場合はproduction変更が必要でstop条件に触れる）。**注意: `assertIsFocused()` はCompose/keyboard input focusの検証であり、TalkBack accessibility focusの証拠として扱わない。** TalkBack側のcoverageはmethod 1のlabel+click actionとlive region assertが担う。
 3. `keyboardDpadActivatesCreateActionFromTheSummaryNode` — `InputMode.Keyboard` 要求、summary `requestFocus()`、`DirectionDown` → `DirectionCenter` で作成editorが開くこと。
 4. `switchEquivalentSemanticsActivationOpensTheRenameEditor` — `performSemanticsAction(SemanticsActions.OnClick)` で改名editorが開くこと。
 5. `rowsRemainReachableAtTwoHundredPercentFontScale` — `fontScale = 2f` で、50 code point名のentry行・「Custom」marker・作成action・削除dialogが `assertIsDisplayed()` / `performScrollToNode` で到達可能。48dp高さ検証を同methodか独立methodに含める。
@@ -61,7 +61,7 @@ production interface・seamの変更は**ない**。変更はtest sourceとworkf
 
 注意事項:
 
-- 既存4 methodの振る舞いは変更しない（改名・期待値の非必要な変更はしない。vacuous文の実assertion化だけを行う）。
+- 既存4 methodの振る舞いは変更しない（改名・期待値の非必要な変更はしない。vacuous文の実assertion化だけを行う）。既存 `partialDeleteRendersTruthfully...` のpartial-delete flow assert自体は維持するが、focus復帰assertはmethod 2のeditor/dialog範囲に限定する（partial deleteの「Back to categories」後は対象外。spec Non-goals）。
 - focus復帰assertの対象nodeはUI実装の `FocusRequester` が付くsummary node（`organizer_custom_category_summary` テキスト）であり、実装詳細（testTag追加等）のproduction変更を要求しない。production変更が必要になった時点でstop条件（下記）。
 - 同期は既存の `composeRule.waitUntil(5_000)` 規約に従う。`InputModeManager` / `LocalDensity` の取得もcategory-override lane testの既存patternを使う。
 

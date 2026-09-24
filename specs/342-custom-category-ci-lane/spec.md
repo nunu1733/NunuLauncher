@@ -19,14 +19,14 @@ Issue #336で追加されたカテゴリ管理UI（`CustomCategoryPreferences`�
 
 ## Outcome
 
-`CustomCategoryPreferencesInstrumentationTest` がsource/workflow変更PRごとの必須CI merge gate（`CI / final-status` を構成するinstrumentation job）上で常時実行され、失敗がmergeをblockする。同じtest class内に、カテゴリ管理UI（作成・改名・削除・partial deleteの各flow）のspec 336 AC-13相当項目—名前付きで操作可能なclick action、Compose/keyboard input focus復帰、keyboard/DPAD、Switch Access等価なsemantics起動、非色状態、200% font scale、raw ID非表示—の明示的な自動assertが追加され、以後は手動evidenceなしでも回帰がCIで検出される。production code、UIの見た目・振る舞い、文字列、依存関係は変更しない。
+`CustomCategoryPreferencesInstrumentationTest` がsource/workflow変更PRごとの必須CI merge gate（`CI / final-status` を構成するinstrumentation job）上で常時実行され、失敗がmergeをblockする。同じtest class内に、カテゴリ管理UI（作成・改名・削除・partial deleteの各flow）のspec 336 AC-13相当項目—名前付きで操作可能なclick action、editor/dialog exitでのCompose/keyboard input focus復帰、keyboard/DPAD、Switch Access等価なsemantics起動、非色状態、200% font scale、raw ID非表示—の明示的な自動assertが追加され、以後は手動evidenceなしでも回帰がCIで検出される。production code、UIの見た目・振る舞い、文字列、依存関係は変更しない。
 
 ## Scope
 
 - `CustomCategoryPreferencesInstrumentationTest` を既存API 36 instrumentation lane（`organizer-instrumentation-category-override-tests`）のclass listへ追加し、CI merge gateの常設対象にする。
 - 同test classへ、管理UI表面に対する次の自動assertを追加する（対象UIは `CustomCategoryPreferences.kt`、駆動seamは既存testと同じ `UserDefinedCategoryAuthoringCoordinator` + in-memory fake store）:
   - **名前付きで操作可能なclick action**: entry行が「`Rename <名前>`」のlocalized `contentDescription` とclick actionを持ち、delete行が「`Delete <名前>`」のそれを持つこと。status/summary nodeがpolite live regionのsemanticsを持ち、typed feedbackがテキストで読み上げ対象になること。semantic `Role` は本Issueの契約に含めない（productionの `CategoryEntryRow` は `.clickable` + `contentDescription` のみで明示的Roleを持たず、Role要求はproduction変更を強いAC-7に反するため）。
-  - **Compose/keyboard input focus復帰**: 作成保存後・改名保存後・cancel後・delete確定後・partial deleteの「Back to categories」後など、editor/dialogを離れた時点で既存 `FocusRequester` によりsummary nodeへCompose/keyboard input focusが戻ること（`assertIsFocused()` で検証）。これはTalkBackのaccessibility focus復帰の証明ではない。TalkBack側のこの表面のcoverageは名前付きclick actionとpolite live regionのsemantics assertが担う。
+  - **Compose/keyboard input focus復帰**: 作成editor・改名editor・削除確認dialogのいずれかを離れた時点（保存・cancel・確定）で、既存 `FocusRequester` によりsummary nodeへCompose/keyboard input focusが戻ること（`assertIsFocused()` で検証）。対象はeditor/dialog exitに限定する。partial delete状態の「Back to categories」後のfocus復帰は本契約の対象外である（現productionのfocus `LaunchedEffect` のkeyが `creating, editorTarget, pendingDelete, statusMessage` であり `partialDeleteTarget` を含まず、当該経路で復帰が保証されないため。要求する場合はproduction変更を伴いAC-7/Non-goalsの再判断が必要で、本Issueでは扱わない）。これはTalkBackのaccessibility focus復帰の証明ではない。TalkBack側のこの表面のcoverageは名前付きclick actionとpolite live regionのsemantics assertが担う。
   - **keyboard/DPAD**: keyboard入力モードでsummaryからDPAD移動が最初の操作可能行へ到達し、Center keyでeditorが開くこと。
   - **Switch Access等価**: `SemanticsActions.OnClick` によるsemantics起動でentry行から改名editorが開くこと（category-override lane testの確立patternと同一）。
   - **非色状態**: 各user-defined entry行に「Custom」テキストmarkerが色に依らず存在すること。typed error（duplicate name等）がテキストとして提示されること。
@@ -43,6 +43,7 @@ Issue #336で追加されたカテゴリ管理UI（`CustomCategoryPreferences`�
 - API 35 lane、新規lane jobの作成、#300のwindow-focus前提harnessの導入（本testはCompose test ruleで実入力注入をしないため不要）。
 - 手動emulator evidenceの再取得・削除（既存8枚は履歴証拠として残す）。
 - 実行時間最適化、emulator provision方法の変更、`final-status` job構成の変更（class追加だけで `final-status` は既存jobを通じて効果を得る）。
+- partial delete状態の「Back to categories」後のCompose/keyboard focus復帰。現productionは当該経路でfocus requestを発火せず（上記Scope）、本IssueのAC-3・test oracle・planの対象外とする。将来要求する場合はproduction変更とAC-7の再判断を別Issueで行う。
 
 ## Domain language
 
@@ -152,6 +153,7 @@ Then merge gateは失敗し、instrumentation report artifactに失敗class・me
 - 2026-09-17: Draft created for #342 (spec/plan preparation task; baseline main `8fd05a40d51abd24b40a7b93579bb9b76d046f75`)。
 - 2026-09-19: Re-entry検証。current main `3076bdae7ebf8dbb086f251203968c06e9986258`（前回baseline `8fd05a40d51a` 以降の差分はPR #350/#353/#355/#363/#364で、exchange / #327/#328/#337 と Organizer UX文書domain）に対してProblem/Outcome/Scope/ACの全事実を再確認した。対象test file・対象UI・`organizer_custom_category_*` 文字列・issue99 lane構成・spec 336 AC-12/AC-13（spec 337による改訂はexchange投影のみでauthoring契約は不変とspec 336自身が明記）・FR-010/NFR-009・portfolio docはいずれも変化せず、契約の変更は不要だった。
 - 2026-09-24: Re-entry改訂（review findings 1-4対応）。baselineを `origin/main` の `b146a63557` へ更新。Finding 1: AC-3/Scope/ScenarioをCompose/keyboard input focus復帰へ狭め、TalkBack accessibility focus証明の主張を除去。Finding 2: label/role契約を名前付きで操作可能なclick action（contentDescription + click action、Role要求なし）へ再定義。Finding 3: AC-6/Scope/Scenarioを共有contains-based helper `assertNoRawIdsPresent`（Text・EditableText・ContentDescriptionのsubstring走査、seed+minted両検査、5状態から呼出し）へ具体化。Finding 4: lane名をIssue #422による改名 `organizer-instrumentation-category-override-tests`（ci.yml 779行目、class list 814行目、`final-status` 970行目/needs 982行目）へ更新、test file 306行・vacuous文92-93行目を確認、portfolio docの#422書換え（Portfolio model + human mirror、normativeは `ci_portfolio_map.yml` 44-46行目）に合わせた記載へ修正。Statusはdraftのまま。
+- 2026-09-24: Re-review対応（snapshot `a7c66be43a` へのChanges requested 1点）。Scopeのfocus復帰例から「partial deleteのBack to categories」を削除し、AC-3/plan method 2と同じeditor/dialog exitに統一。現productionのfocus `LaunchedEffect` key（`creating, editorTarget, pendingDelete, statusMessage`）に `partialDeleteTarget` が含まれず当該経路の復帰が保証されないため、Non-goalsへ明示的に対象外を追加（要求する場合は別Issueでproduction変更とAC-7再判断）。AC-3/Scenario/planのfocus対象は従来どおりeditor/dialogのみで変更なし。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/342 "Issue #342"
 [2]: https://github.com/nunu1733/NunuLauncher/pull/341 "PR #341 — user-defined categories"
