@@ -75,7 +75,7 @@ def build_workflow(
                 "uses": "actions/upload-artifact@v6",
                 "with": {
                     "name": "failure-time-emulator-evidence",
-                    "path": "build/x-failure-time-evidence/**",
+                    "path": "build/x/**",
                 },
             },
         ]
@@ -96,7 +96,7 @@ def build_workflow(
                     "uses": "actions/upload-artifact@v6",
                     "with": {
                         "name": "failure-time-emulator-evidence",
-                        "path": "build/x-failure-time-evidence/**",
+                        "path": "build/x/**",
                     },
                 },
             ]
@@ -392,6 +392,30 @@ class PortfolioValidatorTest(unittest.TestCase):
         lane = "organizer-instrumentation-shared-writer-tests"
         self.write_fixtures(CONSISTENT_LANES, drop_upload=lane)
         self.assert_problem("failure-time evidence upload path is missing")
+
+    def test_post_run_upload_path_must_match_capture_output_directory(self):
+        lane = "organizer-instrumentation-shared-writer-tests"
+        self.write_fixtures(CONSISTENT_LANES)
+
+        def mutate(workflow):
+            workflow["jobs"][lane]["steps"][2]["with"]["path"] = (
+                "build/other-failure-time-evidence/**"
+            )
+
+        self.rewrite_workflow(mutate)
+        self.assert_problem("does not match capture output directory")
+
+    def test_live_upload_path_must_match_capture_output_directory(self):
+        lane = "organizer-instrumentation-manual-organization-ui-tests"
+        self.write_fixtures(CONSISTENT_LANES, live_capture={lane})
+
+        def mutate(workflow):
+            workflow["jobs"][lane]["steps"][1]["with"]["path"] = (
+                "build/other-failure-time-evidence/**"
+            )
+
+        self.rewrite_workflow(mutate)
+        self.assert_problem("does not match capture output directory")
 
     def test_contract_test_metadata_is_required(self):
         self.write_fixtures(CONSISTENT_LANES, contract_tests={})

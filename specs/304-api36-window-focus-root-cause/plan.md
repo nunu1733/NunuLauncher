@@ -323,8 +323,9 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   #99相当のcategory-override laneも同じwrapperへ含める。成功時はcaptureを実行せず、runner外の
   重複captureは置かない。
   この変更は診断経路だけを対象とし、production source、instrumentation test実装、
-  emulator provisioning、他7 laneのcapture方式は変更しない。残り7 laneのlive化は別Owner
-  gateで、同一PRに含めるかfollow-up Issueへ分離するかを決める。対象は
+  emulator provisioning、他7 laneのcapture方式は変更しない。残り7 laneのlive化は
+  [Issue #438](https://github.com/nunu1733/NunuLauncher/issues/438)で追跡し、別Owner
+  gateで扱う。対象は
   `shared-writer`、`db-migration`、`restore-capture`、`production-input`、
   `reservation-recovery`、`exchange-import-ui`、`method-choice-journey`である。
 - 実装候補の検証は、wrapperのshell syntax、fake-`adb`によるlive device / device-goneの

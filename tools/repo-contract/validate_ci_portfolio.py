@@ -22,7 +22,8 @@ Compares .github/workflows/ci.yml against tools/repo-contract/ci_portfolio_map.y
    either as a post-run helper or inside the live emulator-runner wrapper.
 7. Every supporting contract test in the map has a real path, an every-run
    owner job, and an exact workflow invocation.
-8. Every instrumentation lane has a failure-time artifact upload path.
+8. Every instrumentation lane uploads the capture output directory with a
+   failure-time artifact path.
 9. docs/engineering/ci-test-portfolio.md mentions every lane ID and every
    surface name (existence check; content review owns the prose).
 
@@ -102,7 +103,7 @@ def shell_tokens(command: object) -> list[str]:
         return []
 
 
-def has_bounded_post_run_capture(steps: list[object]) -> bool:
+def post_run_capture_output_dirs(steps: list[object]) -> set[str]:
     expected_prefix = [
         "timeout",
         "--kill-after=30",
@@ -110,16 +111,23 @@ def has_bounded_post_run_capture(steps: list[object]) -> bool:
         "bash",
         f"tools/ci/{CAPTURE_SCRIPT}",
     ]
+    dirs: set[str] = set()
     for step in steps:
         if not isinstance(step, dict):
             continue
         tokens = shell_tokens(step.get("run"))
-        if len(tokens) >= len(expected_prefix) + 2 and tokens[:5] == expected_prefix:
-            return True
-    return False
+        if (
+            len(tokens) >= len(expected_prefix) + 2
+            and tokens[: len(expected_prefix)] == expected_prefix
+        ):
+            output_dir = tokens[len(expected_prefix) + 1]
+            if output_dir:
+                dirs.add(output_dir)
+    return dirs
 
 
-def has_live_capture_wrapper(steps: list[object]) -> bool:
+def live_capture_output_dirs(steps: list[object]) -> set[str]:
+    dirs: set[str] = set()
     for step in steps:
         if not isinstance(step, dict) or step.get("uses") != LIVE_CAPTURE_RUNNER:
             continue
@@ -133,12 +141,13 @@ def has_live_capture_wrapper(steps: list[object]) -> bool:
             delimiter = tokens.index("--", 2)
         except ValueError:
             continue
-        if delimiter < len(tokens) - 1:
-            return True
-    return False
+        if delimiter >= 4 and delimiter < len(tokens) - 1 and tokens[3]:
+            dirs.add(tokens[3])
+    return dirs
 
 
-def has_failure_evidence_upload(steps: list[object]) -> bool:
+def failure_evidence_upload_paths(steps: list[object]) -> set[str]:
+    paths: set[str] = set()
     for step in steps:
         if not isinstance(step, dict) or step.get("uses") != "actions/upload-artifact@v6":
             continue
@@ -146,9 +155,9 @@ def has_failure_evidence_upload(steps: list[object]) -> bool:
         if not isinstance(with_block, dict):
             continue
         path = with_block.get("path")
-        if isinstance(path, str) and "failure-time" in path:
-            return True
-    return False
+        if isinstance(path, str):
+            paths.update(line.strip() for line in path.splitlines() if line.strip())
+    return paths
 
 
 def validate_contract_tests(ci_map: dict, jobs: dict, problems: list[str]) -> None:
@@ -293,15 +302,25 @@ def validate() -> list[str]:
             problems.append(f"ci.yml: required job {gate} is missing")
 
     # 6. Every instrumentation lane carries the bounded capture step and its
-    # failure-time artifact upload. A live wrapper only counts when it is the
-    # command in the expected emulator-runner action; arbitrary echoes or
-    # unrelated action scripts must not satisfy this contract.
+    # failure-time artifact upload for the SAME output directory. A live
+    # wrapper only counts when it is the command in the expected emulator-runner
+    # action; arbitrary echoes or unrelated action scripts must not satisfy
+    # this contract.
     for lane in sorted(wf_lanes):
         steps = jobs[lane].get("steps", [])
-        if not (has_bounded_post_run_capture(steps) or has_live_capture_wrapper(steps)):
+        capture_dirs = post_run_capture_output_dirs(steps) | live_capture_output_dirs(steps)
+        if not capture_dirs:
             problems.append(f"lane {lane}: failure-evidence capture step is missing")
-        if not has_failure_evidence_upload(steps):
-            problems.append(f"lane {lane}: failure-time evidence upload path is missing")
+        upload_paths = failure_evidence_upload_paths(steps)
+        expected_upload_paths = {f"{output_dir.rstrip('/')}/**" for output_dir in capture_dirs}
+        if not upload_paths & expected_upload_paths:
+            if upload_paths:
+                problems.append(
+                    f"lane {lane}: failure-time upload path does not match capture output directory "
+                    f"(expected one of {sorted(expected_upload_paths)}, got {sorted(upload_paths)})"
+                )
+            else:
+                problems.append(f"lane {lane}: failure-time evidence upload path is missing")
 
     # 7. Supporting contract test ownership and trigger are machine-checked
     # separately from lane/surface edges.

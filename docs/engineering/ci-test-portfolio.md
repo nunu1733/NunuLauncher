@@ -97,7 +97,7 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 | exchange-import-ui lane | 10.2 分。exchange import surface の Compose 検証（#345 で local-only から昇格。CI green の実績あり） | Conditional（surface_organizer_ui） |
 | method-choice-journey lane | method-choice face の connected journey（#417 AC-8 (g)-(v) evidence。scope-first で凍結した scope 上の AI依頼作成 → 取り込み → attach を固定する per-class lane） | Conditional（surface_organizer_ui） |
 | onboarding-proposal lane | 9.7 分。proposal lifecycle / Back / focus / recreation / review admission。実入力注入は focus 観測を前提とする（#300 accepted、#304/#418 で環境系 failure 実績） | Conditional（surface_organizer_ui） |
-| failure-time evidence capture | 全 10 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。manual-organization-ui / category-override / onboarding-proposal は live emulator-runner wrapper内で実行し、残り7 laneはrunner後のcaptureを継続している（follow-up対象）。validator が装備を機械検証 | 補助（各 lane） |
+| failure-time evidence capture | 全 10 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。manual-organization-ui / category-override / onboarding-proposal は live emulator-runner wrapper内で実行し、残り7 laneはrunner後のcaptureを継続している（[Issue #438](https://github.com/nunu1733/NunuLauncher/issues/438) follow-up）。validator が装備を機械検証 | 補助（各 lane） |
 | failure capture lifecycle self-test | `validate-repo-contract` で全 run（docs-only 含む）に起動する 0.1 分未満の契約test。既存のcapture helper smoke testが各adb commandのtimeout・budget・出力上限を検証するのに対し、本testは `android-emulator-runner@v2` のrunner `script`が物理行単位で実行される境界、failure captureがemulator teardown前に走ること、元command statusの保持、success時の無capture、#52/#53/#99のworkflow wiringを検証する。分類は CI wrapper / artifact handling。10 laneのimpact surfaceを新設せず、既存のfailure-time capture補助処理の全lane契約を検査するため、既存testとの重複はない | 補助（`validate-repo-contract` 全 run） |
 | final-status | 「当該 run に必要と判定された gate が完了したこと」を集約。skip は成功扱い、failure/cancelled のみ fail。needs の必須集合は validator が map file と突き合わせ | 集約（branch protection required check） |
 | planner-stress.yml | 8 seed × 512 case の exploration matrix。週次 / manual のみで PR gate でない（#46 の時点から分類適合） | Scheduled / Diagnostic |
@@ -150,7 +150,7 @@ invocationと一致することを検査する。
 | 重複 | helper smokeはbounded snapshotのtimeout/budget/truncationを担当し、本testはwrapperのstatus保持、device-gone、runner action identity、実scriptの`--`、failure-time upload pathを担当する。別emulator laneのtestとは重複しない。 |
 | 起動条件 | `contract_tests` metadataの`trigger: every_run`に固定し、docs-onlyを含む全runで既存repo-contract jobから実行する。emulator laneの再実行は発生させない。 |
 
-残り7 laneのlive化は別Owner gateで扱う。
+残り7 laneのlive化は [Issue #438](https://github.com/nunu1733/NunuLauncher/issues/438) で追跡し、別Owner gateで扱う。
 
 ## 実測（参考値）
 
