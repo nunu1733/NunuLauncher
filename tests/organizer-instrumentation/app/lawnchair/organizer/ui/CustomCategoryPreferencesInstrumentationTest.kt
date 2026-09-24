@@ -256,6 +256,9 @@ class CustomCategoryPreferencesInstrumentationTest {
     fun editorAndDialogTransitionsRestoreInputFocusToTheSummaryNode() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val summary = context.getString(R.string.organizer_custom_category_summary)
+        val create = context.getString(R.string.organizer_custom_category_create)
+        val save = context.getString(R.string.organizer_custom_category_save)
+        val renameConfirm = context.getString(R.string.organizer_custom_category_rename_confirm)
         val cancel = context.getString(R.string.organizer_custom_category_cancel)
         val catalog = FakeCatalogStore().apply { seed(listOf(UserDefinedCategory(userId, "Commute"))) }
         val overrides = FakeOverrideStore().apply { seed(mapOf(key("com.a") to CategoryIdentity.UserDefined(userId))) }
@@ -269,9 +272,18 @@ class CustomCategoryPreferencesInstrumentationTest {
         }
 
         // Create editor → cancel.
-        composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_create)).performClick()
+        composeRule.onNodeWithText(create).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").assertIsDisplayed()
         composeRule.onNodeWithText(cancel).performClick()
+        awaitSummaryFocus(summary)
+
+        // Create editor → save.
+        composeRule.onNodeWithText(create).performClick()
+        composeRule.onNodeWithTag("custom-category-name-field").performTextInput("Errand")
+        composeRule.onNodeWithText(save).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Errand").fetchSemanticsNodes().isNotEmpty()
+        }
         awaitSummaryFocus(summary)
 
         // Rename editor → cancel.
@@ -282,6 +294,18 @@ class CustomCategoryPreferencesInstrumentationTest {
         // AC-6 state 3: the rename editor carries no raw id.
         assertNoRawIdsPresent(userId.value, mintedId)
         composeRule.onNodeWithText(cancel).performClick()
+        awaitSummaryFocus(summary)
+
+        // Rename editor → save.
+        composeRule.onNodeWithContentDescription(
+            context.getString(R.string.organizer_custom_category_rename_action, "Errand"),
+        ).performClick()
+        composeRule.onNodeWithTag("custom-category-name-field").performTextClearance()
+        composeRule.onNodeWithTag("custom-category-name-field").performTextInput("Groceries")
+        composeRule.onNodeWithText(renameConfirm).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Groceries").fetchSemanticsNodes().isNotEmpty()
+        }
         awaitSummaryFocus(summary)
 
         // Delete dialog → cancel.
