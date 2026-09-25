@@ -338,6 +338,109 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   `d426c35da71a05da6a6d180ed491e8d70844d920` である。これはmergeability解消の準備であり、
   新しいhosted CI実行や#418 runtime root causeの確定を意味しない。
 
+### PR #437 merge後のre-entry照合（2026-09-25）
+
+- PR #437はsource head `90e5349be8c9a5dd778b5da33e4f14160a6839e0`から
+  `e9c93e5dffa33189be77e68c1f6f000731c6f75e` としてmainへmergeされた。PR headでの
+  [run 36080811322](https://github.com/nunu1733/NunuLauncher/actions/runs/36080811322) は
+  `final-status`、unit/build/style/repo-contract、全10 instrumentation laneを成功し、
+  capture-order repairのworkflow契約を検証した。merge後mainのpush
+  [run 36082413664](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664) は
+  `manual-organization-ui-tests` と `final-status` が失敗し、他9 instrumentation lane、
+  unit/build/style/repo-contractは成功した。
+- run 36082413664のreport artifact
+  [10843192422](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10843192422)
+  は140 tests中1 failureを記録した。一次signatureは
+  `OrganizerDiagnosticsRouteInstrumentationTest.issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute`
+  の5秒 `ComposeTimeoutException`（`openRequestRowAndAwaitT15` line 461、caller line 517）で、
+  #418のLazyList `Index 4,size 4`、focus gateまたはSnapshotStateObserverとは別である。
+  job logのGradle後半に出たDevelocity/Netty `NoClassDefFoundError`は、テスト失敗後のscan publish
+  noiseであり、一次test failureの根拠にはしない。
+- 同runのlive failure-time artifact
+  [10842917962](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10842917962)
+  は01:48:01--01:48:17 UTCにemulatorを保持して17/18 queryを取得した（device-pressureのみ15秒timeout、
+  `sys.boot_completed=1`、`ro.boot.bootreason=reboot,factory_reset`）。test logcatでは失敗testが
+  01:47:21.891に開始し01:47:31.410にtimeout、01:47:30以降のfocus leave/launcher resumeは失敗後の
+  Activity cleanupである。capture snapshotはNexusLauncherActivityをcurrent focus/top-resumedにし、
+  `system_app_anr`は01:34:53--01:35:08のGMS/AS/phone ANR（SystemUIではない）だけ、`data_app_anr`は空だった。
+  したがってこの同一boot artifactにも、元の`launcherWindowFocus=false`の自然遷移、foreign occluder、
+  SystemUI ANRをこのCompose timeoutへ結ぶ因果証拠はない。
+- #418の最終controlled run [35886970989](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989)
+  （head `ca999d73365baafea978fedea82b02f18fe0b600`）は、
+  `comparesResetAndRetainedLazyListStateAcrossDisplayConditions` で
+  `IllegalArgumentException: Detected multithreaded access to SnapshotStateObserver`
+  （`FocusableNode.onFocusStateChange` → `FocusOwnerImpl.clearFocus` →
+  `FocusTargetNode.onDetach`、16:20:27.969）を一次signatureとして捕捉し、Activity teardownで
+  `runDetachLifecycle`例外を二次signatureとして捕捉した。report/logcatには
+  `Index 4,size 4` oracleはなく、同じ失敗のlauncherWindowFocus / foreign occluder / ANR
+  遷移は記録されていない。
+- 失敗時live artifact [10764201175](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989/artifacts/10764201175)
+  は16:21:25 UTCにemulatorを保持して取得できた。最終snapshotはNexusLauncherActivityが
+  top-resumed/current-focusedで、`system_app_anr`は`No entries found`だった。これは失敗後の
+  state snapshotであり、一次signatureをlauncher occluderや#304のSystemUI ANRへ結び付ける
+  同一bootの遷移証拠ではない。
+- したがって#304の承認可能な状態は従来どおり `status: draft`、AC-1/2/4/5完了、AC-3未完了で
+  ある。#418 controlled runのSnapshotStateObserverは独立したCompose/test synchronization
+  oracleとして記録し、#304のper-boot occluder root causeへ統合しない。次のgateは、元の
+  Index4/focus signatureが再発した場合に限り、失敗boot内のmonotonic timestamp付きで
+  `sys.boot_completed`、HOME role、top-resumed/activity、mCurrentFocus/mFocusedWindow、
+  frontmost、interactive/keyguard、ANR/dropboxを同一artifactへ収めるbounded diagnosticである。
+- 上記の旧re-entry文にある `d426c35da71a05da6a6d180ed491e8d70844d920` は中間local headであり、
+  最終rebase/push headは `90e5349be8c9a5dd778b5da33e4f14160a6839e0`、merge後mainは
+  `e9c93e5dffa33189be77e68c1f6f000731c6f75e` である。
+
+### run 36082413664 attempt 2（failed-job rerun）の分類（2026-09-25）
+
+- attempt 2 は `manual-organization-ui-tests` job
+  [107919662303](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/job/107919662303)
+  の failed-job rerun として 02:30:55Z に開始され、02:38:40Z に failure で完了した
+  （`final-status` も failure）。他の全 job は attempt 1 の成功結果のまま。
+  rerun 実施後の Owner decision が無かったため、分類を
+  [issuecomment-5825872134](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5825872134)
+  に事実として記録した。この記録に伴う新規 CI run、rerun、コード変更は行っていない。
+- report artifact
+  [10844296393](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10844296393)
+  は 21 tests（E2E 6 + Preferences 15）/1 failure のみを記録した。attempt 1 は
+  140 tests / 1 failure で 9 class が完走しているため、約 119 test が未実行のまま
+  中断された。一次signatureは 02:38:02.749 UTC の `app.lawnchair.debug`（PID 4193）
+  main thread `FATAL EXCEPTION` で、
+  `RuntimeException: Unable to destroy activity {app.lawnchair.debug/androidx.activity.ComponentActivity}`
+  の `Caused by: java.lang.ArrayIndexOutOfBoundsException: length=320; index=-56` が
+  `androidx.compose.runtime.SlotWriter.moveSlotGapTo(SlotTable.kt:4351)` → `removeSlots` →
+  `removeGroup` → `ComposerKt.removeCurrentGroup` → `CompositionImpl.dispose`
+  （nested subcomposition dispose）→ `WrappedComposition.onStateChanged` ←
+  `LifecycleRegistry.backwardPass` ← `ReportFragment$LifecycleCallbacks.onActivityPreDestroyed`
+  ← `MonitoringInstrumentation.callActivityOnDestroy` の経路で発生した。
+  XML は failure を
+  `ManualOrganizationPreferencesInstrumentationTest.unresolvedDurableStatusRestoresFocusToStartAction`
+  （testcase time 28.335s）に帰属させている。logcat の `DestroyActivityItem{finished=true}` と
+  `MonitoringInstrumentation: Dying now...` から、test 本体完了後の test activity destroy 中に
+  Compose SlotTable が不整合になり、その例外が process を死亡させて instrumentation run を
+  中断した。
+- このsignatureは元の #418 Index4/focus gate/`SnapshotStateObserver`、#304 per-boot
+  occluder/SystemUI ANR、PR #437 run1 の `removeObserver must be called on the main thread`、
+  attempt 1 の `OrganizerDiagnosticsRouteInstrumentationTest` 5秒 `ComposeTimeoutException`、
+  #352 receipt-test race のいずれとも一致しない新規 process-fatal signatureである。
+  run1 の off-main publication 証拠との関連は仮説として考えられるが、本 crash stack 自体に
+  worker thread の composition access は含まれず、SlotTable 破損の発生原因を本 artifact から
+  確定することはできない。#304 の occluder 仮説へは統合しない。
+- crash 後の live evidence artifact
+  [10844021830](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10844021830)
+  は 02:38:18--02:38:34 UTC に capture された。`emulator-5554` は `device` として生存し、
+  18 query 中 17 が成功した（`device-pressure` のみ 15 秒 timeout。attempt 1 と同一パターン）。
+  `sys.boot_completed=1`、`ro.boot.bootreason=reboot,factory_reset`。capture 時点の
+  top-resumed activity は `NexusLauncherActivity`（home）、HOME role は
+  `com.google.android.apps.nexuslauncher`。`system_app_anr` は GMS / GMS.persistent の
+  3 件のみ（02:34:12--02:35:10、boot 直後）、`data_app_anr`・`system_server_wtf` は空で、
+  SystemUI ANR・foreign focus window・launcher occluder の証拠は含まない。
+  したがって PR #437 の live capture 機構は、soft test failure（attempt 1）に加えて
+  process-fatal crash（attempt 2）でも emulator 生存中に証拠を取得できたことが main 上で
+  実証された。
+- attempt 2 の失敗は original #418 signature の再発ではないため、#304 AC-3 の gate 条件
+  （同一 failure boot の live artifact 解析）は引き続き未発火である。attempt 2 は failure かつ
+  failed-job rerun であるため、unchanged head での full-workflow 連続成功回数には数えない
+  （0 のまま）。追加 rerun、新規 run、本新signatureへの対処は次の Owner gate を待つ。
+
 ## 残存リスク受容の判断基準（root cause 未確定のまま完了する場合）
 
 次のすべてを満たす場合、受容の判断を記録して完了できる:
