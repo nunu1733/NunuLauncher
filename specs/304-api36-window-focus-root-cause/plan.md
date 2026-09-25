@@ -390,13 +390,19 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   `sys.boot_completed`到達前後から失敗判定まで、monotonic timestamp付きで
   `sys.boot_completed`、HOME role、top-resumed/activity、mCurrentFocus/mFocusedWindow、
   frontmost、interactive/keyguard、ANR/dropbox、bounded logcatを同一artifactへ保存・分類する。
-  Stage 2のOwner gate packetは対象bootを1回に固定し、観測期間を最大150秒、採取周期を1秒、
-  timeline sampleを最大150件、timeline outputを最大2 MiBとする（既存failure-time captureの
-  wall/output budgetに合わせる）。元のIndex4/focus signatureが期間内に再発しなければ予定停止点で
-  samplerを終了し、`non-reproduced`として記録してこのgateを閉じる。device goneまたはbudget timeout
-  で終了した場合は`incomplete`として記録し、`non-reproduced`とは分類しない。このprospective
-  timelineだけをAC-3の自然発生causal evidence候補とし、現在のCompose timeoutや過去のfailure-only
-  snapshotからは第2段を起動しない。
+  Stage 2のOwner gate packetは、選択laneの直近completed runから
+  `observed_boot_to_result_seconds`（emulator boot/start hookからcommand/test resultまで）と
+  `command_timeout_seconds`を記録してから作成する。有限予算は
+  `max_elapsed_seconds = observed_boot_to_result_seconds + max(300, 10 * command_timeout_seconds)`、
+  `sample_interval_seconds = 5`、`max_samples = ceil(max_elapsed_seconds / 5) + 1`、
+  `max_timeline_bytes = max_samples * 16384`とする。samplerはemulator boot前のstartup hookから
+  同一bootのcommand/test resultまで動かす。run 36082413664で観測された約775秒のboot-to-failureなら
+  この式は約1075秒となり、failure-time capture用の150秒budgetをprospective timelineへ流用できない。
+  元のIndex4/focus signatureが予算内に再発し、command/test resultが完了した場合はsignatureを分類する。
+  予算終了前にcommand/test resultが得られない、またはdevice goneで終了した場合は`incomplete`として記録し、
+  `non-reproduced`とは分類しない。completed command/runが予定停止点まで終了し、元signatureが無い場合だけ
+  `non-reproduced`として記録してgateを閉じる。このprospective timelineだけをAC-3の自然発生causal evidence候補とし、
+  現在のCompose timeoutや過去のfailure-only snapshotからは第2段を起動しない。
 - 上記の旧re-entry文にある `d426c35da71a05da6a6d180ed491e8d70844d920` は中間local headであり、
   最終rebase/push headは `90e5349be8c9a5dd778b5da33e4f14160a6839e0`、merge後mainは
   `e9c93e5dffa33189be77e68c1f6f000731c6f75e` である。

@@ -290,7 +290,11 @@ blocking なものはない。調査中に解決すべき問い:
   対象runでemulator boot開始前（少なくとも起動hook）からprospective bounded samplerを起動し、
   同一bootのmonotonic timelineを保存・分類する。このprospective evidenceが得られるまでAC-3は
   未完了とする。
-- 2026-09-25: Stage 2のOwner gate budgetを、対象boot 1回、最大150秒、1秒周期・最大150 sample、
-  timeline output最大2 MiBとして固定した。期間内に元signatureが再発しなければ予定停止点で
-  samplerを終了し`non-reproduced`として記録する。device goneまたはbudget timeoutは`incomplete`
-  と記録し、非再現とは分類しない。
+- 2026-09-25: reviewでStage 2の固定150秒案を撤回した。main run 36082413664は
+  emulator booted 01:34:35.893から対象failure 01:47:31.410まで約775秒を要し、failure-time helperの
+  150秒budgetをprospective boot→result timelineへ流用できない。Stage 2は選択laneの直近completed runで
+  観測したboot→result経過時間とcommand timeoutをOwner packetへ記録し、
+  `max_elapsed_seconds = observed_boot_to_result_seconds + max(300, 10 * command_timeout_seconds)`、
+  5秒周期、`ceil(max_elapsed_seconds / 5) + 1` sample、`max_samples * 16384` bytesを有限上限とする。
+  予算内にcompleted resultが得られない場合は`incomplete`、completed runで元signatureが無い場合だけ
+  `non-reproduced`とする。
