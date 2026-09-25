@@ -210,7 +210,7 @@ production/test code は baseline と同一であるため、各 candidate の�
 | R-10 | CI 未実行。focused local run: §8.6 V1/V2 で 4/4 失敗（category 2、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
 | R-11 | CI 未実行。focused local run: §8.6 V1/V2 で 2/3 失敗（category 3、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
 | R-12 | CI 未実行。focused local run: §8.6 V1/V2 で PASS | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
-| R-13 | CI 未実行。focused local run: §8.6 V5（pixel_6 AVD）で PASS。pixel_7_pro AVD は環境停止（§8.6、CI 同一条件は Phase 2 の GH Actions run で確認） | Unrouted/Local-only → Conditional（surface_organizer_ui, category-override lane） | なし |
+| R-13 | CI 未実行。focused local run: §8.6 V5（pixel_6 AVD）で PASS。pixel_7_pro AVD は 2/26 で再現停止（category 6 / category 5 suspected の暫定、§8.6）。3-class proposed group の CI 同一条件確認は Phase 2 の GH Actions run で実施 | Unrouted/Local-only → Conditional（surface_organizer_ui, category-override lane） | なし |
 | R-14 | CI 未実行。focused local run: §8.6 V6 で PASS | Unrouted/Local-only → Conditional（surface_organizer_ui, manual-organization-ui lane） | なし |
 | R-15 | CI 未実行（Move boundary へ変更、下記参照）。置換 JVM test は Phase 2 で新規作成し、local unit test で初回 baseline を取得 | Unrouted/Local-only → Permanent（`organizer-unit-tests`、surface_jvm） | instrumentation class 1 file を削除（JVM test が置換） |
 | R-16 | CI 未実行。focused local run: §8.6 V3 で実施（lane 変更、下記参照） | Unrouted/Local-only → Conditional（surface_db_schema, db-migration lane） | なし |
@@ -241,7 +241,9 @@ merge gate にしない前提の資産）; classification before → after = Loc
   と同居させず **独立 connected invocation 1 回**として helper 末尾へ追加する（§8.1）。
   本 class は restore flow を起動して lease を取得・解放するが capture pair とは別 process
   実行（各 connected run は gradle が APK を uninstall して data wipe する）のため、
-  single-restore-per-process 制約の process 共有は発生しない。
+  single-restore-per-process 制約の process 共有は発生しない。付加実行単位は独立 1
+  invocation。local V4 は 9〜11s、CI incremental runtime は未計測で Phase 2 の
+  GH Actions run で確認（§8.1a）。
 - routing 後に残る confidence: 新規（0 → 実行）。付加費用は 1 stage（〜1分）。
 - validation: 適用前に実 emulator で当該 class 実行。
 - residual: なし。
@@ -717,7 +719,7 @@ assertion・契約の変更、lane 削除、UI lane 統合、production seam 削
    `PageCaptureInstrumentationTest` setUp の seeding 前 favorites wipe。いずれも既存
    assertion・契約を一切変更しない、契約を成立させるための setup 修復のみである。
 
-### 8.1 instrumentation routing（13 class → 既存 4 lane + fixture 修復 3 件 + routing 分離 1 件）
+### 8.1 instrumentation routing（14 class → 既存 5 lane + fixture 修復 3 件 + routing 分離 1 件）
 
 初回提案からの変更（§8.6 focused validation の結果による）:
 - `GridMigrationFailureTest` の routing を分離（category 6 調査 → 追跡 Issue、R-2）。
@@ -901,5 +903,5 @@ CI 同一条件（x86_64 pixel_7_pro + KVM）での確認は Phase 2 の実 GitH
 | #352 / #304 / #418 tracking | 既存 tracking issue が所有（§6） |
 | cold-process restore CTA（#376 RS-AC-01）の CI 検出 | diagnostic 継続。重い 2 phase orchestration |
 | routed class の初回 CI 履歴不在 | §8.6 focused validation（V1〜V7 + pixel_7_pro 再実行）で初回 baseline を取得。失敗 4 件は分類・修復/分離方針を記録済み。Phase 2 で修復後の focused 再実行と PR 上の GH Actions run で最終確認 |
-| V5 pixel_7_pro AVD（arm64 local）の Compose 停止 | 分類は category 6（category 5 疑い）の暫定（§8.6。停止 test 名/stack は未取得）。既存 CI lane（x86_64）は同一 class 群で green 実績。確定分類は #418 系 signature 確認または CI 同一条件 green の時点。新規 lane 変更なし |
+| V5 pixel_7_pro AVD（arm64 local）の Compose 停止 | 分類は category 6（category 5 疑い）の暫定（§8.6。停止 test 名/stack は未取得）。既存 2 class（CategoryOverride / CustomCategory）は x86_64 CI green 実績あり。追加 OrganizerLockScreenTest を含む 3-class proposed group の CI 同一条件確認は Phase 2 の GH Actions run で実施。確定分類は #418 系 signature 確認または CI 同一条件 green の時点。新規 lane 変更なし |
 | routed に伴う各 lane runtime 増加 | §8.1a。Phase 2 PR の実 GH Actions run で timeout headroom を確認 |

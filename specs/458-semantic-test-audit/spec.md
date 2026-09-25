@@ -85,7 +85,11 @@ Issue #458 の acceptance criteria を正とし、本書では要件 ID へ対�
 - AC-458-P1-07: 監査が bounded な Phase 2 変更リストを生産し、count/runtime 削減だけを
   目的とした変更を含まない（`audit.md` §8）。
 - AC-458-P1-08: 監査記録が skill の focused-audit evidence 項目を満たす。
-- AC-458-P2-01: 承認された Route / Remove 変更が実装されている。
+- AC-458-P2-01: 承認された Consolidate / Move boundary / Remove / Route 変更が実装されて
+  いる（本監査の bounded list では: instrumentation Route 14 class → 既存 5 lane、JVM
+  Route 2 class → `organizer-unit-tests` filter、Move boundary 1 class
+  （BackupExclusionTest）、fixture 修復 3 件、Remove なし。GridMigrationFailureTest は
+  #461 へ分離）。
 - AC-458-P2-02: 削除した test によって意味ある regression 契約が無 coverage になって
   いない。
 - AC-458-P2-03: routing 変更がある場合、`docs/engineering/ci-test-portfolio.md` と
