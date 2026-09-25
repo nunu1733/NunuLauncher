@@ -2,7 +2,7 @@
 
 > Issue: #441
 > Spec: [spec.md](./spec.md)
-> Status: accepted（Phase 1承認: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5836812340)、head `4259fc362f`。spec status: accepted。Revision 5: Phase 2実装中の発見（1項目フォルダのloader展開）を反映）
+> Status: accepted（Phase 1承認: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5836812340)、head `4259fc362f`。spec status: accepted。Revision 5〜6: Phase 2実装とreview指摘対応を反映）
 > Branch: `issue-441-editing-burden-benchmark`
 
 ## Current evidence
@@ -79,6 +79,7 @@
 | `tests/organizer-instrumentation/AndroidManifest.xml` | fixture用activity 1本+activity-alias 35本の追加 | fixture identity供給（A-10）。test APK限定 |
 | `tests/organizer-instrumentation/res/`（新規） | alias icon用drawable 35件 | A-10（互いに異なるicon） |
 | `build.gradle` | androidTest source setへ `res.srcDirs = ['tests/organizer-instrumentation/res']` を追加 | alias iconのres解決 |
+| `tests/benchmark-install-targets/`（新規module）+ `settings.gradle` | B1/B6計測用の固定対象アプリ10個（flavor `target01`〜`target10`、各1 activityの最小APK） | 計測protocolの固定対象（§7。Revision 6で追加） |
 | `tools/ci/run-manual-organization-ui-instrumentation.sh` | class listへ1件追加 | 既存laneへの統合（AC-5） |
 | `docs/engineering/ci-test-portfolio.md` | manual-organization-ui lane行のcoverage説明を更新（lane↔surface edge変更なし） | quality-strategyの新test審査規則 |
 | `CONTEXT.md` | Domain languageの4用語を追加 | spec承認時の反映 |
@@ -104,7 +105,7 @@ test-audit審査（AC-5。実装前に確定しPRへ記載する）:
 
 1. 既存test/laneで不足する理由: 既存E2E testはorganizer run契約を検証し、fixture seedingの「同一入力→同一fixture」「保持対象の不変」「予約領域非交差」「identity構成」の契約を検証するtestは存在しない。
 2. oracleの配置: 最も低い実行可能層はinstrumentation（実frameworkの`modelDbController`/reload経路と実PackageManagerのcomponent解決に依存するためJVMでは成立しない）。計測fixtureの再現性という契約自体が端末上のLauncher DB+model+package解決を対象とする。
-3. impact surface: `surface_organizer_ui`（manual-organization-ui laneの既存database-heavy fixture面）。起動条件は既存laneと同一（`full` または `surface_organizer_ui`）。test APKのmanifest/res変更も同path配下でありmappingは不変。
+3. impact surface: `surface_organizer_ui`（manual-organization-ui laneの既存database-heavy fixture面）。起動条件は既存laneと同一（`full` または `surface_organizer_ui`）。test class本体（`tests/organizer-instrumentation/app/lawnchair/organizer/ui/**`）は既存path filterに含まれる。一方、test APKのmanifest（`tests/organizer-instrumentation/AndroidManifest.xml`）・res（`tests/organizer-instrumentation/res/**`）・fixture起動先（`tests/organizer-instrumentation/app/lawnchair/fixture/**`）・対象アプリmodule（`tests/benchmark-install-targets/**`）はmappingを持たないため、それらのsupport file単独変更ではfail-closed規則により全source laneが起動する（Phase 2 reviewで指摘されたとおりの挙動。coverage欠落ではなく全lane起動の保守的倒れ）。
 4. 重複: 既存laneの他class（organizer run E2E、preferences、diagnostics route）と契約が重複しない。
 5. 恒久PR gateへの昇格: 新規gateではなく既存laneへの追加であり、scheduled sweepのみではfixture seam（reload、package解決、予約領域capture）の退行をsurface_organizer_ui変更時に検知できないため、lane本体へ入れる。
 6. map/portfolio更新: `ci_portfolio_map.yml`はedge不変のため変更なし。`ci-test-portfolio.md`のlane行を同じPRで更新する。
@@ -122,6 +123,7 @@ test-audit審査（AC-5。実装前に確定しPRへ記載する）:
 - [x] Issue・付録草案・関連正本の確認（AGENTS.md必読順）
 - [x] Phase 1 review（ChatGPT）の指摘対応（Revision 2。Conditions 1〜4 → spec/plan修正・コード事実の確認）
 - [x] Phase 1 re-review（ChatGPT）の指摘対応（Revision 3。fixture geometry・QSB状態・B1配置先の確定。`LauncherLayoutAdapter` 158-168行 / `InvariantDeviceProfile.java:982-984` / `WorkspaceItemSpaceFinder.java:55-66` を実コードで確認）
+- [x] Phase 2 review（ChatGPT）の指摘対応（Revision 6。seeder write境界をfixture-owned graphへ修正+hotseat folder保持test追加、B1/B6の固定対象アプリmoduleとinstall/reset/計時protocolを§7へ明記、identity数35種へ統一、clean checkoutでのevidence再実行）
 - [x] Phase 1 再review（ChatGPT）のクリア（Approved。head `4259fc362f`）
 - [x] spec statusを `accepted` へ更新（再review承認後）
 - [x] Phase 2: 定義文書の作成（適合化A-1〜A-13）

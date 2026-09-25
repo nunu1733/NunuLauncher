@@ -1,0 +1,31 @@
+// Issue #441: fixed install targets for the B1/B6 benchmark trials. Ten
+// flavors produce ten tiny, deterministic APKs so a trial can reinstall the
+// exact same packages (installed with INSTALL_REASON_USER through
+// `pm install-create --install-reason 4`, see docs/engineering/
+// editing-burden-benchmark.md §7). Measurement tooling only; not part of the
+// product build.
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'app.lawnchair.benchmark.target'
+
+    buildFeatures {
+        resValues true
+    }
+
+    flavorDimensions 'target'
+    productFlavors {
+        target01 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target01'; resValue 'string', 'app_name', 'Benchmark Target 01' }
+        target02 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target02'; resValue 'string', 'app_name', 'Benchmark Target 02' }
+        target03 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target03'; resValue 'string', 'app_name', 'Benchmark Target 03' }
+        target04 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target04'; resValue 'string', 'app_name', 'Benchmark Target 04' }
+        target05 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target05'; resValue 'string', 'app_name', 'Benchmark Target 05' }
+        target06 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target06'; resValue 'string', 'app_name', 'Benchmark Target 06' }
+        target07 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target07'; resValue 'string', 'app_name', 'Benchmark Target 07' }
+        target08 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target08'; resValue 'string', 'app_name', 'Benchmark Target 08' }
+        target09 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target09'; resValue 'string', 'app_name', 'Benchmark Target 09' }
+        target10 { dimension 'target'; applicationId 'app.lawnchair.benchmark.target10'; resValue 'string', 'app_name', 'Benchmark Target 10' }
+    }
+}

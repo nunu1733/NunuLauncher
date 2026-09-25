@@ -95,3 +95,7 @@ include ':baseline-profile'
 include ':androidx-lib'
 include ':flags'
 include ':wmshell'
+
+// Issue #441: fixed install targets for the editing-burden benchmark trials.
+include ':tests:benchmark-install-targets'
+project(':tests:benchmark-install-targets').projectDir = new File(rootDir, 'tests/benchmark-install-targets')

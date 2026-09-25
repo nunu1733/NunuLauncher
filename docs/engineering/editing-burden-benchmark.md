@@ -109,7 +109,7 @@ forkは日常編集の振る舞いを変えていない（メモ §2「日常編
 | フォルダ | B1の指定フォルダ「Benchmark」（ページ0の最初の空きセル、seed済みアイテム2個「Fixture 01」「Fixture 35」を含む。launcher loaderは1項目フォルダを自動でiconへ展開するため、2項目以上が安定条件） |
 | 重複 | 同一起動先の2組（「Fixture 02」×2 = ページ0、「Fixture 03」×2 = ページ1）。重複の判定キーは component + profile の一致（§3.5） |
 | dock | 既定のまま（測定対象外。seedingで変更しない） |
-| 起動先identity | 通常アイコンは互いに異なる起動先（34種のactivity-alias `F01`〜`F34`。component・label・iconがすべて異なる）。instrumentation test APK（`tests/organizer-instrumentation/`）が供給し、実在第三者packageに依存しない。製品manifestは変更しない |
+| 起動先identity | 通常アイコンは互いに異なる起動先（35種のactivity-alias `F01`〜`F35`。component・label・iconがすべて異なる）。instrumentation test APK（`tests/organizer-instrumentation/`）が供給し、実在第三者packageに依存しない。製品manifestは変更しない |
 
 identity→roleの対応（計測対象の指定に使う。正本は seeding instrumentation の入力表 `FIXTURE_LAYOUT` で、本表と一致することをtestが検証する）:
 
@@ -169,6 +169,20 @@ adb shell am instrument -w \
 fixture適用後にhomeを開くと、organizerのonboarding提案（「Organize your Home screen?」）が表示されることがある。提案は適用しない（「LATER」で閉じる。提案は確認するまで何も変更しない）。
 
 - 各課題の開始前にfixtureを再構築する（上記 `am instrument` を再実行する）。操作経路は§3に固定し、逸脱があれば記録する。計測終了後は `adb uninstall app.lawnchair.debug.test`（必要ならapp本体も）でfixture起動先を撤去する。
+- **端末の前提状態**: Lawnchairが既定ランチャーであること（新規installのアイコン自動追加は既定ランチャーへの配線を含むため）。QSB/Smartspace有効、グリッド4列×5行、ロック配置なし。
+- **B1/B6の計測対象アプリ（固定）**: `tests/benchmark-install-targets/` の固定APKを使う。B1は `target01`（1個）、B6は `target01`〜`target10`（10個）。buildは `./gradlew :tests:benchmark-install-targets:assembleDebug`（1回）。
+- **install経路（INSTALL_REASON_USER 固定）**: `adb install` はinstall理由が不明（`INSTALL_REASON_UNKNOWN`）のため自動追加が発生しない（`SessionCommitReceiver.java:81` は `INSTALL_REASON_USER` のみ受入）。必ず次のsession installを使う（`4` = user request = `INSTALL_REASON_USER`。実機検証済み、2026-09-26、`docs/assessment/441-fixture-seeding-evidence.md` §3）:
+
+```bash
+adb push <target apk> /data/local/tmp/bench-target.apk
+SESSION=$(adb shell pm install-create --install-reason 4 | grep -oE '[0-9]+')
+adb shell pm install-write -S $(stat -f%z <target apk>) $SESSION base /data/local/tmp/bench-target.apk
+adb shell pm install-commit $SESSION
+```
+
+  install後、新規アイコンがworkspaceへ出現するのを待つ（broadcast配信の遅延で数十秒かかることがある。Lawnchairが既定ランチャーでないと出現しない）。B6は `target01`〜`target10` を順にinstallする。
+- **試行間のreset**: 前試行の対象アプリを `adb uninstall app.lawnchair.benchmark.targetNN` で削除し、fixtureを再seedしてから次試行を開始する。これにより各試行は「対象アプリ未install + fixtureホーム」の同一開始状態へ戻る。
+- **計時の開始・終了点**: 録画計測とし、B1/B6の計時は「新規アプリのアイコンがworkspaceへ出現したフレーム」を開始、「終了状態の成立を確認したフレーム」を終了とする。install自体の所要（download・broadcast待ち等の環境依存時間）は編集負担ではないため含めない（§6のB1内訳にinstall操作は含まれない）。B1の重み内訳は「2ページ目へswipe×1 + 長押し + 1ページ跨ぎdrag」であり、アイコン出現後の操作のみを対象とする。
 - **回数**: 各課題3回実行し、重み合計は全試行で報告、実測時間は中央値を報告する。ばらつきが大きい場合（max/min > 1.5）は追加2回を実行する。n=3は「手順の確認と目標設定の根拠」であり、統計的判定（performance-budgets §6.3のn=100/300）は求めない。重みは操作回数から決定的に算出されるため、試行間で一致するはずであり、一致しない場合は手順の逸脱として記録する。
 - **記録形式**: `docs/assessment/editing-burden-baseline.md` を1文書作り、課題ごとに「試行 / 重み合計 / 実測時間 / 逸脱・備考（ページ切り替えの実効待ち、undoの4秒窓の成否を含む）」の表 + 端末・build・commit SHA・計測日時（performance-budgets §6.1のmetadata規律を準用）を記録する。evidence画像は `docs/assessment/` の既存慣行に従う。
 - **B6の判定基準**: 「全ての新規アプリのアイコンが、測定者が意図した配置（指定フォルダまたは明示的に置いた位置）にあり、意図しない空きセルの散在が残っていない」ことを、測定者判断により終了時に1枚のscreenshotで確認する（機械判定はしない。判定の証跡としてscreenshotを記録に添付する）。
@@ -178,3 +192,4 @@ fixture適用後にhomeを開くと、organizerのonboarding提案（「Organize
 
 - 2026-09-26: Issue #441の成果物として新設。付録草案（2026-09-24承認）を正本へ移す際に、grid表記をreference環境の実値「4列×5行」へ正規化し（草案の「5列×4行」は列/行の取り違え。`lawnchair/res/xml/device_profiles.xml` の既定phone grid `4_by_5` と performance-budgets §2.1 に一致）、QSB有効時の新規アプリ配置規則（`WorkspaceItemSpaceFinder.java:55-66` の1ページ目除外）に合わせてB1の操作経路とbaseline概算（8）を修正した。fixture identity（35種のactivity-alias、重複2組限定）と決定的配置規則、seedingの永続mode手順は [spec 441](../../specs/441-editing-burden-benchmark/spec.md) で確定した。
 - 2026-09-26: 実装検証（`docs/assessment/441-fixture-seeding-evidence.md`）で、launcher loaderが1項目フォルダを自動でiconへ展開する挙動（`LAUNCHER_FOLDER_CONVERTED_TO_ICON`）を確認したため、指定フォルダのseed内容を2個（Fixture 01・35）へ変更した。
+- 2026-09-26: Phase 2 reviewの指摘を受け、§7へB1/B6の固定対象アプリ（`tests/benchmark-install-targets/` 10 flavor）・install経路（`pm install-create --install-reason 4` = INSTALL_REASON_USER。`adb install` は理由が不明のため自動追加が起きないことを実機で確認）・試行間reset・計時の開始/終了点を明記し、§5のidentity数を35種へ統一した。

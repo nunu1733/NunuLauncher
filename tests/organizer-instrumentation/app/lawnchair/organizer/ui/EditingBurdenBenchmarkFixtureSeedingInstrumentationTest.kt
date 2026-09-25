@@ -41,9 +41,12 @@ import java.util.concurrent.TimeUnit
  *
  * - Seeding the same fixture input table twice yields the identical
  *   normalized workspace projection (same input -> same fixture).
- * - The fixture graph replacement preserves hotseat roots and their
- *   descendants plus rows overlapping the captured reserved workspace
- *   regions, and every fixture span stays disjoint from the reservations
+ * - The replacement writes only the fixture-owned graph (desktop roots and
+ *   their descendants, deleted descendants-first) plus the fixture rows
+ *   themselves; hotseat roots and their descendants, rows overlapping the
+ *   captured reserved workspace regions, and any other row (e.g. an unknown
+ *   container) are preserved untouched.
+ * - Every fixture span stays disjoint from the reservations
  *   (`ReservationOverlapAcceptance`, the single production acceptance
  *   predicate, is false for every fixture row).
  * - The identity composition matches the accepted spec: distinct launch
@@ -63,6 +66,8 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
     private var originalSmartspaceEnabled: Boolean = false
     private var originalRows: List<ContentValues> = emptyList()
     private var initialReservations: List<ReservedWorkspaceRegion> = emptyList()
+    private var capturedColumns: Int = 0
+    private var capturedRows: Int = 0
     private var reloadLatch: CountDownLatch? = null
     private val modelCallbacks = object : BgDataModel.Callbacks {
         override fun finishBindingItems(pagesBoundFirst: IntSet) {
@@ -113,28 +118,22 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
 
     @Test
     fun fixtureSeedsIdenticallyFromSameInputAndPreservesDockAndReservations() {
-        val capture = LauncherLayoutAdapter(
-            context,
-            launcher.model.modelDbController,
-            launcher.model,
-        ).captureCurrent(CaptureId("editing-burden-fixture-initial"))
-        initialReservations = capture.layoutState.reservedWorkspaceRegions
-        val reservations = initialReservations
-        val columns = capture.layoutState.deviceCapabilities.columns
-        val rows = capture.layoutState.deviceCapabilities.rows
+        initialReservations = captureReservations()
+        val columns = capturedColumns
+        val rows = capturedRows
 
-        seedFixture(columns, rows, reservations)
+        val firstSeed = seedFixture(columns, rows, initialReservations)
         launcher.model.modelDbController.clearEmptyDbFlag()
         reloadAndWait()
         val preservedBefore = preservedRows()
-        assertFixtureContract(columns, rows, reservations)
-        assertReservationDisjoint(reservations)
-        val first = normalizedProjection()
+        assertFixtureContract(columns, rows, firstSeed)
+        assertReservationDisjoint(firstSeed.fixtureOwnedIds)
+        val first = normalizedProjection(firstSeed.fixtureOwnedIds)
 
-        seedFixture(columns, rows, reservations)
+        val secondSeed = seedFixture(columns, rows, initialReservations)
         launcher.model.modelDbController.clearEmptyDbFlag()
         reloadAndWait()
-        val second = normalizedProjection()
+        val second = normalizedProjection(secondSeed.fixtureOwnedIds)
 
         assertEquals(
             "Same fixture input must produce the identical normalized fixture",
@@ -146,6 +145,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
             preservedBefore,
             preservedRows(),
         )
+        assertUntouchedRowsUnchanged(secondSeed)
 
         if (!persistMode()) {
             restoreFavorites(originalRows)
@@ -158,29 +158,92 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         }
     }
 
-    /** Data flow step 2 (plan A-11): replace the fixture graph deterministically. */
+    /**
+     * AC-3's preservation contract must hold non-vacuously: a pre-existing
+     * hotseat folder (with descendants) is not part of the fixture graph and
+     * must survive the seeding untouched, while the fixture contract still
+     * holds.
+     */
+    @Test
+    fun seedingPreservesPreExistingHotseatFolderDescendants() {
+        val db = launcher.model.modelDbController.db
+        val folderId = launcher.model.modelDbController.generateNewItemId()
+        db.beginTransaction()
+        try {
+            insertHotseatFolderRow(folderId, slot = 1, title = "Dock folder")
+            insertFolderChildRow(alias(1), folderId)
+            insertFolderChildRow(alias(35), folderId)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        launcher.model.modelDbController.clearEmptyDbFlag()
+        reloadAndWait()
+        val dockFolderBefore = rowsById(setOf(folderId.toLong()))
+
+        initialReservations = captureReservations()
+        val columns = capturedColumns
+        val rows = capturedRows
+
+        val seed = seedFixture(columns, rows, initialReservations)
+        launcher.model.modelDbController.clearEmptyDbFlag()
+        reloadAndWait()
+
+        assertEquals(
+            "Hotseat folder and its descendants must be preserved untouched",
+            dockFolderBefore,
+            rowsById(setOf(folderId.toLong())),
+        )
+        assertTrue(
+            "Hotseat folder must not be part of the fixture-owned write set",
+            folderId.toLong() !in seed.fixtureOwnedIds,
+        )
+        assertFixtureContract(columns, rows, seed)
+
+        if (!persistMode()) {
+            restoreFavorites(originalRows)
+            reloadAndWait()
+            assertEquals(
+                "Restore mode must leave no persistent residue",
+                originalRows,
+                snapshotFavorites(),
+            )
+        }
+    }
+
+    /** Data flow step 2 (plan A-11): replace the fixture-owned graph deterministically. */
     private fun seedFixture(
         columns: Int,
         rows: Int,
         reservations: List<ReservedWorkspaceRegion>,
-    ) {
+    ): SeedOutcome {
         val db = launcher.model.modelDbController.db
         val current = snapshotFavorites()
         val preservedIds = preservedIds(current, reservations)
+        // Write boundary (AC-3/A-11): only non-preserved desktop roots and
+        // their descendants are deleted — descendants first, roots after.
+        val rootIds = current
+            .filter {
+                it.getAsInteger(Favorites.CONTAINER) == Favorites.CONTAINER_DESKTOP &&
+                    it.getAsLong(Favorites._ID) !in preservedIds
+            }
+            .mapNotNull { it.getAsLong(Favorites._ID) }
+            .toSet()
+        val descendantIds = collectDescendants(current, rootIds)
+        val untouchedRows = current.filter {
+            val id = it.getAsLong(Favorites._ID)
+            id !in preservedIds && id !in rootIds && id !in descendantIds
+        }
+
+        val insertedIds = mutableSetOf<Long>()
         db.beginTransaction()
         try {
-            current.forEach { row ->
-                val id = requireNotNull(row.getAsLong(Favorites._ID))
-                if (id !in preservedIds) {
-                    db.delete(
-                        Favorites.TABLE_NAME,
-                        "${Favorites._ID}=?",
-                        arrayOf(id.toString()),
-                    )
-                }
+            (descendantIds + rootIds).forEach { id ->
+                db.delete(Favorites.TABLE_NAME, "${Favorites._ID}=?", arrayOf(id.toString()))
             }
             val occupied = occupiedCells(reservations, current, preservedIds)
             val folderId = launcher.model.modelDbController.generateNewItemId()
+            insertedIds.add(folderId.toLong())
             FIXTURE_LAYOUT.forEachIndexed { screen, screenItems ->
                 screenItems.forEach { item ->
                     val cell = nextFreeCell(screen, columns, rows, occupied)
@@ -188,7 +251,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
                     if (item == FIXTURE_FOLDER) {
                         insertFolderRow(folderId, screen, cell.x, cell.y)
                     } else {
-                        insertAppRow(alias(item.aliasIndex), screen, cell.x, cell.y)
+                        insertedIds.add(insertAppRow(alias(item.aliasIndex), screen, cell.x, cell.y))
                     }
                     occupy(occupied, screen, cell.x, cell.y, 1, 1)
                 }
@@ -197,26 +260,28 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
             // The loader converts a 1-item folder to a plain icon
             // (LAUNCHER_FOLDER_CONVERTED_TO_ICON), so the fixture folder
             // always holds two seeded items to stay stable.
-            insertFolderChildRow(alias(1), folderId)
-            insertFolderChildRow(alias(35), folderId)
+            insertedIds.add(insertFolderChildRow(alias(1), folderId))
+            insertedIds.add(insertFolderChildRow(alias(35), folderId))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
+        return SeedOutcome(insertedIds, untouchedRows)
     }
 
     /** Issue #441 AC-4 + A-8/A-10: structure, identity, and capacity contract. */
     private fun assertFixtureContract(
         columns: Int,
         rows: Int,
-        reservations: List<ReservedWorkspaceRegion>,
+        seed: SeedOutcome,
     ) {
         val current = snapshotFavorites()
-        val desktopApps = current.filter {
+        val fixtureRows = current.filter { it.getAsLong(Favorites._ID) in seed.fixtureOwnedIds }
+        val desktopApps = fixtureRows.filter {
             it.getAsInteger(Favorites.ITEM_TYPE) == Favorites.ITEM_TYPE_APPLICATION &&
                 it.getAsInteger(Favorites.CONTAINER) == Favorites.CONTAINER_DESKTOP
         }
-        val folders = current.filter {
+        val folders = fixtureRows.filter {
             it.getAsInteger(Favorites.ITEM_TYPE) == Favorites.ITEM_TYPE_FOLDER
         }
         val folder = folders.single()
@@ -261,7 +326,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
 
         // Page composition (A-8): page 0 = 15 icons + folder, page 1 = 12, page 2 = 8.
         fun pageOf(row: ContentValues): Int = row.getAsInteger(Favorites.SCREEN)
-        val page0Roots = current.filter {
+        val page0Roots = fixtureRows.filter {
             it.getAsInteger(Favorites.CONTAINER) == Favorites.CONTAINER_DESKTOP && pageOf(it) == 0
         }
         val page1Roots = desktopApps.filter { pageOf(it) == 1 }
@@ -272,23 +337,32 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         if (columns == REFERENCE_GRID_COLUMNS && rows == REFERENCE_GRID_ROWS) {
             assertEquals(
                 "Page 0 must be exactly full on the reference 4x5 grid (QSB reserves 4 cells)",
-                columns * rows - reservedCellCount(reservations, 0),
+                columns * rows - reservedCellCount(initialReservations, 0),
                 page0Roots.size,
             )
         }
 
         // B1 precondition (A-13): the first placement-candidate screen
-        // (page 1) keeps at least one free cell for a newly installed app.
-        val page1Occupied = page1Roots.sumOf { spanCells(it) }
+        // (page 1) keeps at least one free cell for a newly installed app,
+        // counting the occupancy a new install would actually scan.
+        val page1Occupied = current
+            .filter {
+                it.getAsInteger(Favorites.CONTAINER) == Favorites.CONTAINER_DESKTOP &&
+                    pageOf(it) == 1
+            }
+            .sumOf { spanCells(it) }
         assertTrue(
             "Page 1 must keep a free cell for the B1 newly-installed app",
             columns * rows - page1Occupied >= 1,
         )
     }
 
-    private fun assertReservationDisjoint(reservations: List<ReservedWorkspaceRegion>) {
+    private fun assertReservationDisjoint(fixtureOwnedIds: Set<Long>) {
         snapshotFavorites()
-            .filter { it.getAsInteger(Favorites.CONTAINER) == Favorites.CONTAINER_DESKTOP }
+            .filter {
+                it.getAsInteger(Favorites.CONTAINER) == Favorites.CONTAINER_DESKTOP &&
+                    it.getAsLong(Favorites._ID) in fixtureOwnedIds
+            }
             .forEach { row ->
                 val overlaps = ReservationOverlapAcceptance.overlaps(
                     PageId(row.getAsInteger(Favorites.SCREEN).toString()),
@@ -297,7 +371,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
                         row.getAsInteger(Favorites.SPANX) ?: 1,
                         row.getAsInteger(Favorites.SPANY) ?: 1,
                     ),
-                    reservations,
+                    initialReservations,
                 )
                 assertTrue(
                     "Fixture row must not overlap a reserved workspace region",
@@ -306,19 +380,33 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
             }
     }
 
-    /** Normalized placement projection (plan data flow step 3). */
-    private fun normalizedProjection(): List<String> {
-        val rows = snapshotFavorites()
+    private fun assertUntouchedRowsUnchanged(seed: SeedOutcome) {
+        val untouchedIds = seed.untouchedRows.mapNotNull { it.getAsLong(Favorites._ID) }.toSet()
+        val currentUntouched = snapshotFavorites().filter {
+            it.getAsLong(Favorites._ID) in untouchedIds
+        }
+        assertEquals(
+            "Rows outside the fixture graph and preserved set must be unchanged",
+            seed.untouchedRows,
+            currentUntouched,
+        )
+    }
+
+    /** Normalized placement projection of the fixture rows (plan data flow step 3). */
+    private fun normalizedProjection(fixtureOwnedIds: Set<Long>): List<String> {
+        val rows = snapshotFavorites().filter {
+            it.getAsLong(Favorites._ID) in fixtureOwnedIds
+        }
         val folderIds = rows
             .filter { it.getAsInteger(Favorites.ITEM_TYPE) == Favorites.ITEM_TYPE_FOLDER }
             .mapNotNull { it.getAsLong(Favorites._ID) }
             .toSet()
-        return rows.mapNotNull { row ->
+        return rows.map { row ->
             val container = row.getAsLong(Favorites.CONTAINER)
             val containerKey = when {
                 container == Favorites.CONTAINER_DESKTOP.toLong() -> "desktop"
                 container in folderIds -> "fixture-folder"
-                else -> return@mapNotNull null // preserved hotseat rows are out of scope
+                else -> "other"
             }
             listOf(
                 containerKey,
@@ -371,10 +459,35 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         return preserved
     }
 
+    private fun collectDescendants(
+        rows: List<ContentValues>,
+        rootIds: Set<Long>,
+    ): Set<Long> {
+        val descendants = mutableSetOf<Long>()
+        var grew = true
+        while (grew) {
+            grew = false
+            rows.forEach { row ->
+                val id = row.getAsLong(Favorites._ID) ?: return@forEach
+                val container = row.getAsLong(Favorites.CONTAINER) ?: return@forEach
+                if (id !in descendants && id !in rootIds &&
+                    (container in descendants || container in rootIds)
+                ) {
+                    descendants.add(id)
+                    grew = true
+                }
+            }
+        }
+        return descendants
+    }
+
     private fun preservedRows(): List<ContentValues> {
         val ids = preservedIds(originalRows, initialReservations)
         return snapshotFavorites().filter { it.getAsLong(Favorites._ID) in ids }
     }
+
+    private fun rowsById(ids: Set<Long>): List<ContentValues> =
+        snapshotFavorites().filter { it.getAsLong(Favorites._ID) in ids }
 
     private fun occupiedCells(
         reservations: List<ReservedWorkspaceRegion>,
@@ -453,16 +566,17 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         return Alias(component, "Fixture %02d".format(index))
     }
 
-    private fun insertAppRow(alias: Alias, screen: Int, cellX: Int, cellY: Int) {
+    private fun insertAppRow(alias: Alias, screen: Int, cellX: Int, cellY: Int): Long {
         val db = launcher.model.modelDbController.db
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
             .setComponent(alias.component)
+        val id = launcher.model.modelDbController.generateNewItemId()
         db.insertOrThrow(
             Favorites.TABLE_NAME,
             null,
             ContentValues().apply {
-                put(Favorites._ID, launcher.model.modelDbController.generateNewItemId())
+                put(Favorites._ID, id)
                 put(Favorites.TITLE, alias.label)
                 put(Favorites.INTENT, intent.toUri(0))
                 put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
@@ -485,6 +599,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
                 put(Favorites.ORGANIZER_LOCK_STATE, 0)
             },
         )
+        return id.toLong()
     }
 
     private fun insertFolderRow(folderId: Int, screen: Int, cellX: Int, cellY: Int) {
@@ -517,16 +632,47 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         )
     }
 
-    private fun insertFolderChildRow(alias: Alias, folderId: Int) {
+    private fun insertHotseatFolderRow(folderId: Int, slot: Int, title: String) {
         val db = launcher.model.modelDbController.db
-        val intent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setComponent(alias.component)
         db.insertOrThrow(
             Favorites.TABLE_NAME,
             null,
             ContentValues().apply {
-                put(Favorites._ID, launcher.model.modelDbController.generateNewItemId())
+                put(Favorites._ID, folderId)
+                put(Favorites.TITLE, title)
+                put(Favorites.CONTAINER, Favorites.CONTAINER_HOTSEAT)
+                put(Favorites.SCREEN, slot)
+                put(Favorites.CELLX, slot)
+                put(Favorites.CELLY, 0)
+                put(Favorites.SPANX, 1)
+                put(Favorites.SPANY, 1)
+                put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_FOLDER)
+                put(Favorites.APPWIDGET_ID, -1)
+                put(Favorites.MODIFIED, 0L)
+                put(Favorites.RESTORED, 0)
+                put(
+                    Favorites.PROFILE_ID,
+                    UserCache.INSTANCE.get(context).getSerialNumberForUser(Process.myUserHandle()),
+                )
+                put(Favorites.RANK, 0)
+                put(Favorites.OPTIONS, 0)
+                put(Favorites.APPWIDGET_SOURCE, -1)
+                put(Favorites.ORGANIZER_LOCK_STATE, 0)
+            },
+        )
+    }
+
+    private fun insertFolderChildRow(alias: Alias, folderId: Int): Long {
+        val db = launcher.model.modelDbController.db
+        val intent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setComponent(alias.component)
+        val id = launcher.model.modelDbController.generateNewItemId()
+        db.insertOrThrow(
+            Favorites.TABLE_NAME,
+            null,
+            ContentValues().apply {
+                put(Favorites._ID, id)
                 put(Favorites.TITLE, alias.label)
                 put(Favorites.INTENT, intent.toUri(0))
                 put(Favorites.CONTAINER, folderId)
@@ -549,6 +695,18 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
                 put(Favorites.ORGANIZER_LOCK_STATE, 0)
             },
         )
+        return id.toLong()
+    }
+
+    private fun captureReservations(): List<ReservedWorkspaceRegion> {
+        val capture = LauncherLayoutAdapter(
+            context,
+            launcher.model.modelDbController,
+            launcher.model,
+        ).captureCurrent(CaptureId("editing-burden-fixture-seeding"))
+        capturedColumns = capture.layoutState.deviceCapabilities.columns
+        capturedRows = capture.layoutState.deviceCapabilities.rows
+        return capture.layoutState.reservedWorkspaceRegions
     }
 
     private fun snapshotFavorites(): List<ContentValues> {
@@ -623,6 +781,11 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
 
     private data class Alias(val component: ComponentName, val label: String)
 
+    private data class SeedOutcome(
+        val fixtureOwnedIds: Set<Long>,
+        val untouchedRows: List<ContentValues>,
+    )
+
     private companion object {
         const val FOLDER_TITLE = "Benchmark"
         const val REFERENCE_GRID_COLUMNS = 4
@@ -630,9 +793,9 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         val FIXTURE_FOLDER = FixtureItem("folder", 0)
 
         // Issue #441 A-8/A-10 fixture input table. The alias indices follow
-        // the accepted identity table: F01 folder content, F02/F03 duplicate
-        // pairs, F04-F08 B2 move targets, F09-F14 B4 remove targets,
-        // F15-F18 B3 folder targets, F19-F34 regular icons.
+        // the accepted identity table: F01/F35 folder content, F02/F03
+        // duplicate pairs, F04-F08 B2 move targets, F09-F14 B4 remove
+        // targets, F15-F18 B3 folder targets, F19-F34 regular icons.
         val FIXTURE_LAYOUT: List<List<FixtureItem>> = listOf(
             // Page 0: 15 icons + designated folder (16 roots on the 4x5 grid).
             listOf(

@@ -8,12 +8,14 @@
 
 ## 1. Restore mode（AC-2/AC-3/AC-4のoracle実行）
 
+2 test（fixture同一性契約 + 既存hotseatフォルダとその子孫の非自明保持）を実行する。
+
 ```bash
 ANDROID_SERIAL=emulator-5554 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.EditingBurdenBenchmarkFixtureSeedingInstrumentationTest
 ```
 
-Result: **BUILD SUCCESSFUL — 1 test, PASS**（`fixtureSeedsIdenticallyFromSameInputAndPreservesDockAndReservations`）。
+Result: **BUILD SUCCESSFUL — 2 tests, PASS**（`fixtureSeedsIdenticallyFromSameInputAndPreservesDockAndReservations`、`seedingPreservesPreExistingHotseatFolderDescendants`）。実行SHA等の詳細は§5。
 
 検証内容（spec 441 AC-2〜4に対応）:
 
@@ -50,6 +52,17 @@ persist mode適用後のホーム（実物。`connectedLawnWithQuickstepGithubDe
 - **organizerのonboarding提案**: fixture適用後のhome起動時に「Organize your Home screen?」のonboarding提案（T-19）が表示されることがある。提案は確認まで何も変更しないため、「LATER」で閉じて計測する（定義文書§7に記載）。
 - **汚染された事前状態**: 不正なfolder参照（存在しないfolderへのcontainer）が残るDBでは、上流のsnapshot処理が意図的にcrashする（`QuickstepModelDelegate.getContainer`、b/173838775対策のupstream設計）。本fixtureはクリーンな状態を前提とし、seeding自体はそのような行を生成しない（本testが同一性・保持を検証する）。
 
-## 5. 残置事項
+## 3a. B1 install protocol実機検証（Phase 2 review対応、2026-09-26）
+
+B1/B6のinstall経路と自動配置を同emulatorで検証した:
+
+- `adb install`（reason 0 = `INSTALL_REASON_UNKNOWN`）では `SessionCommitReceiver` が「Removing PromiseIcon ... install reason: 0」を出し自動追加が**起きない**ことを確認（logcat）。
+- `pm install-create --install-reason 4`（4 = user request = `INSTALL_REASON_USER`）→ `install-write` → `install-commit` のsession installでは、「Adding package name to install queue」→「AddWorkspaceItemsTask: Adding item info to workspace ... screen=1 cell(0,0)」と続き、**fixtureの2ページ目の最初の空きcell（screen=1, cell(0,3)）に新規アイコン「Benchmark Target 01」が自動配置された**（install約8秒後。fixtureの2ページ目のうち3行が埋まっている状態での最初の空きcell）。
+- 検証に使った固定対象アプリは `tests/benchmark-install-targets/`（flavor `target01`。10 flavorでB6の10個を賄う）。
+- Lawnchairが既定ランチャーでない場合、新規アイコンは出現しない（`pm clear` 後に既定homeがNexusLauncherへ戻った状態で再現し、`cmd package set-home-activity` でLawnchairへ戻すと解消）。§7の端末前提状態に記載。
+
+evidence: `b1-target01-page1.png`（2ページ目のrow 3に「Benchmark ...」アイコンが見える）。
+
+## 4. 残置事項
 
 - AC-7/AC-8: 実機Pixel 9aでのbaseline計測（3試行/課題、中央値、max/min > 1.5で追加2試行）と目標確定+NFR-014確定。保守者が定義文書§7の手順で実施する（後続PRが `Closes #441` となる）。
