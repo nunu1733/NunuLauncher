@@ -417,13 +417,25 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   `MonitoringInstrumentation: Dying now...` から、test 本体完了後の test activity destroy 中に
   Compose SlotTable が不整合になり、その例外が process を死亡させて instrumentation run を
   中断した。
-- このsignatureは元の #418 Index4/focus gate/`SnapshotStateObserver`、#304 per-boot
-  occluder/SystemUI ANR、PR #437 run1 の `removeObserver must be called on the main thread`、
-  attempt 1 の `OrganizerDiagnosticsRouteInstrumentationTest` 5秒 `ComposeTimeoutException`、
-  #352 receipt-test race のいずれとも一致しない新規 process-fatal signatureである。
-  run1 の off-main publication 証拠との関連は仮説として考えられるが、本 crash stack 自体に
-  worker thread の composition access は含まれず、SlotTable 破損の発生原因を本 artifact から
-  確定することはできない。#304 の occluder 仮説へは統合しない。
+- このsignatureは既知の SlotWriter/Activity-destroy process-crash family の再発である。
+  同一familyの初出記録は #418 本文 Evidence の run
+  [35828114497](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497) attempt 2
+  （job [107079022357](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497/job/107079022357)、
+  2026-09-23、head `16688d1b5d4a6d8edc9f965ba054804e65f83cba`）で、
+  `OrganizerHubPreferencesInstrumentationTest.restoreSuccessRepresentsTheRemainingPointAfterHubReturn`
+  の `ArrayIndexOutOfBoundsException: length=320; index=-1` と、同一の
+  `SlotWriter.moveSlotGapTo(SlotTable.kt:4351)` → `removeSlots` → `removeGroup` →
+  `ComposerKt.removeCurrentGroup` → `CompositionImpl.dispose` → Activity destroy →
+  `MonitoringInstrumentation.callActivityOnDestroy` の process death 経路が記録されている。
+  本件との差は負の index 値（-1 と -56）と帰属 testcase のみであり、family 判別は
+  先頭 frame・stack 経路・process death lifecycle で行い、index 値と testcase 帰属は
+  instance parameter として扱う。SlotTable 破損の発生原因は本 crash stack からは
+  確定できない（worker thread の composition access は stack に含まれない）。
+  #304 の occluder 仮説へは統合しない。このfamilyは original #418 Index4/focus
+  gate/`SnapshotStateObserver`、#304 per-boot occluder/SystemUI ANR、PR #437 run1 の
+  `removeObserver must be called on the main thread`、attempt 1 の
+  `OrganizerDiagnosticsRouteInstrumentationTest` 5秒 `ComposeTimeoutException`、
+  #352 receipt-test race とは別系統である。
 - crash 後の live evidence artifact
   [10844021830](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10844021830)
   は 02:38:18--02:38:34 UTC に capture された。`emulator-5554` は `device` として生存し、
@@ -439,7 +451,7 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 - attempt 2 の失敗は original #418 signature の再発ではないため、#304 AC-3 の gate 条件
   （同一 failure boot の live artifact 解析）は引き続き未発火である。attempt 2 は failure かつ
   failed-job rerun であるため、unchanged head での full-workflow 連続成功回数には数えない
-  （0 のまま）。追加 rerun、新規 run、本新signatureへの対処は次の Owner gate を待つ。
+  （0 のまま）。追加 rerun、新規 run、本 crash family 再発への対処は次の Owner gate を待つ。
 
 ## 残存リスク受容の判断基準（root cause 未確定のまま完了する場合）
 

@@ -293,10 +293,14 @@ blocking なものはない。調査中に解決すべき問い:
   の`Caused by: java.lang.ArrayIndexOutOfBoundsException: length=320; index=-56`が
   `SlotWriter.moveSlotGapTo` → `CompositionImpl.dispose`（Activity destroy時のlifecycle
   backward pass経由）で発生した。XMLは`ManualOrganizationPreferencesInstrumentationTest
-  .unresolvedDurableStatusRestoresFocusToStartAction`に帰属させた。既知の6系統
-  （#418 Index4/focus/SnapshotStateObserver、#304 occluder/SystemUI ANR、run1 removeObserver
-  off-main、attempt 1 ComposeTimeout、#352 receipt race）のいずれとも一致しない新規
-  process-fatal signatureとして記録し、SlotTable破損の発生原因は本artifactからは確定しない。
+  .unresolvedDurableStatusRestoresFocusToStartAction`に帰属させた。このsignatureは
+  #418本文に記録済みの run
+  [35828114497](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497) attempt 2
+  （2026-09-23、head `16688d1b5d4a6d8edc9f965ba054804e65f83cba`）と同一の
+  SlotWriter/Activity-destroy process-crash family（`SlotWriter.moveSlotGapTo(SlotTable.kt:4351)`
+  先頭frame、nested subcomposition dispose経由、instrumentation process死亡）の再発であり、
+  差は負のindex値（-1 と -56）と帰属testcaseのみである。SlotTable破損の発生原因は
+  本artifactからは確定しない。
   crash後のlive artifact
   [10844021830](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10844021830)
   はemulator生存中に17/18 queryを取得し（device-pressureのみtimeout）、SystemUI ANR・foreign
