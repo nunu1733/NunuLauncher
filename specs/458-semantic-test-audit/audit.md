@@ -190,6 +190,38 @@ routing は意図的で契約が文書化されている。`RecoveryManifestChun
 
 ### 3.1 Group R（Route 提案）: standing regression かつ実 framework 契約
 
+#### focused-audit evidence fields（全 Route 候補に共通する記録）
+
+skill の focused-audit evidence のうち、candidate ごとに必要な 3 項目を次の表に集約する
+（個別記述と併読）。
+
+| ID | baseline result（baseline `7508bbf0d5`） | CI classification before → after | removable production/test-support |
+|---|---|---|---|
+| R-1 | CI 未実行（unrouted）。focused local run: §8.6 V4 で実施 | Unrouted/Local-only → Conditional（surface_backup_restore, restore-capture lane） | なし（seam 追加・削除なし） |
+| R-2 | CI 未実行。focused local run（§8.6）で 1/21 決定失敗 → category 6 調査に分離、routing は後続 Issue | Unrouted/Local-only → 変更なし（routing 分離） | なし |
+| R-2a | CI 未実行。focused local run: §8.6 V3 で 3/3 PASS | Unrouted（path mapping は over-trigger のみ） → Conditional（surface_db_schema, db-migration lane） | なし |
+| R-4 | CI 未実行。focused local run: §8.6 V3 で PASS | Unrouted/Local-only → Conditional（surface_db_schema, db-migration lane） | なし |
+| R-5 | CI 未実行。focused local run: §8.6 V3 で 1/2 失敗（category 3、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_db_schema, db-migration lane） | なし |
+| R-6〜R-9 | CI 未実行。focused local run: §8.6 V1/V2 で PASS | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
+| R-10 | CI 未実行。focused local run: §8.6 V1/V2 で 4/4 失敗（category 2、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
+| R-11 | CI 未実行。focused local run: §8.6 V1/V2 で 2/3 失敗（category 3、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
+| R-12 | CI 未実行。focused local run: §8.6 V1/V2 で PASS | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
+| R-13 | CI 未実行。focused local run: §8.6 V5（pixel_6 AVD）で PASS。pixel_7_pro AVD は環境停止（§8.6、CI 同一条件は Phase 2 の GH Actions run で確認） | Unrouted/Local-only → Conditional（surface_organizer_ui, category-override lane） | なし |
+| R-14 | CI 未実行。focused local run: §8.6 V6 で PASS | Unrouted/Local-only → Conditional（surface_organizer_ui, manual-organization-ui lane） | なし |
+| R-15 | CI 未実行（Move boundary へ変更、下記参照）。置換 JVM test は Phase 2 で新規作成し、local unit test で初回 baseline を取得 | Unrouted/Local-only → Permanent（`organizer-unit-tests`、surface_jvm） | instrumentation class 1 file を削除（JVM test が置換） |
+| R-16 | CI 未実行。focused local run: §8.6 V3 で実施（lane 変更、下記参照） | Unrouted/Local-only → Conditional（surface_db_schema, db-migration lane） | なし |
+
+baseline で失敗するかの確認: 全 unrouted class は CI baseline で一度も実行されていない
+ため「baseline green」という証拠は存在しない。本監査は focused local run（§8.6）を初回
+baseline 証拠とし、これが失敗した場合は #422 taxonomy で分類の上、修正または
+Diagnostic-local-only への disposition 変更を PR 内で記録する。緑であることを前提とした
+記述はしない。
+
+Diagnostic 16 class（§3.2）の共通 fields: baseline result = CI 未実行（将来的にも
+merge gate にしない前提の資産）; classification before → after = Local/diagnostic のまま
+変化なし; removable = なし（test-support を削除すると local smoke/evidence tooling が
+壊れる）。
+
 #### R-1 `app.lawnchair.backup.NovaRestoreGridApplicationTest`
 
 - protected contract: #168 回帰。`LawnchairApp.cleanUpDatabases` が staged `restored.db`
@@ -200,32 +232,60 @@ routing は意図的で契約が文書化されている。`RecoveryManifestChun
 - overlap: routed NovaRestoreCapture* は capture/restore flow で本契約を守らない。なし。
 - surface: `surface_backup_restore`（app/lawnchair/backup/**）。
 - 履歴: #168 回帰 test。CI 履歴なし。
-- disposition: **Route → restore-capture lane**（追加 connected stage 1 回に 3 class
-  まとめて実行。§8）。
+- disposition: **Route → restore-capture lane**。#299 手順書の「各 scenario class は OWN
+  invocation」「single-restore-per-process」原則を尊重し、本 class は既存 capture stage
+  と同居させず **独立 connected invocation 1 回**として helper 末尾へ追加する（§8.1）。
+  本 class は restore flow を起動して lease を取得・解放するが capture pair とは別 process
+  実行（各 connected run は gradle が APK を uninstall して data wipe する）のため、
+  single-restore-per-process 制約の process 共有は発生しない。
 - routing 後に残る confidence: 新規（0 → 実行）。付加費用は 1 stage（〜1分）。
 - validation: 適用前に実 emulator で当該 class 実行。
 - residual: なし。
 
-#### R-2 `com.android.launcher3.model.GridMigrationFailureTest` / R-3 `GridMigrationSuccessTest`
+#### R-2 `com.android.launcher3.model.GridMigrationFailureTest`（routing を follow-up へ分離）
 
 - protected contract: `ModelDbController.tryMigrateDB` の failure semantics（21 test:
   delegate-then-throw 各 phase、SimulatedProcessDeath 後の fresh entry 復帰、durable
-  fixture fail-closed、digest mismatch、commit=false 補正、冪等 reconcile）と success
-  path（target 未公開で source 保持、fast path、lockStates/journal/tmp table 状態）。
+  fixture fail-closed、digest mismatch、commit=false 補正、冪等 reconcile）。
 - credible regression: grid migration による layout data 消失・recovery 不能。repository
   の quality order 第 1 条（layout を失わない）の中心契約。
 - owner boundary: 実 SQLite + 実 LauncherPrefs grid-state。実 process death は in-process
   シミュレーションだが、DB/pref 永続化は実物。
 - overlap: なし（GridMigrationTestSupport は routed db-migration class と共有するが契約
   は別）。
-- surface: `surface_db_schema`（`com/android/launcher3/model/**` は既に mapping 済み）。
-- 履歴: issue #59/#86 系（git 96281bdcd7 / f8bddc7944 / 115549f6fe）。#422 が
-  over-trigger mapping だけ記録し実行は未処理。
-- disposition: **Route → db-migration lane**（inline class list 追加 2 件）。既存 mapping
-  を実行実態と一致させる。
-- validation: 実 emulator で 2 class 実行。
+- surface: `surface_db_schema`。
+- 履歴: issue #59/#86 系（git 96281bdcd7 / f8bddc7944 / 115549f6fe）。
+- focused validation の結果（§8.6）: 21 test 中 1 件
+  （`restorePendingJournalWithCorruptSourceFailsClosedAndQuarantinesActiveHelper`）が
+  決定的に失敗。分類は **category 6（investigation required）— category 1 疑い**: corrupt
+  な durable-recovery source に対し fail closed せず正常 return しており、f8bddc7944 が
+  主張する fail-closed 契約（空 source の manufacture/publish 防止）が corrupt ケースで
+  実装されていない疑い。layout-data 安全 path のため、本監査（production 変更禁止）では
+ 扱えない。
+- disposition: **Route を後続 Issue へ分離**。production 契約の調査・修正（fail-closed
+  の実装または意図的変更の文書化）を追跡 Issue が所有し、その後 db-migration lane への
+  routing を行う。class が既知赤のまま merge gate に入る構成は許容しない。
+- validation: 追跡 Issue で根因確認後、routing 前に focused 実行。
+- residual: corrupt source 時の fail-closed 欠落は CI 未検出のまま（本 test が初の
+  oracle）。追跡 Issue が解決するまで layout-data 安全性のこの path は manual 調査のみ。
+
+#### R-2a `com.android.launcher3.model.GridMigrationSuccessTest`
+
+- protected contract: success path（target transaction 内の backup journal /
+  migration-unknown / tmp cleanup、fast path の target publish、general path の source
+  保持と PLACEMENT 実行、lockStates 状態）。
+- credible regression: grid migration 成功 path の data 整合性（layout 保持）。
+- owner boundary: 実 SQLite fixture（GridMigrationTestSupport 共有）。R-2 と同一环境。
+- overlap: なし。
+- surface: `surface_db_schema`。
+- 履歴: a56540c843（R-2 と同時期）。
+- focused validation の結果: **3/3 PASS**（V3 / V3p7 両方）。
+- disposition: **Route → db-migration lane**。既存 `com/android/launcher3/model/**`
+  mapping を実行実態と一致させる。
+- validation: 完了（§8.6 V3/V3p7）。
 - residual: 実 process death ではなく in-process シミュレーションである点は将来の
-  process-death integration test 課題（既存限界、本監査で新規に生じない）。
+  process-death integration test 課題（既存限界）。R-2 の追跡 Issue で fixture を共有する
+  ため、その解決時に failure 側も同 lane へ join する。
 
 #### R-4 `com.android.launcher3.LauncherPrefsCommitTest`
 
@@ -251,9 +311,12 @@ routing は意図的で契約が文書化されている。`RecoveryManifestChun
 - overlap: なし（schema 33 契約は別 test）。
 - surface: `surface_db_schema`（`app/lawnchair/migration/**` 済み）。
 - 履歴: #57 / ADR-0006。
-- disposition: **Route → db-migration lane**。
-- validation: emulator 実行。
-- residual: なし。
+- focused validation の結果: 第 1 test が fresh emulator で決定失敗（§8.6、category 3:
+  active DB 存在を前提にするが `ensureActiveDbExists` を呼ばない — 同 class 第 2 test の
+  既存 pattern）。第 2 test は PASS。
+- disposition: **Route → db-migration lane（fixture 修復を適用の前提条件とする）**。
+  Phase 2 で第 1 test に `ensureActiveDbExists(context)` を付加し、local で
+  green を確認してから routing する。
 
 #### R-6 `app.lawnchair.organizer.application.store.RecoveryStoreInspectionInstrumentationTest`
 
@@ -319,12 +382,21 @@ routing は意図的で契約が文書化されている。`RecoveryManifestChun
 - overlap: routed Issue265ManualEditRecovery は手動編集・再整理 path で gate FAILED route
   は本 class 固有。
 - surface: `surface_layout_write`。
-- disposition: **Route → reservation-recovery lane**（同 Issue 系の co-occupant。#342 が
-  category-override lane へ CustomCategoryPreferences を co-occupant 追加した前例と同じ
-  形）。
-- validation: emulator 実行（model reload 待ちがあり、lane 内で最重量の追加。§8 の費用
-  見積に含める）。
-- residual: なし。
+- 履歴: #265 spec 265-post-apply-recovery-reconciliation（AC-R1/R2）。局所調査由来の
+  証拠は docs/assessment/pr-355-issue337-category-refs.md:62。
+- focused validation の結果: **4/4 決定失敗**（§8.6、category 2: stale fixture）。
+  `runner.start()` 後の状態が accepted な #417 scope-first flow の `Selecting` であるのに、
+  test は旧 flow（start→Preview 直行）を前提。同一状態を routed な
+  ManualOrganizationProductionE2E.startPlain が `confirmSelection(emptySet())` +
+  `planWithConfirmedScope()` で処理する現行 pattern がある。product regression ではない
+  （現行 flow は accepted 契約）。
+- disposition: **Route → reservation-recovery lane（fixture 修復を適用の前提条件とする）**。
+  Phase 2 で organizeAndConfirm / writerBusy helper を現行 flow に整合させ
+  （Selecting→confirmSelection→planWithConfirmedScope→Preview→confirm の E2E 同一
+  pattern）、local で green を確認してから routing する。修復は test のみで production
+  契約（gate FAILED routes）の assertion 自体は不変。
+- validation: fixture 修復後、V1 形式の focused 実行を再実施。
+- residual: gate FAILED route 契約自体は修復後も本 test のみが所有。
 
 #### R-11 `app.lawnchair.organizer.application.PageCaptureInstrumentationTest`
 
@@ -334,9 +406,15 @@ routing は意図的で契約が文書化されている。`RecoveryManifestChun
 - owner boundary: 実 model + reload latch。RealAdapterRowMatrix は row matrix で page
   ordering 契約を持たない。
 - surface: `surface_layout_write`。
-- disposition: **Route → reservation-recovery lane**。
-- validation: emulator 実行。
-- residual: なし。
+- 履歴: Stage B review finding 1 回帰（KDoc）。CI 履歴なし。
+- focused validation の結果: **2/3 決定失敗**（§8.6、category 3: fixture が favorites を
+  wipe せず既定 workspace の row が混入）。3 test 目（model-only 空 page 排除）は PASS。
+- disposition: **Route → reservation-recovery lane（fixture 修復を適用の前提条件とする）**。
+  Phase 2 で setUp を seeding 前に favorites を空にする形へ修復し（tearDown の restore
+  は既存のまま）、local で green を確認してから routing する。期待値が既定 workspace
+  内容に依存しないことが修復の検証条件。
+- validation: fixture 修復後、focused 実行を再実施。
+- residual: capture 契約自体は修復後も本 test のみが所有。
 
 #### R-12 `app.lawnchair.organizer.locks.LockAuthoringInstrumentationTest`
 
@@ -388,28 +466,61 @@ routing は意図的で契約が文書化されている。`RecoveryManifestChun
   所有）であり、UI 側 recreation 契約だけが本 routing で守られる。整合は §8 の surface
   filter 追加で保つ。
 
-#### R-15 `com.android.launcher3.organizer.BackupExclusionTest`
+#### R-15 `com.android.launcher3.organizer.BackupExclusionTest`（Move boundary へ変更）
 
 - protected contract: organizer recovery DB が `LauncherFiles.ALL_FILES`（backup
   allowlist）に含まれない。
 - credible regression: recovery DB の backup 混入（privacy + restore 整合性）。
-- owner boundary: 静的 list 検査。runnability は最小。
-- surface: test path を `surface_backup_restore` filter へ明示追加。
-- disposition: **Route → restore-capture lane**（R-1 と同じ追加 stage）。
-- validation: emulator 実行（自明に近いが routing コストもほぼ 0）。
-- residual: diagnostics journal 側の backup exclusion は unit
-  `diagnostics/integration/BackupExclusionTest`（AC-67-11）が所有し、recovery DB 側の本
-  class とは補完。
+- owner boundary の再評価（初回レビュー指摘より）: 本 test は静的 list 検査 1 assertion
+  で、実 framework / emulator を必要とする証拠がない。検証結果:
+  - `src/com/android/launcher3/LauncherFiles.java` は `import java.util.*` のみで Android
+    import を持たない（純粋な list 構築）。
+  - `lawnchair/src/.../store/RecoveryDbSchema.kt` は `const val FILE_NAME` を持つ Kotlin
+    object で、tests/unit から既に参照実績がある（RecoveryManifestChunksTest ほか）。
+  - 前例: tests/unit/app/lawnchair/organizer/diagnostics/integration/BackupExclusionTest.kt
+    （AC-67-11、diagnostics journal 側の backup exclusion を JVM で所有）。
+  よって **Move boundary → tests/unit の JVM test（organizer-unit-tests Permanent gate）**
+  とし、同等 assertion の instrumentation class は置換後削除する。低層で faithful に観測
+  できる契約を instrumentation に置く理由はない（skill の lowest faithful deterministic
+  boundary 原則）。
+- 履歴: ADR-0009 系の recovery store 設計 guard。CI 履歴なし。
+- disposition: **Move boundary → organizer-unit-tests**（JVM 新設 + instrumentation 削除）。
+- 変更後に残る confidence: 同一 assertion がより高速・決定的な層で恒久実行される。
+  instrumentation 由来の損失なし。
+- validation: JVM test を新規作成し、local unit test 実行 + instrumentation class 削除後の
+  compile。
+- residual: `LauncherFiles` / `RecoveryDbSchema` が将来 Android 依存を導入した場合、
+  JVM 化の前提が崩れる（その時点で再監査）。
 
-#### R-16 `com.android.launcher3.organizer.RestoreProfileRemapTest`
+#### R-16 `com.android.launcher3.organizer.RestoreProfileRemapTest`（lane 変更）
 
 - protected contract: `RestoreDbTask.migrateProfileId` が organizerLockState を保持し、
   unavailable profile の行削除が動く。
 - credible regression: restore 時の lock 状態消失（profile remap）。
-- owner boundary: 実 SQLite（自前 throwaway db、launcher DB 不要）。
-- surface: test path を `surface_backup_restore` filter へ明示追加。
-- disposition: **Route → restore-capture lane**（R-1 と同じ追加 stage）。
-- validation: emulator 実行。
+- owner boundary と lane 比較（初回レビュー指摘より）: 本 test は throwaway SQLite db で
+  protected `migrateProfileId` を直接呼び、cross-process / capture / backup agent
+  semantics を使わない。lane 適合比較:
+
+  | 要件 | restore-capture lane | db-migration lane |
+  |---|---|---|
+  | API level | 36 | 36 |
+  | process 隔離 | cross-process stage 構造（#299） | 単一 connected invocation |
+  | storage | 実 Launcher DB + backup 資産 | isolated fixture DB（本 test も throwaway db で適合） |
+  | clean-state 要件 | capture 前提の clean emulator | fixture DB ごとの独立（適合） |
+  | production 変更時の trigger | `surface_backup_restore`（backup/** のみ。RestoreDbTask を含まない） | `surface_db_schema` が `src/com/android/launcher3/provider/**` を含む（RestoreDbTask.java の実在位置） |
+
+  production owner の実在位置（provider/**）と、fixture 適合から **db-migration lane が
+  canonical owner**。restore-capture は cross-process capture 契約が本質であり、本 test の
+  契約（remap 時の列保持）は schema/DB migration family に属する。test path を
+  `surface_backup_restore` へ追加する当初案は取り下げる。
+- surface: `surface_db_schema`。test path
+  `tests/organizer-instrumentation/com/android/launcher3/organizer/RestoreProfileRemapTest.java`
+  は既存の `com/android/launcher3/organizer/**` glob（surface_layout_write）と重複するが、
+  db-migration lane の自己検証のため `surface_db_schema` へも明示追加する（schema test
+  file 4 件の明示指定前例と同じ。重複 mapping は安全側）。
+- 履歴: #58 系（restore lease / remap 契約）。CI 履歴なし。
+- disposition: **Route → db-migration lane**。
+- validation: 実 emulator で実行（§8.6 V3）。
 - residual: なし。
 
 ### 3.2 Group D（Diagnostic-local-only 提案）: evidence tooling / smoke driver / 重い E2E
@@ -441,11 +552,13 @@ routing は意図的で契約が文書化されている。`RecoveryManifestChun
 
 ### 3.3 Remove 提案
 
-**なし。** unrouted 32 class のうち strict duplicate・assertion-free・無意味なものは
-存在しなかった（§3.1/§3.2）。DeckRetirementPackageRegressionTest の第 3 test
-（loadable 確認）は tautology だが、1 test method の削除で契約が守られないため、class
-全体を diagnostic として残す。test 数削減を目的としない（Issue 明記）ため、曖昧な削除は
-行わない。
+**class 単位の Remove 提案はなし。** unrouted 32 class のうち、class 全体として strict
+duplicate・assertion-free・無意味と判定できたものは存在しなかった（§3.1/§3.2）。method
+単位では `DeckRetirementPackageRegressionTest` の第 3 test（PackageUpdatedTask の loadable
+確認）が tautology と評価したが、1 test method の削除で契約が守られないため class 全体を
+diagnostic として残す。method-level cleanup は maintenance 改善の範囲であり、本 Issue の
+変更対象としない（§9）。test 数削減を目的としない（Issue 明記）ため、曖昧な削除は行わ
+ない。
 
 ---
 
@@ -541,8 +654,12 @@ diagnostics export UI）は co-occupant 前例（#342）に従う。
 | #308 Compose focus 同期（ManualOrgPreferences） | 3 → 修正済み | git 3aa6e83a1f |
 | pr-325 StrategyPicker timeout | 実 UI regression（category 1 product regression）として捕捉された実績 | docs/assessment/pr-325 |
 
-未分類の新規 flake は本監査では報告されなかった（routed lane の直近 CI は green 実績）。
-routing で追加する class は CI 履歴がなく、§8 の validation で初回分類を行う。
+未分類の新規 flake は本監査では報告されなかった。routed portfolio の健全性の証跡として、
+baseline `7508bbf0d5`（および同構成の直近 main push）の full portfolio run:
+run [36097784665](https://github.com/nunu1733/NunuLauncher/actions/runs/36097784665)
+（head `bcd383e84`、main push、2026-09-25、success — main push は full portfolio 実行）を
+記録する。routing で追加する class は CI 履歴がなく、§8.6 の focused local validation で
+初回分類を行う。
 
 ---
 
@@ -584,21 +701,40 @@ smoke script 用 mode）、`InjectedInputEnvironment`、tests/unit の harness/f
 ## 8. Phase 2 変更リスト（bounded）（AC-458-P1-07）
 
 **目的: unrouted standing regression の恒久実行化と JVM gate の穴埋めのみ。** test 削除・
-lane 削除・UI lane 統合・production seam 削除・test 本体の挙動変更は含まない。
+lane 削除・UI lane 統合・production seam 削除・test 本体の挙動変更は含まない。例外は
+R-15（Move boundary）による同等 assertion の instrumentation class 削除（JVM test が
+置換）のみ。
 
-### 8.1 instrumentation routing（16 class → 既存 4 lane）
+### 8.1 instrumentation routing（13 class → 既存 4 lane + fixture 修復 3 件 + routing 分離 1 件）
+
+初回提案からの変更（§8.6 focused validation の結果による）:
+- `GridMigrationFailureTest` の routing を分離（category 6 調査 → 追跡 Issue、R-2）。
+- `Issue265GateFailedRoute` / `PageCapture` / `DeckRetirementMigration` は fixture 修復を
+  適用の前提条件に（category 2/3、test のみの修復で契約 assertion は不変）。
 
 | Lane（file） | 追加 class |
 |---|---|
-| db-migration（ci.yml inline） | GridMigrationFailureTest, GridMigrationSuccessTest, LauncherPrefsCommitTest, DeckRetirementMigrationInstrumentationTest（5→9） |
-| reservation-recovery（ci.yml inline） | RecoveryStoreInspectionInstrumentationTest, RecoveryInspectionSnapshotPublicationInstrumentationTest, OrganizerDurableStatusInstrumentationTest, RecoveryStoreChunkedManifestInstrumentationTest, Issue265GateFailedRouteInstrumentationTest, PageCaptureInstrumentationTest, LockAuthoringInstrumentationTest（7→14） |
-| restore-capture（run-restore-capture-instrumentation.sh） | NovaRestoreGridApplicationTest + BackupExclusionTest + RestoreProfileRemapTest を 1 つの追加 connected stage として末尾に追加（#299 手順書の既存 stage 順序は変更しない） |
+| db-migration（ci.yml inline） | GridMigrationSuccessTest, LauncherPrefsCommitTest, DeckRetirementMigrationInstrumentationTest（fixture 修復付き）, RestoreProfileRemapTest（5→9） |
+| reservation-recovery（ci.yml inline） | RecoveryStoreInspectionInstrumentationTest, RecoveryInspectionSnapshotPublicationInstrumentationTest, OrganizerDurableStatusInstrumentationTest, RecoveryStoreChunkedManifestInstrumentationTest, Issue265GateFailedRouteInstrumentationTest（fixture 修復付き）, PageCaptureInstrumentationTest（fixture 修復付き）, LockAuthoringInstrumentationTest（7→14） |
+| restore-capture（run-restore-capture-instrumentation.sh） | NovaRestoreGridApplicationTest を **独立 connected invocation** として末尾に 1 回追加（#299 手順書の既存 stage 順序は変更しない。capture class との同居なし） |
 | category-override（ci.yml inline） | OrganizerLockScreenTest（2→3、#342 co-occupant 前例） |
 | manual-organization-ui（run-manual-organization-ui-instrumentation.sh） | OrganizerDiagnosticsExportTimestampInstrumentationTest（9→10） |
 
-費用見積: 追加分の合計でおよそ +4〜6 分（lane 並列のため wall への影響は最大 lane 分）。
-main/scheduled full sweep の runner 合計は同程度増加。regression confidence は「常時
-未実行だった 16 class の契約」分が 0 から 1 へ。
+### 8.1a CI 費用見積（未計測である旨の明示）
+
+初回レビュー指摘より、費用見積は Phase 1 時点では**未計測**であり、静的推論に留める。
+
+| Lane | 現行 class 数（portfolio 文書の実測） | 追加 | 追加 class focused 実測 | 見積根拠 |
+|---|---|---|---|---|
+| db-migration | 5（9.1 分） | 5 | §8.6 V3 で実測 | emulator boot は共通、追加 class は DB 主体で軽量見込み |
+| reservation-recovery | 7（9.4 分） | 7 | §8.6 V1/V2 で実測 | Issue265GateFailedRoute（model reload 待ち）と ChunkedManifest（2.25MB record）が重い |
+| restore-capture | 6 class 6 invocation（9.5 分） | +1 invocation | §8.6 V4 で実測 | 1 invocation 追加のみ |
+| category-override | 2（8.1 分） | 1 | §8.6 V5 で実測 | fake module の Compose test、軽量 |
+| manual-organization-ui | 9（8.7 分） | 1 | §8.6 V6 で実測 | 追加 1 class のみ |
+
+Phase 2 acceptance に追加: 実 GitHub Actions run で各対象 lane が timeout（50 分）内で
+完了し、既存実測比で異常増加（例: 2 倍以上）がないことを確認する。上限に張り付く場合は
+追加 class を分割（`am instrument` per-group）または disposition 返しを PR 内で記録する。
 
 ### 8.2 surface filter 追加（test path の自己検証規則を満たすため）
 
@@ -609,23 +745,39 @@ main/scheduled full sweep の runner 合計は同程度増加。regression confi
 - `surface_organizer_ui` へ 同 locks glob（OrganizerLockScreen の自己起動）と
   `tests/organizer-instrumentation/app/lawnchair/organizer/diagnostics/export/**`
   （ExportTimestamp の自己起動）
-- `surface_backup_restore` へ `tests/organizer-instrumentation/com/android/launcher3/organizer/BackupExclusionTest.java`
-  と `.../RestoreProfileRemapTest.java`（schema test file の明示指定前例と同じ）
 - `surface_db_schema` へ `tests/organizer-instrumentation/com/android/launcher3/LauncherPrefsCommitTest.java`
+  と `tests/organizer-instrumentation/com/android/launcher3/organizer/RestoreProfileRemapTest.java`
+  （schema test file の明示指定前例と同じ。RestoreProfileRemapTest は既存
+  layout_write glob とも重複するが重複 mapping は安全側）
 
-lane↔surface edge（map file）は不変。`ci_portfolio_map.yml` の変更不要、
-`docs/engineering/ci-test-portfolio.md` の surface path 表と lane 監査表を同じ PR で更新。
-GridMigration model/** mapping は over-trigger から実行を伴う mapping になる（文書の
-注記更新）。
+map file 不変更の根拠: `ci_portfolio_map.yml` は lane↔surface edge の normative 正本で
+あり、test path glob は `ci.yml` の `changes` job が所有する。本変更は edge 集合
+（10 lane × surface）を一切変えないため map の semantic diff は不要である。edge 集合
+不変は `validate_ci_portfolio.py`（map↔workflow edge 完全一致検証）の実行で証跡化する
+（§8.5-1）。
+
+lane↔surface edge（map file）は不変。`docs/engineering/ci-test-portfolio.md` の surface
+path 表と lane 監査表を同じ PR で更新。GridMigration model/** mapping は over-trigger
+から実行を伴う mapping になる（文書の注記更新）。
 
 ### 8.3 JVM gate
 
-`organizer-unit-tests` の filter を 4 pattern から `app.lawnchair.*` 単一へ統一
-（DeckRetirementArtifactNamesTest + DeviceProfileOverridesPresetResolutionTest が加わり、
-tests/unit tree 全体が auto-include）。quality-strategy.md と portfolio 文書の filter
-記述を同じ PR で更新。統一 pattern は現行 4 pattern の上位集合であり、tests/unit は
-`app.lawnchair` root のみであるため、既存実行集合の縮小はない（統一前後の実行 class 数を
-local で比較して検証する）。
+初回レビュー指摘より、`app.lawnchair.*` 単一 wildcard 化の案は gate ownership を恒久的に
+広げるリスク（organizer 以外の test が黙って join する）があるため採用しない。代わりに
+**最小の明示追加**とする:
+
+- `--tests 'app.lawnchair.migration.*'` を新規追加（DeckRetirementArtifactNamesTest が
+  加わり、同 package の将来 test も auto-include）
+- `--tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'` を明示追加
+  （app.lawnchair root package の単一 test）
+
+比較記録: wildcard 化（1 pattern で tree 全体）は auto-include の徹底という利点があるが、
+「organizer-unit-tests が所有する package の一覧」が失われ、非 organizer test（将来の
+Lawnchair UI 系 unit test 等）が黙って permanent gate に join する。明示追加は 2 class
+routing に対して最小の ownership 変更であり、既存の issue 単位の明示追加慣行（#116/#242、
+backup）とも一致する。quality-strategy.md と portfolio 文書の filter 記述を同じ PR で
+更新する。統一前後で unit test の実行 class 数比較（既存 163 class の縮小なし + 2 追加）
+を local で検証する。
 
 ### 8.4 文書記録（diagnostic 分類の明示）
 
@@ -638,16 +790,80 @@ local で比較して検証する）。
 
 1. `python3 tools/repo-contract/validate_ci_portfolio.py` /
    `test_validate_ci_portfolio.py` / `validate_repo_contract.py` /
-   `test_validate_repo_contract.py`
+   `test_validate_repo_contract.py`（edge 集合不変の証跡を含む）
 2. `./gradlew spotlessCheck`
-3. JVM: filter 統一前後で `testLawnWithQuickstepGithubDebugUnitTest` の実行 class 数比較
+3. JVM: filter 追加前後で `testLawnWithQuickstepGithubDebugUnitTest` の実行 class 数比較
    （既存集合の縮小なし確認 + 2 class 追加確認）
-4. 実 emulator（local）で追加 16 class を実行し、初回 CI 投入前の green を確認
+4. focused local validation（§8.6）: 提案 routing の初回 baseline 証拠
 5. PR 上の実 GitHub Actions run で対象 lane（db-migration / reservation-recovery /
-   restore-capture / category-override / manual-organization-ui）+ JVM gate が green
-   （AC-458-P2-06 の正本証跡）
+   restore-capture / category-override / manual-organization-ui）+ JVM gate が green、かつ
+   各 lane が timeout headroom 内（§8.1a）（AC-458-P2-06 の正本証跡）
 6. routing で失敗した class があれば、修正（category 2/3）または disposition を
    Diagnostic-local-only へ戻して PR 内に記録
+
+### 8.6 focused local validation（Phase 2 適用前の初回 baseline 証拠）
+
+初回レビュー指摘（高2）より、同一 instrumentation process / 同一 app process 内での
+state 汚染の有無は class 単独の cleanup とは別契約である。Phase 2 適用の前提条件として、
+CI と同じ gradle connected 形式で次を実行する（local は arm64 API 36.1 emulator、CI は
+x86_64 API 36 — ABI 差を記録し、契約検証は platform 36.1 で同型）:
+
+| ID | 内容 | 証拠目的 |
+|---|---|---|
+| V1 | reservation-recovery 追加 7 class を proposed order で 1 invocation | co-occupancy（順方向）の state 汚染・失敗の不在 |
+| V2 | V1 と同一 7 class を**逆順**で 1 invocation | 順序依存の不在（最低 1 回） |
+| V3 | db-migration 追加 5 class（GridMigration F/S, LauncherPrefsCommit, DeckRetirementMigration, RestoreProfileRemap）を proposed lane class と 1 invocation | 同居 + 初回 baseline |
+| V4 | NovaRestoreGridApplicationTest を独立 1 invocation（restore-capture 提案形） | #299 原則に沿った独立実行の成立 |
+| V5 | category-override 提案形 3 class（既存 2 + OrganizerLockScreen） | co-occupancy |
+| V6 | manual-organization-ui 追加 1 class（OrganizerDiagnosticsExportTimestamp）単独 baseline | 初回 baseline（co-occupancy は PR CI の対象 lane run で確認） |
+| V7 | JVM filter 追加の 2 class を local unit test で実行 | §8.3 の初回 baseline |
+
+失敗が発生した場合: #422 taxonomy で分類し、修正（category 2/3）するか disposition を
+Diagnostic-local-only へ戻す。state 汚染が観測された場合、当該 group を helper で
+`am instrument` 単位に分割する構成へ変更する。実行結果（PASS/FAIL、所要時間）を本節に
+追記し、これが §8.1a の focused 実測列と §3.1 の baseline result 列の値になる。
+
+#### §8.6 実施結果（2026-09-25、baseline `b242891f` + 提案 routing の class filter を
+local 再現。emulator: arm64 API 36.1（CI は x86_64 API 36。ABI 差を除き同型））
+
+1 回目（AVD `nunu_qpr2_api36_1` = pixel_6）と 2 回目（CI 同一 device profile の
+AVD `issue209_pixel_7_pro`）で実施。失敗は両 AVD で同一（AVD 非依存の決定的失敗）。
+
+| ID | 内容 | 結果 | 所要時間 |
+|---|---|---|---|
+| V1 | reservation 追加 7 class proposed order 1 invocation | 45 tests / 6 FAIL（下表） | 84s / 92s |
+| V2 | 同 7 class 逆順 1 invocation | 45 tests / 6 FAIL（V1 と同一 6 件。順序依存なし） | 63s / 79s |
+| V3 | db-migration 提案 lane 10 class 1 invocation | 49 tests / 2 FAIL（下表） | 12s※ / 13s※ |
+| V4 | NovaRestoreGridApplicationTest 独立 invocation | PASS | 11s / 9s |
+| V5 | category-override 提案 lane 3 class（+OrganizerLockScreen） | pixel_6 AVD: PASS（26 tests / 49s）。pixel_7_pro AVD: 2/26 で 43 分以上停止（環境シグネチャ、下記） | 49s / 停止 |
+| V6 | OrganizerDiagnosticsExportTimestamp 単独 | PASS（pixel_6 / pixel_7_pro 両 AVD） | 18s / 58s |
+| V7 | JVM filter 追加 2 class | PASS（2 class 14 test を XML で確認: DeviceProfileOverridesPresetResolutionTest 8 + DeckRetirementArtifactNamesTest 6） | 44s |
+
+※ V3 の短時間は up-to-date な Gradle キャッシュによる（実 test は 49 件実行）。
+
+V2 = V1 と同一失敗のため、reservation-recovery 7 class の co-occupancy 自体は
+state 汚染なし（順序非依存）。失敗は class 固有の欠陥/契約問題である。
+
+**focused validation で検出された失敗と分類（#422 taxonomy）:**
+
+| Class（失敗数） | signature | 分類 | 根拠 |
+|---|---|---|---|
+| Issue265GateFailedRouteInstrumentationTest（4/4） | `organize did not reach Applied: Selecting(...)` | **2（deterministic test defect）** — stale fixture | `runner.start()` が accepted な #417 scope-first flow（spec 228/417 の Selecting 停止）へ到達し、test は旧 flow（start→Preview 直行）を前提。routed な ManualOrganizationProductionE2E.startPlain が同一状態を `confirmSelection(emptySet())` + `planWithConfirmedScope()` で処理する現行 pattern を持つ。product regression ではない（現行 flow は accepted 契約で routed test が green） |
+| PageCaptureInstrumentationTest（2/3） | 期待 page list に `PageId(0)` が余分に出現 | **3（test fixture / clean-state defect）** | setUp が snapshot のみで favorites を wipe せず、emulator 既定 workspace の row が capture に混入する。空ホーム前提の fixture が明示されていない |
+| GridMigrationFailureTest.restorePendingJournalWithCorruptSourceFailsClosedAndQuarantinesActiveHelper（1/21） | corrupt な RESTORE_PENDING source で `tryMigrateDB` が例外を投げず正常 return | **6（unknown / investigation required）** — category 1 疑い（product regression 候補） | test は f8bddc7944（fail-closed fix）と同一 commit で追加され、openJournalSource / refreshMaxItemIdFromCommittedRows は当時と byte 等価。production の書き込み open が既定 DatabaseErrorHandler により corrupt source を静かに空 DB として再作成し、reconcile が FAILED として完了する経路が制御流上の唯一の非例外 path。f8bddc7944 が主張する「recovery can no longer manufacture or publish an empty source database」が corrupt ケースで実装されていない疑い。layout-data 安全 path のため本監査では production 変更を行わず、追跡 Issue へ分離 |
+| DeckRetirementMigrationInstrumentationTest.enabledDisabledAndInconsistentStates...（1/2） | `Active grid database must exist after normalization` | **3（test fixture defect）** | 第 1 test が active DB の存在を前提にするが `ensureActiveDbExists` を呼ばない（同 class の第 2 test は呼ぶ）。fresh emulator では active DB が未作成のまま |
+
+**V5 pixel_7_pro AVD の停止（環境シグネチャ）:** 同一 26 test が pixel_6 AVD で 49 秒で
+完結したのに対し、pixel_7_pro AVD（arm64）では 2/26 で 43 分以上進行しなかった。
+同一 AVD で再試行したところ、同じ位置（2/26 完了後）で再現停止したため **5
+（emulator/runner/platform environment defect）** に分類する（既知の #372/#300 系 Compose
+focus 環境 signature と同型。V6p7 = 同一 AVD で OrganizerDiagnosticsExportTimestamp が
+5 tests PASS / 58s であることから、AVD 固有の Compose UI test 停止であり class 欠陥では
+ない）。co-occupancy の証拠は pixel_6 AVD の PASS（26 tests / 49s）を用い、CI 同一条件
+（x86_64 pixel_7_pro + KVM）での確認は Phase 2 の実 GitHub Actions run が担う
+（category-override lane は既存 2 class が CI green 実績あり。OrganizerLockScreenTest が
+新規）。本停止は local AVD 固有の可能性が高く、既存 #418 系環境 signature の追跡に含める
+（新規 lane 変更はしない）。
 
 ---
 
@@ -655,6 +871,7 @@ local で比較して検証する）。
 
 | 項目 | 状態 |
 |---|---|
+| **grid migration の corrupt source 時 fail-closed 疑義（R-2）** | focused validation が初検出（§8.6）。RESTORE_PENDING の corrupt source で `tryMigrateDB` が例外を投げず、source が空 DB として再作成・republish される疑い。f8bddc7944 の契約と矛盾する可能性。**追跡 Issue を起票**し、GridMigrationFailureTest の db-migration lane routing をそれに紐付ける。production 変更は本 Issue では行わない（Non-goal） |
 | GridChangeUnknownLockRecovery の full loop（grid 変更→UNKNOWN lock→review→recovery） | CI 未検出のまま。lane/surface 設計（locks test path が複数 surface に跨る）が必要 → follow-up issue で起動条件を決める |
 | DeckRetirementProcessIsolation（AC-009 二次 process gate） | CI 未検出のまま。process polling の flake surface を理由に diagnostic 継続 |
 | UsageAccessTransitionProbe / Issue108GridEvidence の platform 遷移・capture parity | diagnostic 継続。reader app-op 追従の regression は CI 未検出 |
@@ -663,4 +880,6 @@ local で比較して検証する）。
 | API 35 lane の代替不能性根拠未取得 | #422/#96 からの繰り越し。本監査でも新証拠なし（Non-goal: reopen しない） |
 | #352 / #304 / #418 tracking | 既存 tracking issue が所有（§6） |
 | cold-process restore CTA（#376 RS-AC-01）の CI 検出 | diagnostic 継続。重い 2 phase orchestration |
-| routed 16 class の初回 CI 履歴不在 | Phase 2 の validation（§8.5）で初回 green を取得。失敗時は分類して修正または diagnostic 返し |
+| routed class の初回 CI 履歴不在 | §8.6 focused validation（V1〜V7 + pixel_7_pro 再実行）で初回 baseline を取得。失敗 4 件は分類・修復/分離方針を記録済み。Phase 2 で修復後の focused 再実行と PR 上の GH Actions run で最終確認 |
+| V5 pixel_7_pro AVD（arm64 local）の Compose 停止 | 環境 signature（category 5）として §8.6 に記録。既存 CI lane（x86_64）は同一 class 群で green 実績。local AVD 固有の可能性が高く、追跡は既存 #418 系に含める（新規 lane 変更なし） |
+| routed に伴う各 lane runtime 増加 | §8.1a。Phase 2 PR の実 GH Actions run で timeout headroom を確認 |

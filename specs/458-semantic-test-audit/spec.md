@@ -17,6 +17,7 @@ requirements:
   - AC-458-P2-05
   - AC-458-P2-06
   - AC-458-P2-07
+  - AC-458-P2-08
 updated: 2026-09-25
 ---
 
@@ -93,9 +94,12 @@ Issue #458 の acceptance criteria を正とし、本書では要件 ID へ対�
 - AC-458-P2-04: 実 Gradle/class filter が確認されており、path mapping だけを実行証拠と
   して使っていない。
 - AC-458-P2-05: repo-contract / CI portfolio validator が通過している。
-- AC-458-P2-06: CI workflow routing 変更が実 GitHub Actions run で検証されている。
+- AC-458-P2-06: CI workflow routing 変更が実 GitHub Actions run で検証され、対象 lane が
+  timeout headroom 内で完了している（実測比の異常増加がない）。
 - AC-458-P2-07: 最終監査記録が residual risk と follow-up を識別している（`audit.md`
   §9）。
+- AC-458-P2-08: Phase 2 適用前に focused local validation（`audit.md` §8.6）が実施され、
+  結果（PASS/FAIL・所要時間・分類）が `audit.md` に記録されている。
 
 ## Domain language
 
