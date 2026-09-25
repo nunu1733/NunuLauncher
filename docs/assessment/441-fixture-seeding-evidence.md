@@ -23,9 +23,9 @@ Result: **BUILD SUCCESSFUL — 2 tests, PASS**（`fixtureSeedsIdenticallyFromSam
 - AC-3: hotseat行・その子孫・予約領域重複行の前後一致。fixture全行について `ReservationOverlapAcceptance.overlaps`（ADR-0010の唯一の受入述語）がfalse。test終了時にfavoritesが復元され、永続残SIなし（`assertEquals(originalRows, snapshotFavorites())`）。
 - AC-4: desktop app行35、identity一意性（33 distinct identities on desktop）、同一起動先の重複が指定2組のみ（Fixture 02 ×2 = ページ0、Fixture 03 ×2 = ページ1。判定キー component + profile）、フォルダ「Benchmark」とその内容（Fixture 01・35）。
 
-## 2. Persist mode（計測手順§7の検証）
+## 2. Persist mode（historical実行。Revision 6以前の手順）
 
-計測手順（定義文書§7）と同じ手動手順を同環境で実行し、fixtureが端末へ保持されることを確認した:
+Revision 6以前のclass指定persistを同環境で実行し、fixtureが端末へ保持されることを確認した記録。このときのcommandはclass全体指定であり、**現行の§7手順（method限定）とは異なる**。現行手順のpersist evidenceの正は§5（clean checkout、method限定、dock汚染なしのDB検証付き）である:
 
 ```bash
 adb install -r "build/outputs/apk/lawnWithQuickstepGithub/debug/"*.apk
@@ -57,7 +57,7 @@ persist mode適用後のホーム（実物。`connectedLawnWithQuickstepGithubDe
 B1/B6のinstall経路と自動配置を同emulatorで検証した:
 
 - `adb install`（reason 0 = `INSTALL_REASON_UNKNOWN`）では `SessionCommitReceiver` が「Removing PromiseIcon ... install reason: 0」を出し自動追加が**起きない**ことを確認（logcat）。
-- `pm install-create --install-reason 4`（4 = user request = `INSTALL_REASON_USER`）→ `install-write` → `install-commit` のsession installにより、**新規アイコン「Benchmark Target 01」がfixtureの2ページ目の最初の空きcell（screen=1, cell(0,3)）へ自動配置された**（install約8秒後）。配置の正はDB行（`favorites` のscreen=1, cellX=0, cellY=3）と `b1-target01-page1.png` である。なおlogcatの「AddWorkspaceItemsTask: Adding item info to workspace ... cell(0,0)」は、配置cell決定前のqueue項目（`ItemInstallQueue` のPendingInstallShortcutInfo）を示すlogであり、最終配置座標ではない。
+- `pm install-create --install-reason 4`（4 = user request = `INSTALL_REASON_USER`）→ `install-write` → `install-commit` のsession installにより、**新規アイコン「Benchmark Target 01」がfixtureの2ページ目の最初の空きcell（screen=1, cellX=0, cellY=3）へ自動配置された**（install約8秒後）。配置の正は`favorites`のDB行と `b1-target01-page1.png` である（logcat上の座標を含む中間logは配置の根拠に使わない）。
 - 検証に使った固定対象アプリは `tests/benchmark-install-targets/`（flavor `target01`。10 flavorでB6の10個を賄う）。
 - Lawnchairが既定ランチャーでない場合、新規アイコンは出現しない（`pm clear` 後に既定homeがNexusLauncherへ戻った状態で再現し、`cmd package set-home-activity` でLawnchairへ戻すと解消）。§7の端末前提状態に記載。
 
