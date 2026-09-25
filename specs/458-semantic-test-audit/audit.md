@@ -193,12 +193,16 @@ routing は意図的で契約が文書化されている。`RecoveryManifestChun
 #### focused-audit evidence fields（全 Route 候補に共通する記録）
 
 skill の focused-audit evidence のうち、candidate ごとに必要な 3 項目を次の表に集約する
-（個別記述と併読）。
+（個別記述と併読）。実行 revision の明確化: focused validation は **実行 revision
+`b242891f`** で行った。監査 baseline `7508bbf0d5..b242891f` の差分は本 spec dir の
+docs 追加のみ（`git diff --stat` = specs/458-semantic-test-audit/ 2 file）であり、
+production/test code は baseline と同一であるため、各 candidate の契約・fixture に
+影響する差分はない。
 
-| ID | baseline result（baseline `7508bbf0d5`） | CI classification before → after | removable production/test-support |
+| ID | focused result（実行 revision `b242891f` = baseline と同 production/test code） | CI classification before → after | removable production/test-support |
 |---|---|---|---|
 | R-1 | CI 未実行（unrouted）。focused local run: §8.6 V4 で実施 | Unrouted/Local-only → Conditional（surface_backup_restore, restore-capture lane） | なし（seam 追加・削除なし） |
-| R-2 | CI 未実行。focused local run（§8.6）で 1/21 決定失敗 → category 6 調査に分離、routing は後続 Issue | Unrouted/Local-only → 変更なし（routing 分離） | なし |
+| R-2 | CI 未実行。focused local run（§8.6）で 1/21 決定失敗 → category 6 調査として [#461](https://github.com/nunu1733/NunuLauncher/issues/461) に分離、routing は #461 所有 | Unrouted/Local-only → 変更なし（routing 分離） | なし |
 | R-2a | CI 未実行。focused local run: §8.6 V3 で 3/3 PASS | Unrouted（path mapping は over-trigger のみ） → Conditional（surface_db_schema, db-migration lane） | なし |
 | R-4 | CI 未実行。focused local run: §8.6 V3 で PASS | Unrouted/Local-only → Conditional（surface_db_schema, db-migration lane） | なし |
 | R-5 | CI 未実行。focused local run: §8.6 V3 で 1/2 失敗（category 3、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_db_schema, db-migration lane） | なし |
@@ -262,12 +266,13 @@ merge gate にしない前提の資産）; classification before → after = Loc
   主張する fail-closed 契約（空 source の manufacture/publish 防止）が corrupt ケースで
   実装されていない疑い。layout-data 安全 path のため、本監査（production 変更禁止）では
  扱えない。
-- disposition: **Route を後続 Issue へ分離**。production 契約の調査・修正（fail-closed
-  の実装または意図的変更の文書化）を追跡 Issue が所有し、その後 db-migration lane への
-  routing を行う。class が既知赤のまま merge gate に入る構成は許容しない。
-- validation: 追跡 Issue で根因確認後、routing 前に focused 実行。
+- disposition: **Route を追跡 Issue [#461](https://github.com/nunu1733/NunuLauncher/issues/461) へ分離**。
+  production 契約の調査・修正（fail-closed の実装または意図的変更の文書化）を #461 が
+  所有し、その後 db-migration lane への routing を行う。class が既知赤のまま merge gate
+  に入る構成は許容しない。#461 起票まで R-2 は明示的に unrouted のまま。
+- validation: #461 で根因確認後、routing 前に focused 実行。
 - residual: corrupt source 時の fail-closed 欠落は CI 未検出のまま（本 test が初の
-  oracle）。追跡 Issue が解決するまで layout-data 安全性のこの path は manual 調査のみ。
+  oracle）。#461 が解決するまで layout-data 安全性のこの path は manual 調査のみ。
 
 #### R-2a `com.android.launcher3.model.GridMigrationSuccessTest`
 
@@ -568,9 +573,9 @@ diagnostic として残す。method-level cleanup は maintenance 改善の範�
 
 165 test class 中 163 が `organizer-unit-tests` の filter で実行される。 unrouted 2
 class（§1.3）は純粋 JVM 契約で production caller が実在する。→ **Route**
-（`organizer-unit-tests` filter を `app.lawnchair.*` 単一 pattern へ統一し、tests/unit
-tree 全体を auto-include。§8）。統一により 2 class が gate に加わり、今後の package
-追加も自動包含される（#41 の auto-include 原則と同じ）。
+（`organizer-unit-tests` filter へ `app.lawnchair.migration.*` pattern と
+`DeviceProfileOverridesPresetResolutionTest` の明示追加。§8.3 の最小追加案に一致。
+gate ownership を広げる wildcard 化は行わない）。
 
 ### 4.2 JVM ↔ instrumentation の重複分析（AC-458-P1-04 の契約レベル確認）
 
@@ -700,10 +705,17 @@ smoke script 用 mode）、`InjectedInputEnvironment`、tests/unit の harness/f
 
 ## 8. Phase 2 変更リスト（bounded）（AC-458-P1-07）
 
-**目的: unrouted standing regression の恒久実行化と JVM gate の穴埋めのみ。** test 削除・
-lane 削除・UI lane 統合・production seam 削除・test 本体の挙動変更は含まない。例外は
-R-15（Move boundary）による同等 assertion の instrumentation class 削除（JVM test が
-置換）のみ。
+**目的: unrouted standing regression の恒久実行化と JVM gate の穴埋めのみ。** test の
+assertion・契約の変更、lane 削除、UI lane 統合、production seam 削除は含まない。Phase 2
+が行う test file への変更は次の 2 種に限定される:
+
+1. **Move boundary（R-15）**: `BackupExclusionTest` の同等 assertion を JVM test として
+   新設し、instrumentation class を削除する（契約不変の境界移動）。
+2. **fixture 修復（R-5 / R-10 / R-11、focused validation で category 2/3 と分類）**:
+   `DeckRetirementMigrationInstrumentationTest` 第 1 test への `ensureActiveDbExists`
+   追加、`Issue265GateFailedRouteInstrumentationTest` helper の現行 #417 flow 整合、
+   `PageCaptureInstrumentationTest` setUp の seeding 前 favorites wipe。いずれも既存
+   assertion・契約を一切変更しない、契約を成立させるための setup 修復のみである。
 
 ### 8.1 instrumentation routing（13 class → 既存 4 lane + fixture 修復 3 件 + routing 分離 1 件）
 
@@ -724,17 +736,20 @@ R-15（Move boundary）による同等 assertion の instrumentation class 削�
 
 初回レビュー指摘より、費用見積は Phase 1 時点では**未計測**であり、静的推論に留める。
 
-| Lane | 現行 class 数（portfolio 文書の実測） | 追加 | 追加 class focused 実測 | 見積根拠 |
+| Lane | 現行 class 数（portfolio 文書の実測） | 追加 | proposed lane local total（既存+追加、§8.6） | 見積根拠 |
 |---|---|---|---|---|
-| db-migration | 5（9.1 分） | 5 | §8.6 V3 で実測 | emulator boot は共通、追加 class は DB 主体で軽量見込み |
-| reservation-recovery | 7（9.4 分） | 7 | §8.6 V1/V2 で実測 | Issue265GateFailedRoute（model reload 待ち）と ChunkedManifest（2.25MB record）が重い |
-| restore-capture | 6 class 6 invocation（9.5 分） | +1 invocation | §8.6 V4 で実測 | 1 invocation 追加のみ |
-| category-override | 2（8.1 分） | 1 | §8.6 V5 で実測 | fake module の Compose test、軽量 |
-| manual-organization-ui | 9（8.7 分） | 1 | §8.6 V6 で実測 | 追加 1 class のみ |
+| db-migration | 5（9.1 分） | 4 | V3: 49 tests / 13s（Gradle cache up-to-date 実測、class 走行時間は分解未計測） | emulator boot は共通、追加 class は DB 主体で軽量見込み |
+| reservation-recovery | 7（9.4 分） | 7 | V1: 45 tests / 92s（同上） | Issue265GateFailedRoute（修復後 model reload 待ち）と ChunkedManifest（2.25MB record）が重い |
+| restore-capture | 6 class 6 invocation（9.5 分） | +1 invocation | V4: 9〜11s | 1 invocation 追加のみ |
+| category-override | 2（8.1 分） | 1 | V5: 26 tests / 49s（pixel_6 AVD） | fake module の Compose test、軽量 |
+| manual-organization-ui | 9（8.7 分） | 1 | V6: 18s / 58s（単独 baseline） | 追加 1 class のみ |
 
-Phase 2 acceptance に追加: 実 GitHub Actions run で各対象 lane が timeout（50 分）内で
-完了し、既存実測比で異常増加（例: 2 倍以上）がないことを確認する。上限に張り付く場合は
-追加 class を分割（`am instrument` per-group）または disposition 返しを PR 内で記録する。
+上記は co-occupancy run 全体の所要であり、**追加 class 単独の増分は未計測**である。CI
+費用判断は Phase 2 の実 GitHub Actions run における「current lane runtime と変更後
+runtime の比較（timeout headroom 確認）」の acceptance に一本化する（AC-458-P2-06）。
+実 GitHub Actions run で各対象 lane が timeout（50 分）内で完了し、既存実測比で異常増加
+（例: 2 倍以上）がないことを確認する。上限に張り付く場合は追加 class を分割
+（`am instrument` per-group）または disposition 返しを PR 内で記録する。
 
 ### 8.2 surface filter 追加（test path の自己検証規則を満たすため）
 
@@ -823,8 +838,10 @@ Diagnostic-local-only へ戻す。state 汚染が観測された場合、当該 
 `am instrument` 単位に分割する構成へ変更する。実行結果（PASS/FAIL、所要時間）を本節に
 追記し、これが §8.1a の focused 実測列と §3.1 の baseline result 列の値になる。
 
-#### §8.6 実施結果（2026-09-25、baseline `b242891f` + 提案 routing の class filter を
-local 再現。emulator: arm64 API 36.1（CI は x86_64 API 36。ABI 差を除き同型））
+#### §8.6 実施結果（2026-09-25、実行 revision `b242891f`。監査 baseline `7508bbf0d5` と
+の差分は本 spec dir の docs のみ（§3.1 参照）で production/test code は同一。提案
+routing の class filter を local 再現。emulator: arm64 API 36.1（CI は x86_64 API 36。
+ABI 差を除き同型））
 
 1 回目（AVD `nunu_qpr2_api36_1` = pixel_6）と 2 回目（CI 同一 device profile の
 AVD `issue209_pixel_7_pro`）で実施。失敗は両 AVD で同一（AVD 非依存の決定的失敗）。
@@ -850,20 +867,23 @@ state 汚染なし（順序非依存）。失敗は class 固有の欠陥/契約
 |---|---|---|---|
 | Issue265GateFailedRouteInstrumentationTest（4/4） | `organize did not reach Applied: Selecting(...)` | **2（deterministic test defect）** — stale fixture | `runner.start()` が accepted な #417 scope-first flow（spec 228/417 の Selecting 停止）へ到達し、test は旧 flow（start→Preview 直行）を前提。routed な ManualOrganizationProductionE2E.startPlain が同一状態を `confirmSelection(emptySet())` + `planWithConfirmedScope()` で処理する現行 pattern を持つ。product regression ではない（現行 flow は accepted 契約で routed test が green） |
 | PageCaptureInstrumentationTest（2/3） | 期待 page list に `PageId(0)` が余分に出現 | **3（test fixture / clean-state defect）** | setUp が snapshot のみで favorites を wipe せず、emulator 既定 workspace の row が capture に混入する。空ホーム前提の fixture が明示されていない |
-| GridMigrationFailureTest.restorePendingJournalWithCorruptSourceFailsClosedAndQuarantinesActiveHelper（1/21） | corrupt な RESTORE_PENDING source で `tryMigrateDB` が例外を投げず正常 return | **6（unknown / investigation required）** — category 1 疑い（product regression 候補） | test は f8bddc7944（fail-closed fix）と同一 commit で追加され、openJournalSource / refreshMaxItemIdFromCommittedRows は当時と byte 等価。production の書き込み open が既定 DatabaseErrorHandler により corrupt source を静かに空 DB として再作成し、reconcile が FAILED として完了する経路が制御流上の唯一の非例外 path。f8bddc7944 が主張する「recovery can no longer manufacture or publish an empty source database」が corrupt ケースで実装されていない疑い。layout-data 安全 path のため本監査では production 変更を行わず、追跡 Issue へ分離 |
+| GridMigrationFailureTest.restorePendingJournalWithCorruptSourceFailsClosedAndQuarantinesActiveHelper（1/21） | corrupt な RESTORE_PENDING source で `tryMigrateDB` が例外を投げず正常 return | **6（unknown / investigation required）** — category 1 疑い（product regression 候補）。追跡 Issue [#461](https://github.com/nunu1733/NunuLauncher/issues/461) へ分離 | test は f8bddc7944（fail-closed fix）と同一 commit で追加され、openJournalSource / refreshMaxItemIdFromCommittedRows は当時と byte 等価。production の書き込み open が既定 DatabaseErrorHandler により corrupt source を静かに空 DB として再作成し、reconcile が FAILED として完了する経路が制御流上の唯一の非例外 path。f8bddc7944 が主張する「recovery can no longer manufacture or publish an empty source database」が corrupt ケースで実装されていない疑い。layout-data 安全 path のため本監査では production 変更を行わず、#461 へ分離 |
 | DeckRetirementMigrationInstrumentationTest.enabledDisabledAndInconsistentStates...（1/2） | `Active grid database must exist after normalization` | **3（test fixture defect）** | 第 1 test が active DB の存在を前提にするが `ensureActiveDbExists` を呼ばない（同 class の第 2 test は呼ぶ）。fresh emulator では active DB が未作成のまま |
 
-**V5 pixel_7_pro AVD の停止（環境シグネチャ）:** 同一 26 test が pixel_6 AVD で 49 秒で
-完結したのに対し、pixel_7_pro AVD（arm64）では 2/26 で 43 分以上進行しなかった。
-同一 AVD で再試行したところ、同じ位置（2/26 完了後）で再現停止したため **5
-（emulator/runner/platform environment defect）** に分類する（既知の #372/#300 系 Compose
-focus 環境 signature と同型。V6p7 = 同一 AVD で OrganizerDiagnosticsExportTimestamp が
-5 tests PASS / 58s であることから、AVD 固有の Compose UI test 停止であり class 欠陥では
-ない）。co-occupancy の証拠は pixel_6 AVD の PASS（26 tests / 49s）を用い、CI 同一条件
-（x86_64 pixel_7_pro + KVM）での確認は Phase 2 の実 GitHub Actions run が担う
-（category-override lane は既存 2 class が CI green 実績あり。OrganizerLockScreenTest が
-新規）。本停止は local AVD 固有の可能性が高く、既存 #418 系環境 signature の追跡に含める
-（新規 lane 変更はしない）。
+**V5 pixel_7_pro AVD の停止（環境シグネチャ・分類は暫定）:** 同一 26 test が pixel_6 AVD
+で 49 秒で完結したのに対し、pixel_7_pro AVD（arm64）では 2/26 で 43 分以上進行せず、
+同一 AVD で再試行しても同じ位置（2/26 完了後）で再現停止した。停止時の実行 test 名・
+stack/log signature は記録できていない（停止中に local で中断し XML 未生成のため）。
+このため分類は **category 6（unknown / investigation required、category 5
+environment defect を疑う）の暫定扱い**とする: #372/#300 系 Compose focus 環境
+signature と同型の可能性（V6p7 = 同一 AVD で OrganizerDiagnosticsExportTimestamp が
+5 tests PASS / 58s、V1〜V4p7 も同 AVD で完結）があり class 欠陥の可能性は低いが、
+category 5 への確定は #418/#300 系 signature の一致確認または CI 同一条件での green が
+取れた時点で行う。co-occupancy の証拠は pixel_6 AVD の PASS（26 tests / 49s）を用い、
+CI 同一条件（x86_64 pixel_7_pro + KVM）での確認は Phase 2 の実 GitHub Actions run が
+担う（category-override lane は既存 2 class が CI green 実績あり。OrganizerLockScreenTest
+が新規）。本停止の確定分類と追跡は既存 #418 系環境 signature の追跡に含める（新規 lane
+変更はしない）。
 
 ---
 
@@ -871,7 +891,7 @@ focus 環境 signature と同型。V6p7 = 同一 AVD で OrganizerDiagnosticsExp
 
 | 項目 | 状態 |
 |---|---|
-| **grid migration の corrupt source 時 fail-closed 疑義（R-2）** | focused validation が初検出（§8.6）。RESTORE_PENDING の corrupt source で `tryMigrateDB` が例外を投げず、source が空 DB として再作成・republish される疑い。f8bddc7944 の契約と矛盾する可能性。**追跡 Issue を起票**し、GridMigrationFailureTest の db-migration lane routing をそれに紐付ける。production 変更は本 Issue では行わない（Non-goal） |
+| **grid migration の corrupt source 時 fail-closed 疑義（R-2）** | focused validation が初検出（§8.6）。RESTORE_PENDING の corrupt source で `tryMigrateDB` が例外を投げず、source が空 DB として再作成・republish される疑い。f8bddc7944 の契約と矛盾する可能性。**追跡 Issue [#461](https://github.com/nunu1733/NunuLauncher/issues/461) を起票済み**。production 変更と GridMigrationFailureTest の routing は #461 が所有（本 Issue では production 変更しない） |
 | GridChangeUnknownLockRecovery の full loop（grid 変更→UNKNOWN lock→review→recovery） | CI 未検出のまま。lane/surface 設計（locks test path が複数 surface に跨る）が必要 → follow-up issue で起動条件を決める |
 | DeckRetirementProcessIsolation（AC-009 二次 process gate） | CI 未検出のまま。process polling の flake surface を理由に diagnostic 継続 |
 | UsageAccessTransitionProbe / Issue108GridEvidence の platform 遷移・capture parity | diagnostic 継続。reader app-op 追従の regression は CI 未検出 |
@@ -881,5 +901,5 @@ focus 環境 signature と同型。V6p7 = 同一 AVD で OrganizerDiagnosticsExp
 | #352 / #304 / #418 tracking | 既存 tracking issue が所有（§6） |
 | cold-process restore CTA（#376 RS-AC-01）の CI 検出 | diagnostic 継続。重い 2 phase orchestration |
 | routed class の初回 CI 履歴不在 | §8.6 focused validation（V1〜V7 + pixel_7_pro 再実行）で初回 baseline を取得。失敗 4 件は分類・修復/分離方針を記録済み。Phase 2 で修復後の focused 再実行と PR 上の GH Actions run で最終確認 |
-| V5 pixel_7_pro AVD（arm64 local）の Compose 停止 | 環境 signature（category 5）として §8.6 に記録。既存 CI lane（x86_64）は同一 class 群で green 実績。local AVD 固有の可能性が高く、追跡は既存 #418 系に含める（新規 lane 変更なし） |
+| V5 pixel_7_pro AVD（arm64 local）の Compose 停止 | 分類は category 6（category 5 疑い）の暫定（§8.6。停止 test 名/stack は未取得）。既存 CI lane（x86_64）は同一 class 群で green 実績。確定分類は #418 系 signature 確認または CI 同一条件 green の時点。新規 lane 変更なし |
 | routed に伴う各 lane runtime 増加 | §8.1a。Phase 2 PR の実 GH Actions run で timeout headroom を確認 |
