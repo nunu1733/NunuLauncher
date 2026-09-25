@@ -22,18 +22,18 @@ Foundationの成果は完成UIではなく、安全に検証可能なplanning/ap
 
 | Order | Title | Type | References |
 |---|---|---|---|
-| 1 | 図による変更前後のpreviewと、提案の項目単位の除外 | feature | #449、spec 194/195 |
-| 2 | 上流のdragによる手動移動の取り消し | feature | #442の結論の後、#450 |
-| 3 | S3のpackage→category表（flowerpot由来の版付き表） | research | ADR-0007を改める新ADR |
-| 4 | 使用頻度を使う方針（よく使うアプリを1ページ目・下側へ） | feature | #441、spec 203、FR-013/D-010、ADR-0012 |
-| 5 | 「新着」の整理（既存フォルダへの追加） | feature | #446、spec 12 P-04 |
-| 6 | 重複の削除提案 | feature | #451、#441（B7） |
-| 7 | アンインストール後の穴の扱い（opt-in） | feature | order 6 |
-| 8 | カテゴリの一致するフォルダへの新規アプリ配置 | feature | #446、order 5 |
-| 9 | 長期のレイアウト履歴 | feature | recovery store契約の変更 |
-| 10 | Dock/ウィジェットの複数選択 | feature | #449、#441再計測 |
-| 11 | Undoの永続化 | feature | #450 |
-| 12 | 編集画面の編集内容の新しいホームへの載せ直し | feature | #449 |
+| 1 | 図による変更前後のpreviewと、提案の項目単位の除外 | feature | #449（視覚的編集画面の図描画moduleとの部品共通化）、spec 194/195 |
+| 2 | 上流のdragによる手動移動の取り消し | feature | #442の結論の後。#450（Undoの枠組み、ADR-0013対象外のため別契約判断を要る） |
+| 3 | S3のpackage→category表（flowerpot由来の版付き表） | research | ADR-0007を改める新ADRが必要（版付きimmutable identity・taxonomy対応・fail-closed・migration契約。データ鮮度とlicense確認を含む） |
+| 4 | 使用頻度を使う方針（よく使うアプリを1ページ目・下側へ） | feature | #441、spec 203（入力は実装済み）、FR-013/D-010、ADR-0012 |
+| 5 | 「新着」の整理（plannerが既存フォルダへの追加を扱えるようにする） | feature | #446、spec 12 P-04の見直し |
+| 6 | 重複の削除提案 | feature | #451、#441（B7）。planner/applicationへの削除disposition契約を要る |
+| 7 | アンインストール後の穴の扱い（opt-in） | feature | order 6と同じ削除/recovery契約の基盤 |
+| 8 | カテゴリの一致するフォルダへの新規アプリ配置 | feature | #446、order 5と計画moduleを共有 |
+| 9 | 長期のレイアウト履歴 | feature | recovery storeのretention契約の変更 |
+| 10 | Dock/ウィジェットの複数選択 | feature | #449、#441再計測（不足の実測が着手条件） |
+| 11 | Undoの永続化 | feature | #450（第1版のUndo実装と寿命確定の後） |
+| 12 | 編集画面の編集内容の新しいホームへの載せ直し | feature | #449（第1版のstale時破棄・開き直し実装の後） |
 | 13 | rule import/export（FR-012） | feature | FR-012、ADR-0007 |
 | 14 | 外部分類（FR-014） | research | FR-014、D-011 |
 | 15 | アプリ内AI（Managed Grounded AI、#206） | feature | FR-017凍結解除判断、D-011 |
