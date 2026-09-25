@@ -381,10 +381,17 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   同一bootの遷移証拠ではない。
 - したがって#304の承認可能な状態は従来どおり `status: draft`、AC-1/2/4/5完了、AC-3未完了で
   ある。#418 controlled runのSnapshotStateObserverは独立したCompose/test synchronization
-  oracleとして記録し、#304のper-boot occluder root causeへ統合しない。次のgateは、元の
-  Index4/focus signatureが再発した場合に限り、失敗boot内のmonotonic timestamp付きで
+  oracleとして記録し、#304のper-boot occluder root causeへ統合しない。次の観測は二段階で
+  扱う。第1段は、現行mainのfailure-time captureをcovered laneの失敗ごとに取得し、reportと
+  live snapshotから元のIndex4/focus signatureの再発を分類する段階である。このsnapshotは失敗後
+  の状態であり、過去のboot→focus遷移をAC-3の機構証拠として代用しない。第1段で元signatureを
+  確認した場合だけ、第2段として別のOwner gateを記録した対象runを選び、emulatorのboot開始前
+  （少なくともemulator起動hook）からbounded samplerを開始する。samplerは同一bootの
+  `sys.boot_completed`到達前後から失敗判定まで、monotonic timestamp付きで
   `sys.boot_completed`、HOME role、top-resumed/activity、mCurrentFocus/mFocusedWindow、
-  frontmost、interactive/keyguard、ANR/dropboxを同一artifactへ収めるbounded diagnosticである。
+  frontmost、interactive/keyguard、ANR/dropbox、bounded logcatを同一artifactへ保存・分類する。
+  このprospective timelineだけをAC-3の自然発生causal evidence候補とし、現在のCompose timeout
+  や過去のfailure-only snapshotからは第2段を起動しない。
 - 上記の旧re-entry文にある `d426c35da71a05da6a6d180ed491e8d70844d920` は中間local headであり、
   最終rebase/push headは `90e5349be8c9a5dd778b5da33e4f14160a6839e0`、merge後mainは
   `e9c93e5dffa33189be77e68c1f6f000731c6f75e` である。

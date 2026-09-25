@@ -284,3 +284,9 @@ blocking なものはない。調査中に解決すべき問い:
   live artifact [10842917962](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10842917962)
   は同一bootのdevice/window/activity/ANR snapshotを取得したが、foreign focusまたはSystemUI ANRの
   失敗時遷移を含まず、AC-3は未完了のままとした。
+- 2026-09-25: AC-3の観測を二段階として明確化した。第1段のfailure-time artifactは元の
+  `Index 4,size 4` / focus signatureの再発を分類する証拠であり、失敗後snapshotから過去の
+  boot→focus遷移を復元するものではない。第1段で元signatureを確認した後、別Owner gateの
+  対象runでemulator boot開始前（少なくとも起動hook）からprospective bounded samplerを起動し、
+  同一bootのmonotonic timelineを保存・分類する。このprospective evidenceが得られるまでAC-3は
+  未完了とする。
