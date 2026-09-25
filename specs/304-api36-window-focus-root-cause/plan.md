@@ -338,6 +338,76 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   `d426c35da71a05da6a6d180ed491e8d70844d920` である。これはmergeability解消の準備であり、
   新しいhosted CI実行や#418 runtime root causeの確定を意味しない。
 
+### PR #437 merge後のre-entry照合（2026-09-25）
+
+- PR #437はsource head `90e5349be8c9a5dd778b5da33e4f14160a6839e0`から
+  `e9c93e5dffa33189be77e68c1f6f000731c6f75e` としてmainへmergeされた。PR headでの
+  [run 36080811322](https://github.com/nunu1733/NunuLauncher/actions/runs/36080811322) は
+  `final-status`、unit/build/style/repo-contract、全10 instrumentation laneを成功し、
+  capture-order repairのworkflow契約を検証した。merge後mainのpush
+  [run 36082413664](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664) は
+  `manual-organization-ui-tests` と `final-status` が失敗し、他9 instrumentation lane、
+  unit/build/style/repo-contractは成功した。
+- run 36082413664のreport artifact
+  [10843192422](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10843192422)
+  は140 tests中1 failureを記録した。一次signatureは
+  `OrganizerDiagnosticsRouteInstrumentationTest.issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute`
+  の5秒 `ComposeTimeoutException`（`openRequestRowAndAwaitT15` line 461、caller line 517）で、
+  #418のLazyList `Index 4,size 4`、focus gateまたはSnapshotStateObserverとは別である。
+  job logのGradle後半に出たDevelocity/Netty `NoClassDefFoundError`は、テスト失敗後のscan publish
+  noiseであり、一次test failureの根拠にはしない。
+- 同runのlive failure-time artifact
+  [10842917962](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10842917962)
+  は01:48:01--01:48:17 UTCにemulatorを保持して17/18 queryを取得した（device-pressureのみ15秒timeout、
+  `sys.boot_completed=1`、`ro.boot.bootreason=reboot,factory_reset`）。test logcatでは失敗testが
+  01:47:21.891に開始し01:47:31.410にtimeout、01:47:30以降のfocus leave/launcher resumeは失敗後の
+  Activity cleanupである。capture snapshotはNexusLauncherActivityをcurrent focus/top-resumedにし、
+  `system_app_anr`は01:34:53--01:35:08のGMS/AS/phone ANR（SystemUIではない）だけ、`data_app_anr`は空だった。
+  したがってこの同一boot artifactにも、元の`launcherWindowFocus=false`の自然遷移、foreign occluder、
+  SystemUI ANRをこのCompose timeoutへ結ぶ因果証拠はない。
+- #418の最終controlled run [35886970989](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989)
+  （head `ca999d73365baafea978fedea82b02f18fe0b600`）は、
+  `comparesResetAndRetainedLazyListStateAcrossDisplayConditions` で
+  `IllegalArgumentException: Detected multithreaded access to SnapshotStateObserver`
+  （`FocusableNode.onFocusStateChange` → `FocusOwnerImpl.clearFocus` →
+  `FocusTargetNode.onDetach`、16:20:27.969）を一次signatureとして捕捉し、Activity teardownで
+  `runDetachLifecycle`例外を二次signatureとして捕捉した。report/logcatには
+  `Index 4,size 4` oracleはなく、同じ失敗のlauncherWindowFocus / foreign occluder / ANR
+  遷移は記録されていない。
+- 失敗時live artifact [10764201175](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989/artifacts/10764201175)
+  は16:21:25 UTCにemulatorを保持して取得できた。最終snapshotはNexusLauncherActivityが
+  top-resumed/current-focusedで、`system_app_anr`は`No entries found`だった。これは失敗後の
+  state snapshotであり、一次signatureをlauncher occluderや#304のSystemUI ANRへ結び付ける
+  同一bootの遷移証拠ではない。
+- したがって#304の承認可能な状態は従来どおり `status: draft`、AC-1/2/4/5完了、AC-3未完了で
+  ある。#418 controlled runのSnapshotStateObserverは独立したCompose/test synchronization
+  oracleとして記録し、#304のper-boot occluder root causeへ統合しない。次の観測は二段階で
+  扱う。第1段は、現行mainのfailure-time captureをcovered laneの失敗ごとに取得し、reportと
+  live snapshotから元のIndex4/focus signatureの再発を分類する段階である。このsnapshotは失敗後
+  の状態であり、過去のboot→focus遷移をAC-3の機構証拠として代用しない。第1段で元signatureを
+  確認した場合だけ、第2段として別のOwner gateを記録した対象runを選び、emulatorのboot開始前
+  （少なくともemulator起動hook）からbounded samplerを開始する。samplerは同一bootの
+  `sys.boot_completed`到達前後から失敗判定まで、monotonic timestamp付きで
+  `sys.boot_completed`、HOME role、top-resumed/activity、mCurrentFocus/mFocusedWindow、
+  frontmost、interactive/keyguard、ANR/dropbox、bounded logcatを同一artifactへ保存・分類する。
+  Stage 2のOwner gate packetは、選択laneの直近completed runについて、emulator startup hookから
+  command/test resultまでの`observed_startup_to_result_seconds`、実行したtest command、commandを囲む
+  runner/job timeout、emulator boot timeout、capture/wrapper timeoutを事前に記録する。観測したlane全体の
+  所要時間に明示的な`owner_margin_seconds`を加えた有限の`max_elapsed_seconds`をpacketで固定し、marginが
+  選択laneのstartup・timeout・結果取得の余裕を覆うことを確認する。`sample_interval_seconds = 5`、
+  `max_samples = ceil(max_elapsed_seconds / 5) + 1`、`max_timeline_bytes = max_samples * 16384`とする。
+  samplerはemulator boot前のstartup hookから同一bootのcommand/test resultまで動かす。run 36082413664の
+  約775秒はboot完了からfailureまでの区間であり、startup hookからresultまでの定義済み観測値やtimeoutの
+  代用にはしない。failure-time capture用の150秒budgetもprospective timelineへ流用できない。
+  元のIndex4/focus signatureが予算内に再発し、command/test resultが完了した場合はsignatureを分類する。
+  予算終了前にcommand/test resultが得られない、またはdevice goneで終了した場合は`incomplete`として記録し、
+  `non-reproduced`とは分類しない。completed command/runが予定停止点まで終了し、元signatureが無い場合だけ
+  `non-reproduced`として記録してgateを閉じる。このprospective timelineだけをAC-3の自然発生causal evidence候補とし、
+  現在のCompose timeoutや過去のfailure-only snapshotからは第2段を起動しない。
+- 上記の旧re-entry文にある `d426c35da71a05da6a6d180ed491e8d70844d920` は中間local headであり、
+  最終rebase/push headは `90e5349be8c9a5dd778b5da33e4f14160a6839e0`、merge後mainは
+  `e9c93e5dffa33189be77e68c1f6f000731c6f75e` である。
+
 ## 残存リスク受容の判断基準（root cause 未確定のまま完了する場合）
 
 次のすべてを満たす場合、受容の判断を記録して完了できる:

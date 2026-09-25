@@ -8,7 +8,7 @@ requirements:
   - RC-AC-04
   - RC-AC-05
 risk: []
-updated: 2026-09-13
+updated: 2026-09-25
 ---
 
 # api36 UI lane の burst 発生 boot で window focus を保持する occluder が gate 証拠から特定され、root cause 結論または残存リスク受容が記録される
@@ -268,3 +268,33 @@ blocking なものはない。調査中に解決すべき問い:
   failure時だけwindow/activity/power/role/resolve、ANR/dropbox、限定logcat、input/
   SurfaceFlinger/pressureをartifact化するhelperとfake-`adb` smoke testを追加した。
   最初の自然再発でartifactを取得するまで、機構証拠そのものは未確認のままとする。
+- 2026-09-25: PR #437（capture-order repair）がmainへmergeされた（merge head
+  `e9c93e5dffa33189be77e68c1f6f000731c6f75e`）。#418のcontrolled run
+  [35886970989](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989) の
+  live artifact [10764201175](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989/artifacts/10764201175)
+  はdeviceとwindow/activity snapshotを取得したが、primary failureは
+  `SnapshotStateObserver` のworker-threadアクセスであり、secondaryはCompose teardownの
+  `runDetachLifecycle`だった。report/logcatに `Index 4,size 4`、`launcherWindowFocus=false`、
+  foreign occluderまたはSystemUI ANRの因果経路はなく、#304 AC-3は未完了のままとした。
+- 2026-09-25: merge後main [run 36082413664](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664)
+  はmanual laneの5秒`ComposeTimeoutException`で失敗した。report
+  [10843192422](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10843192422)
+  の140 tests中1 failureは`OrganizerDiagnosticsRouteInstrumentationTest`の
+  `openRequestRowAndAwaitT15`（line 461/517）で、#418/#304のoracleとは別signatureだった。
+  live artifact [10842917962](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10842917962)
+  は同一bootのdevice/window/activity/ANR snapshotを取得したが、foreign focusまたはSystemUI ANRの
+  失敗時遷移を含まず、AC-3は未完了のままとした。
+- 2026-09-25: AC-3の観測を二段階として明確化した。第1段のfailure-time artifactは元の
+  `Index 4,size 4` / focus signatureの再発を分類する証拠であり、失敗後snapshotから過去の
+  boot→focus遷移を復元するものではない。第1段で元signatureを確認した後、別Owner gateの
+  対象runでemulator boot開始前（少なくとも起動hook）からprospective bounded samplerを起動し、
+  同一bootのmonotonic timelineを保存・分類する。このprospective evidenceが得られるまでAC-3は
+  未完了とする。
+- 2026-09-25: reviewでStage 2の固定150秒案と数値算式の例を撤回した。main run 36082413664の
+  約775秒はemulator boot完了からfailureまでの区間で、startup hookからresultまでの定義済み所要時間や
+  選択commandのtimeoutを表さない。Stage 2は選択laneの直近completed runについてstartup hook→command
+  resultの実測、実行command、runner/job・emulator boot・capture/wrapperのtimeoutをOwner packetへ事前記録し、
+  lane全体の実測所要時間に明示的なowner marginを加えた有限wall上限を固定する。5秒周期、上限wallから
+  算出した`ceil(max_elapsed_seconds / 5) + 1` sample、`max_samples * 16384` bytesを同じpacketへ記録し、
+  timeoutとの整合を確認する。予算内にcompleted resultが得られない場合は`incomplete`、completed runで
+  元signatureが無い場合だけ`non-reproduced`とする。
