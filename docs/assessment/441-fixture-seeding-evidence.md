@@ -66,3 +66,17 @@ evidence: `b1-target01-page1.png`（2ページ目のrow 3に「Benchmark ...」�
 ## 4. 残置事項
 
 - AC-7/AC-8: 実機Pixel 9aでのbaseline計測（3試行/課題、中央値、max/min > 1.5で追加2試行）と目標確定+NFR-014確定。保守者が定義文書§7の手順で実施する（後続PRが `Closes #441` となる）。
+- 本文書のエミュレータ実行は追加evidenceである。PRのmerge gateはCI run（`surface_organizer_ui` 差分としてmanual-organization-ui laneが起動）で確認する。
+
+## 5. Clean checkout実行記録（head `941f332f81`）
+
+実装reviewのprovenance指摘を受け、**`941f332f818ab36f4af8117a50df3b7786a91f5b` のクリーンcheckout（git worktree、submodule初期化済み）で全検証を再実行**した（2026-09-26）。本節以降の追記はdocumentation差分のみであり、検証対象treeとソースコードは同一である。
+
+| 項目 | Command | Result |
+|---|---|---|
+| AC-2/3/4（fixture契約2 test） | `ANDROID_SERIAL=emulator-5554 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.EditingBurdenBenchmarkFixtureSeedingInstrumentationTest` | BUILD SUCCESSFUL。2 test PASS |
+| AC-6 | `./gradlew spotlessCheck` | BUILD SUCCESSFUL |
+| AC-5（portfolio整合） | `validate_ci_portfolio.py` / `test_validate_ci_portfolio.py` | OK / OK |
+| AC-1（link・契約） | `validate_repo_contract.py` / `test_validate_repo_contract.py` | repository contract OK（両方） |
+
+環境: macOS darwin arm64、JDK 21（Homebrew 21.0.12）、reference系emulator `nunu_smoke_api35`（Pixel 6、API 35、4列×5行）。
