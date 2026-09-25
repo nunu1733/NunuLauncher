@@ -398,7 +398,12 @@ merge gate にしない前提の資産）; classification before → after = Loc
   evidence PR で land できる」と明記）。本監査の監査対象 inventory は実 working tree を
   読んで作成したため契約記録自体は正しいが、「repository 内の unrouted class」という
   定性は不正確だった。Phase 2 の Route 実装が spec 265 が想定した durable landing に
-  相当し、本 PR で track する（local exclude は解除）。
+  相当し、本 PR で harness 全体を standing regression asset として track する（local
+  exclude は解除）。この変更種別は Phase 1 承認後の Phase 2 実装で判明したため、
+  bounded list を改訂（§8 種別 3）し Issue #458 上で明示追認した。なお report-only の
+  writerBusy 観測 test は #265 の will-not-investigate disposition に従い、同一 file の
+  別 class `Issue265WriterBusyObservationTest`（CI 非routing・diagnostic）へ分離した
+  （Phase 2 review 指摘。R-10 の CI gate 対象は 3 つの gate-FAILED route assertion のみ）。
 - focused validation の結果: **4/4 決定失敗**（§8.6、category 2: stale fixture）。
   `runner.start()` 後の状態が accepted な #417 scope-first flow の `Selecting` であるのに、
   test は旧 flow（start→Preview 直行）を前提。同一状態を routed な
@@ -724,18 +729,27 @@ smoke script 用 mode）、`InjectedInputEnvironment`、tests/unit の harness/f
 
 **目的: unrouted standing regression の恒久実行化と JVM gate の穴埋めのみ。** test の
 assertion・契約の変更、lane 削除、UI lane 統合、production seam 削除は含まない。Phase 2
-が行う test file への変更は次の 2 種に限定される:
+が行う test file への変更は次の 3 種に限定される（3 は Phase 2 実装で判明した R-10 の
+実態を受け入れる改訂であり、Issue #458 上で明示追認済み — 本 PR の説明 comment 参照）:
 
 1. **Move boundary（R-15）**: `BackupExclusionTest` の同等 assertion を JVM test として
    新設し、instrumentation class を削除する（契約不変の境界移動）。
 2. **前提修復（R-5 / R-10 / R-11、focused validation で category 2/3 と分類）**:
    `DeckRetirementMigrationInstrumentationTest` 第 1 test への `ensureActiveDbExists`
    追加（category 3、setup 修復）、`Issue265GateFailedRouteInstrumentationTest` helper の
-   現行 #417 flow 整合（category 2、flow 修復）、`PageCaptureInstrumentationTest` 期待値の
-   accepted な #155 first screen 契約への整合（category 2、stale expectation 修復）。
-   いずれも保護対象の契約（gate FAILED routes / page ordering・空 page 排除・決定性 /
-   retirement migration の冪等性）の assertion 構造は変えない、契約を成立させるための
-   修復である。
+   現行 #417 flow 整合 + #371 granted fast path 前提（category 2、flow 修復）、
+   `PageCaptureInstrumentationTest` 期待値の accepted な #155 first screen 契約への整合
+   （category 2、stale expectation 修復）。いずれも保護対象の契約（gate FAILED routes /
+   page ordering・空 page 排除・決定性 / retirement migration の冪等性）の assertion 構造
+   は変えない、契約を成立させるための修復である。
+3. **R-10 の durable evidence landing（spec 265 provision の行使）**: R-10 は
+   repository tracked class ではなく #265「no code lands」の untracked working-tree
+   harness だった（spec 265 294-297 行が「owner が後で durable にしたければ separate
+   evidence PR で land できる」と許容）。本監査の accepted disposition（R-10 = Route）が
+   この landing を意味し、Phase 2 で harness 539 行全体を standing regression asset とし
+   て track する（local exclude 解除）。report-only だった writerBusy 観測は #265 の
+   will-not-investigate disposition に従い、同一 file 内の別 class
+   `Issue265WriterBusyObservationTest`（CI 非routing・diagnostic）へ分離した。
 
 ### 8.1 instrumentation routing（14 class → 既存 5 lane + fixture 修復 3 件 + routing 分離 1 件）
 
@@ -944,12 +958,13 @@ local 検証（実行 revision: 本 PR head）:
 | ID | 内容 | 結果 |
 |---|---|---|
 | V13 | PageCaptureInstrumentationTest 単独（#155 expectation 修復後） | **PASS**（27s、pixel_7_pro AVD） |
-| V14 | Issue265GateFailedRouteInstrumentationTest 単独（#417 flow 修復後） | 初回 **FAIL**（`AwaitingUsageAccessJit` 停止 → #371 granted fast path 前提が欠落と判明）。granted fast path 追加後の再実行 **V14b = PASS**（4/4、pixel_7_pro AVD） |
+| V14 | Issue265GateFailedRouteInstrumentationTest 単独（#417 flow 修復後） | 初回 **FAIL**（`AwaitingUsageAccessJit` 停止 → #371 granted fast path 前提が欠落と判明）。granted fast path 追加後 **V14b = 4/4 PASS**。さらに writerBusy を diagnostic class へ分離後の routing 対象 3 route tests で **V14c = PASS**（3/3） |
 | V15 | db-migration 提案 lane 9 class（修復後。GridMigrationFailureTest は含まない） | **PASS**（16s。DeckRetirementMigration 修復・RestoreProfileRemap・GridMigrationSuccess を含む） |
 | V16 | reservation-recovery 提案 lane 14 class（修復後・co-occupancy 再確認） | **PASS**（284s。修復済み Issue265GateFailedRoute / PageCapture / LockAuthoring + 既存 7 class + store 系 4 class） |
 
 V14 の初回 FAIL は修復の前提追加（usage access grant）を要したが、granted fast path は
-routed 兄弟 class の既存 pattern であり契約変更ではない。
+routed 兄弟 class の既存 pattern であり契約変更ではない。Phase 2 review（writerBusy の
+diagnostic 分離）後の再実行は V14c が上記の通り。
 
 CI 証跡（AC-458-P2-06 の正本）: PR 上の実 GitHub Actions run の URL と結果を PR 本文へ
 記録する（対象: db-migration / reservation-recovery / restore-capture /

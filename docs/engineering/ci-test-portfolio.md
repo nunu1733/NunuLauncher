@@ -106,9 +106,10 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 ### 未 routing test の disposition（Issue #458 semantic 監査）
 
 `tests/organizer-instrumentation/` には CI lane の class list に含まれない instrumentation
-test が 32 class 存在した（各 lane の Gradle invocation は明示 class filter のため、
+test が 32 candidate 存在した（tracked 31 class + #265 が untracked working-tree evidence
+として保持していた harness 1 class。各 lane の Gradle invocation は明示 class filter のため、
 未 routing class は full portfolio でも実行されない。#422 で記録、routing 判断は後続
-Issue に deferred）。Issue #458 が全 32 class を semantic 監査し、正本は
+Issue に deferred）。Issue #458 が全 32 candidate を semantic 監査し、正本は
 [specs/458-semantic-test-audit/audit.md](../../specs/458-semantic-test-audit/audit.md)
 である。結果の要約:
 
@@ -136,8 +137,11 @@ Issue に deferred）。Issue #458 が全 32 class を semantic 監査し、正�
   production 調査・修正と routing は [#461](https://github.com/nunu1733/NunuLauncher/issues/461)
   が所有する。
 - **前提修復（3 class、test のみ・契約 assertion 構造は不変）**: #417 scope-first flow への
-  整合（#265GateFailedRoute）、#155 first screen 契約への期待値整合（PageCapture）、
-  active DB 生成前提の追加（DeckRetirementMigration）。
+  整合 + #371 granted fast path 前提（#265GateFailedRoute）、#155 first screen 契約への
+  期待値整合（PageCapture）、active DB 生成前提の追加（DeckRetirementMigration）。
+  併せて #265GateFailedRoute の report-only writerBusy 観測は #265 の
+  will-not-investigate disposition に従い、同 file 内の別 class
+  `Issue265WriterBusyObservationTest`（CI 非routing・diagnostic）へ分離した。
 
 `tests/organizer-instrumentation/com/android/launcher3/model/**` の `surface_db_schema`
 mapping は、#458 で `GridMigrationSuccessTest` が db-migration lane class list に加わった

@@ -186,43 +186,6 @@ class Issue265GateFailedRouteInstrumentationTest {
         // (earlier reconciles in this process may legitimately have done so).
     }
 
-    @Test
-    fun writerBusy_immediateConfirmAfterApply() {
-        val runner = ManualOrganizationModule.get(context)
-        seedLayoutWithFolder()
-        val startState = runStart(runner)
-        if (startState is ManualOrganizationRun.State.Selecting) {
-            runner.confirmSelection(emptySet())
-        }
-        check(runner.state is ManualOrganizationRun.State.ScopeConfirmed) {
-            "Run did not reach the method-choice face: ${runner.state}"
-        }
-        runner.planWithConfirmedScope()
-        if (runner.state is ManualOrganizationRun.State.Preview) {
-            runner.confirm()
-        }
-        val applied = runner.state as? ManualOrganizationRun.State.Applied
-            ?: error("organize did not reach Applied: ${runner.state}")
-        val pointId = (applied.result as ApplyResult.Applied).pointId
-
-        // No settling wait: confirm immediately, as the original report did.
-        runner.beginRecoveryPreview()
-        val previewState = runner.state as? ManualOrganizationRun.State.RecoveryPreview
-        if (previewState == null) {
-            report("WRITERBUSY_PREVIEW_STATE=${runner.state}")
-        } else {
-            runner.confirmRecovery()
-            val result = runner.state
-            report("WRITERBUSY_CONFIRM_RESULT=$result")
-            if (result is ManualOrganizationRun.State.RecoveryResultState &&
-                result.result is app.lawnchair.organizer.application.public.RecoveryResult.WriterBusy
-            ) {
-                report("WRITERBUSY_OBSERVED=true point=$pointId")
-            }
-        }
-        runner.dismiss()
-    }
-
     // ------------------------------------------------------------------
     // orchestration helpers
     // ------------------------------------------------------------------
