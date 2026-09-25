@@ -373,6 +373,9 @@ android {
         androidTest {
             java.srcDirs = ['tests/organizer-instrumentation']
             manifest.srcFile 'tests/organizer-instrumentation/AndroidManifest.xml'
+            // Issue #441: benchmark fixture alias icons live in the dedicated
+            // instrumentation res tree.
+            res.srcDirs = ['tests/organizer-instrumentation/res']
         }
     }
 }

@@ -15,5 +15,397 @@
 
     <application android:debuggable="true">
         <uses-library android:name="android.test.runner" />
+        <!-- Issue #441 A-10: benchmark fixture launch identities. Distinct
+             component/label/icon aliases supplied by the test APK only; the
+             product manifest is unchanged. -->
+        <activity
+            android:name="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:exported="true"
+            android:label="Benchmark Fixture" />
+        <activity-alias
+            android:name="app.lawnchair.fixture.F01"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 01"
+            android:icon="@drawable/fixture_icon_f01"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F02"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 02"
+            android:icon="@drawable/fixture_icon_f02"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F03"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 03"
+            android:icon="@drawable/fixture_icon_f03"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F04"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 04"
+            android:icon="@drawable/fixture_icon_f04"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F05"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 05"
+            android:icon="@drawable/fixture_icon_f05"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F06"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 06"
+            android:icon="@drawable/fixture_icon_f06"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F07"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 07"
+            android:icon="@drawable/fixture_icon_f07"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F08"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 08"
+            android:icon="@drawable/fixture_icon_f08"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F09"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 09"
+            android:icon="@drawable/fixture_icon_f09"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F10"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 10"
+            android:icon="@drawable/fixture_icon_f10"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F11"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 11"
+            android:icon="@drawable/fixture_icon_f11"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F12"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 12"
+            android:icon="@drawable/fixture_icon_f12"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F13"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 13"
+            android:icon="@drawable/fixture_icon_f13"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F14"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 14"
+            android:icon="@drawable/fixture_icon_f14"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F15"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 15"
+            android:icon="@drawable/fixture_icon_f15"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F16"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 16"
+            android:icon="@drawable/fixture_icon_f16"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F17"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 17"
+            android:icon="@drawable/fixture_icon_f17"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F18"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 18"
+            android:icon="@drawable/fixture_icon_f18"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F19"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 19"
+            android:icon="@drawable/fixture_icon_f19"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F20"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 20"
+            android:icon="@drawable/fixture_icon_f20"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F21"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 21"
+            android:icon="@drawable/fixture_icon_f21"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F22"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 22"
+            android:icon="@drawable/fixture_icon_f22"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F23"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 23"
+            android:icon="@drawable/fixture_icon_f23"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F24"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 24"
+            android:icon="@drawable/fixture_icon_f24"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F25"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 25"
+            android:icon="@drawable/fixture_icon_f25"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F26"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 26"
+            android:icon="@drawable/fixture_icon_f26"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F27"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 27"
+            android:icon="@drawable/fixture_icon_f27"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F28"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 28"
+            android:icon="@drawable/fixture_icon_f28"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F29"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 29"
+            android:icon="@drawable/fixture_icon_f29"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F30"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 30"
+            android:icon="@drawable/fixture_icon_f30"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F31"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 31"
+            android:icon="@drawable/fixture_icon_f31"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F32"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 32"
+            android:icon="@drawable/fixture_icon_f32"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F33"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 33"
+            android:icon="@drawable/fixture_icon_f33"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F34"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 34"
+            android:icon="@drawable/fixture_icon_f34"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name="app.lawnchair.fixture.F35"
+            android:targetActivity="app.lawnchair.fixture.BenchmarkFixtureActivity"
+            android:label="Fixture 35"
+            android:icon="@drawable/fixture_icon_f35"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>
