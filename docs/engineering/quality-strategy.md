@@ -1,7 +1,7 @@
 # Quality Strategy
 
 > Status: Accepted
-> Updated: 2026-09-24 (Issue #422: impact-based CI portfolio、intermittent failure 分類・retry 方針、新規 test/CI lane 審査ルールを追加)
+> Updated: 2026-09-25 (Issue #456: test-audit skill による authoring/review/audit 手順を追加。CI portfolio policy は Issue #422 を継続)
 
 ## Quality order
 
@@ -172,6 +172,13 @@ failure が merge evidence を阻害した実績）。
   別問題である。
 
 ## 新規 test / CI lane 追加時の審査ルール
+
+test の新規作成・変更・review・監査、または CI test routing の変更では、
+[test-audit skill](../../.agents/skills/test-audit/SKILL.md) を実行手順として使う。
+skill は本節と #422 の policy を置き換える正本ではなく、protected contract、credible
+regression、primary owner boundary、重複、impact surface、CI 分類を変更前に確定するための
+authoring/review gate である。矛盾時は本書、[ci-test-portfolio.md](./ci-test-portfolio.md)、
+`ci_portfolio_map.yml`、`.github/workflows/ci.yml` を優先する。
 
 新しい test を追加するときは、PR で次を記載する。
 
