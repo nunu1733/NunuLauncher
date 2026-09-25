@@ -26,10 +26,3 @@ adb install -r build/outputs/apk/androidTest/lawnWithQuickstepGithub/debug/*.apk
 adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCrossProcessStageATest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
 adb shell am force-stop app.lawnchair.debug
 adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCrossProcessStageBTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
-
-# Temporary controlled failure probe for Issue #438 AC-5 evidence: the real
-# sequence above runs first; failing here exercises live failure capture from
-# inside the runner in this formerly runner-external lane. Reverted before
-# merge.
-printf 'issue438 controlled failure probe: real stages passed; failing to exercise live failure capture\n' >&2
-exit 7
