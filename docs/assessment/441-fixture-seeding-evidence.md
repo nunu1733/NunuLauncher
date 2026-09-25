@@ -57,7 +57,7 @@ persist mode適用後のホーム（実物。`connectedLawnWithQuickstepGithubDe
 B1/B6のinstall経路と自動配置を同emulatorで検証した:
 
 - `adb install`（reason 0 = `INSTALL_REASON_UNKNOWN`）では `SessionCommitReceiver` が「Removing PromiseIcon ... install reason: 0」を出し自動追加が**起きない**ことを確認（logcat）。
-- `pm install-create --install-reason 4`（4 = user request = `INSTALL_REASON_USER`）→ `install-write` → `install-commit` のsession installでは、「Adding package name to install queue」→「AddWorkspaceItemsTask: Adding item info to workspace ... screen=1 cell(0,0)」と続き、**fixtureの2ページ目の最初の空きcell（screen=1, cell(0,3)）に新規アイコン「Benchmark Target 01」が自動配置された**（install約8秒後。fixtureの2ページ目のうち3行が埋まっている状態での最初の空きcell）。
+- `pm install-create --install-reason 4`（4 = user request = `INSTALL_REASON_USER`）→ `install-write` → `install-commit` のsession installにより、**新規アイコン「Benchmark Target 01」がfixtureの2ページ目の最初の空きcell（screen=1, cell(0,3)）へ自動配置された**（install約8秒後）。配置の正はDB行（`favorites` のscreen=1, cellX=0, cellY=3）と `b1-target01-page1.png` である。なおlogcatの「AddWorkspaceItemsTask: Adding item info to workspace ... cell(0,0)」は、配置cell決定前のqueue項目（`ItemInstallQueue` のPendingInstallShortcutInfo）を示すlogであり、最終配置座標ではない。
 - 検証に使った固定対象アプリは `tests/benchmark-install-targets/`（flavor `target01`。10 flavorでB6の10個を賄う）。
 - Lawnchairが既定ランチャーでない場合、新規アイコンは出現しない（`pm clear` 後に既定homeがNexusLauncherへ戻った状態で再現し、`cmd package set-home-activity` でLawnchairへ戻すと解消）。§7の端末前提状態に記載。
 

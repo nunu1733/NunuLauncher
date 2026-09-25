@@ -162,9 +162,11 @@ adb install -r "build/outputs/apk/lawnWithQuickstepGithub/debug/"*.apk
 adb install -r "build/outputs/apk/androidTest/lawnWithQuickstepGithub/debug/"*.apk
 adb shell am instrument -w \
   -e persist true \
-  -e class app.lawnchair.organizer.ui.EditingBurdenBenchmarkFixtureSeedingInstrumentationTest \
+  -e class app.lawnchair.organizer.ui.EditingBurdenBenchmarkFixtureSeedingInstrumentationTest#fixtureSeedsIdenticallyFromSameInputAndPreservesDockAndReservations \
   app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
 ```
+
+persist指定は**seeding test 1メソッドに限定する**。同classの検証用test（`seedingPreservesPreExistingHotseatFolderDescendants`）はdockに行を注入するため、persistでは実行しない（test側でもpersist時はskipする）。
 
 fixture適用後にhomeを開くと、organizerのonboarding提案（「Organize your Home screen?」）が表示されることがある。提案は適用しない（「LATER」で閉じる。提案は確認するまで何も変更しない）。
 

@@ -29,6 +29,7 @@ import com.patrykmichalik.opto.core.setBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -166,20 +167,25 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
      */
     @Test
     fun seedingPreservesPreExistingHotseatFolderDescendants() {
+        // This test injects verification-only dock rows, so it must never run
+        // on the measurement path (persist mode runs the seeding test only).
+        assumeFalse(persistMode())
         val db = launcher.model.modelDbController.db
         val folderId = launcher.model.modelDbController.generateNewItemId()
+        val childIds = mutableListOf<Long>()
         db.beginTransaction()
         try {
             insertHotseatFolderRow(folderId, slot = 1, title = "Dock folder")
-            insertFolderChildRow(alias(1), folderId)
-            insertFolderChildRow(alias(35), folderId)
+            childIds.add(insertFolderChildRow(alias(1), folderId))
+            childIds.add(insertFolderChildRow(alias(35), folderId))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
         launcher.model.modelDbController.clearEmptyDbFlag()
         reloadAndWait()
-        val dockFolderBefore = rowsById(setOf(folderId.toLong()))
+        val dockGraphIds = setOf(folderId.toLong()) + childIds.toSet()
+        val dockGraphBefore = rowsById(dockGraphIds)
 
         initialReservations = captureReservations()
         val columns = capturedColumns
@@ -189,14 +195,26 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         launcher.model.modelDbController.clearEmptyDbFlag()
         reloadAndWait()
 
+        val dockGraphAfter = rowsById(dockGraphIds)
         assertEquals(
             "Hotseat folder and its descendants must be preserved untouched",
-            dockFolderBefore,
-            rowsById(setOf(folderId.toLong())),
+            dockGraphBefore,
+            dockGraphAfter,
+        )
+        assertEquals(
+            "Injected children must remain descendants of the dock folder",
+            dockGraphIds,
+            dockGraphAfter.mapNotNull { it.getAsLong(Favorites._ID) }.toSet(),
         )
         assertTrue(
+            "Injected children must keep the dock folder as their container",
+            dockGraphAfter.filter { it.getAsLong(Favorites._ID) in childIds.toSet() }
+                .all { it.getAsLong(Favorites.CONTAINER) == folderId.toLong() },
+        )
+        assertEquals(
             "Hotseat folder must not be part of the fixture-owned write set",
-            folderId.toLong() !in seed.fixtureOwnedIds,
+            dockGraphIds intersect seed.fixtureOwnedIds,
+            emptySet<Long>(),
         )
         assertFixtureContract(columns, rows, seed)
 
