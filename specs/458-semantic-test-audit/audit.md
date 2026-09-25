@@ -1,7 +1,7 @@
 ---
 issue: "#458"
-status: draft
-phase: "Phase 1 (audit)"
+status: accepted
+phase: "Phase 2 (implementation)"
 method: "test-audit skill / Portfolio campaign"
 evidence-date: 2026-09-25
 baseline: "7508bbf0d5 (main)"
@@ -208,7 +208,7 @@ production/test code は baseline と同一であるため、各 candidate の�
 | R-5 | CI 未実行。focused local run: §8.6 V3 で 1/2 失敗（category 3、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_db_schema, db-migration lane） | なし |
 | R-6〜R-9 | CI 未実行。focused local run: §8.6 V1/V2 で PASS | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
 | R-10 | CI 未実行。focused local run: §8.6 V1/V2 で 4/4 失敗（category 2、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
-| R-11 | CI 未実行。focused local run: §8.6 V1/V2 で 2/3 失敗（category 3、fixture 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
+| R-11 | CI 未実行。focused local run: §8.6 V1/V2 + 単独 V11 で 2/3 失敗（category 2、#155 契約への stale expectation 修復を適用前提に） | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
 | R-12 | CI 未実行。focused local run: §8.6 V1/V2 で PASS | Unrouted/Local-only → Conditional（surface_layout_write, reservation-recovery lane） | なし |
 | R-13 | CI 未実行。focused local run: §8.6 V5（pixel_6 AVD）で PASS。pixel_7_pro AVD は 2/26 で再現停止（category 6 / category 5 suspected の暫定、§8.6）。3-class proposed group の CI 同一条件確認は Phase 2 の GH Actions run で実施 | Unrouted/Local-only → Conditional（surface_organizer_ui, category-override lane） | なし |
 | R-14 | CI 未実行。focused local run: §8.6 V6 で PASS | Unrouted/Local-only → Conditional（surface_organizer_ui, manual-organization-ui lane） | なし |
@@ -392,6 +392,13 @@ merge gate にしない前提の資産）; classification before → after = Loc
 - surface: `surface_layout_write`。
 - 履歴: #265 spec 265-post-apply-recovery-reconciliation（AC-R1/R2）。局所調査由来の
   証拠は docs/assessment/pr-355-issue337-category-refs.md:62。
+- **追記（Phase 2 実装中の発見）**: 本 class は spec 265 の「no code lands」規則により
+  **一度も commit されていない untracked working-tree harness** だった（`.git/info/exclude`
+  に local exclude が存在。spec 265 294-297 行は「owner が後で durable にしたければ別の
+  evidence PR で land できる」と明記）。本監査の監査対象 inventory は実 working tree を
+  読んで作成したため契約記録自体は正しいが、「repository 内の unrouted class」という
+  定性は不正確だった。Phase 2 の Route 実装が spec 265 が想定した durable landing に
+  相当し、本 PR で track する（local exclude は解除）。
 - focused validation の結果: **4/4 決定失敗**（§8.6、category 2: stale fixture）。
   `runner.start()` 後の状態が accepted な #417 scope-first flow の `Selecting` であるのに、
   test は旧 flow（start→Preview 直行）を前提。同一状態を routed な
@@ -401,9 +408,12 @@ merge gate にしない前提の資産）; classification before → after = Loc
 - disposition: **Route → reservation-recovery lane（fixture 修復を適用の前提条件とする）**。
   Phase 2 で organizeAndConfirm / writerBusy helper を現行 flow に整合させ
   （Selecting→confirmSelection→planWithConfirmedScope→Preview→confirm の E2E 同一
-  pattern）、local で green を確認してから routing する。修復は test のみで production
-  契約（gate FAILED routes）の assertion 自体は不変。
-- validation: fixture 修復後、V1 形式の focused 実行を再実施。
+  pattern）+ #371 JIT gate の granted fast path 前提を @Before に追加（routed な
+  Issue265ManualEditRecoveryInstrumentationTest と同一 pattern。V14 の初回修復後 run で
+  `AwaitingUsageAccessJit` 停止を確認したため追加）、local で green を確認してから
+  routing する。修復は test のみで production 契約（gate FAILED routes）の assertion 自体
+  は不変。
+- validation: fixture 修復後、V1 形式の focused 実行を再実施（V14b = 4/4 PASS）。
 - residual: gate FAILED route 契約自体は修復後も本 test のみが所有。
 
 #### R-11 `app.lawnchair.organizer.application.PageCaptureInstrumentationTest`
@@ -415,13 +425,17 @@ merge gate にしない前提の資産）; classification before → after = Loc
   ordering 契約を持たない。
 - surface: `surface_layout_write`。
 - 履歴: Stage B review finding 1 回帰（KDoc）。CI 履歴なし。
-- focused validation の結果: **2/3 決定失敗**（§8.6、category 3: fixture が favorites を
-  wipe せず既定 workspace の row が混入）。3 test 目（model-only 空 page 排除）は PASS。
-- disposition: **Route → reservation-recovery lane（fixture 修復を適用の前提条件とする）**。
-  Phase 2 で setUp を seeding 前に favorites を空にする形へ修復し（tearDown の restore
-  は既存のまま）、local で green を確認してから routing する。期待値が既定 workspace
-  内容に依存しないことが修復の検証条件。
-- validation: fixture 修復後、focused 実行を再実施。
+- focused validation の結果: **2/3 決定失敗**（§8.6、単独実行 V11 でも再現）。分類は
+  **category 2（stale expectation）**: `dbDesktopPageIds(qsbEnabled)` が #155/ADR-0008 の
+  受入済み契約（QSB 有効時、rowless first screen が platform-authoritative として page
+  list の先頭に来る）を実装する一方、期待値は #155 より前の形状。fixture は既に
+  `deleteAllFavorites()` で wipe 済みであり、初回の category 3（wipe 欠落）仮定は単独
+  実行の証拠により撤回した。3 test 目（model-only 空 page 排除）は PASS。
+- disposition: **Route → reservation-recovery lane（stale expectation 修復を適用の前提
+  条件とする）**。Phase 2 で 3 件の期待値を accepted な #155 契約（first screen 先頭 +
+  row pages 昇順）に整合させ、page ordering・空 page 排除・決定性の assertion 構造は
+  不変のまま local で green を確認してから routing する。
+- validation: expectation 修復後、focused 実行を再実施。
 - residual: capture 契約自体は修復後も本 test のみが所有。
 
 #### R-12 `app.lawnchair.organizer.locks.LockAuthoringInstrumentationTest`
@@ -714,11 +728,14 @@ assertion・契約の変更、lane 削除、UI lane 統合、production seam 削
 
 1. **Move boundary（R-15）**: `BackupExclusionTest` の同等 assertion を JVM test として
    新設し、instrumentation class を削除する（契約不変の境界移動）。
-2. **fixture 修復（R-5 / R-10 / R-11、focused validation で category 2/3 と分類）**:
+2. **前提修復（R-5 / R-10 / R-11、focused validation で category 2/3 と分類）**:
    `DeckRetirementMigrationInstrumentationTest` 第 1 test への `ensureActiveDbExists`
-   追加、`Issue265GateFailedRouteInstrumentationTest` helper の現行 #417 flow 整合、
-   `PageCaptureInstrumentationTest` setUp の seeding 前 favorites wipe。いずれも既存
-   assertion・契約を一切変更しない、契約を成立させるための setup 修復のみである。
+   追加（category 3、setup 修復）、`Issue265GateFailedRouteInstrumentationTest` helper の
+   現行 #417 flow 整合（category 2、flow 修復）、`PageCaptureInstrumentationTest` 期待値の
+   accepted な #155 first screen 契約への整合（category 2、stale expectation 修復）。
+   いずれも保護対象の契約（gate FAILED routes / page ordering・空 page 排除・決定性 /
+   retirement migration の冪等性）の assertion 構造は変えない、契約を成立させるための
+   修復である。
 
 ### 8.1 instrumentation routing（14 class → 既存 5 lane + fixture 修復 3 件 + routing 分離 1 件）
 
@@ -869,7 +886,7 @@ state 汚染なし（順序非依存）。失敗は class 固有の欠陥/契約
 | Class（失敗数） | signature | 分類 | 根拠 |
 |---|---|---|---|
 | Issue265GateFailedRouteInstrumentationTest（4/4） | `organize did not reach Applied: Selecting(...)` | **2（deterministic test defect）** — stale fixture | `runner.start()` が accepted な #417 scope-first flow（spec 228/417 の Selecting 停止）へ到達し、test は旧 flow（start→Preview 直行）を前提。routed な ManualOrganizationProductionE2E.startPlain が同一状態を `confirmSelection(emptySet())` + `planWithConfirmedScope()` で処理する現行 pattern を持つ。product regression ではない（現行 flow は accepted 契約で routed test が green） |
-| PageCaptureInstrumentationTest（2/3） | 期待 page list に `PageId(0)` が余分に出現 | **3（test fixture / clean-state defect）** | setUp が snapshot のみで favorites を wipe せず、emulator 既定 workspace の row が capture に混入する。空ホーム前提の fixture が明示されていない |
+| PageCaptureInstrumentationTest（2/3） | 期待 page list に first screen（`PageId(0)`）が余分に出現 | **2（deterministic test defect）** — stale expectation | 単独実行でも決定失敗（V11）。`dbDesktopPageIds(qsbEnabled)` は #155/ADR-0008 の受入済み契約（QSB が first screen にあるとき rowless first screen が platform-authoritative として先頭に来る）を実装しており、test の期待値は #155 より前の形状。fixture は既に `deleteAllFavorites()` で wipe 済みのため category 3（fixture 欠陥）の初回仮定は撤回 |
 | GridMigrationFailureTest.restorePendingJournalWithCorruptSourceFailsClosedAndQuarantinesActiveHelper（1/21） | corrupt な RESTORE_PENDING source で `tryMigrateDB` が例外を投げず正常 return | **6（unknown / investigation required）** — category 1 疑い（product regression 候補）。追跡 Issue [#461](https://github.com/nunu1733/NunuLauncher/issues/461) へ分離 | test は f8bddc7944（fail-closed fix）と同一 commit で追加され、openJournalSource / refreshMaxItemIdFromCommittedRows は当時と byte 等価。production の書き込み open が既定 DatabaseErrorHandler により corrupt source を静かに空 DB として再作成し、reconcile が FAILED として完了する経路が制御流上の唯一の非例外 path。f8bddc7944 が主張する「recovery can no longer manufacture or publish an empty source database」が corrupt ケースで実装されていない疑い。layout-data 安全 path のため本監査では production 変更を行わず、#461 へ分離 |
 | DeckRetirementMigrationInstrumentationTest.enabledDisabledAndInconsistentStates...（1/2） | `Active grid database must exist after normalization` | **3（test fixture defect）** | 第 1 test が active DB の存在を前提にするが `ensureActiveDbExists` を呼ばない（同 class の第 2 test は呼ぶ）。fresh emulator では active DB が未作成のまま |
 
@@ -906,3 +923,34 @@ CI 同一条件（x86_64 pixel_7_pro + KVM）での確認は Phase 2 の実 GitH
 | routed class の初回 CI 履歴不在 | §8.6 focused validation（V1〜V7 + pixel_7_pro 再実行）で初回 baseline を取得。失敗 4 件は分類・修復/分離方針を記録済み。Phase 2 で修復後の focused 再実行と PR 上の GH Actions run で最終確認 |
 | V5 pixel_7_pro AVD（arm64 local）の Compose 停止 | 分類は category 6（category 5 疑い）の暫定（§8.6。停止 test 名/stack は未取得）。既存 2 class（CategoryOverride / CustomCategory）は x86_64 CI green 実績あり。追加 OrganizerLockScreenTest を含む 3-class proposed group の CI 同一条件確認は Phase 2 の GH Actions run で実施。確定分類は #418 系 signature 確認または CI 同一条件 green の時点。新規 lane 変更なし |
 | routed に伴う各 lane runtime 増加 | §8.1a。Phase 2 PR の実 GH Actions run で timeout headroom を確認 |
+
+## 10. Phase 2 実施結果（plan.md の適用記録と検証証跡）
+
+実装 commit: 本 PR。適用内容は plan.md の通り（fixture 修復 3 件、Move boundary 1 件、
+routing 14 class → 5 lane、JVM filter 追加、surface filter 追加、docs 更新）。
+Phase 2 実装中の発見（R-10 の untracked harness 亊実と #155 stale expectation への分類
+修正）は §3.1 各 entry に追記済み。
+
+local 検証（実行 revision: 本 PR head）:
+
+| 項目 | 結果 |
+|---|---|
+| `spotlessCheck` | PASS |
+| `validate_ci_portfolio.py` + self-test | PASS（edge 集合不変＝map file 無変更の証跡） |
+| `validate_repo_contract.py` + self-test | PASS |
+| JVM gate（新 filter、local 実行） | **165 class / 1833 tests / 0 failures**。旧 filter 集合 163 class の縮小なし + `DeckRetirementArtifactNamesTest` 6 tests / `DeviceProfileOverridesPresetResolutionTest` 8 tests / `RecoveryDbBackupExclusionTest` 1 test（R-15 置換）の追加実行を XML で確認 |
+| fixture 修復後 focused 再実行（V13〜V16） | 下表 |
+
+| ID | 内容 | 結果 |
+|---|---|---|
+| V13 | PageCaptureInstrumentationTest 単独（#155 expectation 修復後） | **PASS**（27s、pixel_7_pro AVD） |
+| V14 | Issue265GateFailedRouteInstrumentationTest 単独（#417 flow 修復後） | 初回 **FAIL**（`AwaitingUsageAccessJit` 停止 → #371 granted fast path 前提が欠落と判明）。granted fast path 追加後の再実行 **V14b = PASS**（4/4、pixel_7_pro AVD） |
+| V15 | db-migration 提案 lane 9 class（修復後。GridMigrationFailureTest は含まない） | **PASS**（16s。DeckRetirementMigration 修復・RestoreProfileRemap・GridMigrationSuccess を含む） |
+| V16 | reservation-recovery 提案 lane 14 class（修復後・co-occupancy 再確認） | **PASS**（284s。修復済み Issue265GateFailedRoute / PageCapture / LockAuthoring + 既存 7 class + store 系 4 class） |
+
+V14 の初回 FAIL は修復の前提追加（usage access grant）を要したが、granted fast path は
+routed 兄弟 class の既存 pattern であり契約変更ではない。
+
+CI 証跡（AC-458-P2-06 の正本）: PR 上の実 GitHub Actions run の URL と結果を PR 本文へ
+記録する（対象: db-migration / reservation-recovery / restore-capture /
+category-override / manual-organization-ui の各 lane + organizer-unit-tests）。

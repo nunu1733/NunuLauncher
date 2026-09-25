@@ -129,6 +129,10 @@ jobs:
               - 'tests/organizer-instrumentation/com/android/launcher3/hybridhotseat/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/application/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/planning/**'
+              # Issue #458: LockAuthoringInstrumentationTest joined the
+              # reservation-recovery lane class list; keep test-only changes
+              # self-triggering the lane that owns them.
+              - 'tests/organizer-instrumentation/app/lawnchair/organizer/locks/**'
             surface_db_schema:
               # LauncherProvider / schema upgrade / grid migration ownership and
               # the Deck retirement startup migration. The four schema test
@@ -147,6 +151,12 @@ jobs:
               - 'tests/organizer-instrumentation/com/android/launcher3/organizer/rollback32/**'
               - 'tests/organizer-instrumentation/com/android/launcher3/model/**'
               - 'tests/organizer-instrumentation/app/lawnchair/migration/**'
+              # Issue #458: the two classes below joined the db-migration lane
+              # class list; list them explicitly (same self-trigger rule as the
+              # schema test files above) because they live outside this
+              # surface's broad test globs.
+              - 'tests/organizer-instrumentation/com/android/launcher3/LauncherPrefsCommitTest.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/RestoreProfileRemapTest.java'
             surface_backup_restore:
               # Old-backup restore capture (Nova) and the backup agent seam.
               - 'lawnchair/src/app/lawnchair/backup/**'
@@ -171,6 +181,13 @@ jobs:
               - 'lawnchair/res/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/ui/**'
               - 'tests/organizer-instrumentation/app/lawnchair/ui/preferences/**'
+              # Issue #458: OrganizerLockScreenTest joined the category-override
+              # lane and OrganizerDiagnosticsExportTimestampInstrumentationTest
+              # joined the manual-organization-ui lane; keep test-only changes
+              # self-triggering the lanes that own them. Overlap of the locks
+              # glob with surface_layout_write is the safe direction.
+              - 'tests/organizer-instrumentation/app/lawnchair/organizer/locks/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/organizer/diagnostics/export/**'
             surface_jvm:
               # Surfaces whose regression oracle is the JVM unit/contract/property
               # gate (planner corpus, rules, diagnostics, locks) plus the JVM
@@ -304,8 +321,11 @@ jobs:
   # The --tests filter covers app.lawnchair.organizer.* and the pure application
   # tests, so new tests under that package tree join this gate automatically.
   # The preference navigation retention tests (Issue #116), bugreport (Issue
-  # #242), and backup unit tests are listed explicitly. The focused real-adapter
-  # instrumentation seam is verified independently below on emulators.
+  # #242), and backup unit tests are listed explicitly. Issue #458 adds the
+  # migration unit-test package (#57 artifact names) and the grid preset
+  # resolution contract (#134), both previously unrouted pure-JVM classes.
+  # The focused real-adapter instrumentation seam is verified independently
+  # below on emulators.
   organizer-unit-tests:
     needs: changes
     if: needs.changes.outputs.permanent_run == 'true'
@@ -322,7 +342,7 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v5
       - name: Run organizer unit tests
-        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*'
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -444,8 +464,13 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           # Issue #438: live failure capture inside the runner (see shared-writer).
+          # Issue #458: the lane additionally owns the grid-migration success-path
+          # (#458 R-2a), the commit-aware prefs primitive it depends on (#59), the
+          # Deck retirement startup migration idempotency (#57), and the restore
+          # profile remap lock preservation (#58). GridMigrationFailureTest stays
+          # unrouted behind #461.
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/db-migration-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest,com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/db-migration-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest,com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest,com.android.launcher3.model.GridMigrationSuccessTest,com.android.launcher3.LauncherPrefsCommitTest,app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest,com.android.launcher3.organizer.RestoreProfileRemapTest
       - name: Upload DB migration instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -703,9 +728,14 @@ jobs:
           profile: pixel_7_pro
           disable-animations: true
           emulator-boot-timeout: 900
-          # Issue #438: live failure capture inside the runner (see shared-writer).
+          # Issue #458: the lane additionally owns the recovery store
+          # inspection/publication/durable-status/chunked-manifest contracts
+          # (#84/#89/#271/#174), the #265 gate-FAILED fail-closed routes, page
+          # capture ordering, and the real-DB lock authoring matrix (#38),
+          # which focused local validation showed to be order-independent in
+          # this co-occupancy.
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/reservation-recovery-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.ProductionPublicSeamInstrumentationTest,app.lawnchair.organizer.application.RealAdapterRowMatrixInstrumentationTest,app.lawnchair.organizer.application.SanitizerInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreLifecycleTest,app.lawnchair.organizer.application.OverlapAcceptanceGateSeamInstrumentationTest,app.lawnchair.organizer.planning.LoaderCursorOverlapAcceptanceContractTest,app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/reservation-recovery-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.ProductionPublicSeamInstrumentationTest,app.lawnchair.organizer.application.RealAdapterRowMatrixInstrumentationTest,app.lawnchair.organizer.application.SanitizerInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreLifecycleTest,app.lawnchair.organizer.application.OverlapAcceptanceGateSeamInstrumentationTest,app.lawnchair.organizer.planning.LoaderCursorOverlapAcceptanceContractTest,app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest,app.lawnchair.organizer.application.store.RecoveryStoreInspectionInstrumentationTest,app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotPublicationInstrumentationTest,app.lawnchair.organizer.application.store.OrganizerDurableStatusInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreChunkedManifestInstrumentationTest,app.lawnchair.organizer.application.Issue265GateFailedRouteInstrumentationTest,app.lawnchair.organizer.application.PageCaptureInstrumentationTest,app.lawnchair.organizer.locks.LockAuthoringInstrumentationTest
       - name: Upload reservation-recovery instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -763,8 +793,11 @@ jobs:
           profile: pixel_7_pro
           disable-animations: true
           emulator-boot-timeout: 900
+          # Issue #458: OrganizerLockScreenTest (#38/#211 lock UI semantics, focus,
+          # font-scale) joins as a co-occupant under the #342 co-occupant
+          # precedent; it runs against a fake module and shares no fixture state.
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/category-override-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest,app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/category-override-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest,app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest,app.lawnchair.organizer.locks.OrganizerLockScreenTest
       - name: Upload category-override instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

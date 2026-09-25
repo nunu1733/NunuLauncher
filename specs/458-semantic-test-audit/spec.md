@@ -1,6 +1,6 @@
 ---
 issue: "#458"
-status: draft
+status: accepted
 requirements:
   - AC-458-P1-01
   - AC-458-P1-02
