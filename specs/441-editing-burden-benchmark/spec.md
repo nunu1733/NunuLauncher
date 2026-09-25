@@ -54,6 +54,7 @@ Given seeding対象のlauncher DB
 When 同一のfixture入力表から、fixture対象graph（workspaceのdesktop rootとその子孫の全行）を削除してからinsertする操作を2回実行し、それぞれmodelをreloadする
 Then 配置に関与する行の正規化projection（container、screen、cell、span、item type、intent、folder参照をid解決したもの）が2回とも一致する
 And page数、ページ別アイコン数、指定フォルダ、重複2組の存在がfixture定義と一致する
+And fixtureの全rootが予約領域を避けて収容され、1ページ目はQSB予約を除き満杯、2ページ目にはB1の新規アプリ配置先として空きcellが1つ以上残る
 
 ### Scenario: fixtureのidentity構成はB7の前提を成立させる
 
@@ -101,8 +102,8 @@ None。UI変更・文字列変更なし（fixture用のlabel/iconはtest APKリ�
 
 ## Acceptance criteria
 
-- [ ] AC-1: `docs/engineering/editing-burden-benchmark.md` が存在し、Status: Acceptedである。課題B1〜B7、重み表（確定値）、操作数の定義、fixtureホーム（identity方針と重複2組の定義を含む）、計測手順、baseline概算（非実測の明記）、計測記録形式、目標表（初期目標+確定手順）を含む。付録草案からの適合化（plan.mdのA-1〜A-12）が適用されている。
-- [ ] AC-2: fixture seeding instrumentationが存在し、同一入力から同一fixtureを再現することを1回のinstrumentation実行で検証する（fixture対象graphの削除→insertを2回行い、正規化projectionが一致する）。実行command・環境・結果がPRに記録されている。
+- [ ] AC-1: `docs/engineering/editing-burden-benchmark.md` が存在し、Status: Acceptedである。課題B1〜B7、重み表（確定値）、操作数の定義、fixtureホーム（identity方針・収容可能なページ別root数・重複2組の定義を含む）、計測手順（QSB/Smartspace状態の固定を含む）、baseline概算（非実測の明記）、計測記録形式、目標表（初期目標+確定手順）を含む。付録草案からの適合化（plan.mdのA-1〜A-13）が適用されている。
+- [ ] AC-2: fixture seeding instrumentationが存在し、同一入力から同一fixtureを再現することを1回のinstrumentation実行で検証する（fixture対象graphの削除→insertを2回行い、正規化projectionが一致する）。fixture入力の収容契約（全rootが予約領域込みで収容、1ページ目はQSB予約を除き満杯、2ページ目に空きcell≥1）もtest assertionで確認する。実行command・環境・結果がPRに記録されている。
 - [ ] AC-3: seedingがhotseat行・その子孫・予約領域に重なる行を保持し、fixtureの全配置spanが `LayoutState.reservedWorkspaceRegions` と `ReservationOverlapAcceptance.overlaps` 基準で非交差である。restore modeのtest終了時にfavoritesを復元する。製品buildの挙動を変えない。
 - [ ] AC-4: fixtureの通常アイコンが互いに異なる起動先identity（component + profile）を持ち、同一起動先の重複が指定2組のみであることを、test内assertionと定義文書§5のidentity方針で確認できる。fixture起動先はtest APKのactivity-aliasで供給され、製品manifestは変更しない。
 - [ ] AC-5: 新testが既存manual-organization-ui laneへ統合される（新lane・新CI workflowを作らない）。[test-audit skill](../../.agents/skills/test-audit/SKILL.md)の審査項目（既存coverageで不足する理由、oracle配置、impact surface、重複、CI分類）がPRに記載され、`ci_portfolio_map.yml`と[ci-test-portfolio.md](../../docs/engineering/ci-test-portfolio.md)の整合が保たれる。
@@ -131,3 +132,4 @@ None。UI変更・文字列変更なし（fixture用のlabel/iconはtest APKリ�
 
 - 2026-09-26: Draft created for #441（付録草案 `refocus-drafts/product/editing-burden-benchmark.md`（2026-09-24承認）を基に起草）。
 - 2026-09-26: Revision 2。Phase 1 reviewのConditions 1〜4に対応: fixture identity方針（test APK activity-alias・重複2組限定・component+profileの重複キー）をAC-4として明文化、fixture対象graph（desktop root+子孫）の削除境界とoracleへ修正、予約領域契約をproduction seam（`LayoutState.reservedWorkspaceRegions` + `ReservationOverlapAcceptance`）で確定、AC-7に3試行/課題を明記。
+- 2026-09-26: Revision 3。Phase 1 re-reviewの指摘（fixture geometryとB1配置前提）に対応: 計測時のQSB/Smartspace状態を既定（有効）で固定し、収容可能なページ別root数（1ページ目15アイコン+フォルダ）へ修正、B1の新規アプリ配置先を`WorkspaceItemSpaceFinder`の実挙動（QSB有効時は1ページ目を候補から除外し2ページ目以降の最初の空きcell）として確定し、収容契約と2ページ目空きのassertionをAC-2へ追加。
