@@ -290,11 +290,11 @@ blocking なものはない。調査中に解決すべき問い:
   対象runでemulator boot開始前（少なくとも起動hook）からprospective bounded samplerを起動し、
   同一bootのmonotonic timelineを保存・分類する。このprospective evidenceが得られるまでAC-3は
   未完了とする。
-- 2026-09-25: reviewでStage 2の固定150秒案を撤回した。main run 36082413664は
-  emulator booted 01:34:35.893から対象failure 01:47:31.410まで約775秒を要し、failure-time helperの
-  150秒budgetをprospective boot→result timelineへ流用できない。Stage 2は選択laneの直近completed runで
-  観測したboot→result経過時間とcommand timeoutをOwner packetへ記録し、
-  `max_elapsed_seconds = observed_boot_to_result_seconds + max(300, 10 * command_timeout_seconds)`、
-  5秒周期、`ceil(max_elapsed_seconds / 5) + 1` sample、`max_samples * 16384` bytesを有限上限とする。
-  予算内にcompleted resultが得られない場合は`incomplete`、completed runで元signatureが無い場合だけ
-  `non-reproduced`とする。
+- 2026-09-25: reviewでStage 2の固定150秒案と数値算式の例を撤回した。main run 36082413664の
+  約775秒はemulator boot完了からfailureまでの区間で、startup hookからresultまでの定義済み所要時間や
+  選択commandのtimeoutを表さない。Stage 2は選択laneの直近completed runについてstartup hook→command
+  resultの実測、実行command、runner/job・emulator boot・capture/wrapperのtimeoutをOwner packetへ事前記録し、
+  lane全体の実測所要時間に明示的なowner marginを加えた有限wall上限を固定する。5秒周期、上限wallから
+  算出した`ceil(max_elapsed_seconds / 5) + 1` sample、`max_samples * 16384` bytesを同じpacketへ記録し、
+  timeoutとの整合を確認する。予算内にcompleted resultが得られない場合は`incomplete`、completed runで
+  元signatureが無い場合だけ`non-reproduced`とする。

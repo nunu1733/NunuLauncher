@@ -390,14 +390,15 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   `sys.boot_completed`到達前後から失敗判定まで、monotonic timestamp付きで
   `sys.boot_completed`、HOME role、top-resumed/activity、mCurrentFocus/mFocusedWindow、
   frontmost、interactive/keyguard、ANR/dropbox、bounded logcatを同一artifactへ保存・分類する。
-  Stage 2のOwner gate packetは、選択laneの直近completed runから
-  `observed_boot_to_result_seconds`（emulator boot/start hookからcommand/test resultまで）と
-  `command_timeout_seconds`を記録してから作成する。有限予算は
-  `max_elapsed_seconds = observed_boot_to_result_seconds + max(300, 10 * command_timeout_seconds)`、
-  `sample_interval_seconds = 5`、`max_samples = ceil(max_elapsed_seconds / 5) + 1`、
-  `max_timeline_bytes = max_samples * 16384`とする。samplerはemulator boot前のstartup hookから
-  同一bootのcommand/test resultまで動かす。run 36082413664で観測された約775秒のboot-to-failureなら
-  この式は約1075秒となり、failure-time capture用の150秒budgetをprospective timelineへ流用できない。
+  Stage 2のOwner gate packetは、選択laneの直近completed runについて、emulator startup hookから
+  command/test resultまでの`observed_startup_to_result_seconds`、実行したtest command、commandを囲む
+  runner/job timeout、emulator boot timeout、capture/wrapper timeoutを事前に記録する。観測したlane全体の
+  所要時間に明示的な`owner_margin_seconds`を加えた有限の`max_elapsed_seconds`をpacketで固定し、marginが
+  選択laneのstartup・timeout・結果取得の余裕を覆うことを確認する。`sample_interval_seconds = 5`、
+  `max_samples = ceil(max_elapsed_seconds / 5) + 1`、`max_timeline_bytes = max_samples * 16384`とする。
+  samplerはemulator boot前のstartup hookから同一bootのcommand/test resultまで動かす。run 36082413664の
+  約775秒はboot完了からfailureまでの区間であり、startup hookからresultまでの定義済み観測値やtimeoutの
+  代用にはしない。failure-time capture用の150秒budgetもprospective timelineへ流用できない。
   元のIndex4/focus signatureが予算内に再発し、command/test resultが完了した場合はsignatureを分類する。
   予算終了前にcommand/test resultが得られない、またはdevice goneで終了した場合は`incomplete`として記録し、
   `non-reproduced`とは分類しない。completed command/runが予定停止点まで終了し、元signatureが無い場合だけ
