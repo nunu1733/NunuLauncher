@@ -171,11 +171,20 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         // on the measurement path (persist mode runs the seeding test only).
         assumeFalse(persistMode())
         val db = launcher.model.modelDbController.db
+        val slot = 1
+        // The default layout occupies every hotseat slot, so the injected
+        // dock folder takes over slot 1 (its previous occupant is part of the
+        // injected baseline and comes back with the final restore).
+        db.delete(
+            Favorites.TABLE_NAME,
+            "${Favorites.CONTAINER}=? AND ${Favorites.SCREEN}=?",
+            arrayOf(Favorites.CONTAINER_HOTSEAT.toString(), slot.toString()),
+        )
         val folderId = launcher.model.modelDbController.generateNewItemId()
         val childIds = mutableListOf<Long>()
         db.beginTransaction()
         try {
-            insertHotseatFolderRow(folderId, slot = 1, title = "Dock folder")
+            insertHotseatFolderRow(folderId, slot = slot, title = "Dock folder")
             childIds.add(insertFolderChildRow(alias(1), folderId))
             childIds.add(insertFolderChildRow(alias(35), folderId))
             db.setTransactionSuccessful()
@@ -186,6 +195,11 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
         reloadAndWait()
         val dockGraphIds = setOf(folderId.toLong()) + childIds.toSet()
         val dockGraphBefore = rowsById(dockGraphIds)
+        assertEquals(
+            "Test precondition: the injected dock folder graph must survive its own reload",
+            dockGraphIds,
+            dockGraphBefore.mapNotNull { it.getAsLong(Favorites._ID) }.toSet(),
+        )
 
         initialReservations = captureReservations()
         val columns = capturedColumns
