@@ -244,7 +244,8 @@ merge gate にしない前提の資産）; classification before → after = Loc
   single-restore-per-process 制約の process 共有は発生しない。付加実行単位は独立 1
   invocation。local V4 は 9〜11s、CI incremental runtime は未計測で Phase 2 の
   GH Actions run で確認（§8.1a）。
-- routing 後に残る confidence: 新規（0 → 実行）。付加費用は 1 stage（〜1分）。
+- routing 後に残る confidence: 新規（0 → 実行）。付加実行単位は独立 1 invocation。CI
+  incremental runtime は未計測で Phase 2 の GH Actions run で確認（§8.1a）。
 - validation: 適用前に実 emulator で当該 class 実行。
 - residual: なし。
 
