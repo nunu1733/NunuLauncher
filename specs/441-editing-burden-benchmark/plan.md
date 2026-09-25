@@ -2,7 +2,7 @@
 
 > Issue: #441
 > Spec: [spec.md](./spec.md)
-> Status: draft（Revision 3。Phase 1 re-reviewのfixture geometry・B1配置指摘対応済み、再review待ち）
+> Status: accepted（Phase 1承認: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5836812340)、head `4259fc362f`。spec status: accepted）
 > Branch: `issue-441-editing-burden-benchmark`
 
 ## Current evidence
@@ -122,8 +122,8 @@ test-audit審査（AC-5。実装前に確定しPRへ記載する）:
 - [x] Issue・付録草案・関連正本の確認（AGENTS.md必読順）
 - [x] Phase 1 review（ChatGPT）の指摘対応（Revision 2。Conditions 1〜4 → spec/plan修正・コード事実の確認）
 - [x] Phase 1 re-review（ChatGPT）の指摘対応（Revision 3。fixture geometry・QSB状態・B1配置先の確定。`LauncherLayoutAdapter` 158-168行 / `InvariantDeviceProfile.java:982-984` / `WorkspaceItemSpaceFinder.java:55-66` を実コードで確認）
-- [ ] Phase 1 再review（ChatGPT）のクリア
-- [ ] spec statusを `accepted` へ更新（再review承認後）
+- [x] Phase 1 再review（ChatGPT）のクリア（Approved。head `4259fc362f`）
+- [x] spec statusを `accepted` へ更新（再review承認後）
 - [ ] Phase 2: 定義文書の作成（適合化A-1〜A-13）
 - [ ] Phase 2: test-audit skillの適用と新test実装（manifest alias、drawable、build.gradle res.srcDirsを含む）
 - [ ] Phase 2: emulatorでのinstrumentation実行とevidence記録（AC-2〜4）

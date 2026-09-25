@@ -1,6 +1,6 @@
 ---
 issue: "#441"
-status: draft
+status: accepted
 requirements: [NFR-014]
 updated: 2026-09-26
 ---
@@ -133,3 +133,4 @@ None。UI変更・文字列変更なし（fixture用のlabel/iconはtest APKリ�
 - 2026-09-26: Draft created for #441（付録草案 `refocus-drafts/product/editing-burden-benchmark.md`（2026-09-24承認）を基に起草）。
 - 2026-09-26: Revision 2。Phase 1 reviewのConditions 1〜4に対応: fixture identity方針（test APK activity-alias・重複2組限定・component+profileの重複キー）をAC-4として明文化、fixture対象graph（desktop root+子孫）の削除境界とoracleへ修正、予約領域契約をproduction seam（`LayoutState.reservedWorkspaceRegions` + `ReservationOverlapAcceptance`）で確定、AC-7に3試行/課題を明記。
 - 2026-09-26: Revision 3。Phase 1 re-reviewの指摘（fixture geometryとB1配置前提）に対応: 計測時のQSB/Smartspace状態を既定（有効）で固定し、収容可能なページ別root数（1ページ目15アイコン+フォルダ）へ修正、B1の新規アプリ配置先を`WorkspaceItemSpaceFinder`の実挙動（QSB有効時は1ページ目を候補から除外し2ページ目以降の最初の空きcell）として確定し、収容契約と2ページ目空きのassertionをAC-2へ追加。
+- 2026-09-26: Revision 4。alias/drawable数の文書内不一致（34 vs 35）をA-10へ統一し導出を明記。Phase 1 re-reviewでApproved（head `4259fc362f`。判定記録: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5836812340)）によりstatusを`accepted`へ更新。
