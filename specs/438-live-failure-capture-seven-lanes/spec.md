@@ -1,6 +1,6 @@
 ---
 issue: "#438"
-status: accepted
+status: implemented
 requirements: []
 updated: 2026-09-25
 ---
@@ -190,3 +190,13 @@ dumpsys/logcat であり、既存の #315 bounded capture 方針（per-command t
   semantics を完全保持、pipefail は不採用）へ変更。validator の runner 外 capture 検出を
   step 名・timeout 記法に依存しない token 単位へ強化し、lifecycle test も script 参照の
   直接検出へ拡張。plan の command 件数と status を実態に合わせて更新。
+- 2026-09-25: review round 2（ChatGPT,
+  [comment 5827789706](https://github.com/nunu1733/NunuLauncher/pull/459#issuecomment-5827789706)）
+  で round 1 指摘の解消と新規・残指摘なしを確認（head `00a4a7cf29` 再取得時点）。
+  merge gate run の初回 attempt は対象外 manual lane の繰り返し失敗（
+  [Issue #460](https://github.com/nunu1733/NunuLauncher/issues/460)、分類済み
+  [comment 5827978157](https://github.com/nunu1733/NunuLauncher/pull/459#issuecomment-5827978157)）
+  で失敗したが、分類後の Owner 実行 rerun（run 36101730123 attempt 2）で全 16 job
+  success・`final-status` green。Owner が rerun green を根拠に merge を指示
+  （2026-09-25 session「単独rerunでgreen確認しました。マージ進めてください」）。
+  本 spec は最終 PR merge に合わせ `implemented` へ遷移。

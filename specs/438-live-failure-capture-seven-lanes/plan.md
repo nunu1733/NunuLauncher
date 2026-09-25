@@ -2,7 +2,7 @@
 
 > Issue: #438
 > Spec: [spec.md](./spec.md)
-> Status: review（round 1 指摘対応済み、再 review 待ち）
+> Status: implemented（merge PR #459。final PR でのstatus遷移）
 
 ## Current evidence
 
