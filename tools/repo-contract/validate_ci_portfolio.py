@@ -18,8 +18,10 @@ Compares .github/workflows/ci.yml against tools/repo-contract/ci_portfolio_map.y
 5. map.permanent_gates equals the fixed set bound to
    validate_high_risk_evidence.py, and those jobs plus final-status exist in
    the workflow.
-6. Every instrumentation lane has a bounded failure-evidence capture step,
-   either as a post-run helper or inside the live emulator-runner wrapper.
+6. Every instrumentation lane runs its bounded failure-evidence capture inside
+   the live emulator-runner wrapper (Issue #438 end state). A runner-external
+   capture step is rejected: after the runner tears the emulator down it can
+   only record a dead device.
 7. Every supporting contract test in the map has a real path, an every-run
    owner job, and an exact workflow invocation.
 8. Every instrumentation lane uploads the capture output directory with a
@@ -301,26 +303,38 @@ def validate() -> list[str]:
         if gate not in jobs:
             problems.append(f"ci.yml: required job {gate} is missing")
 
-    # 6. Every instrumentation lane carries the bounded capture step and its
-    # failure-time artifact upload for the SAME output directory. A live
-    # wrapper only counts when it is the command in the expected emulator-runner
-    # action; arbitrary echoes or unrelated action scripts must not satisfy
-    # this contract.
+    # 6. Every instrumentation lane captures inside the live emulator-runner
+    # wrapper and no longer carries a runner-external capture step (Issue
+    # #438). A live wrapper only counts when it is the command in the expected
+    # emulator-runner action; arbitrary echoes or unrelated action scripts must
+    # not satisfy this contract.
     for lane in sorted(wf_lanes):
         steps = jobs[lane].get("steps", [])
-        capture_dirs = post_run_capture_output_dirs(steps) | live_capture_output_dirs(steps)
+        capture_dirs = live_capture_output_dirs(steps)
         if not capture_dirs:
-            problems.append(f"lane {lane}: failure-evidence capture step is missing")
-        upload_paths = failure_evidence_upload_paths(steps)
-        expected_upload_paths = {f"{output_dir.rstrip('/')}/**" for output_dir in capture_dirs}
-        if not upload_paths & expected_upload_paths:
-            if upload_paths:
-                problems.append(
-                    f"lane {lane}: failure-time upload path does not match capture output directory "
-                    f"(expected one of {sorted(expected_upload_paths)}, got {sorted(upload_paths)})"
-                )
-            else:
-                problems.append(f"lane {lane}: failure-time evidence upload path is missing")
+            problems.append(
+                f"lane {lane}: live failure-evidence capture wrapper is missing"
+            )
+        if post_run_capture_output_dirs(steps):
+            problems.append(
+                f"lane {lane}: runner-external failure-evidence capture step must "
+                "be removed once the live wrapper captures before teardown"
+            )
+        if capture_dirs:
+            upload_paths = failure_evidence_upload_paths(steps)
+            expected_upload_paths = {
+                f"{output_dir.rstrip('/')}/**" for output_dir in capture_dirs
+            }
+            if not upload_paths & expected_upload_paths:
+                if upload_paths:
+                    problems.append(
+                        f"lane {lane}: failure-time upload path does not match capture output directory "
+                        f"(expected one of {sorted(expected_upload_paths)}, got {sorted(upload_paths)})"
+                    )
+                else:
+                    problems.append(
+                        f"lane {lane}: failure-time evidence upload path is missing"
+                    )
 
     # 7. Supporting contract test ownership and trigger are machine-checked
     # separately from lane/surface edges.

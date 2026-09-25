@@ -2,7 +2,7 @@
 
 > Status: Implemented
 > Scope: source-changing Pull Request CI、main / scheduled regression sweep（Issue #422 の impact-based portfolio 再編後の正本）
-> Updated: 2026-09-24（Issue #422 で監査・impact-based gate 化。Issue #96 時代の記録は履歴として末尾に残す）
+> Updated: 2026-09-25（Issue #438 で全 10 instrumentation lane を live failure capture に統一。Issue #422 で監査・impact-based gate 化。Issue #96 時代の記録は履歴として末尾に残す）
 
 この文書は CI portfolio の監査表（contract・分類・起動条件・実行費用・過去 failure 分類）の
 正本である。lane↔surface 対応（edge）の normative 正本は
@@ -97,8 +97,8 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 | exchange-import-ui lane | 10.2 分。exchange import surface の Compose 検証（#345 で local-only から昇格。CI green の実績あり） | Conditional（surface_organizer_ui） |
 | method-choice-journey lane | method-choice face の connected journey（#417 AC-8 (g)-(v) evidence。scope-first で凍結した scope 上の AI依頼作成 → 取り込み → attach を固定する per-class lane） | Conditional（surface_organizer_ui） |
 | onboarding-proposal lane | 9.7 分。proposal lifecycle / Back / focus / recreation / review admission。実入力注入は focus 観測を前提とする（#300 accepted、#304/#418 で環境系 failure 実績） | Conditional（surface_organizer_ui） |
-| failure-time evidence capture | 全 10 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。manual-organization-ui / category-override / onboarding-proposal は live emulator-runner wrapper内で実行し、残り7 laneはrunner後のcaptureを継続している（[Issue #438](https://github.com/nunu1733/NunuLauncher/issues/438) follow-up）。validator が装備を機械検証 | 補助（各 lane） |
-| failure capture lifecycle self-test | `validate-repo-contract` で全 run（docs-only 含む）に起動する 0.1 分未満の契約test。既存のcapture helper smoke testが各adb commandのtimeout・budget・出力上限を検証するのに対し、本testは `android-emulator-runner@v2` のrunner `script`が物理行単位で実行される境界、failure captureがemulator teardown前に走ること、元command statusの保持、success時の無capture、#52/#53/#99のworkflow wiringを検証する。分類は CI wrapper / artifact handling。10 laneのimpact surfaceを新設せず、既存のfailure-time capture補助処理の全lane契約を検査するため、既存testとの重複はない | 補助（`validate-repo-contract` 全 run） |
+| failure-time evidence capture | 全 10 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。Issue #438 で全 10 lane が live emulator-runner wrapper内 capture に統一された（#437 が manual-organization-ui / category-override / onboarding-proposal、#438 が残り 7 lane）。restore-capture と production-input の複数 stage 列は per-lane helper script（`run-restore-capture-instrumentation.sh` / `run-production-input-instrumentation.sh`、`set -euo pipefail`）に保持され、最初の失敗 stage で teardown 前に capture する。validator が「live wrapper 必須・runner 外 capture step 拒否」を機械検証 | 補助（各 lane） |
+| failure capture lifecycle self-test | `validate-repo-contract` で全 run（docs-only 含む）に起動する 0.1 分未満の契約test。既存のcapture helper smoke testが各adb commandのtimeout・budget・出力上限を検証するのに対し、本testは `android-emulator-runner@v2` のrunner `script`が物理行単位で実行される境界、failure captureがemulator teardown前に走ること、元command statusの保持、success時の無capture、全 10 lane（#437 の 3 lane + #438 の 7 lane、helper 経由 lane の実行可否を含む）のworkflow wiringを検証する。分類は CI wrapper / artifact handling。10 laneのimpact surfaceを新設せず、既存のfailure-time capture補助処理の全lane契約を検査するため、既存testとの重複はない | 補助（`validate-repo-contract` 全 run） |
 | final-status | 「当該 run に必要と判定された gate が完了したこと」を集約。skip は成功扱い、failure/cancelled のみ fail。needs の必須集合は validator が map file と突き合わせ | 集約（branch protection required check） |
 | planner-stress.yml | 8 seed × 512 case の exploration matrix。週次 / manual のみで PR gate でない（#46 の時点から分類適合） | Scheduled / Diagnostic |
 | high-risk-gate.yml | risk label / 高リスク path PR への独立 audit 記録検証。job ID 結合（`organizer-unit-tests` / `check-style` / `build-debug-apk` / `final-status`）は map file の `permanent_gates` 固定点として validator が保護 | Permanent（label/path 条件付き） |
@@ -150,7 +150,10 @@ invocationと一致することを検査する。
 | 重複 | helper smokeはbounded snapshotのtimeout/budget/truncationを担当し、本testはwrapperのstatus保持、device-gone、runner action identity、実scriptの`--`、failure-time upload pathを担当する。別emulator laneのtestとは重複しない。 |
 | 起動条件 | `contract_tests` metadataの`trigger: every_run`に固定し、docs-onlyを含む全runで既存repo-contract jobから実行する。emulator laneの再実行は発生させない。 |
 
-残り7 laneのlive化は [Issue #438](https://github.com/nunu1733/NunuLauncher/issues/438) で追跡し、別Owner gateで扱う。
+残り7 laneのlive化は Issue #438 で完了した（#437 の 3 lane とあわせ全 10 lane が live
+wrapper capture に統一され、runner 外 capture step は削除済み）。validator 側も live
+capture 必須契約へ引き上げられており、runner 外 capture への退行は repo-contract gate
+で機械阻止される。
 
 ## 実測（参考値）
 
