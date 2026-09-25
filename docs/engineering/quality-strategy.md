@@ -1,7 +1,7 @@
 # Quality Strategy
 
 > Status: Accepted
-> Updated: 2026-09-25 (Issue #456: test-audit skill による authoring/review/audit 手順を追加。CI portfolio policy は Issue #422 を継続)
+> Updated: 2026-09-25 (Issue #456: test-audit skill による authoring/review/audit 手順を追加。Issue #458: organizer unit-test gate filter へ migration/preset 解決契約を追加。CI portfolio policy は Issue #422 を継続)
 
 ## Quality order
 
@@ -107,13 +107,17 @@ successful clean-checkout or CI run before it is added here.
 Issue #41 で organizer JVM test gateをCIに追加した。`.github/workflows/ci.yml` の `organizer-unit-tests` jobが、local開発で使うのと同一のtest surfaceをsource PRで実行する。第二のtest seamは作らない。
 
 ```bash
-./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
+./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
 ```
+
+この command の正本は `.github/workflows/ci.yml` の `organizer-unit-tests` step である
+（本書の code block はその mirror。乖離を見つけた場合は workflow を正として本書を直す）。
 
 - この `--tests` filterは `app.lawnchair.organizer.planning.*`（contract/property test）と純粋な `application` JVM testの両方を含み、同package treeへ追加された新testは自動的にこのgateに加わる。
 - jobは `final-status` 集約に接続されており、test失敗はmergeをblockする。docs/spec-only PRではpath filterによりskipされ、repository contract検証のみ走る。
 - 実行結果の正本はGitHub Actionsの当該run URLとする（PR本文に記録する）。instrumentation test（Issue #14）とemulator実行はこのgateの対象外である。
 - Issue #242 で `app.lawnchair.ui.preferences.navigation.*`（既存）に続き `app.lawnchair.bugreport.*` を同じjobのfilterへ追加した。bugreport packageのJVM test (`tests/unit/app/lawnchair/bugreport/`) もこのgateで実行される。
+- Issue #458 で `app.lawnchair.migration.*`（Deck retirement artifact names 契約）と `app.lawnchair.DeviceProfileOverridesPresetResolutionTest`（#134 preset 解決契約）をfilterへ追加した。いずれも旧来 unrouted だった純 JVM class であり、wildcard 化は gate ownership を広げるため行わず明示追加とした。
 
 ## Organizer connected-test CI gate
 
