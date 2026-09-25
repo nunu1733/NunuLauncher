@@ -68,4 +68,8 @@ runtime書き込み経路・migration対象: production code変更なし。seedi
 2. **CI rerunの確定が未了**: run 36188208059の `organizer-unit-tests` と `manual-organization-ui` は監査時点でrerun中（`in_progress`）。初回失敗の分類（ExchangeFlowStateHolderTest ×2 = frozen領域の既知不安定面でdiff非交差、issue372 = main `a57403b5` のrun 36155374249で同一test・同一理由の既存failure。本PRの新規test 2件は147 test中PASS）は、監査がmain runの失敗test名とPR差分の非交差を独立確認したもので正当である。ただし **merge判定の前にrerun結果の確定（green化）を確認する必要がある**。rerunが再び失敗する場合はPRコメント記載のとおりtracking Issue分離と再分類が必要。本監査はrerun結果を前提としない分類の妥当性確認までを行う。
 3. **evidenceのprovenance構造（改善余地・非blocker）**: evidence §5の実行対象treeは `7102b0d4bf` であり、現head `a4b6fa2156` との差分はevidence文書自体の2 commits（code変更なし）である。この構造はPhase 2 re-review（Revision 3）で明示確認・承認済みであり、本監査も `git diff 7102b0d4bf..a4b6fa2156 --stat` 相当（docs配下のみ）で裏付けた。ただし最終head自体のCI connected run（manual-organization-ui lane）はrerun完了時に初めてhead上での実行evidenceとなるため、rerun greenの確認がmerge gateの実質要件となる。
 4. **本監査のvalidator実行環境の注記**: メインworktreeは `refocus-drafts/`（untracked）によりrepo-contract validatorがFAILするため、監査はhead `a4b6fa2156` のクリーンworktreeで検証した。このuntracked draftの扱い（リポジトリ未収録のまま維持するか、削除/移動するか）は作業環境の保守課題であり、本PRの範囲外。
-5. **重大な問題（AC不成立、証拠と主張の不一致）: なし**。Phase 2 reviewで指摘されたwrite境界・persist dock汚染・vacuous oracle・provenanceの各問題はRevision 6〜3の対応で解消されており、監査が実コードでその解消を確認した（Criteria check参照）。
+5. **重大な問題（AC不成立、証拠と主張の不一致）: なし**。
+
+## Findings事後確認（2026-09-26）
+
+Findings 2（CI rerunの確定）はその後解消した: run 36188208059のrerunで `organizer-unit-tests` と `manual-organization-ui` はいずれもsuccessで完了し、run全体のconclusionは `success`、PR #464の `final-status` はpass。merge前要件（rerun greenの確定）は充足。本追記以降のhead差分はdocs配下のみ。Phase 2 reviewで指摘されたwrite境界・persist dock汚染・vacuous oracle・provenanceの各問題はRevision 6〜3の対応で解消されており、監査が実コードでその解消を確認した（Criteria check参照）。
