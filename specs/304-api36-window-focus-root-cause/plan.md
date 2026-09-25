@@ -297,8 +297,8 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 
 ### Issue #422後のcapture-order再検証（2026-09-24）
 
-- Issue #422（PR #425/#433）のmerge後の現行mainは
-  `0c2914c144e6f0ad775a778e69dfc77aefcf9e32` である。impact-based portfolioへの再編後も、
+- Issue #422（PR #425/#433）のmerge直後に確認したmainは
+  `0c2914c144e6f0ad775a778e69dfc77aefcf9e32` であった。impact-based portfolioへの再編後も、
   `manual-organization-ui`（Issue #52相当）、`category-override`（Issue #99相当）と
   `onboarding-proposal`（Issue #53相当）は
   `reactivecircus/android-emulator-runner@v2` の`script`でGradleを実行し、runner step完了後の
@@ -331,6 +331,12 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 - 実装候補の検証は、wrapperのshell syntax、fake-`adb`によるlive device / device-goneの
   status保持、success時の無capture、既存capture helper、CI portfolio contractで行う。
   新しいhosted CI runはOwner gateで定めたrun capと停止条件を記録してから開始する。
+
+- PR #437のmain同期時点では `origin/main=22c163814b`（#436 merge）へrebaseし、
+  #342で追加された `CustomCategoryPreferencesInstrumentationTest` のcategory lane
+  class listを保持したまま、上記3 laneへwrapperを再適用した。rebase後の未push headは
+  `d426c35da71a05da6a6d180ed491e8d70844d920` である。これはmergeability解消の準備であり、
+  新しいhosted CI実行や#418 runtime root causeの確定を意味しない。
 
 ## 残存リスク受容の判断基準（root cause 未確定のまま完了する場合）
 

@@ -817,10 +817,6 @@ jobs:
             build/outputs/androidTest-results/**
           retention-days: 7
           if-no-files-found: warn
-      - name: Capture category-override failure-time emulator evidence
-        if: failure()
-        continue-on-error: true
-        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/category-override-failure-time-evidence
       - name: Upload category-override failure-time emulator evidence
         if: failure()
         uses: actions/upload-artifact@v6
