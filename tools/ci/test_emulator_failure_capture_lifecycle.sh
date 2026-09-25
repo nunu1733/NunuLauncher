@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 
-# Regression test for the emulator lifecycle boundary. The failure capture must
-# run from inside android-emulator-runner's script while the device is alive,
-# and it must never replace the command's original exit status.
+# Regression test for the emulator lifecycle boundary (Issues #422/#437/#438).
+# The failure capture must run from inside android-emulator-runner's script
+# while the device is alive, and it must never replace the command's original
+# exit status. The workflow wiring check covers every organizer
+# instrumentation lane: the three #437 lanes (manual organization via its
+# helper, category override, onboarding proposal) and the seven #438 lanes
+# (restore-capture and production-input route through per-lane helpers).
 
 set -euo pipefail
 
@@ -10,12 +14,16 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKFLOW="$ROOT_DIR/.github/workflows/ci.yml"
 WRAPPER_REL="tools/ci/run-emulator-command-with-failure-capture.sh"
 MANUAL_HELPER_REL="tools/ci/run-manual-organization-ui-instrumentation.sh"
+RESTORE_HELPER_REL="tools/ci/run-restore-capture-instrumentation.sh"
+PRODUCTION_HELPER_REL="tools/ci/run-production-input-instrumentation.sh"
 WRAPPER="$ROOT_DIR/$WRAPPER_REL"
 MANUAL_HELPER="$ROOT_DIR/$MANUAL_HELPER_REL"
+RESTORE_HELPER="$ROOT_DIR/$RESTORE_HELPER_REL"
+PRODUCTION_HELPER="$ROOT_DIR/$PRODUCTION_HELPER_REL"
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-python3 - "$WORKFLOW" "$WRAPPER_REL" "$MANUAL_HELPER_REL" <<'PY'
+python3 - "$WORKFLOW" "$WRAPPER_REL" "$MANUAL_HELPER_REL" "$RESTORE_HELPER_REL" "$PRODUCTION_HELPER_REL" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -23,11 +31,20 @@ from pathlib import Path
 workflow = Path(sys.argv[1]).read_text(encoding="utf-8")
 wrapper = sys.argv[2]
 manual_helper = sys.argv[3]
+restore_helper = sys.argv[4]
+production_helper = sys.argv[5]
 
 jobs = (
     ("organizer-instrumentation-manual-organization-ui-tests", manual_helper),
     ("organizer-instrumentation-category-override-tests", None),
     ("organizer-instrumentation-onboarding-proposal-tests", None),
+    ("organizer-instrumentation-shared-writer-tests", None),
+    ("organizer-instrumentation-db-migration-tests", None),
+    ("organizer-instrumentation-restore-capture-tests", restore_helper),
+    ("organizer-instrumentation-production-input-tests", production_helper),
+    ("organizer-instrumentation-reservation-recovery-tests", None),
+    ("organizer-instrumentation-exchange-import-ui-tests", None),
+    ("organizer-instrumentation-method-choice-journey-tests", None),
 )
 for job, helper in jobs:
     match = re.search(
@@ -59,6 +76,18 @@ for job, helper in jobs:
         raise SystemExit(f"FAIL: {job} does not invoke its one-line helper")
     if re.search(r"Capture .*failure-time emulator evidence", block):
         raise SystemExit(f"FAIL: {job} still captures after emulator-runner teardown")
+    # The capture script may only be reached through the live wrapper; a direct
+    # reference in any non-comment line means a runner-external capture step
+    # survives under a renamed step or a different command form.
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "capture-emulator-failure-evidence.sh" in stripped:
+            raise SystemExit(
+                f"FAIL: {job} references the runner-external capture script "
+                "outside the live wrapper"
+            )
     if "actions/upload-artifact@v6" not in block or "failure-time-emulator-evidence" not in block:
         raise SystemExit(f"FAIL: {job} lost its failure-time artifact upload")
 
@@ -66,7 +95,9 @@ print("workflow lifecycle wiring: PASS")
 PY
 
 test -x "$WRAPPER"
-test -x "$MANUAL_HELPER"
+for helper in "$MANUAL_HELPER" "$RESTORE_HELPER" "$PRODUCTION_HELPER"; do
+    test -x "$helper"
+done
 
 EVENT_LOG="$TEMP_DIR/events.log"
 EMULATOR_ALIVE="$TEMP_DIR/emulator-alive"
