@@ -76,6 +76,18 @@ for job, helper in jobs:
         raise SystemExit(f"FAIL: {job} does not invoke its one-line helper")
     if re.search(r"Capture .*failure-time emulator evidence", block):
         raise SystemExit(f"FAIL: {job} still captures after emulator-runner teardown")
+    # The capture script may only be reached through the live wrapper; a direct
+    # reference in any non-comment line means a runner-external capture step
+    # survives under a renamed step or a different command form.
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "capture-emulator-failure-evidence.sh" in stripped:
+            raise SystemExit(
+                f"FAIL: {job} references the runner-external capture script "
+                "outside the live wrapper"
+            )
     if "actions/upload-artifact@v6" not in block or "failure-time-emulator-evidence" not in block:
         raise SystemExit(f"FAIL: {job} lost its failure-time artifact upload")
 

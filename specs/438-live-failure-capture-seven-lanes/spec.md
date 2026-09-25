@@ -61,14 +61,16 @@ window/activity/logcat 証拠が残らない。PR #437 が観測された 3 lane
 
 - 現状: 最初の失敗行で sequence が止まり、emulator kill **後** に runner 外 capture が
   走る → 生きた証拠が取れない。
-- 変更後: 同一 command 列を `set -euo pipefail` の bash helper 内で実行する。最初の失敗
-  command で sequence が止まる点は現状と同じであり、wrapper が emulator teardown 前に
-  capture し、元の失敗 status をそのまま返す。
-- `production-input` lane の `adb shell am instrument … | tee …` は現状 `sh` では tee の
-  status で判定されるが、後続の `grep -q 'OK (1 test)'` が失敗を確実に検出していたため
-  合否は変わらない。helper の `pipefail` により、失敗時の status が実際に失敗した
-  command のものになり、capture と停止点がより正確になる。成功時の grep oracle
-  （`OK (1 test)` / `INSTRUMENTATION_CODE: -1`）はそのまま保持する。
+- 変更後: 同一 command 列を bash helper 内で実行する。最初の失敗 command で sequence が
+  止まる点は現状と同じであり、wrapper が emulator teardown 前に capture し、元の失敗
+  status をそのまま返す。restore-capture は pipeline を含まないため `set -euo pipefail`
+  を使う。
+- `production-input` lane の `adb shell am instrument … | tee …` は現状どおり tee の
+  status で判定し、後続の `grep -q 'OK (1 test)'` / `INSTRUMENTATION_CODE: -1` が失敗
+  検出器のまま残る。このため production-input helper は意図的に `set -eu`（pipefail
+  なし）とし、停止点と報告 status（失敗時 status 1）を runner 行単位実行の現行挙動と
+  完全に一致させる。pipeline への `pipefail` 追加は合否と status を変えるため行わない
+  （PR #459 review round 1 指摘 1 の対応）。
 
 ## Non-goals
 
@@ -117,7 +119,8 @@ And capture artifact は `if-no-files-found: warn` で警告のみに留まる
 
 Given restore-capture または production-input の helper が stage 列を実行している
 When 途中の stage が非ゼロで終了する
-Then helper は `set -euo pipefail` によりその status で終了し、後続 stage は実行されない
+Then helper は最初の失敗 command / 失敗 check の status で終了し、後続 stage は
+実行されない（production-input は tee → grep の既存判定順序と status を保持する）
 And wrapper は teardown 前に capture し、その status を返す
 
 ### Scenario: wiring の決定的契約
@@ -181,3 +184,9 @@ dumpsys/logcat であり、既存の #315 bounded capture 方針（per-command t
 - 2026-09-25: accepted。Owner の開始指示（「Issue438 対応開始」, 2026-09-25 session）と
   Issue #438 本文の scope/exit criteria を根拠とする。spec/plan を含む実装 diff は
   PR review（ChatGPT）と Owner gate で改めて確認する。
+- 2026-09-25: PR #459 review round 1（ChatGPT,
+  [comment 5827562500](https://github.com/nunu1733/NunuLauncher/pull/459#issuecomment-5827562500)）
+  を受けて修正: production-input helper を `set -eu`（tee→grep oracle の既存 failure
+  semantics を完全保持、pipefail は不採用）へ変更。validator の runner 外 capture 検出を
+  step 名・timeout 記法に依存しない token 単位へ強化し、lifecycle test も script 参照の
+  直接検出へ拡張。plan の command 件数と status を実態に合わせて更新。

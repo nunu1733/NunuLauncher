@@ -381,6 +381,40 @@ class PortfolioValidatorTest(unittest.TestCase):
         self.rewrite_workflow(mutate)
         self.assert_problem("runner-external failure-evidence capture step")
 
+    def test_runner_external_capture_renamed_step_without_timeout_is_detected(self):
+        # Detection must not depend on the legacy step name or the timeout
+        # prefix (review round 1, PR #459).
+        lane = "organizer-instrumentation-db-migration-tests"
+        self.write_fixtures(CONSISTENT_LANES)
+
+        def mutate(workflow):
+            workflow["jobs"][lane]["steps"].insert(
+                1,
+                {
+                    "name": "Grab evidence",
+                    "run": "bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/x",
+                },
+            )
+
+        self.rewrite_workflow(mutate)
+        self.assert_problem("runner-external failure-evidence capture step")
+
+    def test_runner_external_capture_alternative_timeout_form_is_detected(self):
+        lane = "organizer-instrumentation-db-migration-tests"
+        self.write_fixtures(CONSISTENT_LANES)
+
+        def mutate(workflow):
+            workflow["jobs"][lane]["steps"].insert(
+                1,
+                {
+                    "name": "Grab evidence",
+                    "run": "env GITHUB_RUN_ID=x timeout 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/x",
+                },
+            )
+
+        self.rewrite_workflow(mutate)
+        self.assert_problem("runner-external failure-evidence capture step")
+
     def test_live_capture_wrapper_requires_runner_action_identity(self):
         lane = "organizer-instrumentation-manual-organization-ui-tests"
         self.write_fixtures(CONSISTENT_LANES)

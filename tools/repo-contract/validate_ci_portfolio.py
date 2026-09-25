@@ -105,26 +105,27 @@ def shell_tokens(command: object) -> list[str]:
         return []
 
 
-def post_run_capture_output_dirs(steps: list[object]) -> set[str]:
-    expected_prefix = [
-        "timeout",
-        "--kill-after=30",
-        "300",
-        "bash",
-        f"tools/ci/{CAPTURE_SCRIPT}",
-    ]
+def runner_external_capture_dirs(steps: list[object]) -> set[str]:
+    """Output dirs of any runner-external capture invocation in lane steps.
+
+    Detection is token-based: any `run` step whose shell tokens invoke
+    capture-emulator-failure-evidence.sh directly counts, regardless of the
+    timeout prefix, env wrappers, or the step name. After Issue #438 the only
+    sanctioned caller is the live wrapper inside the emulator-runner script,
+    so a direct invocation in any other step is a contract violation: a
+    leftover runner-external capture would re-run after teardown and could
+    overwrite live evidence with dead-device output.
+    """
     dirs: set[str] = set()
     for step in steps:
         if not isinstance(step, dict):
             continue
         tokens = shell_tokens(step.get("run"))
-        if (
-            len(tokens) >= len(expected_prefix) + 2
-            and tokens[: len(expected_prefix)] == expected_prefix
-        ):
-            output_dir = tokens[len(expected_prefix) + 1]
-            if output_dir:
-                dirs.add(output_dir)
+        for index, token in enumerate(tokens):
+            if token.rsplit("/", 1)[-1] == CAPTURE_SCRIPT:
+                if index + 2 < len(tokens):
+                    dirs.add(tokens[index + 2])
+                break
     return dirs
 
 
@@ -315,7 +316,7 @@ def validate() -> list[str]:
             problems.append(
                 f"lane {lane}: live failure-evidence capture wrapper is missing"
             )
-        if post_run_capture_output_dirs(steps):
+        if runner_external_capture_dirs(steps):
             problems.append(
                 f"lane {lane}: runner-external failure-evidence capture step must "
                 "be removed once the live wrapper captures before teardown"

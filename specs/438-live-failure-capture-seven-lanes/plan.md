@@ -2,7 +2,7 @@
 
 > Issue: #438
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: review（round 1 指摘対応済み、再 review 待ち）
 
 ## Current evidence
 
@@ -26,10 +26,10 @@
     （9 class、単一 command）
   - db-migration: 同 task、class 5 個（MigrationTransactionOwnershipTest … rollback32.Schema32RollbackBinaryTest、単一 command）
   - restore-capture: scenario class 4 本の connected run → assemble → adb install ×2 →
-    `am instrument` Stage A → force-stop → `am instrument` Stage B（8 command、#299 手順書が正本）
+    `am instrument` Stage A → force-stop → `am instrument` Stage B（10 command、#299 手順書が正本）
   - production-input: connected run（#83 4 class）→ `installDebug` 2 task → force-stop ×2 →
     `am instrument | tee` writer stage → grep ×2 → force-stop ×2 → `am instrument | tee` reader
-    stage → grep ×2（10 command、API 35）
+    stage → grep ×2（12 command、API 35）
   - reservation-recovery: 単一 command、7 class（ProductionPublicSeam…Issue265ManualEditRecovery）
   - exchange-import-ui: 単一 command、1 class（ExchangeImportSurfaceInstrumentationTest）
   - method-choice-journey: 単一 command、1 class（MethodChoiceConnectedJourneyInstrumentationTest）
@@ -66,8 +66,8 @@ success 無 capture を検証済み）。
 | Area | Intended change | Why here |
 |---|---|---|
 | `.github/workflows/ci.yml`（7 lane） | runner script を wrapper 1 行へ置換（単一 command 5 lane は gradle 直、複数 stage 2 lane は helper 経由）。runner 外 capture step を削除。upload step（reports / failure-time）は path・名前不変のまま残す | capture を runner 所有の live emulator 内に移すため。step 削除は validator 契約（runner 外 capture 拒否）と整合 |
-| `tools/ci/run-restore-capture-instrumentation.sh`（新規） | #299 手順の command 列 8 本を `set -euo pipefail` で保持。コメントは手順注記を含む | emulator-runner は行単位 `sh -c` のため複数 stage を 1 command に束ねる必要がある。manual lane の helper 前例 |
-| `tools/ci/run-production-input-instrumentation.sh`（新規） | #83 + restart writer/reader の command 列 10 本を同様に保持（tee / grep oracle 含む） | 同上 |
+| `tools/ci/run-restore-capture-instrumentation.sh`（新規） | #299 手順の command 列 10 本を `set -euo pipefail` で保持（pipeline を含まないため pipefail は不活性） | emulator-runner は行単位 `sh -c` のため複数 stage を 1 command に束ねる必要がある。manual lane の helper 前例 |
+| `tools/ci/run-production-input-instrumentation.sh`（新規） | #83 + restart writer/reader の command 列 12 本を同様に保持（tee / grep oracle 含む）。`set -eu` とし pipefail を意図的に外して既存の tee→grep 判定順序と status を保持 | 同上 + 既存 failure semantics の完全保持（review round 1 指摘 1） |
 | `tools/ci/test_emulator_failure_capture_lifecycle.sh` | 対象 job を 3 lane → 10 lane へ拡張。helper 2本の実行可否 check を追加 | wiring と artifact path の決定的契約を全 lane へ広げる（AC-3） |
 | `tools/repo-contract/validate_ci_portfolio.py` | rule 6 を「全 lane が live wrapper capture 必須・runner 外 capture step は禁止」へ引き上げ。docstring 更新 | 7 lane の再 drift（runner 外 capture への戻り）を repo-contract gate で機械阻止 |
 | `tools/repo-contract/test_validate_ci_portfolio.py` | fixture の既定を live capture 化し、runner 外 capture への退行を検出する負例 test を追加 | validator 契約変更の自己検証 |
@@ -124,5 +124,9 @@ success 無 capture を検証済み）。
 - [x] 最小実装（ci.yml 7 lane + helper 2本）。
 - [x] Validator 契約引き上げ + self-test。
 - [x] Full relevant verification（上表の local command 群）。
-- [ ] Hosted CI evidence（controlled failure + 最終 head green）と分類記録。
-- [ ] PR evidence / handoff packet / 残risk 記録。
+- [x] Hosted CI evidence（controlled failure + live evidence 分類・保存）。
+- [x] PR evidence / handoff packet / 残risk 記録。
+- [x] Review round 1（ChatGPT, comment 5827562500）の指摘対応: production-input を
+      `set -eu` へ（既存 failure semantics 保持）、validator/lifecycle test の runner 外
+      capture 検出を token・参照単位へ強化、plan 件数・status 修正。
+- [ ] 再 review + Owner final decision + merge。
