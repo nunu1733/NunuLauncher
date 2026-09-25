@@ -290,3 +290,7 @@ blocking なものはない。調査中に解決すべき問い:
   対象runでemulator boot開始前（少なくとも起動hook）からprospective bounded samplerを起動し、
   同一bootのmonotonic timelineを保存・分類する。このprospective evidenceが得られるまでAC-3は
   未完了とする。
+- 2026-09-25: Stage 2のOwner gate budgetを、対象boot 1回、最大150秒、1秒周期・最大150 sample、
+  timeline output最大2 MiBとして固定した。期間内に元signatureが再発しなければ予定停止点で
+  samplerを終了し`non-reproduced`として記録する。device goneまたはbudget timeoutは`incomplete`
+  と記録し、非再現とは分類しない。

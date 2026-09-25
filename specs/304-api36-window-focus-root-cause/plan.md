@@ -390,8 +390,13 @@ failure-time capture/uploadは実行されなかった。したがって現時�
   `sys.boot_completed`到達前後から失敗判定まで、monotonic timestamp付きで
   `sys.boot_completed`、HOME role、top-resumed/activity、mCurrentFocus/mFocusedWindow、
   frontmost、interactive/keyguard、ANR/dropbox、bounded logcatを同一artifactへ保存・分類する。
-  このprospective timelineだけをAC-3の自然発生causal evidence候補とし、現在のCompose timeout
-  や過去のfailure-only snapshotからは第2段を起動しない。
+  Stage 2のOwner gate packetは対象bootを1回に固定し、観測期間を最大150秒、採取周期を1秒、
+  timeline sampleを最大150件、timeline outputを最大2 MiBとする（既存failure-time captureの
+  wall/output budgetに合わせる）。元のIndex4/focus signatureが期間内に再発しなければ予定停止点で
+  samplerを終了し、`non-reproduced`として記録してこのgateを閉じる。device goneまたはbudget timeout
+  で終了した場合は`incomplete`として記録し、`non-reproduced`とは分類しない。このprospective
+  timelineだけをAC-3の自然発生causal evidence候補とし、現在のCompose timeoutや過去のfailure-only
+  snapshotからは第2段を起動しない。
 - 上記の旧re-entry文にある `d426c35da71a05da6a6d180ed491e8d70844d920` は中間local headであり、
   最終rebase/push headは `90e5349be8c9a5dd778b5da33e4f14160a6839e0`、merge後mainは
   `e9c93e5dffa33189be77e68c1f6f000731c6f75e` である。
