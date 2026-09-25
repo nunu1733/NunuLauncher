@@ -270,7 +270,7 @@ NotificationShade型についても、表示されている事実は分類でき
 boot/runner操作の因果は保持されない。
 
 **判断: failure時の追加証拠保全を導入する。** `tools/ci/capture-emulator-failure-evidence.sh`
-を追加し、API36のIssue #52/#53 instrumentation laneで、テストstepが失敗した場合だけ
+を追加し、API36のIssue #52/#53/#99 instrumentation laneで、テストstepが失敗した場合だけ
 best-effort収集を実行してartifactへ保存する。収集コマンドの失敗は元のテスト失敗を
 置き換えず、各snapshotへ終了statusとして記録する。最初の自然再発までは、実際のCI
 artifactが取得できること自体は未確認である。収集対象は次の通りである。
@@ -294,6 +294,49 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 1失敗+証拠を維持したまま、次の再発で機構を確定できる追加観測を残す判断である。
 収集helper自体はローカルfake-`adb` smoke testで、成功・失敗コマンドの双方をartifactへ
 残して元の処理を継続することを確認する。
+
+### Issue #422後のcapture-order再検証（2026-09-24）
+
+- Issue #422（PR #425/#433）のmerge直後に確認したmainは
+  `0c2914c144e6f0ad775a778e69dfc77aefcf9e32` であった。impact-based portfolioへの再編後も、
+  `manual-organization-ui`（Issue #52相当）、`category-override`（Issue #99相当）と
+  `onboarding-proposal`（Issue #53相当）は
+  `reactivecircus/android-emulator-runner@v2` の`script`でGradleを実行し、runner step完了後の
+  別stepで`capture-emulator-failure-evidence.sh`を起動していた。
+- [PR #425のrun 35947132661](https://github.com/nunu1733/NunuLauncher/actions/runs/35947132661)
+  のcategory-override lane failure-time artifact
+  [10787591922](https://github.com/nunu1733/NunuLauncher/actions/runs/35947132661/artifacts/10787591922)を確認した。READMEのcapture時刻後の
+  `adb-devices.txt`は`List of devices attached`だけで、window/activity/home-role等は
+  1件、logcatは15秒timeoutだった。これはfailure-time artifactの保存自体は成功したが、
+  emulator teardown後のmetadata中心でlive window証拠を取得できていないことを示す。
+- [run 35960396387](https://github.com/nunu1733/NunuLauncher/actions/runs/35960396387)でも、
+  manual laneのGradle失敗後に`adb -s emulator-5554 emu kill`が実行され、その約2.5秒後に
+  runner外captureが開始されていた。artifact `10792636632`もadb queryがdevice-not-found
+  となり、同じordering defectを再確認した。なお、同runのtest failureは
+  `OrganizerDiagnosticsRouteInstrumentationTest.issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute`
+  の`openRequestRowAndAwaitT15` 5秒`ComposeTimeout`（140 tests中1 failure）であり、#418元の
+  LazyList `Index 4,size 4`やfocus gate failureとは別signatureである。capture-orderの証拠として
+  は有効だが、root causeを同一視しない。
+- したがって、現行mainで検証すべき最小修正は、#52/#53のテストcommandをlive emulator-runner
+  `script`内で実行し、command失敗時にcaptureを呼び、captureの終了statusで元のテストstatusを
+  置き換えず返すことである。#425のcategory-override artifactが同じdevice不在を示したため、
+  #99相当のcategory-override laneも同じwrapperへ含める。成功時はcaptureを実行せず、runner外の
+  重複captureは置かない。
+  この変更は診断経路だけを対象とし、production source、instrumentation test実装、
+  emulator provisioning、他7 laneのcapture方式は変更しない。残り7 laneのlive化は
+  [Issue #438](https://github.com/nunu1733/NunuLauncher/issues/438)で追跡し、別Owner
+  gateで扱う。対象は
+  `shared-writer`、`db-migration`、`restore-capture`、`production-input`、
+  `reservation-recovery`、`exchange-import-ui`、`method-choice-journey`である。
+- 実装候補の検証は、wrapperのshell syntax、fake-`adb`によるlive device / device-goneの
+  status保持、success時の無capture、既存capture helper、CI portfolio contractで行う。
+  新しいhosted CI runはOwner gateで定めたrun capと停止条件を記録してから開始する。
+
+- PR #437のmain同期時点では `origin/main=22c163814b`（#436 merge）へrebaseし、
+  #342で追加された `CustomCategoryPreferencesInstrumentationTest` のcategory lane
+  class listを保持したまま、上記3 laneへwrapperを再適用した。rebase後の未push headは
+  `d426c35da71a05da6a6d180ed491e8d70844d920` である。これはmergeability解消の準備であり、
+  新しいhosted CI実行や#418 runtime root causeの確定を意味しない。
 
 ## 残存リスク受容の判断基準（root cause 未確定のまま完了する場合）
 
@@ -321,9 +364,13 @@ failure-time capture/uploadは実行されなかった。したがって現時�
 |---|---|
 | `specs/304-api36-window-focus-root-cause/plan.md`（本書） | 試行証跡（Verification evidence）・分類表の追記 |
 | `specs/304-api36-window-focus-root-cause/spec.md` | 調査過程で契約の修正が必要になった場合の更新 |
-| `.github/workflows/ci.yml` | API36 Issue #52/#53 laneのfailure-time captureとartifact upload |
+| `.github/workflows/ci.yml` | API36 Issue #52/#53/#99 laneのfailure-time captureとartifact upload |
+| `tools/repo-contract/ci_portfolio_map.yml` | lifecycle self-testのpath・command・owner・every-run trigger・impact metadata |
 | `tools/ci/capture-emulator-failure-evidence.sh` | emulatorのwindow/activity/ANR/logcat等のbest-effort収集 |
 | `tools/ci/test_capture_emulator_failure_evidence.sh` | fake-`adb`によるhelper smoke test |
+| `tools/ci/run-emulator-command-with-failure-capture.sh` | live runner内でfailure captureを呼び、元のcommand statusを返すwrapper |
+| `tools/ci/run-manual-organization-ui-instrumentation.sh` | Issue #52の既存Gradle/UI evidence pullをrunner scriptの単一commandから実行 |
+| `tools/ci/test_emulator_failure_capture_lifecycle.sh` | #52/#53/#99のrunner wiring、teardown前capture、status保持、success時無captureを検証 |
 | 本 Issue | 結論・判断・分類表・run link の記録 |
 
 production source、dependency、runtime test implementation は変更しない。

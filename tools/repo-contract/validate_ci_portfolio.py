@@ -18,8 +18,13 @@ Compares .github/workflows/ci.yml against tools/repo-contract/ci_portfolio_map.y
 5. map.permanent_gates equals the fixed set bound to
    validate_high_risk_evidence.py, and those jobs plus final-status exist in
    the workflow.
-6. Every instrumentation lane has a bounded failure-evidence capture step.
-7. docs/engineering/ci-test-portfolio.md mentions every lane ID and every
+6. Every instrumentation lane has a bounded failure-evidence capture step,
+   either as a post-run helper or inside the live emulator-runner wrapper.
+7. Every supporting contract test in the map has a real path, an every-run
+   owner job, and an exact workflow invocation.
+8. Every instrumentation lane uploads the capture output directory with a
+   failure-time artifact path.
+9. docs/engineering/ci-test-portfolio.md mentions every lane ID and every
    surface name (existence check; content review owns the prose).
 
 Run: python3 tools/repo-contract/validate_ci_portfolio.py
@@ -29,6 +34,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import sys
 
 import yaml
@@ -47,6 +53,11 @@ FIXED_PERMANENT_GATES = {"organizer-unit-tests", "check-style", "build-debug-apk
 FIXED_AGGREGATION_JOB = "final-status"
 CHANGES_JOB = "changes"
 EVERY_RUN_JOB = "validate-repo-contract"
+LIVE_CAPTURE_WRAPPER = "run-emulator-command-with-failure-capture.sh"
+LIVE_CAPTURE_RUNNER = "reactivecircus/android-emulator-runner@v2"
+CAPTURE_SCRIPT = "capture-emulator-failure-evidence.sh"
+CONTRACT_TEST_ID = "emulator_failure_capture_lifecycle"
+CONTRACT_TEST_IMPACT = "ci-wrapper-artifact-handling"
 
 SURFACE_OUTPUT_RE = re.compile(r"needs\.changes\.outputs\.(surface_[a-z0-9_]+)")
 
@@ -81,6 +92,123 @@ def lane_surface_refs(job_def: dict) -> set[str]:
 def defined_surfaces(workflow: dict) -> set[str]:
     outputs = workflow["jobs"][CHANGES_JOB].get("outputs", {})
     return {name for name in outputs if name.startswith("surface_")}
+
+
+def shell_tokens(command: object) -> list[str]:
+    if not isinstance(command, str):
+        return []
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return []
+
+
+def post_run_capture_output_dirs(steps: list[object]) -> set[str]:
+    expected_prefix = [
+        "timeout",
+        "--kill-after=30",
+        "300",
+        "bash",
+        f"tools/ci/{CAPTURE_SCRIPT}",
+    ]
+    dirs: set[str] = set()
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        tokens = shell_tokens(step.get("run"))
+        if (
+            len(tokens) >= len(expected_prefix) + 2
+            and tokens[: len(expected_prefix)] == expected_prefix
+        ):
+            output_dir = tokens[len(expected_prefix) + 1]
+            if output_dir:
+                dirs.add(output_dir)
+    return dirs
+
+
+def live_capture_output_dirs(steps: list[object]) -> set[str]:
+    dirs: set[str] = set()
+    for step in steps:
+        if not isinstance(step, dict) or step.get("uses") != LIVE_CAPTURE_RUNNER:
+            continue
+        with_block = step.get("with")
+        if not isinstance(with_block, dict):
+            continue
+        tokens = shell_tokens(with_block.get("script"))
+        if len(tokens) < 5 or tokens[:2] != ["bash", f"tools/ci/{LIVE_CAPTURE_WRAPPER}"]:
+            continue
+        try:
+            delimiter = tokens.index("--", 2)
+        except ValueError:
+            continue
+        if delimiter >= 4 and delimiter < len(tokens) - 1 and tokens[3]:
+            dirs.add(tokens[3])
+    return dirs
+
+
+def failure_evidence_upload_paths(steps: list[object]) -> set[str]:
+    paths: set[str] = set()
+    for step in steps:
+        if not isinstance(step, dict) or step.get("uses") != "actions/upload-artifact@v6":
+            continue
+        with_block = step.get("with")
+        if not isinstance(with_block, dict):
+            continue
+        path = with_block.get("path")
+        if isinstance(path, str):
+            paths.update(line.strip() for line in path.splitlines() if line.strip())
+    return paths
+
+
+def validate_contract_tests(ci_map: dict, jobs: dict, problems: list[str]) -> None:
+    contract_tests = ci_map.get("contract_tests")
+    if not isinstance(contract_tests, dict) or not contract_tests:
+        problems.append("ci_portfolio_map.yml: contract_tests mapping is missing/empty")
+        return
+    if CONTRACT_TEST_ID not in contract_tests:
+        problems.append(f"ci_portfolio_map.yml: missing contract test {CONTRACT_TEST_ID}")
+    for test_id, entry in contract_tests.items():
+        if not isinstance(entry, dict):
+            problems.append(f"contract test {test_id}: metadata must be a mapping")
+            continue
+        path = entry.get("path")
+        command = entry.get("command")
+        owner_job = entry.get("owner_job")
+        trigger = entry.get("trigger")
+        impact = entry.get("impact")
+        if not isinstance(path, str) or not path:
+            problems.append(f"contract test {test_id}: path is missing")
+        elif not os.path.isfile(os.path.join(REPO_ROOT, path)):
+            problems.append(f"contract test {test_id}: path does not exist: {path}")
+        if not isinstance(command, str) or not command:
+            problems.append(f"contract test {test_id}: command is missing")
+        if owner_job != EVERY_RUN_JOB:
+            problems.append(
+                f"contract test {test_id}: owner_job must be {EVERY_RUN_JOB}"
+            )
+        if trigger != "every_run":
+            problems.append(f"contract test {test_id}: trigger must be every_run")
+        if impact != CONTRACT_TEST_IMPACT:
+            problems.append(
+                f"contract test {test_id}: impact must be {CONTRACT_TEST_IMPACT}"
+            )
+        owner = jobs.get(owner_job) if isinstance(owner_job, str) else None
+        if not isinstance(owner, dict):
+            problems.append(f"contract test {test_id}: owner job is missing")
+            continue
+        if "if" in owner:
+            problems.append(
+                f"contract test {test_id}: every-run owner must not have an if condition"
+            )
+        run_commands = [
+            step.get("run")
+            for step in owner.get("steps", [])
+            if isinstance(step, dict)
+        ]
+        if command not in run_commands:
+            problems.append(
+                f"contract test {test_id}: command is not invoked by {EVERY_RUN_JOB}"
+            )
 
 
 def validate() -> list[str]:
@@ -173,17 +301,32 @@ def validate() -> list[str]:
         if gate not in jobs:
             problems.append(f"ci.yml: required job {gate} is missing")
 
-    # 6. Every instrumentation lane carries the bounded capture step.
+    # 6. Every instrumentation lane carries the bounded capture step and its
+    # failure-time artifact upload for the SAME output directory. A live
+    # wrapper only counts when it is the command in the expected emulator-runner
+    # action; arbitrary echoes or unrelated action scripts must not satisfy
+    # this contract.
     for lane in sorted(wf_lanes):
         steps = jobs[lane].get("steps", [])
-        has_capture = any(
-            "capture-emulator-failure-evidence.sh" in str(step.get("run", ""))
-            for step in steps
-        )
-        if not has_capture:
+        capture_dirs = post_run_capture_output_dirs(steps) | live_capture_output_dirs(steps)
+        if not capture_dirs:
             problems.append(f"lane {lane}: failure-evidence capture step is missing")
+        upload_paths = failure_evidence_upload_paths(steps)
+        expected_upload_paths = {f"{output_dir.rstrip('/')}/**" for output_dir in capture_dirs}
+        if not upload_paths & expected_upload_paths:
+            if upload_paths:
+                problems.append(
+                    f"lane {lane}: failure-time upload path does not match capture output directory "
+                    f"(expected one of {sorted(expected_upload_paths)}, got {sorted(upload_paths)})"
+                )
+            else:
+                problems.append(f"lane {lane}: failure-time evidence upload path is missing")
 
-    # 7. Portfolio doc mentions every lane and surface.
+    # 7. Supporting contract test ownership and trigger are machine-checked
+    # separately from lane/surface edges.
+    validate_contract_tests(ci_map, jobs, problems)
+
+    # 8. Portfolio doc mentions every lane and surface.
     if not os.path.exists(PORTFOLIO_DOC_PATH):
         problems.append("docs/engineering/ci-test-portfolio.md is missing")
     else:
