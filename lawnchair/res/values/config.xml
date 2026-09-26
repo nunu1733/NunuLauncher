@@ -115,6 +115,8 @@
     <bool name="config_default_rounded_widgets">true</bool>
     <bool name="config_default_allow_widget_overlap">false</bool>
     <bool name="config_default_organizer_personalization_recording" translatable="false">true</bool>
+    <!-- Issue #443: the AI consultation entry is frozen (FR-017); default OFF. -->
+    <bool name="config_default_exchange_ai_consultation" translatable="false">false</bool>
     <bool name="config_default_force_widget_resize">false</bool>
     <bool name="config_default_widget_unlimited_size">false</bool>
     <bool name="config_default_show_status_bar">true</bool>

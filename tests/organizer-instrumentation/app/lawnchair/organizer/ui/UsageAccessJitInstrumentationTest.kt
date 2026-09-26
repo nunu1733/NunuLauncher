@@ -53,6 +53,7 @@ import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -79,6 +81,19 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class UsageAccessJitInstrumentationTest {
+
+    /**
+     * Issue #443: the cross-origin exchange oracle enables the AI
+     * consultation entry through the REAL DataStore; reset it OFF so the ON
+     * state never leaks into later classes of the same lane invocation.
+     */
+    @After
+    fun resetAiConsultationToDefaultOff() {
+        runBlocking {
+            app.lawnchair.preferences2.PreferenceManager2.getInstance(context())
+                .exchangeAiConsultationEnabled.set(false)
+        }
+    }
 
     @get:Rule
     val composeRule = createComposeRule()
@@ -321,6 +336,14 @@ class UsageAccessJitInstrumentationTest {
     @Test
     fun crossOriginExchangePresentationPausesTheRunUntilResolution() {
         val context = context()
+        // Issue #443: the method-choice face's scoped hosting is an ON-path
+        // surface; the AI consultation entry ships default OFF. Reset OFF in
+        // @After so the ON state never leaks into later classes of the same
+        // lane invocation.
+        runBlocking {
+            app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
+                .exchangeAiConsultationEnabled.set(true)
+        }
         // Issue #417: the empty cut parks the manual run at the method-choice
         // face (AC-3) — the face whose scoped hosting now owns the exchange
         // flow's creation entry.
