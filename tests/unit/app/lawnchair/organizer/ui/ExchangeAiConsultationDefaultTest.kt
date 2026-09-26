@@ -14,9 +14,10 @@ import org.junit.Test
  * the `config.xml` bool resource (`config_default_exchange_ai_consultation`,
  * read by the preference's `defaultValue`) and the preference key string in
  * the compiled `PreferenceManager2` bytecode (the DataStore key the toggle
- * persists to). The Experimental Features toggle row's real DataStore
- * round-trip (OFF → ON → OFF through the UI row) is covered by the organizer
- * instrumentation (spec #443 AC-1).
+ * persists to). The real-DataStore OFF → ON → OFF round-trip through the
+ * preference seam the toggle writes is covered by the organizer
+ * instrumentation (spec #443 AC-1); the Experimental Features row's
+ * presence is device evidence (AC-1/AC-7 artifacts).
  */
 class ExchangeAiConsultationDefaultTest {
 
