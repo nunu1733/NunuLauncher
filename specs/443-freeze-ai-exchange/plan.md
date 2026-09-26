@@ -4,6 +4,7 @@
 > Spec: [spec.md](./spec.md)
 > Status: draft
 > Revision 2: 2026-09-26 — Phase1 review指摘1〜4を反映。
+> Revision 3: 2026-09-26 — 再review指摘1〜3を反映（effect配置・IO dispatch・重複実行防止、toggle契約の単純化、自動観測なしの明記）。
 
 ## Current evidence
 
@@ -41,15 +42,28 @@
 | `.github/workflows/ci.yml` | `organizer-unit-tests` jobのgradle commandへ `-Pnunu.excludeAiExchangeUnitTests=true` を追加 | CI job定義 |
 | `tools/repo-contract/ci_portfolio_map.yml` / `docs/engineering/ci-test-portfolio.md` | gate外しの監査情報を更新 | 正本map |
 
-**OFF時のrun導線の実装位置（spec確定済み）**: compose面の分岐で実装する。`ManualOrganizationPreferences.kt` の `State.ScopeConfirmed` compose branchで:
+**OFF時のrun導線の実装位置（spec確定済み、再review指摘1を反映）**: compose面の分岐で実装する。ただし自動遷移effectは `PreferenceLazyColumn` の `LazyListScope` DSLの内側（`State.ScopeConfirmed` branch内）には置けない — そこは `@Composable` contextではないため、`LaunchedEffect` を直接書くとcompileできない。構成:
 
-1. toggleをliveに読む（`collectAsStateWithLifecycle` 経由の既存preference read pattern）。
-2. OFFのとき「AIに相談」arm（`method-choice-consult` item）と `exchangeFlowItems` hostingを描画しない。
-3. OFFのとき `LaunchedEffect(Unit)` で `coordinator.planWithConfirmedScope()` を自動実行し、方法選択面を経ずplanningへ進む。
+1. `PreferenceLazyColumn` の外側（`ManualOrganizationPreferences` composable本体）で、`state` の `ScopeConfirmed` を取り出す:
+   ```kotlin
+   val scopeConfirmed = state as? ManualOrganizationRun.State.ScopeConfirmed
+   ```
+2. toggleを既存のpreference read pattern（`collectAsStateWithLifecycle`）で読む。
+3. `PreferenceLazyColumn` の外側のcomposable scopeへ、runIdとtoggle値をkeyにしたeffectを置く:
+   ```kotlin
+   LaunchedEffect(scopeConfirmed?.runId, exchangeAiConsultationEnabled) {
+       if (scopeConfirmed != null && !exchangeAiConsultationEnabled) {
+           withContext(Dispatchers.IO) { coordinator.planWithConfirmedScope() }
+       }
+   }
+   ```
+   - **IO dispatch**: 既存のユーザー操作経路（`execute { coordinator.planWithConfirmedScope() }` = `scope.launch { withContext(Dispatchers.IO) { ... } }`、`ManualOrganizationPreferences.kt:299-303`）と同じthreading disciplineを守る。`planWithConfirmedScope()` は `runComposedPhase()` へ入りinput composition / planningまで同期的に進めるため、Main dispatcherからの直接呼出しは重い処理をUI threadで実行する。effect内でも `withContext(Dispatchers.IO)` で包む。
+   - **重複実行防止**: keyに `scopeConfirmed?.runId` を含むため、同一runでの再compositionではeffectが再起動しない。runが変わる（別runId）か、toggle値が変わった場合のみ再起動する。runIdがnull（ScopeConfirmedでない）のときはeffect本体が何もしない。二重起動の競合は `planWithConfirmedScope()` 自体の状態guard（`State.ScopeConfirmed` 以外はno-op、`ManualOrganizationRun.kt:1117-1122`）がfail-safeになる。
+4. LazyList側の `State.ScopeConfirmed` branchは、OFFのときheadline（`method-choice-headline`）・`method-choice-plain`・`method-choice-consult`・`exchangeFlowItems` hostingを一切emitしない。ONのときは現行どおり両armをemitする。`scopeRejection` / `scopeDiscardFailed` のtyped failure rowはON導線でのみ現れる状態であるため、OFFでは描画機会がなく契約変更は不要。
 
-**toggle契約（review指摘3の確定）: live read**。preferenceはcompositionのたびに現在値を読む。scope確定後に停まっているrunがあっても、toggleをOFFへ変えてrun面へ戻ると、そのcompositionでOFF導線が適用される（arm非表示 + 自動遷移）。「次のrunから」ではない。specのBehavior scenario「toggle OFFへの変更は、scope確定後に停まっているrunにも即座に適用される」がこの契約である。coordinatorの状態機械には一切書き込まないため、`State.ScopeConfirmed` のpublish契約・attachIntent・claimGenerationEpoch・discard等のspec 417契約はすべて不変である。
+**toggle契約（再review指摘2の確定）**: 「toggle変更後に開始するrunへ適用」。実装はpreferenceのlive read（compositionのたびに現在値）であり、run面のcomposition中にpreference値が変われば次のrecompositionから反映されうるが、受入条件は「toggle変更後に開始するrun」を対象とする。理由: run面を離れると現行の `DisposableEffect(coordinator) { onDispose { coordinator.dismiss() } }`（`ManualOrganizationPreferences.kt:470-472`）がparked runをcancelするため、ユーザーが設定へ移動してtoggleを変え、同じparked runへ戻る実ユーザー導線は存在しない。この実ユーザーlifecycleを変えない（「状態機械/既存契約を変えない」方針）。specのscenario「toggle OFFへの変更は、その後に開始・再開されるrunへ適用される」がこの契約である。
 
-**face oracleの廃止（review指摘4の確定）**: OFF導線はcompose分岐のため `ScopeConfirmed` compositionは存在し、METHOD_CHOICE faceは1回commitされる。よって「METHOD_CHOICE faceがcommitされない」というoracleは立てない。検証対象は「OFF時に方法選択面のnode（headline `manual_organization_method_title`、`method-choice-plain`、`method-choice-consult`）がsemantics treeに現れない」ことと「runがplanning/確認面へ進む」ことである。face traceは既存oracleとして変更しない。
+**face oracleの廃止（Phase1 review指摘4の確定）**: OFF導線はcompose分岐のため `ScopeConfirmed` compositionは存在し、METHOD_CHOICE faceは1回commitされる。よって「METHOD_CHOICE faceがcommitされない」というoracleは立てない。検証対象は「OFF時に方法選択面のnode（headline `manual_organization_method_title`、`method-choice-plain`、`method-choice-consult`）がsemantics treeに現れない」ことと「runがplanning/確認面へ進む」ことである。face traceは既存oracleとして変更しない。
 
 **focus挙動**: OFF時は `ScopeConfirmed` 到達 → 自動 `planWithConfirmedScope()` → planning/確認面へ遷移するため、方法選択面のfocus対象は実質組まれない（1 composition分のnodeは存在しうるが、自動遷移が同frame内で進むためsemantics treeには確認面が現れる）。`focusRequester` は既存のplanning/確認面の先頭対象へそのまま進む。AC-8のinstrumentation oracleで確認する。
 
@@ -68,24 +82,25 @@ if (providers.gradleProperty("nunu.excludeAiExchangeUnitTests").isPresent()) {
 }
 ```
 
-CIの `organizer-unit-tests` jobは `-Pnunu.excludeAiExchangeUnitTests=true` を付けて実行する。ローカル・scheduled（planner-stress）runはpropertyなしで全件実行する（凍結対象テストが消えず、main/scheduled sweepで引き続き観測できる）。`validate_ci_portfolio.py` はjob IDとlane起動条件のみを検査するため、validator変更は不要だが、map/監査表へ記録する。
+CIの `organizer-unit-tests` jobは `-Pnunu.excludeAiExchangeUnitTests=true` を付けて実行する。**gate外し後の自動観測は行わない（再review指摘3の確定）**: `ci.yml` はmain push・weekly schedule・workflow_callで同じ `organizer-unit-tests` jobを使うため、propertyをjobへ付けるとmain/weekly CIでも139件は除外される。`planner-stress.yml` は `--tests '*PlannerGeneratedPropertyTest*'` のみで `ui.exchange` はそもそも対象外である。よって凍結suite（6 class / 139 test）は「ファイルは保持されるが、自動CIでは実行されず、local/manual実行のみで観測する」ことが本specの決定であり、bit-rot観測jobは追加しない（凍結中は機能開発が止まるため、これらのテストがbit-rotする変更容易は凍結の例外（データ安全bug修正）に限られ、その場合は例外手順のPR内で該当classをlocal実行する）。
 
 **実測根拠**: 上記Current evidenceのinit script検証（property-gatingで1644/0件 ↔ 1783/139件の切替を確認済み）。
 
 ### Data flow
 
-- toggle ON/OFFはpreference（DataStore）からcompose面がliveに読む。run coordinatorはpreferenceを読まない。
-- OFF時: run開始 → 検出 → 対象選択（候補あり時） → scope確定（`ScopeConfirmed` publish、現行どおり） → compose分岐が自動 `planWithConfirmedScope()` → planning → 確認 → 適用。
+- toggle ON/OFFはpreference（DataStore）からcompose面が読む。run coordinatorはpreferenceを読まない。
+- OFF時: run開始 → 検出 → 対象選択（候補あり時） → scope確定（`ScopeConfirmed` publish、現行どおり） → LazyColumn外のeffectが自動 `planWithConfirmedScope()`（IO dispatch） → planning → 確認 → 適用。
 - ON時: 現行どおり。scope確定 → 方法選択面 → いずれかのarm。
 - hub status card: 変更なし（run状態と独立のsession-scoped row）。OFFでもpre-open導線（`exchangeOpen` 引数）は機能し続ける。
-- JVM gate: CIはproperty付きでui.exchange除外。scheduled/localは全件。
+- JVM gate: CIはproperty付きでui.exchange除外。local/manualは全件（自動CIでの凍結suite観測は行わない）。
 
 ### Alternatives rejected
 
 - **Gradle CLIのnegation pattern（`--tests '!...'`）**: 除外演算子ではない（実測: 96 test全件実行、negation-onlyはBUILD FAILED）。却下。
 - **coordinator側でOFF分岐を持つ**（scope確定時に `ScopeConfirmed` をpublishせず直接composed phaseへ進む）: 状態機械の契約がON/OFFで変わり、spec 417の状態oracle群に広い影響が出る。preferenceをcoordinatorへ注入すると、呼び出し側とテストが同じseamを使う規約に反する注入が増える。却下。
 - **toggle OFF時に方法選択面の「AIに相談」armだけを消す**（自動実行なし）: 方法選択面自体が表示され続けるため、「方法選択面を出さない」というOutcomeを満たさない。却下。
-- **run admission時にtoggle値をsnapshotしrun単位で固定する**: review指摘3の代替案。live readに比べてseamが増え（snapshot保持場所）、preference即時反映の挙動との差がテストで検証しにくい。live readを契約として採用したため不採用。
+- **run admission時にtoggle値をsnapshotしrun単位で固定する**: seamが増え（snapshot保持場所）、preference即時反映の挙動との差がテストで検証しにくい。live read + 「toggle変更後に開始するrun」契約を採用したため不採用。
+- **parked runへの即時適用を製品要件にする**: run面を離れると `dismiss()` でparked runがcancelされる現行lifecycleを変える必要があり、「状態機械/既存契約を変えない」方針を超える。不採用（再review指摘2）。
 - **AI交換テストを `@Ignore` 化する**: テストファイル保持の原則ではあるが、テスト本体の変更（#352の修正はPR #416に凍結済み）であり、gate外しで十分である。skip化はしない。却下。
 - **manual-organization-ui laneから#372 AI相談scenarioを除外する**: method単位の除外はclass filterでは行えず、class分割はテストファイル構成の変更になる。またこのtestはAC-4と同じdurable到達可能性契約を検証するproduction-route oracleであり、凍結でも維持すべき契約である。現状維持（spec対象表どおり）。却下。
 - **exchange-import-ui / method-choice-journey laneを非blocking化する**: いずれもsurface_organizer_ui変更PRでのみ動き、無関係な変更を失敗させていない。ON時契約のoracleとして維持する。却下。
@@ -134,7 +149,7 @@ CIの `organizer-unit-tests` jobは `-Pnunu.excludeAiExchangeUnitTests=true` を
 
 - [x] spec status/history
 - [ ] `docs/product/organizer-to-be-ux.md`（D-04/D-17の凍結注記）
-- [ ] `docs/engineering/ci-test-portfolio.md`（gate外しの監査記録。対象signature・根拠・検出条件を記載）
+- [ ] `docs/engineering/ci-test-portfolio.md`（gate外しの監査記録。対象・根拠・検出条件と「自動観測なし」を記載。quality-strategyの除外記録要件を満たす）
 - [ ] `tools/repo-contract/ci_portfolio_map.yml`（unit gate注記）
 - [ ] CONTEXT.md: 不要（domain languageの追加なし）
 - [ ] DESIGN.md: 不要（system structureの変更なし。run coordinatorの契約は不変）

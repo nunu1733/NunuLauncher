@@ -10,6 +10,7 @@ updated: 2026-09-26
 # AI相談（外部AI交換）の凍結適用: 実験的機能toggle（既定OFF）と既定導線からの除外
 
 > Revision 2: 2026-09-26 — Phase1 review（[Issue #443 comment](https://github.com/nunu1733/NunuLauncher/issues/443#issuecomment-5845095513)）の指摘1〜4を反映。指摘1: Gradle CLIの `--tests '!...'` は除外演算子ではない（ローカル実測で確認。`!` はリテラルinclude patternとして扱われ、negation-onlyは `No tests found for given includes` で失敗する）ため、build.gradleのTest task filter（`excludeTestsMatching`）へ実装手段を変更。指摘2: blocking CI対象表を本specへ確定。指摘3: toggle契約をlive readへ一本化。指摘4: face trace oracleを廃止し、method-choice node非出現のoracleへ変更。
+> Revision 3: 2026-09-26 — 再review（[Issue #443 comment](https://github.com/nunu1733/NunuLauncher/issues/443#issuecomment-5845366170)）の指摘1〜3を反映。指摘1: OFF自動遷移effectを `PreferenceLazyColumn` の外側のcomposable scopeへhoistし、IO dispatchとrunId keyによる重複実行防止をplanへ明記（`ScopeConfirmed` branchはLazyListScope DSL内で `@Composable` contextではない）。指摘2: 「設定変更後に開始したrunへ適用」へ契約を単純化（run面を離れると `dismiss()` でparked runがcancelされるため、設定変更後に同じparked runへ戻る実ユーザー導線は存在しない）。指摘3: gate外し後の自動観測は行わない（main/weekly CIも同じjobを使うため除外が適用される。凍結suiteの継続観測はlocal/manual実行のみと正確に記録）。
 
 ## Problem
 
@@ -29,7 +30,7 @@ updated: 2026-09-26
 - **OFF時の入口の非表示**: 方法選択面の「AIに相談」arm（`ManualOrganizationPreferences.kt` の `method-choice-consult` item、`ManualOrganizationRun.kt` が公開する `State.ScopeConfirmed` を消費）を、toggle OFFのとき表示しない。既存の新規作成入口は方法選択面のみである（idle AI相談の新規作成入口は#417でRetire済み）。
 - **OFF時のrun導線**: 方法選択面を出さず、scope確定後すぐ「このまま整理」の流れ（`planWithConfirmedScope`）へ進む。実装はcompose面の分岐で行う（Design参照）。D-05のcanonical順序から方法選択面を省略する変形であり、検出・対象選択・適用の契約は変えない。
 - **既存durable状態の到達可能性の維持**: toggle OFFでも、有効な依頼と取り込み済み提案がある間は、Organizer hubのstatus cardの依頼row（`ExchangeOpen.REQUEST`）と提案row（`ExchangeOpen.PENDING_REVIEW`）から期限切れまで到達可能に保つ。hubのstatus cardはrun状態と独立にsession-scopedな行を描画しており、toggle OFFはこの行を消さない。期限切れ時に行が消える現行契約も変えない。
-- **AI交換JVMテストのblocking gate外し**: `organizer-unit-tests` jobから `app.lawnchair.organizer.ui.exchange.*` package（AI交換UI層の6 class、139 test。`ExchangeFlowStateHolderTest` の#352 oracleを含む）を除外する。実装手段はGradle CLIのnegation patternではなく、`build.gradle` のTest task filterへのproperty-gatedな `excludeTestsMatching` 追加である（Gradleの `--tests` CLIは除外patternを持たない。Design参照）。テストファイルは保持する（削除しない）。
+- **AI交換JVMテストのblocking gate外し**: `organizer-unit-tests` jobから `app.lawnchair.organizer.ui.exchange.*` package（AI交換UI層の6 class、139 test。`ExchangeFlowStateHolderTest` の#352 oracleを含む）を除外する。実装手段はGradle CLIのnegation patternではなく、`build.gradle` のTest task filterへのproperty-gatedな `excludeTestsMatching` 追加である（Gradleの `--tests` CLIは除外patternを持たない。Design参照）。テストファイルは保持する（削除しない）。gate外し後、凍結suiteは自動CI（main/weekly/scheduled含む）では実行されず、local/manual実行のみで観測する。
 - **ON時の保証範囲**: toggleがONのときの動作は、データの安全に関わる不具合だけを直す。機能上の退行は凍結中は直さない（メモ§4.6で確定済み）。
 
 ### Blocking CI対象表（凍結テストの扱いの確定）
@@ -93,12 +94,13 @@ Given toggleがOFFで、依頼または提案が24h TTLを過ぎた
 When Organizer hubを開く
 Then 対応するrowは表示されない（現行のTTL契約どおり）
 
-### Scenario: toggle OFFへの変更は、scope確定後に停まっているrunにも即座に適用される
+### Scenario: toggle OFFへの変更は、その後に開始・再開されるrunへ適用される
 
 Given toggleがONでrunがscope確定後の方法選択面に停まっている
-When 設定でtoggleをOFFへ変えてrun面へ戻る
-Then 方法選択面の「AIに相談」armは表示されず、「このまま整理」の流れへ自動的に進む（preferenceはliveに読まれる。OFF導線は「次のrunから」ではなく現在のcompositionに適用される）
-And run coordinatorの状態機械（`State.ScopeConfirmed` のpublish契約）は変化しない（preference読み取りはcompose面のみで、coordinatorへは書き込まない）
+When 設定でtoggleをOFFへ変える（run面を離れる時点で現行の `dismiss()` 契約によりparked runはcancelされる）
+Then toggleをOFFへ変えた後に開始するrunは、OFF導線（方法選択面を経ず「このまま整理」へ進む）で動く
+And preference読み取りはcompose面のみで、run coordinatorの状態機械（`State.ScopeConfirmed` のpublish契約）は変化しない
+And run面のcomposition中にpreference値が変化した場合のlive反映は実装の性質であり、受入条件は「toggle変更後に開始するrun」を対象とする
 
 ### Scenario: 失敗・edge case — AI交換JVMテストがblocking gateを失敗させない
 
@@ -151,9 +153,10 @@ And pipeline/contract層のexchangeテスト（`integration.exchange`、`persona
 
 ## Open questions
 
-- なし（Phase1 reviewで確定した: lane対象表は本specの表のとおり。OFF導線はcompose面のlive read。#352テストのskip化はしない）。実装開始前の未解決事項は残っていない。
+- なし（Phase1 review2回分で確定した: lane対象表は本specの表のとおり。OFF導線はcompose面の分岐 + LazyColumn外の自動遷移effect。toggle契約は「toggle変更後に開始するrunへ適用」。gate外し後の凍結suiteは自動CIでは実行せずlocal/manualのみ。実装開始前の未解決事項は残っていない）。
 
 ## Change history
 
 - 2026-09-26: Draft created for #443.
 - 2026-09-26: Revision 2 — Phase1 review指摘1〜4を反映（除外seamをbuild.gradle filterへ変更、blocking CI対象表を追加、toggle契約をlive readへ確定、face oracleをmethod-choice node非出現oracleへ変更）。
+- 2026-09-26: Revision 3 — 再review指摘1〜3を反映（自動遷移effectの配置・IO dispatch・重複実行防止をplanへ明記、toggle契約を「toggle変更後に開始するrun」へ単純化、gate外し後の自動観測なしを明記）。
