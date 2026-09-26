@@ -1,6 +1,6 @@
 ---
 issue: "#442"
-status: draft
+status: accepted
 requirements: []
 risk: []
 updated: 2026-09-26
@@ -151,3 +151,4 @@ blocking なものはない。保守者判断を要する事項は次のとお�
 
 - 2026-09-26: Draft created for #442（Issue本文＝RF-03草案（再焦点化方針メモ 2026-09-24承認、Revision 5）を入力に起草。コード上の事実は本起草時に再確認済み）。
 - 2026-09-26: Revision 2。Phase 1 review（[判定記録](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5843973838)）のFindings 1〜3に対応: (1) Issue終了条件との整合 — 完了区分を明確化（agent実行分のresearch PRは `Refs #442`、実機観測記録と最終結論を含む最終PRだけが `Closes #442`。AC-8新設。ADR-0014の受入は最終結論を前提とし、起草開始は暫定結論から可能と明記）、(2) 保守者の作業指示（方針C想定）を [Issue #442コメント](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268) として正本化し、C-(3)の判断材料として扱うよう位置づけ、(3) 既知問題の分類oracleをfailure signature/family単位（(a)〜(d)の記録）へ変更（AC-3）。
+- 2026-09-26: Phase 1 re-reviewでApproved（head `a93be4c69a8a82cd5a2695e4318216aa2220fdc8`。判定記録: [Issue #442コメント](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844176592)）。statusを `accepted` へ更新。
