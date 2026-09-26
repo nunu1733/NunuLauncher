@@ -42,9 +42,22 @@ v16* tagは存在しない。
 
 ### 2.3 GitHub Releases（`gh api repos/LawnchairLauncher/lawnchair/releases?per_page=100`）
 
+API応答のうち15系以降に関係するreleaseの引用（全29件のうち、v14以前は省略。2026-09-26取得）:
+
+```json
+[
+  {"tag": "nightly", "name": "Lawnchair Nightly", "prerelease": true, "published": "2026-09-25T23:32:17Z"},
+  {"tag": "v15.0.0-beta3.0", "name": "Lawnchair 15 Beta 3", "prerelease": true, "published": "2026-04-18T11:11:40Z"},
+  {"tag": "v15.0.0-beta2.1", "name": "Lawnchair 15 Beta 2.1", "prerelease": true, "published": "2026-02-28T12:13:31Z"},
+  {"tag": "v15.0.0-beta2", "name": "Lawnchair 15 Beta 2", "prerelease": true, "published": "2025-12-25T13:25:21Z"},
+  {"tag": "v15.0.0-beta1", "name": "Lawnchair 15 Beta 1", "prerelease": true, "published": "2025-07-14T14:22:47Z"}
+]
+```
+
+- immutable source link: [releases API](https://api.github.com/repos/LawnchairLauncher/lawnchair/releases?per_page=100)、[tags API](https://api.github.com/repos/LawnchairLauncher/lawnchair/tags?per_page=100)（API応答は時点で変化しうるため、上記引用が2026-09-26時点の観察記録である）。
 - 最新のreleaseは **`nightly`（Lawnchair Nightly、prerelease、published 2026-09-25T23:32:17Z）**。起草時の未解決事項「GitHub Releasesの確認」を解消した。
 - 15系の最新releaseは `v15.0.0-beta3.0`（published 2026-04-18）。16系のtag付きreleaseは存在しない。
-- fork `nunu1733/NunuLauncher` のreleasesは **なし**（API応答: 空配列）。メモ §2「GitHub Releaseなし」の再確認。
+- fork `nunu1733/NunuLauncher` のreleasesは **なし**（API応答: 空配列。source link: [fork releases API](https://api.github.com/repos/nunu1733/NunuLauncher/releases)）。メモ §2「GitHub Releaseなし」の再確認。
 
 ### 2.4 結論（選択肢Bの成立可否）
 
@@ -56,33 +69,36 @@ v16* tagは存在しない。
 
 ### 3.1 差分規模
 
+- immutable source link: [compare API `v15.0.0-beta3.0...16-dev`](https://api.github.com/repos/LawnchairLauncher/lawnchair/compare/v15.0.0-beta3.0...16-dev)（2026-09-26取得時点。16-devは進行中のため応答内容は時点で変化する。本節の数値は2026-09-26観察値）。
 - `status: diverged`、**ahead_by 7,374 commits**、behind_by 33、比較APIのfiles一覧は300件上限に到達（全file差分の列挙は不可能。本格計測はrebase Epic側の `type: upstream` Issueで `measure_upstream_patch_surface.py` を使って行う。plan.mdのとおり本Issueでは実施しない）。
 - 上限内で観測されたfileの主要領域: `fastlane/metadata` 183件（翻訳metadata）、`compatLib/src` 20件、`compose/features` 12件、`concurrent/src` 9件、`.github/workflows` 7件、`compatLib/compatLibVBaklava` 4件（新module）。**16-devはbuild構造の再編（compatLibのmodule分割、compose/concurrent/dagger/checks等の新top-level module）を含む大規模差分である**。
 - 16-dev head: `d73e44f978e7244428078e775ccc2e184cc4cbbf`（2026-09-26観察。Issue本文記載の2026-09-24時点 `6889441e…` から前進している=活発に進行中）。
 
 ### 3.2 `QUICKSTEP_MAX_SDK=35` 引き上げの評価材料（16-dev上の対象file参照）
 
-| 項目 | fork baseline（15 beta 3） | 16-dev head `d73e44f9` |
-|---|---|---|
-| compileSdk | `release(36)` + minor 1（`build.gradle:29-36`） | `release(37)` + minor 2、buildTools 37.0.0（16-dev `build.gradle:24-30`） |
-| targetSdk | 35 | **37**（16-dev `build.gradle:33`） |
-| quickstepMinSdk / quickstepMaxSdk | 29 / 35（`build.gradle:170-171`） | **35 / 36**（16-dev `build.gradle:147-148`） |
-| compatLib factory分岐 | `ATLEAST_V -> QuickstepCompatFactoryVV()` まで（`LawnchairQuickstepCompat.kt:43-51`） | **`ATLEAST_BAKLAVA -> QuickstepCompatFactoryVBaklava()` が追加**（API 36=Baklava用。16-dev `LawnchairQuickstepCompat.kt:44-56`。`compatLib/compatLibVBaklava/.../QuickstepCompatFactoryVBaklava.java` は `@RequiresApi(36)` で `QuickstepCompatFactoryVV` を継承） |
-| recents有効化条件 | `compatible && isRecentsComponent`、範囲29..35（`LawnchairApp.kt:67-69`） | 同一構造、範囲35..36（16-dev `LawnchairApp.kt:60-62`） |
+対象fileはすべて16-dev head `d73e44f978e7244428078e775ccc2e184cc4cbbf` に固定した参照である（raw linkはcommitに固定され不変）:
 
-評価: **16-devはAPI 36（Baklava）用のcompatLib factoryとSDK範囲35..36を実装済みである**。つまり選択肢Cを採る場合、recentsのAPI 36復活は16-devで「既に解決されている領域」に該当する（判断基準C-(2)の評価材料）。一方、**16-devでも `quickstepMaxSdk=36` であり、API 37（Android 17）のrecents有効化は16-devにも存在しない**。保守者実機（Pixel 9a / API 37）でのrecents復活は、rebase後も追加対応（QUICKSTEP_MAX_SDK引き上げとAPI 37動作確認）が必要である。この点はrebase用ADRの起草要件に含めるべきである。
+| 項目 | fork baseline（15 beta 3） | 16-dev head `d73e44f9`（raw link固定参照） |
+|---|---|---|
+| compileSdk | `release(36)` + minor 1（[baseline `build.gradle:29-36`](https://github.com/nunu1733/NunuLauncher/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/build.gradle)） | `release(37)` + minor 2、buildTools 37.0.0（[16-dev `build.gradle:24-30`](https://github.com/LawnchairLauncher/lawnchair/blob/d73e44f978e7244428078e775ccc2e184cc4cbbf/build.gradle)。行引用: `buildToolsVersion "37.0.0"`、`version = release(37) { minorApiLevel = 2 }`） |
+| targetSdk | 35 | **37**（同上 `build.gradle:33`。行引用: `targetSdk = 37`） |
+| quickstepMinSdk / quickstepMaxSdk | 29 / 35（[baseline `build.gradle:170-171`](https://github.com/nunu1733/NunuLauncher/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/build.gradle)。行引用: `final def quickstepMinSdk = "29"` / `final def quickstepMaxSdk = "35"`） | **35 / 36**（同上 `build.gradle:147-148`。行引用: `final def quickstepMinSdk = "35"` / `final def quickstepMaxSdk = "36"`） |
+| compatLib factory分岐 | `ATLEAST_V -> QuickstepCompatFactoryVV()` まで（[baseline `LawnchairQuickstepCompat.kt:43-51`](https://github.com/nunu1733/NunuLauncher/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/systemUI/shared/src/app/lawnchair/compat/LawnchairQuickstepCompat.kt)） | **`ATLEAST_BAKLAVA -> QuickstepCompatFactoryVBaklava()` が追加**（API 36=Baklava用。[16-dev `LawnchairQuickstepCompat.kt:44-56`](https://github.com/LawnchairLauncher/lawnchair/blob/d73e44f978e7244428078e775ccc2e184cc4cbbf/systemUI/shared/src/app/lawnchair/compat/LawnchairQuickstepCompat.kt)。[`QuickstepCompatFactoryVBaklava.java`](https://github.com/LawnchairLauncher/lawnchair/blob/d73e44f978e7244428078e775ccc2e184cc4cbbf/compatLib/compatLibVBaklava/src/main/java/app/lawnchair/compatlib/sixteen/QuickstepCompatFactoryVBaklava.java) は `@RequiresApi(36)` で `QuickstepCompatFactoryVV` を継承） |
+| recents有効化条件 | `compatible && isRecentsComponent`、範囲29..35（[baseline `LawnchairApp.kt:67-69`](https://github.com/nunu1733/NunuLauncher/blob/505dbc40e6154c05158b5d0271c45f6a885a411b/lawnchair/src/app/lawnchair/LawnchairApp.kt)） | 同一構造、範囲35..36（[16-dev `LawnchairApp.kt:60-62`](https://github.com/LawnchairLauncher/lawnchair/blob/d73e44f978e7244428078e775ccc2e184cc4cbbf/lawnchair/src/app/lawnchair/LawnchairApp.kt)。行引用: `private val compatible = Build.VERSION.SDK_INT in BuildConfig.QUICKSTEP_MIN_SDK..BuildConfig.QUICKSTEP_MAX_SDK`） |
+
+評価: **16-devはAPI 36（Baklava）用のcompatLib factoryとSDK範囲35..36を実装済みである**。これは判断基準C-(2)（操作面の方式の16-dev依存）とは別レイヤの事実であり、Cの成立条件には数えない（§6.1.1のrebase計画材料として記録）。一方、**16-devでも `quickstepMaxSdk=36` であり、API 37（Android 17）のrecents有効化は16-devにも存在しない**。保守者実機（Pixel 9a / API 37）でのrecents復活は、rebase後も追加対応（QUICKSTEP_MAX_SDK引き上げとAPI 37動作確認）が必要である。この点はrebase用ADRの起草要件に含めるべきである。
 
 ## 4. 既知問題の切り分け（AC-3、failure signature/family単位）
 
 確認日: 2026-09-26。方法: #304/#418のIssue本文・capture記録・run linkの照合（読み取りのみ）。
 
-| Signature/family | 発生環境 | user-facing日常利用への直接証拠 | production exposureの静的根拠 | 分類 |
-|---|---|---|---|---|
-| window focus保持occluder（標準ランチャー2例、SystemUI ANR dialog 3例、NotificationShade 1例。#304） | CI emulator（API 36.1、`nunu_qpr2_api36_1` 相当） | なし（CI instrumentation内のfocus gate失敗のみ。実機での同現象の報告なし） | 発生機構自体が未確定（#304 AC-3未完了）。SystemUI ANRはplatform processでありlauncherコード外の可能性 | **CI計測環境の問題（実機波及は未確定）** |
-| SystemUI ANR / focus-gate系（#418 run 35828114497 attempt 4。7/133 failures） | CI emulator（API 36） | なし（同上） | #304のANR occluderと同一系統の可能性（分類時に照合）。launcher側の修正対象箇所は特定されていない | **CI計測環境の問題（実機波及は未確定）** |
-| Compose timeout系（#418 attempt 3、#304の非gateフレイク run 34733180391、2026-09-25 run 36082413664の5秒timeout） | CI emulator（API 36） | なし | Compose UI testの待ち合わせ問題であり、production挙動の欠陥を示す証拠なし | **CI計測環境の問題（test harness側）** |
-| `SlotWriter.moveSlotGapTo` / Activity-destroy process-crash family（#418 attempt 2 `ArrayIndexOutOfBoundsException: length=320; index=-1`、#304 2026-09-25記録 run 36082413664 attempt 2 `index=-56`） | CI emulator（API 36）。instrumentation process死亡 | なし（Activity destroy時のCompose SlotTable破損。日常利用中の同様crashの実機報告なし） | Compose runtime内の破損であり、launcher production code pathに直接根ざすかは未確定 | **未確定**（production exposureの静的根拠が確定できていない。#418が追跡中） |
-| `SnapshotStateObserver` worker-thread access（#304 2026-09-25記録 run 35886970989） | CI emulator（API 36） | なし | test観測基盤のアクセス違反 | **CI計測環境の問題（test harness側）** |
+| Signature/family | 発生環境 | user-facing日常利用への直接証拠 | production exposureの静的根拠 | 分類 | Source（run/job/artifact link と最小signature行） |
+|---|---|---|---|---|---|
+| window focus保持occluder（標準ランチャー2例、SystemUI ANR dialog 3例、NotificationShade 1例。#304） | CI emulator（API 36.1、`nunu_qpr2_api36_1` 相当） | なし（CI instrumentation内のfocus gate失敗のみ。実機での同現象の報告なし） | 発生機構自体が未確定（#304 AC-3未完了）。SystemUI ANRはplatform processでありlauncherコード外の可能性 | **CI計測環境の問題（実機波及は未確定）** | [Issue #304](https://github.com/nunu1733/NunuLauncher/issues/304)（occluder分類表）。capture例: run [34704064012](https://github.com/nunu1733/NunuLauncher/actions/runs/34704064012)（head `083c9029…`、pull_request）の `focusedWindow=mCurrentFocus=Window{... nexuslauncher/.NexusLauncherActivity}, frontmostPackage=com.google.android.apps.nexuslauncher` |
+| SystemUI ANR / focus-gate系（#418 run 35828114497 attempt 4。7/133 failures） | CI emulator（API 36） | なし（同上） | #304のANR occluderと同一系統の可能性（分類時に照合）。launcher側の修正対象箇所は特定されていない | **CI計測環境の問題（実機波及は未確定）** | [Issue #418](https://github.com/nunu1733/NunuLauncher/issues/418)本文: run [35828114497](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497/attempts/4)（head `16688d1b…`）"failed 7 of 133 tests after the emulator reported `Application Not Responding: com.android.systemui`"。failure-time evidence: [artifact 10738053804](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497/artifacts/10738053804) |
+| Compose timeout系（#418 attempt 3、#304の非gateフレイク run 34733180391、2026-09-25 run 36082413664の5秒timeout） | CI emulator（API 36） | なし | Compose UI testの待ち合わせ問題であり、production挙動の欠陥を示す証拠なし | **CI計測環境の問題（test harness側）** | #418本文: run [35828114497 attempt 3](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497/attempts/3) `CategoryOverridePreferencesInstrumentationTest.appRowMeetsMinimumFortyEightDpTouchTarget` で `ComposeTimeoutException` after 5 seconds。#304 change history: run [36082413664](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664) の `OrganizerDiagnosticsRouteInstrumentationTest.openRequestRowAndAwaitT15` で5秒 `ComposeTimeoutException`（report [10843192422](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664/artifacts/10843192422)） |
+| `SlotWriter.moveSlotGapTo` / Activity-destroy process-crash family（#418 attempt 2、#304 2026-09-25記録） | CI emulator（API 36）。instrumentation process死亡 | なし（Activity destroy時のCompose SlotTable破損。日常利用中の同様crashの実機報告なし） | Compose runtime内の破損であり、launcher production code pathに直接根ざすかは未確定 | **未確定**（production exposureの静的根拠が確定できていない。#418が追跡中） | #418本文: run [35828114497 attempt 2](https://github.com/nunu1733/NunuLauncher/actions/runs/35828114497/attempts/2) `ArrayIndexOutOfBoundsException: length=320; index=-1`（`OrganizerHubPreferencesInstrumentationTest.restoreSuccessRepresentsTheRemainingPointAfterHubReturn`）。#304 change history: run [36082413664 attempt 2](https://github.com/nunu1733/NunuLauncher/actions/runs/36082413664) `java.lang.ArrayIndexOutOfBoundsException: length=320; index=-56` が `SlotWriter.moveSlotGapTo` → `CompositionImpl.dispose`（分類コメント [issuecomment-5825872134](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5825872134)） |
+| `SnapshotStateObserver` worker-thread access（#304 2026-09-25記録） | CI emulator（API 36） | なし | test観測基盤のアクセス違反 | **CI計測環境の問題（test harness側）** | #304 change history: run [35886970989](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989)（#418 controlled run）。primary failureは `SnapshotStateObserver` のworker-threadアクセス、live artifact [10764201175](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989/artifacts/10764201175) |
 
 Issue単位の要約: #304（OPEN、root cause未確定）と #418（OPEN）の全signatureは **CI emulator（API 36）上のinstrumentation計測で発生した記録のみ**であり、実機の日常利用で同種の問題が起きた直接証拠は2026-09-26時点で存在しない。ただしSlotWriter/Activity-destroy familyはproduction exposureの可能性を排除できていないため「未確定」とし、rebase計画のリスク評価（ADR起草時）に引き継ぐ。本調査のemulatorセッション（§5）では#304/#418のsignatureは観測されなかった。
 
@@ -102,7 +118,7 @@ Issue単位の要約: #304（OPEN、root cause未確定）と #418（OPEN）の�
 | ドロワー内長押しpopup | **OK** — App info / Widgets / Uninstall / Customize が表示 | `04-drawer-photos-popup.png` |
 | ページswipe | **OK** — ページ1↔2の移動、indicator表示 | `07-page2-after-install.png` |
 | 新規アプリinstall→ホーム配置（`SessionCommitReceiver`→`ItemInstallQueue`→空きセル） | **OK** — `pm install --install-reason 4`（INSTALL_REASON_USER）でfixture app（`app.lawnchair.benchmark.target01`）をinstallすると、ページ2の空きcell(0,4)へアイコン追加を確認（favorites DB row 17: `screen=1, cellX=0, cellY=4`）。logcatに `Adding package name to install queue` を確認。**注意: `--install-reason 1`（POLICY）では追加されない（reason=USERのみqueue対象。`SessionCommitReceiver.java:76`）。adb直接installの既定reasonは1のため、adbでの検証にはreason 4の明示が必要** | `13-page2-icon-confirmed.png` |
-| drag&drop（ページ跨ぎ移動） | **OK（1回成功）** — Benchmarkアイコンをページ2(0,4)からページ1(0,1)へ移動成功（DB確認: `screen=0, cellX=0, cellY=2`）。**adb gesture timing（motioneventの長押し→move遷移）は不安定で、複数回中1回成功。folder形成・Remove drop targetへのdropは自動化できず（popup開閉に吸収される）。人手dragでの追加確認を実機観測に委ねる** | `14-drag-icon-result.png` |
+| drag&drop（ページ跨ぎ移動） | **OK（1回成功）** — Benchmarkアイコンをページ2のDB cell(0,4)（`screen=1, cellX=0, cellY=4`）からページ1のDB cell(0,2)へ移動成功（DB確認: `screen=0, cellX=0, cellY=2`。本節の座標はすべてDB `favorites` の `screen/cellX/cellY` 値であり、UI上の視覚行番号とは別定義。grid 5行のためcellY=2は画面上は中央行に相当）。**adb gesture timing（motioneventの長押し→move遷移）は不安定で、複数回中1回成功。folder形成・Remove drop targetへのdropは自動化できず（popup開閉に吸収される）。人手dragでの追加確認を実機観測に委ねる** | `14-drag-icon-result.png` |
 | フォルダ作成・開閉 | **未自動化確認** — 既存Googleフォルダは正常描画・開閉可（`01`/`39`）。新規フォルダのdrag生成は上記のgesture制約で未確認 | `01`, `39` |
 | Remove drop target / undo snackbar | **未自動化確認** — drag開始がpopupに吸収され確認できず。実機観測に委ねる | — |
 | アプリ起動・終了 | **OK** — Settings起動（`am start -W` TotalTime 0ms / WaitTime 18ms、warm start）、HOME復帰正常 | `21`（未添付。logcat記録） |
@@ -111,7 +127,7 @@ Issue単位の要約: #304（OPEN、root cause未確定）と #418（OPEN）の�
 | ドロワー検索 | **OK** — "sett"入力でSettings/Wi-Fi/Batteryが即時表示 | `23-drawer-search.png` |
 | QSB（ホーム検索バー） | **OK** — tapでGoogle Search画面が開く | `37-qsb-tap.png` |
 | 回転 | **未確認** — `user_rotation`設定がこのAVDで反映されず、landscape描画を確認できなかった。実機観測に委ねる | — |
-| **recents（最近使ったアプリ）** | **無効を確認** — swipe up & holdでrecents overviewは表示されず、ドロワーが開くのみ（`22-recents-gesture.png`）。logcatに `RecentsView: reset - mEnableDrawingLiveTile: false`。**`QUICKSTEP_MAX_SDK=35`（`build.gradle:170-171`）によりAPI 36でrecentsが無効であることの実機挙動と整合**。GestureNavのsystem側操作での日常利用は成立するが、launcher提供のrecents overview・PAUSE_APPSは使えない | `22-recents-gesture.png` |
+| **recents（最近使ったアプリ）** | **無効を確認** — swipe up & holdでrecents overviewは表示されず、ドロワーが開くのみ（`22-recents-gesture.png`）。logcatに `RecentsView: reset - mEnableDrawingLiveTile: false`。**`QUICKSTEP_MAX_SDK=35`（`build.gradle:170-171`）によりAPI 36でrecentsが無効であることの実機挙動と整合**。launcher提供のrecents overview・PAUSE_APPSは使えない。**GestureNavのsystem側recents（3-button navigationのrecents button等、launcher外のsystem経路）での代替利用の成立は本セッションでは確認していない（未確認 / API 37実機観測へ引継ぎ。暫定判断の根拠には含めない）** | `22-recents-gesture.png` |
 | 安定性（本セッション中） | **OK** — 約45分の操作セッションで `FATAL EXCEPTION` 0件、`ANR in com` 0件（logcat全量照合）。#304/#418のsignature（occluder、SystemUI ANR、Compose timeout、SlotWriter crash）は1件も観測されず | logcat照合 |
 
 ### 5.2 保守者実機分（Pixel 9a / API 37）の記録枠
@@ -145,19 +161,27 @@ Issue単位の要約: #304（OPEN、root cause未確定）と #418（OPEN）の�
 | A: 編集負担の改善が15 baseline上で完結できる | メモ §4.3: 視覚的編集画面（ADR-0014案B）は上流変更0〜1ファイルで15上で実装可能 | **成立** |
 | B: 15系にbaseline以降の実質commitが存在する | §2.4: `15-beta`/`15-dev` はbaselineで停止。対象が存在しない | **不成立**（Bは除外） |
 | C-(1): quickstep無効以外の重大な欠陥があり15系で修正されない見込み | §5.1: 欠陥の証拠なし | **不成立** |
-| C-(2): ADR-0014の操作面方式が16-devで既に解決されている領域に依存するか | §3.2: 16-devはrecents（compatLibVBaklava、SDK 35..36）を解決済み。一方、ADR-0014の対象（workspace/選択状態）は視覚的編集画面案が上流変更0〜1ファイルであり、15上で作ってもrebaseコストは小さい（メモ §4.3基準2）。**操作面の方式そのものは16-dev依存ではない**が、quickstep/compatLib層は16-devで解決済みの領域に当たる | **部分成立**（操作面では不成立、quickstep/compat層では成立） |
-| C-(3): 保守者がtargetSdk引き上げ等を製品要件とする | 保守者指示（2026-09-26、[issuecomment-5844023268](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268)）「原則方針C（Rebaseを視野に入れる）を想定」。これはinvestigation directionであり、最終判断は保守者が行う | **保守者の最終判断に委ねる**（指示の存在は記録済み） |
+| C-(2): ADR-0014の操作面方式が16-devで既に解決されている領域に依存するか | ADR-0014の対象（workspace/選択状態の操作面）は視覚的編集画面案が上流変更0〜1ファイルであり、15上で作ってもrebaseコストは小さい（メモ §4.3基準2）。**操作面の方式そのものは16-devで解決済みの領域に依存しない** | **不成立** |
+| C-(3): 保守者がtargetSdk引き上げ等を製品要件とする | 保守者指示（2026-09-26、[issuecomment-5844023268](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268)）「原則方針C（Rebaseを視野に入れる）を想定」。これはinvestigation directionであり、最終判断は保守者が行う | **保守者の最終判断に委ねる**（指示の存在は記録済み。成立条件の確定はAC-8の実機証拠と保守者判断を待つ） |
 
-### 6.2 暫定結論（推奨）
+### 6.1.1 rebase計画時のsupport/patch材料（判断基準外の事実。Cの成立条件には数えない）
 
-**選択肢C（Lawnchair 16へのrebaseを専用Epic+ADRで計画する）方向を推奨する。** 根拠:
+Cの判断基準外だが、結論がC方向になった場合のrebase計画の材料として次を記録する:
 
-1. **Bは成立しない**（§2.4。15系に同期対象が存在しない）ため、AとCの2択になる。
-2. Aは「quickstep無効のまま日常利用を受け入れる」ことを意味する。§5.1のとおりAPI 36での基本操作は堅調だが、保守者実機（API 37）ではrecentsが無効のままとなり、かつ **16-devでもAPI 37のrecents有効化は存在しないため、rebase後も追加対応が必要**（§3.2）。
-3. 保守者の作業指示が方針Cを想定しており（C-(3)の判断材料）、recents/compat層は16-devで部分解決済み（C-(2)）である。
-4. 一方、Aの判断基準（欠陥なし・7日crashなし）も現時点で反証されておらず、A→Cの決定打ちは実機観測の結果次第である。**暫定結論は「C方向の計画起票を進める前提で、実機観測によりAへの反証（重大な欠陥・crash）があれば計画の範囲と優先度を調整する」**とする。
+- 16-devはAPI 36（Baklava）用のcompatLib factory（`QuickstepCompatFactoryVBaklava`）とSDK範囲35..36を実装済みである（§3.2）。15 baselineのままではAPI 36/37でrecentsが無効であり、この解決は16-dev側に存在する。
+- 一方、16-devでも `quickstepMaxSdk=36` であり、API 37（保守者実機）のrecents有効化は16-devにも存在しない。rebase後も追加対応が必要である。
 
-### 6.3 結論がC方向の場合の専用Epic起票範囲とADR起草要件
+### 6.2 暫定結論
+
+**現時点ではA/C未確定とする。** 根拠:
+
+1. **Bは不成立**（§2.4。15系に同期対象が存在しない）ため、AとCの2択になる。
+2. Cの成立条件は、C-(1)不成立（§5.1に欠陥の証拠なし）、C-(2)不成立（§6.1。操作面の方式は16-dev依存ではない）、C-(3)は保守者の最終判断待ちであり、**現時点でCの成立条件は1つも確定していない**。
+3. Aの判断基準（欠陥なし・7日crashなし）も現時点で反証されていない（agent実行分は欠陥なし。7日観測はAC-8で保守者が実施）。
+4. 保守者の作業指示（方針C想定）はinvestigation directionであり、Cの成立条件を先取りしない（§1、[issuecomment-5844023268](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268)）。
+5. **暫定結論は「C-(3)の製品要件確定またはAC-8の実機証拠が入るまでA/C未確定」とし、A/Cのいずれに転んでも計画に使える材料（§2、§3、§4、§6.1.1）を本書に記録する。** 最終結論は保守者がAC-8の実機観測と判断基準の適用で確定する（§7）。
+
+### 6.3 結論がC方向に確定した場合の専用Epic起票範囲とADR起草要件（暫定時点での整理）
 
 - **専用Epicの起票範囲**（AGENTS.md「Lawnchair 16への変更は通常updateとして扱わず、専用EpicとADRを要求する」）:
   1. `type: upstream` Issue: 16-devのlocal object databaseへのfetchと、`measure_upstream_patch_surface.py` による本格的なpatch-surface計測（本Issueではcompare API概観のみ。§3.1）。
@@ -176,3 +200,4 @@ Issue単位の要約: #304（OPEN、root cause未確定）と #418（OPEN）の�
 ## 8. Change history
 
 - 2026-09-26: agent実行分（調査1〜4と暫定結論）を記録。対象commit `a441eba228bfcda94bd044905df8381fdfa6c790`。upstream観察（ls-remote、Releases/tags API、compare API、16-dev上のraw file参照）は2026-09-26T07:22:59Z前後。emulatorセッションはAVD `nunu_qpr2_api36_1`（API 36.1）で2026-09-26 16:45–17:32 JSTに実施。実機観測（§5.2）と最終結論は保守者の記録を待つ。
+- 2026-09-26: PR #466 review（[判定](https://github.com/nunu1733/NunuLauncher/pull/466#issuecomment-5844712515)）のFindings 1〜4に対応: (1) C-(2)をoracleどおり「不成立」へ修正し、quickstep/compat事実を§6.1.1「rebase計画時のsupport/patch材料（判断基準外）」へ分離、暫定結論を「A/C未確定」へ変更（Cの成立条件は現時点で1つも確定していないため）、(2) §5.1 recents行の「GestureNavのsystem側操作での日常利用は成立する」を「未確認 / API 37実機観測へ引継ぎ」へ修正し暫定判断の根拠から除外、(3) §2.3にAPI応答の引用とimmutable link、§3にcommit固定のraw linkと行引用、§4にrun/job/artifact linkと最小signature行を追加、(4) §5.1 drag&drop行の座標表記をDB `favorites` の `screen/cellX/cellY` 値に統一し、UI視覚行との対応を明記。
