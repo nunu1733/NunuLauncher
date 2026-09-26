@@ -59,3 +59,12 @@ All commands executed by the auditor at head `d3a3d3088b7e93621ddb4344248d995448
 - The frozen suite (6 classes / 139 tests, `ui.exchange`) is now intentionally unobserved by automated CI (main/weekly/scheduled share the same `organizer-unit-tests` job). Per spec Revision 3 this is the accepted disposition: observation is local/manual only, and any freeze-exception change must run the affected classes locally within its PR. Residual risk is accepted by the spec, not silently hidden.
 - The JVM default oracle (`ExchangeAiConsultationDefaultTest`) pins config.xml and compiled bytecode rather than the runtime default itself; the runtime persistence contract is covered on device by the real-DataStore round-trip oracle. Indirection is acceptable given the JVM-only seam, and the device oracle covers the live path.
 - Untracked local `refocus-drafts/` pre-existing broken-link findings from `validate_repo_contract.py` are excluded from this assessment (not part of this PR's tree).
+
+
+## Addendum 2026-09-26: AC-7 device evidence
+
+- Device evidence captured on local emulator (API 36 family, `issue142_api36`) running the audited build (`Lawnchair.15.Dev.(d3a3d30).github.debug.apk`):
+  - `docs/assessment/evidence/pr-467/443-ac1-toggle-row-default-off.png` — Experimental features screen with the AI consultation toggle present and OFF (AC-1 row presence).
+  - `docs/assessment/evidence/pr-467/443-ac7-off-direct-preview.png` — after scope confirm on a non-empty cut, the run reached the preview face directly; no method-choice headline or AI arm rendered (AC-7 (a)+(b)).
+  - `docs/assessment/evidence/pr-467/443-ac7-off-path.mp4` — screen recording of the same OFF run path.
+- AC-7 is therefore resolved; no code changed after the audited head (`d3a3d3088b`) — this addendum and the evidence files are docs-only.
