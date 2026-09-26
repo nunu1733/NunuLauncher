@@ -161,7 +161,7 @@ baselineの算出は2026-09-26の本書改正で確定した。メモ §4.1の�
 2026-09-26のオーナー判断により、人間の実測計測は本ベンチマークの対象外である（§1）。本書の検証は、agentが実行でき、その結果がrepositoryへ記録できるものに限る。
 
 1. **fixture契約の検証（§5）**: `EditingBurdenBenchmarkFixtureSeedingInstrumentationTest`（restore mode、2 test）がgreenであること。「同一入力から同一fixture」「hotseat・その子孫・予約領域重複行の保持」「`ReservationOverlapAcceptance` 基準の非交差」「identity一意性と重複2組」を検証する。実行記録: [441-fixture-seeding-evidence](../assessment/441-fixture-seeding-evidence.md)（reference系emulator `nunu_smoke_api35` と実機Pixel 9aの両方で実施済み。実機での検証実績は有効だが、オーナー判断以降は計測には使用しない）。
-2. **§3.4の配置規則の実証**: session install（`INSTALL_REASON_USER`）による新規アプリの自動追加が「1ページ目を除外した最初の空きセル（fixtureでは2ページ目の8cell消費後に3ページ目）」へ置かれること。実証記録: 同evidence §3a（`tests/benchmark-install-targets/` の固定対象APKを使用。再検証が必要な場合は同moduleを再利用する）。
+2. **§3.4の配置規則とB6配置内訳の実証**: session install（`INSTALL_REASON_USER`）による新規アプリの自動追加が「1ページ目を除外した最初の空きセル」へ置かれること、および10個を順次installすると「2ページ目に8個・3ページ目に2個」（§3.4の走査規則とfixture空き数から決定的）になることを、DB oracleで確認する。実証記録: 同evidence §3a/§3b（`tests/benchmark-install-targets/` の固定対象APKを使用。install時にはLawnchairが既定ランチャーかつ前面Activityである必要がある。再検証が必要な場合は同moduleを再利用する）。
 3. **§6の算術照合**: baseline表の内訳が§3の手順と§4の重みから一意に再計算できること（操作数を含む）。改正PRの本文に照合表を載せ、reviewで確認する。
 
 将来の人間実測・agent自動計測（UI Automator等）について: 本ベンチマークの会計指標では所要時間・知覚負担を扱わない。それらを測る必要が生じた場合は、課題の再定義（実アプリの使用を含む）と併せて、performance-budgets §10と同じ分離基準で別Issueとして再設計する。2026-09-26のオーナー判断におけるscenario再設計の要否判断は「本改正では行わない」である（理由: §1の指標の性質により会計に実アプリ性は不要なこと、開発フローで人手が必須になる構成を避ける方針）。

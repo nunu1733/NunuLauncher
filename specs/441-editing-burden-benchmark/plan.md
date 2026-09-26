@@ -15,7 +15,7 @@
 - **QSB予約と新規アプリ配置の実装事実（Phase 1 re-reviewで指摘され、2026-09-26に実コードで確認）**: `LauncherLayoutAdapter.captureWorkspaceContext`（同adapter 158-168行）は `FeatureFlags.topQsbOnFirstScreenEnabled` が有効のとき、first screenの `GridCell(0,0)` に `GridSpan(idp.numSearchContainerColumns, 1)` を予約する。`InvariantDeviceProfile.java:982-984` により `numSearchContainerColumns` 未指定時の既定は `numColumns`、すなわち4列×5行gridでは予約は4cell（行0全体）で、1ページ目の利用可能cellは16である。また `WorkspaceItemSpaceFinder.findSpaceForItem`（`src/com/android/launcher3/model/WorkspaceItemSpaceFinder.java:55-66`）はQSB有効時に `FIRST_SCREEN_ID` を新規アプリ配置候補から除外するため、新規アプリは2ページ目以降で最初に空きのある既存pageへ置かれる。fixture（A-8）では2ページ目に空きがあるため、B1の新規アプリは **2ページ目** に配置される（付録草案§6が想定した「最終ページ」ではない）。
 - **androidTest source setの構成**: `build.gradle:374-375` が `androidTest` source setの `java.srcDirs = ['tests/organizer-instrumentation']` と `manifest.srcFile 'tests/organizer-instrumentation/AndroidManifest.xml'` を定義する。test APKはtarget app（`app.lawnchair.debug`）と別packageでinstallされ、manifest mergeでtest APK側にcomponentを宣言できる。AGPのconnectedAndroidTestは実行後にapp/test APKをuninstallするため、計測sessionでのseedingは手動 `adb install` + `adb shell am instrument` で行いtest APKを保持する（適合化A-12）。
 - CI実行形態: manual-organization-ui lane（`.github/workflows/ci.yml` の `organizer-instrumentation-manual-organization-ui-tests`）が `tools/ci/run-manual-organization-ui-instrumentation.sh` の明示class listで `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...` を実行する。lane↔surface対応は `tools/repo-contract/ci_portfolio_map.yml`（ui lane ↔ `surface_organizer_ui`）。path filterは `tests/organizer-instrumentation/app/lawnchair/organizer/ui/**` を `surface_organizer_ui` にmappingする（ci.yml `changes` job）。test APKのmanifest/res変更も同source tree配下でありmappingは変わらない。
-- 実機計測の外部依存: 定義文書§7は計測者=保守者、端末=実機Pixel 9a（tegu、API 37。`docs/assessment/ac14-physical-device-evidence.md:4`と同じ端末）と固定する。本sessionに実機は接続されておらず（2026-09-26に `adb devices` で0台確認）、B6の終了判定も測定者判断を含むため、baseline実測（AC-7）と目標確定（AC-8）は実装agentの実行範囲外である。実行可能な検証環境としてreference系emulator（既存AVD `nunu_smoke_api35` 等）が本機にある（AC-2のevidenceに使用）。
+- ~~実機計測の外部依存~~（**R7でsuperseded**）: 起草時はbaseline実測（AC-7）を実機Pixel 9aでの保守者計測とし、実装agentの実行範囲外としていた。オーナー判断（Revision 7）により人間の実測計測は対象外となり、baselineは固定手順からの決定的算出（§6確定値）としてagentが確定・検証する。検証環境はreference系emulator（既存AVD `nunu_smoke_api35`）と実機Pixel 9a（検証実績のみ）。
 - `docs/README.md` は文書map表を持つため、新文書の行追加が必要である。
 - spotlessの対象はjava/kotlinのみ（markdown対象外）。markdown linkの検証は `tools/repo-contract/validate_repo_contract.py` が担う。refocus-drafts宛の相対linkはcommitしない限りlink切れになるため、正本文書へ持ち込まない（#440の実績どおり）。
 
@@ -29,19 +29,19 @@
 | A-2 | RF-IDの置換 | 草案内のRF-IDをIssue番号へ置換する（Current evidenceの対応表）。メモ参照はIssue #441/#439への参照に置き換える |
 | A-3 | 未作成ADRへの参照 | ADR-0015への参照は起草担当Issue #446へのlinkにし、将来のfile pathは平文で併記する（#440 A-3の慣行）。ADR accepted時に当該IssueのPRがfile linkへ更新する |
 | A-4 | link正規化 | 配置先が `docs/engineering/` になるため相対linkを正規化する（performance-budgets→`./performance-budgets.md`、github-workflow→`../project/github-workflow.md`、specs→`../../specs/...`）。`refocus-drafts/` 宛のlinkは作らない |
-| A-5 | 草案表現の確定化 | 重み表から「提案/仮」を除き確定値として載せる（重みは本書承認時に確定するのが草案§4の規定）。未解決事項のうち、NORMAL drag中ページ切替待ち（副指標の実測で記録し定数を要求しない）、B6終了判定（測定者判断+終了時screenshot 1枚）、重複アイコンのfixture作り方（A-10のとおり同一起動先の2行を直接書く）は解消済みとして本文へ織り込む。「upstream releases確認が未実施」の項は起草過程のメタ情報であり#442の担当のため正本からは除く。B1の「一度だけの設定操作は課題コストに含めず別記録」は定義注記として残す |
+| A-5 | 草案表現の確定化（**R7で一部superseded**: B6終了判定と副指標の記述はR7-2/R7-5で置換） | 重み表から「提案/仮」を除き確定値として載せる（重みは本書承認時に確定するのが草案§4の規定）。未解決事項のうち、NORMAL drag中ページ切替待ち（副指標の実測で記録し定数を要求しない）、B6終了判定（測定者判断+終了時screenshot 1枚）、重複アイコンのfixture作り方（A-10のとおり同一起動先の2行を直接書く）は解消済みとして本文へ織り込む。「upstream releases確認が未実施」の項は起草過程のメタ情報であり#442の担当のため正本からは除く。B1の「一度だけの設定操作は課題コストに含めず別記録」は定義注記として残す |
 | A-6 | gridの正規化 | 草案§5の「5列×4行」を「4列×5行」へ修正する（Current evidenceの根拠どおり）。変更履歴に修正の根拠を残す |
-| A-7 | baselineと目標の位置づけ | §6のbaseline概算は「手順からの算出値であり実測値ではない」を明記したまま残す。実測記録の受け皿 `docs/assessment/editing-burden-baseline.md`（§7記録形式。計測後に作成）と、目標確定手順（baseline実測後に§6を確定値へ更新、NFR-014をrequirements.mdで確定）を§7に明記する。確定前であることを目標表にstatusとして明示する |
+| A-7 | baselineと目標の位置づけ（**R7でsuperseded**: baselineは実測受け皿なしの決定的算出へ変更） | §6のbaseline概算は「手順からの算出値であり実測値ではない」を明記したまま残す。実測記録の受け皿 `docs/assessment/editing-burden-baseline.md`（§7記録形式。計測後に作成）と、目標確定手順（baseline実測後に§6を確定値へ更新、NFR-014をrequirements.mdで確定）を§7に明記する。確定前であることを目標表にstatusとして明示する |
 | A-8 | fixture定義の補完 | 草案§5の「約16個」等の概数を、QSB有効・4列×5行での収容可能数に合わせて確定値へ置き換える: ページ0に15個（移動対象5・削除対象3・重複1組2個・通常5）+指定フォルダ1（QSB予約4cellを除く16cellに満杯）、ページ1に12個（削除対象3・B3対象2・重複1組2個・通常5。空き8cell=B1の新規アプリ配置先）、ページ2に8個（B3対象2・通常6。空き12cell=B2の受け皿）。指定フォルダはseed済みアイテム2個（Fixture 01・35）を含む（Revision 5: loaderが1項目フォルダをiconへ自動展開するため。`LAUNCHER_FOLDER_CONVERTED_TO_ICON`。空フォルダと1項目フォルダはいずれも不安定）。計測対象はidentity（fixture起動先のlabel）で指定し、位置はその時点のfixture layoutで確認する。dock（hotseat）とplatform予約領域は「既定のまま、seedingで変更しない」と明記する |
-| A-9 | cell座標の正本 | 正確なcell座標はseedingの決定的配置規則（A-11）とfixture入力表が定め、文書はrole定義と再現手段への参照を持つ（同一入力→同一fixtureを検証するtestが再現性を担保する。文書とコードの二重管理を避ける）。測定が前提とする4列×5行+既定QSBでの配置例を文書に載せてよいが、正本は入力表+配置規則である |
+| A-9 | cell座標の正本 | 正確なcell座標はseedingの決定的配置規則（A-11）とfixture入力表が定め、文書はrole定義と再現手段への参照を持つ（同一入力→同一fixtureを検証するtestが再現性を担保する。文書とコードの二重管理を避ける）。課題が前提とする4列×5行+既定QSBでの配置例を文書に載せてよいが、正本は入力表+配置規則である |
 | A-10 | fixture identity方針（Condition 1対応） | fixture起動先はinstrumentation test APK内のactivity-alias 35本（`F01`〜`F35`。互いに異なるcomponent・label・icon。`ACTION_MAIN`+`CATEGORY_LAUNCHER`のintent-filter付き）で供給する。35 = desktop行35（ページ0に15+ページ1に12+ページ2に8）のうち重複行4を除いた31 + 重複2組のidentity 2 + フォルダ内容2（Revision 5: 1項目フォルダはloaderがiconへ展開するため2項目が必要。`LAUNCHER_FOLDER_CONVERTED_TO_ICON`）。通常アイコン・B3対象・移動対象・削除対象・指定フォルダの内容はそれぞれ異なるidentityを割り当て、同一起動先の重複は指定2組（ページ0とページ1に各1組、各2個）のみとする。重複の判定キーは「component + profileの一致」（メモ§4.5のRF-10定義と同一）とし、定義文書§5とtest assertionの両方に明記する。実在第三者packageには依存しない |
 | A-11 | seedingの決定的配置規則と置換境界（Condition 2対応） | 置換対象は「fixture対象graph = `CONTAINER_DESKTOP`のroot行とその子孫行（fixtureが作るフォルダの内容行を含む）」であり、保持対象は「hotseat root行+その子孫」と「予約領域に重なる行」である。削除は子孫→rootの順に行う。insertは、保持行が占有するcellと予約領域を避けたrow-majorのfirst-fitで、固定のitem順（ページ0→1→2。フォルダはページ0の先頭）に配置する。grid差異（エミュレータ/実機の既定grid差）はこの規則が決定的に吸収し、測定は定義文書が固定する4列×5行で行う。収容契約（全rootの収容、1ページ目はQSB予約を除き満杯、2ページ目に空きcell≥1）を満たせない場合はfail-fastする。test oracleは「保持行の前後一致」「fixture全spanの予約領域非交差（`ReservationOverlapAcceptance.overlaps`がfalse）」「収容契約の成立」「2回のseedingで正規化projectionが一致」を含む |
-| A-12 | 計測時のseeding永続化 | AC-2〜4の検証testは既定（restore mode）で終了時にfavoritesを復元する。計測sessionのfixture構築は、手動 `adb install`（app APK + test APK）→ `adb shell am instrument -e persist true -e class <新test class> …` で実行し（persist modeは復元をskipする）、test APKを計測中installしたまま保つことでfixture起動先が解決され続けるようにする。手順を定義文書§7に記載する |
-| A-13 | QSB状態とB1配置先の確定（re-review指摘対応） | 計測はQSB/Smartspaceの既定状態（`topQsbOnFirstScreenEnabled` 有効）で行うことを定義文書§7に明記する。B1の新規アプリの配置先は、`WorkspaceItemSpaceFinder` の実挙動（QSB有効時は1ページ目を候補から除外し、2ページ目以降で最初に空きのある既存page）に従い **2ページ目の最初の空きcell** として§3.4/§6に記載する（コード根拠: `WorkspaceItemSpaceFinder.java:55-66`）。付録草案§6のB1 baseline「約9（最終ページ想定の内訳）」は内訳との算術不整合（実質10）と配置前提の誤りがあるため、B1 baseline概算を **8** に修正する: 2ページ目へのswipe×1（1）+ 長押し（2）+ 1ページ跨ぎdragで0ページ目の指定フォルダへ追加（4+1=5）。B6は同じ配置規則に従う旨を§3.4に追記する |
+| A-12 | 計測時のseeding永続化（**R7で位置づけ変更**: 計測sessionではなくfixture構築と§3.4実証のagent手順として使用） | AC-2〜4の検証testは既定（restore mode）で終了時にfavoritesを復元する。計測sessionのfixture構築は、手動 `adb install`（app APK + test APK）→ `adb shell am instrument -e persist true -e class <新test class> …` で実行し（persist modeは復元をskipする）、test APKを計測中installしたまま保つことでfixture起動先が解決され続けるようにする。手順を定義文書§7に記載する |
+| A-13 | QSB状態とB1配置先の確定（re-review指摘対応。**R7で計測手順部分をsuperseded**、QSB状態・B1配置先の確定は有効） | 計測はQSB/Smartspaceの既定状態（`topQsbOnFirstScreenEnabled` 有効）で行うことを定義文書§7に明記する。B1の新規アプリの配置先は、`WorkspaceItemSpaceFinder` の実挙動（QSB有効時は1ページ目を候補から除外し、2ページ目以降で最初に空きのある既存page）に従い **2ページ目の最初の空きcell** として§3.4/§6に記載する（コード根拠: `WorkspaceItemSpaceFinder.java:55-66`）。付録草案§6のB1 baseline「約9（最終ページ想定の内訳）」は内訳との算術不整合（実質10）と配置前提の誤りがあるため、B1 baseline概算を **8** に修正する: 2ページ目へのswipe×1（1）+ 長押し（2）+ 1ページ跨ぎdragで0ページ目の指定フォルダへ追加（4+1=5）。B6は同じ配置規則に従う旨を§3.4に追記する |
 
 ### Modules and interfaces
 
-- production codeの変更はなし。新規production interface・moduleも作らない（計測は手動であり、productへのhookはperformance-budgets §10と同じく分離対象）。
+- production codeの変更はなし。新規production interface・moduleも作らない（fixture構築・検証はinstrumentation内で完結し、productへのhookはperformance-budgets §10と同じく分離対象）。
 - 新規instrumentation test 1本: `app.lawnchair.organizer.ui.EditingBurdenBenchmarkFixtureSeedingInstrumentationTest`（`tests/organizer-instrumentation/app/lawnchair/organizer/ui/`）。
   - 配置根拠: (1) 既存manual-organization-ui laneが「database-heavy fixture」を所有するlaneであり同一のseam（`launcher.model.modelDbController`）を使う実績testと同居する、(2) path filter上で既に `surface_organizer_ui` にmappingされるため新規mapping・新規laneが不要、(3) `app.lawnchair.organizer.ui` packageはorganizer UI契約testの所在地であり、本testはそのseam上のfixture契約testとして分類する。
   - seam: `ManualOrganizationProductionE2EInstrumentationTest` と同一（modelDbControllerのDB直接insert + model reload + snapshot読み出し）+ 予約領域のproduction seam（`LauncherLayoutAdapter.captureCurrent` → `LayoutState.reservedWorkspaceRegions`、`ReservationOverlapAcceptance.overlaps`）。内部実装の個別検証はせず、既存seam経由で契約を検証する。
@@ -55,14 +55,14 @@
 3. seed処理を1回実行→reload→正規化projection P1（`TITLE`/`INTENT`/`CONTAINER`/`SCREEN`/`CELLX`/`CELLY`/`SPANX`/`SPANY`/`ITEM_TYPE`/`PROFILE_ID`/`RANK`。folder内容の`CONTAINER`はfixtureフォルダ行との対応でid解決。状態依存の`_ID`/`MODIFIED`は除外）を取得。`ReservationOverlapAcceptance.overlaps`が全fixture項目でfalseであること、identity一意性と重複2組の計数（A-10）を検証。
 4. seed処理をもう1回実行（削除→insertの全体が再度走る）→reload→projection P2を取得し、`P1 == P2` を検証する（同一入力→同一fixture）。
 5. 保持対象（hotseat root+子孫、予約領域重複行）がstep 1のsnapshotと一致することを検証する。
-6. restore mode（既定）では開始時snapshotを復元し、復元後のfavorites一致を検証して終了する（永続残SIなし）。persist mode（`-e persist true`。計測setup専用、A-12）では復元をskipする。
+6. restore mode（既定）では開始時snapshotを復元し、復元後のfavorites一致を検証して終了する（永続残SIなし）。persist mode（`-e persist true`。fixture構築と§3.4実証のagent手順用、A-12/R7-10）では復元をskipする。
 
 ### Alternatives rejected
 
 - `fill_screens.py` 流用 / backup restore instrumentation流用: 草案§5が排除済み（package名・権限が現行と不合 / fixture用途に過大）。
 - fixture用の新CI lane: quality-strategyの「既存laneへの統合で済む場合は独立laneを作らない」により不採用。
 - 正確なcell座標の文書記載: 文書とコードの二重管理になるため不採用（A-9）。
-- 計測の自動化（UI Automator等でdragを自動計測）: 草案§7が計測者=保守者のtouch操作を対象とし、B6終了判定は測定者判断を含む。CI自動化はnon-goal。
+- 計測の自動化（UI Automator等でdragを自動計測）: 起草時は人間のtouch操作計測を前提とし自動化をnon-goalとしていた（**R7でrationale変更**: 人間実測自体が対象外となり、指標は手順コストの会計。所要時間の測定が必要になった時点で別Issueとして再設計する。§7）。
 - 全fixtureアイコンを自packageのlauncher activity 1本に統一（初版plan）: Phase 1 review Condition 1のとおり、全アイコンが同一起動先になりB7の課題定義・対象識別が崩れるため不採用（A-10へ変更）。
 - 製品manifestへのfixture component追加: 可観測な製品挙動に触れる可能性とpatch surface増加があるため不採用（test APK manifestに限定）。
 - 新Gradle application moduleとしてのfixture APK: 同等のidentityをtest APK manifestで賄えるため、module追加・settings.gradle・CI path mappingの変更を避ける（test APKのinstall保持はA-12で解決）。
@@ -81,6 +81,8 @@
 | R7-5 | 副指標の廃止 | §4の副指標（実測時間）を指標から外す。将来の所要時間・知覚負担の測定は、課題再定義を含めperformance-budgets §10と同じ分離基準で別Issueとして再設計（scenario再設計の要否判断: 本改正では行わない） |
 | R7-6 | NFR-014の確定 | requirements.mdのNFR-014を `accepted`（2026-09-26。ベンチマークのbaseline・目標確定に伴う）へ変更し、Decision historyへ記録 |
 | R7-7 | 資産の扱い | fixture seeding instrumentation（2 test）・identity供給（35 alias）・固定対象アプリmodule（10 flavor）は保持し、改正後の検証手順（§7）の基盤として再利用。実機での検証実績（restore/persist seed）は有効な記録として維持 |
+| R7-9 | 開始ページ契約 | §2へ共通開始条件「各課題の開始時、workspaceはページ0（1ページ目）を表示」を明記（B5のみ誤操作の結果ページ。B6は10個install完了後にページ0へ戻すことをsetup扱い）。seeding直後の既定表示であり、§6の全内訳はこの前提で算出。review Finding 1対応 |
+| R7-10 | B6配置内訳の実証 | §7の検証2に「10個順次installで2ページ目8個・3ページ目2個」のDB oracle実証を追加。実証記録は `docs/assessment/441-fixture-seeding-evidence.md` §3b（2026-09-26にemulatorで実施。install時にはLawnchairが既定ランチャーかつ前面Activityである必要）。review Finding 3対応 |
 | R7-8 | Issue本文改正 | Completion evidenceの「baseline計測記録」項を「baselineの決定的算出+算術照合可能性」へ、Scope項3/4を人間実測から決定的算出+目標確定へ改正。オーナー承認後に適用する |
 
 ## Change set
@@ -94,7 +96,7 @@
 | `tests/organizer-instrumentation/AndroidManifest.xml` | fixture用activity 1本+activity-alias 35本の追加 | fixture identity供給（A-10）。test APK限定 |
 | `tests/organizer-instrumentation/res/`（新規） | alias icon用drawable 35件 | A-10（互いに異なるicon） |
 | `build.gradle` | androidTest source setへ `res.srcDirs = ['tests/organizer-instrumentation/res']` を追加 | alias iconのres解決 |
-| `tests/benchmark-install-targets/`（新規module）+ `settings.gradle` | B1/B6計測用の固定対象アプリ10個（flavor `target01`〜`target10`、各1 activityの最小APK） | 計測protocolの固定対象（§7。Revision 6で追加） |
+| `tests/benchmark-install-targets/`（新規module）+ `settings.gradle` | §3.4配置実証用の固定対象アプリ10個（flavor `target01`〜`target10`、各1 activityの最小APK） | §7検証2の固定対象（Revision 6で追加。R7-4で§7が検証手順化されたため用途を更新） |
 | `tools/ci/run-manual-organization-ui-instrumentation.sh` | class listへ1件追加 | 既存laneへの統合（AC-5） |
 | `docs/engineering/ci-test-portfolio.md` | manual-organization-ui lane行のcoverage説明を更新（lane↔surface edge変更なし） | quality-strategyの新test審査規則 |
 | `CONTEXT.md` | Domain languageの4用語を追加 | spec承認時の反映 |
@@ -132,8 +134,9 @@ test-audit審査（AC-5。実装前に確定しPRへ記載する）:
 - [ ] `docs/engineering/editing-burden-benchmark.md`（新設。Phase 2）
 - [ ] `docs/README.md` 行追加（Phase 2）
 - [ ] `CONTEXT.md` 4用語（Phase 2）
-- [ ] spec status遷移（Phase 1 review承認で `accepted`。Issue #441全体の完了（AC-7/8）で `implemented`）
-- [ ] 変更しないもの: DESIGN.md / ADR / AGENTS.md / requirements.md（NFR-014の確定はAC-8で後続実施）/ 製品manifest
+- [ ] spec status遷移（Phase 1 review承認で `accepted`。改正PRで `implemented`）
+- [x] `docs/product/requirements.md` NFR-014のaccepted化（R7-6。改正PRで実施）
+- [ ] 変更しないもの: DESIGN.md / ADR / AGENTS.md / 製品manifest
 
 ## Execution checklist
 
@@ -147,10 +150,11 @@ test-audit審査（AC-5。実装前に確定しPRへ記載する）:
 - [x] Phase 2: test-audit skillの適用と新test実装（manifest alias、drawable、build.gradle res.srcDirsを含む）
 - [x] Phase 2: emulatorでのinstrumentation実行とevidence記録（AC-2〜4。restore mode PASS、persist mode検証、`docs/assessment/441-fixture-seeding-evidence.md`）
 - [x] Phase 2: spotlessCheck・repo-contract validatorの実行（AC-1/5/6。spotlessのkotlin対象はinstrumentation tree外のため既定で通過）
-- [ ] Phase 2 review（ChatGPT）と指摘対応
-- [ ] PR作成（`Refs #441`。AC-7/8を残置事項として明記）+ 独立監査（general-purpose subagent）+ 保守者承認・merge
+- [x] Phase 2 review（ChatGPT）と指摘対応（Phase 2クリア。head `a4b6fa2156`）
+- [x] PR作成（#464。`Refs #441`）+ 独立監査（general-purpose subagent）+ merge（merge commit `668d803c03`）
 - [x] オーナー判断の確認と改正案の起草（Revision 7。Issue #441コメント issuecomment-5842816844）
-- [ ] Revision 7改正案のChatGPT review
+- [x] Revision 7改正案のChatGPT review（Changes requested: 開始ページ契約・plan旧記述の同期・B6配置実証・文書残骸の4点）
+- [x] Review指摘対応（R7-9開始ページ契約、plan本文のR7同期、B6 8+2配置の実証記録§3b追加、§1/見出しの残骸修正）
 - [ ] オーナー承認（改正案へのコメント）
 - [ ] 改正PR（`Closes #441`。Issue本文改正を含む）+ review
 - [ ] merge → Issue close（NFR-014 accepted、spec status `implemented`）

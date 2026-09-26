@@ -63,9 +63,18 @@ B1/B6のinstall経路と自動配置を同emulatorで検証した:
 
 evidence: `b1-target01-page1.png`（2ページ目のrow 3に「Benchmark ...」アイコンが見える）。
 
+## 3b. B6配置内訳（10個順次install）の実証（Revision 7 review対応、2026-09-26）
+
+B6のbaseline算出前提「2ページ目に8個・3ページ目に2個」を、同emulator環境でagent手順により実証した:
+
+- fixture persist seed（method限定、commit `d4ea903` worktree = main `668d803c03` + docs差分）後、`tests/benchmark-install-targets/` のtarget01〜target10をsession install（`pm install-create --install-reason 4`）で順次install。install開始前にLawnchairを既定ランチャーかつ前面Activityへ（install時点でLawnchairのActivityが存在しない場合、`ItemInstallQueue.flushQueueInBackground` がqueueをflushせず、受信broadcastがbroadcast専用processで処理されるため）。この前提を§7/planに記載。
+- DB oracle（`favorites`）: `Benchmark Target` アイコン10個が、**screen 1（2ページ目）に8個（cell (0,3)〜(3,3)、(0,4)〜(3,4)）・screen 2（3ページ目）に2個（cell (0,2)、(1,2)）** に配置されたことを確認。install完了から約10秒で全アイコン出現。
+
+検証後、test APK uninstall + `pm clear` + target uninstall + 既定ランチャー復帰で環境を清掃した。
+
 ## 4. 残置事項
 
-- AC-7/AC-8: 実機Pixel 9aでのbaseline計測（3試行/課題、中央値、max/min > 1.5で追加2試行）と目標確定+NFR-014確定。保守者が定義文書§7の手順で実施する（後続PRが `Closes #441` となる）。
+- ~~AC-7/AC-8: 実機Pixel 9aでのbaseline計測…~~ **superseded（2026-09-26のオーナー判断、[Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)）**: 人間の実測計測は対象外となり、終了条件はagent実行可能な検証（定義文書§7改正後）へ変更された。NFR-014の確定は改正PR（Revision 7）で実施する。本書の検証実績（§1/§2/§3a/§3b/§5）は改正後の検証手順の実績として有効。
 - 本文書のエミュレータ実行は追加evidenceである。PRのmerge gateはCI run（`surface_organizer_ui` 差分としてmanual-organization-ui laneが起動）で確認する。
 
 ## 5. Clean checkout実行記録（head `7102b0d4bf`）
