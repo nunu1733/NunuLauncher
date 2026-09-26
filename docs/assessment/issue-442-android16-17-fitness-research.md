@@ -54,7 +54,7 @@ API応答のうち15系以降に関係するreleaseの引用（全29件のうち
 ]
 ```
 
-- immutable source link: [releases API](https://api.github.com/repos/LawnchairLauncher/lawnchair/releases?per_page=100)、[tags API](https://api.github.com/repos/LawnchairLauncher/lawnchair/tags?per_page=100)（API応答は時点で変化しうるため、上記引用が2026-09-26時点の観察記録である）。
+- source link（time-varying。API応答は時点で変化するため、上記引用が2026-09-26時点の観察記録である）: [releases API](https://api.github.com/repos/LawnchairLauncher/lawnchair/releases?per_page=100)、[tags API](https://api.github.com/repos/LawnchairLauncher/lawnchair/tags?per_page=100)。
 - 最新のreleaseは **`nightly`（Lawnchair Nightly、prerelease、published 2026-09-25T23:32:17Z）**。起草時の未解決事項「GitHub Releasesの確認」を解消した。
 - 15系の最新releaseは `v15.0.0-beta3.0`（published 2026-04-18）。16系のtag付きreleaseは存在しない。
 - fork `nunu1733/NunuLauncher` のreleasesは **なし**（API応答: 空配列。source link: [fork releases API](https://api.github.com/repos/nunu1733/NunuLauncher/releases)）。メモ §2「GitHub Releaseなし」の再確認。
@@ -69,7 +69,7 @@ API応答のうち15系以降に関係するreleaseの引用（全29件のうち
 
 ### 3.1 差分規模
 
-- immutable source link: [compare API `v15.0.0-beta3.0...16-dev`](https://api.github.com/repos/LawnchairLauncher/lawnchair/compare/v15.0.0-beta3.0...16-dev)（2026-09-26取得時点。16-devは進行中のため応答内容は時点で変化する。本節の数値は2026-09-26観察値）。
+- source link（time-varying。16-devは進行中のため応答内容は時点で変化する。本節の数値は2026-09-26観察値）: [compare API `v15.0.0-beta3.0...16-dev`](https://api.github.com/repos/LawnchairLauncher/lawnchair/compare/v15.0.0-beta3.0...16-dev)。固定区間のpermalink: [505dbc40...d73e44f9](https://github.com/LawnchairLauncher/lawnchair/compare/505dbc40e6154c05158b5d0271c45f6a885a411b...d73e44f978e7244428078e775ccc2e184cc4cbbf)（2026-09-26観察時点の2 SHA固定）。
 - `status: diverged`、**ahead_by 7,374 commits**、behind_by 33、比較APIのfiles一覧は300件上限に到達（全file差分の列挙は不可能。本格計測はrebase Epic側の `type: upstream` Issueで `measure_upstream_patch_surface.py` を使って行う。plan.mdのとおり本Issueでは実施しない）。
 - 上限内で観測されたfileの主要領域: `fastlane/metadata` 183件（翻訳metadata）、`compatLib/src` 20件、`compose/features` 12件、`concurrent/src` 9件、`.github/workflows` 7件、`compatLib/compatLibVBaklava` 4件（新module）。**16-devはbuild構造の再編（compatLibのmodule分割、compose/concurrent/dagger/checks等の新top-level module）を含む大規模差分である**。
 - 16-dev head: `d73e44f978e7244428078e775ccc2e184cc4cbbf`（2026-09-26観察。Issue本文記載の2026-09-24時点 `6889441e…` から前進している=活発に進行中）。
