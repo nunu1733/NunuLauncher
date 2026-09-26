@@ -1,6 +1,6 @@
 ---
 issue: "#441"
-status: accepted
+status: implemented
 requirements: [NFR-014]
 updated: 2026-09-26
 ---
@@ -138,3 +138,4 @@ None。UI変更・文字列変更なし（fixture用のlabel/iconはtest APKリ�
 - 2026-09-26: Revision 5（Phase 2実装中の発見を反映）。launcher loaderが1項目フォルダを自動でiconへ展開する（`LAUNCHER_FOLDER_CONVERTED_TO_ICON`）ため、指定フォルダのseed内容を1個から2個（Fixture 01・35）へ変更し、fixture起動先を35本へ更新（plan A-8/A-10）。受入条件の実質（identity一意性・重複2組・収容契約・保持契約）は不変。
 - 2026-09-26: Revision 6（Phase 2 review対応）。seedingのwrite境界を「非preservedなdesktop root+その子孫（fixture対象graph）のみ」へ限定し、保持対象外・fixture外の行の無変化をoracleへ追加（AC-3の一般化）。既存hotseatフォルダ+子孫の保持を非自明に検証する第2testを追加。B1/B6計測の固定対象アプリとinstall経路（`INSTALL_REASON_USER`）・試行間reset・計時点を定義文書§7へ確定。受入条件の意味は不変で、write境界と計測再現性の契約を明確化。
 - 2026-09-26: Revision 7（オーナー判断による改正）。人間の実測計測（AC-7の実機3試行計測）を対象外へ変更し、終了条件をagent実行可能な検証のみで完結する形へ改正した。AC-7を「baselineの決定的算出（§6）+算術照合可能性」へ、AC-8を「目標確定+NFR-014のaccepted化（本改正で実施）」へ再定義。B6の終了状態を決定的化（10個すべてが指定フォルダ内）。指標の性質（手順コストの会計）の明示をAC-1へ追加。判定記録: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)。
+- 2026-09-26: Revision 7改正案のChatGPT review 3回を経てApproved（[判定記録](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5843130242)）。保守者の承認（[記録](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5843174869)）後に改正PRを適用し、statusを `implemented` へ更新。Issue #441は改正PRでcloseされる。
