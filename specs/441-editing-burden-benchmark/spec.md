@@ -80,7 +80,7 @@ And 永続mode（persist。plan.md参照）はtest oracleの対象外であり�
 
 ### Scenario: baselineは固定手順から決定的に算出される
 
-Given 定義文書§3に固定された操作手順と§4の重み表
+Given 定義文書§2の共通開始条件（ページ0表示。B5は誤操作の結果ページ、B6はinstall後にページ0へ戻すsetup）、§3に固定された操作手順、§4の重み表
 When 各課題の内訳を手順に沿って再計算する
 Then 重み合計と操作数は一意に定まり、§6のbaseline表と一致する
 And 内訳はdrop後の視点移動（§3.1）を含む、課題の完了に必要な全操作を数える
@@ -109,7 +109,7 @@ None。UI変更・文字列変更なし（fixture用のlabel/iconはtest APKリ�
 - [ ] AC-4: fixtureの通常アイコンが互いに異なる起動先identity（component + profile）を持ち、同一起動先の重複が指定2組のみであることを、test内assertionと定義文書§5のidentity方針で確認できる。fixture起動先はtest APKのactivity-aliasで供給され、製品manifestは変更しない。
 - [ ] AC-5: 新testが既存manual-organization-ui laneへ統合される（新lane・新CI workflowを作らない）。[test-audit skill](../../.agents/skills/test-audit/SKILL.md)の審査項目（既存coverageで不足する理由、oracle配置、impact surface、重複、CI分類）がPRに記載され、`ci_portfolio_map.yml`と[ci-test-portfolio.md](../../docs/engineering/ci-test-portfolio.md)の整合が保たれる。
 - [ ] AC-6: `./gradlew spotlessCheck` が成功する。
-- [ ] AC-7: 定義文書§6のbaselineが固定手順からの決定的算出として確定している。内訳は§3の手順と§4の重み表から一意に再計算でき（操作数を含む）、起草時の概算からの再計算（drop後の視点移動・課題内ページ移動の織り込み）がchange historyに記録されている。
+- [ ] AC-7: 定義文書§6のbaselineが固定手順からの決定的算出として確定している。内訳は§2の共通開始条件、§3の手順、§4の重み表から一意に再計算でき（操作数を含む）、起草時の概算からの再計算（drop後の視点移動・課題内ページ移動の織り込み）がchange historyに記録されている。
 - [ ] AC-8: 定義文書§6の目標表が確定値であり、NFR-014がrequirements.mdで確定（accepted）される。
 
 ## Test oracle
@@ -122,7 +122,7 @@ None。UI変更・文字列変更なし（fixture用のlabel/iconはtest APKリ�
 | AC-4 | 同test内assertion（identity一意性と重複2組の計数）+ 定義文書§5のidentity方針との対照 |
 | AC-5 | PR本文へのtest-audit審査記載。`python3 tools/repo-contract/test_validate_ci_portfolio.py` とCIのportfolio検証job |
 | AC-6 | `./gradlew spotlessCheck` の実行結果 |
-| AC-7 | §6の内訳を§3/§4から再計算する照合表（PR本文）。定義文書change history |
+| AC-7 | §6の内訳を§2/§3/§4から再計算する照合表（PR本文）。定義文書change history |
 | AC-8 | requirements.mdのNFR-014行とDecision historyのdiff |
 
 ## Open questions

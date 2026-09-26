@@ -15,7 +15,7 @@ ANDROID_SERIAL=emulator-5554 ./gradlew connectedLawnWithQuickstepGithubDebugAndr
   -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.EditingBurdenBenchmarkFixtureSeedingInstrumentationTest
 ```
 
-Result: **BUILD SUCCESSFUL — 2 tests, PASS**（`fixtureSeedsIdenticallyFromSameInputAndPreservesDockAndReservations`、`seedingPreservesPreExistingHotseatFolderDescendants`）。実行SHA等の詳細は§5。
+Result: **BUILD SUCCESSFUL — 2 tests, PASS**（`fixtureSeedsIdenticallyFromSameInputAndPreservesDockAndReservations`、`seedingPreservesPreExistingHotseatFolderDescendants`）。実行SHA等の詳細は§8。
 
 検証内容（spec 441 AC-2〜4に対応）:
 
@@ -25,7 +25,7 @@ Result: **BUILD SUCCESSFUL — 2 tests, PASS**（`fixtureSeedsIdenticallyFromSam
 
 ## 2. Persist mode（historical実行。Revision 6以前の手順）
 
-Revision 6以前のclass指定persistを同環境で実行し、fixtureが端末へ保持されることを確認した記録。このときのcommandはclass全体指定であり、**現行の§7手順（method限定）とは異なる**。現行手順のpersist evidenceの正は§5（clean checkout、method限定、dock汚染なしのDB検証付き）である:
+Revision 6以前のclass指定persistを同環境で実行し、fixtureが端末へ保持されることを確認した記録。このときのcommandはclass全体指定であり、**現行の§7手順（method限定）とは異なる**。現行手順のpersist evidenceの正は§8（clean checkout、method限定、dock汚染なしのDB検証付き）である:
 
 ```bash
 adb install -r "build/outputs/apk/lawnWithQuickstepGithub/debug/"*.apk
@@ -46,13 +46,7 @@ persist mode適用後のホーム（実物。`connectedLawnWithQuickstepGithubDe
 | 0 | `fixture-page0.png` | QSB（既定「Tap to set up」）+ 指定フォルダ「Benchmark」（2項目プレビューアイコン）+ Fixture 04〜11・重複ペア「Fixture 02」×2（視覚的に同一起動先と分かる隣接配置）・19〜23。ページ0満杯（予約除く16 root） |
 | 2 | `fixture-page2.png` | Fixture 17・18（B3対象）+ 29〜34（通常）の8個。残り12cellが空き（B2の受け皿） |
 
-## 4. 実装中に確認した注意事項
-
-- **1項目フォルダの自動展開**: launcher loaderは項目1個のフォルダをiconへ自動変換する（logcat `LAUNCHER_FOLDER_CONVERTED_TO_ICON`、`LoaderTask.sanitizeData`）。fixtureフォルダはseed済みアイテム2個（Fixture 01・35）を含む（plan A-8/A-10 Revision 5）。
-- **organizerのonboarding提案**: fixture適用後のhome起動時に「Organize your Home screen?」のonboarding提案（T-19）が表示されることがある。提案は確認まで何も変更しないため、「LATER」で閉じて計測する（定義文書§7に記載）。
-- **汚染された事前状態**: 不正なfolder参照（存在しないfolderへのcontainer）が残るDBでは、上流のsnapshot処理が意図的にcrashする（`QuickstepModelDelegate.getContainer`、b/173838775対策のupstream設計）。本fixtureはクリーンな状態を前提とし、seeding自体はそのような行を生成しない（本testが同一性・保持を検証する）。
-
-## 3a. B1 install protocol実機検証（Phase 2 review対応、2026-09-26）
+## 4. B1 install protocol実証（Phase 2 review対応、2026-09-26）
 
 B1/B6のinstall経路と自動配置を同emulatorで検証した:
 
@@ -63,7 +57,7 @@ B1/B6のinstall経路と自動配置を同emulatorで検証した:
 
 evidence: `b1-target01-page1.png`（2ページ目のrow 3に「Benchmark ...」アイコンが見える）。
 
-## 3b. B6配置内訳（10個順次install）の実証（Revision 7 review対応、2026-09-26）
+## 5. B6配置内訳（10個順次install）の実証（Revision 7 review対応、2026-09-26）
 
 B6のbaseline算出前提「2ページ目に8個・3ページ目に2個」を、同emulator環境でagent手順により実証した:
 
@@ -72,12 +66,18 @@ B6のbaseline算出前提「2ページ目に8個・3ページ目に2個」を、
 
 検証後、test APK uninstall + `pm clear` + target uninstall + 既定ランチャー復帰で環境を清掃した。
 
-## 4. 残置事項
+## 6. 実装中に確認した注意事項
+
+- **1項目フォルダの自動展開**: launcher loaderは項目1個のフォルダをiconへ自動変換する（logcat `LAUNCHER_FOLDER_CONVERTED_TO_ICON`、`LoaderTask.sanitizeData`）。fixtureフォルダはseed済みアイテム2個（Fixture 01・35）を含む（plan A-8/A-10 Revision 5）。
+- **organizerのonboarding提案**: fixture適用後のhome起動時に「Organize your Home screen?」のonboarding提案（T-19）が表示されることがある。提案は確認まで何も変更しないため、「LATER」で閉じて計測する（定義文書§7に記載）。
+- **汚染された事前状態**: 不正なfolder参照（存在しないfolderへのcontainer）が残るDBでは、上流のsnapshot処理が意図的にcrashする（`QuickstepModelDelegate.getContainer`、b/173838775対策のupstream設計）。本fixtureはクリーンな状態を前提とし、seeding自体はそのような行を生成しない（本testが同一性・保持を検証する）。
+
+## 7. 残置事項
 
 - ~~AC-7/AC-8: 実機Pixel 9aでのbaseline計測…~~ **superseded（2026-09-26のオーナー判断、[Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)）**: 人間の実測計測は対象外となり、終了条件はagent実行可能な検証（定義文書§7改正後）へ変更された。NFR-014の確定は改正PR（Revision 7）で実施する。本書の検証実績（§1/§2/§3a/§3b/§5）は改正後の検証手順の実績として有効。
 - 本文書のエミュレータ実行は追加evidenceである。PRのmerge gateはCI run（`surface_organizer_ui` 差分としてmanual-organization-ui laneが起動）で確認する。
 
-## 5. Clean checkout実行記録（head `7102b0d4bf`）
+## 8. Clean checkout実行記録（head `7102b0d4bf`）
 
 実装reviewのprovenance指摘を受け、**クリーンcheckout（git worktree、submodule初期化済み）で全検証を再実行**した（2026-09-26）。最終検証対象headは `7102b0d4bf`（`941f332f81` の直後のhotseat slot修正1件を含む）。本節以降の追記はdocumentation差分のみであり、検証対象treeとソースコードは同一である。
 
