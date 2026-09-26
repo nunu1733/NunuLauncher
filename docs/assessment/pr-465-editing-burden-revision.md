@@ -26,7 +26,7 @@ production/testコード・manifest・CI設定の変更はゼロ（docs-only）�
 Issue #441の経過（オーナー判断 [issuecomment-5842816844](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)、改正案起草、ChatGPT review 3回（Changes requested ×2 → Approved [issuecomment-5843130242](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5843130242)、head `e90376a4fe`）、保守者承認 [issuecomment-5843174869](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5843174869)）と本PRの内容は整合している。Issue本文のScope 3/4・Completion evidence・status blockquoteの改正も適用済みを確認した。
 
 - **AC-1**: 定義文書が存在し `Status: Accepted`。B1〜B7、重み表（確定値）、操作数の定義、§1の指標の性質（手順コストの会計・人間実測対象外）、§5 fixture、§7 agent実行可能な検証手順、§6 baseline（決定的算出・操作数付き）、目標表（確定値）をすべて含む。**確認**
-- **AC-2 / AC-3 / AC-4**: fixture seeding instrumentationとその実行記録はPR #464で構築・実施済み（[441-fixture-seeding-evidence](../441-fixture-seeding-evidence.md) §1/§8。2 test PASS、hotseat・予約領域保持、identity一意性・重複2組）。本PRはこれらのコードに触れず、evidence文書の見出し再編（§1〜§8の昇順・一意構成）と相互参照（§5→§8等）の同期のみ。**確認（既存実績の引用で妥当）**
+- **AC-2 / AC-3 / AC-4**: fixture seeding instrumentationとその実行記録はPR #464で構築・実施済み（[441-fixture-seeding-evidence](./441-fixture-seeding-evidence.md) §1/§8。2 test PASS、hotseat・予約領域保持、identity一意性・重複2組）。本PRはこれらのコードに触れず、evidence文書の見出し再編（§1〜§8の昇順・一意構成）と相互参照（§5→§8等）の同期のみ。**確認（既存実績の引用で妥当）**
 - **AC-5**: 本PRはtest/CIを変更しないため新規審査は不要。既存lane統合とportfolio整合はPR #464で実施済み（evidence §8に `validate_ci_portfolio.py` OKの記録）。**確認**
 - **AC-6**: docs-only差分でありspotless対象外。evidence §8にclean checkoutでの `./gradlew spotlessCheck` BUILD SUCCESSFULの記録あり。**確認（既存実績の引用）**
 - **AC-7**: 下記「AC-7 照合表の独立再計算」のとおり、監査者が§2/§3/§4から全7課題を独立に再計算し、PR本文・§6の表と**全項目一致**を確認。**確認**
