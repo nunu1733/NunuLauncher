@@ -55,7 +55,13 @@ docs/assessment/issue-442-android16-17-fitness-research.md
    - 16-dev head上の `build.gradle`（quickstep SDK範囲、compileSdk/targetSdk）、`LawnchairQuickstepCompat.kt`（factory分岐）、`LawnchairApp.kt`（recents有効化条件）をraw参照で確認し、`QUICKSTEP_MAX_SDK=35` 引き上げの評価材料として記録する。
    - 本格計測（`measure_upstream_patch_surface.py`）は行わない。候補upstream commitがlocal object databaseに存在しないためである（upstream-strategy.md §Sync workflow 6の前提）。rebase Epic側の `type: upstream` Issueで行うことをresearch文書に明記する。
 3. **既知問題の切り分け**（spec Scenario 3）:
-   - #304/#418のIssue本文・capture記録・run linkを照合し、(a) 発生環境（CI emulator / 実機）、(b) 影響面（instrumentation計測 / 日常利用UI）、(c) 実機への波及可能性の根拠、を分類表にする。分類できない部分は「未確定」と明記する。
+   - #304/#418の記録を**Issue単位ではなくfailure signature/family単位**に分解する。対象signatureの初期列挙（実行時に追補する）:
+     - SystemUI ANR / focus-gate系（#418 run 35828114497 attempt 4、#304のANR occluder 3例と同一系統の可能性 — 分類時に照合）
+     - Compose timeout系（#418 run 35828114497 attempt 3、#304の非gate Compose timeout）
+     - `SlotWriter.moveSlotGapTo` / Activity-destroy process-crash family（#418 run 35828114497 attempt 2、#304の2026-09-25記録 run 36082413664）
+     - `SnapshotStateObserver` worker-thread access（#304の2026-09-25記録 run 35886970989）
+     - window focus保持occluder系（#304の標準ランチャー2例、NotificationShade 1例）
+   - 各signatureについて (a) 発生環境（CI emulator / 実機）、(b) user-facingな日常利用への影響の直接証拠の有無、(c) production exposureの静的根拠（発生箇所がproduction pathに存在するか）、(d) 分類（CI計測環境の問題 / 実機日常利用への波及 / 未確定）を分類表にする。Issue単位の要約をつけてもsignature別の結果は潰さない。分類できないsignatureは「未確定」と明記する。
    - #304のapi36 emulator発生系（`nunu_qpr2_api36_1` と同一構成）が、本調査のemulatorチェックリスト実行時に観測された場合の対応（記録方法）をresearch文書に先に定める（観測したらsignatureごとに記録し、チェックリスト結果から切り分ける）。
 4. **適性チェックリストのagent実行分**（spec Scenario 4）:
    - debug APKをbuildする（`./gradlew assembleLawnWithQuickstepGithubDebug`。対象commit SHAを記録）。
@@ -71,8 +77,12 @@ docs/assessment/issue-442-android16-17-fitness-research.md
      - 安定性: 本チェックリスト実行中のcrash/ANRのlogcat確認（7日観測は保守者作業であり、ここでは「実行中にcrashなし」の範囲のみ記録する）。
    - 各項目の結果（実施/未実施+理由）、screenshot、確認日をresearch文書へ記録する。未実施項目（work profile、通知ドットの許可不可の場合等）は保守者実機分の記録枠へ引き継ぐ。
 5. **research文書の起草と暫定結論**（spec Scenario 5）:
-   - 判断基準の適用表（A/B/Cそれぞれの基準に対する証拠の有無と評価）を作る。保守者の方針指示（方針C想定、2026-09-26）は「判断基準C-(3) 保守者が製品要件とする」の該当事実として、指示の記録とともにresearch文書へ記載する。
-   - 暫定結論は「推奨と根拠」であり、最終結論は保守者の実機観測と判断で確定する（spec Scenario 5、AC-6）。暫定結論がC方向の場合、専用Epicの起票範囲（tracking対象: patch-surface本格計測、SDK引き上げ対応、AGENTS.mdの専用Epic/ADR要件）と、rebase用ADRの起草要件（upstream-strategy.md §Upgrade policyの5比較軸を満たすこと）を明記する。
+   - 判断基準の適用表（A/B/Cそれぞれの基準に対する証拠の有無と評価）を作る。
+   - 保守者の作業指示（方針C想定）は [Issue #442コメント](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268)（2026-09-26転記）が正本である。これは調査開始前の作業指示であり、結論Cを先取りするものではない。research文書ではC-(3)「保守者がtargetSdk引き上げ等を製品要件とする」の該当性の判断材料としてこの指示を参照し、A/B/C全基準を証拠に適用する。
+   - 暫定結論は「推奨と根拠」であり、最終結論は保守者の実機観測と判断で確定する（spec AC-6、AC-8）。暫定結論がC方向の場合、専用Epicの起票範囲（tracking対象: patch-surface本格計測、SDK引き上げ対応、AGENTS.mdの専用Epic/ADR要件）と、rebase用ADRの起草要件（upstream-strategy.md §Upgrade policyの5比較軸を満たすこと）を明記する。
+6. **PR関係の区分**:
+   - 本planのagent実行分（調査1〜5、research文書の暫定結論まで）を含むPhase 2 PRは `Refs #442` とし、closing keywordを使わない。
+   - 保守者が実機観測を完了してresearch文書へ記録した後、最終結論を含む最終PRが `Closes #442` を使う（spec AC-8）。
 
 ### Alternatives rejected
 
@@ -100,11 +110,12 @@ docs/assessment/issue-442-android16-17-fitness-research.md
 |---|---|---|
 | AC-1 | research文書§2のls-remote出力引用とAPI応答、確認日 | `git ls-remote upstream ...`、`gh api repos/LawnchairLauncher/lawnchair/releases` |
 | AC-2 | research文書§3のcompare概観と16-dev上file参照、確認日 | `gh api repos/LawnchairLauncher/lawnchair/compare/...`、raw file参照 |
-| AC-3 | research文書§4の分類表（#304/#418のrun link・capture照合） | GitHub上の記録照合（読み取りのみ） |
+| AC-3 | research文書§4のsignature別分類表（#304/#418のrun link・capture照合） | GitHub上の記録照合（読み取りのみ） |
 | AC-4 | research文書§5.1の項目別結果、screenshot、端末/build/SHA/確認日 | `./gradlew assembleLawnWithQuickstepGithubDebug`、AVD `nunu_qpr2_api36_1`（API 36.1）でのUI自動化 |
-| AC-5 | research文書§6の判断基準適用表と暫定結論 | 手動（証拠の統合判断） |
+| AC-5 | research文書§6の判断基準適用表と暫定結論 + PR本文のIssue関係（`Refs #442`） | 手動（証拠の統合判断） |
 | AC-6 | research文書§7の記録枠と確定条件 | 文書確認 |
 | AC-7 | 成功したcommand出力をPR本文へ記録 | `./gradlew spotlessCheck`、`python3 tools/repo-contract/validate_repo_contract.py` |
+| AC-8 | research文書の実機観測結果記録と最終結論（最終PR。本planのagent実行分では満たされない） | 保守者の実機観測（Pixel 9a / API 37）と最終PR |
 
 含めるべき観点: 本調査はdocs-onlyであるため、testはrepository contract gateが中心となる。emulator観察はproduction codeを変更しない検証であり、結果は文書の証跡として扱う。CI（`final-status`）はdocs-only path filterによりrepository contract検証のみ実行する。
 
@@ -119,12 +130,12 @@ docs/assessment/issue-442-android16-17-fitness-research.md
 
 ## Execution checklist
 
-- [ ] Issue #442と全コメント、spec/planの再確認（開始時）。
+- [ ] Issue #442と全コメント（保守者指示の記録 [issuecomment-5844023268](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268) を含む）、spec/planの再確認（開始時）。
 - [ ] upstream同期対象の確定（ls-remote、Releases/tags API）と記録。
 - [ ] 16-dev差分概観（compare API、対象file参照）と記録。
-- [ ] #304/#418の切り分け表の作成と記録。
+- [ ] #304/#418のsignature別切り分け表の作成と記録。
 - [ ] debug APKのbuild（対象SHA記録）。
 - [ ] emulatorチェックリストの実施と記録（screenshot、項目別結果）。
 - [ ] research文書の起草（判断基準適用表、暫定結論、実機観測記録枠）。
 - [ ] `./gradlew spotlessCheck` と `python3 tools/repo-contract/validate_repo_contract.py` の実行とPR本文への記録。
-- [ ] PR本文に研究証跡（対象commit、確認日、未確認範囲）を記録する。
+- [ ] PR本文に研究証跡（対象commit、確認日、未確認範囲）を記録する。Phase 2 PRのIssue関係は `Refs #442` とする（closing keywordは使わない）。
