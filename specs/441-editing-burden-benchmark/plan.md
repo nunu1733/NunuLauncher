@@ -2,7 +2,7 @@
 
 > Issue: #441
 > Spec: [spec.md](./spec.md)
-> Status: accepted（Phase 1承認: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5836812340)、head `4259fc362f`。spec status: accepted。Revision 5〜6: Phase 2実装とreview指摘対応。Revision 7: オーナー判断による終了条件改正（改正案draft。オーナー承認待ち））
+> Status: implemented（Phase 1〜2とRevision 7改正を経てmerge。オーナー承認記録: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5843174869)。spec status: implemented）
 > Branch: `issue-441-editing-burden-benchmark`
 
 ## Current evidence
@@ -153,8 +153,8 @@ test-audit審査（AC-5。実装前に確定しPRへ記載する）:
 - [x] Phase 2 review（ChatGPT）と指摘対応（Phase 2クリア。head `a4b6fa2156`）
 - [x] PR作成（#464。`Refs #441`）+ 独立監査（general-purpose subagent）+ merge（merge commit `668d803c03`）
 - [x] オーナー判断の確認と改正案の起草（Revision 7。Issue #441コメント issuecomment-5842816844）
-- [x] Revision 7改正案のChatGPT review（Changes requested: 開始ページ契約・plan旧記述の同期・B6配置実証・文書残骸の4点）
+- [x] Revision 7改正案のChatGPT review（3回。初回Changes requested 4点に対応し、最終Approved: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5843130242)）
 - [x] Review指摘対応（R7-9開始ページ契約、plan本文のR7同期、B6 8+2配置の実証記録§3b追加、§1/見出しの残骸修正）
-- [ ] オーナー承認（改正案へのコメント）
+- [x] オーナー承認（保守者が改正案を承認。記録: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5843174869)。Issue本文改正も適用）
 - [ ] 改正PR（`Closes #441`。Issue本文改正を含む）+ review
 - [ ] merge → Issue close（NFR-014 accepted、spec status `implemented`）
