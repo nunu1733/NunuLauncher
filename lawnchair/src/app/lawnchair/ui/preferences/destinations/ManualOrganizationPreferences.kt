@@ -88,13 +88,13 @@ import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.organizer.ui.openUsageAccessSettings
-import app.lawnchair.preferences2.asState
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import com.android.launcher3.R
+import com.patrykmichalik.opto.core.firstBlocking
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.job
@@ -129,14 +129,18 @@ fun ManualOrganizationPreferences(
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
     val scope = rememberCoroutineScope()
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
-    // Issue #443: the frozen AI consultation entry (FR-017). Read live in the
-    // compose layer only — the run coordinator never sees this preference and
-    // its state machine is unchanged. OFF hides the method-choice face's AI
-    // arm and auto-advances a confirmed scope straight into the plain
-    // organize path (the effect below); the acceptance contract is runs
-    // started after the toggle change.
-    val exchangeAiConsultationEnabled by
-        app.lawnchair.preferences2.preferenceManager2().exchangeAiConsultationEnabled.asState()
+    // Issue #443: the frozen AI consultation entry (FR-017). Read once when
+    // the run surface composes — the acceptance contract is runs started
+    // after the toggle change, so a live DataStore collection on this
+    // surface is not needed (and keeps background snapshot traffic off the
+    // instrumented run path). The run coordinator never sees this preference
+    // and its state machine is unchanged. OFF hides the method-choice face's
+    // AI arm and auto-advances a confirmed scope straight into the plain
+    // organize path (the effect below).
+    val prefs2 = app.lawnchair.preferences2.preferenceManager2()
+    val exchangeAiConsultationEnabled = remember {
+        prefs2.exchangeAiConsultationEnabled.firstBlocking()
+    }
     // Issue #369 (spec RD-7): the visible 検出 → capture → plan progression is
     // the coordinator's deterministic projection, never derived from State —
     // the legacy admission Capturing and the real composed capture are the
