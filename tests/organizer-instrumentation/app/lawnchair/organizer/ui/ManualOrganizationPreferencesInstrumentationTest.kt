@@ -139,6 +139,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotEquals
 import org.junit.Rule
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -795,6 +796,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun aiConsultationOffSkipsTheMethodChoiceFaceAndReachesThePreview() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // State the OFF premise explicitly (DataStore persists across methods).
+        setAiConsultationForTest(enabled = false)
         val application = FakeApplication().apply {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
                 listOf(selectionCandidate("com.example.c1/.Main", "C1")),
@@ -812,11 +815,21 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
 
         // OFF: the run goes straight to the preview — the method-choice face
-        // (and its arms) never renders.
+        // (and its arms) never renders. The focus target is the preview
+        // face's first node (spec AC-8): the omitted method-choice face never
+        // leaves the run without a focus target.
         awaitPreview(runner, context)
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_title)).assertCountEquals(0)
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_plain)).assertCountEquals(0)
         composeRule.onAllNodesWithText(context.getString(R.string.exchange_method_consult)).assertCountEquals(0)
+        composeRule.waitUntil(5_000) {
+            try {
+                composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview)).assertIsFocused()
+                true
+            } catch (_: AssertionError) {
+                false
+            }
+        }
         assertEquals(0, application.applyCalls)
     }
 
@@ -828,6 +841,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun aiConsultationOffEmptyCutSkipsTheMethodChoiceFace() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // State the OFF premise explicitly (DataStore persists across methods).
+        setAiConsultationForTest(enabled = false)
         val application = FakeApplication().apply {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
         }
@@ -877,6 +892,19 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_method_plain)).performClick()
         awaitPreview(runner, context)
         assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * Issue #443 (spec AC-1): the toggle persists through the REAL DataStore
+     * — OFF → ON → OFF round-trip, asserted on the read seam the compose
+     * layer uses. The row's presence in the Experimental Features screen is
+     * verified by device evidence (spec AC-1/AC-7 artifacts).
+     */
+    @Test
+    fun aiConsultationToggleRoundTripsThroughTheRealDataStore() {
+        setAiConsultationForTest(enabled = false)
+        setAiConsultationForTest(enabled = true)
+        setAiConsultationForTest(enabled = false)
     }
 
     /**
@@ -3297,20 +3325,30 @@ class ManualOrganizationPreferencesInstrumentationTest {
      * Issue #443: the AI consultation entry ships default OFF (FR-017 frozen).
      * The ON-contract oracles (the method-choice face's AI arm and its
      * exchange hosting) enable the toggle through the REAL DataStore before
-     * composing the surface — the same seam the toggle writes through.
+     * composing the surface — the same seam the toggle writes through. Every
+     * oracle states its own premise explicitly (the DataStore persists across
+     * test methods in one instrumentation process) and @After resets it OFF
+     * so no ON state leaks into later classes in the same lane invocation.
      */
-    private fun enableAiConsultationForTest() {
+    private fun setAiConsultationForTest(enabled: Boolean) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         runBlocking {
             app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
-                .exchangeAiConsultationEnabled.set(true)
+                .exchangeAiConsultationEnabled.set(enabled)
         }
         composeRule.waitUntil(5_000) {
             runBlocking {
                 app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
-                    .exchangeAiConsultationEnabled.get().first() == true
+                    .exchangeAiConsultationEnabled.get().first() == enabled
             }
         }
+    }
+
+    private fun enableAiConsultationForTest() = setAiConsultationForTest(enabled = true)
+
+    @After
+    fun resetAiConsultationToDefaultOff() {
+        setAiConsultationForTest(enabled = false)
     }
 
     /**

@@ -2,8 +2,8 @@ package app.lawnchair.organizer.ui
 
 import app.lawnchair.preferences2.PreferenceManager2
 import java.io.File
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -14,15 +14,19 @@ import org.junit.Test
  * the `config.xml` bool resource (`config_default_exchange_ai_consultation`,
  * read by the preference's `defaultValue`) and the preference key string in
  * the compiled `PreferenceManager2` bytecode (the DataStore key the toggle
- * persists to). The full runtime default/round-trip behavior is covered by
- * the organizer instrumentation on the real DataStore (spec #443 AC-1).
+ * persists to). The Experimental Features toggle row's real DataStore
+ * round-trip (OFF → ON → OFF through the UI row) is covered by the organizer
+ * instrumentation (spec #443 AC-1).
  */
 class ExchangeAiConsultationDefaultTest {
 
     @Test
     fun configDefaultForAiConsultationIsFalse() {
         val line = configLine("config_default_exchange_ai_consultation")
-        assumeTrue("config_default_exchange_ai_consultation must exist in res/values/config.xml", line != null)
+        assertNotNull(
+            "config_default_exchange_ai_consultation must exist in res/values/config.xml (spec #443 AC-1)",
+            line,
+        )
         assertTrue(
             "the AI consultation default must be false (FR-017 frozen, spec #443 AC-1)",
             line!!.contains(">false<"),
@@ -32,7 +36,7 @@ class ExchangeAiConsultationDefaultTest {
     @Test
     fun aiConsultationDefaultIsTranslatableFalseLikeOtherBehaviorDefaults() {
         val line = configLine("config_default_exchange_ai_consultation")
-        assumeTrue("config_default_exchange_ai_consultation must exist in res/values/config.xml", line != null)
+        assertNotNull("config_default_exchange_ai_consultation must exist in res/values/config.xml", line)
         assertTrue("default must be marked translatable=false", line!!.contains("translatable=\"false\""))
     }
 
@@ -41,7 +45,7 @@ class ExchangeAiConsultationDefaultTest {
         val bytes = PreferenceManager2::class.java
             .getResourceAsStream("PreferenceManager2.class")
             ?.use { it.readBytes() }
-        assumeTrue("compiled PreferenceManager2.class must be on the test classpath", bytes != null)
+        assertNotNull("compiled PreferenceManager2.class must be on the test classpath", bytes)
         val text = String(bytes!!, Charsets.ISO_8859_1)
         assertTrue(
             "the DataStore key exchange_ai_consultation_enabled must exist in PreferenceManager2",
