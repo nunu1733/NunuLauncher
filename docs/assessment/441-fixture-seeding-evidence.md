@@ -69,12 +69,12 @@ B6のbaseline算出前提「2ページ目に8個・3ページ目に2個」を、
 ## 6. 実装中に確認した注意事項
 
 - **1項目フォルダの自動展開**: launcher loaderは項目1個のフォルダをiconへ自動変換する（logcat `LAUNCHER_FOLDER_CONVERTED_TO_ICON`、`LoaderTask.sanitizeData`）。fixtureフォルダはseed済みアイテム2個（Fixture 01・35）を含む（plan A-8/A-10 Revision 5）。
-- **organizerのonboarding提案**: fixture適用後のhome起動時に「Organize your Home screen?」のonboarding提案（T-19）が表示されることがある。提案は確認まで何も変更しないため、「LATER」で閉じて計測する（定義文書§7に記載）。
+- **organizerのonboarding提案**: fixture適用後のhome起動時に「Organize your Home screen?」のonboarding提案（T-19）が表示されることがある。提案は確認まで何も変更しないため、検証・fixture構築の開始前に「LATER」で閉じる。
 - **汚染された事前状態**: 不正なfolder参照（存在しないfolderへのcontainer）が残るDBでは、上流のsnapshot処理が意図的にcrashする（`QuickstepModelDelegate.getContainer`、b/173838775対策のupstream設計）。本fixtureはクリーンな状態を前提とし、seeding自体はそのような行を生成しない（本testが同一性・保持を検証する）。
 
 ## 7. 残置事項
 
-- ~~AC-7/AC-8: 実機Pixel 9aでのbaseline計測…~~ **superseded（2026-09-26のオーナー判断、[Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)）**: 人間の実測計測は対象外となり、終了条件はagent実行可能な検証（定義文書§7改正後）へ変更された。NFR-014の確定は改正PR（Revision 7）で実施する。本書の検証実績（§1/§2/§3a/§3b/§5）は改正後の検証手順の実績として有効。
+- ~~AC-7/AC-8: 実機Pixel 9aでのbaseline計測…~~ **superseded（2026-09-26のオーナー判断、[Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)）**: 人間の実測計測は対象外となり、終了条件はagent実行可能な検証（定義文書§7改正後）へ変更された。NFR-014の確定は改正PR（Revision 7）で実施する。本書の検証実績（§1/§2/§4/§5/§8）は改正後の検証手順の実績として有効。
 - 本文書のエミュレータ実行は追加evidenceである。PRのmerge gateはCI run（`surface_organizer_ui` 差分としてmanual-organization-ui laneが起動）で確認する。
 
 ## 8. Clean checkout実行記録（head `7102b0d4bf`）
