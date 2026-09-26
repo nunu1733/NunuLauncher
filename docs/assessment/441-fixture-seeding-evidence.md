@@ -1,6 +1,6 @@
 # Issue #441 — Fixture Seeding Verification Evidence
 
-> Status: Complete（AC-2/AC-3/AC-4の実行記録。baseline実測（AC-7）は別記録 `editing-burden-baseline.md`（計測後に作成））
+> Status: Complete（fixture契約test（AC-2/AC-3/AC-4）と§3.4配置規則・B6配置内訳実証の記録。AC-7のbaselineは定義文書§6の決定的算出と改正PR（#465）本文の照合表で検証済み。実測記録文書（`editing-burden-baseline.md`）はRevision 7で廃止（作成しない））
 > Date: 2026-09-26
 > Environment: reference系emulator `nunu_smoke_api35`（Pixel 6、API 35、1080x2400 @ 420dpi。performance-budgets §2.1のreference profile）。grid 4列×5行（既定 `4_by_5`）、QSB/Smartspace有効（既定）
 > Build: Lawnchair 15 Dev debug APK（commit `7717a82` worktree。branch `issue-441-editing-burden-benchmark`）+ androidTest APK（fixture起動先35 aliasを含む）

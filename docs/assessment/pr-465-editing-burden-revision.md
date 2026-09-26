@@ -71,3 +71,7 @@ Issue #441の経過（オーナー判断 [issuecomment-5842816844](https://githu
 - 軽微な注記（blockerなし）: evidence §8のclean checkout検証対象headは `7102b0d4bf`（PR #464系）であり、本PR head `314b3c09` とは異なる。ただし§8本文が「本節以降の追記はdocumentation差分のみ」と明記しており、docs-only差分である本監査のdiff範囲確認（production/testコード変更ゼロ）と矛盾しない。
 - CI状態: 監査開始時点で `validate-repo-contract` がpendingだったが、監査中にcompleted/passへ遷移した。`final-status` passを確認済みであり、merge要件のCI側条件は満たしている状態にある。
 - B6/B7の目標は#446/#451のspecで確定する従属項目であり、本PRの範囲外（Issue本文どおり）。
+
+## Findings事後確認（2026-09-26）
+
+PR #465のChatGPT review（[判定](https://github.com/nunu1733/NunuLauncher/pull/465#issuecomment-5843265042)）が指摘した2件の文書同期残件（evidence headerの旧AC-7記載、§7(1)の実機実績provenance）を対応済み。本確認以降のhead差分はdocs配下のみであり、監査の実質確認（AC-1〜AC-8、照合表算術）への影響はない。
