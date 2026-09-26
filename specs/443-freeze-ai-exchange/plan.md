@@ -75,7 +75,9 @@
 ```groovy
 // Issue #443: the AI exchange UI unit tests (app.lawnchair.organizer.ui.exchange.*)
 // are frozen (FR-017) and leave the blocking merge gate. The exclusion is
-// property-gated so local and scheduled runs keep the full suite by default.
+// property-gated so local/manual runs keep the full suite when the property
+// is absent; automated CI (PR/main/weekly) runs with the property and
+// excludes the frozen suite (no automatic observation, spec #443).
 if (providers.gradleProperty("nunu.excludeAiExchangeUnitTests").isPresent()) {
     filter {
         excludeTestsMatching("app.lawnchair.organizer.ui.exchange.*")
@@ -144,7 +146,7 @@ CIの `organizer-unit-tests` jobは `-Pnunu.excludeAiExchangeUnitTests=true` を
 | AC-7 | 実機screenshot/録画（OFF時の(a)(b)確認） | emulator、artifactをPRへlink |
 | AC-8 | instrumentation test（focus対象の検証。OFF遷移後にmethod-choice nodeが存在せず、planning/確認面の期待nodeがfocus対象として存在する。TalkBack実機確認は本Issueでは要求しない — spec AC-8に判断を記録） | manual-organization-ui lane相当class |
 
-含めるべき観点: unit/contract（preference既定値、filter exclusion）、UI/accessibility（focus・TalkBack）、failure（toggle変更の進行中runへの影響は状態機械に書き込まないことをunit oracleで確認）。
+含めるべき観点: unit/contract（preference既定値、filter exclusion）、UI/accessibility（focus挙動。TalkBack実機確認はspec AC-8に記録のとおり要求しない）、failure（preference読み取りがrun coordinatorの状態機械へ書き込まないことをunit oracleで確認）。
 
 ## Documentation updates
 
