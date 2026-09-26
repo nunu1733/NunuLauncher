@@ -100,7 +100,7 @@ Given toggleがONでrunがscope確定後の方法選択面に停まっている
 When 設定でtoggleをOFFへ変える（run面を離れる時点で現行の `dismiss()` 契約によりparked runはcancelされる）
 Then toggleをOFFへ変えた後に開始するrunは、OFF導線（方法選択面を経ず「このまま整理」へ進む）で動く
 And preference読み取りはcompose面のみで、run coordinatorの状態機械（`State.ScopeConfirmed` のpublish契約）は変化しない
-And run面のcomposition中にpreference値が変化した場合のlive反映は実装の性質であり、受入条件は「toggle変更後に開始するrun」を対象とする
+And run面へのcomposition開始時にpreference値を1回読み、そのcomposition中は固定する（設定変更後にrun面へ再入場したcompositionが新値を読む）。受入条件は「toggle変更後に開始するrun」を対象とする
 
 ### Scenario: 失敗・edge case — AI交換JVMテストがblocking gateを失敗させない
 
@@ -161,3 +161,4 @@ And pipeline/contract層のexchangeテスト（`integration.exchange`、`persona
 - 2026-09-26: Revision 2 — Phase1 review指摘1〜4を反映（除外seamをbuild.gradle filterへ変更、blocking CI対象表を追加、toggle契約をlive readへ確定、face oracleをmethod-choice node非出現oracleへ変更）。
 - 2026-09-26: Revision 3 — 再review指摘1〜3を反映（自動遷移effectの配置・IO dispatch・重複実行防止をplanへ明記、toggle契約を「toggle変更後に開始するrun」へ単純化、gate外し後の自動観測なしを明記）。
 - 2026-09-26: Revision 4 — 再review2指摘1〜2を反映（AC-5を許容diff/禁止diffの契約へ修正、AC-8からTalkBack実機確認を外し判断を記録）。
+- 2026-09-26: Revision 5 — 実装review指摘（[PR #467 comment](https://github.com/nunu1733/NunuLauncher/pull/467#issuecomment-5848003677)）を反映: toggle読み取りを「run面composition開始時の1回読み（`remember` + `firstBlocking`、composition中固定）」へ確定。live DataStore購読はrun面上で不要（受入契約は「toggle変更後に開始するrun」）であり、instrumented run pathから背景snapshot trafficを外す。受入条件・挙動シナリオの意味は不変。

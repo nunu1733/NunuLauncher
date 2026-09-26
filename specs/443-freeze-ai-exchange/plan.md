@@ -6,6 +6,7 @@
 > Revision 2: 2026-09-26 — Phase1 review指摘1〜4を反映。
 > Revision 3: 2026-09-26 — 再review指摘1〜3を反映（effect配置・IO dispatch・重複実行防止、toggle契約の単純化、自動観測なしの明記）。
 > Revision 4: 2026-09-26 — 再review2指摘1〜2を反映（AC-5を許容diff/禁止diff契約へ、AC-8からTalkBack実機確認を外す）。
+> Revision 5: 2026-09-26 — 実装review指摘を反映（toggle読み取りをcomposition開始時の1回読みへ確定、DataStore常時購読を外す）。
 
 ## Current evidence
 
@@ -62,7 +63,7 @@
    - **重複実行防止**: keyに `scopeConfirmed?.runId` を含むため、同一runでの再compositionではeffectが再起動しない。runが変わる（別runId）か、toggle値が変わった場合のみ再起動する。runIdがnull（ScopeConfirmedでない）のときはeffect本体が何もしない。二重起動の競合は `planWithConfirmedScope()` 自体の状態guard（`State.ScopeConfirmed` 以外はno-op、`ManualOrganizationRun.kt:1117-1122`）がfail-safeになる。
 4. LazyList側の `State.ScopeConfirmed` branchは、OFFのときheadline（`method-choice-headline`）・`method-choice-plain`・`method-choice-consult`・`exchangeFlowItems` hostingを一切emitしない。ONのときは現行どおり両armをemitする。`scopeRejection` / `scopeDiscardFailed` のtyped failure rowはON導線でのみ現れる状態であるため、OFFでは描画機会がなく契約変更は不要。
 
-**toggle契約（再review指摘2の確定）**: 「toggle変更後に開始するrunへ適用」。実装はpreferenceのlive read（compositionのたびに現在値）であり、run面のcomposition中にpreference値が変われば次のrecompositionから反映されうるが、受入条件は「toggle変更後に開始するrun」を対象とする。理由: run面を離れると現行の `DisposableEffect(coordinator) { onDispose { coordinator.dismiss() } }`（`ManualOrganizationPreferences.kt:470-472`）がparked runをcancelするため、ユーザーが設定へ移動してtoggleを変え、同じparked runへ戻る実ユーザー導線は存在しない。この実ユーザーlifecycleを変えない（「状態機械/既存契約を変えない」方針）。specのscenario「toggle OFFへの変更は、その後に開始・再開されるrunへ適用される」がこの契約である。
+**toggle契約（再review指摘2の確定、実装reviewでone-shot readへ確定）**: 「toggle変更後に開始するrunへ適用」。実装はrun面のcomposition開始時にpreferenceを1回読む（`remember { prefs2.exchangeAiConsultationEnabled.firstBlocking() }`、composition中は固定）。設定変更後にrun面へ再入場したcompositionが新値を読むため、実ユーザー導線（設定変更 → run面へ入り直し）で契約が満たされる。run面を離れると現行の `DisposableEffect(coordinator) { onDispose { coordinator.dismiss() } }`（`ManualOrganizationPreferences.kt:470-472`）がparked runをcancelするため、同じparked runへ戻る実ユーザー導線は存在しない。この実ユーザーlifecycleを変えない（「状態機械/既存契約を変えない」方針）。specのscenario「toggle OFFへの変更は、その後に開始・再開されるrunへ適用される」がこの契約である。live DataStore購読はrun面上で不要であり、instrumented run pathから背景snapshot trafficを外すためone-shot readを採用した（[PR #467 comment](https://github.com/nunu1733/NunuLauncher/pull/467#issuecomment-5848003677)の実装review指摘対応）。理由: run面を離れると現行の `DisposableEffect(coordinator) { onDispose { coordinator.dismiss() } }`（`ManualOrganizationPreferences.kt:470-472`）がparked runをcancelするため、ユーザーが設定へ移動してtoggleを変え、同じparked runへ戻る実ユーザー導線は存在しない。この実ユーザーlifecycleを変えない（「状態機械/既存契約を変えない」方針）。specのscenario「toggle OFFへの変更は、その後に開始・再開されるrunへ適用される」がこの契約である。
 
 **face oracleの廃止（Phase1 review指摘4の確定）**: OFF導線はcompose分岐のため `ScopeConfirmed` compositionは存在し、METHOD_CHOICE faceは1回commitされる。よって「METHOD_CHOICE faceがcommitされない」というoracleは立てない。検証対象は「OFF時に方法選択面のnode（headline `manual_organization_method_title`、`method-choice-plain`、`method-choice-consult`）がsemantics treeに現れない」ことと「runがplanning/確認面へ進む」ことである。face traceは既存oracleとして変更しない。
 
@@ -102,7 +103,7 @@ CIの `organizer-unit-tests` jobは `-Pnunu.excludeAiExchangeUnitTests=true` を
 - **Gradle CLIのnegation pattern（`--tests '!...'`）**: 除外演算子ではない（実測: 96 test全件実行、negation-onlyはBUILD FAILED）。却下。
 - **coordinator側でOFF分岐を持つ**（scope確定時に `ScopeConfirmed` をpublishせず直接composed phaseへ進む）: 状態機械の契約がON/OFFで変わり、spec 417の状態oracle群に広い影響が出る。preferenceをcoordinatorへ注入すると、呼び出し側とテストが同じseamを使う規約に反する注入が増える。却下。
 - **toggle OFF時に方法選択面の「AIに相談」armだけを消す**（自動実行なし）: 方法選択面自体が表示され続けるため、「方法選択面を出さない」というOutcomeを満たさない。却下。
-- **run admission時にtoggle値をsnapshotしrun単位で固定する**: seamが増え（snapshot保持場所）、preference即時反映の挙動との差がテストで検証しにくい。live read + 「toggle変更後に開始するrun」契約を採用したため不採用。
+- **run admission時にtoggle値をsnapshotしrun単位で固定する**: seamが増え（snapshot保持場所）。採用したのはcomposition開始時の1回読み（surface単位）であり、「toggle変更後に開始するrun」契約を満たす。live DataStore購読（`asState()`）は初期実装で用いたが、instrumented run path上の背景snapshot trafficが不要なリスク源のため不採用へ変更した。
 - **parked runへの即時適用を製品要件にする**: run面を離れると `dismiss()` でparked runがcancelされる現行lifecycleを変える必要があり、「状態機械/既存契約を変えない」方針を超える。不採用（再review指摘2）。
 - **AI交換テストを `@Ignore` 化する**: テストファイル保持の原則ではあるが、テスト本体の変更（#352の修正はPR #416に凍結済み）であり、gate外しで十分である。skip化はしない。却下。
 - **manual-organization-ui laneから#372 AI相談scenarioを除外する**: method単位の除外はclass filterでは行えず、class分割はテストファイル構成の変更になる。またこのtestはAC-4と同じdurable到達可能性契約を検証するproduction-route oracleであり、凍結でも維持すべき契約である。現状維持（spec対象表どおり）。却下。
