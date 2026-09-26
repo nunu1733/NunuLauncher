@@ -53,6 +53,7 @@ import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -321,6 +322,12 @@ class UsageAccessJitInstrumentationTest {
     @Test
     fun crossOriginExchangePresentationPausesTheRunUntilResolution() {
         val context = context()
+        // Issue #443: the method-choice face's scoped hosting is an ON-path
+        // surface; the AI consultation entry ships default OFF.
+        runBlocking {
+            app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
+                .exchangeAiConsultationEnabled.set(true)
+        }
         // Issue #417: the empty cut parks the manual run at the method-choice
         // face (AC-3) — the face whose scoped hosting now owns the exchange
         // flow's creation entry.

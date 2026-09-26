@@ -49,6 +49,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlin.concurrent.thread
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
@@ -424,6 +426,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun entryFaceHasNoAiRowAndTheMethodChoiceFaceOffersItAfterConfirm() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Issue #443: this oracle owns the ON contract of the frozen AI arm.
+        enableAiConsultationForTest()
         val application = FakeApplication().apply {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
                 listOf(selectionCandidate("com.example.c1/.Main", "C1")),
@@ -519,6 +523,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun emptyHomeSelectAllMethodFaceAiArmImportAttachReachesThePreview() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Issue #443: ON contract of the AI arm journey.
+        enableAiConsultationForTest()
         val application = FakeApplication().apply {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
                 listOf(selectionCandidate("com.example.c1/.Main", "C1")),
@@ -581,6 +587,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun backFromTheMethodFaceWithoutARequestReopensTheEditableSelection() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Issue #443: the method-choice face is an ON-path surface.
+        enableAiConsultationForTest()
         val application = FakeApplication().apply {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
                 listOf(selectionCandidate("com.example.c1/.Main", "C1")),
@@ -630,6 +638,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun backWithAnActiveRequestDiscardsItAndReopensTheSelection() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Issue #443: the scope-bound discard journey runs on the ON face.
+        enableAiConsultationForTest()
         val store = ScopedExchangeStore()
         val application = FakeApplication().apply {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
@@ -694,6 +704,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun backDiscardWriteFailedKeepsTheFaceAndShowsTheTypedFailure() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Issue #443: the discard-failure row is an ON-path state.
+        enableAiConsultationForTest()
         val store = ScopedExchangeStore().apply {
             invalidation = app.lawnchair.organizer.personalization.ExportInvalidationResult.WriteFailed
         }
@@ -770,6 +782,101 @@ class ManualOrganizationPreferencesInstrumentationTest {
         awaitPreview(runner, context)
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_title)).assertCountEquals(0)
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_plain)).assertCountEquals(0)
+    }
+
+    /**
+     * Issue #443 (spec AC-2): with the AI consultation entry OFF (the
+     * default), a manual run with a non-empty cut NEVER reaches the
+     * method-choice face — the confirmed scope auto-advances through the
+     * hoisted planWithConfirmedScope effect straight into the plain organize
+     * path, and no method-choice node (headline, plain arm, AI arm) reaches
+     * the semantics tree.
+     */
+    @Test
+    fun aiConsultationOffSkipsTheMethodChoiceFaceAndReachesThePreview() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                listOf(selectionCandidate("com.example.c1/.Main", "C1")),
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        composeRule.onNodeWithText("C1").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+
+        // OFF: the run goes straight to the preview — the method-choice face
+        // (and its arms) never renders.
+        awaitPreview(runner, context)
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_title)).assertCountEquals(0)
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_plain)).assertCountEquals(0)
+        composeRule.onAllNodesWithText(context.getString(R.string.exchange_method_consult)).assertCountEquals(0)
+        assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * Issue #443 (spec AC-2): with the entry OFF, an empty cut — which parks
+     * a MANUAL run at the method-choice face when the entry is ON — also
+     * proceeds straight into the plain organize path without the face.
+     */
+    @Test
+    fun aiConsultationOffEmptyCutSkipsTheMethodChoiceFace() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
+        awaitPreview(runner, context)
+        composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_method_title)).assertCountEquals(0)
+        composeRule.onAllNodesWithText(context.getString(R.string.exchange_method_consult)).assertCountEquals(0)
+        assertEquals(0, application.applyCalls)
+    }
+
+    /**
+     * Issue #443 (spec AC-3): with the entry ON, the current contract is
+     * unchanged — the confirmed scope parks at the method-choice face with
+     * both sibling arms, and the plain arm reaches the preview on click.
+     */
+    @Test
+    fun aiConsultationOnKeepsTheMethodChoiceFaceWithBothArms() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        enableAiConsultationForTest()
+        val application = FakeApplication().apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                listOf(selectionCandidate("com.example.c1/.Main", "C1")),
+            )
+        }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult() })
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        runner.start()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Selecting }
+        composeRule.onNodeWithText("C1").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_missing_apps_continue)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.ScopeConfirmed }
+
+        awaitDisplayed(context.getString(R.string.manual_organization_method_title))
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_method_plain)).assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).assertIsDisplayed().assertHasClickAction()
+
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_method_plain)).performClick()
+        awaitPreview(runner, context)
+        assertEquals(0, application.applyCalls)
     }
 
     /**
@@ -3183,6 +3290,26 @@ class ManualOrganizationPreferencesInstrumentationTest {
     private fun awaitDisplayed(text: String) {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithText(text).isDisplayed()
+        }
+    }
+
+    /**
+     * Issue #443: the AI consultation entry ships default OFF (FR-017 frozen).
+     * The ON-contract oracles (the method-choice face's AI arm and its
+     * exchange hosting) enable the toggle through the REAL DataStore before
+     * composing the surface — the same seam the toggle writes through.
+     */
+    private fun enableAiConsultationForTest() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        runBlocking {
+            app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
+                .exchangeAiConsultationEnabled.set(true)
+        }
+        composeRule.waitUntil(5_000) {
+            runBlocking {
+                app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
+                    .exchangeAiConsultationEnabled.get().first() == true
+            }
         }
     }
 

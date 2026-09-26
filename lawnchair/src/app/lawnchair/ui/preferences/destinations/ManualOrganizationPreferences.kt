@@ -88,6 +88,7 @@ import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.organizer.ui.openUsageAccessSettings
+import app.lawnchair.preferences2.asState
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
@@ -128,6 +129,14 @@ fun ManualOrganizationPreferences(
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
     val scope = rememberCoroutineScope()
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
+    // Issue #443: the frozen AI consultation entry (FR-017). Read live in the
+    // compose layer only — the run coordinator never sees this preference and
+    // its state machine is unchanged. OFF hides the method-choice face's AI
+    // arm and auto-advances a confirmed scope straight into the plain
+    // organize path (the effect below); the acceptance contract is runs
+    // started after the toggle change.
+    val exchangeAiConsultationEnabled by
+        app.lawnchair.preferences2.preferenceManager2().exchangeAiConsultationEnabled.asState()
     // Issue #369 (spec RD-7): the visible 検出 → capture → plan progression is
     // the coordinator's deterministic projection, never derived from State —
     // the legacy admission Capturing and the real composed capture are the
@@ -551,6 +560,22 @@ fun ManualOrganizationPreferences(
         runCatching { focusRequester.requestFocus() }
     }
 
+    // Issue #443: when the AI consultation entry is OFF, a confirmed scope
+    // advances straight into the plain organize path without the method-choice
+    // face. The effect lives OUTSIDE the PreferenceLazyColumn (the lazy list's
+    // branches are LazyListScope DSL, not a @Composable context) and keeps the
+    // existing threading discipline — planWithConfirmedScope() runs the whole
+    // composed phase synchronously, so it must not run on the main dispatcher
+    // (same withContext(Dispatchers.IO) wrapping as the execute helper). The
+    // runId + toggle key prevents a re-run on mere recomposition of the same
+    // run; a duplicate invocation is also a no-op on the coordinator's own
+    // state guard.
+    LaunchedEffect(scopeConfirmedState?.runId, exchangeAiConsultationEnabled) {
+        if (scopeConfirmedState != null && !exchangeAiConsultationEnabled) {
+            withContext(Dispatchers.IO) { coordinator.planWithConfirmedScope() }
+        }
+    }
+
     PreferenceScaffold(
         label = stringResource(R.string.manual_organization_title),
         modifier = modifier,
@@ -644,7 +669,15 @@ fun ManualOrganizationPreferences(
                 // mode via openMethodChoiceFlow). A refused attach re-renders
                 // the typed rejection row (zero-write); a failed scope-bound
                 // discard keeps the face with a typed retryable failure row.
-                is ManualOrganizationRun.State.ScopeConfirmed -> {
+                //
+                // Issue #443: with the AI consultation toggle OFF the whole
+                // method-choice face is skipped — the hoisted effect above
+                // advances the run and this branch emits nothing, so no
+                // method-choice node (headline, plain arm, AI arm, exchange
+                // hosting) ever reaches the semantics tree. The rejection and
+                // discard-failure rows are ON-path states and need no OFF
+                // contract change.
+                is ManualOrganizationRun.State.ScopeConfirmed -> if (exchangeAiConsultationEnabled) {
                     currentState.scopeRejection?.let { rejection ->
                         item(key = "method-choice-scope-mismatch") {
                             Text(
@@ -712,6 +745,8 @@ fun ManualOrganizationPreferences(
                         fileTransport = FileExchangeTransport(context),
                     )
                 }
+
+                // Issue #443: OFF emits nothing for ScopeConfirmed (see above).
 
                 // Issue #369 (RD-7/D-06): the face mapping gates the selection surface
                 // BEFORE any raw composition — the internal zero-candidate

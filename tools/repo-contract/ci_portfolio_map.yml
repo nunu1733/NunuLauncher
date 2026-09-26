@@ -62,6 +62,13 @@ lanes:
 # Permanent PR gates that high-risk evidence validation
 # (tools/repo-contract/validate_high_risk_evidence.py) names explicitly. The
 # validator requires this set to equal exactly those three job IDs.
+# Issue #443: organizer-unit-tests runs with
+# -Pnunu.excludeAiExchangeUnitTests=true, which excludes the frozen AI
+# exchange UI suite (app.lawnchair.organizer.ui.exchange.*, FR-017) from the
+# blocking merge gate via the property-gated filter in build.gradle. The
+# pipeline/contract exchange packages (integration.exchange,
+# personalization.exchange) stay in the gate; the frozen suite has no
+# automatic CI observation (local/manual runs only).
 permanent_gates:
   - organizer-unit-tests
   - check-style

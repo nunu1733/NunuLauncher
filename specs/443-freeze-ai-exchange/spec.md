@@ -1,6 +1,6 @@
 ---
 issue: "#443"
-status: draft
+status: accepted
 requirements:
   - FR-017
   - D-016

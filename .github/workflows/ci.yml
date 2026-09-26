@@ -342,7 +342,10 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v5
       - name: Run organizer unit tests
-        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
+        # Issue #443: -Pnunu.excludeAiExchangeUnitTests excludes the frozen AI
+        # exchange UI suite (app.lawnchair.organizer.ui.exchange.*) from the
+        # blocking merge gate; see build.gradle and specs/443-freeze-ai-exchange.
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

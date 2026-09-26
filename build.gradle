@@ -101,6 +101,17 @@ allprojects {
                 systemProperty(propertyName, propertyValue.get())
             }
         }
+        // Issue #443: the AI exchange UI unit tests
+        // (app.lawnchair.organizer.ui.exchange.*) are frozen (FR-017) and
+        // leave the blocking merge gate. The exclusion is property-gated so
+        // local/manual runs keep the full suite when the property is absent;
+        // automated CI (PR/main/weekly) runs with the property and excludes
+        // the frozen suite (no automatic observation, spec #443).
+        if (providers.gradleProperty("nunu.excludeAiExchangeUnitTests").isPresent()) {
+            filter {
+                excludeTestsMatching("app.lawnchair.organizer.ui.exchange.*")
+            }
+        }
     }
 
     configurations.configureEach {
