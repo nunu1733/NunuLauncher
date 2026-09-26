@@ -65,6 +65,7 @@ All commands executed by the auditor at head `d3a3d3088b7e93621ddb4344248d995448
 
 - Device evidence captured on local emulator (API 36 family, `issue142_api36`) running the audited build (`Lawnchair.15.Dev.(d3a3d30).github.debug.apk`):
   - `docs/assessment/evidence/pr-467/443-ac1-toggle-row-default-off.png` — Experimental features screen with the AI consultation toggle present and OFF (AC-1 row presence).
-  - `docs/assessment/evidence/pr-467/443-ac7-off-direct-preview.png` — after scope confirm on a non-empty cut, the run reached the preview face directly; no method-choice headline or AI arm rendered (AC-7 (a)+(b)).
-  - `docs/assessment/evidence/pr-467/443-ac7-off-path.mp4` — screen recording of the same OFF run path.
+  - `docs/assessment/evidence/pr-467/443-ac7-preparation-jit-dialog.png` — mid-path capture: after scope confirm the run advanced straight into the preparation face (no method-choice headline or AI arm rendered); the Usage Access JIT dialog is the expected modal overlay on the preparation face, dismissed with Skip for now.
+  - `docs/assessment/evidence/pr-467/443-ac7-preview-reached.png` — the same run after the JIT skip: the preview face (Review the proposed organization) reached directly; no method-choice node rendered at any point (AC-7 (a)+(b)).
+  - `docs/assessment/evidence/pr-467/443-ac7-off-path.mp4` — screen recording of the same OFF run path (selection → confirm → preparation/JIT skip → preview).
 - AC-7 is therefore resolved; no code changed after the audited head (`d3a3d3088b`) — this addendum and the evidence files are docs-only.
