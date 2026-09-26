@@ -487,6 +487,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun emptyHomeSelectAllMethodFaceThenThePlainArmReachesThePreview() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Issue #443: this oracle owns the ON-path plain-arm contract.
+        enableAiConsultationForTest()
         val application = FakeApplication().apply {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
                 listOf(
