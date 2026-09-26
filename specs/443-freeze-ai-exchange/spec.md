@@ -133,10 +133,10 @@ And pipeline/contract層のexchangeテスト（`integration.exchange`、`persona
 - [ ] AC-2: toggle OFFのとき、(a) 方法選択面のheadlineと「AIに相談」armがsemantics treeに現れない、(b) runがscope確定後、方法選択面を経ず「このまま整理」の流れへ進む（候補あり・候補0件の両方）。
 - [ ] AC-3: toggle ONのとき、方法選択面に両armが表示され、現行契約どおり動作する。
 - [ ] AC-4: toggle OFFでも、有効な依頼・取り込み済み提案がhub status cardに表示され、`ExchangeOpen.REQUEST` / `ExchangeOpen.PENDING_REVIEW` の両導線が機能する（期限切れ時に行が消えることも含む）。
-- [ ] AC-5: AI交換のコード・テストに削除・契約変更がない（diffの範囲で確認。本変更が触るのはpreference追加、compose分岐、build.gradleのtest filter、CI workflow、docsのみであること）。
+- [ ] AC-5: AI交換のproductionコード・既存test oracleに削除・契約変更がない。toggle対応のためのtest setup/ON条件設定、新規OFF導線oracle、preference test追加、CI filter変更は許容する。PR diffで許容diffと禁止diffを照合する。
 - [ ] AC-6: `organizer-unit-tests` jobが `app.lawnchair.organizer.ui.exchange.*` を除外して実行される。実行結果XMLで、(a) `ExchangeFlowStateHolderTest`（#352 oracleを含む）が実行対象に含まれないこと、(b) `integration.exchange` / `personalization.exchange` のcontract testが実行されていること、の両方を確認する。AI交換テストのファイルはリポジトリに保持されている。CI portfolio map（`tools/repo-contract/ci_portfolio_map.yml`）と監査表（`docs/engineering/ci-test-portfolio.md`）が同じPRで更新されている。
 - [ ] AC-7: 実機（エミュレータ）のスクリーンショットまたは録画で、toggle OFF時に(a)方法選択面の「AIに相談」armが表示されない、(b)runが方法選択面を経ず「このまま整理」へ進むことを確認する。
-- [ ] AC-8: 方法選択面を省略した導線のfocus・TalkBack挙動が受入シナリオどおりである（OFF時のscope確定後の最初のfocus対象がplanning/確認面にある）。
+- [ ] AC-8: 方法選択面を省略した導線のfocus挙動が受入シナリオどおりである（OFF時のscope確定後、method-choice nodeが存在せず、planning/確認面の期待nodeがfocus対象として存在する）。TalkBack実機確認は本Issueでは要求しない（既存のplanning/確認面のsemantics契約は変更しないため、新規のannouncement契約は発生しない。Issue本文Risk criteriaの「focus・TalkBack挙動はspecの受入シナリオに含める」に対し、受入シナリオでfocus挙動を確定し、TalkBackは既存契約の維持に委ねる判断をここに記録する）。
 
 ## Test oracle
 
@@ -146,10 +146,10 @@ And pipeline/contract層のexchangeテスト（`integration.exchange`、`persona
 | AC-2 | instrumentation test（OFF時のrun導線・method-choice node非出現）+ 実機スクリーンショット/録画（AC-7と同一evidence） |
 | AC-3 | instrumentation test（ON時の両arm表示、現行oracleの維持。既存AI arm testにON条件seamを通じて継続成功） |
 | AC-4 | instrumentation test（既存hub row oracle `OrganizerHubPreferencesInstrumentationTest` の維持 + OFF条件下での再実行） |
-| AC-5 | PR diffの範囲確認（PR本文へ記録） |
+| AC-5 | PR diff確認（許容diff: test setup/ON条件設定、新規OFF導線oracle、preference test追加、CI filter変更。禁止diff: AI交換productionコード・既存test oracleの削除、凍結対象exchange contractの変更） |
 | AC-6 | CI run証跡 + 実行結果XML: `organizer-unit-tests` が成功し、XML中に `ui.exchange` classの結果がなく、`integration.exchange` / `personalization.exchange` classの結果が存在すること。#352 oracle（`ExchangeFlowStateHolderTest.clipboardTextReceiptReplacesTheEditorAndRunsTheCommonImportPath`）がgateから外れたことをXMLの不在で確認する |
 | AC-7 | 実機（エミュレータ）スクリーンショットまたは録画。artifactとして保存し、PRへlinkする |
-| AC-8 | instrumentation test（focus対象の検証） |
+| AC-8 | instrumentation test（focus対象の検証。OFF遷移後にmethod-choice nodeが存在せず、planning/確認面の期待nodeがfocus対象として存在する） |
 
 ## Open questions
 
@@ -160,3 +160,4 @@ And pipeline/contract層のexchangeテスト（`integration.exchange`、`persona
 - 2026-09-26: Draft created for #443.
 - 2026-09-26: Revision 2 — Phase1 review指摘1〜4を反映（除外seamをbuild.gradle filterへ変更、blocking CI対象表を追加、toggle契約をlive readへ確定、face oracleをmethod-choice node非出現oracleへ変更）。
 - 2026-09-26: Revision 3 — 再review指摘1〜3を反映（自動遷移effectの配置・IO dispatch・重複実行防止をplanへ明記、toggle契約を「toggle変更後に開始するrun」へ単純化、gate外し後の自動観測なしを明記）。
+- 2026-09-26: Revision 4 — 再review2指摘1〜2を反映（AC-5を許容diff/禁止diffの契約へ修正、AC-8からTalkBack実機確認を外し判断を記録）。

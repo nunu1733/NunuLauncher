@@ -5,6 +5,7 @@
 > Status: draft
 > Revision 2: 2026-09-26 — Phase1 review指摘1〜4を反映。
 > Revision 3: 2026-09-26 — 再review指摘1〜3を反映（effect配置・IO dispatch・重複実行防止、toggle契約の単純化、自動観測なしの明記）。
+> Revision 4: 2026-09-26 — 再review2指摘1〜2を反映（AC-5を許容diff/禁止diff契約へ、AC-8からTalkBack実機確認を外す）。
 
 ## Current evidence
 
@@ -138,10 +139,10 @@ CIの `organizer-unit-tests` jobは `-Pnunu.excludeAiExchangeUnitTests=true` を
 | AC-2 | instrumentation test（OFF時のrun導線・method-choice node非出現・候補0件） | `connectedLawnWithQuickstepGithubDebugAndroidTest`（manual-organization-ui lane相当class） |
 | AC-3 | instrumentation test（ON時両arm、既存oracle維持） | 同上（既存AI arm testへON条件seamを適用して継続成功） |
 | AC-4 | 既存hub row oracleのOFF条件下での継続成功 | `OrganizerHubPreferencesInstrumentationTest` |
-| AC-5 | PR diff確認 | PR本文へ記録 |
+| AC-5 | PR diff確認（許容diff: test setup/ON条件設定、新規OFF導線oracle、preference test追加、CI filter変更。禁止diff: AI交換productionコード・既存test oracleの削除、凍結対象exchange contractの変更）。PR本文へ照合結果を記録 |
 | AC-6 | CI run証跡 + 実行結果XML: `organizer-unit-tests` 成功、XML中に `ui.exchange` class不在、`integration.exchange` / `personalization.exchange` class存在。#352 oracleのgate外れをXML不在で確認 | PR CI run（`build.gradle` 変更によりfull portfolioが発火するため、全lane + permanent gateの証跡が同一runで取れる） |
 | AC-7 | 実機screenshot/録画（OFF時の(a)(b)確認） | emulator、artifactをPRへlink |
-| AC-8 | instrumentation test（focus対象） | manual-organization-ui lane相当class |
+| AC-8 | instrumentation test（focus対象の検証。OFF遷移後にmethod-choice nodeが存在せず、planning/確認面の期待nodeがfocus対象として存在する。TalkBack実機確認は本Issueでは要求しない — spec AC-8に判断を記録） | manual-organization-ui lane相当class |
 
 含めるべき観点: unit/contract（preference既定値、filter exclusion）、UI/accessibility（focus・TalkBack）、failure（toggle変更の進行中runへの影響は状態機械に書き込まないことをunit oracleで確認）。
 
