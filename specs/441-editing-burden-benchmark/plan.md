@@ -2,7 +2,7 @@
 
 > Issue: #441
 > Spec: [spec.md](./spec.md)
-> Status: accepted（Phase 1承認: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5836812340)、head `4259fc362f`。spec status: accepted。Revision 5〜6: Phase 2実装とreview指摘対応を反映）
+> Status: accepted（Phase 1承認: [Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5836812340)、head `4259fc362f`。spec status: accepted。Revision 5〜6: Phase 2実装とreview指摘対応。Revision 7: オーナー判断による終了条件改正（改正案draft。オーナー承認待ち））
 > Branch: `issue-441-editing-burden-benchmark`
 
 ## Current evidence
@@ -68,6 +68,21 @@
 - 新Gradle application moduleとしてのfixture APK: 同等のidentityをtest APK manifestで賄えるため、module追加・settings.gradle・CI path mappingの変更を避ける（test APKのinstall保持はA-12で解決）。
 - 2ページ目・3ページ目を満杯にしてB1の新規アプリを最終ページへ出す構成: 付録草案§5のページ別個数（ページ1約12個）と矛盾し、B2の受け皿の空きも失うため不採用。実挙動（2ページ目配置）に合わせてB1の経路と概算を更新する（A-13）。
 
+## Revision 7: オーナー判断による終了条件改正（改正案。2026-09-26）
+
+オーナー判断（[Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)）「人間の実測を前提とした計測scenarioは有効なベンチマークではない。終了条件をagent実行可能な検証のみで完結する形へ改定する」を受けた改正。適用はオーナー承認後とする。
+
+| # | 改正 | 内容 |
+|---|---|---|
+| R7-1 | 指標の性質の明示 | 定義文書§1へ「重み付き操作コスト・操作数は固定手順からの手順コストの会計であり、知覚負担・所要時間の測定ではない」を明記。fixture identityがダミーであること・install起点がagent手順であることは会計の前提と矛盾しない旨を明記。人間の実測をOut of scopeへ追加 |
+| R7-2 | B6の決定的化 | 終了状態を「10個すべての新規アプリのアイコンが指定フォルダ内に存在」へ変更（測定者判断の排除）。開始状態の配置内訳（2ページ目8個・3ページ目2個）は§3.4の走査規則から決定的 |
+| R7-3 | baselineの確定と再計算 | §6を「概算」から「固定手順からの決定的算出（確定値）」へ格上げ。起草時の概算は、drop後の視点移動（`Workspace.java:2303-2313` の `snapScreen != mCurrentPage`）と課題内のページ移動を内訳に含めていなかったため再計算: B2 40→48、B3 20→21、B4 24→25、B6→84（2ページ目8個×8 + 3ページ目2個×10）、B7→9。操作数列を追加。メモ§4.1の初期目標を確定値へ（B2≤24、B3≤10、B4≤12。50%削減の整数丸め） |
+| R7-4 | §7の検証手順化 | 計測手順（計測者・端末・回数・計時・記録形式・B6判定・試行間reset）を削除し、agent実行可能な検証3項（fixture契約test、§3.4配置実証、§6算術照合）へ置換。実測記録の受け皿 `docs/assessment/editing-burden-baseline.md` を廃止。`tests/benchmark-install-targets/` は§3.4実証の再利用資産として保持 |
+| R7-5 | 副指標の廃止 | §4の副指標（実測時間）を指標から外す。将来の所要時間・知覚負担の測定は、課題再定義を含めperformance-budgets §10と同じ分離基準で別Issueとして再設計（scenario再設計の要否判断: 本改正では行わない） |
+| R7-6 | NFR-014の確定 | requirements.mdのNFR-014を `accepted`（2026-09-26。ベンチマークのbaseline・目標確定に伴う）へ変更し、Decision historyへ記録 |
+| R7-7 | 資産の扱い | fixture seeding instrumentation（2 test）・identity供給（35 alias）・固定対象アプリmodule（10 flavor）は保持し、改正後の検証手順（§7）の基盤として再利用。実機での検証実績（restore/persist seed）は有効な記録として維持 |
+| R7-8 | Issue本文改正 | Completion evidenceの「baseline計測記録」項を「baselineの決定的算出+算術照合可能性」へ、Scope項3/4を人間実測から決定的算出+目標確定へ改正。オーナー承認後に適用する |
+
 ## Change set
 
 | Area | Intended change | Why here |
@@ -83,6 +98,7 @@
 | `tools/ci/run-manual-organization-ui-instrumentation.sh` | class listへ1件追加 | 既存laneへの統合（AC-5） |
 | `docs/engineering/ci-test-portfolio.md` | manual-organization-ui lane行のcoverage説明を更新（lane↔surface edge変更なし） | quality-strategyの新test審査規則 |
 | `CONTEXT.md` | Domain languageの4用語を追加 | spec承認時の反映 |
+| `docs/product/requirements.md` | NFR-014をacceptedへ変更し、Decision historyへ2026-09-26の判断を追記（Revision 7） | AC-8 |
 
 ## Migration and recovery
 
@@ -99,7 +115,8 @@
 | AC-4 | 同test内assertion（identity一意性・重複2組計数）+ 定義文書§5との対照 | 同上 |
 | AC-5 | PR本文へtest-audit審査項目を記載。portfolio整合validator | `python3 tools/repo-contract/test_validate_ci_portfolio.py` + CI portfolio job |
 | AC-6 | spotless | `./gradlew spotlessCheck` |
-| AC-7/AC-8 | 後続ステップ（保守者が実機Pixel 9aで計測→`docs/assessment/editing-burden-baseline.md`作成→§6確定+NFR-014確定）。本PRでは実施せず、PR本文に残置事項として明記する | 実機（保守者） |
+| AC-7 | §6の内訳を§3/§4から再計算する照合表をPR本文へ掲載し、reviewで確認 | 目視照合（結果をPR本文へ転記） |
+| AC-8 | NFR-014のaccepted化（requirements.md diff）。PR本文へ転記 | `git diff` + 目視照合 |
 
 test-audit審査（AC-5。実装前に確定しPRへ記載する）:
 
@@ -132,4 +149,8 @@ test-audit審査（AC-5。実装前に確定しPRへ記載する）:
 - [x] Phase 2: spotlessCheck・repo-contract validatorの実行（AC-1/5/6。spotlessのkotlin対象はinstrumentation tree外のため既定で通過）
 - [ ] Phase 2 review（ChatGPT）と指摘対応
 - [ ] PR作成（`Refs #441`。AC-7/8を残置事項として明記）+ 独立監査（general-purpose subagent）+ 保守者承認・merge
-- [ ] 後続（保守者）: 実機計測→baseline記録→目標確定→NFR-014確定→最終PRが `Closes #441`
+- [x] オーナー判断の確認と改正案の起草（Revision 7。Issue #441コメント issuecomment-5842816844）
+- [ ] Revision 7改正案のChatGPT review
+- [ ] オーナー承認（改正案へのコメント）
+- [ ] 改正PR（`Closes #441`。Issue本文改正を含む）+ review
+- [ ] merge → Issue close（NFR-014 accepted、spec status `implemented`）
