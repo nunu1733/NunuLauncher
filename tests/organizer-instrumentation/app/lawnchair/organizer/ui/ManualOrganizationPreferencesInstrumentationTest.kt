@@ -2267,6 +2267,11 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
     @Test
     fun preparationFaceExposesHeadlinePhaseAndNoConfirmInterrupt() {
+        // Issue #443: the run parks at the method-choice face and the harness
+        // drives the 「このまま整理」 arm itself — the ON-path contract. With
+        // the entry OFF the hoisted auto-advance would race this test's own
+        // planWithConfirmedScope invocation.
+        enableAiConsultationForTest()
         // RUN-AC-01/02/04 (accepted spec 369): the T-09 face — headline, the
         // deterministic phase row (RD-7: while the detector runs the visible
         // phase is 検出), and the interrupt action. The D-06 empty cut composes
