@@ -51,7 +51,7 @@ NunuLauncherがagentそのものを内蔵せず、(1) #204契約の `Personaliza
 
 ## Domain language
 
-`CONTEXT.md` への追加用語案 (受入時に反映。#204の用語と合わせて調整する)。
+本specがこの節の用語の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する。#204の用語と合わせて調整する）。
 
 **外部エージェント交換 (External Agent Exchange)**:
 `PersonalizationContextExportV1` を外部chat/agent環境へ持ち出し、 `PersonalizedIntentV1` として持ち帰る、NunuLauncherが提供するuser-driven workflow全体。agent実行部はNunuLauncherの外にある。
