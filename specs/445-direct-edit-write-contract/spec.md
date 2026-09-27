@@ -1,6 +1,6 @@
 ---
 issue: "#445"
-status: draft
+status: accepted
 requirements:
   - D-013
 updated: 2026-09-27
