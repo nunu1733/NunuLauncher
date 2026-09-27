@@ -111,22 +111,26 @@ class EditActionsShortcuts {
         protected val executor by lazy { HomeEditExecutor(mTarget) }
         protected val itemId: Int get() = mItemInfo.id
 
-        /** Action-start placement (popup build time) used as the intent precondition. */
-        protected val sourcePlacement: HomeEditItem by lazy {
-            sourcePlacementOf(
-                itemType = mItemInfo.itemType,
-                id = mItemInfo.id,
-                container = mItemInfo.container,
-                screenId = mItemInfo.screenId,
-                cellX = mItemInfo.cellX,
-                cellY = mItemInfo.cellY,
-                spanX = mItemInfo.spanX,
-                spanY = mItemInfo.spanY,
-                rank = mItemInfo.rank,
-                userSerial = UserCache.INSTANCE.get(mTarget)
-                    .getSerialNumberForUser(mItemInfo.user),
-            )
-        }
+        /**
+         * Action-start placement, captured eagerly at shortcut construction.
+         * `mItemInfo` is the live model item and can be moved by another
+         * writer while the dialog is open; a lazy read here would silently
+         * adopt the moved placement as the precondition and defeat the
+         * stage-1 staleness check.
+         */
+        protected val sourcePlacement: HomeEditItem = sourcePlacementOf(
+            itemType = mItemInfo.itemType,
+            id = mItemInfo.id,
+            container = mItemInfo.container,
+            screenId = mItemInfo.screenId,
+            cellX = mItemInfo.cellX,
+            cellY = mItemInfo.cellY,
+            spanX = mItemInfo.spanX,
+            spanY = mItemInfo.spanY,
+            rank = mItemInfo.rank,
+            userSerial = UserCache.INSTANCE.get(mTarget)
+                .getSerialNumberForUser(mItemInfo.user),
+        )
 
         private val mainHandler = Handler(Looper.getMainLooper())
         private var pendingSources = 2
