@@ -173,13 +173,13 @@ gateはcandidate側の2検証のみでsessionの有効性を再確認せず、�
 
 ## Domain language
 
-`CONTEXT.md` への追加用語（本Issueが正本改訂の所有者である。#365は完了済みのため、
-受入後の実装PRで正本へ反映する）。
+本specが **原因別remedy (cause-specific remedy)**・**rebind（process死後再開 / fresh run rebind）**・**選択復元初期値 (selection restore initial values)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。
 
 **原因別remedy (cause-specific remedy)**:
 `SCOPE_MISMATCH` の原因種別に対応づけられた救済action。選択集合の差（`SET_MISMATCH`）は
 「選択を依頼時の集合へ戻して同じ提案で続行」、依頼時候補の解決不能（`CANDIDATE_UNRESOLVED`）と
 候補投影の差（`PROJECTION_MISMATCH`）は「同じ提案での続行を打ち切り、依頼を作り直す」。
+完全一致gate・zero-write・fail-closedの契約は不変。
 _Avoid_: 再export（単一remedyの旧語。re-exportは新依頼の作り直しに含まれる操作であり、
 remedy全体を指す語としては使わない）、リトライ（検証の再実行と混同）
 

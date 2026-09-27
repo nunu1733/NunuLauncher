@@ -73,6 +73,14 @@ accepted (既存run接続) or zero-write reject
 - markdown全体 (CommonMark) の実装。fence認識は簡易決定性grammarに限定する (D-4)。
 - #205のexchange framing規則 (marker形式の抽出規則・typed失敗3種) の変更。marker形式はaccepted framingの優先形式として現行規則のまま残る。**AIへのproducer側要求 (canonical authoring form) の変更は本specの対象外であり、[spec 348](../348-exchange-ai-facing-contract/spec.md) が所有する** (issue #348 Phase 1受入時に用語を分離)。
 
+## Domain language
+
+本specが **インポート正規化 (Import Normalizer)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。
+
+**インポート正規化 (Import Normalizer)**:
+import textの外形 (framing/transport表現) のみを認識・canonical化する境界層。accepted framingはmarker形式 (canonical)・単一fenced `json` code block・standalone JSON objectの3種で、それ以外はtyped失敗 (曖昧/認識不能) でzero-write rejectする。fuzzy extraction (複数候補からの推測選択・`{...}` の任意拾い) は禁止で、payloadは正規化済入力の部分文字列 (semantic無変更) に限られる。
+_Avoid_: 意味レベルcanonicalization (field値・ref集合・schemaVersionの書換え)、markdown全体実装、provider固有formatへの密結合
+
 ## 現行実装の確認事実 (baseline `15f4f0209f`、#330 v3 実装後)
 
 - `IntentImportParser.parse` (`organizer/personalization/exchange/IntentImportParser.kt`): 1 MiB envelope検査 → 先頭BOM除去・CRLF/CR→LF正規化 → 完全行marker抽出。typed失敗は `INPUT_OVERSIZE` / `FRAMING_MISSING` / `FRAMING_AMBIGUOUS` / `FRAMING_EMPTY` の4種。

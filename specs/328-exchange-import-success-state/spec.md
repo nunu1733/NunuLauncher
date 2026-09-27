@@ -55,10 +55,10 @@ Import成功後、**(a) 取り込み済みであること、(b) 認識した希�
 
 ## Domain language
 
-`CONTEXT.md` への追加用語案 (受入時に反映)。
+本specが **取り込み成功状態 (Import Success State)** と **取り込み破棄 (Import Discard)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。本節の他の用語（判断なし項目）の正本は引き続き `CONTEXT.md` である。
 
 **取り込み成功状態 (Import Success State)**:
-importされたintentがvalidationを通過した後、run接続 (attach / fresh run開始) の前に表示される中間状態。取り込み済みであること、認識した希望の件数summary、未適用であること、次操作へのCTAを含む。CTA押下または明示的な破棄によって終了する。
+importされたintentがvalidationを通過した後、run接続 (attach / fresh run開始) の前に表示される中間状態。取り込み済みであること、privacy-safeな件数summary (canonical `CompletedPersonalIntent` のAuthored計数と判断なし合算、planner-effectiveな `minimizeMovement` の全体方針行)、未適用であること、次操作へのCTAを含む。CTA押下または明示的な破棄によって終了し、その間のrun接続seamの起動は一度だけである。
 _Avoid_: 適用完了 (未適用であることとの混同)、プレビュー (次ステップで生成される #194 preview との混同)
 
 **取り込み破棄 (Import Discard)**: (revision 2)

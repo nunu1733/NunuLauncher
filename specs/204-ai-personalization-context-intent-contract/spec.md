@@ -54,7 +54,7 @@ updated: 2026-09-15
 
 ## Domain language
 
-`CONTEXT.md` への追加用語案 (受入時に反映)。
+本specが **export-scoped ID (Export Item Reference)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。本節の他の用語の正本は引き続き `CONTEXT.md` である。
 
 **パーソナライゼーション文脈書き出し (Personalization Context Export)**:
 1回のpersonalization試行のために、app内canonical入力から生成される、export-scopedなIDで項目を参照する読み取り専用の最小文脈。privacy tierを持ち、raw DB row・内部`ItemId`・package名・raw usage時刻を含まないことを既定とする。
