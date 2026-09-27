@@ -4,6 +4,7 @@ status: proposed
 
 > Status: Proposed（2026-09-27。#447の決定Issueで起草した。出典は #447 付録の承認済み草案（2026-09-24）であり、本ADRがその正本である。受入（Accepted）は #442 の最終結論を前提とする（メモ§4.3、§5。起草時点の #442 は暫定結論「A/C未確定」を記録済み。Decision節参照））
 > Date: 2026-09-27（起草 2026-09-24）
+> Revision 2: 2026-09-27 — PR #471 review（ラウンド1）の指摘に対応: ①「図の描画に使えるデータ」の記述を実際の契約へ修正（`icon` はcustom icon bitmapのoptionalな転写であり、通常アプリの表示iconは `TargetKey` とprofileからの `IconCache` 解決が要る。解決不能時のfallbackは#449 specの責務）。②案A/案Bの入口コストを確定手順（workspace空きスペース長押し2 + メニュー項目tap 1 = 3）で再計算（案A 9/8/9→10/9/10、案B 9/7/9→11/9/10）し、#441 §4の確定重みでの比較へ限定。「重みの取り方に依存しない」という一般の不変性の主張は撤回。判断内容（案B推奨）の変更はない。
 > 対応: #447（方針判断メモ: 再焦点化方針メモ（2026-09-24に承認、Revision 5）§4.3、R-5、D-014。以下「メモ§x」はこのメモの出典を指す）
 
 # 編集の操作面と上流workspaceへの変更
@@ -40,7 +41,7 @@ status: proposed
 **organizer側で再利用できる部品（fork側）**
 
 - captureと適用: `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt`（670行）が `captureCurrent`（94行）、`prepareApplyWriteSet`（180行）、`applyWriteSet`（293行）、`requestCorrelatedReload`（428行）を持ち、`LayoutWriteCoordinator` のlease（79行、`src/com/android/launcher3/model/LayoutWriteCoordinator.java:53-58` の `OwnerKind.ORGANIZER`）で排他する。
-- 図の描画に使えるデータ: `application/public/LayoutState.kt:27-31` の `LayoutState` は pages/items を持ち、`CanonicalItemState`（117-134行）は placement（`PlacementState`、`GridCell`/`GridSpan`）、title（`OptionalText`）、icon（`OptionalBytes`）を含む。つまりcapture済みsnapshotから「現在のホームの図」を組むのに必要な座標・ラベル・iconバイト列は揃っている。iconの復号には上流の `icons/LauncherIcons.java` / `IconCache.java` を使う。
+- 図の描画に使えるデータ: `application/public/LayoutState.kt:27-31` の `LayoutState` は pages/items を持ち、`CanonicalItemState`（117-134行）は placement（`PlacementState`、`GridCell`/`GridSpan`）、title（`OptionalText`）、icon（`OptionalBytes`）を含む。ただし `icon` はfavorites DBの `ICON` 列の転写であり、この列はcustom icon bitmap用である（`LauncherSettings.Favorites` の `ICON`、「The custom icon bitmap.」）。DB値がnullのときは `OptionalBytes.Absent` になる（`RowManifestCodec.kt:373-374`）。つまり通常のアプリ（custom icon未設定）について、capture済みsnapshotから直接得られるのは placement・identity（`TargetKey`）・optional title・optionalなcustom iconバイト列であり、実際のアプリアイコンのバイト列が常に入っているわけではない。図に通常のアプリアイコンを表示するには、`TargetKey.AppKey` とprofileから上流の `IconCache` / `icons/LauncherIcons.java` 側でiconを解決する描画経路が別途必要である。unavailable/private profile等で解決できない場合のfallbackの扱いは、図描画の契約として #449 のspecで決める。
 - previewの現状: `application/preview/PlanPreviewProjector.kt:49` と `ui/OrganizationPreviewContent.kt` は変更一覧の「文章」のみを組む。図による変更前後表示は spec 194 で対象外だった（`specs/194-plan-preview-seam/spec.md:38,52`）。
 - 適用の安全性: organizer runの適用は recovery point付きの現行安全規約の経路である（メモ§4.3）。視覚的編集画面の確定時の一括適用はこれを再利用できる。
 
@@ -57,7 +58,7 @@ status: proposed
 
 - ベンチマークB2〜B5（重み: tap=1、長押し=2、同一ページdrag=2、ページ越drag=4+越えたページ数。草案時点の仮の重み。後に `docs/engineering/editing-burden-benchmark.md` §4 として確定した重みと同一である。baselineの確定値と目標は同書§6）:
   - baseline（fork現状）: B2 = 5×(長押し2 + 2ページ越drag 6) = 40。B3 = 4×(長押し2 + 1〜2ページ越drag 5〜6) ≈ 26〜28（フォルダ作成を含め+2）。B4 = 6×(長押し2 + 削除targetへのdrag 2) = 24。B5 = 誤り1件の手動復帰 ≈ 8（B2の1項目分と同程度）。
-  - 案A: B2 = 長押しでEDIT_MODE 2 + 選択tap 5 + 「ページへ移動」1 + 対象ページ選択1 = 9。B3 = 2+4+1（フォルダ作成）+1 = 8。B4 = 2+6+1 = 9。B5 = #450のUndo 1操作。
+  - 案A: 入口の操作を確定手順に固定する: workspace空きスペース長押し（重み2）→ メニューの「edit_mode」項目tap（重み1）= 3（`WorkspaceTouchListener.java:223` の `showDefaultOptions` → `OptionsPopupView.java:211-215` の `enterHomeGardening`。重みは#441 §4）。B2 = 入口3 + 選択tap 5 + 「ページへ移動」1 + 対象ページ選択1 = 10。B3 = 3+4+1（フォルダ作成）+1 = 9。B4 = 3+6+1 = 10。B5 = #450のUndo 1操作。
   - いずれもB2〜B4の50%削減目標（メモ§4.1）を満たす。案Bとの重み付きコストはほぼ同等である。
 - 上流変更量: `Workspace.java`（2,700行超の上流最大級class）への選択状態・選択描画・tapハンドラの追加、`Launcher.java` の状態遷移分岐の拡張、`DragController`/`DragLayer` への選択モードの割込み、アクションバーの新設。概算で上流file 5〜8本、+600〜1,000行以上。選択モードは通常dragのtouch処理と同じsurfaceを共有するため、既存bridge（47 files）と同格では済まない規模の増加になる。
 - 安定性リスク: 最大。workspaceのtouch配送・drag開始判定・ページscrollは中核操作であり、ここへの割込みは通常利用のregression riskを直接持ち、実機での破壊・復旧テストの対象になる。
@@ -65,19 +66,19 @@ status: proposed
 
 **案B: fork側の視覚的な編集画面（Compose。現在のホームを図で表示し、選択・操作し、確定時にまとめて適用）**
 
-- ベンチマークB2〜B5: B2 = 画面を開く1 + 選択tap 5 + 「ページへ移動」1 + 対象ページ1 + 確定1 = 9。B3 = 1+4+1+1 = 7。B4 = 1+6+1 = 9。B5 = Undo 1操作。案Aと同等。
+- ベンチマークB2〜B5: 入口の操作を案Aと同じ確定手順に固定する: workspace空きスペース長押し（重み2）→ 長押しメニューに追加する「編集画面」項目tap（重み1）= 3（Decisionの入口方針のうちworkspace側。#441 §4の重み）。B2 = 入口3 + 選択tap 5 + 「ページへ移動」1 + 対象ページ1 + 確定1 = 11。B3 = 3+4+1+1 = 9。B4 = 3+6+1 = 10。B5 = Undo 1操作。案Aと同等（B2で1操作差、B3/B4は同値）。Organizer hub入口は同一決定における別導線であり、その開く手順のコスト会計は#449のspecで固定する。
 - 上流変更量: 最小。画面は `lawnchair/src/app/lawnchair/` 配下の新module（メモ§4.8 の仮称 `app.lawnchair.homeedit`）で完結し、入口（popup項目またはpreference）の追加だけ。上流fileへの変更は0〜1本。patch surfaceの増加は新規project-owned fileでcounted外（baselineの分類規則、`docs/assessment/upstream-patch-surface-baseline.md:49`）。
 - 安定性リスク: 最小。workspace/dragのtouch処理に触れない。
-- 再利用: capture済み `LayoutState`（座標・title・icon）はそのまま図previewの部品になる。確定時の適用はorganizerの安全な適用経路（recovery point付き）を再利用するため、メモ§4.3のとおりADR-0013の契約ではなく現行安全規約に従う。spec 194が除外した図previewを、編集画面とorganizer previewで共通の描画moduleとして実現できる（メモ§4.5 Nextの「共通化」）。
+- 再利用: capture済み `LayoutState`（座標・title・custom iconの有無。通常アプリの表示iconは `TargetKey` とprofileからの `IconCache` 解決で得る）を図previewの部品にできる。確定時の適用はorganizerの安全な適用経路（recovery point付き）を再利用するため、メモ§4.3のとおりADR-0013の契約ではなく現行安全規約に従う。spec 194が除外した図previewを、編集画面とorganizer previewで共通の描画moduleとして実現できる（メモ§4.5 Nextの「共通化」）。
 - コスト: 図グリッドのCompose UIを新規に作る実装量（概算fork側+2,000〜4,000行・テスト含む）。確定までの間、workspace上の実際の状態と画面がずれうる点（適用はまとめて1回）は、capture時点のsnapshot表示として明示すれば受容できる。
 
 **案C: 案Aを第2段、案BをNextとする（またはその逆）の段階的組合せ**
 
 重み付きコストが同等である以上、段階の価値は「先に安定性リスクの低い方を届けるか」で決まる。案Aを先にすると中核操作への割込みが先に発生し、案Bを先にすると上流変更を後回しにできるが、後から案Aを追加しても上流変更量は減らない。
 
-### ベンチマーク値の確定値との照合（2026-09-27起草時に追記）
+### ベンチマーク値の確定値との照合（2026-09-27起草時に追記。同日のreview指摘により入口手順を確定手順へ修正）
 
-上記のbaseline概算（B2≈40、B3≈26〜28、B4=24）は草案時点の手順に基づく近似である。#441（closed）が `docs/engineering/editing-burden-benchmark.md` として重み・baseline・目標を確定した（§4の重みは本ADRの仮の重みと同一。§6のbaselineは決定的算出の確定値で、drop後の視点移動のswipeを内訳に含むため B2=48、B3=21、B4=25、B5=削除1/移動8。目標は B2≤24、B3≤10、B4≤12、B5=1操作）。両案とも選択後のアクションがtapで完結するため、案A/案Bの「同等」という相対判断と4基準での順位はこの確定値によっても変わらない。合否の絶対判定は、#449の実装時に同書§6の会計（baseline確定値と目標）で行う。
+上記のbaseline概算（B2≈40、B3≈26〜28、B4=24）は草案時点の手順に基づく近似である。#441（closed）が `docs/engineering/editing-burden-benchmark.md` として重み・baseline・目標を確定した（§4の重みは本ADRの仮の重みと同一。§6のbaselineは決定的算出の確定値で、drop後の視点移動のswipeを内訳に含むため B2=48、B3=21、B4=25、B5=削除1/移動8。目標は B2≤24、B3≤10、B4≤12、B5=1操作）。案A・案Bの入口は、本ADRが引用する確定手順（workspace空きスペース長押し → メニュー項目tap。重み合計3）に固定して再計算済みであり、修正後の値（案A: 10/9/10、案B: 11/9/10）はいずれも§6のbaselineに対する50%以上の削減と確定目標（B2≤24、B3≤10、B4≤12）を満たす。両案の入口の操作種別は同一であり、選択後のアクションもtapで完結するため、案A/案Bの「同等」という相対判断と4基準での順位はこの確定値によっても変わらない。合否の絶対判定は、#449の実装時に同書§6の会計（baseline確定値と目標）で行う。
 
 ## Decision
 
@@ -112,6 +113,6 @@ status: proposed
 
 ## 未解決事項（保守者の判断が必要）
 
-- **重みの仮定** — 決着（2026-09-27起草時）: 本ADRのB2〜B5の概算は tap=1、長押し=2、同一ページdrag=2、ページ越drag=4+越えたページ数 の草案時点の仮の重みに基づく。正式な重み・baseline確定値・目標は#441（closed）が `docs/engineering/editing-burden-benchmark.md` §4/§6として確定し、重みは仮の重みと同一である。案A/案Bの「同等」という結論が重みの取り方に依存しないこと（両案とも選択後のアクションはtapで完結するため、drag重みをいくつにしても案A/Bの相対順位は変わらない）は確認済みであり、残っていた絶対値の目標判定も同書§6（B2≤24、B3≤10、B4≤12、B5=1操作）に定義された。残る判断は#449実装時の合否測定である。
+- **重みの仮定** — 決着（2026-09-27起草時。同日のreview指摘により表現を修正）: 本ADRのB2〜B5の概算は tap=1、長押し=2、同一ページdrag=2、ページ越drag=4+越えたページ数 の草案時点の仮の重みに基づく。正式な重み・baseline確定値・目標は#441（closed）が `docs/engineering/editing-burden-benchmark.md` §4/§6として確定し、重みは仮の重みと同一である。案A/案Bの「同等」という結論の根拠は、**この確定重みでの比較において両案の差がB2で1操作、B3/B4で同値であること**に限定して主張する（入口を確定手順の長押し+tapに固定して再計算済み。草案時点に置いていた「重みの取り方に依存しない」という一般の不変性の主張は、入口手順を実際より簡素に想定していたため撤回する）。絶対値の目標判定は同書§6（B2≤24、B3≤10、B4≤12、B5=1操作）に定義済みで、残る判断は#449実装時の合否測定である。
 - **案Bの「ずれ」の扱い（開き直すUIの詳細）**: 未解決。stale検出時に編集内容を破棄して最新のホームで開き直す第1版の挙動はDecisionで確定済み（メモ§4.3）。開き直すUIの詳細（理由表示の文言・配置、再captureのタイミング）はspec（#449）で決める。
 - **16-devのworkspace/state変更の具体量**: 未解決（#442の最終結論待ち）。本ADRでは定性的にのみ扱った。#442の暫定結論（research §6.1）はC-(2)を不成立（操作面の方式は16-dev解決済み領域に依存しない）と評価しているが、定量比較を出す場合、本ADRの基準2は更新されうる。
