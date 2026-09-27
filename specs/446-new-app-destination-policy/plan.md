@@ -15,6 +15,7 @@
 > Revision 9: 2026-09-27 — Phase 2 review round 3（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854732932)）の指摘1に対応。Revision 8注記のround 2 review permalinkが参照不能なcomment ID（5854627832）だったため、実際に参照可能なcomment 5854653373へ修正した。契約内容の変更なし。
 > Revision 10: 2026-09-27 — Phase 2 review round 4（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854813350)）の指摘1〜2に対応。指摘1: PR本文のReview recommendationへround 3のRequest changes判定とRevision 9対応済み状態を明記。指摘2: 本packetをRevision 9/round 3/current head/次の1手へ同期。
 > Revision 11: 2026-09-27 — Phase 2 review round 5（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854890057)）の指摘1〜3に対応。指摘1: PR本文のReview recommendationへround 4のRequest changes判定とRevision 10対応済み状態を明記。指摘2: 本packetにRevision 10履歴を追加し、round 4/current head/次の1手を同期。指摘3: PR本文のPlan revision・diff数値をcurrent head基準へ更新。
+> Revision 12: 2026-09-27 — Phase 2 review round 6（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854946338)）の指摘1〜3に対応。指摘1: PR本文のReview recommendationへround 5のRequest changes判定とRevision 11対応済み状態を明記。指摘2: 本packetにRevision 11履歴を追加し、round 5/current head/次の1手を同期。指摘3: PR本文のPlan revision・diff数値をRevision 11 head基準へ更新。
 
 ## Current evidence
 
@@ -153,11 +154,11 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 - Scope type: research/decision（成果物は文書。Issue labelはtype: featureだが、決定Issueであり実装は別Issue）
 - Accepted spec + commit: specs/446-new-app-destination-policy/spec.md（status: accepted。本PR内でaccepted化）
 - Bug oracle: N/A（research/decision。成果物は文書）
-- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 11）
+- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 12）
 - Base SHA: 824b468614c39c3f60353f09499f2588db4f4028（#445 merge後の現行main）
 - Head SHA: 本PRのcurrent head（PR本文に記録）
 - Phase 1 review: round 1〜5。round 5 Clear（https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854429674）
-- Phase 2 review: round 1〜5すべてRequest changes。round 3（permalink誤りとPR本文handoff未同期）はRevision 9、round 4（Review recommendation同期とplan handoffのrev 9同期）はRevision 10、round 5（review provenance同期の残り3点）はRevision 11で対応済み
+- Phase 2 review: round 1〜6すべてRequest changes。round 3はRevision 9、round 4はRevision 10、round 5はRevision 11、round 6（review provenance同期の残り3点。メタデータのみ）はRevision 12で対応済み
 - CI evidence: current headのCI / High-risk gateともにsuccess（PRのChecksで確認）
 - Executed evidence: 上記Verification参照
-- 次の1手: round 6 review結果を本packetとPR本文へ反映 → clear後に独立監査（別session）→ merge operator check → merge
+- 次の1手: round 7 review結果を本packetとPR本文へ反映 → clear後に独立監査（別session）→ merge operator check → merge
