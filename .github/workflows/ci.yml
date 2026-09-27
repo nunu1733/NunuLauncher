@@ -122,10 +122,16 @@ jobs:
               # maintaining a second per-class list that can drift.
               - 'src/com/android/launcher3/model/LayoutWriteCoordinator.java'
               - 'src/com/android/launcher3/model/ModelWriter.java'
+              - 'src/com/android/launcher3/model/DirectEditContract.java'
               - 'src/com/android/launcher3/model/ModelDbController.java'
               - 'lawnchair/src/app/lawnchair/organizer/application/**'
               - 'tests/organizer-instrumentation/com/android/launcher3/organizer/**'
               - 'tests/organizer-instrumentation/com/android/launcher3/OrganizerReloadCompletionOrderingTest.java'
+              # Issue #448: the production-seam direct-edit tests live in the
+              # com.android.launcher3 package (LauncherModel subclass needs
+              # its package-private constructor); keep them owned and
+              # self-triggering for the shared-writer lane.
+              - 'tests/organizer-instrumentation/com/android/launcher3/DirectEditModelWriterTest.java'
               - 'tests/organizer-instrumentation/com/android/launcher3/hybridhotseat/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/application/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/planning/**'
