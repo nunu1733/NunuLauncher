@@ -33,11 +33,20 @@
   - 計測tool: `tools/repo-contract/measure_upstream_patch_surface.py`
     （`--verify` / `--enforce-baseline` / `--refresh-pins`。self-test:
     `test_measure_upstream_patch_surface.py`）。
+    CLIデフォルト（同file 536-564行、確認済み）: `--upstream` 省略時はbaseline JSONの
+    `upstream_commit`、`--target` 省略時はbaseline JSONの `main_commit` を使う。
+    したがって **省略形はcandidate PRを測らず、accepted baselineを再計測するだけ** である。
+    `--enforce-baseline` は「counted patch file数・変更行数がaccepted baselineを
+    超えた場合にfail」（増加をreview signalとして扱う）。
   - 記録の正本: `docs/assessment/upstream-patch-surface-baseline.md`
     （Status: Accepted、Issue #110、NFR-010の計測記録）と同名の `.json`。
   - 運用規則（同文書）: patch surfaceはmaintenance-risk inventoryであり、
     増加はmandatory review signal。新しいbaselineの採用は同文書の手順に従い、
     owning Issue・bridge責務・代替案分析の記録を要求する。
+  - 階層Mのcandidate計測のoracle（本改訂で固定）:
+    `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`。
+    記録先は通常の階層M PRでは **PR本文**（またはPRに添付したassessment記録）であり、
+    baselineの `.md`/`.json` 更新は新しいbaselineを採用する場合だけである。
 - `CONTEXT.md`（257行、2026-09-27時点）: 附属草案§4の行番号（241行時点）からずれている。
   移動対象12語の現行位置は語彙名で特定する（organizer durable status 103–105、
   export-scoped ID 135–137、取り込み成功状態 159–161、取り込み破棄 163–165、
@@ -120,7 +129,7 @@
 |---|---|---|
 | docs/project/github-workflow.md | 「Work item types」節の直後に「Risk tiers（リスク階層）」節を追加（階層H/M/Lの定義、判定、優先順位（H条件はM/Lに常に優先、LはH条件に該当しない文書・テスト・refactorに限る）、格上げ・下げ、review往復2 roundと1 roundの定義、上流UI bridge時のpatch-surface oracle参照）。「Issue intake」の必要項目にrisk tierを1行追加。「Start gate and approval lifecycle」のfeatureに「階層Mは軽量specのacceptedで足りる。階層Hは現行どおりspec + plan.md」を追加。Lifecycle §4（Implementation plan）を階層別に改訂（plan.mdの作成は階層Hの要件。階層Mはaccepted軽量specのみで実装開始可）。冒頭 `> Updated:` に#444と日付を追記 | 階層定義と判定の正本（AC-1） |
 | AGENTS.md | 手順4を階層別に改訂（「spec承認後に `plan.md` を作り…」→ plan.md作成は階層Hの要件、階層Mはaccepted軽量specのみで実装開始可）。節末尾に階層参照の段落を追加（workflow文書のRisk tiersへのlink、階層H/M/Lの手順の要約、階層M specへのベンチマーク課題と目標の要求） | agent作業手順の正本（AC-2） |
-| specs/_template/spec-lite.md | 新設。階層M用軽量spec（frontmatterに `tier: M`、Problem、Benchmark、Outcome、Scope / Non-goals、Behavior scenarios（2〜4個。失敗時のzero-writeを1つ含む）、Verification、Accessibility and localization）。Verificationに (a) owner確認用スクリーンショット/録画は実機必須（emulatorは補助証跡として可）、(b) 上流UI bridge時は `python3 tools/repo-contract/measure_upstream_patch_surface.py` の計測結果の記録と `docs/assessment/upstream-patch-surface-baseline.md` の運用規則に従った差分の正当性提示、を含む。B1〜B7・NFR-014は `docs/engineering/editing-burden-benchmark.md` への相対link（`../../docs/...`） | 階層M手続の実体（AC-3） |
+| specs/_template/spec-lite.md | 新設。階層M用軽量spec（frontmatterに `tier: M`、Problem、Benchmark、Outcome、Scope / Non-goals、Behavior scenarios（2〜4個。失敗時のzero-writeを1つ含む）、Verification、Accessibility and localization）。Verificationに (a) owner確認用スクリーンショット/録画は実機必須（emulatorは補助証跡として可）、(b) 上流UI bridge時は `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` によるcandidate HEADの計測結果をPR本文へreport（baselineの `.md`/`.json` 更新は新baseline採用時だけ）、を含む。B1〜B7・NFR-014は `docs/engineering/editing-burden-benchmark.md` への相対link（`../../docs/...`） | 階層M手続の実体（AC-3） |
 | CONTEXT.md | 12語の定義本文を移動先正本へ統合し、当該見出しを1〜2行の参照（正本link、#444で移動の注記）へ置換。境界語3種は残置 | 語彙整理（AC-4） |
 | DESIGN.md | §4.2に「Durable status vocabulary」小節を新設し「organizer durable status」の定義を統合 | 移動先正本（AC-4） |
 | specs/328 / 373 / 375 / 204 / 205 / 331 / 417 の各spec.md | 該当用語の定義を統合（内容差がある場合は契約内容を保持して統合）し、Domain language前書きの正本表示を更新 | 移動先正本（AC-4） |
@@ -174,12 +183,16 @@ python3 tools/repo-contract/test_validate_repo_contract.py
   確認項目とoracleの定義）は本PRで達成。AC-7（実証: 最初の階層M適用）は本PRでは
   未達のまま残し、最終PRは `Refs #444` でmergeしてIssueをopenのまま引き渡す。
   本specのstatus遷移（`implemented`）はAC-7の実証後に行う。
-- **patch-surface oracle**（round 1 review Finding 5対応）: 計測は
-  `python3 tools/repo-contract/measure_upstream_patch_surface.py`、記録の正本は
-  `docs/assessment/upstream-patch-surface-baseline.md` / `.json`
-  （Accepted、#110、NFR-010）。増加はmandatory review signalであり、
-  baselineの採用は同文書の手順に従う。この参照をRisk tiers本文・
-  spec-lite Verification・AC-6の確認項目へ同一の内容で置く。
+- **patch-surface oracle**（round 1 review Finding 5対応、round 2で実行契約に修正）:
+  candidate計測のexact invocationは
+  `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`
+  （upstream基準を変える場合は `--upstream <commit>` も明示）。`--target`/`--upstream`
+  の省略形はbaseline記録値の再計測にすぎないためoracleとして使わない。
+  記録先は通常の階層M PRでは **PR本文**（またはPRに添付したassessment記録）。
+  `docs/assessment/upstream-patch-surface-baseline.md` / `.json` の更新は
+  新しいbaselineを採用する場合だけ（採用手順は同文書に従う）。
+  `--enforce-baseline` はcounted増加をreview signalとしてfailさせる。
+  この参照をRisk tiers本文・spec-lite Verification・AC-6の確認項目へ同一の内容で置く。
 - **1 roundの数え方**（附属草案の未解決事項）: 「1 roundは1回のreview recommendationと、
   それに対する対応の組。条件解除のためのevidence追加とその再確認は同じround内の対応と
   して数える」を提案として採用する（spec.mdのOpen questions参照。owner判断で変更可）。
@@ -197,3 +210,7 @@ python3 tools/repo-contract/test_validate_repo_contract.py
   Lifecycle §4・Start gate・AGENTS手順4の階層別改訂をChange setへ追加、
   判定の優先順位を明示、実機/emulator契約を統一、AC-6/AC-7へ分離と
   spec遷移時期の記載、patch-surface oracleの定義を追加。
+- 2026-09-27: Phase 1 review round 2（Changes requested）への対応として改訂。
+  patch-surface oracleを `--target HEAD --enforce-baseline` のexact invocation、
+  記録先（PR本文report / baseline更新は採用時だけ）の分離へ修正。CLIデフォルト
+  （省略形はbaseline再計測）をCurrent evidenceへ記録。

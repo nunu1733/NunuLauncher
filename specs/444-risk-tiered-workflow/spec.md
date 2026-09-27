@@ -80,10 +80,17 @@ accepted軽量specだけで実装を開始でき、実機確認でowner確認を
   bridge、高リスクpath一覧への該当）は、階層M/Lの判定より常に優先する。
   プロセスの手順語彙であり、ドメイン用語の正本である `CONTEXT.md` には登録しない。
 - **上流UI bridgeのpatch-surface oracle**: 階層Mで上流のUIだけに触れるbridgeを
-  含む変更は、同じPRで `python3 tools/repo-contract/measure_upstream_patch_surface.py`
-  による計測結果を記録し、`docs/assessment/upstream-patch-surface-baseline.md`
-  （Accepted、#110。NFR-010の計測記録）の運用規則に従って差分の正当性を示す。
-  増加はmandatory review signalであり、新しいbaselineの採用は同文書の手順に従う。
+  含む変更は、同じPRでcandidate HEADを対象とした計測
+  `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`
+  を実行し、その結果を **PR本文**（またはPRに添付したassessment記録）へreportする。
+  `--target` / `--upstream` を省略するとbaseline JSONの記録値
+  （`main_commit` / `upstream_commit`）を再計測するだけであるため、candidate計測には
+  `--target HEAD` が必須である。upstream基準を変える場合（upstream sync等）は
+  `--upstream <commit>` も明示する。`--enforce-baseline` は、counted patch file数・
+  変更行数がaccepted baselineを超えた場合に失敗する（増加はmandatory review signal）。
+  `docs/assessment/upstream-patch-surface-baseline.md`（Accepted、#110。NFR-010の
+  計測記録）と同名の `.json` の更新は、 **新しいbaselineを採用する場合だけ** とし、
+  採用手順は同文書に従う。通常の階層M PRではbaselineを更新しない。
 - 既存語彙の正本移動（12語）。移動先の現状はplan.mdのCurrent evidenceで確認済み:
 
 | 語彙 | 移動先（移動後の正本） | 移動先に既存の定義 |
@@ -199,10 +206,10 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
   Verification、Accessibility and localization）を持つ。Verificationには
   (a) owner確認用のスクリーンショット/録画は **実機で取得** し、emulatorは
   補助証跡としてのみ可であること、(b) 上流UI bridgeを含む場合は
-  `python3 tools/repo-contract/measure_upstream_patch_surface.py` の計測結果の記録と
-  `docs/assessment/upstream-patch-surface-baseline.md` の運用規則に従った差分の
-  正当性の提示、を含む。既存 `specs/_template/spec.md` / `plan.md` は変更されて
-  いない。（Issue完了条件2）
+  `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`
+  によるcandidate HEADの計測結果をPR本文へreportすること（baselineの
+  `.md`/`.json` 更新は新しいbaselineを採用する場合だけ）、を含む。
+  既存 `specs/_template/spec.md` / `plan.md` は変更されていない。（Issue完了条件2）
 - [ ] AC-4: `CONTEXT.md` から上記12語の定義本文が移動先正本へ移されている。
   `CONTEXT.md` 側には同一見出しの参照（正本へのlink）が残り、既存spec/Issueからの
   参照が切れない。境界語3種は残置され、その理由が本specに記録されている。
@@ -214,7 +221,9 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
   Markdown内部link検証、docs gateを壊していない）。（Issue完了条件5）
 - [ ] AC-6: 階層Mの初回適用の確認項目（軽量spec作成 → 実装PR本文に Risk tier: M
   を明示 → 実機のスクリーンショット/録画によるowner確認 → review往復≤2 round →
-  上流UI bridgeの場合はpatch-surface計測結果の記録）とpatch-surface oracleが
+  上流UI bridgeの場合は
+  `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`
+  の計測結果をPR本文へreport）とpatch-surface oracleが
   本specに定義されている。（Issue完了条件4の整備部分。本PRで達成）
 - [ ] AC-7: 最初の階層M変更が軽量手順で実証される（例:
   [Issue #452](https://github.com/nunu1733/NunuLauncher/issues/452)）。このACは
@@ -226,7 +235,7 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
 
 | AC | Evidence |
 |---|---|
-| AC-1 | diff review（節の存在と内容、Lifecycle §4の階層別改訂、既存2節の非変更、Updatedヘッダ）+ `plan.md`/`AGENTS.md` 全文の `plan.md` 言及が階層条件付きであることの確認 + AC-5のself-test |
+| AC-1 | diff review（節の存在と内容、Lifecycle §4の階層別改訂、既存2節の非変更、Updatedヘッダ）+ `docs/project/github-workflow.md`/`AGENTS.md` 全文の `plan.md` 言及が階層条件付きであることの確認 + AC-5のself-test |
 | AC-2 | diff review（手順4の階層別改訂、追記位置、他節の非変更）+ 無条件plan要件の残存確認 |
 | AC-3 | ファイル存在とdiff review（Verification内の実機必須/emulator補助の文言、patch-surface oracle参照、既存template2件の非変更） |
 | AC-4 | diff review（12語の移動、参照の残置、境界語3種の残置）+ `validate_repo_contract.py` の内部link検証 |
@@ -276,6 +285,16 @@ Phase 1 review（ChatGPT、round 1）で指摘された項目の解決記録で�
      `docs/assessment/upstream-patch-surface-baseline.md`（Accepted、#110、NFR-010）
      に固定し、Risk tiers本文・spec-lite Verification・AC-6へ同一参照を置く
      （Finding 5）。
+- **round 2 review（Changes requested、Finding 5残存・Finding 6新規）への対応**:
+  - Finding 5（Medium・残存）: 省略時の `measure_upstream_patch_surface.py` は
+    baseline JSONの記録値（`--target` 省略時 `main_commit`、`--upstream` 省略時
+    `upstream_commit`）を再計測するだけでcandidate PRを測らない、という指摘は
+    toolのCLI実装（`measure_upstream_patch_surface.py:536-564`）と一致する。
+    oracleを `--target HEAD --enforce-baseline` のexact invocationへ固定し、
+    記録先を「通常の階層M PRはPR本文へreport、baselineの `.md`/`.json` 更新は
+    新baseline採用時だけ」へ分離した（Domain language、AC-3、AC-6）。
+  - Finding 6（Low）: Test oracle AC-1行の `plan.md`/`AGENTS.md` は誤記で、
+    `docs/project/github-workflow.md`/`AGENTS.md` が正。修正した。
 - **Issue完了条件4の扱い**: 初回の階層M適用は本PRのmerge後の変更でのみ成立する
   （#443は既に現行手順でmerge済み — PR #467）。最終PRは `Refs #444` でmergeし
   Issueをopenのまま引き渡し、AC-7の実証時にIssue #444へ記録する。ownerが早期closeを
@@ -289,3 +308,7 @@ Phase 1 review（ChatGPT、round 1）で指摘された項目の解決記録で�
 - 2026-09-27: Phase 1 review round 1（Changes requested、5件）への対応として改訂。
   Lifecycle §4とAGENTS手順4の階層別改訂を追加、判定の優先順位を明示、
   実機/emulator契約を固定、AC-6/AC-7へ分離、patch-surface oracleを定義。
+- 2026-09-27: Phase 1 review round 2（Changes requested、Finding 5残存・Finding 6）へ
+  対応として改訂。patch-surface oracleを `--target HEAD --enforce-baseline` の
+  exact invocationと記録先の分離（PR本文report / baseline更新は採用時のみ）へ修正、
+  Test oracle AC-1行の誤記（`plan.md` → `docs/project/github-workflow.md`）を修正。
