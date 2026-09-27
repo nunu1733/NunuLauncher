@@ -35,7 +35,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 |---|---|
 | 目的、範囲、優先度、進捗、担当、依存関係 | GitHub Issue |
 | 観測可能な振る舞い、受入条件、非対象 | `spec.md` |
-| 実装順序、変更module、migration、検証方法 | 同じspecディレクトリの `plan.md` |
+| 実装順序、変更module、migration、検証方法（階層H。階層Mはaccepted軽量specが正本であり `plan.md` を持たない） | 同じspecディレクトリの `plan.md` |
 | 全体のmodule構造、interface、seam、システム不変条件 | `DESIGN.md` |
 | ドメイン用語 | `CONTEXT.md` |
 | 変更困難な設計判断と理由 | `docs/adr/` |
