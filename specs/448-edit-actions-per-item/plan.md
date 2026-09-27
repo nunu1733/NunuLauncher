@@ -4,6 +4,7 @@
 > Spec: [spec.md](./spec.md)
 > Status: draft
 > Risk tier: H — Issue #448（メモ§4.7）が本機能を階層Hへ割り当て済み。現行workflowの階層H条件「Launcher DBへの新しい書込み経路を作る」「上流のmodel/loaderへのbridgeを作るまたは変える」に当たる（`ModelWriter.java` への最小操作追加 + fork側homeedit moduleの新設）。手順は現行どおり: accepted spec + plan.md、Execution and approval contract、`risk: layout-data` labelによる高リスク独立エビデンス（`final-status` + `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit）。
+> Revision 2: 2026-09-27 — Phase 1 review（[#448 comment](https://github.com/nunu1733/NunuLauncher/issues/448#issuecomment-5856887871)）の指摘1〜4に対応。指摘1: 新規フォルダの置き先を「置き先ページ選択 → そのページの空きセルに1x1」へ一意化（Current evidence/Design/Alternatives/Undo evidenceを同期）。指摘2: 「外す」を即時1回DELETEへ変更し、上流 `prepareToUndoDelete` + snackbarの再利用をやめる（#450所有。Current evidence/Design/Alternatives/Verificationを同期）。指摘3: 現行main（d3b5aba550503c6023224e64452426d8a1b32353、PR #471でADR-0014収録）へmergeし、ADR-0014参照を `docs/adr/0014-edit-surface.md`（Proposed Revision 2）へ更新。指摘4: stage-1 snapshotの権威と実行threadをmodel executorへ固定し、data flow・module説明・test oracleを同期。
 > Phase 1（本書の初版）: spec + planの起草とreviewを追跡する。Phase 2（実装）は同じbranch/PRで行い、本planのRevisionで追跡する。
 
 ## Current evidence
@@ -13,7 +14,7 @@
 **popupとsystem shortcut（fork側拡張点）**
 
 - `lawnchair/src/app/lawnchair/LawnchairLauncher.kt:286-296` — `getSupportedShortcuts()` が `Stream.concat` でfork側shortcut（UNINSTALL / CUSTOMIZE / PAUSE_APPS / `OrganizerLockShortcut.PLACEMENT_LOCK`）を追加する。3アクションはここへ追加分を加えるだけで、上流ファイルの変更は不要。
-- `lawnchair/src/app/lawnchair/ui/popup/OrganizerLockShortcut.kt:39-50` — `SystemShortcut.Factory` としての対象絞り込み（`ITEM_TYPE_APPLICATION` / `ITEM_TYPE_DEEP_SHORTCUT`、`itemInfo.id == ItemInfo.NO_ID` でnull）と、`:128-145` の `AlertDialog` 確認dialog、`:70-75` のmodel thread（`Executors.THREAD_POOL_EXECUTOR`）→ mainHandler → Toastの非同期パターン。本Issueのdialog/非同期慣行の実例。
+- `lawnchair/src/app/lawnchair/ui/popup/OrganizerLockShortcut.kt:39-50` — `SystemShortcut.Factory` としての対象絞り込み（`ITEM_TYPE_APPLICATION` / `ITEM_TYPE_DEEP_SHORTCUT`、`itemInfo.id == ItemInfo.NO_ID` でnull）と、`:128-145` の `AlertDialog` 確認dialog、`:70-75` のバックグラウンド実行 → mainHandler → Toastの非同期パターン。本Issueのdialog/結果通知の慣行の実例（このTHREAD_POOL例はlock storeの読み取りであり、`BgDataModel` のsnapshot取得threadの根拠には使わない。後述のDesign節どおりmodel executorを使う）。
 - `src/com/android/launcher3/folder/Folder.java:380` — フォルダ内アイテムのlong-clickは `mLauncherDelegate.beginDragShared(v, this, options)`（popupではなくdrag）。フォルダ内アイテムにpopupが出ない構造の根拠。
 - `src/com/android/launcher3/popup/SystemShortcut.java:337` — `UNINSTALL_APP`（「外す」とは別物の根拠）。
 
@@ -23,7 +24,7 @@
 - `ModelWriter.java:252-267` — `modifyItemInDatabase`。同様にadmission前にprops + spanを変更（`:254-256`）。
 - `ModelWriter.java:290-314` — `addItemToDatabase`。admission前に `generateNewItemId()`（`:294`）とbindItems callback（`:295`）。この既存構造を直接編集は踏まない（ADR-0013契約4）。
 - `ModelWriter.java:335-352` — `deleteItemsFromDatabase`。notifyDelete（UI除去）→ 1行delete + `removeItem` + verifier。
-- `ModelWriter.java:400-442` — `prepareToUndoDelete` / `enqueueDeleteRunnable`（pending時は `mDeleteRunnables` へqueue） / `commitDelete` / `abortDelete`（無書込み + `forceReload`）。上流の削除Undoの機構。「ホームから外す」はこれを再利用する。
+- `ModelWriter.java:400-442` — `prepareToUndoDelete` / `enqueueDeleteRunnable`（pending時は `mDeleteRunnables` へqueue） / `commitDelete` / `abortDelete`（無書込み + `forceReload`）。上流の削除Undoの機構。**本Issueはこの機構を使わない**（ADR-0013契約5が「再利用してよい（詳細は#450のspecで決める）」と委ねるのみであり、snackbar・窓・Undo UIは#450が所有するため。popup経路ではdragのような即時view除去の別経路もないため、遅延commitを採ると削除が4秒遅れて見え、NFR-013とも矛盾する）。「外す」はadmission内の再検証後の即時1回DELETEとし、Undo evidenceの記録のみ行う。
 - `ModelWriter.java:459-476` — `UpdateItemRunnable.runImpl`。単一行の1回update（自ずと原子的）。`:478-503` — `UpdateItemsRunnable`。複数行のみ `SQLiteTransaction` だが失敗を握りつぶす（`:499-501`）。直接編集の複数行アクションはこの経路を使わず `newTransaction()` を自前で使う（ADR-0013契約3）。
 - `ModelWriter.java:505-555` — `UpdateItemBaseRunnable.updateItemArrays`。`checkItemInfoLocked` + workspaceItems整理 + `ModelVerifier`。直接編集のtaskもこれを再利用する。
 - `ModelWriter.java:557-582` — `ModelTask`。`run()` はloadId変化でskip、`executeOnModelThread()` が `LayoutWriteCoordinator.runOrDefer(MODEL_WRITER, token=0, exact=false, ...)` でgate。
@@ -33,7 +34,7 @@
 **フォルダ・移動先・フォルダ作成の上流実例**
 
 - `src/com/android/launcher3/model/data/FolderInfo.java:125-143` — `add(item, rank, animate)`。rank管理と `Folder.willAccept` 検証（model内list操作。DB書込みをしない）。
-- `src/com/android/launcher3/Workspace.java:2117-2175` — `createUserFolderIfNecessary`。drag経路のフォルダ作成は `Launcher.addFolder`（`src/com/android/launcher3/Launcher.java:2043-2061`）で `addItemToDatabase(folderInfo, ...)` → FolderIcon生成。popup経由では相手セルがないため、本Issueは対象セルに1x1フォルダを作る別の最小操作を追加する。
+- `src/com/android/launcher3/Workspace.java:2117-2175` — `createUserFolderIfNecessary`。drag経路のフォルダ作成は `Launcher.addFolder`（`src/com/android/launcher3/Launcher.java:2043-2061`）で `addItemToDatabase(folderInfo, ...)` → FolderIcon生成。popup経由では相手セルがないため、本Issueは「置き先ページの空きセルに1x1フォルダをINSERTし子をUPDATEする」別の最小操作を追加する（spec Outcomeどおり、新規フォルダ時は置き先ページを選ぶ）。
 - `src/com/android/launcher3/accessibility/LauncherAccessibilityDelegate.java:350-388` — `findSpaceOnWorkspace`。UI側の空きセル探索（`CellLayout.findCellForSpan`）+ 空ページ生成の実例（参考のみ。本Issueの探索は純粋計画関数で行い、新規ページは作らない）。
 - `LauncherAccessibilityDelegate.java:484-506` — `moveToWorkspace`。非dragの `moveItemInDatabase` 利用の実例（上流のまま変更しない）。
 
@@ -50,7 +51,8 @@
 
 - ADR-0013（`docs/adr/0013-direct-edit-write-contract.md`、accepted、#445 merge済み）— 書込み契約6項と要求テスト表の正本。本spec/planは重複定義しない。
 - ADR-0015（#446、accepted）— 同じ契約4の「admission内完結」構造とclosed resultパターンの受入先例。本planはこれを単一アイテムの移動/フォルダ/削除へ適用する。
-- ADR-0014（#447）は未受入。ADR-0014草案（`refocus-drafts/adr/0014-edit-surface.md`）は第1段popupを `SystemShortcut.Factory` に載せることで一致しており、上流変更の追加bridgeを要求しない。specのScope「ADR-0014との照合」のとおり、#447受入時に再照合する。
+- ADR-0014（`docs/adr/0014-edit-surface.md`、Proposed Revision 2、#447起草。2026-09-27にPR #471で現行mainへ収録済み）— 第1段popup（#448）は `SystemShortcut.Factory` に載り追加bridgeを要求しないこと、第2段（#449）はfork側視覚的編集画面で純粋計画を共有し確定時にorganizerの安全な適用経路を使うこと、を確認済み。本specのmodule分担と矛盾しない。受入（Accepted）は #442 の最終結論を前提とするため、受入時に再照合する。
+- 分担の確定（ADR-0013契約5・Issue #448 Non-goalsどおり）: UndoのUI・窓・寿命・逆操作は#450が所有する。本Issueは「外す」を即時の1回DELETE（admission内再検証後）とし、Undo evidenceの記録のみを行う。上流の `prepareToUndoDelete` 機構は使わない。
 
 ## Design
 
@@ -64,8 +66,9 @@ app.lawnchair.homeedit/                  （fork側。新設）
 │                                        #   失敗: Reject(typed理由)
 ├── HomeEditAdapter.kt                   # model/DeviceProfile → HomeEditSnapshot の投影
 │                                        #   + DirectEditContract のvalidator実装（Plannerへ委譲）
-├── HomeEditExecutor.kt                  # 確定UI flow: snapshot取得(model thread) → dialog
-│                                        #   → 計画 → ModelWriter直接編集操作のsubmit → 結果通知
+├── HomeEditExecutor.kt                  # 確定UI flow: 一覧取得(model executor) → dialog
+│                                        #   → 確定時snapshot+計画(model executor) → ModelWriter
+│                                        #   直接編集操作のsubmit → 結果通知
 ├── HomeEditUndoEvidence.kt              # Undo記録の情報型 + process内holder（#450が将来所有）
 └── ui/EditActionsShortcuts.kt           # 3つのSystemShortcut.Factory + page/folder選択dialog
                                          #   （dialogはAlertDialog慣行。OrganizerLockShortcut参照）
@@ -77,21 +80,23 @@ src/com/android/launcher3/model/         （platform側。bridgeの最小）
     ├── moveItemForDirectEdit(...)       #   admission内: 再検証 → ItemInfo変更 → 1回update
     ├── createFolderAndMoveForDirectEdit(...) # admission内: 再検証 → newTransaction()
     │                                    #   （INSERT folder + UPDATE item）→ model更新
-    └── removeItemForDirectEdit(...)     #   prepareToUndoDelete窓 + admission内: 再検証 → 1回delete
+    └── removeItemForDirectEdit(...)     #   admission内: 再検証 → 1回delete（即時。Undoは#450）
 ```
 
 - **seam**: 呼び出し側（popup）とtestは `HomeEditPlanner`（純粋計画）と `ModelWriter` の直接編集操作（書込み）の2つのseamを使う。`ModelWriter` の既存メソッド・既存task classの内部は検証しない。
 - **型の境界**: 純粋計画（`HomeEditPlanner`）はAndroid型・DB行型をinterfaceへ漏らさない（`HomeEditSnapshot` は投影）。platform↔forkの境界（`DirectEditContract`）は純JDK型のみで、`src` が `lawnchair` を参照しない構造を保つ。書込みのSQLは `ModelWriter.java`（既に高リスクpath一覧・writer inventory収録済み）に集約し、homeedit配下は `getModelDbController()` 等のDB書込みpatternを持たない。
 - **二段階検証の同一関数性**: stage 1（書込み依頼時）は `HomeEditAdapter` が作ったsnapshotに対して `HomeEditPlanner` を実行。stage 2（admission内）は `ModelWriter` がmodel threadで `BgDataModel`/screen順から `DirectEditContract` 経由でsnapshotを組ませ、**同一の** `HomeEditPlanner` 関数へ再実行させる（validatorを関数として渡す構造）。成功planの移動先がstage 1と異なる場合はstaleとして拒否する（無音の再計画はしない。#446のfallback（UpstreamDefault）は「上流が追加を決めたアイコン」の固有緩和であり、明示選択の編集アクションには当てはまらない）。
-- **「ホームから外す」の構造**: `prepareToUndoDelete()` を呼んでから直接編集delete操作をenqueueし、上流snackbar（4秒）を表示。timeout → `commitDelete()`（queueされた操作がadmission → 再検証 → 1回delete）、Undo tap → `abortDelete()`（無書込み + forceReload）。commit時の再検証失敗はabort相当（無書込み + reload再同期）+ typed記録。`mPreparingToUndo` 窓の排他は上流の単一責務のまま（popup操作はUI threadで直列）。
+- **stage-1 snapshotの権威と実行thread（1つに固定）**: 確定時点の編集snapshotは**model executor（`MODEL_EXECUTOR` 経由のmodel task）上で** `HomeEditAdapter` が組む。UI threadや `THREAD_POOL_EXECUTOR` から `BgDataModel` を一括読み取りしない（`BgDataModel` の読み取りはmodel threadの契約に従う。`OrganizerLockShortcut` のTHREAD_POOL例はlock storeの読み取りであり `BgDataModel` の根拠にはならない）。dialogへ出す一覧は表示時点の近似でよい（確定時に再検証するため楽観表示）。stage-1 snapshotの取得からadmissionの間に状態が変わった場合は、stage 2の再検証でstale拒否になる（test oracleで固定する）。
+- **「ホームから外す」の構造**: popup確定 → model executorでstage 1 → `ModelWriter.removeItemForDirectEdit` のsubmit → admission内で再検証 → 1回DELETE（即時）+ `removeItem`/verifier → callback。失敗・stale時は無変更でtyped理由を通知する。UndoのUI・窓・逆操作は#450が所有するため本Issueでは作らず、成功時にUndo evidence（削除前の配置）を記録するのみである。`prepareToUndoDelete` / `commitDelete` / `abortDelete` は本Issueでは使わない。
 - **NFR-013**: 確定（dialog positive）→ `closeAllOpenViews` → model threadでsnapshot取得・計画・submit。排他なし通常時は1回のupdate/INSERT+UPDATE/DELETEで即反映（bindは既存のmodel仕組み）。defer時はADR-0013契約4のとおりlease解放後の反映であり、spec AC-10のとおり追加の進捗表示は作らない。成功時は「ページへ移動」のみ移動先ページへsnapする（他は現在ページに表示変化が現れる）。
 
 ### Data flow（「ページへ移動…」の例）
 
 ```text
-popup tap → HomeEditExecutor: THREAD_POOL_EXECUTORでsnapshot取得（BgDataModel/DB読み取り）
-        → page一覧dialog表示（空き有無は表示時点の近似。確定時に再検証するため楽観表示でよい）
-→ ページ選択 → mainHandler: HomeEditPlanner(stage 1, intent=MoveToPage(n))
+popup tap → HomeEditExecutor: model executor（MODEL_EXECUTOR経由のmodel task）で
+             dialog用のpage/folder一覧を取得（BgDataModel/DB読み取り。表示時点の近似）
+        → 一覧dialog表示（楽観表示。確定時に再検証する）
+→ 選択確定 → model executorで確定時点のHomeEditSnapshotを取得 → HomeEditPlanner(stage 1, intent)
         → Reject: Toastに理由、終了（無書込み）
         → MoveToPage(plan): ModelWriter.moveItemForDirectEdit(plan, validator, callback)
              → executeOnModelThread（admission。deferされうる）
@@ -106,15 +111,16 @@ popup tap → HomeEditExecutor: THREAD_POOL_EXECUTORでsnapshot取得（BgDataMo
 - **既存 `moveItemInDatabase` / `addItemToDatabase` の再利用**: admission前に `ItemInfo` 変更・ID採番・bind callbackが発生し（上記根拠）、ADR-0013契約4違反。最小操作を同経路へ追加する（契約どおり）。
 - **fork側homeedit/writeからcoordinatorを直接呼びDBを書く構造**: `checkItemInfoLocked` / `ModelVerifier` / loadId guardを再実装することになり、ADR-0013 Alternatives「直接編集専用の新しいwriter」（Rejected）と同じ問題。書込みは `ModelWriter` に集約する。
 - **「新しいページ」候補**: accessibility経路の空ページ生成はUI先行（`addExtraEmptyScreens` → `commitExtraEmptyScreens` → 書込み）であり、admission内完結構造にそのまま載らない。B2は既存ページで達成可能なため第1段では非対象（spec Non-goals）。
-- **「外す」に確認dialogを足す**: 上流drag-removeと同じ保護水準（4秒snackbar Undo）を再利用する方が操作負担が小さく（ベンチマークB4=1個3操作の前提と一致）、確認dialogは再利用機構との二重確認になる。
-- **新規フォルダの作成を `Launcher.addFolder` で行う**: UI（FolderIcon）生成と結合し、UI thread前提。model threadのtransaction内で完結する最小操作として新設する（フォルダiconのbindは既存のmodel reload/bindに従う）。
+- **「外す」に確認dialogを足す**: Rejected（第1段では）。上流の削除Undo（4秒snackbar）を持つdrag-removeと違い、Undoが#450に先送りされているため保護水準の議論は残るが、ベンチマークB4=1個3操作の前提（メモ§4.1の確定会計）と明示的な2段ジェスチャ（長押し+tap）であること、アプリ自体はドロワーに残るため手動復元が可能であることから、確認dialogは足さない。この暫定リスクはspec Scopeに明記し、#450の統合Undoで解消する。
+- **「外す」に上流の遅延commit削除（`prepareToUndoDelete` + 4秒snackbar）を再利用する**: Rejected。snackbar・窓・逆操作UI・寿命は#450が所有する（ADR-0013契約5、Issue #448 Non-goals）ため、#448が窓の値とUIを確定するのは責務超過である。さらにpopup経路にはdrag側のような即時view除去の別経路がなく、遅延commitを採ると削除が窓の間見た目に反映されずNFR-013（即時性）とも矛盾する。よって「外す」はadmission内再検証後の即時1回DELETEとし、Undo evidenceの記録のみを行う。暫定期間の誤操作復元は手動であることをspecに明記した。
+- **新規フォルダの作成を `Launcher.addFolder` で行う**: UI（FolderIcon）生成と結合し、UI thread前提。model threadのtransaction内で完結する最小操作として新設する（フォルダiconのbindは既存のmodel reload/bindに従う）。置き先はspec Outcomeどおり「新しいフォルダ選択後の置き先ページ選択 → そのページの空きセル」であり、対象アイテムの現在セルでもhotseatでもない。
 
 ## Change set
 
 | Area | Intended change | Why here |
 |---|---|---|
 | `src/com/android/launcher3/model/DirectEditContract.java` | 新設（~120行。純JDK型のsnapshot/decision/result + 関数型interface） | platform↔fork境界の最小契約。`src` が `lawnchair` に依存できないためsrc側に置く |
-| `src/com/android/launcher3/model/ModelWriter.java` | 3つの直接編集操作を追加（既存メソッド・既存classの変更なし。既存の`ModelTask`/`updateItemArrays`/`newTransaction`/`prepareToUndoDelete`機構を再利用） | ADR-0013契約4「同経路に追加する最小の操作」。SQL書込みの一元化（高リスクpath・inventory済み） |
+| `src/com/android/launcher3/model/ModelWriter.java` | 3つの直接編集操作を追加（既存メソッド・既存classの変更なし。既存の`ModelTask`/`updateItemArrays`/`newTransaction`機構を再利用） | ADR-0013契約4「同経路に追加する最小の操作」。SQL書込みの一元化（高リスクpath・inventory済み） |
 | `lawnchair/src/app/lawnchair/homeedit/**` | 新設: snapshot/planner/adapter/executor/undo evidence（上記構成） | メモ§4.8のmodule配置。純粋計算と書込み起点の分離。#449がplannerを共有 |
 | `lawnchair/src/app/lawnchair/homeedit/ui/EditActionsShortcuts.kt` | 3つの `SystemShortcut.Factory` + dialog（fork側） | 既存拡張点。上流patch surfaceを増やさない |
 | `lawnchair/src/app/lawnchair/LawnchairLauncher.kt` | `getSupportedShortcuts()` へ3 Factoryを追加（2〜4行） | 既存のfork拡張点への追加分のみ |
@@ -138,7 +144,7 @@ popup tap → HomeEditExecutor: THREAD_POOL_EXECUTORでsnapshot取得（BgDataMo
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-5 (a)(b)(c)(d) | instrumentation: admission前無変更 / defer後stale / coordinator排他 / 1 transaction | `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...`（shared-writer lane。CI: `organizer-instrumentation-shared-writer-tests`） |
+| AC-5 (a)(b)(c)(d) | instrumentation: admission前無変更 / defer後stale（stage-1 snapshot取得後の状態変化もstage 2で検出することを含む）/ coordinator排他 / 1 transaction | `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...`（shared-writer lane。CI: `organizer-instrumentation-shared-writer-tests`） |
 | AC-2/3/4 振る舞い | instrumentation: 移動・フォルダ・削除の書込み結果と周辺行不変 | 同上 |
 | AC-6 | JVM planner test | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'`（CI: `organizer-unit-tests`） |
 | AC-7 process死 | instrumentation process-death smokeの慣行に従うtest | shared-writer laneに同梱 |
@@ -172,9 +178,9 @@ test-audit審査の要点（新規test・CI filter変更のため）: (1) 既存
 - Accepted spec + commit: Phase 1 reviewでacceptedへ進める（本PRのmergeが受入）
 - Bug oracle: N/A（feature。振る舞いoracleは本specのBehavior scenarios / AC）
 - Plan + revision: specs/448-edit-actions-per-item/plan.md（本書、初版）
-- Base SHA: 670527526490bfda5ec0862421ac3da790fafaa2（現行main。#470 merge後）
-- Head SHA: Phase 1 push後にPR/Issueへ記録
+- Base SHA: d3b5aba550503c6023224e64452426d8a1b32353（現行main。PR #471でADR-0014収録後。指摘3対応でbranchへmerge済み）
+- Head SHA: Phase 1 push後にPR/Issueへ記録（rev 2のheadはpush時に記録）
 - Diff: Phase 1 push後にcompare URLを記録
 - Diff boundary: Phase 1はdocs-only（spec.md + plan.md の2ファイル）。full diffを確認対象とする
 - Executed evidence: `python3 tools/repo-contract/validate_repo_contract.py` -> PASS予定; `git diff --stat` 目視
-- 次の1手: branch `issue-448-edit-actions-per-item` をpushし、ChatGPTへPhase 1 reviewを依頼（結果はIssue #448コメントへ投稿）→ clear後、Phase 2（実装）→ Phase 2 review → PR作成・独立監査・merge
+- 次の1手: Revision 2をpushし、ChatGPTへPhase 1再reviewを依頼（結果はIssue #448コメントへ投稿）→ clear後、Phase 2（実装）→ Phase 2 review → PR作成・独立監査・merge

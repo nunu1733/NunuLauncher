@@ -39,16 +39,16 @@ updated: 2026-09-27
 - **popupの3つのsystem shortcut**（既存の `SystemShortcut.Factory` 仕組み。手本は `OrganizerLockShortcut.PLACEMENT_LOCK`。追加はfork側拡張点 `LawnchairLauncher.getSupportedShortcuts()` への追加分のみで、上流ファイルの変更を想定しない。発生した場合はNFR-010の記録対象とする）:
   - **対象アイテムの絞り込み**: placement lockと同じ方針（`ITEM_TYPE_APPLICATION` / `ITEM_TYPE_DEEP_SHORTCUT` かつ `itemInfo.id != NO_ID`）。widget、フォルダ自身、app pairは対象外。フォルダ内アイテムは本codebaseではpopupが出ない構造である（`Folder` がlong-clickでdragを開始する。`src/com/android/launcher3/folder/Folder.java` の `beginDragShared`）ため、popup経由のアクションは自然にワークスペースとホットシート（非taskbar）上のアイテムに限られる。
   - **「ページへ移動…」**: 既存ページの一覧dialog（fork側。既存のAlertDialog慣行に従う。実例 `OrganizerLockShortcut` のconfirmDialog）。選ぶと、純粋計画関数がそのページ内の空きセルを決定的に探索して移動先を決め、即座に書き込む。移動成功後は移動先ページを表示する。候補は既存ページに限る（「新しいページ」はNon-goals）。
-  - **「フォルダへ入れる…」**: 既存フォルダ一覧（同じprofileのフォルダのみ）+「新しいフォルダ」のdialog。既存フォルダへの追加はrank末尾（`FolderInfo.add` のrank管理に対応）。新規フォルダは対象アイテムの現在のcontainer・現在のセルに1x1で作り、アイテムをrank 0で入れる（dragの `createUserFolderIfNecessary` が「相手アイテムのセル」を使うのに対し、popup経由では相手がいないため、空く対象セルをそのまま使う）。フォルダ行のINSERT + 子の移動のUPDATEを1つの明示的transactionに包む（ADR-0013契約3）。
-  - **「ホームから外す」**: 上流の削除と同じ遅延commit構造（`prepareToUndoDelete` / `commitDelete` / `abortDelete`）を再利用し、上流のRemoveと同じ4秒snackbarのUndoを表示する（#450のUndo統合前の暫定保護であり、誤操作の保護水準を上流drag-removeと揃える。窓の変更・統合Undoは#450のscope）。行のDELETEはcommit時にadmission内で再検証を通過した後の1回の原子的書込みである。アンインストール・フォルダ中身の暗黙削除をしない（ADR-0013契約6）。空フォルダの残置は [spec 24](../24-empty-folder-policy/spec.md) の方針（preserve default）に従う。
+  - **「フォルダへ入れる…」**: 既存フォルダ一覧（同じprofileのフォルダのみ）+「新しいフォルダ」のdialog。既存フォルダへの追加はrank末尾（`FolderInfo.add` のrank管理に対応）。「新しいフォルダ」を選んだ場合は置き先ページを続けて選び、フォルダはそのページの空きセルに1x1で作られる（sourceがhotseat上のアイテムの場合も、新規フォルダはワークスペースページ上に作る。hotseat上への新規フォルダ作成は第1段では行わない）。フォルダ行のINSERT + 子の移動のUPDATEを1つの明示的transactionに包む（ADR-0013契約3）。
+  - **「ホームから外す」**: 選択確定後、admission内の再検証を通過した場合に限り、対象行を1回のDELETEで即時に削除する（失敗時は無変更でtypedな理由を表示）。UndoのUI・窓・寿命・逆操作の実装は#450が所有するため本Issueでは提供しない（メモ§11 B-2/B-3。ADR-0013契約5は「上流の削除Undoの仕組みを再利用してよい（詳細は#450のspecで決める）」と委ねるのみであり、本specはsnackbarや窓の値を確定しない）。#450までの暫定期間、誤って外したアイテムの復元は手動（アプリドロワーからの再追加）である。アンインストール・フォルダ中身の暗黙削除をしない（ADR-0013契約6）。空フォルダの残置は [spec 24](../24-empty-folder-policy/spec.md) の方針（preserve default）に従う。
 - **ロックの扱い**: 直接編集はロックを妨げない（メモ§4.2、ADR-0013 Decision「ロック（既定案の確定）」）。ロック済みアイテムへの操作時は、dialog内にその旨を示す1行を表示する（「外す」の場合はロックも削除される旨）。表示にはADR-0004の `LockEffectNote` の説明機構（`EffectiveLocks.kt`）の既存のtyped note/localized mappingの慣行に従う。ロック列 `organizerLockState` は移動で不変、削除で行とともに消える。書込みがロック列を書くことはない。
-- **ADR-0014との照合**: 第1段のpopup操作面は #447（ADR-0014）の決定に依存しない。本specのmodule分担（純粋計画の共有 + 2書込み経路の分離、popup経路のbridge最小化）は、ADR-0014草案（refocus-drafts、#447で起草中）の要件（第1段popup / 第2段視覚的編集画面、第2段の適用はorganizerの安全な適用経路）と矛盾しない。#447のADR受入時に矛盾が判明した場合はspecを更新する。
+- **ADR-0014との照合**: 第1段のpopup操作面は #447（ADR-0014、`docs/adr/0014-edit-surface.md`、Proposed Revision 2）の決定に依存しない。本specのmodule分担（純粋計画の共有 + 2書込み経路の分離、popup経路のbridge最小化）は、ADR-0014の要件（第1段popupは `SystemShortcut.Factory` に載り追加bridgeを要求しない / 第2段はfork側視覚的編集画面で確定時にorganizerの安全な適用経路を使う）と矛盾しない。#447のADR受入時に矛盾が判明した場合はspecを更新する。
 
 ## Non-goals
 
 - 複数選択・一括適用（#449の視覚的編集画面）。
 - 編集アクションの振る舞いの再実装（#449は本moduleの計算を共有する）。
-- Undoの実装・窓・寿命・UIの定義（#450が所有する。本Issueは上流の削除snackbar再利用とUndo記録の情報要件のみ）。
+- Undoの実装・窓・寿命・UIの定義（#450が所有する。本Issueは実行時のUndo記録の情報要件のみ）。上流の削除snackbar機構（`prepareToUndoDelete` 等）の本Issueでの再利用も行わない（遅延commitは即時性NFR-013と矛盾するため）。
 - 上流のdragによる手動移動の取り消し（Next。メモ§4.5）。
 - 新規アプリの配置先（#446 / ADR-0015）。
 - 移動先のきめ細かい指定（セル座標の直接指定、Dockへの移動、widgetの移動）と「新しいページ」の作成。空きセルへの自動配置に限る。根拠: (1) 上流accessibility経路の空ページ生成（`addExtraEmptyScreens` / `commitExtraEmptyScreens`）はUI先行の構造であり、ADR-0013契約4のadmission内完結構造にそのまま載らない、(2) B2の計測課題（ページ0 → 既存ページ3）は既存ページで達成可能、(3) 既存ページの空きがない場合のtyped拒否と理由表示で利用者は次の手を知れる。「新しいページ」の追加は後続Issue（#449またはメモNext）へ分離する。
@@ -90,20 +90,20 @@ And Aの元のセル（ページ0）は空く
 
 ### Scenario: 「フォルダへ入れる…」で新しいフォルダを作る
 
-Given ページ0のセル(x,y)にアプリAが置かれている
+Given ページ0にアプリAが置かれている
 When 利用者がAを長押しし「フォルダへ入れる…」→「新しいフォルダ」→ 置き先ページを選ぶ
 Then 1つのtransaction内で、フォルダ行が1行INSERTされ、Aの行がそのフォルダのcontainerへUPDATEされる
 And フォルダは置き先ページの空きセルに1x1で置かれ、Aはrank 0でその中に入る
+And Aがhotseat上のアイテムの場合も、フォルダは選んだワークスペースページ上に作られる
 And transaction内の失敗ではフォルダ行もAの行も変化しない
 
 ### Scenario: 「ホームから外す」
 
 Given ページ0にアプリAが置かれ（アンインストール対象ではない）
 When 利用者がAを長押しし「ホームから外す」を選ぶ
-Then Aのアイコンはワークスペースから消え、上流の削除と同じ4秒snackbarが現れる
-And snackbarがtimeoutするとAのfavorites行が1回のdeleteで消える（アンインストールはしない）
-And snackbar内のUndoを選ぶとAの行は消えない（上流の `abortDelete` と同じ無書込みでの取り消し）
+Then Aのアイコンはワークスペースから消え、Aのfavorites行が1回のdeleteで消える（アンインストールはしない）
 And Aがアプリ・ショートカットである限り、ランチャー内の他の配置（他フォルダの中身等）は一切変化しない
+And 本IssueではUndoのUI・窓は提供されない（#450が所有）。実行時にはUndoに必要な情報が記録される
 
 ### Scenario: 書込み前の検証失敗で書かない
 
@@ -163,8 +163,8 @@ And 「ホームから外す」の場合、dialogの表示にロックも削除�
 
 - [ ] AC-1: 長押しpopupに3つのアクションが、対象絞り込み条件（`ITEM_TYPE_APPLICATION` / `ITEM_TYPE_DEEP_SHORTCUT`、`id != NO_ID`）どおりに表示される。対象外（widget、フォルダ、app pair、未保存アイテム）には表示されない。エミュレータのスクリーンショットで構造を確認し、実機での表示・操作をownerが確認する。
 - [ ] AC-2: 「ページへ移動…」が既存ページへの空きセル自動配置で動作し、空きがない場合・対象が消えた場合等は無変更でtypedな拒否理由を表示する。移動は1回のupdateである。
-- [ ] AC-3: 「フォルダへ入れる…」が既存フォルダ（rank末尾、同profile検証）と新規フォルダ（対象セルに1x1、INSERT+UPDATEを1 transaction）で動作する。transaction途中失敗で全rollbackし、model/DBが一致する。
-- [ ] AC-4: 「ホームから外す」が上流と同じ遅延commit削除（4秒snackbar、Undo選択で無書込み取り消し、timeoutで1回のDELETE）で動作し、アンインストール・他アイテム（フォルダ中身を含む）の暗黙削除をしない。
+- [ ] AC-3: 「フォルダへ入れる…」が既存フォルダ（rank末尾、同profile検証）と新規フォルダ（置き先ページ選択後、そのページの空きセルに1x1。INSERT+UPDATEを1 transaction）で動作する。transaction途中失敗で全rollbackし、model/DBが一致する。sourceがhotseat上の場合も新規フォルダはワークスペースページ上に作られる。
+- [ ] AC-4: 「ホームから外す」が対象行の1回のDELETEで動作し、アンインストール・他アイテム（フォルダ中身を含む）の暗黙削除をしない。UndoのUI・窓・寿命は本Issueの受入条件に含めない（#450が所有）。
 - [ ] AC-5: すべての書込みがADR-0013契約に従う。(a) admission成立より前にmodel/DB・`ItemInfo`の変更・ID採番・bind callbackが発生しない、(b) 純粋計画関数による書込み前検証とadmission後の再検証の二段階があり、どちらも満たさなければ書かない、(c) `LayoutWriteCoordinator` のMODEL_WRITER admissionを経由し、ORGANIZER lease中はdefer、lease解放後に再検証→書込みが完結する、(d) 1アクション = 1 DB transaction（複数行は `newTransaction()`、失敗時rollback、握りつぶしなし）。
 - [ ] AC-6: 純粋計画関数がinterface経由でテストされている（fixture、境界値、typed拒否理由、決定性、冪等性。AGENTS.mdテスト規約）。テストは既存の `organizer-unit-tests` gateで実行される。
 - [ ] AC-7: ADR-0013要求テスト表のうち本Issueの行（途中失敗の注入、transaction rollback、admission後の再検証、organizer runとの排他、process死、破壊・復旧の組合せ）が成功する。Undo fail-closed行は#450の実装PRで満たす。
@@ -182,7 +182,7 @@ And 「ホームから外す」の場合、dialogの表示にロックも削除�
 | AC-1 | エミュレータスクリーンショット（popup表示・対象外非表示）+ owner実機確認。popup構築のJVM test（絞り込み述語） |
 | AC-2 | homeedit純粋計画のJVM test（空きセル探索・境界・拒否理由）+ instrumentation書込みtest（1回updateの検証）+ エミュレータ操作記録 |
 | AC-3 | 同上 + instrumentation failure注入test（2行目失敗でrollback、model/DB一致） |
-| AC-4 | instrumentation test（遅延commit、abort無書込み、commit DELETE、周辺行不変）+ エミュレータ操作記録 |
+| AC-4 | instrumentation test（即時1回DELETE、周辺行不変、アンインストールなし）+ エミュレータ操作記録 |
 | AC-5 | instrumentation（shared-writer lane）: defer後stale検証（ADR-0013要求テスト表のとおり）、admission前無変更、coordinator排他。homeedit JVM test（二段階検証の同一関数性） |
 | AC-6 | `tests/unit/app/lawnchair/homeedit/` のJVM test群。`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'` |
 | AC-7 | instrumentation: `ModelWriterTransactionReentryTest` 等と同じshared-writer laneへ追加したtest class群。process死は既存のprocess-death smokeの慣行に従う |
@@ -195,8 +195,9 @@ And 「ホームから外す」の場合、dialogの表示にロックも削除�
 
 ## Open questions
 
-- なし（承認時点で解決済み）。移動先セルの決め方（空きセル自動配置・決定的探索、同位置になる計画は拒否）、フォルダ内アイテムの対象外（popup構造上出ない）、新規フォルダの置き先（対象アイテムの現在container・現在セル）、「新しいページ」の非対象、widget/フォルダ自身/app pairの非対象、外すの確認なし+上流snackbar再利用、は本specで決定した。
+- なし（承認時点で解決済み）。移動先セルの決め方（空きセル自動配置・決定的探索、同位置になる計画は拒否）、フォルダ内アイテムの対象外（popup構造上出ない）、新規フォルダの置き先（「新しいフォルダ」選択後の置き先ページ選択 → そのページの空きセルに1x1。hotseat上のアイテムからもワークスペースページ上に作る）、「新しいページ」の非対象、widget/フォルダ自身/app pairの非対象、「外す」は即時の1回DELETE（Undo UI・窓は#450が所有であり本Issueでは確定しない）、は本specで決定した。
 
 ## Change history
 
 - 2026-09-27: Draft created for #448（Phase 1）。出典: Issue #448本文 + 承認済み再焦点化方針メモ（Revision 5）§4.2/§4.3/§4.8/§4.9、ADR-0013（#445受入）、ベンチマーク正本（#441確定）、ADR-0015（#446受入）のbridge書込み構造先例。
+- 2026-09-27: Revision 2 — Phase 1 review（[#448 comment](https://github.com/nunu1733/NunuLauncher/issues/448#issuecomment-5856887871)）の指摘1〜4に対応。指摘1: 新規フォルダの置き先を「置き先ページ選択 → そのページの空きセルに1x1」に一意化し（Issue Outcomeどおり）、hotseat上のsourceではワークスペースページ上に作ることを明記（Scope/Scenario/AC-3/Open questions）。指摘2: 「外す」を即時の1回DELETEへ戻し、上流snackbar・窓・Undo UIの#448への取り込みをやめて#450へ委ねる（Scope/Scenario/AC-4）。指摘3: ADR-0014の参照を現行mainの正本 `docs/adr/0014-edit-surface.md`（Proposed Revision 2）へ更新し、branchをcurrent mainへmerge。指摘4: stage-1 snapshotの取得threadをmodel executorへ固定（plan側で対応）。
