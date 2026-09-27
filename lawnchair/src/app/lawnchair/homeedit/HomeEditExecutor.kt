@@ -17,7 +17,9 @@ import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.R
 import com.android.launcher3.Workspace
 import com.android.launcher3.model.DirectEditContract
+import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.util.Executors
+import java.util.Collections
 
 class HomeEditExecutor(private val launcher: LawnchairLauncher) {
 
@@ -69,12 +71,27 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
         }
         // Mirror BgDataModel.collectWorkspaceScreens: the first screen leads
         // whenever the QSB reservation applies or no row carries a page yet.
-        if ((
-                com.android.launcher3.config.FeatureFlags.topQsbOnFirstScreenEnabled(launcher) ||
-                    screens.isEmpty()
-                ) && Workspace.FIRST_SCREEN_ID !in screens
-        ) {
+        val qsbEnabled = com.android.launcher3.config.FeatureFlags.topQsbOnFirstScreenEnabled(launcher)
+        if ((qsbEnabled || screens.isEmpty()) && Workspace.FIRST_SCREEN_ID !in screens) {
             screens.add(0, Workspace.FIRST_SCREEN_ID)
+        }
+        // The QSB reservation occupies the head of the first screen; the
+        // stage-2 projection (ModelWriter) applies the identical rule.
+        if (qsbEnabled) {
+            items.add(
+                HomeEditItem(
+                    id = -1,
+                    container = HomeEditContainers.DESKTOP,
+                    screenId = Workspace.FIRST_SCREEN_ID,
+                    cellX = 0,
+                    cellY = 0,
+                    spanX = LauncherAppState.getIDP(launcher).numSearchContainerColumns,
+                    spanY = 1,
+                    itemType = HomeEditItemTypes.APPLICATION,
+                    rank = 0,
+                    userSerial = 0,
+                ),
+            )
         }
         return HomeEditSnapshot(
             columnCount = LauncherAppState.getIDP(launcher).numColumns,
@@ -148,8 +165,10 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                     intent, plan, oldContainer, oldScreenId, oldCellX, oldCellY,
                     oldSpanX, oldSpanY, oldRank, createdFolderId,
                 )
-                if (plan is HomeEditPlan.Move && plan.container == Favorites.CONTAINER_DESKTOP) {
-                    mainHandler.post { showDestinationPage(plan.screenId) }
+                when (plan) {
+                    is HomeEditPlan.Move -> mainHandler.post { refreshAfterMove(id, plan) }
+                    is HomeEditPlan.RemoveItem -> mainHandler.post { refreshAfterRemove(id) }
+                    is HomeEditPlan.CreateFolder -> Unit
                 }
             }
         val writer = launcher.modelWriter
@@ -175,6 +194,38 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
             )
 
             is HomeEditPlan.RemoveItem -> writer.removeItemForDirectEdit(itemId, validator, callback)
+        }
+    }
+
+    /**
+     * UI refresh after an admitted move (accessibility-path precedent:
+     * LauncherAccessibilityDelegate binds the item after the model write).
+     * `bindItemsModified` carries no view update, so the stale view is
+     * removed and, for desktop destinations, re-bound at the new placement.
+     */
+    private fun refreshAfterMove(itemId: Int, plan: HomeEditPlan.Move) {
+        val view = launcher.workspace?.getHomescreenIconByItemId(itemId)
+        val info = view?.tag as? ItemInfo
+        // The workspace matcher can observe unbound views whose tag is not
+        // bound yet; guard before reading the id.
+        launcher.bindWorkspaceComponentsRemoved { candidate ->
+            candidate != null && candidate.id == itemId
+        }
+        if (plan.container == Favorites.CONTAINER_DESKTOP && info != null) {
+            launcher.bindItems(Collections.singletonList(info), true)
+            showDestinationPage(plan.screenId)
+        }
+    }
+
+    /**
+     * UI refresh after an admitted remove. ModelWriter's
+     * `notifyOtherCallbacks` intentionally skips the owning launcher (the
+     * upstream delete flow removes the view in the drag layer), so the popup
+     * path removes the view here.
+     */
+    private fun refreshAfterRemove(itemId: Int) {
+        launcher.bindWorkspaceComponentsRemoved { candidate ->
+            candidate != null && candidate.id == itemId
         }
     }
 

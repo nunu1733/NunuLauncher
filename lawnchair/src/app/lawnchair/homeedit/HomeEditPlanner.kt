@@ -35,7 +35,11 @@ object HomeEditPlanner {
         }
         val cell = firstFreeCell(snapshot, intent.targetScreenId, target)
             ?: return HomeEditPlan.Rejected(HomeEditRejection.NO_SPACE)
-        if (cell.x == target.cellX && cell.y == target.cellY) {
+        val redundant = target.container == HomeEditContainers.DESKTOP &&
+            target.screenId == intent.targetScreenId &&
+            cell.x == target.cellX &&
+            cell.y == target.cellY
+        if (redundant) {
             return HomeEditPlan.Rejected(HomeEditRejection.REDUNDANT)
         }
         return HomeEditPlan.Move(

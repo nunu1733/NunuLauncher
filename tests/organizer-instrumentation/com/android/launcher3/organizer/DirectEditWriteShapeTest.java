@@ -122,10 +122,12 @@ public class DirectEditWriteShapeTest {
     }
 
     /**
-     * Contract 2 + 4 ordering: the stage-2 validator runs only inside
-     * MODEL_WRITER admission — after an organizer lease releases — and a
-     * rejection performs no write. This pins the shape every direct-edit task
-     * in ModelWriter implements (validate as the first admitted statement).
+     * Contract 2 + 4 ordering: while an organizer lease is held the
+     * direct-edit task is deferred (it neither validates nor writes); after
+     * the lease releases, stage-2 validation runs first inside admission and
+     * a rejection performs no write. This pins the shape every direct-edit
+     * task in ModelWriter implements (validate as the first admitted
+     * statement, before any model/DB change).
      */
     @Test
     public void stage2ValidationRunsInsideAdmissionAndRejectsWithoutWrite() throws Exception {
@@ -133,41 +135,51 @@ public class DirectEditWriteShapeTest {
         final int itemId = 44003;
         insertAppRow(db, itemId);
 
-        try (LayoutWriteCoordinator.Lease organizerLease =
-                     mCoordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER)) {
-            assertNotNull(organizerLease);
+        AtomicBoolean validatorRan = new AtomicBoolean(false);
+        AtomicBoolean leaseFreeDuringValidation = new AtomicBoolean(false);
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<LayoutWriteCoordinator.Lease> organizerLease =
+                new AtomicReference<>(mCoordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER));
+        assertNotNull("organizer lease must be acquirable", organizerLease.get());
 
-            AtomicBoolean validatorRan = new AtomicBoolean(false);
-            AtomicBoolean wroteWhileLeaseHeld = new AtomicBoolean(false);
-            CountDownLatch done = new CountDownLatch(1);
+        DirectEditContract.Validator rejector = current -> {
+            validatorRan.set(true);
+            // Deferred tokenless work drains after the holder released; a
+            // MODEL_WRITER lease being acquirable here proves the organizer
+            // lease was gone before stage-2 validation ran.
+            LayoutWriteCoordinator.Lease probe =
+                    mCoordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
+            leaseFreeDuringValidation.set(probe != null);
+            if (probe != null) {
+                probe.close();
+            }
+            return DirectEditContract.Decision.reject(DirectEditContract.FAIL_STALE);
+        };
 
-            DirectEditContract.Validator rejector = current -> {
-                validatorRan.set(true);
-                // Inside admission the tokenless MODEL_WRITER lane cannot enter.
-                if (mCoordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER) != null) {
-                    wroteWhileLeaseHeld.set(true);
-                }
-                return DirectEditContract.Decision.reject(DirectEditContract.FAIL_STALE);
-            };
+        mCoordinator.runOrDefer(
+                LayoutWriteCoordinator.OwnerKind.MODEL_WRITER, 0L, false, () -> {
+                    // DirectEditTask shape: validate first, write only on proceed.
+                    DirectEditContract.Decision decision = rejector.validate(null);
+                    if (decision.proceed) {
+                        mController.update(Favorites.TABLE_NAME, rankValues(1),
+                                Favorites._ID + "=" + itemId, null);
+                    }
+                    done.countDown();
+                });
 
-            mCoordinator.runOrDefer(
-                    LayoutWriteCoordinator.OwnerKind.MODEL_WRITER, 0L, false, () -> {
-                        // DirectEditTask shape: validate first, write only on proceed.
-                        DirectEditContract.Decision decision = rejector.validate(null);
-                        if (decision.proceed) {
-                            mController.update(Favorites.TABLE_NAME, rankValues(1),
-                                    Favorites._ID + "=" + itemId, null);
-                        }
-                        done.countDown();
-                    });
+        // While the organizer lease is held the task stays deferred.
+        assertFalse("validator must not run while the organizer lease is held",
+                done.await(300, TimeUnit.MILLISECONDS));
+        assertFalse("stage-2 validation must stay deferred", validatorRan.get());
 
-            assertTrue("task did not finish while the organizer lease was held",
-                    done.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
-            assertTrue("stage-2 validation must run (deferred until lease release)",
-                    validatorRan.get());
-            assertFalse("a rejected direct edit must not write", wroteWhileLeaseHeld.get());
-        }
-
+        // Lease release resolves the FIFO; the task validates then rejects.
+        organizerLease.get().close();
+        organizerLease.set(null);
+        assertTrue("task did not finish after the organizer lease released",
+                done.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+        assertTrue("stage-2 validation must run inside admission", validatorRan.get());
+        assertTrue("validation must run only after the organizer lease released",
+                leaseFreeDuringValidation.get());
         assertEquals("rejected write must leave the row unchanged",
                 0, queryInt(db, itemId, Favorites.RANK));
     }

@@ -5,6 +5,7 @@
 > Status: draft
 > Risk tier: H — Issue #448（メモ§4.7）が本機能を階層Hへ割り当て済み。現行workflowの階層H条件「Launcher DBへの新しい書込み経路を作る」「上流のmodel/loaderへのbridgeを作るまたは変える」に当たる（`ModelWriter.java` への最小操作追加 + fork側homeedit moduleの新設）。手順は現行どおり: accepted spec + plan.md、Execution and approval contract、`risk: layout-data` labelによる高リスク独立エビデンス（`final-status` + `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit）。
 > Revision 2: 2026-09-27 — Phase 1 review（[#448 comment](https://github.com/nunu1733/NunuLauncher/issues/448#issuecomment-5856887871)）の指摘1〜4に対応。指摘1: 新規フォルダの置き先を「置き先ページ選択 → そのページの空きセルに1x1」へ一意化（Current evidence/Design/Alternatives/Undo evidenceを同期）。指摘2: 「外す」を即時1回DELETEへ変更し、上流 `prepareToUndoDelete` + snackbarの再利用をやめる（#450所有。Current evidence/Design/Alternatives/Verificationを同期）。指摘3: 現行main（d3b5aba550503c6023224e64452426d8a1b32353、PR #471でADR-0014収録）へmergeし、ADR-0014参照を `docs/adr/0014-edit-surface.md`（Proposed Revision 2）へ更新。指摘4: stage-1 snapshotの権威と実行threadをmodel executorへ固定し、data flow・module説明・test oracleを同期。
+> Revision 4: 2026-09-27 — Phase 2実施。実装とテストの記録は「Phase 2 record」節へ追記した。実装中に確定した実装詳細（UI反映はaccessibility precedentのview除去+bindItems、REDUNDANT判定はscreen一致を含む、QSB予約領域を両投影に合成行として追加、add-to-folderのtargetRank引数、folder子行のscreen=0/cell=-1は上流のorganizer batch正規化に合わせる）はspecの観測可能な振る舞いを変えない範囲でplan側に記録。
 > Revision 3: 2026-09-27 — Phase 1 再review round 2（[#448 comment](https://github.com/nunu1733/NunuLauncher/issues/448#issuecomment-5856991631)）の指摘1〜4に対応。指摘1: `CreateFolderAndAdd` intentの置き先page/screenをplanner入力契約へ明記（module説明/Design）。指摘2: Verification表をB2/B3/B4の第1段単独記録へ拡張（新規フォルダ経路の会計を含む）。指摘3: AC-14（アクセシビリティevidence）の割付を追加。指摘4: handoff packetのrevision/head/diffを現状へ同期。
 > Phase 1（本書の初版）: spec + planの起草とreviewを追跡する。Phase 2（実装）は同じbranch/PRで行い、本planのRevisionで追跡する。
 
@@ -166,6 +167,38 @@ test-audit審査の要点（新規test・CI filter変更のため）: (1) 既存
 - [ ] ADR（本PRでは新設しない。ADR-0013/0014/0015を参照するのみ）
 - [ ] AGENTS.md（変更なし。verified commandの追加も不要 — 既存commandのみ使用する）
 - [ ] `docs/engineering/ci-test-portfolio.md`（test割付の記録）
+
+## Phase 2 record（2026-09-27）
+
+**実装**
+
+| File | 内容 |
+|---|---|
+| `src/com/android/launcher3/model/DirectEditContract.java` | 新設。snapshot/Row/Decision/Validator/ResultCallback（純JDK型。FAIL_*キー） |
+| `src/com/android/launcher3/model/ModelWriter.java` | `moveItemForDirectEdit`（targetContainer=DESKTOPまたはfolderId）/ `createFolderAndMoveForDirectEdit` / `removeItemForDirectEdit` + `DirectEditTask`基底（admission内でstage-2 validator → 変更）。既存メソッド・classの変更はなし（内部fieldの可視性のみDirectEditTask側で自己保持） |
+| `lawnchair/src/app/lawnchair/homeedit/{HomeEditModel,HomeEditPlanner,HomeEditAdapter,HomeEditUndoLog,HomeEditExecutor}.kt` | 純粋計画・stage-2 validator・Undo記録・確定flow（stage-1 snapshotはMODEL_EXECUTOR上でModelDbController.db読み取りから構成。QSB予約を合成行として追加） |
+| `lawnchair/src/app/lawnchair/homeedit/ui/EditActionsShortcuts.kt` | 3つの`SystemShortcut.Factory` + page/folder選択dialog + ロック注記（`OrganizerLocks.explain`） |
+| `LawnchairLauncher.kt` | `getSupportedShortcuts()`へ3 Factory追加 |
+| strings (en/ja) | menu 3種、dialog title 3種、拒否理由8種、ロック注記2種 |
+
+**実装で確定した詳細（specの観測可能な振る舞いの範囲内）**
+
+- UI反映: `bindItemsModified`はUI上no-opのため（`BgDataModel.Callbacks`のdefaultは空。上流はdrag層がviewを更新）、成功後にexecutorがaccessibility precedent（`LauncherAccessibilityDelegate.moveToWorkspace`）と同じ「旧view除去 + desktop宛先は`bindItems`で再作成 + 対象ページへsnap」を行う。removeも同様にexecutor側でview除去（`notifyOtherCallbacks`はownerを除外するため）。
+- REDUNDANT判定はcontainer=DESKTOPかつscreen一致かつ同一セルのときのみ（別ページの同座標は実移動）。
+- 両投影（stage-1 executor / stage-2 ModelWriter）にQSB予約領域（第1画面のrow 0 × `numSearchContainerColumns`）を合成行として追加し、空きセル探索が検索バー領域に落ちないことを同一規則で保証。
+- folder子行の値は上流のexternal drag追加（`Folder.onAdd` → organizer batch正規化）に合わせ `screen=0, cellX/Y=-1, rank=N` とし、フォルダopen時の`updateItemLocationsInDatabaseBatch`が正規化する。
+- 新規フォルダ行は`Launcher.addFolder`と同じ`new FolderInfo()` + 標準列（title null=UNLABELED）。ID採番はadmission内。
+
+**検証（2026-09-27実施。結果はPR本文へ記録）**
+
+- `./gradlew spotlessCheck` -> PASS
+- `./gradlew assembleLawnWithQuickstepGithubDebug` / `assembleLawnWithQuickstepGithubDebugAndroidTest` -> PASS
+- unit gate（ci.ymlと同一command）: **1722 tests, 0 failures**（homeedit 25件を含む）
+- instrumentation（AVD nunu_qpr2_api36_1 + 実機 Pixel 9a の2端末）: `DirectEditWriteShapeTest` 3件×2端末 PASS、shared-writer lane回帰セット（ModelWriterTransactionReentryTest等9 class + DirectEditWriteShapeTest）**65 tests × 2端末 = 130、0 failures**
+- `validate_repo_contract.py`: PASS（refocus-drafts/未追跡ディレクトリの既存2件のみ非該当）、`test_validate_repo_contract.py` PASS、`validate_writer_inventory.py` PASS（homeedit配下にDB書込みpatternなし = 高リスクpath追加不要判断の機械裏付け）、`test_validate_high_risk_evidence.py` OK
+- `measure_upstream_patch_surface.py --enforce-baseline`: main上でも同一内容でFAIL（既存baseline未更新分。本PR起因ではない）。本PRのsrc/ deltaは `ModelWriter.java` +283行（counted済み）と `DirectEditContract.java` 新設（counted +1 file）→ PR本文へNFR-010として記録
+- エミュレータ実機操作（AC-1/2/3/4/5(a)のユーザー可視検証）: popup表示、Page移動（hotseat→desktop、desktop→desktop、QSB回避cell(0,1)）、フォルダ追加（Google folder rank末尾）、Remove（行削除+view除去、アンインストールなし）。DB照会で各書込みが1 transaction内容どおりであること（単一UPDATE / DELETE）を確認。証跡: `docs/evidence/448/*.png`。実機（Pixel 9a）でのinstrumentation testはPASSしたが、実機でのpopup操作確認はowner確認事項として残す。
+- 修正履歴: 実装中に2件の欠陥を検出・修正（null tagのmatcher NPE、notifyOtherCallbacksのowner除外によるremove時view残存）。いずれもエミュレータ実機操作で検出し、回帰をDB+UI両面で再確認済み。
 
 ## Execution checklist
 

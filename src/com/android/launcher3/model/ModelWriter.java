@@ -651,6 +651,12 @@ public class ModelWriter {
                     item.cellX, item.cellY, item.spanX, item.spanY, item.itemType, item.rank,
                     um.getSerialNumberForUser(item.user)));
         }
+        // The QSB reservation occupies the head of the first screen; without
+        // it the empty-cell scan would plan onto the search bar region.
+        if (FeatureFlags.topQsbOnFirstScreenEnabled(mContext) && screenIds.length > 0) {
+            rows.add(new DirectEditContract.Row(-1, Favorites.CONTAINER_DESKTOP, screenIds[0],
+                    0, 0, idp.numSearchContainerColumns, 1, Favorites.ITEM_TYPE_APPLICATION, 0, 0));
+        }
         return new DirectEditContract.Snapshot(
                 idp.numColumns, idp.numRows, screenIds, rows.toArray(new DirectEditContract.Row[0]));
     }

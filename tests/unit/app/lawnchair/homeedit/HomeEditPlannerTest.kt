@@ -54,8 +54,7 @@ class HomeEditPlannerTest {
     }
 
     @Test
-    fun `move counts the vacated target cell as a candidate`() {
-        // Page 2 is full except nothing; the item itself sits on page 2 and its
+    fun `move counts the vacated target cell as a candidate`() { // Page 2 is full except nothing; the item itself sits on page 2 and its
         // own cell would be vacated — the scan may pick it, yielding REDUNDANT.
         val target = item(id = 100, screenId = 2, cellX = 0, cellY = 0)
         val blockers = (0 until 23).map { i ->
@@ -64,6 +63,23 @@ class HomeEditPlannerTest {
         val snapshot = snapshot(listOf(target) + blockers)
         val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 2))
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.REDUNDANT), plan)
+    }
+
+    @Test
+    fun `same coords on a different page is a real move not redundant`() {
+        val target = item(id = 100, screenId = 1, cellX = 0, cellY = 0)
+        val snapshot = snapshot(listOf(target))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 2))
+        assertEquals(HomeEditPlan.Move(target, HomeEditContainers.DESKTOP, 2, 0, 0, 0), plan)
+    }
+
+    @Test
+    fun `reserved qsb region on the first screen is avoided`() {
+        val target = item(id = 100, screenId = 1, cellX = 0, cellY = 0)
+        val qsbReservation = item(id = -1, screenId = 0, cellX = 0, cellY = 0, spanX = 4, spanY = 1)
+        val snapshot = snapshot(listOf(target, qsbReservation))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 0))
+        assertEquals(HomeEditPlan.Move(target, HomeEditContainers.DESKTOP, 0, 0, 1, 0), plan)
     }
 
     @Test
