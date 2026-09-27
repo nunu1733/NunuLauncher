@@ -5,6 +5,7 @@
 > Status: draft
 > Risk tier: H — #446（メモ§4.7）がADR-0015をADR-0013の対象(b)「上流が行う単一アイテムの追加の配置先決定」の所有ADRとして階層Hに割り当てている。本PR自体はrisk label・高リスクpath変更なしのdocs-onlyであるため `high-risk-evidence` gateの機械的発火対象ではなく、evidenceはrepository contract gateで足りる（workflow 適用条件の該当性による判断。tier Lへの下げではない）。保守者の指示により独立監査（別session）を追加実施する。
 > Revision 1: 2026-09-27 — 初版。Phase1 reviewへ提出。
+> Revision 2: 2026-09-27 — Phase1 review（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5853940527)）の指摘1〜6に対応。指摘1: bridge設計を「既存`addItemToDatabase`の再利用」から「ADR-0013契約4どおりadmission内で再検証と最初のmodel/DB変更を完結する最小のModelWriter操作の追加・使用」へ修正（`addItemToDatabase`がadmission前に`updateItemInfoProps`・ID採番・bindItems callbackを行う事実（`ModelWriter.java:290-313`）をCurrent evidenceへ追記）。指摘3: requirements.mdのFR-008 status変更をscopeから削除（D-015参照更新と#85整合解消のみ）。指摘4: `DESIGN.md` §11へのADR-0015 gate行追加を変更対象へ追加。指摘5: 再flush決定性を「queue時点のpolicy snapshot永続化」へ修正。指摘6: Documentation updates checkboxを未完了へ修正。
 
 ## Current evidence
 
@@ -25,6 +26,7 @@
 - lock列: `LauncherSettings.java:356-357` — `ORGANIZER_LOCK_STATE`。`src/`の編集経路（`ModelWriter`、`Workspace`、`Folder`、`Launcher`）にはlock列を書く呼出しがない（grep確認。#445の実測と同じ結果）。lock値の読み取りはorganizer側の`RowManifestCodec.capture`（`RowManifestCodec.kt:69-72,244-246`）と`LauncherLayoutAdapter.capture`（`LauncherLayoutAdapter.kt:97-131`）がDBから直接読む。model data class（`ItemInfo`等）にはlock fieldが存在しないため、書込み前検証でlock状態を参照する場合はorganizer側のcapture経路（`LockCapturePort`、`LockPorts.kt:11-22`、`LockStateDbAdapter.kt:34-40`）を使うか、DB readを直接行う必要がある（将来の実装Issueの調査事項としてplan末尾に記載）。
 - diagnostics: `docs/engineering/organizer-diagnostics.md` §1 — run journalのscopeは「organization run / recovery操作だけ」。§7 — package名は**Never**。`RunEvent`/`Trigger`/`PhaseCode`はclosed集合（`RunEvent.kt:208-240`、`Trigger.kt:9-12`、`PhaseCode.kt:10-35`）。`DiagnosticsPort`はorganizer用seam（`DiagnosticsPort.kt:18-27`）。
 - organizer runとの排他: `ModelWriter.ModelTask.executeOnModelThread`（`ModelWriter.java:570-579`）が`runOrDefer(MODEL_WRITER, token=0)`でgate。`LayoutWriteCoordinator.java:460-497` `runOrDefer`、`:525-527` `defersTokenlessWork`（ORGANIZERとrestore-familyのみdefer）。新規アプリの追加はこのMODEL_WRITER経路を通るため、organizer run適用中の新規installは既存機構でdeferされる（追加の排他実装は不要。ADR-0013契約4の既存機構）。
+- **既存`addItemToDatabase`のadmission前変更（Phase1 review指摘1の根拠）**: `ModelWriter.addItemToDatabase`（`ModelWriter.java:290-313`）は`executeOnModelThread()`（admission）より前に`updateItemInfoProps(item, ...)`（`:292`）、`item.id = generateNewItemId()`（`:294`）、`notifyOtherCallbacks(bindItems)`（`:295`）を実行し、admissionの内側のrunnableはその後のinsert+`mBgDataModel.addItem`+`ModelVerifier`のみを行う（`:299-313`）。つまり既存メソッドをそのまま使うと、organizer lease保持中のdefer時にmodel-visible state（`ItemInfo`のcontainer/screenId/cellX/cellY、ID、UI bind）がadmission成立前に変わる。これはADR-0013契約4が「直接編集の書込み構造は踏まない」と明示した既存メソッドの性質（`ModelWriter.java:190-192,252-256`と同型）であり、対象(b)の書込みにも適用される。指定フォルダへの追加は、この既存メソッドの再利用ではなく、admissionの内側で検証と変更が完結する最小の`ModelWriter`操作（同経路に追加する）として実装する必要がある（ADR-0013契約4の「同経路に追加する最小の操作」）。
 - **branch freshness**: 現行main `824b468614c39c3f60353f09499f2588db4f4028`（#445 merge後）へrebase済み（2026-09-27）。ADR-0013が受入済みであり、ADR-0015 Decision 7の委譲先が有効である。`git diff 824b468614..HEAD -- src/ lawnchair/src/` が空であることを確認済みであり、本節の `path:line` 根拠は現行mainでも有効である。
 
 ## Design
@@ -36,8 +38,9 @@
 | `docs/adr/0015-new-app-destination-policy.md` | 新設 | #446 付録の承認済み草案（2026-09-24）を基に、下記「ADR本文の修正一覧」を適用して収録。frontmatter `status: accepted` |
 | `docs/adr/0005-fresh-install-presence-evidence.md` | Change historyへ1行追加 | 本文（Decision、Context、Verification obligations等）は不変。ADR-0015への関連リンクと適用範囲の狭めの明示 |
 | `docs/engineering/package-provenance.md` | §7へ1行追加 | 本文（§4分類表、§6 handoff等）は不変。ADR-0015への関連リンク |
-| `docs/product/requirements.md` | D-015行の参照更新、FR-008行のstatus更新、未解決事項の整理 | ADR-0015のaccepted反映。D-013行は触れない |
+| `docs/product/requirements.md` | D-015行の参照更新、未解決事項の整理 | ADR-0015のaccepted反映。FR-008行のstatusは変更しない（指摘3）。D-013行は触れない |
 | `docs/product/organization-run-ux.md` | §2.3へ注記1文 | 安全契約本体（§1、§3〜§6）と§2.3の表・diagramは不変 |
+| `DESIGN.md` | §11 Design gatesへgate行1件追加 | 「新規アプリの配置先ポリシー」行。source of truthはADR-0015/#446。ADR-0013分のgate行は追加しない（指摘4） |
 | `CONTEXT.md` | 用語1件追加 | 「配置先ポリシー (New App Destination Policy)」（spec Domain languageどおり。_Avoid_を含む） |
 | `specs/446-new-app-destination-policy/spec.md` `plan.md` | 新設 | 本spec/plan |
 
@@ -52,15 +55,16 @@
    - **フォルダ満杯の扱い** → Decision 4を更新: 「満杯」をfallback条件としない。上流のfolderにハードな上限item数の定数は存在せず、ページングで拡張するため「満杯」は非決定的な状態である。指定フォルダへの追加は常に末尾rankへの追加として成立し、fallback条件は観測可能な制約違反（device profile外・重なり等、書込み前の計画関数がtypedに検出するもの）に限定する。草案のDecision 4末尾の「フォルダが満杯の場合の扱いは未確定である」の文を削除し、この確定を記録する。
    - **同名フォルダ再作成時の再指定のUX** → 未解決事項から削除し、Decision 5の実装Issueへの委譲として記録（「再指定を促すUIの詳細は実装Issueのspecで決める」）。
    - **promise iconの配置先決定の実装位置** → 未解決事項から削除し、Decision 9に「bridgeの具体位置は実装Issueのplanが`ItemInstallQueue`のflush時と`AddWorkspaceItemsTask`内の候補から確定する」ことを記録。本plan「bridge実装位置の調査」節の調査結果を参照する。
-   - **promise icon再flush時の決定性** → Decision 9に「配置先ポリシーは『パッケージ名+user』から決定的に計算される純関数とし、queue永続化（`PersistedItemArray`）をまたぐ再flushでも同じ結果になる」ことを要求として追加。
+   - **promise icon再flush時の決定性** → Decision 9に「配置先ポリシーの決定に使うcanonical inputはqueue投入時点のpolicy snapshot（policy選択、指定folder id、user、package）とし、これをqueue永続化とともに保持して再flushでも同じsnapshotを使う。現在のpolicy設定を再flush時に再読しない」ことを要求として追加（Phase1 review指摘5。当初の「package名+userからの純関数」案は不十分のため撤回）。policy snapshotの保持方法は実装Issueのplanが決める。
    - **fallback理由の記録方法** → Decision 4の「diagnosticsへ記録」を「fallback理由が後から確認できる形で記録されること」へ文言調整し、organizer-diagnostics run journalのscope制約（§1: organization run / recovery操作のみ）とpackage名のNever分類（§7）を注記する。記録方法の確定は実装Issueのspecが行う。
 5. 草案ヘッダの「本節は出典の全文であり…」等の草案固有の注記は削除する（`docs/adr/` に収録された本文が正となるため）。
 6. Decision 12の「RF-07/FR-018」参照を「#448/FR-018」へ、Decision 13の設定UI参照を行番号付きの現行参照へ更新する。
+7. **書込み構造の明記（Phase1 review指摘1）**: Decision 7（ADR-0013への委譲）へ、指定フォルダへの書込みがADR-0013契約4どおり「validation → MODEL_WRITER admission → admission後の再検証 → model/DB変更」の順序が保たれる構造（admissionの内側で検証と変更が完結する最小の`ModelWriter`操作の追加・使用）で実装されること、(a) admission前の無変更（`ItemInfo`変更・ID採番・bindItems callback・DB書込みを含む。既存`addItemToDatabase`の`ModelWriter.java:290-313`の構造を踏まない）、(b) defer解消後の現状態再検証、(c) stale時のtypedな上流既定fallback（「どこにも置かれない」状態を作らない）を要求として追加する。将来の実装testへのdefer後再検証oracle要求（ADR-0013の要求テスト表と同じ既存surface。新規laneなし）をConsequencesまたは要求テスト参照として記録する。
 
 ### `docs/product/requirements.md` の変更の機械的確認
 
 - D-015行: 参照先を`[#446](https://github.com/nunu1733/NunuLauncher/issues/446)`から`docs/adr/0015-new-app-destination-policy.md`へのfile linkへ更新する（#440未解決事項「D-013〜016のADR link」のD-015分）。D-013行は#445で未実施のまま残す（本PRのscope外。#445の見落としであり、#446のscopeでない。将来の#448系PRまたは別のmaintenance PRで更新する）。
-- FR-008行: status列を「proposed（再定義 2026-09-24。旧: deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)）」から「accepted（ADR-0015受入 2026-09-27。実装は未着手。旧: deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)）」へ更新する。要件のstatus更新の根拠はTraceability rule（「Issueの受入、mainline merge、verification evidenceを根拠に更新」）であり、D-015 gateの受入はFR-008の書込み契約の確定であって製品実装完了ではない。status語彙は「実装完了を意味しない受入状態」を示すため、`implemented` は使わない。
+- FR-008行: **statusは変更しない**（`proposed（再定義 2026-09-24。旧: deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)）` を維持。Phase1 review指摘3）。現行のstatus語彙（`docs/product/requirements.md:10`）に「ADR gate受入のみで実装未着手」を示す語はなく、plan Revision 1が想定した `accepted（ADR-0015受入、実装未着手）` は定義済み語彙にない。FR-008の再定義自体は#440で既に反映済みであり、#446の終了条件「FR-008の再定義がproduct文書へ反映されている」は現行行で満たされている。FR-008のstatusを進める場合は、status語彙・Traceability rule・#440 owner decision（FR-008のstatus表記をPR #463で承認済み）を変更する明示的なowner decisionを先に記録する必要があり、本Issueのscopeではない。
 - 未解決事項: 「FR-008と旧Issue #85決定（Option B）の整合」の行を削除し、解決の記録（「ADR-0015 Decision 2で解決。fail-closed維持と再定義の関係はADR-0005の適用範囲の狭めで接続」）を同じ節の形式で残すか、Decision historyへの追記で置き換える（reviewで形式を確定する）。
 - mvp-release-readiness.md は変更しない（#440で「再焦点化要件は本書のinventory対象外」が明記済み。FR-008の旧行はOption Bの履歴記録として維持される）。
 
@@ -76,9 +80,9 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 
 `AddWorkspaceItemsTask`への影響を最小化する観点で2候補を比較した:
 
-- **候補1: `ItemInstallQueue`のflush時（`ItemInstallQueue.java:135-145`）**: flushが`getItemInfo(mContext)`で`WorkspaceItemInfo`を構築した直後に、ポリシー計画関数へ「パッケージ名+user」を渡し、結果（既定/フォルダid/追加しない）を`Pair`のsecond（現状はdeep shortcutの`ShortcutInfo`等を運ぶスロット、`ItemInstallQueue.java:135`）か、`AddWorkspaceItemsTask`への追加引数で運ぶ。`AddWorkspaceItemsTask`の変更は「フォルダ指定がある場合に`findSpaceForItem`をスキップし、フォルダ内の末尾rankへ`addItemToDatabase`する分岐」に限定できる。**長所**: ポリシー計算がqueue層に留まり、AOSP由来の`AddWorkspaceItemsTask`への追記が最小（1分岐）。`getItemInfo`の再構築（再flush時）と同じ場所で決定的に計算されるため、process死後の再flush一貫性（Open question 4）が構造的に満たされる。**短所**: `ItemInstallQueue`もAOSP由来fileであり、patch surfaceの観点では同等。widget/deep shortcut経路（`AddItemActivity`）にも同じqueueが使われるため、分岐の適用対象を「`ITEM_TYPE_APPLICATION`かつinstall session由来」に限定する必要がある。
-- **候補2: `AddWorkspaceItemsTask`内（`AddWorkspaceItemsTask.java:123-126`付近）**: `findSpaceForItem`呼出しの直前でポリシーを参照し、フォルダ指定があれば座標計算を置き換える。**長所**: 配置決定と書込みが同一task内で完結し、`shortcutExists`検証との順序が自明。**短所**: AOSP fileへの追記が大きくなり、`PackageUpdatedTask`型のNFR-010違反に近づく。ポリシー計算がtask内で再実行されるため、queue層での計算と二重になる。
-- **判断**: 候補1（`ItemInstallQueue`のflush時）を優先する。根拠は (i) ADR-0013契約4の「検証→admission→変更」順序と整合する（ポリシー計算=書込み前検証の一部をqueue層で行い、task内ではadmission後の再検証のみ）、(ii) 再flush一貫性が`getItemInfo`の再構築位置と同じ場所で満たされる、(iii) `AddWorkspaceItemsTask`への追記が「フォルダ指定の解決1分岐」に限定される。ただし「追加しない」選択肢の扱い（`pref_add_icon_to_home`と同じ結果をポリシーで表す方法）と、`SessionCommitReceiver.isEnabled`との二重判定の排除は、実装Issueのspecで確定する。本判断は実装Issueのplanが再検討できる参考情報であり、ADR-0015本文には「bridgeは1箇所」という契約だけを記録する（Decision 9）。
+- **候補1: `ItemInstallQueue`のflush時（`ItemInstallQueue.java:135-145`）**: flushが`getItemInfo(mContext)`で`WorkspaceItemInfo`を構築した直後に、queue時点のpolicy snapshot（policy選択、指定folder id、user、package。Open question 4の決着）を参照して配置先を決め、その決定を`AddWorkspaceItemsTask`へ運ぶ（`Pair`のsecondか追加引数）。`AddWorkspaceItemsTask`の変更は「フォルダ指定がある場合に`findSpaceForItem`をスキップし、フォルダ内の末尾rankへ書込む分岐」に限定できる。**長所**: ポリシー計算（書込み前検証の一段階目）がqueue層に留まり、AOSP由来の`AddWorkspaceItemsTask`への追記が最小（1分岐）。policy snapshotの作成がqueue投入時点と同じ場所で行われるため、process死後の再flush一貫性（Open question 4）が構造的に満たされる。**短所**: `ItemInstallQueue`もAOSP由来fileであり、patch surfaceの観点では同等。widget/deep shortcut経路（`AddItemActivity`）にも同じqueueが使われるため、分岐の適用対象を「`ITEM_TYPE_APPLICATION`かつinstall session由来」に限定する必要がある。
+- **候補2: `AddWorkspaceItemsTask`内（`AddWorkspaceItemsTask.java:123-126`付近）**: `findSpaceForItem`呼出しの直前でpolicy snapshotを参照し、フォルダ指定があれば座標計算を置き換える。**長所**: 配置決定と書込みが同一task内で完結し、`shortcutExists`検証との順序が自明。**短所**: AOSP fileへの追記が大きくなり、`PackageUpdatedTask`型のNFR-010違反に近づく。policy snapshotの作成位置がqueue層とtask層で分かれ、queue永続化との対応が複雑になる。
+- **判断**: 候補1（`ItemInstallQueue`のflush時）を優先する。根拠は (i) ADR-0013契約4の「検証→admission→変更」順序と整合する（ポリシー計画=書込み前検証の一段階目をqueue層で行い、task内ではadmission後の再検証のみ。二段階検証の対象row/配置先がdefer中に変わった場合はtyped fallback）、(ii) policy snapshotの作成と再flush時の使用が`getItemInfo`の再構築位置と同じ場所で満たされる、(iii) `AddWorkspaceItemsTask`への追記が「フォルダ指定の解決1分岐」に限定される。**書込み構造（指摘1対応）**: いずれの候補でも、指定フォルダへの書込みは既存の`ModelWriter.addItemToDatabase`をそのまま使わない。`addItemToDatabase`はadmission前に`updateItemInfoProps`・ID採番・bindItems callbackを実行するため（`ModelWriter.java:290-313`。Current evidence参照）、ADR-0013契約4どおり「validation → MODEL_WRITER admission → admission後の再検証 → model/DB変更」の順序が保たれる構造、すなわちadmissionの内側で検証と変更が完結する最小の`ModelWriter`操作（同経路に追加する。例: 対象`ItemInfo`と検証済み配置先を受け取り、admission後にfolder存在・profile分離・lock・container参照・boundsを現状態で再検証し、満たなければ無変更でtyped fallbackし、満たせばID採番とinsert+`mBgDataModel.addItem`+`ModelVerifier`を1 transactionで行う操作）として実装する。将来の実装testは、ADR-0013の要求テスト表「admission後の再検証（defer後のstale検証）」行と同じ既存surfaceで「ORGANIZER lease保持中にqueue→対象folder変更/削除→lease解放後、pre-admission mutationなし・再検証後fallback」を検証するoracleを要求する。ただし「追加しない」選択肢の扱い（`pref_add_icon_to_home`と同じ結果をポリシーで表す方法）と、`SessionCommitReceiver.isEnabled`との二重判定の排除は、実装Issueのspecで確定する。本判断は実装Issueのplanが再検討できる参考情報であり、ADR-0015本文には「bridgeは1箇所」「書込みはADR-0013契約4の構造に従う」という契約だけを記録する（Decision 9）。
 
 ### 配置先ポリシー実装PRの高リスク判定の予告（spec AC-10(b)）
 
@@ -95,7 +99,7 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 ### PR構成とclosing keyword
 
 - 単一PR。base `main`。branch `issue-446-new-app-destination-policy`。
-- ADR-0015の新設、ADR-0005のChange history追記、package-provenanceの追記、requirements.md/organization-run-ux.md/CONTEXT.mdの更新、spec/planをすべて同じPRに入れる。
+- ADR-0015の新設、ADR-0005のChange history追記、package-provenanceの追記、requirements.md/organization-run-ux.md/`DESIGN.md`/CONTEXT.mdの更新、spec/planをすべて同じPRに入れる。
 - #446 の全終了条件を本PRで満たす最終PRであるため `Closes #446` を使う（AGENTS.md規則7。spec Open questions 6の判断）。merge時にIssueが自動closeされる。
 - 本PRはdocs-onlyのため高リスクgateの対象外であるが、保守者の指示により、別session（general-purposeサブエージェント）による独立監査を実施し、結果をPRへ記録する。
 
@@ -118,12 +122,12 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 
 実施しない検証と理由: build/`spotlessCheck`（markdownのみの変更であり、対象のlint対象に入らない。docs-only PRの既定のevidence範囲）。instrumentation（コード変更なし）。
 
-## Documentation updates
+## Documentation updates（Phase 2で実施する計画。実施後にチェックを付ける）
 
-- [x] spec status/history（本spec/plan）
-- [x] CONTEXT.md（「配置先ポリシー」の追加。AC-9）
-- [ ] DESIGN.md（本PRでは変更しない。配置先ポリシーのmoduleが実装された時点で、実装PRが§11 Design gatesへ追加する。ADR-0015 Decision 10はmodule所有を決めるが、実体が存在しないためgate行の追加は実装時）
-- [x] ADR（ADR-0015新設、ADR-0005 Change history）
+- [ ] spec status/history（本spec/plan。Phase 2でspecをacceptedへ進める）
+- [ ] CONTEXT.md（「配置先ポリシー」の追加。AC-9）
+- [ ] DESIGN.md（§11 Design gatesへ「新規アプリの配置先ポリシー」gate行を追加。#440 other-doc-impactsの承認済み判断「各ADRがacceptedになった時点で追加」に従う。ADR-0013分のgate行は#445で未実施のため本PRでは触れない。homeeditのmodule位置づけ・不変条件の2層化はmodule実体が存在しないため実装Issueが担当）
+- [ ] ADR（ADR-0015新設、ADR-0005 Change history）
 - [ ] AGENTS.md（変更しない。ADR-0013のcarve-out段落が対象(b)をすでに含むため、ADR-0015の受入で追記は不要）
 
 ## Execution checklist
@@ -140,7 +144,7 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 - Scope type: research/decision（成果物は文書。Issue labelはtype: featureだが、決定Issueであり実装は別Issue）
 - Accepted spec + commit: 本PRでacceptedへ進める（Phase1 review後にstatus: acceptedへ更新）
 - Bug oracle: N/A（research/decision。成果物は文書）
-- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 1）
+- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 2）
 - Base SHA: 824b468614c39c3f60353f09499f2588db4f4028（#445 merge後の現行main）
 - Head SHA: Phase1 push後にPR/Issueへ記録
 - Executed evidence: 上記Verification参照
