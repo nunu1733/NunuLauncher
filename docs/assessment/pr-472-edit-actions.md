@@ -7,7 +7,7 @@
 - PR: https://github.com/nunu1733/NunuLauncher/pull/472
 - Head SHA: 226d4ac9c01a8fd27e659de0bdbf4c0c62337f13
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36339364515
-- Criteria: [spec 448](specs/448-edit-actions-per-item/spec.md) の FR-018 / NFR-013 / AC-5 / AC-6 / AC-7
+- Criteria: [spec 448](../../specs/448-edit-actions-per-item/spec.md) の FR-018 / NFR-013 / AC-5 / AC-6 / AC-7
 
 ## Scope
 
