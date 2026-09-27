@@ -1,7 +1,7 @@
 # GitHub Issue / Spec / Pull Request Workflow
 
 > Status: Accepted
-> Updated: 2026-09-08（Issue #247 closing-keyword rule、Issue #251 Worker/Review handoff、Issue #252 security reporting の運用反映）
+> Updated: 2026-09-27（Issue #444: Risk tiers（リスク階層）の導入、階層別のplan.md要件、Issue intakeへのrisk tier。2026-09-08（Issue #247 closing-keyword rule、Issue #251 Worker/Review handoff、Issue #252 security reporting の運用反映））
 
 ## Principle
 
@@ -16,6 +16,58 @@ GitHub Issueはすべての開発の入口であり、状態とcoordinationの�
 - **maintenance**: 振る舞いを変えない文書・tooling・dependency保守作業。
 
 大きな成果はEpic Issueで追跡し、各sub-Issueを独立にmerge可能な縦切りにする。1 Issueへ複数の独立成果を詰め込まない。
+
+## Risk tiers（リスク階層）
+
+すべての作業を同じ手順で扱わない。変更が触れる経路のリスクで3階層に分け、
+手順の重さをリスクに合わせる。階層Hの厳格さは緩めない。
+
+### 階層の定義
+
+- **階層H**: 次のいずれかに当たる変更。
+  - Launcher DBへの新しい書込み経路を作る、または既存の書込み経路の契約を変える。
+  - schema migration、recovery store、backup/restore契約を変える。
+  - 上流のmodel/loader（`ModelWriter`、`LayoutWriteCoordinator`、`LauncherProvider`等）
+    へのbridgeを作るまたは変える。
+  - 変更pathが[高リスクpath一覧](#高リスクprへの独立エビデンス要求)に当たる。
+    一覧の正本は同節と `tools/repo-contract/validate_high_risk_evidence.py` であり、
+    本節はそれを参照する（一覧を複製しない）。
+  - 手順: 現行どおり。accepted spec + plan.md、Execution and approval contract、
+    高リスク対象なら独立エビデンス契約。
+- **階層M**: 新しい書込み経路を持たないUX/機能の変更。既存の適用・復旧経路の
+  前段（入口、導線、選択、表示）を変えるものを含む。
+  - 上流のUIだけに触れるbridge（popupやメニューの項目の追加など。model、loader、
+    DBに触れないもの）も階層Mとする。ただし同じPRで、candidate HEADに対する
+    `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`
+    の計測結果をPR本文（またはPRに添付したassessment記録）へreportする。
+    `docs/assessment/upstream-patch-surface-baseline.md` / `.json` の更新は
+    新しいbaselineを採用する場合だけとし、採用手順は同文書に従う。
+    既存の高リスクpath一覧に触れる変更は階層Hである。
+  - 手順: 軽量spec（[specs/_template/spec-lite.md](../../specs/_template/spec-lite.md)）の
+    accepted + 実装PR + 実機のスクリーンショットまたは録画によるowner確認
+    （emulatorは補助証跡としてのみ可）。独立auditは不要。plan.mdは要求しない。
+    Execution and approval contractのrole分離
+    （Worker/Review/Owner/Merge operatorの記録分離）は維持する。
+  - UX specのreviewは原則2 roundまでとする。1 roundは「1回のreview
+    recommendationと、それに対する対応の組」であり、条件解除のためのevidence追加と
+    その再確認は同じround内の対応として数える。2 roundを超える場合は
+    ownerが残る論点を列挙して判断し、先へ進めるか、scopeを縮小するか、
+    階層Hへ格上げ（判断が変更困難になった場合）のいずれかを決める。
+- **階層L**: 文書、テスト、refactor。ただし高リスクpath一覧に触れず、新しい書込み
+  経路等の階層H条件を作らないものに限る。PRのみ（現行のmaintenance/docs-only経路）。
+
+### 階層の判定
+
+- 判定の優先順位: 階層Hの条件は階層M/Lの判定より常に優先する。高リスクpath上の
+  behavior-preservingなrefactorも階層Hである。
+- 判定はspec（階層M）またはplan（階層H）の冒頭に「Risk tier: H/M/L」と判定と
+  理由を明示し、実装PRの本文にも記載する。Reviewが確認する。
+  maintenance/docs-onlyは階層Lである。
+- 判定の第一基準は変更pathである。高リスクpath一覧に当たる場合は階層H。
+  当たらない場合でも、新しいDB書込み・migration・recovery store・上流
+  model/loader bridgeを作る場合は階層H。
+- 判定を誤ったまま実装が進んだ場合は、階層を上げて現行手続へ戻す（下げは、
+  書込みがまだ発生していない段階でのみ、owner decision付きで可能にする）。
 
 ## Repository target and upstream boundary
 
@@ -54,6 +106,7 @@ Issueに次が必要である。
 - 関連要件ID。
 - acceptance/exit criteria。
 - dependencyとrisk。
+- risk tier（階層判定）。[Risk tiers](#risk-tiersリスク階層) の判定に従う。
 - spec pathまたは「spec不要」の理由。
 
 ### 2. Specification
@@ -74,7 +127,7 @@ specには通常系だけでなく、permission拒否、容量不足、unsupport
 
 ### 4. Implementation plan
 
-同じspec directoryの `plan.md` に、現在codeの根拠、変更module、interface/seam、migration、rollback、testを記載する。Issueのtask listを複製せず、実装上の判断だけを残す。
+階層Hの変更では、同じspec directoryの `plan.md` に、現在codeの根拠、変更module、interface/seam、migration、rollback、testを記載する（[Risk tiers](#risk-tiersリスク階層)）。階層Mはplan.mdを要求しない。いずれの階層でも、Issueのtask listを複製せず、実装上の判断だけを残す。
 
 ## Execution and approval contract
 
@@ -101,7 +154,7 @@ specには通常系だけでなく、permission拒否、容量不足、unsupport
 
 Workerは次のpacketを作成してから実装またはレビュー依頼へ進む。
 
-- **feature**: `status: accepted` のspecと、そのaccepted内容を含むcommit SHA、plan revision。
+- **feature**: `status: accepted` のspecと、そのaccepted内容を含むcommit SHA、plan revision。階層Mは軽量spec（[Risk tiers](#risk-tiersリスク階層) 参照）のacceptedで足りる。階層Hは現行どおりspec + plan.mdを要求する。
 - **bug**: accepted spec、または正本としてrepositoryに追跡されたbug oracleのpathと、そのoracleを含むexact commit SHA。Issue/commentに固定されたoracleを使う場合は、Issue/comment permalink、取得時刻 (UTC)、ownerのacceptance linkを記録し、Issueだけに存在するoracleへrepository commit SHAを付けない。oracleが曖昧なら実装を開始せずresearch/decision Issueへ分離する。
 - **research/decision**: Issueが求める成果物、未決定事項、判断基準を固定する。成果物自体が終了条件である場合だけfinal PRでcloseする。
 - **maintenance/docs-only**: spec/planが不要な理由、変更scope、exit criteriaを明記する。`N/A` は理由なしの省略ではない。
