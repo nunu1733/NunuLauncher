@@ -1,6 +1,6 @@
 ---
 issue: "#446"
-status: draft
+status: accepted
 requirements:
   - D-015
   - FR-008
@@ -14,7 +14,8 @@ updated: 2026-09-27
 > Revision 2: 2026-09-27 — Phase1 review（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5853940527)）の指摘1〜6に対応。指摘1: bridge設計を「既存`addItemToDatabase`の再利用」から「ADR-0013契約4どおりadmission内で再検証と最初のmodel/DB変更を完結する最小のModelWriter操作の追加・使用」へ修正し、(a)admission前の無変更、(b)defer解消後の再検証、(c)stale時のtyped fallbackを要求に明記、将来実装testへのdefer再検証oracle要求を追加。指摘2: 「満杯」をfallback条件から削除し、観測可能な配置制約違反のみに統一（Outcome/Scenario/AC-3/Open questions 1）。指摘3: FR-008のstatus変更を本PRのscopeから削除し、D-015参照更新と#85整合の解消のみに限定。指摘4: `DESIGN.md` §11 Design gatesへのADR-0015行追加をPhase 2 scopeへ含める（#440 other-doc-impactsの承認済み判断「各ADRがacceptedになった時点で追加」に従う。ADR-0013分は#445で未実施のため本PRでは触れない）。指摘5: 再flush決定性のcanonical inputを「queue時点のpolicy snapshot（policy選択+指定folder id+user+package）の永続化」へ確定し、AC/ADR要求をこの形へ修正。指摘6: planのDocumentation updates checkboxをPhase 2実施前に未完了へ修正。
 > Revision 3: 2026-09-27 — Phase1 review round 2（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854110602)）の指摘1〜3に対応。指摘1: stale時のfallbackを「検証失敗による無変更」から「同一の純粋計画関数のclosed result（`FolderTarget` / `UpstreamDefault(reason)` / `Reject(reason)`）への再計画」へ修正。admission後に同じ関数を現状態へ再実行し、指定folderがstaleなら`UpstreamDefault(reason)`という有効planを再計画し、default配置自体のbounds/container等を同じadmission内で検証してから1 transactionで書く。default側も成立しない真のinvariant failureだけを`Reject`として無変更・typed failureにする。指摘2: policy snapshotのcapture位置を「queue投入（enqueue/queuePendingShortcutInfo）時」に明確化し、flush/`getItemInfo`時はpersist済みsnapshotを読むだけでcurrent policyから再生成しないことを明記。将来実装testへ「snapshot=Aでqueue → policyをBへ変更 → process restart → flush → Aを使用」のoracleとsnapshot欠損/破損時のfail-closed契約を追加。指摘3: Test oracleのAC-8 evidenceへ`DESIGN.md` diff確認を追加し、planのExecution checklistへ`DESIGN.md` gate行を追加。
 > Revision 4: 2026-09-27 — Phase1 review round 3（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854244634)）の指摘1に対応。
-> Revision 5: 2026-09-27 — Phase1 review round 4（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854335016)）の指摘1に対応。Revision 4注記のround 3 review permalinkが参照不能なcomment ID（5854297535）だったため、実際に参照可能なcomment 5854244634へ修正した。契約内容の変更なし。policy snapshotの欠損・破損時の契約を「current policyでの再計画または明示fallback」の二択から、current policyを再読しない単一のclosed resultへ一意化: snapshotのidentity（policy選択、指定folder id、user、package）が読める範囲なら`UpstreamDefault(SNAPSHOT_INVALID)`へ明示fallbackし、default配置を通常と同じadmission内で検証して書く。identity自体が信頼できない場合だけ`Reject(SNAPSHOT_INVALID)`として無変更・typed failureにする。Outcome/Scenario/AC-6/plan/test oracleから「current policyで再計画」を削除し、process-death testにもこの結果を固定する。
+> Revision 5: 2026-09-27 — Phase1 review round 4（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854335016)）の指摘1に対応。Revision 4注記のround 3 review permalinkが参照不能なcomment ID（5854297535）だったため、実際に参照可能なcomment 5854244634へ修正した。契約内容の変更なし。
+> Revision 6: 2026-09-27 — Phase 2実施。statusをacceptedへ進めた（ADR-0015の受入は本PRのmergeで完了する）。成果物: `docs/adr/0015-new-app-destination-policy.md`（新設、accepted。Phase 1 reviewで確定した書込み構造/closed result/policy snapshot契約をDecision 7/8/10へ反映）、`docs/adr/0005-fresh-install-presence-evidence.md`（Change historyへ1行追加）、`docs/engineering/package-provenance.md`（§7へ1行追加）、`docs/product/requirements.md`（D-015参照更新、#85整合の解消記録。FR-008 statusは不変）、`docs/product/organization-run-ux.md`（§2.3へ注記1文）、`DESIGN.md`（§11へgate行1件追加）、`CONTEXT.md`（用語1件追加）。判断内容の変更なし。policy snapshotの欠損・破損時の契約を「current policyでの再計画または明示fallback」の二択から、current policyを再読しない単一のclosed resultへ一意化: snapshotのidentity（policy選択、指定folder id、user、package）が読める範囲なら`UpstreamDefault(SNAPSHOT_INVALID)`へ明示fallbackし、default配置を通常と同じadmission内で検証して書く。identity自体が信頼できない場合だけ`Reject(SNAPSHOT_INVALID)`として無変更・typed failureにする。Outcome/Scenario/AC-6/plan/test oracleから「current policyで再計画」を削除し、process-death testにもこの結果を固定する。
 
 ## Problem
 
@@ -248,3 +249,4 @@ None。UI変更はない（文書変更のみのため）。将来の設定UIの
 - 2026-09-27: Revision 3（Phase1 review round 2指摘1〜3対応。冒頭のRevision 3注記参照）。
 - 2026-09-27: Revision 4（Phase1 review round 3指摘1対応。冒頭のRevision 4注記参照）。
 - 2026-09-27: Revision 5（round 4指摘1対応。Revision 4注記のround 3 review permalinkを参照可能なcomment 5854244634へ修正。契約内容の変更なし）。
+- 2026-09-27: Revision 6（Phase 2実施。status accepted化と成果物の収録。冒頭のRevision 6注記参照）。

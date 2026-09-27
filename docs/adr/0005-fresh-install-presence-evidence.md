@@ -97,3 +97,4 @@ Before incremental eligibility can be enabled, its accepted spec must demonstrat
 - 2026-08-21: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected
   Option B. This ADR's negative technical conclusion is unchanged; the product-scope
   result is that package-event incremental placement is deferred outside the MVP.
+- 2026-09-27: [ADR-0015](./0015-new-app-destination-policy.md)（[#446](https://github.com/nunu1733/NunuLauncher/issues/446)）accepted。本ADRの適用範囲は「既存アイテムを動かす増分整理提案（organizerのplanner/application経路から出すproposal）」と明示された。上流が追加を決めた1アイテムの配置先決定はprior absenceの証明を必要とせず、本ADRの再開条件の対象外である（ADR-0015 Decision 2参照）。本ADRの本文は変更していない。
