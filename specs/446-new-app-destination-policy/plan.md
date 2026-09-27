@@ -7,7 +7,8 @@
 > Revision 1: 2026-09-27 — 初版。Phase1 reviewへ提出。
 > Revision 2: 2026-09-27 — Phase1 review（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5853940527)）の指摘1〜6に対応。指摘1: bridge設計を「既存`addItemToDatabase`の再利用」から「ADR-0013契約4どおりadmission内で再検証と最初のmodel/DB変更を完結する最小のModelWriter操作の追加・使用」へ修正（`addItemToDatabase`がadmission前に`updateItemInfoProps`・ID採番・bindItems callbackを行う事実（`ModelWriter.java:290-313`）をCurrent evidenceへ追記）。指摘3: requirements.mdのFR-008 status変更をscopeから削除（D-015参照更新と#85整合解消のみ）。指摘4: `DESIGN.md` §11へのADR-0015 gate行追加を変更対象へ追加。指摘5: 再flush決定性を「queue時点のpolicy snapshot永続化」へ修正。指摘6: Documentation updates checkboxを未完了へ修正。
 > Revision 3: 2026-09-27 — Phase1 review round 2（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854110602)）の指摘1〜3に対応。指摘1: stale時のfallbackを「検証失敗による無変更」から「同一の純粋計画関数のclosed result（`FolderTarget` / `UpstreamDefault(reason)` / `Reject(reason)`）への再計画」へ修正し、bridge判断節とADR修正一覧7を更新。指摘2: policy snapshotのcapture位置を「queue投入（enqueue/`queuePendingShortcutInfo`）時」に明確化し、flush/`getItemInfo`時はpersist済みsnapshotを読むだけでcurrent policyから再生成しないことを明記（Revision 2の「getItemInfoの再構築位置と同じ場所で作成」表現を撤回）。将来実装testへ「snapshot=Aでqueue → policyをBへ変更 → process restart → flush → Aを使用」のoracleとsnapshot欠損/破損時のfail-closed契約を追加。指摘3: Execution checklistへ`DESIGN.md` gate行を追加。
-> Revision 4: 2026-09-27 — Phase1 review round 3（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854297535)）の指摘1に対応。policy snapshotの欠損・破損時の契約を「current policyでの再計画または明示fallback」の二択から、current policyを再読しない単一のclosed result（identityが読める範囲なら`UpstreamDefault(SNAPSHOT_INVALID)`、identity自体が信頼できない場合だけ`Reject(SNAPSHOT_INVALID)`）へ一意化。bridge判断節とADR修正一覧4/7、specのOutcome/Scenario/AC-6/test oracleを更新。
+> Revision 4: 2026-09-27 — Phase1 review round 3（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854244634)）の指摘1に対応。
+> Revision 5: 2026-09-27 — Phase1 review round 4（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854335016)）の指摘1に対応。Revision 4注記のround 3 review permalinkを参照可能なcomment 5854244634へ修正。契約内容の変更なし。policy snapshotの欠損・破損時の契約を「current policyでの再計画または明示fallback」の二択から、current policyを再読しない単一のclosed result（identityが読める範囲なら`UpstreamDefault(SNAPSHOT_INVALID)`、identity自体が信頼できない場合だけ`Reject(SNAPSHOT_INVALID)`）へ一意化。bridge判断節とADR修正一覧4/7、specのOutcome/Scenario/AC-6/test oracleを更新。
 
 ## Current evidence
 
@@ -146,7 +147,7 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 - Scope type: research/decision（成果物は文書。Issue labelはtype: featureだが、決定Issueであり実装は別Issue）
 - Accepted spec + commit: 本PRでacceptedへ進める（Phase1 review後にstatus: acceptedへ更新）
 - Bug oracle: N/A（research/decision。成果物は文書）
-- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 4）
+- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 5）
 - Base SHA: 824b468614c39c3f60353f09499f2588db4f4028（#445 merge後の現行main）
 - Head SHA: Phase1 push後にPR/Issueへ記録
 - Executed evidence: 上記Verification参照
