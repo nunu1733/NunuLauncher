@@ -15,7 +15,7 @@ updated: 2026-09-27
 > Revision 3: 2026-09-27 — Phase1 review round 2（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854110602)）の指摘1〜3に対応。指摘1: stale時のfallbackを「検証失敗による無変更」から「同一の純粋計画関数のclosed result（`FolderTarget` / `UpstreamDefault(reason)` / `Reject(reason)`）への再計画」へ修正。admission後に同じ関数を現状態へ再実行し、指定folderがstaleなら`UpstreamDefault(reason)`という有効planを再計画し、default配置自体のbounds/container等を同じadmission内で検証してから1 transactionで書く。default側も成立しない真のinvariant failureだけを`Reject`として無変更・typed failureにする。指摘2: policy snapshotのcapture位置を「queue投入（enqueue/queuePendingShortcutInfo）時」に明確化し、flush/`getItemInfo`時はpersist済みsnapshotを読むだけでcurrent policyから再生成しないことを明記。将来実装testへ「snapshot=Aでqueue → policyをBへ変更 → process restart → flush → Aを使用」のoracleとsnapshot欠損/破損時のfail-closed契約を追加。指摘3: Test oracleのAC-8 evidenceへ`DESIGN.md` diff確認を追加し、planのExecution checklistへ`DESIGN.md` gate行を追加。
 > Revision 4: 2026-09-27 — Phase1 review round 3（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854244634)）の指摘1に対応。
 > Revision 5: 2026-09-27 — Phase1 review round 4（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854335016)）の指摘1に対応。Revision 4注記のround 3 review permalinkが参照不能なcomment ID（5854297535）だったため、実際に参照可能なcomment 5854244634へ修正した。契約内容の変更なし。
-> Revision 6: 2026-09-27 — Phase 2実施。statusをacceptedへ進めた（ADR-0015の受入は本PRのmergeで完了する）。成果物: `docs/adr/0015-new-app-destination-policy.md`（新設、accepted。Phase 1 reviewで確定した書込み構造/closed result/policy snapshot契約をDecision 7/8/10へ反映）、`docs/adr/0005-fresh-install-presence-evidence.md`（Change historyへ1行追加）、`docs/engineering/package-provenance.md`（§7へ1行追加）、`docs/product/requirements.md`（D-015参照更新、#85整合の解消記録。FR-008 statusは不変）、`docs/product/organization-run-ux.md`（§2.3へ注記1文）、`DESIGN.md`（§11へgate行1件追加）、`CONTEXT.md`（用語1件追加）。判断内容の変更なし。policy snapshotの欠損・破損時の契約を「current policyでの再計画または明示fallback」の二択から、current policyを再読しない単一のclosed resultへ一意化: snapshotのidentity（policy選択、指定folder id、user、package）が読める範囲なら`UpstreamDefault(SNAPSHOT_INVALID)`へ明示fallbackし、default配置を通常と同じadmission内で検証して書く。identity自体が信頼できない場合だけ`Reject(SNAPSHOT_INVALID)`として無変更・typed failureにする。Outcome/Scenario/AC-6/plan/test oracleから「current policyで再計画」を削除し、process-death testにもこの結果を固定する。
+> Revision 6: 2026-09-27 — Phase 2実施。statusをacceptedへ進めた（ADR-0015の受入は本PRのmergeで完了する）。成果物: `docs/adr/0015-new-app-destination-policy.md`（新設、accepted。Phase 1 reviewで確定した書込み構造/closed result/policy snapshot契約をDecision 7/8/10へ反映）、`docs/adr/0005-fresh-install-presence-evidence.md`（Change historyへ1行追加）、`docs/engineering/package-provenance.md`（§7へ1行追加）、`docs/product/requirements.md`（D-015参照更新、#85整合の解消記録。FR-008 statusは不変）、`docs/product/organization-run-ux.md`（§2.3へ注記1文）、`DESIGN.md`（§11へgate行1件追加）、`CONTEXT.md`（用語1件追加）。ADR-0015のDecision番号が受入時に草案の1〜13から1〜15へ再編されたため、本specのDecision参照を現行番号へ同期した（契約内容の変更なし）。
 
 ## Problem
 
@@ -49,7 +49,7 @@ ADR-0005と`docs/engineering/package-provenance.md`には関連リンクのみ�
   - 草案内のRF-ID参照（RF-06/07/09等）をIssue番号（#446/#448/#450）へ置き換える。対応関係はメモ§3と #446 本文のとおり。
   - 未収録の `refocus-drafts/` 配下への参照を #446（付録が正）への参照に置き換える。ただし編集負担ベンチマークへの参照は、#441で正本が `docs/engineering/editing-burden-benchmark.md` に収録済みのため、そちらへ置き換える。
   - frontmatterの `status` は本PRで `accepted` とする（受入はこのPRのmergeで完了する。ADR-0015を `Criteria` として参照する最初の実装PRより前に `accepted` である必要がある。`docs/project/github-workflow.md` 高リスクaudit要件）。
-  - Decision本文の判断1〜13、Alternatives、Consequencesは草案の判断を変えず収録する。ただし草案の「未解決事項（保守者の判断が必要）」4項を、本specの「Open questions」の決着（下記）に従って解決済みとして収録する。
+  - Decision本文の判断1〜15（受入時にADR-0015として再編・拡張した番号体系。判断内容は草案の判断を変えず、Phase 1 reviewで確定した書込み構造・closed result・policy snapshot契約を追加収録する）、Alternatives、Consequencesを収録する。ただし草案の「未解決事項（保守者の判断が必要）」4項を、本specの「Open questions」の決着（下記）に従って解決済みとして収録する。
 - **ADR-0005への反映**: `docs/adr/0005-fresh-install-presence-evidence.md` のChange historyへ関連リンク（ADR-0015への参照、適用範囲の狭めの明示）を1行追加する。Decision/Context本文は1字も変えない（メモ§4.4「本文は変えず、関連リンクだけを足す」の承認済み判断。#445のADR-0004処理と同じ形式）。
 - **`docs/engineering/package-provenance.md`への反映**: §7（Verification and change history）へ関連リンクを1行追加する。§4分類表を含む本文は変えない。分類表は「増分整理proposal」の分類正本として維持される（ADR-0015 Decision 2）。
 - **`docs/product/requirements.md`への反映**:
@@ -94,7 +94,7 @@ Given `docs/adr/0015-new-app-destination-policy.md` が存在する
 When 受入条件を確認する
 Then frontmatterは `status: accepted` であり、対応として #446 を参照する
 And Decisionが対象の定義（上流が追加するアイコンの配置先だけを決める。追加するかどうかの判定は上流のまま）を含む
-And 判断1〜13（prior absence不要の根拠、3選択肢、fallback条件、id保持、ロック意味論、書込み契約のADR-0013への委譲、promise icon段階の統一、bridgeの最小化、module所有、Deckとの違い、Undo対象外、設定の置き場所）をそれぞれ `path:line` の根拠つきで含む
+And 判断1〜15（prior absence不要の根拠、3選択肢、fallback条件、id保持、ロック意味論、書込み契約と書込み構造のADR-0013への委譲、closed result意味論、bridgeの最小化、policy snapshotのcapture/read境界、promise icon段階の統一、module所有、Deckとの違い、Undo対象外、設定の置き場所）をそれぞれ `path:line` の根拠つきで含む
 And 「追加しない」が独立したtoggleではなく既存の `pref_add_icon_to_home` と同じ結果を指すことが記録されている
 
 ### Scenario: ADR-0005との関係が本文変更なしで接続される
@@ -135,7 +135,7 @@ And ADR-0013のConsequencesが「#446のspecは本契約を参照して書かれ
 
 ### Scenario: promise iconの段階から配置先が決まる
 
-Given ADR-0015のDecision 8
+Given ADR-0015のDecision 11
 When 配置先決定のタイミングを確認する
 Then 上流がpromise iconを追加する時点（`AddWorkspaceItemsTask`の書込み）で配置先を決めることが記録されている
 And install完了後の`PackageUpdatedTask.OP_ADD`が既存promise iconのintent/iconを更新するだけで配置を動かさないこと（`PackageUpdatedTask.java:261-320`）の根拠が記録されている
@@ -143,7 +143,7 @@ And 配置先をinstall完了後に変える案（2段階移動）がAlternative
 
 ### Scenario: bridgeとmoduleの所有が確定する
 
-Given ADR-0015のDecision 9と10とADR-0013契約4
+Given ADR-0015のDecision 7〜10とADR-0013契約4
 When bridgeの場所とmoduleの所有、書込み構造を確認する
 Then bridgeが`ItemInstallQueue`→`AddWorkspaceItemsTask`の追加経路の1箇所に置かれ、`PackageUpdatedTask`（AOSP由来）へ分岐を追加しないことが記録されている
 And Deckが`PackageUpdatedTask.OP_ADD`へ直接deck分岐を書いたことがNFR-010違反のpatch surfaceとして退役理由の1つである旨（`docs/assessment/lawnchair-deck-audit.md` §6.6、ADR-0006）が記録されている
@@ -155,7 +155,7 @@ And bridgeの具体的な実装場所（`ItemInstallQueue`のflush時か`AddWork
 
 ### Scenario: 利用者向け設定の置き場所が確定する
 
-Given ADR-0015のDecision 13
+Given ADR-0015のDecision 15
 When 設定の扱いを確認する
 Then 選択肢が「上流の既定 / 指定フォルダ / 追加しない」の3択であることが記録されている
 And 「追加しない」が既存の`pref_add_icon_to_home`（`lawnchair/src/app/lawnchair/preferences/PreferenceManager.kt:51`、UIは`HomeScreenPreferences.kt:74-82`）と同じ結果を指し、独立したtoggleを新設しないことが記録されている
@@ -164,7 +164,7 @@ And ホーム画面ロックが有効な間は追加自体が行われないこ�
 
 ### Scenario: Undoの対象外がADR-0013と揃っている
 
-Given ADR-0015のDecision 12とADR-0013の対象(c)
+Given ADR-0015のDecision 14とADR-0013の対象(c)
 When Undoの扱いを確認する
 Then 新規アプリの配置がUndoの対象外であることが両ADRで揃って記録されている
 And 置き場所を変えたい場合は項目単位の編集アクション（#448/FR-018）で動かすことが記録されている
@@ -197,15 +197,15 @@ None。新規permission、外部送信、sensitive dataの追加はない（文�
 
 ## Accessibility and localization
 
-None。UI変更はない（文書変更のみのため）。将来の設定UIの追加時に検証する（ADR-0015 Decision 13が記録対象）。
+None。UI変更はない（文書変更のみのため）。将来の設定UIの追加時に検証する（ADR-0015 Decision 15が記録対象）。
 
 ## Acceptance criteria
 
-- [ ] AC-1: `docs/adr/0015-new-app-destination-policy.md` が存在し、frontmatterが `status: accepted` で #446 を対応として参照する。Decisionが対象の定義、判断1〜13、「追加しない」の`pref_add_icon_to_home`との関係をすべて含み、各判断に `path:line` の根拠を持つ。
+- [ ] AC-1: `docs/adr/0015-new-app-destination-policy.md` が存在し、frontmatterが `status: accepted` で #446 を対応として参照する。Decisionが対象の定義、判断1〜15、「追加しない」の`pref_add_icon_to_home`との関係をすべて含み、各判断に `path:line` の根拠を持つ。
 - [ ] AC-2: ADR内に「prior absenceの証明が不要」であることの根拠（上流の重複除外の `path:line`、ADR-0005が防ぐ対象との構造的な違い）と、ADR-0005の適用範囲の狭め（「既存アイテムを動かす増分整理提案」）が記録されている。ADR-0005の本文は不変でChange historyに1行追加、`docs/engineering/package-provenance.md` の本文（§4分類表含む）は不変でChange historyに1行追加されている。
 - [ ] AC-3: 指定フォルダの境界条件（存在しない・別profile・Dock・配置制約違反）が上流既定への戻し条件として記録され、「満杯」がfallback条件として定義されていないこと（上流folderにハードな上限がなくページングで拡張する旨の根拠つき）が記録されている。書込み前の副作用のない検証（ADR-0013契約2との整合）と理由の記録が要求されている。指定フォルダのid保持、削除時の既定復帰と設定の行での一度だけの通知が記録されている。
 - [ ] AC-4: ロックの扱いがADR-0004のIdentity rules表の引用と限定解釈（親ロックは既存子のrank保護であり新規追加を禁じない。既存子のcaptured rankを変えない追加に限る。子の`LOCKED`は兄弟追加を妨げない。grid非依存の固定rank計算禁止）で記録されている。
-- [ ] AC-5: 書込み契約がADR-0013へ委譲され（対象(b)、1 transaction、model writer経路、coordinator排他）、ADR-0015は契約を重複定義しない。指定フォルダへの書込みがADR-0013契約4どおり「validation → MODEL_WRITER admission → admission後の再検証 → model/DB変更」の順序が保たれる構造（admissionの内側で検証と変更が完結する最小の`ModelWriter`操作の追加・使用）で実装されることが要求され、(a) admission前の無変更（`ItemInfo`変更・ID採番・bindItems callback・DB書込みを含む）、(b) defer解消後の同一純粋計画関数の現状態再実行、(c) 指定folderがstaleな場合は検証失敗ではなく`UpstreamDefault(reason)`という有効planへ再計画し、default配置自体のbounds/container等を同じadmission内で検証してから1 transactionで書くこと、(d) default側も成立しない真のinvariant failureだけが`Reject`（無変更・typed failure）であることが明記されている。promise iconの段階から同じ配置先を使うこと（Decision 8）と、install完了後変更案のRejectedが記録されている。
+- [ ] AC-5: 書込み契約がADR-0013へ委譲され（対象(b)、1 transaction、model writer経路、coordinator排他）、ADR-0015は契約を重複定義しない。指定フォルダへの書込みがADR-0013契約4どおり「validation → MODEL_WRITER admission → admission後の再検証 → model/DB変更」の順序が保たれる構造（admissionの内側で検証と変更が完結する最小の`ModelWriter`操作の追加・使用）で実装されることが要求され、(a) admission前の無変更（`ItemInfo`変更・ID採番・bindItems callback・DB書込みを含む）、(b) defer解消後の同一純粋計画関数の現状態再実行、(c) 指定folderがstaleな場合は検証失敗ではなく`UpstreamDefault(reason)`という有効planへ再計画し、default配置自体のbounds/container等を同じadmission内で検証してから1 transactionで書くこと、(d) default側も成立しない真のinvariant failureだけが`Reject`（無変更・typed failure）であることが明記されている。promise iconの段階から同じ配置先を使うこと（Decision 11）と、install完了後変更案のRejectedが記録されている。
 - [ ] AC-6: bridgeが`ItemInstallQueue`→`AddWorkspaceItemsTask`経路の1箇所に限定され、`PackageUpdatedTask`への分岐追加が禁止されている（Deck失敗の引用つき）。ポリシー所有moduleがorganizerとは別の直接編集と同じ側のmoduleであることが記録されている。再flush決定性のcanonical inputが「queue投入（enqueue/`queuePendingShortcutInfo`）時点でcaptureしたpolicy snapshot（policy選択、指定folder id、user、package）の永続化と再使用」であり、flush/`getItemInfo`時はpersist済みsnapshotを読むだけでcurrent policyから再生成しないことが記録されている。snapshot欠損・破損時もcurrent policyを再読しない単一のclosed result（identityが読める範囲なら`UpstreamDefault(SNAPSHOT_INVALID)`へ明示fallback、identity自体が信頼できない場合だけ`Reject(SNAPSHOT_INVALID)`）が記録されている。
 - [ ] AC-7: 利用者向け設定が3択で定義され、「追加しない」が独立toggleでなく既存設定と同じ結果を指すこと、ポリシー設定のUI置き場所（「ホームにアイコンを追加」の近傍）、ホーム画面ロック中の追加停止が記録されている。Undo対象外がADR-0013の対象(c)と揃っている。
 - [ ] AC-8: `docs/product/requirements.md` のD-015行が `docs/adr/0015-new-app-destination-policy.md` への参照に更新され、FR-008行のstatusは `proposed（再定義）` のまま不変である。未解決事項「FR-008と旧#85決定の整合」が解決済みとして整理されている。`docs/product/organization-run-ux.md` §2.3に注記が1文追加され、安全契約本体が不変である。`DESIGN.md` §11に「新規アプリの配置先ポリシー」のgate行が追加され、source of truthがADR-0015/#446へ向いている（ADR-0013分のgate行は追加しない）。
@@ -221,9 +221,9 @@ None。UI変更はない（文書変更のみのため）。将来の設定UIの
 | AC-2 | PR diffのreview。ADR-0005/package-provenanceのdiffがChange historyの1行追加のみであることの確認（`git diff` で機械確認可能） |
 | AC-3 | PR diffのreview。Decision 4/5のfallback条件とid保持の記載確認 |
 | AC-4 | PR diffのreview。ADR-0004 Identity rules表の引用と限定解釈の記載確認 |
-| AC-5 | PR diffのreview。ADR-0013への委譲文と書込み構造（closed result意味論を含む）とDecision 8の記載確認 |
+| AC-5 | PR diffのreview。ADR-0013への委譲文と書込み構造（closed result意味論を含む）とDecision 7/8/11の記載確認 |
 | AC-6 | PR diffのreview。Decision 9/10、policy snapshotのcapture/read境界、snapshot欠損時契約の記載確認 |
-| AC-7 | PR diffのreview。Decision 12/13の記載確認 |
+| AC-7 | PR diffのreview。Decision 14/15の記載確認 |
 | AC-8 | PR diffのreview。requirements.md/organization-run-ux.md/`DESIGN.md` §11 gate行のdiff確認 |
 | AC-9 | PR diffのreview。CONTEXT.mdの追加行確認 |
 | AC-10 | plan.mdの内容review |
