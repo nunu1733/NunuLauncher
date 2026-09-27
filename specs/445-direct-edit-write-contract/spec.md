@@ -8,8 +8,9 @@ updated: 2026-09-27
 
 # 直接編集の書込み契約（ADR-0013）の起草・受入と `AGENTS.md` 安全規約の適用範囲の明確化
 
-> Risk tier: L — 本Issueの成果物は文書のみ（ADR-0013、`AGENTS.md` 節への追記、ADR-0004のChange history、spec/plan）であり、高リスクpathに触れず、新しい書込み経路を作らない（`docs/project/github-workflow.md` Risk tiersの判定基準）。ただし決定の結果、最初の直接編集の実装PRは階層Hとなる。
+> Risk tier: H — #445（メモ§4.7）が「本ADRと最初の実装はリスク階層Hで扱う」と定めており、現行workflow（`docs/project/github-workflow.md` Risk tiers）の階層H条件「既存の書込み経路の契約を変える」に当たる（`AGENTS.md` 安全規約への明示的carve-outと、直接編集の書込み契約の確定。docs-onlyであることだけでは階層を下げない）。手順は現行どおり（accepted spec + plan.md、Execution and approval contract）。なお本PR自体は `risk: layout-data` labelも高リスクpath変更も含まないため、`high-risk-evidence` gateの機械的発火対象ではない（同workflow 適用条件。「tier Lだから対象外」ではなく適用条件の該当性で判断する）。保守者の指示により、本PRへ独立session（general-purposeサブエージェント）による監査を追加で実施し、記録を `docs/assessment/` に残す。
 > Revision 2: 2026-09-27 — Phase1 review（[Issue #445 comment](https://github.com/nunu1733/NunuLauncher/issues/445#issuecomment-5852664689)）の指摘1〜4とbranch freshnessに対応。指摘1: 契約に「admission成立後・最初のmodel/DB変更前の現在状態に対する再検証」を追加し、既存メソッドがadmission前に`ItemInfo`を変更する事実（`ModelWriter.java:190-192,252-254`）への対処を契約4に明記、要求テストにdefer後stale検証を追加。指摘2: `AGENTS.md` 変更を「既存節の1字も変えない純追記（(a)(b)(c)の明示carve-out + fail-closed文）」へ変更し、第一段落の適用範囲の縮小を撤回。指摘3: メモ§4.2の「ADR-0004本文は変えず」を維持したうえで、ADR-0013側に限定解釈の根拠（該当normative文言の引用とorganizer操作契約との結合）を明示するよう強化。指摘4: writer inventory allowlistを「機械的保証」から「backstop」へ位置づけ直し。branch freshness: 現行main（b40888ae17ce8924f23316119888ed6b80693d70、#444 Risk tiers導入後）へrebaseし、`src/` 無変更を確認して`path:line`根拠の有効性を維持。
+> Revision 3: 2026-09-27 — 再review（round 2）の指摘1〜2に対応。Risk tierをLからHへ訂正（#445の階層H指定と、workflow階層H条件「既存の書込み経路の契約を変える」への該当。`high-risk-evidence` gateの非発火は適用条件の該当性で説明）し、Outcomeに残っていた旧方針（第1段落の適用対象縮小）の文を純追記方針へ置換。
 
 ## Problem
 
@@ -21,7 +22,7 @@ updated: 2026-09-27
 
 ## Outcome
 
-`docs/adr/0013-direct-edit-write-contract.md` が受入済み（`status: accepted`）として存在し、直接編集の対象 (a)(b)(c)、契約条件1〜6、「不要とするもの」、ロックの扱い（既定案）、要求テスト（5系統＋破壊・復旧）を、`path:line` の根拠つきで確定する。`AGENTS.md` の安全規約節は適用対象を「organizer等が生成する計画的な複数アイテムの書換え」と明記し、既存7条件の文言と強度は1字も変えず、直接編集の区分を末尾の1段落でADR-0013へ委ねる。ADR-0004とは関連リンクで接続する（本文は変えない。メモ§4.2の承認済み判断）。#446（ADR-0015）、#448、#450のspecが、本契約を参照して書ける状態になる。
+`docs/adr/0013-direct-edit-write-contract.md` が受入済み（`status: accepted`）として存在し、直接編集の対象 (a)(b)(c)、契約条件1〜6、「不要とするもの」、ロックの扱い（既定案）、要求テスト（5系統＋破壊・復旧）を、`path:line` の根拠つきで確定する。`AGENTS.md` の安全規約節は、既存の第1段落・7条件・「favorites…」段落を1字も変更せず、末尾に直接編集の区分だけを明示carve-outする1段落（ADR-0013への委譲と、列挙外の書込みは従来条件に従うfail-closed文）を追記する。ADR-0004とは関連リンクで接続する（本文は変えない。メモ§4.2の承認済み判断）。#446（ADR-0015）、#448、#450のspecが、本契約を参照して書ける状態になる。
 
 本Issueは決定Issueであり、成果物は文書である。コード変更・テストファイルの作成は行わない。
 

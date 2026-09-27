@@ -3,8 +3,9 @@
 > Issue: #445
 > Spec: [spec.md](./spec.md)
 > Status: draft
-> Risk tier: L — 本planの成果物は文書のみであり、高リスクpathに触れず、新しい書込み経路を作らない（[docs/project/github-workflow.md](../../docs/project/github-workflow.md) Risk tiers）。決定の結果として最初の直接編集の実装PRが階層Hになることは、ADR-0013 Consequencesに記録する。
+> Risk tier: H — Issue #445（メモ§4.7）が本ADRを階層Hへ割り当てており、現行workflowの階層H条件「既存の書込み経路の契約を変える」に当たる（`AGENTS.md` 安全規約への明示的carve-out、書込み契約の確定）。手順は現行どおり（accepted spec + plan.md、Execution and approval contract）。本PR自体はrisk label・高リスクpath変更なしのdocs-onlyであるため `high-risk-evidence` gateの機械的発火対象ではなく、evidenceはrepository contract gateで足りる（workflow 適用条件の該当性による判断。tier Lへの下げではない）。保守者の指示により独立監査（別session）を追加実施する。
 > Revision 2: 2026-09-27 — Phase1 review指摘1〜4とbranch freshnessに対応。AGENTS.md変更を純追記へ変更（指摘2）、ADR-0013に再検証契約・限定解釈根拠を追加（指摘1・3）、writer inventory allowlistをbackstopへ位置づけ直し（指摘4）、現行main（b40888ae17ce8924f23316119888ed6b80693d70）へrebase（branch freshness）。
+> Revision 3: 2026-09-27 — 再review（round 2）指摘1〜2に対応。Risk tierをLからHへ訂正（tier Lの根拠を削除し、gate非発火は適用条件の該当性として分離して記載）、Outcome旧方針文の置換をspecへ反映。
 > Revision 1: 2026-09-27 — 初版。Phase1 reviewへ提出。
 
 ## Current evidence
