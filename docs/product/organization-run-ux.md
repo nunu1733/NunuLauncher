@@ -146,6 +146,7 @@ eligibility自体を有効化しない。証拠比較は
 package-event incremental placementをMVP外のLater/deferred capabilityとした。したがってpackage eventは
 proposal/confirmationへ進まず、manual flowだけを利用可能とする。将来の再開には、新しいproduct decisionで
 authoritative historyとrace/crash protocolを承認し、accepted specを作成することが必要である。
+FR-008の再定義（[ADR-0015](../adr/0015-new-app-destination-policy.md)、[#446](https://github.com/nunu1733/NunuLauncher/issues/446)）により、上流が追加を決めたアイコンの配置先決定はorganizerのincremental proposalの枠外へ移った。ADR-0005が防ぐ対象は「既存アイテムを動かす増分整理提案」である。
 
 ## 3. D-005: preview, confirmation, and recovery proposal
 
