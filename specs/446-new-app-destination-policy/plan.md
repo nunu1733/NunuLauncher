@@ -10,6 +10,8 @@
 > Revision 4: 2026-09-27 — Phase1 review round 3（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854244634)）の指摘1に対応。
 > Revision 5: 2026-09-27 — Phase1 review round 4（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854335016)）の指摘1に対応。Revision 4注記のround 3 review permalinkを参照可能なcomment 5854244634へ修正。契約内容の変更なし。
 > Revision 6: 2026-09-27 — Phase 2実施。Execution checklistのPhase 2項目を完了へ更新し、Documentation updatesのcheckboxを実施済みへ更新。ADR-0015のDecision番号が受入時に1〜13から1〜15へ再編されたため、本planとspecのDecision参照を現行番号へ同期した（契約内容の変更なし）。
+> Revision 7: 2026-09-27 — Phase 2 review round 1（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854548402)）の指摘1〜2に対応。指摘1: spec/planのDecision参照をADR-0015の現行番号1〜15へ同期（promise icon=11、Undo=14、設定=15、snapshot=10等）。指摘2: PR本文・titleをPhase 2最終PRへ更新（Closes #446、成果物9ファイル、handoff更新）、Execution checklistのPhase 1 clear等を完了へ更新。
+> Revision 8: 2026-09-27 — Phase 2 review round 2（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854627832)）の指摘1〜2に対応。指摘1: specのbridge Scenario GivenへDecision 12（module所有）を追加、AC-6 Test oracleをDecision 9/10/12へ更新。指摘2: Review / handoff packetをPhase 2最終状態へ更新（Phase 1 clear/Phase 2 review履歴、CI evidence、Revision番号）。契約内容の変更なし。
 
 ## Current evidence
 
@@ -142,14 +144,17 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 - [x] Full relevant verification completed（repo contract validator + self-test + diff機械確認。Phase 1/2とも実施）
 - [x] PR evidence and remaining risks recorded（PR本文をPhase 2最終PRへ更新）
 
-## Review / handoff packet（Phase1時点）
+## Review / handoff packet（Phase 2最終時点）
 
 - Issue and all comments: https://github.com/nunu1733/NunuLauncher/issues/446; retrieved at 2026-09-27; state=OPEN; labels=type: feature
 - Scope type: research/decision（成果物は文書。Issue labelはtype: featureだが、決定Issueであり実装は別Issue）
-- Accepted spec + commit: 本PRでacceptedへ進める（Phase1 review後にstatus: acceptedへ更新）
+- Accepted spec + commit: specs/446-new-app-destination-policy/spec.md（status: accepted。本PR内でaccepted化）
 - Bug oracle: N/A（research/decision。成果物は文書）
-- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 6）
+- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 8）
 - Base SHA: 824b468614c39c3f60353f09499f2588db4f4028（#445 merge後の現行main）
-- Head SHA: Phase1 push後にPR/Issueへ記録
+- Head SHA: 本PRのcurrent head（PR本文に記録）
+- Phase 1 review: round 1〜5。round 5 Clear（https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854429674）
+- Phase 2 review: round 1 Request changes（指摘1〜2）、round 2 Request changes（指摘1〜2。Decision 12参照漏れとhandoff残骸）。対応は本Revision
+- CI evidence: current headのCI / High-risk gateともにsuccess（PRのChecksで確認）
 - Executed evidence: 上記Verification参照
-- 次の1手: 改訂版をpushし、ChatGPTへPhase1 reviewを依頼 → clear後にPhase2（ADR-0015/ADR-0005/package-provenance/product文書/CONTEXT.mdの実装）→ Phase2 review → PR作成・独立監査・merge
+- 次の1手: 本Revision（Decision 12参照同期＋handoff更新）をpushし、ChatGPTへPhase 2再reviewを依頼 → clear後に独立監査（別session）→ merge operator check → merge

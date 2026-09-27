@@ -16,6 +16,8 @@ updated: 2026-09-27
 > Revision 4: 2026-09-27 — Phase1 review round 3（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854244634)）の指摘1に対応。
 > Revision 5: 2026-09-27 — Phase1 review round 4（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854335016)）の指摘1に対応。Revision 4注記のround 3 review permalinkが参照不能なcomment ID（5854297535）だったため、実際に参照可能なcomment 5854244634へ修正した。契約内容の変更なし。
 > Revision 6: 2026-09-27 — Phase 2実施。statusをacceptedへ進めた（ADR-0015の受入は本PRのmergeで完了する）。成果物: `docs/adr/0015-new-app-destination-policy.md`（新設、accepted。Phase 1 reviewで確定した書込み構造/closed result/policy snapshot契約をDecision 7/8/10へ反映）、`docs/adr/0005-fresh-install-presence-evidence.md`（Change historyへ1行追加）、`docs/engineering/package-provenance.md`（§7へ1行追加）、`docs/product/requirements.md`（D-015参照更新、#85整合の解消記録。FR-008 statusは不変）、`docs/product/organization-run-ux.md`（§2.3へ注記1文）、`DESIGN.md`（§11へgate行1件追加）、`CONTEXT.md`（用語1件追加）。ADR-0015のDecision番号が受入時に草案の1〜13から1〜15へ再編されたため、本specのDecision参照を現行番号へ同期した（契約内容の変更なし）。
+> Revision 7: 2026-09-27 — Phase 2 review round 1（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854548402)）の指摘1に対応。Decision参照の現行番号（1〜15）への同期の残り（promise icon=11、Undo=14、設定=15、Test oracle等）を修正。
+> Revision 8: 2026-09-27 — Phase 2 review round 2（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854627832)）の指摘1に対応。bridge Scenario GivenへDecision 12（module所有）を追加、AC-6 Test oracleをDecision 9/10/12へ更新。契約内容の変更なし。
 
 ## Problem
 
@@ -143,7 +145,7 @@ And 配置先をinstall完了後に変える案（2段階移動）がAlternative
 
 ### Scenario: bridgeとmoduleの所有が確定する
 
-Given ADR-0015のDecision 7〜10とADR-0013契約4
+Given ADR-0015のDecision 7〜10、12とADR-0013契約4
 When bridgeの場所とmoduleの所有、書込み構造を確認する
 Then bridgeが`ItemInstallQueue`→`AddWorkspaceItemsTask`の追加経路の1箇所に置かれ、`PackageUpdatedTask`（AOSP由来）へ分岐を追加しないことが記録されている
 And Deckが`PackageUpdatedTask.OP_ADD`へ直接deck分岐を書いたことがNFR-010違反のpatch surfaceとして退役理由の1つである旨（`docs/assessment/lawnchair-deck-audit.md` §6.6、ADR-0006）が記録されている
@@ -222,7 +224,7 @@ None。UI変更はない（文書変更のみのため）。将来の設定UIの
 | AC-3 | PR diffのreview。Decision 4/5のfallback条件とid保持の記載確認 |
 | AC-4 | PR diffのreview。ADR-0004 Identity rules表の引用と限定解釈の記載確認 |
 | AC-5 | PR diffのreview。ADR-0013への委譲文と書込み構造（closed result意味論を含む）とDecision 7/8/11の記載確認 |
-| AC-6 | PR diffのreview。Decision 9/10、policy snapshotのcapture/read境界、snapshot欠損時契約の記載確認 |
+| AC-6 | PR diffのreview。Decision 9/10/12、policy snapshotのcapture/read境界、snapshot欠損時契約の記載確認 |
 | AC-7 | PR diffのreview。Decision 14/15の記載確認 |
 | AC-8 | PR diffのreview。requirements.md/organization-run-ux.md/`DESIGN.md` §11 gate行のdiff確認 |
 | AC-9 | PR diffのreview。CONTEXT.mdの追加行確認 |
@@ -250,3 +252,5 @@ None。UI変更はない（文書変更のみのため）。将来の設定UIの
 - 2026-09-27: Revision 4（Phase1 review round 3指摘1対応。冒頭のRevision 4注記参照）。
 - 2026-09-27: Revision 5（round 4指摘1対応。Revision 4注記のround 3 review permalinkを参照可能なcomment 5854244634へ修正。契約内容の変更なし）。
 - 2026-09-27: Revision 6（Phase 2実施。status accepted化と成果物の収録。冒頭のRevision 6注記参照）。
+- 2026-09-27: Revision 7（Phase 2 review round 1指摘対応。Decision参照同期の残り）。
+- 2026-09-27: Revision 8（Phase 2 review round 2指摘対応。Decision 12参照追加）。
