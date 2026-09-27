@@ -310,6 +310,65 @@ public class DirectEditModelWriterTest {
         assertTrue(mBgDataModel.workspaceItems.contains(item));
     }
 
+    /**
+     * ADR-0013 required-test table, "admission後の再検証（defer後のstale検証）"
+     * row, through the production task: while an organizer lease is held the
+     * direct-edit move defers with no model/DB change; a competing writer
+     * moves the target; after release the task's stage-2 validator rejects
+     * the moved target and nothing is written.
+     */
+    @Test
+    public void deferredMoveRejectsStaleTargetWithoutWrite() throws Exception {
+        WorkspaceItemInfo item = seedAppItem(501, Favorites.CONTAINER_DESKTOP, 0, 0, 4, 0);
+
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        AtomicReference<LayoutWriteCoordinator.Lease> lease =
+                new AtomicReference<>(coordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER));
+        assertNotNull(lease.get());
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> failure = new AtomicReference<>();
+        mWriter.moveItemForDirectEdit(501, Favorites.CONTAINER_DESKTOP, 0, 0, 1, 0,
+                current -> {
+                    // Stage 2 inside admission: the competing writer below has
+                    // moved the target, so the snapshot no longer matches the
+                    // stage-1 placement and the write must be rejected.
+                    ItemInfo target = mBgDataModel.itemsIdMap.get(501);
+                    if (target == null || target.cellY != 4) {
+                        return DirectEditContract.Decision.reject(DirectEditContract.FAIL_STALE);
+                    }
+                    return DirectEditContract.Decision.proceed();
+                },
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created) -> {
+                    assertFalse(success);
+                    failure.set(reason);
+                    done.countDown();
+                });
+
+        // While deferred: no callback, no model/DB change.
+        assertFalse("task must stay deferred", done.await(300, TimeUnit.MILLISECONDS));
+        assertEquals(4, queryInt(501, Favorites.CELLY));
+        assertEquals(4, item.cellY);
+
+        // A competing writer moves the target while the lease is held. Raw
+        // SQL on purpose: a controller update here would take the tokenless
+        // MODEL_WRITER lane, queue behind our own deferred task behind the
+        // organizer lease, and deadlock the test thread.
+        item.cellY = 2;
+        ContentValues moved = new ContentValues();
+        moved.put(Favorites.CELLY, 2);
+        mController.getDb().update(Favorites.TABLE_NAME, moved,
+                Favorites._ID + "=" + 501, null);
+
+        lease.get().close();
+        lease.set(null);
+        awaitCallback(done);
+        assertEquals(DirectEditContract.FAIL_STALE, failure.get());
+        // Nothing written on top: the DB keeps the competing writer's state.
+        assertEquals(2, queryInt(501, Favorites.CELLY));
+        assertEquals(2, item.cellY);
+    }
+
     // --- (c) remove: exactly the target row ---
 
     @Test

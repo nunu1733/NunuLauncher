@@ -882,7 +882,13 @@ public class ModelWriter {
             int oldSpanY = item.spanY;
             int oldRank = item.rank;
 
-            mModel.getModelDbController().delete(TABLE_NAME, itemIdMatch(item.id), null);
+            try {
+                mModel.getModelDbController().delete(TABLE_NAME, itemIdMatch(item.id), null);
+            } catch (Exception e) {
+                FileLog.e(TAG, "direct-edit remove failed; nothing changed", e);
+                reportFailure(DirectEditContract.FAIL_WRITE_FAILED);
+                return;
+            }
             synchronized (mBgDataModel) {
                 mBgDataModel.removeItem(mContext, item);
                 mEditVerifier.verifyModel();

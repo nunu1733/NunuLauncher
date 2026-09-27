@@ -41,7 +41,7 @@ updated: 2026-09-27
   - **「ページへ移動…」**: 既存ページの一覧dialog（fork側。既存のAlertDialog慣行に従う。実例 `OrganizerLockShortcut` のconfirmDialog）。選ぶと、純粋計画関数がそのページ内の空きセルを決定的に探索して移動先を決め、即座に書き込む。移動成功後は移動先ページを表示する。候補は既存ページに限る（「新しいページ」はNon-goals）。
   - **「フォルダへ入れる…」**: 既存フォルダ一覧（同じprofileのフォルダのみ）+「新しいフォルダ」のdialog。既存フォルダへの追加はrank末尾（`FolderInfo.add` のrank管理に対応）。「新しいフォルダ」を選んだ場合は置き先ページを続けて選び、フォルダはそのページの空きセルに1x1で作られる（sourceがhotseat上のアイテムの場合も、新規フォルダはワークスペースページ上に作る。hotseat上への新規フォルダ作成は第1段では行わない）。フォルダ行のINSERT + 子の移動のUPDATEを1つの明示的transactionに包む（ADR-0013契約3）。
   - **「ホームから外す」**: 選択確定後、admission内の再検証を通過した場合に限り、対象行を1回のDELETEで即時に削除する（失敗時は無変更でtypedな理由を表示）。UndoのUI・窓・寿命・逆操作の実装は#450が所有するため本Issueでは提供しない（メモ§11 B-2/B-3。ADR-0013契約5は「上流の削除Undoの仕組みを再利用してよい（詳細は#450のspecで決める）」と委ねるのみであり、本specはsnackbarや窓の値を確定しない）。#450までの暫定期間、誤って外したアイテムの復元は手動（アプリドロワーからの再追加）である。アンインストール・フォルダ中身の暗黙削除をしない（ADR-0013契約6）。空フォルダの残置は [spec 24](../24-empty-folder-policy/spec.md) の方針（preserve default）に従う。
-- **ロックの扱い**: 直接編集はロックを妨げない（メモ§4.2、ADR-0013 Decision「ロック（既定案の確定）」）。ロック済みアイテムへの操作時は、dialog内にその旨を示す1行を表示する（「外す」の場合はロックも削除される旨）。表示にはADR-0004の `LockEffectNote` の説明機構（`EffectiveLocks.kt`）の既存のtyped note/localized mappingの慣行に従う。ロック列 `organizerLockState` は移動で不変、削除で行とともに消える。書込みがロック列を書くことはない。
+- **ロックの扱い**: 直接編集はロックを妨げない（メモ§4.2、ADR-0013 Decision「ロック（既定案の確定）」）。ロック済みアイテムへの操作時はその旨を示す。dialogを持つアクション（ページへ移動、フォルダへ入れる）ではdialog内の1行で示し、「外す」（dialogなしで即時実行）では実行前にロックも削除される旨のToastで示す。表示にはADR-0004の `LockEffectNote` の説明機構（`EffectiveLocks.kt`）の既存のtyped note/localized mappingの慣行に従う。ロック列 `organizerLockState` は移動で不変、削除で行とともに消える。書込みがロック列を書くことはない。
 - **ADR-0014との照合**: 第1段のpopup操作面は #447（ADR-0014、`docs/adr/0014-edit-surface.md`、Proposed Revision 2）の決定に依存しない。本specのmodule分担（純粋計画の共有 + 2書込み経路の分離、popup経路のbridge最小化）は、ADR-0014の要件（第1段popupは `SystemShortcut.Factory` に載り追加bridgeを要求しない / 第2段はfork側視覚的編集画面で確定時にorganizerの安全な適用経路を使う）と矛盾しない。#447のADR受入時に矛盾が判明した場合はspecを更新する。
 
 ## Non-goals
@@ -139,7 +139,7 @@ Then 3つの編集アクションはいずれも現れない
 Given Aの `organizerLockState` がLOCKEDである
 When 利用者がAへ「ページへ移動…」を確定する
 Then 移動は拒否されず、dialogの表示にロック中であることが示され、移動後も行のロック列は不変である
-And 「ホームから外す」の場合、dialogの表示にロックも削除される旨が示される
+And 「ホームから外す」の場合、実行前にロックも削除される旨がToastで示される
 
 ## Data and state
 
@@ -155,7 +155,7 @@ And 「ホームから外す」の場合、dialogの表示にロックも削除�
 ## Accessibility and localization
 
 - 3つのshortcutには既存の `SystemShortcut` と同じラベル/iconの仕組みを使い、TalkBackで読めるラベルを持つ。
-- 対象選択dialogは既存のAlertDialog慣行に従い、選択肢（「ページN」「フォルダ名」「新しいフォルダ」）、拒否理由、ロック注記が支援技術で読める。font scalingで崩れない。
+- 対象選択dialogは既存のAlertDialog慣行に従い、選択肢（「ページN」「フォルダ名」「新しいフォルダ」）、拒否理由、ロック注記が支援技術で読める。「外す」のロック注記はToastであり、文字列リソース由来で支援技術が読める。font scalingで崩れない。
 - 新規文字列は `lawnchair/res/values/strings.xml` + `values-ja/strings.xml` へ追加し、既存のfork文字列慣行（`organizer_lock_*` 等）に従う。
 - 上流のaccessibilityアクション・keyboard shortcutは変更しない。popup経路とaccessibility経路の書込みが重なっても、どちらも単一アイテムのmodel書込みであり不変条件は保たれる。
 
@@ -174,7 +174,7 @@ And 「ホームから外す」の場合、dialogの表示にロックも削除�
 - [ ] AC-11: ベンチマーク: B2〜B4の合否はNow-2全体（#448+#449のうち適した方）で判定するため本Issueでは確定しない。B2・B3・B4のそれぞれについて、第1段単独の重み付きコストを実行記録として残し、baseline（B2=48 / B3=21 / B4=25）からの削減幅を記録する。会計は最終UI flowに従う（目安: B2=1個あたり 長押し2 + tap 1 + 対象ページ選択 1 = 4、B3=既存フォルダ経路 4 / 新規フォルダ経路（置き先ページ選択を含む）5、B4=長押し2 + tap 1 = 3）。エミュレータでの実行記録はベンチマーク§7の手順に従う。
 - [ ] AC-12: patch surface: PR上で `measure_upstream_patch_surface.py --target HEAD --enforce-baseline` を実行し、結果をPR本文に記録する。src/側の新規・変更ファイル（bridge）がbaseline比で増える場合、NFR-010としてPRで記録する。
 - [ ] AC-13: 文書: specが `implemented` になり、`DESIGN.md`（homeedit moduleの位置づけと、直接編集のgate 2系統（ADR-0013）行）、`CONTEXT.md`（domain language 3語）が更新される。高リスクpath一覧へのhomeedit追加要否の判断（本specは「fork側homeeditはDB書込みを直接行わないため追加なし。書込みは既に一覧内の `ModelWriter.java` に集約」と決定。`validate_writer_inventory.py` のscanがhomeedit配下のDB書込みpatternを検出した場合はCI failで機械的に露見する）をplanへ記録する。
-- [ ] AC-14: アクセシビリティ: 3つのshortcutラベル、対象選択dialogの選択肢・拒否理由・ロック注記が、支援技術（TalkBack）で読み上げ可能な文字列リソースから供給される。自動検証（dialog構築のtestで文言が空でないこと・リソース由来であること）に加え、エミュレータTalkBackでの読み上げ確認を記録し、実機確認をowner確認に含める。
+- [ ] AC-14: アクセシビリティ: 3つのshortcutラベル、対象選択dialogの選択肢・拒否理由・ロック注記（dialog内またはToast）、が支援技術（TalkBack）で読み上げ可能な文字列リソースから供給される。自動検証（dialog構築のtestで文言が空でないこと・リソース由来であること）に加え、エミュレータTalkBackでの読み上げ確認を記録し、実機確認をowner確認に含める。
 
 ## Test oracle
 
