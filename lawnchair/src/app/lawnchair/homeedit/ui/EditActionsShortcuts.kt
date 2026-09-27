@@ -43,6 +43,15 @@ object EditActionTargetFilter {
 }
 
 /**
+ * Freezes the action-start placement at construction time. The capture
+ * timing is the contract under test (spec 448): a target moved after the
+ * popup opened must not be re-read as the precondition.
+ */
+internal class SourcePlacementSnapshot(provider: () -> HomeEditItem) {
+    val placement: HomeEditItem = provider()
+}
+
+/**
  * The action-start snapshot of the target row: the stage-1/stage-2
  * precondition (spec 448 — a target moved after the popup opened is stale).
  */
@@ -112,25 +121,27 @@ class EditActionsShortcuts {
         protected val itemId: Int get() = mItemInfo.id
 
         /**
-         * Action-start placement, captured eagerly at shortcut construction.
-         * `mItemInfo` is the live model item and can be moved by another
-         * writer while the dialog is open; a lazy read here would silently
-         * adopt the moved placement as the precondition and defeat the
-         * stage-1 staleness check.
+         * Action-start placement, captured eagerly at shortcut construction
+         * via [SourcePlacementSnapshot]. `mItemInfo` is the live model item
+         * and can be moved by another writer while the dialog is open; a
+         * lazy read here would silently adopt the moved placement as the
+         * precondition and defeat the stage-1 staleness check.
          */
-        protected val sourcePlacement: HomeEditItem = sourcePlacementOf(
-            itemType = mItemInfo.itemType,
-            id = mItemInfo.id,
-            container = mItemInfo.container,
-            screenId = mItemInfo.screenId,
-            cellX = mItemInfo.cellX,
-            cellY = mItemInfo.cellY,
-            spanX = mItemInfo.spanX,
-            spanY = mItemInfo.spanY,
-            rank = mItemInfo.rank,
-            userSerial = UserCache.INSTANCE.get(mTarget)
-                .getSerialNumberForUser(mItemInfo.user),
-        )
+        protected val sourcePlacement: HomeEditItem = SourcePlacementSnapshot {
+            sourcePlacementOf(
+                itemType = mItemInfo.itemType,
+                id = mItemInfo.id,
+                container = mItemInfo.container,
+                screenId = mItemInfo.screenId,
+                cellX = mItemInfo.cellX,
+                cellY = mItemInfo.cellY,
+                spanX = mItemInfo.spanX,
+                spanY = mItemInfo.spanY,
+                rank = mItemInfo.rank,
+                userSerial = UserCache.INSTANCE.get(mTarget)
+                    .getSerialNumberForUser(mItemInfo.user),
+            )
+        }.placement
 
         private val mainHandler = Handler(Looper.getMainLooper())
         private var pendingSources = 2
