@@ -154,7 +154,7 @@ specには通常系だけでなく、permission拒否、容量不足、unsupport
 
 Workerは次のpacketを作成してから実装またはレビュー依頼へ進む。
 
-- **feature**: `status: accepted` のspecと、そのaccepted内容を含むcommit SHA、plan revision。階層Mは軽量spec（[Risk tiers](#risk-tiersリスク階層) 参照）のacceptedで足りる。階層Hは現行どおりspec + plan.mdを要求する。
+- **feature**: `status: accepted` のspecと、そのaccepted内容を含むcommit SHA（階層共通）。plan revisionは階層Hのみ要求する。階層Mは軽量spec（[Risk tiers](#risk-tiersリスク階層) 参照）のacceptedで足りる（plan.md・plan revisionは要求しない）。階層Hは現行どおりspec + plan.mdを要求する。
 - **bug**: accepted spec、または正本としてrepositoryに追跡されたbug oracleのpathと、そのoracleを含むexact commit SHA。Issue/commentに固定されたoracleを使う場合は、Issue/comment permalink、取得時刻 (UTC)、ownerのacceptance linkを記録し、Issueだけに存在するoracleへrepository commit SHAを付けない。oracleが曖昧なら実装を開始せずresearch/decision Issueへ分離する。
 - **research/decision**: Issueが求める成果物、未決定事項、判断基準を固定する。成果物自体が終了条件である場合だけfinal PRでcloseする。
 - **maintenance/docs-only**: spec/planが不要な理由、変更scope、exit criteriaを明記する。`N/A` は理由なしの省略ではない。

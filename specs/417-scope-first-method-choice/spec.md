@@ -99,7 +99,7 @@ Issue #417受入条件「idle AI / run-in AIの二経路についてContinue / A
 
 ## Domain language
 
-本specがこの節の用語の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）:
+本specが **scope-bound依頼破棄 (scope-bound request discard)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。**対象scope凍結** と **方法選択面** は#444の移動対象外であり、正本は引き続き `CONTEXT.md` である:
 
 - **対象scope凍結 (Frozen Organization Scope)**: 1回の整理runについて、方法選択より前にユーザーが明示確定した対象集合。配置済み対象（常に全体）と、選択済み未配置候補（0件以上）からなる。確定後はAI export・deterministic planner・import検証のすべてがこの同一scopeを参照する。
 - **方法選択面 (method choice)**: scope凍結後に現れる「このまま整理 / AIに相談」の選択面。旧T-07前置き面の方法選択（spec 369/372）はここへ移る。

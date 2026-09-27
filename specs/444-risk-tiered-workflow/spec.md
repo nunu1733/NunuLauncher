@@ -314,6 +314,11 @@ Phase 1 review（ChatGPT、round 1）で指摘された項目の解決記録で�
   Test oracle AC-1行の誤記（`plan.md` → `docs/project/github-workflow.md`）を修正。
 - 2026-09-27: Phase 1 review round 3で **Clear**（head
   `60626e660de17efa89c254a44d56bfb3c1eb5abe`）。
-  [Issue #444コメント](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5852097427)。
+  [Issue #444コメント](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5852101118)。
   statusを `accepted` へ遷移。AC-7（初回階層M適用の実証）はmerge後の最初の
   階層M変更で確認し、その後に `implemented` へ遷移する。
+- 2026-09-27: Phase 2 review round 1（Changes requested、3件）への対応として実装を修正。
+  Start gate・AGENTS手順8の `plan revision` を階層条件付きへ変更（Finding 1）、
+  各specのDomain language前書きを「移動対象語の個別宣言＋非対象語は引き続き
+  `CONTEXT.md` が正本」へ修正（Finding 2）、Change historyのclear permalinkを
+  正しいcomment IDへ修正（Finding 3）。

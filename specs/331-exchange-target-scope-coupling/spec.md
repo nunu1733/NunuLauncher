@@ -155,7 +155,7 @@ AIが返せるrefは、そのrunで確定したscopeのsubjectのみとする。
 
 ## Domain language
 
-本specがこの節の用語の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。
+本specが **scope binding gate (scope束縛検証)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。本節の他の用語（候補subject等）の正本は引き続き `CONTEXT.md` である。
 
 **候補subject (candidate subject)**:
 External Agent Exchangeのexportにおいて、現在Homeに配置されていない未配置アプリ候補を表すexchange subject。placed itemと同一の乱数seamによるexport-scoped `ref` を持ち、`subject: CANDIDATE` とmobility `CANDIDATE` で区別される。内部対応先はcandidate安定identity (`ComponentKey` + `ProfileId`) であり、raw identifierはexport文書に現れない。

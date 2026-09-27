@@ -52,7 +52,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 5. 最小の縦切りで実装し、interfaceを通したテストを先に追加する。
 6. 実行した検証と結果をPRへ記録し、必要な文書を同じPRで更新する。
 7. PR本文のIssue関係を成果の完了度に合わせる。Issueの終了条件を満たす最終PRだけが `Closes #<issue>` を含め、中間のspec/plan/research/調査・証跡PRは `Refs #<issue>` を使う。括弧書き（例: `Closes #<issue> (実装後)`）で自動closeを遅延できない。
-8. Worker/Reviewの開始・handoff・承認は [GitHub workflowの実行契約](./docs/project/github-workflow.md#execution-and-approval-contract) に従う。accepted specのcommit、workflowで定義されたbug oracleのrevision identity、plan revision、base/head SHA、diff、検証結果、未確認範囲を同じpacketへ記録し、モデルが異なるだけで独立review済みとは扱わない。条件付き承認や承認後の実質変更は、条件確認または再reviewが終わるまで実装開始・mergeへ進めない。脆弱性の疑いは公開Issue/PRへ記載せず、[SECURITY.md](./SECURITY.md)の非公開報告窓口を使う。
+8. Worker/Reviewの開始・handoff・承認は [GitHub workflowの実行契約](./docs/project/github-workflow.md#execution-and-approval-contract) に従う。accepted specのcommit、workflowで定義されたbug oracleのrevision identity、plan revision（階層Hのみ。階層Mはaccepted軽量specのcommitのみ）、base/head SHA、diff、検証結果、未確認範囲を同じpacketへ記録し、モデルが異なるだけで独立review済みとは扱わない。条件付き承認や承認後の実質変更は、条件確認または再reviewが終わるまで実装開始・mergeへ進めない。脆弱性の疑いは公開Issue/PRへ記載せず、[SECURITY.md](./SECURITY.md)の非公開報告窓口を使う。
 
 進め方はリスク階層で分ける（[docs/project/github-workflow.md](./docs/project/github-workflow.md) の Risk tiers）。Launcher DB書込み、migration、recovery、上流model/loader bridge（階層H）は現行の厳格さを維持する。新しい書込み経路を持たないUX/機能（階層M）は軽量specと実機確認で進めてよいが、specには改善するベンチマーク課題と目標（編集負担ベンチマーク、NFR-014）を含める。文書・テスト・refactor（階層L）はPRのみでよい。階層の判定と格上げの規則はworkflow文書に従う。
 

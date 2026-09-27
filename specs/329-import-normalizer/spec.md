@@ -75,7 +75,7 @@ accepted (既存run接続) or zero-write reject
 
 ## Domain language
 
-本specがこの節の用語の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。
+本specが **インポート正規化 (Import Normalizer)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。
 
 **インポート正規化 (Import Normalizer)**:
 import textの外形 (framing/transport表現) のみを認識・canonical化する境界層。accepted framingはmarker形式 (canonical)・単一fenced `json` code block・standalone JSON objectの3種で、それ以外はtyped失敗 (曖昧/認識不能) でzero-write rejectする。fuzzy extraction (複数候補からの推測選択・`{...}` の任意拾い) は禁止で、payloadは正規化済入力の部分文字列 (semantic無変更) に限られる。

@@ -173,7 +173,7 @@ gateはcandidate側の2検証のみでsessionの有効性を再確認せず、�
 
 ## Domain language
 
-本specがこの節の用語の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。
+本specが **原因別remedy (cause-specific remedy)**・**rebind（process死後再開 / fresh run rebind）**・**選択復元初期値 (selection restore initial values)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。
 
 **原因別remedy (cause-specific remedy)**:
 `SCOPE_MISMATCH` の原因種別に対応づけられた救済action。選択集合の差（`SET_MISMATCH`）は
