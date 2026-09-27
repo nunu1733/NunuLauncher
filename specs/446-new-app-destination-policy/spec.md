@@ -17,7 +17,8 @@ updated: 2026-09-27
 > Revision 5: 2026-09-27 — Phase1 review round 4（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854335016)）の指摘1に対応。Revision 4注記のround 3 review permalinkが参照不能なcomment ID（5854297535）だったため、実際に参照可能なcomment 5854244634へ修正した。契約内容の変更なし。
 > Revision 6: 2026-09-27 — Phase 2実施。statusをacceptedへ進めた（ADR-0015の受入は本PRのmergeで完了する）。成果物: `docs/adr/0015-new-app-destination-policy.md`（新設、accepted。Phase 1 reviewで確定した書込み構造/closed result/policy snapshot契約をDecision 7/8/10へ反映）、`docs/adr/0005-fresh-install-presence-evidence.md`（Change historyへ1行追加）、`docs/engineering/package-provenance.md`（§7へ1行追加）、`docs/product/requirements.md`（D-015参照更新、#85整合の解消記録。FR-008 statusは不変）、`docs/product/organization-run-ux.md`（§2.3へ注記1文）、`DESIGN.md`（§11へgate行1件追加）、`CONTEXT.md`（用語1件追加）。ADR-0015のDecision番号が受入時に草案の1〜13から1〜15へ再編されたため、本specのDecision参照を現行番号へ同期した（契約内容の変更なし）。
 > Revision 7: 2026-09-27 — Phase 2 review round 1（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854548402)）の指摘1に対応。Decision参照の現行番号（1〜15）への同期の残り（promise icon=11、Undo=14、設定=15、Test oracle等）を修正。
-> Revision 8: 2026-09-27 — Phase 2 review round 2（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854627832)）の指摘1に対応。bridge Scenario GivenへDecision 12（module所有）を追加、AC-6 Test oracleをDecision 9/10/12へ更新。契約内容の変更なし。
+> Revision 8: 2026-09-27 — Phase 2 review round 2（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854653373)）の指摘1に対応。bridge Scenario GivenへDecision 12（module所有）を追加、AC-6 Test oracleをDecision 9/10/12へ更新。契約内容の変更なし。
+> Revision 9: 2026-09-27 — Phase 2 review round 3（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854732932)）の指摘1に対応。Revision 8注記のround 2 review permalinkが参照不能なcomment ID（5854627832）だったため、実際に参照可能なcomment 5854653373へ修正した。契約内容の変更なし。
 
 ## Problem
 
@@ -254,3 +255,4 @@ None。UI変更はない（文書変更のみのため）。将来の設定UIの
 - 2026-09-27: Revision 6（Phase 2実施。status accepted化と成果物の収録。冒頭のRevision 6注記参照）。
 - 2026-09-27: Revision 7（Phase 2 review round 1指摘対応。Decision参照同期の残り）。
 - 2026-09-27: Revision 8（Phase 2 review round 2指摘対応。Decision 12参照追加）。
+- 2026-09-27: Revision 9（Phase 2 review round 3指摘対応。round 2 review permalink修正。契約内容の変更なし）。
