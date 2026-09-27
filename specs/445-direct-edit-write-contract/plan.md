@@ -3,6 +3,9 @@
 > Issue: #445
 > Spec: [spec.md](./spec.md)
 > Status: draft
+> Risk tier: L — 本planの成果物は文書のみであり、高リスクpathに触れず、新しい書込み経路を作らない（[docs/project/github-workflow.md](../../docs/project/github-workflow.md) Risk tiers）。決定の結果として最初の直接編集の実装PRが階層Hになることは、ADR-0013 Consequencesに記録する。
+> Revision 2: 2026-09-27 — Phase1 review指摘1〜4とbranch freshnessに対応。AGENTS.md変更を純追記へ変更（指摘2）、ADR-0013に再検証契約・限定解釈根拠を追加（指摘1・3）、writer inventory allowlistをbackstopへ位置づけ直し（指摘4）、現行main（b40888ae17ce8924f23316119888ed6b80693d70）へrebase（branch freshness）。
+> Revision 1: 2026-09-27 — 初版。Phase1 reviewへ提出。
 
 ## Current evidence
 
@@ -24,6 +27,7 @@
 - `src/com/android/launcher3/popup/SystemShortcut.java:337` — `UNINSTALL_APP`。
 - `lawnchair/src/app/lawnchair/organizer/application/protocol/Ports.kt:51-56` `applyWriteSet`、`:92` `WriterKind`。`lawnchair/src/app/lawnchair/organizer/locks/EffectiveLocks.kt:18-46` — `LockProtectionScope`（`LockEffectNote` の説明機構の土台）。
 - `docs/engineering/editing-burden-benchmark.md` — #441で正本が収録済み（削除のUndoは4秒snackbar、移動にはUndoがない。§3.3）。草案が参照していた未収録の `refocus-drafts/product/editing-burden-benchmark.md` はこちらへ置き換える。
+- **branch freshness（Phase1 review指摘への対応）**: 現行main `b40888ae17ce8924f23316119888ed6b80693d70`（#444 Risk tiers導入。`AGENTS.md` と `docs/project/github-workflow.md` が変更済み）へrebase済み（2026-09-27）。`git diff <baseline>..HEAD -- src/ lawnchair/src/` が空であることを確認済みであり、本節の `path:line` 根拠は現行mainでも有効である。main側の文書変更（Risk tiers、階層Mの軽量spec手順、階層Hのplan要件の明示）は本planの前提と矛盾しない。
 
 ## Design
 
@@ -32,7 +36,7 @@
 | File | 変更 | 内容 |
 |---|---|---|
 | `docs/adr/0013-direct-edit-write-contract.md` | 新設 | #445 付録の承認済み草案（2026-09-24）を基に、下記「ADR本文の修正一覧」を適用して収録。frontmatter `status: accepted` |
-| `AGENTS.md` | 安全規約節の変更 | specのScopeに定めた変更後全文を適用（第1段落の対象明示、7条件と次段落は1字も変えない、末尾に直接編集の1段落） |
+| `AGENTS.md` | 安全規約節への純追記 | 既存の節（第1段落・7条件・「favorites…」段落）は1字も変更せず、末尾へ直接編集の1段落（ADR-0013へのcarve-out + fail-closed文）を追記するだけ（spec Scope Revision 2。Phase1 review指摘2） |
 | `docs/adr/0004-organizer-lock-persistence.md` | Change historyへ1行追加 | 本文（Decision、Identity rules、Lifecycle等）は不変。関連リンクのみ |
 | `specs/445-direct-edit-write-contract/spec.md` `plan.md` | 新設 | 本spec/plan |
 
@@ -52,9 +56,7 @@
 5. 草案ヘッダの「本節は出典の全文であり…」等の草案固有の注記は削除する（`docs/adr/` に収録された本文が正となるため）。
 
 ### `AGENTS.md` の変更の機械的確認
-
-第1段落と末尾段落の変更は `git diff` で確認できる。既存7条件と「favorites…」段落が1字も変わらないことは、diff上これらの行に変更が現れないことで機械的に確認する。
-
+変更は末尾1段落の追記のみである。既存節（第1段落、7条件、「favorites…」段落）が1字も変わらないことは、`git diff` 上で既存行が一切現れず、追加行（`+`で始まる行）が追記段落のみであることで機械的に確認する。既存の広い適用対象（fail-closedなdefault）が維持されるため、ADR-0013の対象に分類されない単一item書込み（将来の未分類writerを含む）が規約の対象外になることはない。
 ### 高リスクpath一覧へのhomeedit追加方針（spec AC-7(a)。メモ§11 B-10。本Issueが正本）
 
 - **判断**: 直接編集のmoduleは仮称 `app.lawnchair.homeedit`（`lawnchair/src/app/lawnchair/homeedit/`）に置かれる見込みであり（メモ§4.8）、このうち**Launcher DBへ書くコードを `lawnchair/src/app/lawnchair/homeedit/write/**` に集約する**ことを予定し、このpathを高リスクpath一覧（`docs/project/github-workflow.md` 適用条件2、`tools/repo-contract/validate_high_risk_evidence.py`）へ追加する。UI（popup等のbridge）と副作用のない計画関数（ADR-0013契約2の純粋検証）は含めない。
@@ -62,9 +64,9 @@
 - **配置の逸脱時**: #448のspecが書込みコードを別の配置に置く場合は、そのspec/planで実際のpathを確定し、同じ規則（DB書込みpathのみ追加）で高リスク一覧へ追加する。適用対象の原則（「homeeditのうちLauncher DBへ書くコードのpathのみ。UIと副作用のない計算は含めない」）は #445 が正本であり続ける。
 
 ### writer inventory allowlist（spec AC-7(b)）
+直接編集が新たなDB書込みfileを追加した場合、`tools/repo-contract/validate_writer_inventory.py` のsource-scan allowlistの更新がCIで要求される（既存の仕組みで自動的に検出される。`docs/assessment/issue-44-shared-writer-audit.md`）。
 
-直接編集が新たなDB書込みfileを追加した場合、`tools/repo-contract/validate_writer_inventory.py` のsource-scan allowlistの更新がCIで要求される（既存の仕組みで自動検出される。`docs/assessment/issue-44-shared-writer-audit.md`）。ADR-0013 Decision 4（「新規の書込みは必ず `LayoutWriteCoordinator` のMODEL_WRITER admissionを経由する」）を機械的に保つのはこのallowlistである。この注記を、最初の書込み実装PRのplanが引き継ぐことを本planに明記する。
-
+allowlistは「既知patternに一致したDB書込みfileがallowlistに載っていること」を検査する**backstop**であり（Phase1 review指摘4）、新規writerのinventory漏れをfailさせる役割を担う。allowlistはwriterが実際に `LayoutWriteCoordinator` のMODEL_WRITER admissionを通ることまでは検証しないため、ADR-0013 Decision 4の実保証は、(1) 直接編集の書込みが `ModelWriter`/coordinator admissionを通る構造（validation → admission（再検証）→ model/DB変更）、および(2) 要求テスト表のdefer/排他test（「defer後のstale検証」行を含む。将来の実装PRが追加する）によって担保される。この位置づけと、(1)(2)を最初の書込み実装PRのplanが引き継ぐことを本planに明記する。
 ### 順序制約（spec AC-7(c)）
 
 `Criteria: ADR-0013` 参照は `accepted`（または `implemented`）のADRに対してのみ有効である（`docs/project/github-workflow.md` 高リスクaudit要件の機械検証）。本PRでADR-0013を `accepted` として収録するため、#446（ADR-0015）、#448、#450の実装PRは本PR merge後に開始する。本PR自身はdocs-onlyであり、この順序制約の影響を受けない。
@@ -82,7 +84,7 @@
 
 1. `python3 tools/repo-contract/validate_repo_contract.py` — markdown内部link、required filesの検証（ADR-0013内の相対参照、spec内リンクを含む）。
 2. `python3 tools/repo-contract/test_validate_repo_contract.py` — validator self-test。
-3. `git diff main -- AGENTS.md docs/adr/0004-organizer-lock-persistence.md` の目視 + 機械確認 — 7条件と「favorites…」段落の行がdiffに現れないこと（文言不変）、ADR-0004はChange historyの1行追加のみであること。
+3. `git diff origin/main -- AGENTS.md docs/adr/0004-organizer-lock-persistence.md` の目視 + 機械確認 — `AGENTS.md` は既存行がdiffに一切現れず追加行が末尾段落のみであること（既存節の文言不変。指摘2対応後の純追記）、ADR-0004はChange historyの1行追加のみであること。
 4. `path:line` 根拠のspot check — 上記「Current evidence」のとおり2026-09-27に実施済み。結果をPRに記録する。
 5. CI: docs-onlyのためsource jobはpath filterでskipされ、`validate-repo-contract` のみ実行される。これがdocs-only PRの必要十分なevidenceである（`docs/project/github-workflow.md` Evidence選択原則）。
 
@@ -100,8 +102,8 @@
 - Scope type: research/decision
 - Accepted spec + commit: 本PRでacceptedへ進める（Phase1 review後にstatus: acceptedへ更新）
 - Bug oracle: N/A（research/decision。成果物は文書）
-- Plan + revision: specs/445-direct-edit-write-contract/plan.md（本書、Revision 1）
-- Base SHA: ea8d57d068ca68de29a1790fe43361b634a4f438
+- Plan + revision: specs/445-direct-edit-write-contract/plan.md（本書、Revision 2）
+- Base SHA: b40888ae17ce8924f23316119888ed6b80693d70（#444 merge後の現行main。Phase1 reviewのbranch freshness指摘に対応しrebase済み）
 - Head SHA: Phase1 push後にPR/Issueへ記録
 - Executed evidence: 上記Verification参照
-- 次の1手: Phase1 review（ChatGPT）→ clear後にPhase2（ADR-0013/AGENTS.md/ADR-0004の実装）→ Phase2 review → PR作成・独立監査・merge
+- 次の1手: 改訂版（Revision 2）をpushし、ChatGPTへPhase1再reviewを依頼 → clear後にPhase2（ADR-0013/AGENTS.md/ADR-0004の実装）→ Phase2 review → PR作成・独立監査・merge

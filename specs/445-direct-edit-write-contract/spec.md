@@ -8,6 +8,9 @@ updated: 2026-09-27
 
 # 直接編集の書込み契約（ADR-0013）の起草・受入と `AGENTS.md` 安全規約の適用範囲の明確化
 
+> Risk tier: L — 本Issueの成果物は文書のみ（ADR-0013、`AGENTS.md` 節への追記、ADR-0004のChange history、spec/plan）であり、高リスクpathに触れず、新しい書込み経路を作らない（`docs/project/github-workflow.md` Risk tiersの判定基準）。ただし決定の結果、最初の直接編集の実装PRは階層Hとなる。
+> Revision 2: 2026-09-27 — Phase1 review（[Issue #445 comment](https://github.com/nunu1733/NunuLauncher/issues/445#issuecomment-5852664689)）の指摘1〜4とbranch freshnessに対応。指摘1: 契約に「admission成立後・最初のmodel/DB変更前の現在状態に対する再検証」を追加し、既存メソッドがadmission前に`ItemInfo`を変更する事実（`ModelWriter.java:190-192,252-254`）への対処を契約4に明記、要求テストにdefer後stale検証を追加。指摘2: `AGENTS.md` 変更を「既存節の1字も変えない純追記（(a)(b)(c)の明示carve-out + fail-closed文）」へ変更し、第一段落の適用範囲の縮小を撤回。指摘3: メモ§4.2の「ADR-0004本文は変えず」を維持したうえで、ADR-0013側に限定解釈の根拠（該当normative文言の引用とorganizer操作契約との結合）を明示するよう強化。指摘4: writer inventory allowlistを「機械的保証」から「backstop」へ位置づけ直し。branch freshness: 現行main（b40888ae17ce8924f23316119888ed6b80693d70、#444 Risk tiers導入後）へrebaseし、`src/` 無変更を確認して`path:line`根拠の有効性を維持。
+
 ## Problem
 
 `AGENTS.md`「ホームレイアウトを扱う安全規約」は「次の条件を満たさない変更をDBへ適用してはならない」と対象を限定せずに書かれている。この全面適用読みのままだと、ユーザーが明示的に選んだ1個のアイテムへの即時編集（長押しpopup等でのページ移動・フォルダ投入・ホームから外す）、上流が行う単一アイテムの追加の配置先決定（#446/ADR-0015）、および前者のUndo（#450）の1操作ごとに、snapshot revision照合・recovery point・相関reload・適用後の全体再検証が要求されることになり、応答性（NFR-013）と実装量が割に合わない。
@@ -28,27 +31,17 @@ updated: 2026-09-27
   - 草案内のRF-ID参照（RF-06/07/08/09等）をIssue番号（#446/#448/#449/#450）へ置き換える。対応関係はメモ§3と #445 本文のとおり。
   - 未収録の `refocus-drafts/` 配下への参照を #445（付録が正）への参照に置き換える。ただし編集負担ベンチマークへの参照は、#441で正本が `docs/engineering/editing-burden-benchmark.md` に収録済みのため、そちらへ置き換える。
   - frontmatterの `status` は本PRで `accepted` とする（受入はこのPRのmergeで完了する。ADR-0013を `Criteria` として参照する最初の実装PRより前に `accepted` である必要がある。`docs/project/github-workflow.md` の高リスクaudit要件）。
-  - Decision本文の契約条件1〜6、「不要とするもの」、ロック（既定案）、要求テスト表、Alternatives、Consequencesは草案の判断を変えず収録する。
+  - Decision本文の契約条件1〜6、「不要とするもの」、ロック（既定案）、要求テスト表、Alternatives、Consequencesは草案の判断を変えず収録する。ただしPhase1 review指摘1・3に対応する次の修正を加える:
+    - **契約2の強化（指摘1）**: 書込み前の副作用のない検証に加え、「MODEL_WRITER admissionが成立した後（deferされた場合はlease解放後）、最初のmodel/DB変更の前に、現在の状態に対して同一の純粋検証を再実行する。ずれていればtypedに失敗し、model/DBのいずれにも変更を加えない」を契約化する。根拠: 検証済み前提はdefer中にstaleになりうる。
+    - **契約4の明確化（指摘1）**: 既存の `ModelWriter.moveItemInDatabase` / `modifyItemInDatabase` は `executeOnModelThread()`（admission）より前に `updateItemInfoProps(...)` で `ItemInfo` を変更する（`ModelWriter.java:190-192,252-254`、2026-09-27実検証）。したがって直接編集は、既存メソッドをそのまま呼ぶ形ではなく、「validation → admission（再検証を含む）→ model/DB変更」の順序が保たれる構造（同経路に追加する最小の操作、または操作全体をadmissionの内側に置く形）で実装されることを契約に明記する。
+    - **要求テスト表への追加（指摘1）**: 「defer後のstale検証」の行を追加する: ORGANIZER lease保持中に直接編集のintentを投入 → organizer適用が対象row/配置先を変更 → lease解放後、staleな直接編集はtyped失敗（または現在状態からの再計画）で書かないこと、lease解放前にmodel/DBの先行変更がないこと。
+    - **ロック節の強化（指摘3。メモ§4.2の「ADR-0004本文は変えず、関連リンクだけを足す」の方針は維持）**: ADR-0013内に、ADR-0004の該当normative文言（Decision節のlock truth authorityとtransaction境界、Identity and effective-lock rulesのprotection表、Contextにおけるspec 13契約との結合）を引用し、これらがorganizerのcapture/apply/recoveryという操作契約に結びついたprotection rulesであること、上流dragがbaselineからlock列に触れずに移動してきた実績、#265の復元が手動編集をfail-closedな外部変更として扱う実績、を根拠に「LOCKEDのprotection表はorganizer等の自動変更に対する制約であり、ユーザーの明示的直接編集を禁じる語ではない」という限定解釈を明示する。Change historyリンク単独では、accepted ADR間の表面上の矛盾を解消しないため、限定解釈の根拠はADR-0013側が担う。ADR-0004への反映はChange historyの関連リンクのみ（メモ§4.2どおり）とする。
 - **ADR-0004への反映（Decision ロック節の確定）**: 「手動編集（直接編集を含む）はロックを妨げず、lock列の値を保ったまま移す」はADR-0013本文が正本として明示する。ADR-0004の本文は変えず、Change historyへ関連リンク（ADR-0013への参照）を1行追加する。これはメモ§4.2の承認済み判断（「ADR-0004の本文は変えず、関連リンクだけを足す」）であり、草案の未解決事項（1行追記 vs 参照で足りる）を解決する。
-- **`AGENTS.md`「ホームレイアウトを扱う安全規約」節の変更**: 変更後の全文は次のとおり（第1段落の冒頭に適用対象を明示し、7条件は1字も変えず、末尾に直接編集の1段落を追加する）:
+- **`AGENTS.md`「ホームレイアウトを扱う安全規約」節の変更（Phase1 review指摘2により変更）**: 既存の節（第1段落、7条件、「favorites…」段落）は**1字も変更しない**。変更は末尾への1段落の追記のみとする。既存規約の広いdefault（fail-closed）を維持したまま、ADR-0013の対象だけを明示的にcarve-outする形であり、承認済み草案が想定した第一段落の「organizer等が生成する計画的な複数アイテムの書換え」への縮小は撤回した — 縮小すると、ADR-0013以外の単一item書込み（将来の未分類writerを含む）が7条件の対象外となりfail-openになるため。追記する段落:
 
-  > ## ホームレイアウトを扱う安全規約
-  >
-  > organizer等が生成する計画的な複数アイテムの書換え（organizer runの適用を含む）をDBへ適用するときは、次の条件を満たさなければならない。
-  >
-  > - 入力snapshotと適用時の状態が同じrevisionである。
-  > - 全配置アイテムが「保持・移動・明示的削除」のいずれかに説明可能である。
-  > - ロック配置が変化していない。
-  > - 座標がdevice profile内で、重複せず、folder/container参照が有効である。
-  > - 適用前にアプリ内から復旧可能なrecovery pointが作成されている。
-  > - 変更はtransactionとして成功するか、変更前へ戻る。
-  > - 適用後に再読込し、不変条件を再検証する。
-  >
-  > `favorites` の無条件な全削除→再挿入、遅延時間への依存、手動バックアップだけをundoとみなす実装は禁止する。例外が必要なら、受入済みADRと破壊・復旧テストを要求する。
-  >
-  > ユーザーが明示的に選んだ1個のアイテムへの即時の編集アクション、上流が行う単一アイテムの追加の配置先決定、および前者のUndoは、この規約ではなくADR-0013（直接編集の書込み契約）に従う。これらは1アクション = 1 DB transaction、書込み前の副作用のない検証、fail-closedなUndoを要求するが、snapshot revision照合・recovery point・相関reload・適用後の全体再検証は要求しない。
+  > ユーザーが明示的に選んだ1個のアイテムへの即時の編集アクション、上流が行う単一アイテムの追加の配置先決定、および前者のUndoは、この規約ではなくADR-0013（直接編集の書込み契約）に従う。これらは1アクション = 1 DB transaction、書込み前の副作用のない検証、fail-closedなUndoを要求するが、snapshot revision照合・recovery point・相関reload・適用後の全体再検証は要求しない。この段落に列挙されないLauncher DBへのlayout書込みは、引き続きこの節の条件に従う。
 
-  承認済み草案の変更案からの差分は1点である: 適用対象の例示から「視覚的編集画面の確定時の一括適用」を外した。ADR-0014（#447）が未受入であり、未受入の将来機能を規約文の例示に含めないためである（ADR-0014の受入時に #447/#449 側で追加しうる）。要約段落は草案案のとおり残す（agentがADRを開かずに境界を判断できるようにするため。詳細はADR-0013を正とする）。
+  承認済み草案の変更案からの差分は2点: (1) 第一段落の適用範囲の縮小をやめ、既存節を不変とした純追記へ変更（指摘2）。(2) 追記段落の末尾に、列挙外の書込みが従来条件に従うことを明示するfail-closed文を加えた。視覚的編集画面の例示は引き続き含まない（ADR-0014/#447未受入のため）。要約の粒度（要約段落を残す）は草案案どおり。
 - **spec/plan（本ディレクトリ）**: 本specとplan。planには、homeedit高リスクpath一覧への追加方針、writer inventory allowlistの自動検出の注記、実装PRとの順序制約を記載する（下記AC-7）。
 - **PR構成**: ADR-0013の新設、`AGENTS.md` の変更、ADR-0004のChange history追記は、単一のPRで行う（「AGENTS.mdの変更がADR-0013の受入と同じPR群で行われる」ことを、このPR構成で満たす）。
 
@@ -90,15 +83,22 @@ Then drag&drop（`Workspace.java:2345`）、フォルダ（`LauncherDelegate.jav
 And 単一行updateがtransactionを明示しないこと（`ModelWriter.java:471-475`）、lock列を書かないこと（`ORGANIZER_LOCK_STATE` の参照が編集経路の `ContentWriter` に存在しないこと）の根拠が記録されている
 And 直接編集が現行dragより弱くならない理由（検証・1 transaction・Undoを足すだけ）が「不要とするもの」の根拠として記録されている
 
-### Scenario: 安全規約の適用範囲が明示され、7条件の強度が不変である
+### Scenario: 安全規約は既存節が不変で、直接編集だけが明示carve-outされる
 
 Given 変更後の `AGENTS.md` 安全規約節
-When organizer runの適用について規約を読む
-Then 第1段落は「organizer等が生成する計画的な複数アイテムの書換え（organizer runの適用を含む）」に適用対象を限定している
-And 既存7条件の箇条書きは変更前と1字も変わらない
-And 「favorites の無条件な全削除→再挿入…」の段落も変更前と変わらない
-And 末尾段落が直接編集の区分（明示的単一アイテム編集、単一アイテムの追加配置先決定、前者のUndo）をADR-0013へ委ね、契約の要約（1アクション = 1 DB transaction、副作用のない検証、fail-closedなUndo／revision照合・recovery point・相関reload・全体再検証は要求しない）を含む
+When 変更前の節とdiffを比較する
+Then 第1段落・7条件の箇条書き・「favorites の無条件な全削除→再挿入…」段落は変更前と1字も変わらない（変更は末尾1段落の追記のみ）
+And 追記段落が直接編集の区分（明示的単一アイテム編集、単一アイテムの追加配置先決定、前者のUndo）をADR-0013へ委ね、契約の要約（1アクション = 1 DB transaction、副作用のない検証、fail-closedなUndo／revision照合・recovery point・相関reload・全体再検証は要求しない）を含む
+And 追記段落の末尾に「この段落に列挙されないLauncher DBへのlayout書込みは、引き続きこの節の条件に従う」のfail-closed文がある
+And ADR-0013の対象に分類されない単一itemの書込み（将来の未分類writerを含む）が規約の対象外になっていない
 And 視覚的編集画面の例示は含まない（ADR-0014未受入のため）
+
+### Scenario: deferされた直接編集はlease解放後に再検証する
+
+Given organizer runの適用（ORGANIZER lease）が進行中で、直接編集の書込みがMODEL_WRITER admissionでdeferされている
+When lease保持中にorganizer適用が対象row/配置先を変更する
+Then lease解放後、直接編集は最初のmodel/DB変更の前に現在状態に対して純粋検証を再実行し、ずれていればtypedに失敗して書かない
+And lease保持中にmodel/DBへの先行変更が発生しない（既存メソッドがadmission前に `ItemInfo` を変更する性質は、直接編集の書込み構造 — validation → admission（再検証）→ model/DB変更 — で吸収される）
 
 ### Scenario: ロックの扱いがADR-0004と矛盾せず、反映形式が確定する
 
@@ -147,12 +147,12 @@ None。UI変更はない（文書変更のみのため）。ADR/AGENTS.mdは英�
 ## Acceptance criteria
 
 - [ ] AC-1: `docs/adr/0013-direct-edit-write-contract.md` が存在し、frontmatterが `status: accepted` で #445 を対応として参照する。Decisionが対象 (a)(b)(c)、契約条件1〜6、「不要とするもの」、ロック（既定案）をすべて含み、契約の各条件に `path:line` の根拠を持つ。
-- [ ] AC-2: ADR内に「今日の手動dragが安全規約の条件なしで書いている」ことの根拠（`path:line` つきの書込み経路一覧と、lock列を書かないことの根拠）と、「安全性を弱めない」理由（検証・1 transaction・Undoを足すだけ。Quality order 1を損なわない）が記録されている。
-- [ ] AC-3: ロックの扱いがADR-0004と矛盾しないことがADR内で確認されており、反映形式の判断（本文は変えずChange historyへ関連リンク追加。メモ§4.2の承認済み判断）が記録されている。実際にADR-0004のChange historyへリンクが追加され、ADR-0004の他の本文は不変である。
+- [ ] AC-2: ADR内に「今日の手動dragが安全規約の条件なしで書いている」ことの根拠（`path:line` つきの書込み経路一覧と、lock列を書かないことの根拠）と、「安全性を弱めない」理由（検証・1 transaction・Undoを足すだけ。Quality order 1を損なわない）が記録されている。さらに契約2/4が「admission成立後（defer解消後）・最初のmodel/DB変更前の現在状態に対する再検証」を要求し、既存メソッドがadmission前に `ItemInfo` を変更する性質（`ModelWriter.java:190-192,252-254`）とその対処（validation → admission（再検証）→ model/DB変更 の順序を保つ書込み構造）を明記している。要求テスト表に「defer後のstale検証」の行が存在する。
+- [ ] AC-3: ロックの扱いがADR-0004と矛盾しないことがADR内で確認されており、反映形式の判断（本文は変えずChange historyへ関連リンク追加。メモ§4.2の承認済み判断）が記録されている。ADR-0013側には、ADR-0004の該当normative文言（Decision節、Identity and effective-lock rules、spec 13契約との結合）を引用した限定解釈の根拠（protection表がorganizerのcapture/apply/recoveryという操作契約に結びつくrulesであること、dragの実績、#265の復元実績）が明示されている。実際にADR-0004のChange historyへリンクが追加され、ADR-0004の他の本文は不変である。
 - [ ] AC-4: organizer適用後の直接編集が、復元（recovery point）から見て今日の手動dragと同じ「手動編集」であり、fail-closedに `NotRestorable(STALE_REVISION)` となりうることがADR内で確認されている（#265とspec 13 Recovery protocolへの参照を含む）。
 - [ ] AC-5: 要求テスト（途中失敗の注入、transaction rollback、Undoのfail-closed、organizer runとの排他、process死、破壊・復旧）がADR内の表で既存test surfaceに割り付けられ、新規laneを作らないことが明記されている。CI routingの変更は本PRでは行わない（将来の実装PRが要求テストを実装する際に、test-audit手順と既存lane割付けに従う）。
-- [ ] AC-6: `AGENTS.md` の安全規約節がScopeに定めた変更後全文のとおり変更されている（適用対象の明示、7条件と次段落の文言不変、末尾の直接編集段落、視覚的編集画面の例示なし）。ADR-0013の新設と `AGENTS.md` の変更が同じPRで行われている。
-- [ ] AC-7: plan.mdに次が記載されている: (a) homeeditのうちLauncher DBへ書くコードの高リスクpath一覧への追加方針（具体的pathと、追加を実行する最初の実装PRの責任。UIと副作用のない計算は含めない）、(b) writer inventory source-scan allowlistが新規DB書込みfileを自動検出する旨と、ADR-0013 Decision 4の機械的保証がこのallowlistであること、(c) `Criteria: ADR-0013` 参照が `accepted` ADRのみ有効であることに由来する順序制約（本PRでADR-0013をacceptedにする）。
+- [ ] AC-6: `AGENTS.md` の安全規約節は既存部分（第1段落・7条件・「favorites…」段落）が1字も変わらない純追記であり、末尾に直接編集段落（ADR-0013への委譲、契約要約、「この段落に列挙されないLauncher DBへのlayout書込みは、引き続きこの節の条件に従う」のfail-closed文）が追加されている。ADR-0013の対象に分類されない単一item書込みが安全規約の対象外になっていない。視覚的編集画面の例示は含まない。ADR-0013の新設と `AGENTS.md` の変更が同じPRで行われている。
+- [ ] AC-7: plan.mdに次が記載されている: (a) homeeditのうちLauncher DBへ書くコードの高リスクpath一覧への追加方針（具体的pathと、追加を実行する最初の実装PRの責任。UIと副作用のない計算は含めない）、(b) writer inventory source-scan allowlistが新規DB書込みfileを自動検出するbackstopである旨（allowlistは既知patternのwriter fileがallowlistに載っていることしか検査せず、admission経由の使用までは検証しない。Decision 4の実保証は書込みが `ModelWriter`/coordinator admissionを通る構造と要求テスト表のdefer/排他testによる）、(c) `Criteria: ADR-0013` 参照が `accepted` ADRのみ有効であることに由来する順序制約（本PRでADR-0013をacceptedにする）。
 - [ ] AC-8: ADRが自己完結しており、#446（ADR-0015）、#448、#450のspecが本契約を参照して書ける状態である（対象定義の所有関係、契約1〜6、要求テストがADR内で完結し、Consequencesに下流specが重複定義しない指針を含む）。
 
 ## Test oracle
