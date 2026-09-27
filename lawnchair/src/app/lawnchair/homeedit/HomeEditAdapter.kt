@@ -57,13 +57,7 @@ class HomeEditStage2Validator(
 
     override fun validate(current: DirectEditContract.Snapshot): DirectEditContract.Decision {
         val snapshot = HomeEditSnapshotMapper.map(current)
-        val targetId = when (intent) {
-            is HomeEditIntent.MoveToPage -> intent.targetItemId
-            is HomeEditIntent.AddToFolder -> intent.targetItemId
-            is HomeEditIntent.CreateFolderAndAdd -> intent.targetItemId
-            is HomeEditIntent.Remove -> intent.targetItemId
-        }
-        val target = snapshot.itemById(targetId)
+        val target = snapshot.itemById(intent.sourcePlacement.id)
         if (target == null || target != stage1.targetItemPlacement) {
             return DirectEditContract.Decision.reject(
                 if (target == null) DirectEditContract.FAIL_ITEM_GONE else DirectEditContract.FAIL_STALE,

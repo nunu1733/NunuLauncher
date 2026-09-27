@@ -13,6 +13,7 @@ import android.view.View
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.homeedit.HomeEditExecutor
 import app.lawnchair.homeedit.HomeEditIntent
+import app.lawnchair.homeedit.HomeEditItem
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.locks.LockExplanation
 import app.lawnchair.organizer.locks.LockTargetState
@@ -28,14 +29,46 @@ import com.android.launcher3.pm.UserCache
 import com.android.launcher3.popup.SystemShortcut
 import com.android.launcher3.util.Executors
 
-/** See spec 448 Scope: saved app/deep-shortcut rows only. */
 private fun editableTarget(itemInfo: ItemInfo): ItemInfo? {
-    if (itemInfo.itemType != ITEM_TYPE_APPLICATION && itemInfo.itemType != ITEM_TYPE_DEEP_SHORTCUT) {
-        return null
-    }
-    if (itemInfo.id == ItemInfo.NO_ID) return null
+    if (!EditActionTargetFilter.isEligible(itemInfo.itemType, itemInfo.id)) return null
     return itemInfo
 }
+
+/** Popup eligibility predicate (spec 448 Scope); pure and unit-tested. */
+object EditActionTargetFilter {
+    fun isEligible(itemType: Int, id: Int): Boolean {
+        val savedAppOrShortcut = itemType == ITEM_TYPE_APPLICATION || itemType == ITEM_TYPE_DEEP_SHORTCUT
+        return savedAppOrShortcut && id != ItemInfo.NO_ID
+    }
+}
+
+/**
+ * The action-start snapshot of the target row: the stage-1/stage-2
+ * precondition (spec 448 — a target moved after the popup opened is stale).
+ */
+internal fun sourcePlacementOf(
+    itemType: Int,
+    id: Int,
+    container: Int,
+    screenId: Int,
+    cellX: Int,
+    cellY: Int,
+    spanX: Int,
+    spanY: Int,
+    rank: Int,
+    userSerial: Long,
+) = HomeEditItem(
+    id = id,
+    container = container,
+    screenId = screenId,
+    cellX = cellX,
+    cellY = cellY,
+    spanX = spanX,
+    spanY = spanY,
+    itemType = itemType,
+    rank = rank,
+    userSerial = userSerial,
+)
 
 class EditActionsShortcuts {
 
@@ -77,6 +110,23 @@ class EditActionsShortcuts {
 
         protected val executor by lazy { HomeEditExecutor(mTarget) }
         protected val itemId: Int get() = mItemInfo.id
+
+        /** Action-start placement (popup build time) used as the intent precondition. */
+        protected val sourcePlacement: HomeEditItem by lazy {
+            sourcePlacementOf(
+                itemType = mItemInfo.itemType,
+                id = mItemInfo.id,
+                container = mItemInfo.container,
+                screenId = mItemInfo.screenId,
+                cellX = mItemInfo.cellX,
+                cellY = mItemInfo.cellY,
+                spanX = mItemInfo.spanX,
+                spanY = mItemInfo.spanY,
+                rank = mItemInfo.rank,
+                userSerial = UserCache.INSTANCE.get(mTarget)
+                    .getSerialNumberForUser(mItemInfo.user),
+            )
+        }
 
         private val mainHandler = Handler(Looper.getMainLooper())
         private var pendingSources = 2
@@ -153,7 +203,7 @@ class EditActionsShortcuts {
                 .setMessage(lockNoteText())
                 .setNegativeButton(android.R.string.cancel, null)
                 .setItems(labels.toTypedArray()) { _, which ->
-                    executor.confirm(itemId, HomeEditIntent.MoveToPage(itemId, options[which].screenId))
+                    executor.confirm(itemId, HomeEditIntent.MoveToPage(sourcePlacement, options[which].screenId))
                 }
                 .show()
         }
@@ -193,7 +243,7 @@ class EditActionsShortcuts {
                     ),
                 )
                 actions.add {
-                    executor.confirm(itemId, HomeEditIntent.AddToFolder(itemId, option.folderId))
+                    executor.confirm(itemId, HomeEditIntent.AddToFolder(sourcePlacement, option.folderId))
                 }
             }
             labels.add(mTarget.getString(R.string.homeedit_list_new_folder))
@@ -218,7 +268,7 @@ class EditActionsShortcuts {
                     .setItems(labels.toTypedArray()) { _, which ->
                         executor.confirm(
                             itemId,
-                            HomeEditIntent.CreateFolderAndAdd(itemId, pageOptions[which].screenId),
+                            HomeEditIntent.CreateFolderAndAdd(sourcePlacement, pageOptions[which].screenId),
                         )
                     }
                     .show()
@@ -267,7 +317,7 @@ class EditActionsShortcuts {
         }
 
         override fun showDialog() {
-            executor.confirm(itemId, HomeEditIntent.Remove(itemId))
+            executor.confirm(itemId, HomeEditIntent.Remove(sourcePlacement))
         }
 
         private fun isTargetLocked(): Boolean = try {

@@ -29,7 +29,7 @@ object HomeEditPlanner {
         snapshot: HomeEditSnapshot,
         intent: HomeEditIntent.MoveToPage,
     ): HomeEditPlan {
-        val target = editableTarget(snapshot, intent.targetItemId) ?: return rejectTarget(snapshot, intent.targetItemId)
+        val target = editableTarget(snapshot, intent) ?: return rejectTarget(snapshot, intent)
         if (intent.targetScreenId !in snapshot.screenIds) {
             return HomeEditPlan.Rejected(HomeEditRejection.STALE)
         }
@@ -56,7 +56,7 @@ object HomeEditPlanner {
         snapshot: HomeEditSnapshot,
         intent: HomeEditIntent.AddToFolder,
     ): HomeEditPlan {
-        val target = editableTarget(snapshot, intent.targetItemId) ?: return rejectTarget(snapshot, intent.targetItemId)
+        val target = editableTarget(snapshot, intent) ?: return rejectTarget(snapshot, intent)
         val folder = snapshot.items.firstOrNull {
             it.id == intent.folderId && it.itemType == HomeEditItemTypes.FOLDER
         } ?: return HomeEditPlan.Rejected(HomeEditRejection.FOLDER_GONE)
@@ -78,7 +78,7 @@ object HomeEditPlanner {
         snapshot: HomeEditSnapshot,
         intent: HomeEditIntent.CreateFolderAndAdd,
     ): HomeEditPlan {
-        val target = editableTarget(snapshot, intent.targetItemId) ?: return rejectTarget(snapshot, intent.targetItemId)
+        val target = editableTarget(snapshot, intent) ?: return rejectTarget(snapshot, intent)
         if (intent.destinationScreenId !in snapshot.screenIds) {
             return HomeEditPlan.Rejected(HomeEditRejection.STALE)
         }
@@ -96,7 +96,7 @@ object HomeEditPlanner {
         snapshot: HomeEditSnapshot,
         intent: HomeEditIntent.Remove,
     ): HomeEditPlan {
-        val target = editableTarget(snapshot, intent.targetItemId) ?: return rejectTarget(snapshot, intent.targetItemId)
+        val target = editableTarget(snapshot, intent) ?: return rejectTarget(snapshot, intent)
         return HomeEditPlan.RemoveItem(target)
     }
 
@@ -118,20 +118,26 @@ object HomeEditPlanner {
         return firstFreeCell(snapshot, screenId, target) != null
     }
 
-    private fun editableTarget(snapshot: HomeEditSnapshot, targetId: Int): HomeEditItem? {
-        val target = snapshot.itemById(targetId) ?: return null
+    private fun editableTarget(snapshot: HomeEditSnapshot, intent: HomeEditIntent): HomeEditItem? {
+        val target = snapshot.itemById(intent.sourcePlacement.id) ?: return null
         val supported = target.itemType == HomeEditItemTypes.APPLICATION ||
             target.itemType == HomeEditItemTypes.DEEP_SHORTCUT
-        return if (supported) target else null
+        if (!supported) return null
+        // Action-start precondition: when the item moved after the popup was
+        // opened, the dialog's choice no longer describes the user's intent.
+        return if (target == intent.sourcePlacement) target else null
     }
 
-    private fun rejectTarget(snapshot: HomeEditSnapshot, targetId: Int): HomeEditPlan = HomeEditPlan.Rejected(
-        if (snapshot.itemById(targetId) == null) {
-            HomeEditRejection.ITEM_GONE
-        } else {
-            HomeEditRejection.UNSUPPORTED
-        },
-    )
+    private fun rejectTarget(snapshot: HomeEditSnapshot, intent: HomeEditIntent): HomeEditPlan {
+        val current = snapshot.itemById(intent.sourcePlacement.id)
+        return HomeEditPlan.Rejected(
+            when {
+                current == null -> HomeEditRejection.ITEM_GONE
+                current != intent.sourcePlacement -> HomeEditRejection.STALE
+                else -> HomeEditRejection.UNSUPPORTED
+            },
+        )
+    }
 
     /**
      * Row-major scan of the first free 1x1 cell on [screenId]. The target's

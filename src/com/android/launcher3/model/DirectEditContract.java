@@ -18,6 +18,8 @@ package com.android.launcher3.model;
 
 import androidx.annotation.Nullable;
 
+import com.android.launcher3.model.data.FolderInfo;
+
 /**
  * Issue #448: minimal plain-data contract between the fork-side homeedit
  * planner and {@link ModelWriter}'s direct-edit operations (ADR-0013 contract
@@ -131,13 +133,15 @@ public final class DirectEditContract {
     /**
      * Result callback invoked on the model thread after the operation
      * completed (or was rejected without any change). The old-placement
-     * fields plus {@code createdFolderId} carry the undo evidence required by
-     * Issue #450.
+     * fields plus {@code createdFolderId}/{@code createdFolder} carry the
+     * undo evidence required by Issue #450; {@code createdFolder} is the live
+     * model row of the folder created by this action, for owner-side UI bind.
      */
     public interface ResultCallback {
         void onResult(int itemId, boolean success,
                 @Nullable String failureReason,
                 int oldContainer, int oldScreenId, int oldCellX, int oldCellY,
-                int oldSpanX, int oldSpanY, int oldRank, int createdFolderId);
+                int oldSpanX, int oldSpanY, int oldRank, int createdFolderId,
+                @Nullable FolderInfo createdFolder);
     }
 }

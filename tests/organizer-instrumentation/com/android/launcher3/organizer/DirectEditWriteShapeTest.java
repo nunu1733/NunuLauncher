@@ -184,6 +184,46 @@ public class DirectEditWriteShapeTest {
                 0, queryInt(db, itemId, Favorites.RANK));
     }
 
+    /**
+     * ADR-0013 required-test table, process-death row: a process death in the
+     * middle of the folder-creation transaction leaves the DB at the
+     * pre-state (no folder row, child untouched). Modeled by abandoning the
+     * helper without commit, as the existing process-death smoke convention
+     * does.
+     */
+    @Test
+    public void uncommittedFolderCreationIsGoneAfterProcessDeath() throws Exception {
+        SQLiteDatabase db = mController.getDb();
+        final int itemId = 44004;
+        insertAppRow(db, itemId);
+
+        AtomicReference<Throwable> thrown = new AtomicReference<>();
+        runBounded(thrown, () -> {
+            try (SQLiteTransaction abandoned = mController.newTransaction()) {
+                int folderId = 99_001;
+                ContentValues values = new ContentValues();
+                values.put(Favorites._ID, folderId);
+                values.put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_FOLDER);
+                values.put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP);
+                mController.insert(Favorites.TABLE_NAME, values);
+                mController.update(Favorites.TABLE_NAME, rankValues(1),
+                        Favorites._ID + "=" + itemId, null);
+                // "Process death": abandon without commit. Closing without
+                // commit rolls the journal back.
+            } catch (Throwable t) {
+                thrown.set(t);
+            }
+        });
+        assertNull(thrown.get());
+
+        mController.closeActiveHelperForRestore();
+        SQLiteDatabase reopened = mController.getDb();
+        assertEquals("folder row must not survive an abandoned transaction",
+                0, countRows(reopened, Favorites.ITEM_TYPE_FOLDER));
+        assertEquals("child row must keep its pre-state rank",
+                0, queryInt(reopened, itemId, Favorites.RANK));
+    }
+
     /** The write sequence used by ModelWriter.DirectEditCreateFolderTask. */
     private void runFolderCreationSequence(ModelDbController controller, int itemId,
             boolean failOnUpdate) throws Exception {

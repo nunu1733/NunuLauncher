@@ -47,19 +47,36 @@ data class HomeEditSnapshot(
     fun itemById(id: Int): HomeEditItem? = items.firstOrNull { it.id == id }
 }
 
-/** 編集意図（Domain language: spec 448）。対象itemIdと移動先の組。 */
+/**
+ * 編集意図（Domain language: spec 448）。対象itemIdと移動先の組に加え、
+ * action開始時（popup表示時点）の対象配置をpreconditionとして持つ。
+ * 計画関数は現在の配置がこのpreconditionと一致しない場合STALEで拒否する
+ * （dialog表示後〜確定前に対象が移動した場合のstage-1拒否）。
+ */
 sealed interface HomeEditIntent {
+    /** action開始時の対象の配置。全intentで共通のprecondition。 */
+    val sourcePlacement: HomeEditItem
+
     /** 既存ページへの移動。移動先セルは計画関数が決定する。 */
-    data class MoveToPage(val targetItemId: Int, val targetScreenId: Int) : HomeEditIntent
+    data class MoveToPage(
+        override val sourcePlacement: HomeEditItem,
+        val targetScreenId: Int,
+    ) : HomeEditIntent
 
     /** 既存フォルダへの追加（rank末尾＝選択時の件数）。 */
-    data class AddToFolder(val targetItemId: Int, val folderId: Int) : HomeEditIntent
+    data class AddToFolder(
+        override val sourcePlacement: HomeEditItem,
+        val folderId: Int,
+    ) : HomeEditIntent
 
     /** 新規フォルダの作成。選択済みの置き先ページを必ず含む（spec Scope）。 */
-    data class CreateFolderAndAdd(val targetItemId: Int, val destinationScreenId: Int) : HomeEditIntent
+    data class CreateFolderAndAdd(
+        override val sourcePlacement: HomeEditItem,
+        val destinationScreenId: Int,
+    ) : HomeEditIntent
 
     /** ホームから外す（1行削除。アンインストールではない）。 */
-    data class Remove(val targetItemId: Int) : HomeEditIntent
+    data class Remove(override val sourcePlacement: HomeEditItem) : HomeEditIntent
 }
 
 /** Typedな拒否理由。UI側でlocalized文字列へ対応させる。 */

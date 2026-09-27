@@ -197,8 +197,11 @@ test-audit審査の要点（新規test・CI filter変更のため）: (1) 既存
 - instrumentation（AVD nunu_qpr2_api36_1 + 実機 Pixel 9a の2端末）: `DirectEditWriteShapeTest` 3件×2端末 PASS、shared-writer lane回帰セット（ModelWriterTransactionReentryTest等9 class + DirectEditWriteShapeTest）**65 tests × 2端末 = 130、0 failures**
 - `validate_repo_contract.py`: PASS（refocus-drafts/未追跡ディレクトリの既存2件のみ非該当）、`test_validate_repo_contract.py` PASS、`validate_writer_inventory.py` PASS（homeedit配下にDB書込みpatternなし = 高リスクpath追加不要判断の機械裏付け）、`test_validate_high_risk_evidence.py` OK
 - `measure_upstream_patch_surface.py --enforce-baseline`: main上でも同一内容でFAIL（既存baseline未更新分。本PR起因ではない）。本PRのsrc/ deltaは `ModelWriter.java` +283行（counted済み）と `DirectEditContract.java` 新設（counted +1 file）→ PR本文へNFR-010として記録
+- AC-11の第1段単独会計（ベンチマーク§7は会計指標であり、実装済みUI flowの操作数から決定的に算出）: B2 = 5個 ×（長押し2 + tap 1 + 対象ページ選択 1）= **20**（baseline 48、58%削減）、B3 = 既存フォルダ経路 4個 × 4 = **16**（baseline 21、新規フォルダ経路は+1ページ選択の5/個）、B4 = 6個 ×（長押し2 + tap 1）= **18**（baseline 25、28%削減）。各flowの操作数はエミュレータ実行で検証済み（下記）。合否はNow-2全体で判定（記録のみ）。
+- AC-14のTalkBack記録: TalkBack有効化状態でpopupを開き、3アクションのラベル（「ページへ移動…」「フォルダへ入れる…」「ホームから外す」）がa11y tree上で読み上げ対象であることを確認。証跡 `docs/evidence/448/08-talkback-popup.png` + 自動test（`HomeEditAcceptanceOraclesTest` のstrings検証）。実機での読み上げ確認はowner確認事項。
 - エミュレータ実機操作（AC-1/2/3/4/5(a)のユーザー可視検証）: popup表示、Page移動（hotseat→desktop、desktop→desktop、QSB回避cell(0,1)）、フォルダ追加（Google folder rank末尾）、Remove（行削除+view除去、アンインストールなし）。DB照会で各書込みが1 transaction内容どおりであること（単一UPDATE / DELETE）を確認。証跡: `docs/evidence/448/*.png`。実機（Pixel 9a）でのinstrumentation testはPASSしたが、実機でのpopup操作確認はowner確認事項として残す。
 - 修正履歴: 実装中に2件の欠陥を検出・修正（null tagのmatcher NPE、notifyOtherCallbacksのowner除外によるremove時view残存）。いずれもエミュレータ実機操作で検出し、回帰をDB+UI両面で再確認済み。
+- Phase 2 review round 1（#448コメント5857714252）対応: ①既存フォルダ追加時に`FolderInfo.contents`へサイレント追加（model threadからのlistener通知はFolderIconのview touchでクラッシュするため）し、folder iconのpreview更新はexecutorがUI threadで`FolderIcon.onAdd`により実施（エミュレータで再発確認: Gmail→Google folder追加、view除去・無 crash）。②新規フォルダtaskをDB-first構造へ変更（commit成功までlive ItemInfoを変更しない。失敗時はmodel/DB双方が旧状態）。③intentへaction開始時の`sourcePlacement`preconditionを追加（dialog表示後のtarget移動をstage-1でSTALE拒否）。④Undo evidenceを純粋builder関数化し、作成フォルダ自身の配置も記録。⑤AC-1/7/8/14の受入oracle追加（対象絞り込みpredicate test、process death oracle、純粋module構造test、strings test）。`buildUndoEvidence`・DirectEditWriteShapeTestにproduction経路のtestを追加。
 
 ## Execution checklist
 

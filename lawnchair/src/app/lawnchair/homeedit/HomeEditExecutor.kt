@@ -16,6 +16,7 @@ import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.R
 import com.android.launcher3.Workspace
+import com.android.launcher3.folder.FolderIcon
 import com.android.launcher3.model.DirectEditContract
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.util.Executors
@@ -156,6 +157,7 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                     oldSpanY,
                     oldRank,
                     createdFolderId,
+                    createdFolder,
                 ->
                 if (!success) {
                     mainHandler.post { reportFailureKey(reason) }
@@ -167,8 +169,14 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                 )
                 when (plan) {
                     is HomeEditPlan.Move -> mainHandler.post { refreshAfterMove(id, plan) }
+
                     is HomeEditPlan.RemoveItem -> mainHandler.post { refreshAfterRemove(id) }
-                    is HomeEditPlan.CreateFolder -> Unit
+
+                    is HomeEditPlan.CreateFolder -> mainHandler.post {
+                        // The new folder icon does not exist yet on the owning
+                        // launcher; bind it from the model folder row.
+                        createdFolder?.let { launcher.bindItems(Collections.singletonList(it), false) }
+                    }
                 }
             }
         val writer = launcher.modelWriter
@@ -201,7 +209,9 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
      * UI refresh after an admitted move (accessibility-path precedent:
      * LauncherAccessibilityDelegate binds the item after the model write).
      * `bindItemsModified` carries no view update, so the stale view is
-     * removed and, for desktop destinations, re-bound at the new placement.
+     * removed; desktop destinations are re-bound and snapped to, and folder
+     * destinations get a FolderIcon preview refresh (view-only onAdd) on the
+     * UI thread — the model-thread contents add is silent by design.
      */
     private fun refreshAfterMove(itemId: Int, plan: HomeEditPlan.Move) {
         val view = launcher.workspace?.getHomescreenIconByItemId(itemId)
@@ -211,9 +221,17 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
         launcher.bindWorkspaceComponentsRemoved { candidate ->
             candidate != null && candidate.id == itemId
         }
-        if (plan.container == Favorites.CONTAINER_DESKTOP && info != null) {
-            launcher.bindItems(Collections.singletonList(info), true)
-            showDestinationPage(plan.screenId)
+        when {
+            plan.container == Favorites.CONTAINER_DESKTOP && info != null -> {
+                launcher.bindItems(Collections.singletonList(info), true)
+                showDestinationPage(plan.screenId)
+            }
+
+            info != null -> {
+                val folderIcon = launcher.workspace
+                    ?.getHomescreenIconByItemId(plan.container) as? FolderIcon
+                folderIcon?.onAdd(info, plan.rank)
+            }
         }
     }
 
@@ -239,37 +257,20 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
         oldSpanX: Int,
         oldSpanY: Int,
         oldRank: Int,
-        createdFolderId: Int?,
+        createdFolderId: Int,
     ) {
-        val action = when (intent) {
-            is HomeEditIntent.MoveToPage -> HomeEditActionKind.MOVE_TO_PAGE
-            is HomeEditIntent.AddToFolder -> HomeEditActionKind.ADD_TO_FOLDER
-            is HomeEditIntent.CreateFolderAndAdd -> HomeEditActionKind.CREATE_FOLDER_AND_ADD
-            is HomeEditIntent.Remove -> HomeEditActionKind.REMOVE
-        }
-        val target = plan.targetItemPlacement
-        val (newContainer, newScreenId, newCellX, newCellY, newRank) = when (plan) {
-            is HomeEditPlan.Move -> listOf(plan.container, plan.screenId, plan.cellX, plan.cellY, plan.rank)
-            is HomeEditPlan.CreateFolder -> listOf(target.container, target.screenId, target.cellX, target.cellY, 0)
-            is HomeEditPlan.RemoveItem -> listOf(oldContainer, oldScreenId, oldCellX, oldCellY, oldRank)
-        }
         HomeEditUndoLog.record(
-            HomeEditUndoEvidence(
-                action = action,
-                itemId = target.id,
-                oldContainer = oldContainer,
-                oldScreenId = oldScreenId,
-                oldCellX = oldCellX,
-                oldCellY = oldCellY,
-                oldSpanX = oldSpanX,
-                oldSpanY = oldSpanY,
-                oldRank = oldRank,
-                newContainer = newContainer,
-                newScreenId = newScreenId,
-                newCellX = newCellX,
-                newCellY = newCellY,
-                newRank = newRank,
-                createdFolderId = createdFolderId.takeIf { it != 0 },
+            buildUndoEvidence(
+                intent,
+                plan,
+                oldContainer,
+                oldScreenId,
+                oldCellX,
+                oldCellY,
+                oldSpanX,
+                oldSpanY,
+                oldRank,
+                createdFolderId,
             ),
         )
     }

@@ -39,7 +39,7 @@ class HomeEditPlannerTest {
     fun `move picks first free cell in row-major order`() {
         val target = item(id = 100, screenId = 0, cellX = 0, cellY = 5)
         val snapshot = snapshot(listOf(target))
-        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 2))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(target, 2))
         assertEquals(HomeEditPlan.Move(target, HomeEditContainers.DESKTOP, 2, 0, 0, 0), plan)
     }
 
@@ -48,7 +48,7 @@ class HomeEditPlannerTest {
         val target = item(id = 100, screenId = 0, cellX = 0, cellY = 5)
         val blocker = item(id = 1, screenId = 2, cellX = 0, cellY = 0, spanX = 2, spanY = 2)
         val snapshot = snapshot(listOf(target, blocker))
-        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 2))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(target, 2))
         // (0,0)..(1,1) occupied by the widget; first free cell is (2,0).
         assertEquals(HomeEditPlan.Move(target, HomeEditContainers.DESKTOP, 2, 2, 0, 0), plan)
     }
@@ -61,7 +61,7 @@ class HomeEditPlannerTest {
             item(id = i + 1, screenId = 2, cellX = (i + 1) % 4, cellY = (i + 1) / 4)
         }
         val snapshot = snapshot(listOf(target) + blockers)
-        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 2))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(target, 2))
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.REDUNDANT), plan)
     }
 
@@ -69,7 +69,7 @@ class HomeEditPlannerTest {
     fun `same coords on a different page is a real move not redundant`() {
         val target = item(id = 100, screenId = 1, cellX = 0, cellY = 0)
         val snapshot = snapshot(listOf(target))
-        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 2))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(target, 2))
         assertEquals(HomeEditPlan.Move(target, HomeEditContainers.DESKTOP, 2, 0, 0, 0), plan)
     }
 
@@ -78,7 +78,7 @@ class HomeEditPlannerTest {
         val target = item(id = 100, screenId = 1, cellX = 0, cellY = 0)
         val qsbReservation = item(id = -1, screenId = 0, cellX = 0, cellY = 0, spanX = 4, spanY = 1)
         val snapshot = snapshot(listOf(target, qsbReservation))
-        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 0))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(target, 0))
         assertEquals(HomeEditPlan.Move(target, HomeEditContainers.DESKTOP, 0, 0, 1, 0), plan)
     }
 
@@ -89,20 +89,31 @@ class HomeEditPlannerTest {
             item(id = i + 1, screenId = 1, cellX = i % 4, cellY = i / 4)
         }
         val snapshot = snapshot(listOf(target) + blockers)
-        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(100, 1))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(target, 1))
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.NO_SPACE), plan)
     }
 
     @Test
     fun `missing page is rejected as stale`() {
         val target = item(id = 100)
-        val plan = HomeEditPlanner.plan(snapshot(listOf(target)), HomeEditIntent.MoveToPage(100, 99))
+        val plan = HomeEditPlanner.plan(snapshot(listOf(target)), HomeEditIntent.MoveToPage(target, 99))
+        assertEquals(HomeEditPlan.Rejected(HomeEditRejection.STALE), plan)
+    }
+
+    @Test
+    fun `target moved after popup opened is rejected as stale`() {
+        // The precondition records where the item was when the popup opened;
+        // another writer moved it to (2,2) meanwhile.
+        val source = item(id = 100, screenId = 0, cellX = 0, cellY = 0)
+        val moved = source.copy(cellX = 2, cellY = 2)
+        val snapshot = snapshot(listOf(moved))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.MoveToPage(source, 1))
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.STALE), plan)
     }
 
     @Test
     fun `gone target is rejected as item gone`() {
-        val plan = HomeEditPlanner.plan(snapshot(emptyList()), HomeEditIntent.MoveToPage(42, 1))
+        val plan = HomeEditPlanner.plan(snapshot(emptyList()), HomeEditIntent.MoveToPage(item(id = 42), 1))
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.ITEM_GONE), plan)
     }
 
@@ -111,7 +122,7 @@ class HomeEditPlannerTest {
         val widget = item(id = 100, itemType = 5)
         val plan = HomeEditPlanner.plan(
             snapshot(listOf(widget)),
-            HomeEditIntent.Remove(100),
+            HomeEditIntent.Remove(widget),
         )
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.UNSUPPORTED), plan)
     }
@@ -124,14 +135,14 @@ class HomeEditPlannerTest {
         val folder = item(id = 50, itemType = HomeEditItemTypes.FOLDER, screenId = 1, cellX = 0, cellY = 0)
         val child = item(id = 51, container = 50, screenId = 0, cellX = -1, cellY = -1, rank = 0)
         val snapshot = snapshot(listOf(target, folder, child))
-        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.AddToFolder(100, 50))
+        val plan = HomeEditPlanner.plan(snapshot, HomeEditIntent.AddToFolder(target, 50))
         assertEquals(HomeEditPlan.Move(target, 50, 0, -1, -1, 1), plan)
     }
 
     @Test
     fun `add to missing folder is rejected`() {
         val target = item(id = 100)
-        val plan = HomeEditPlanner.plan(snapshot(listOf(target)), HomeEditIntent.AddToFolder(100, 999))
+        val plan = HomeEditPlanner.plan(snapshot(listOf(target)), HomeEditIntent.AddToFolder(target, 999))
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.FOLDER_GONE), plan)
     }
 
@@ -139,7 +150,7 @@ class HomeEditPlannerTest {
     fun `cross profile add is rejected`() {
         val target = item(id = 100, userSerial = USER_B)
         val folder = item(id = 50, itemType = HomeEditItemTypes.FOLDER, screenId = 1)
-        val plan = HomeEditPlanner.plan(snapshot(listOf(target, folder)), HomeEditIntent.AddToFolder(100, 50))
+        val plan = HomeEditPlanner.plan(snapshot(listOf(target, folder)), HomeEditIntent.AddToFolder(target, 50))
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.PROFILE_MISMATCH), plan)
     }
 
@@ -148,7 +159,7 @@ class HomeEditPlannerTest {
     @Test
     fun `create folder uses the chosen destination page`() {
         val target = item(id = 100, screenId = 0, cellX = 0, cellY = 0)
-        val plan = HomeEditPlanner.plan(snapshot(listOf(target)), HomeEditIntent.CreateFolderAndAdd(100, 1))
+        val plan = HomeEditPlanner.plan(snapshot(listOf(target)), HomeEditIntent.CreateFolderAndAdd(target, 1))
         assertEquals(HomeEditPlan.CreateFolder(target, 1, 0, 0), plan)
     }
 
@@ -160,7 +171,7 @@ class HomeEditPlannerTest {
         }
         val plan = HomeEditPlanner.plan(
             snapshot(listOf(target) + blockers),
-            HomeEditIntent.CreateFolderAndAdd(100, 1),
+            HomeEditIntent.CreateFolderAndAdd(target, 1),
         )
         assertEquals(HomeEditPlan.Rejected(HomeEditRejection.NO_SPACE), plan)
     }
@@ -172,7 +183,7 @@ class HomeEditPlannerTest {
         val target = item(id = 100, screenId = 1, cellX = 2, cellY = 3)
         val folder = item(id = 50, itemType = HomeEditItemTypes.FOLDER)
         val child = item(id = 51, container = 50)
-        val plan = HomeEditPlanner.plan(snapshot(listOf(target, folder, child)), HomeEditIntent.Remove(100))
+        val plan = HomeEditPlanner.plan(snapshot(listOf(target, folder, child)), HomeEditIntent.Remove(target))
         assertEquals(HomeEditPlan.RemoveItem(target), plan)
     }
 
@@ -183,7 +194,7 @@ class HomeEditPlannerTest {
         val target = item(id = 100, screenId = 0, cellX = 2, cellY = 2)
         val blocker = item(id = 1, screenId = 1, cellX = 0, cellY = 0)
         val snapshot = snapshot(listOf(target, blocker))
-        val intent = HomeEditIntent.MoveToPage(100, 1)
+        val intent = HomeEditIntent.MoveToPage(target, 1)
         assertEquals(HomeEditPlanner.plan(snapshot, intent), HomeEditPlanner.plan(snapshot, intent))
     }
 

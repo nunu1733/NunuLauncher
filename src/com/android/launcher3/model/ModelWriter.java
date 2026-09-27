@@ -697,14 +697,15 @@ public class ModelWriter {
         protected abstract void runAdmitted(ItemInfo item);
 
         protected void reportFailure(String reason) {
-            mCallback.onResult(mItemId, false, reason, 0, 0, 0, 0, 0, 0, 0, 0);
+            mCallback.onResult(mItemId, false, reason, 0, 0, 0, 0, 0, 0, 0, 0, null);
         }
 
         protected void reportSuccess(ItemInfo item, int oldContainer, int oldScreenId,
                 int oldCellX, int oldCellY, int oldSpanX, int oldSpanY, int oldRank,
-                int createdFolderId) {
+                int createdFolderId, @Nullable FolderInfo createdFolder) {
             mCallback.onResult(item.id, true, null, oldContainer, oldScreenId,
-                    oldCellX, oldCellY, oldSpanX, oldSpanY, oldRank, createdFolderId);
+                    oldCellX, oldCellY, oldSpanX, oldSpanY, oldRank, createdFolderId,
+                    createdFolder);
         }
     }
 
@@ -736,39 +737,49 @@ public class ModelWriter {
             int oldSpanY = item.spanY;
             int oldRank = item.rank;
 
-            item.container = mTargetContainer;
-            if (mTargetContainer == Favorites.CONTAINER_DESKTOP) {
-                item.screenId = mTargetScreenId;
-                item.cellX = mTargetCellX;
-                item.cellY = mTargetCellY;
-                // Issue #269: desktop icons are persisted as 1x1.
-                item.spanX = 1;
-                item.spanY = 1;
-            } else {
-                // Folder child: the container decides placement; the folder
-                // open path normalizes the internal grid positions in batch.
-                item.screenId = 0;
-                item.cellX = -1;
-                item.cellY = -1;
-                item.spanX = 1;
-                item.spanY = 1;
-                item.rank = mTargetRank;
+            boolean toDesktop = mTargetContainer == Favorites.CONTAINER_DESKTOP;
+            // Build the row values without touching the live ItemInfo yet: a
+            // failed update must leave the in-memory model unchanged too.
+            ContentWriter writer = new ContentWriter(mContext)
+                    .put(Favorites.CONTAINER, mTargetContainer)
+                    .put(Favorites.CELLX, toDesktop ? mTargetCellX : -1)
+                    .put(Favorites.CELLY, toDesktop ? mTargetCellY : -1)
+                    .put(Favorites.RANK, toDesktop ? oldRank : mTargetRank)
+                    .put(Favorites.SPANX, 1)
+                    .put(Favorites.SPANY, 1)
+                    .put(Favorites.SCREEN, toDesktop ? mTargetScreenId : 0);
+            try {
+                mModel.getModelDbController().update(TABLE_NAME, writer.getValues(mContext),
+                        itemIdMatch(item.id), null);
+            } catch (Exception e) {
+                FileLog.e(TAG, "direct-edit move failed; nothing changed", e);
+                reportFailure(DirectEditContract.FAIL_WRITE_FAILED);
+                return;
             }
-            notifyOtherCallbacks(c -> c.bindItemsModified(Collections.singletonList(item)));
-            mModel.getModelDbController().update(TABLE_NAME,
-                    new ContentWriter(mContext)
-                            .put(Favorites.CONTAINER, item.container)
-                            .put(Favorites.CELLX, item.cellX)
-                            .put(Favorites.CELLY, item.cellY)
-                            .put(Favorites.RANK, item.rank)
-                            .put(Favorites.SPANX, item.spanX)
-                            .put(Favorites.SPANY, item.spanY)
-                            .put(Favorites.SCREEN, item.screenId)
-                            .getValues(mContext),
-                    itemIdMatch(item.id), null);
+            // DB commit succeeded; now bring the live model object in sync.
+            item.container = mTargetContainer;
+            item.screenId = toDesktop ? mTargetScreenId : 0;
+            item.cellX = toDesktop ? mTargetCellX : -1;
+            item.cellY = toDesktop ? mTargetCellY : -1;
+            // Issue #269: desktop icons are persisted as 1x1; folder children
+            // are container-placed and the folder open path normalizes the
+            // internal grid positions in batch.
+            item.spanX = 1;
+            item.spanY = 1;
+            item.rank = toDesktop ? oldRank : mTargetRank;
+            if (!toDesktop) {
+                // updateItemArrays only maintains workspaceItems; the folder
+                // membership bookkeeping mirrors the loader path. Silent
+                // contents add: FolderInfo.add would notify the bound
+                // FolderIcon from the model thread (view touch).
+                CollectionInfo collection = mBgDataModel.collections.get(mTargetContainer);
+                if (collection instanceof FolderInfo folder) {
+                    folder.getContents().add(item);
+                }
+            }
             updateItemArrays(item, item.id);
             reportSuccess(item, oldContainer, oldScreenId, oldCellX, oldCellY,
-                    oldSpanX, oldSpanY, oldRank, 0);
+                    oldSpanX, oldSpanY, oldRank, 0, null);
         }
     }
 
@@ -812,24 +823,19 @@ public class ModelWriter {
                 mModel.getModelDbController().insert(
                         Favorites.TABLE_NAME, folderWriter.getValues(mContext));
 
-                item.container = folderInfo.id;
-                item.screenId = 0;
-                item.cellX = -1;
-                item.cellY = -1;
-                item.spanX = 1;
-                item.spanY = 1;
-                item.rank = 0;
+                // Explicit child values: the live ItemInfo is mutated only
+                // after the commit so a failed transaction leaves model and
+                // DB both at the old placement (contract 3).
+                ContentWriter childWriter = new ContentWriter(mContext)
+                        .put(Favorites.CONTAINER, folderInfo.id)
+                        .put(Favorites.CELLX, -1)
+                        .put(Favorites.CELLY, -1)
+                        .put(Favorites.RANK, 0)
+                        .put(Favorites.SPANX, 1)
+                        .put(Favorites.SPANY, 1)
+                        .put(Favorites.SCREEN, 0);
                 mModel.getModelDbController().update(TABLE_NAME,
-                        new ContentWriter(mContext)
-                                .put(Favorites.CONTAINER, item.container)
-                                .put(Favorites.CELLX, item.cellX)
-                                .put(Favorites.CELLY, item.cellY)
-                                .put(Favorites.RANK, item.rank)
-                                .put(Favorites.SPANX, item.spanX)
-                                .put(Favorites.SPANY, item.spanY)
-                                .put(Favorites.SCREEN, item.screenId)
-                                .getValues(mContext),
-                        itemIdMatch(item.id), null);
+                        childWriter.getValues(mContext), itemIdMatch(item.id), null);
                 t.commit();
             } catch (Exception e) {
                 FileLog.e(TAG, "direct-edit folder creation failed; rolled back", e);
@@ -837,17 +843,26 @@ public class ModelWriter {
                 return;
             }
 
+            // Commit succeeded; sync the live model objects.
+            item.container = folderInfo.id;
+            item.screenId = 0;
+            item.cellX = -1;
+            item.cellY = -1;
+            item.spanX = 1;
+            item.spanY = 1;
+            item.rank = 0;
             synchronized (mBgDataModel) {
                 checkItemInfoLocked(folderInfo.id, folderInfo, mEditStackTrace);
                 mBgDataModel.addItem(mContext, folderInfo, true);
                 mEditVerifier.verifyModel();
-                folderInfo.add(item, false);
+                // Silent contents add; the executor refreshes the folder UI.
+                folderInfo.getContents().add(item);
                 updateItemArrays(item, item.id);
             }
             notifyOtherCallbacks(c -> c.bindItems(Collections.singletonList(folderInfo), false));
             notifyOtherCallbacks(c -> c.bindItemsModified(Collections.singletonList(item)));
             reportSuccess(item, oldContainer, oldScreenId, oldCellX, oldCellY,
-                    oldSpanX, oldSpanY, oldRank, folderInfo.id);
+                    oldSpanX, oldSpanY, oldRank, folderInfo.id, folderInfo);
         }
     }
 
@@ -875,7 +890,7 @@ public class ModelWriter {
             notifyOtherCallbacks(c -> c.bindWorkspaceComponentsRemoved(
                     ItemInfoMatcher.ofItems(Collections.singletonList(item))));
             reportSuccess(item, oldContainer, oldScreenId, oldCellX, oldCellY,
-                    oldSpanX, oldSpanY, oldRank, 0);
+                    oldSpanX, oldSpanY, oldRank, 0, null);
         }
     }
 

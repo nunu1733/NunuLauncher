@@ -26,8 +26,27 @@ private fun contractSnapshot(rows: List<DirectEditContract.Row>) = DirectEditCon
 
 class HomeEditStage2ValidatorTest {
 
-    private val target = item(id = 100, screenId = 0, cellX = 0, cellY = 5)
-    private val intent = HomeEditIntent.MoveToPage(100, 1)
+    private fun contractItem(
+        id: Int,
+        container: Int = HomeEditContainers.DESKTOP,
+        screenId: Int = 0,
+        cellX: Int = 0,
+        cellY: Int = 5,
+    ) = HomeEditItem(
+        id = id,
+        container = container,
+        screenId = screenId,
+        cellX = cellX,
+        cellY = cellY,
+        spanX = 1,
+        spanY = 1,
+        itemType = HomeEditItemTypes.APPLICATION,
+        rank = 0,
+        userSerial = 10L,
+    )
+
+    private val target = contractItem(id = 100)
+    private val intent = HomeEditIntent.MoveToPage(target, 1)
 
     private fun snapshotFor(vararg rows: DirectEditContract.Row) = contractSnapshot(rows.toList())
 
@@ -83,7 +102,8 @@ class HomeEditStage2ValidatorTest {
 
     @Test
     fun `planner rejection inside admission maps to the typed key`() {
-        val folderAdd = HomeEditIntent.AddToFolder(100, 50)
+        val folderTarget = HomeEditItem(100, HomeEditContainers.DESKTOP, 0, 0, 5, 1, 1, HomeEditItemTypes.APPLICATION, 0, 10L)
+        val folderAdd = HomeEditIntent.AddToFolder(folderTarget, 50)
         val rows = listOf(
             contractRow(100, -100, 0, 0, 5),
             contractRow(50, -100, 1, 0, 0, itemType = HomeEditItemTypes.FOLDER),

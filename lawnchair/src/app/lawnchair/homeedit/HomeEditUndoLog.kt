@@ -30,6 +30,10 @@ data class HomeEditUndoEvidence(
     val newRank: Int,
     /** Reference to the folder created by this action, if any. */
     val createdFolderId: Int?,
+    /** Placement of the folder this action created, if any (AC-9). */
+    val createdFolderScreenId: Int?,
+    val createdFolderCellX: Int?,
+    val createdFolderCellY: Int?,
 )
 
 object HomeEditUndoLog {
@@ -43,4 +47,57 @@ object HomeEditUndoLog {
 
     /** Latest recorded evidence, or null when no direct edit has succeeded. */
     fun last(): HomeEditUndoEvidence? = last
+}
+
+/**
+ * Builds the undo evidence from the validated plan and the pre-write
+ * placement reported by the admitted task. Pure; unit-tested through this
+ * mapping (AC-9).
+ */
+fun buildUndoEvidence(
+    intent: HomeEditIntent,
+    plan: HomeEditPlan.Success,
+    oldContainer: Int,
+    oldScreenId: Int,
+    oldCellX: Int,
+    oldCellY: Int,
+    oldSpanX: Int,
+    oldSpanY: Int,
+    oldRank: Int,
+    createdFolderId: Int,
+): HomeEditUndoEvidence {
+    val target = plan.targetItemPlacement
+    val action = when (intent) {
+        is HomeEditIntent.MoveToPage -> HomeEditActionKind.MOVE_TO_PAGE
+        is HomeEditIntent.AddToFolder -> HomeEditActionKind.ADD_TO_FOLDER
+        is HomeEditIntent.CreateFolderAndAdd -> HomeEditActionKind.CREATE_FOLDER_AND_ADD
+        is HomeEditIntent.Remove -> HomeEditActionKind.REMOVE
+    }
+    val folderId = createdFolderId.takeIf { it != 0 }
+    val (newContainer, newScreenId, newCellX, newCellY, newRank) = when (plan) {
+        is HomeEditPlan.Move -> listOf(plan.container, plan.screenId, plan.cellX, plan.cellY, plan.rank)
+        is HomeEditPlan.CreateFolder -> listOf(createdFolderId, 0, -1, -1, 0)
+        is HomeEditPlan.RemoveItem -> listOf(oldContainer, oldScreenId, oldCellX, oldCellY, oldRank)
+    }
+    val folderPlacement = plan as? HomeEditPlan.CreateFolder
+    return HomeEditUndoEvidence(
+        action = action,
+        itemId = target.id,
+        oldContainer = oldContainer,
+        oldScreenId = oldScreenId,
+        oldCellX = oldCellX,
+        oldCellY = oldCellY,
+        oldSpanX = oldSpanX,
+        oldSpanY = oldSpanY,
+        oldRank = oldRank,
+        newContainer = newContainer,
+        newScreenId = newScreenId,
+        newCellX = newCellX,
+        newCellY = newCellY,
+        newRank = newRank,
+        createdFolderId = folderId,
+        createdFolderScreenId = folderPlacement?.screenId,
+        createdFolderCellX = folderPlacement?.cellX,
+        createdFolderCellY = folderPlacement?.cellY,
+    )
 }
