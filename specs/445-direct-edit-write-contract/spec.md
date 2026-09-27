@@ -11,6 +11,7 @@ updated: 2026-09-27
 > Risk tier: H — #445（メモ§4.7）が「本ADRと最初の実装はリスク階層Hで扱う」と定めており、現行workflow（`docs/project/github-workflow.md` Risk tiers）の階層H条件「既存の書込み経路の契約を変える」に当たる（`AGENTS.md` 安全規約への明示的carve-outと、直接編集の書込み契約の確定。docs-onlyであることだけでは階層を下げない）。手順は現行どおり（accepted spec + plan.md、Execution and approval contract）。なお本PR自体は `risk: layout-data` labelも高リスクpath変更も含まないため、`high-risk-evidence` gateの機械的発火対象ではない（同workflow 適用条件。「tier Lだから対象外」ではなく適用条件の該当性で判断する）。保守者の指示により、本PRへ独立session（general-purposeサブエージェント）による監査を追加で実施し、記録を `docs/assessment/` に残す。
 > Revision 2: 2026-09-27 — Phase1 review（[Issue #445 comment](https://github.com/nunu1733/NunuLauncher/issues/445#issuecomment-5852664689)）の指摘1〜4とbranch freshnessに対応。指摘1: 契約に「admission成立後・最初のmodel/DB変更前の現在状態に対する再検証」を追加し、既存メソッドがadmission前に`ItemInfo`を変更する事実（`ModelWriter.java:190-192,252-254`）への対処を契約4に明記、要求テストにdefer後stale検証を追加。指摘2: `AGENTS.md` 変更を「既存節の1字も変えない純追記（(a)(b)(c)の明示carve-out + fail-closed文）」へ変更し、第一段落の適用範囲の縮小を撤回。指摘3: メモ§4.2の「ADR-0004本文は変えず」を維持したうえで、ADR-0013側に限定解釈の根拠（該当normative文言の引用とorganizer操作契約との結合）を明示するよう強化。指摘4: writer inventory allowlistを「機械的保証」から「backstop」へ位置づけ直し。branch freshness: 現行main（b40888ae17ce8924f23316119888ed6b80693d70、#444 Risk tiers導入後）へrebaseし、`src/` 無変更を確認して`path:line`根拠の有効性を維持。
 > Revision 3: 2026-09-27 — 再review（round 2）の指摘1〜2に対応。Risk tierをLからHへ訂正（#445の階層H指定と、workflow階層H条件「既存の書込み経路の契約を変える」への該当。`high-risk-evidence` gateの非発火は適用条件の該当性で説明）し、Outcomeに残っていた旧方針（第1段落の適用対象縮小）の文を純追記方針へ置換。
+> Revision 4: 2026-09-27 — 独立監査（[PR #469 comment](https://github.com/nunu1733/NunuLauncher/pull/469#issuecomment-5853129921)）の非blocking指摘2点に対応: 復元シナリオの#265参照を実際のrun記録＋spec 13規範根拠へ修正、AGENTS.md追記段落の引用文にADR pathの字面を反映。受入条件の意味変更はなし。
 
 ## Problem
 
@@ -40,7 +41,7 @@ updated: 2026-09-27
 - **ADR-0004への反映（Decision ロック節の確定）**: 「手動編集（直接編集を含む）はロックを妨げず、lock列の値を保ったまま移す」はADR-0013本文が正本として明示する。ADR-0004の本文は変えず、Change historyへ関連リンク（ADR-0013への参照）を1行追加する。これはメモ§4.2の承認済み判断（「ADR-0004の本文は変えず、関連リンクだけを足す」）であり、草案の未解決事項（1行追記 vs 参照で足りる）を解決する。
 - **`AGENTS.md`「ホームレイアウトを扱う安全規約」節の変更（Phase1 review指摘2により変更）**: 既存の節（第1段落、7条件、「favorites…」段落）は**1字も変更しない**。変更は末尾への1段落の追記のみとする。既存規約の広いdefault（fail-closed）を維持したまま、ADR-0013の対象だけを明示的にcarve-outする形であり、承認済み草案が想定した第一段落の「organizer等が生成する計画的な複数アイテムの書換え」への縮小は撤回した — 縮小すると、ADR-0013以外の単一item書込み（将来の未分類writerを含む）が7条件の対象外となりfail-openになるため。追記する段落:
 
-  > ユーザーが明示的に選んだ1個のアイテムへの即時の編集アクション、上流が行う単一アイテムの追加の配置先決定、および前者のUndoは、この規約ではなくADR-0013（直接編集の書込み契約）に従う。これらは1アクション = 1 DB transaction、書込み前の副作用のない検証、fail-closedなUndoを要求するが、snapshot revision照合・recovery point・相関reload・適用後の全体再検証は要求しない。この段落に列挙されないLauncher DBへのlayout書込みは、引き続きこの節の条件に従う。
+  > ユーザーが明示的に選んだ1個のアイテムへの即時の編集アクション、上流が行う単一アイテムの追加の配置先決定、および前者のUndoは、この規約ではなくADR-0013（直接編集の書込み契約、`docs/adr/0013-direct-edit-write-contract.md`）に従う。これらは1アクション = 1 DB transaction、書込み前の副作用のない検証、fail-closedなUndoを要求するが、snapshot revision照合・recovery point・相関reload・適用後の全体再検証は要求しない。この段落に列挙されないLauncher DBへのlayout書込みは、引き続きこの節の条件に従う。
 
   承認済み草案の変更案からの差分は2点: (1) 第一段落の適用範囲の縮小をやめ、既存節を不変とした純追記へ変更（指摘2）。(2) 追記段落の末尾に、列挙外の書込みが従来条件に従うことを明示するfail-closed文を加えた。視覚的編集画面の例示は引き続き含まない（ADR-0014/#447未受入のため）。要約の粒度（要約段落を残す）は草案案どおり。
 - **spec/plan（本ディレクトリ）**: 本specとplan。planには、homeedit高リスクpath一覧への追加方針、writer inventory allowlistの自動検出の注記、実装PRとの順序制約を記載する（下記AC-7）。
@@ -111,7 +112,7 @@ And ロック済みアイテムへの直接編集時にその旨を示す方針�
 
 ### Scenario: 復元との相互運用が失われないことが確認される
 
-Given ADR-0013の「不要とするもの」と #265 の実績（`specs/265-post-apply-recovery-reconciliation/spec.md` Established facts 1）
+Given ADR-0013の「不要とするもの」と #265 の実績（run記録: 即時confirm runが `Restored` / `NotRestorable(STALE_REVISION)` を記録。`specs/265-post-apply-recovery-reconciliation/spec.md` 最終結果節。規範根拠は `specs/13-safe-layout-application/spec.md` Recovery protocol 3 / SA-17。なお同spec Established facts 1は「preview失敗時にrecordが `VERIFIED` のまま・layout未変更」の実績であり、`STALE_REVISION` の記録位置ではない。Phase 2 review指摘と同趣旨の参照修正）
 When organizer適用後の直接編集と復元の関係を確認する
 Then 直接編集はorganizerから見て今日の手動dragと同じ「現在のrevisionを変えた外部変更」であり、復元はfail-closedに `NotRestorable(STALE_REVISION)` となりうることが記録されている
 And これが直接編集がrecovery pointを持たないことによる復元安全性の低下ではないことが記録されている
