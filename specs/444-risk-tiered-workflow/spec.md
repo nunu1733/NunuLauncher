@@ -1,6 +1,6 @@
 ---
 issue: "#444"
-status: draft
+status: accepted
 tier: L
 requirements: []
 updated: 2026-09-27
@@ -312,3 +312,8 @@ Phase 1 review（ChatGPT、round 1）で指摘された項目の解決記録で�
   対応として改訂。patch-surface oracleを `--target HEAD --enforce-baseline` の
   exact invocationと記録先の分離（PR本文report / baseline更新は採用時のみ）へ修正、
   Test oracle AC-1行の誤記（`plan.md` → `docs/project/github-workflow.md`）を修正。
+- 2026-09-27: Phase 1 review round 3で **Clear**（head
+  `60626e660de17efa89c254a44d56bfb3c1eb5abe`）。
+  [Issue #444コメント](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5852097427)。
+  statusを `accepted` へ遷移。AC-7（初回階層M適用の実証）はmerge後の最初の
+  階層M変更で確認し、その後に `implemented` へ遷移する。
