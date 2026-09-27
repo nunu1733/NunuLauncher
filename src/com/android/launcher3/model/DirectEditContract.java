@@ -1,0 +1,143 @@
+/*
+ * Copyright (C) 2025 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.android.launcher3.model;
+
+import androidx.annotation.Nullable;
+
+/**
+ * Issue #448: minimal plain-data contract between the fork-side homeedit
+ * planner and {@link ModelWriter}'s direct-edit operations (ADR-0013 contract
+ * 2 and 4). Pure JDK types only: {@code src/} must not depend on the lawnchair
+ * module, and the pure planning layer must not receive Android or DB row types.
+ *
+ * <p>The write structure every direct-edit operation follows is
+ * "stage-1 validation (at submit time) → MODEL_WRITER admission → stage-2
+ * re-validation against the current state (inside admission) → model/DB
+ * change". The {@link Validator} receives an immutable {@link Snapshot} of the
+ * current state inside admission and decides whether the write validated at
+ * stage 1 may still proceed; it must re-run the same pure planning function
+ * against that snapshot and reject a different destination instead of
+ * re-planning silently.
+ */
+public final class DirectEditContract {
+
+    private DirectEditContract() {
+    }
+
+    /** Machine-readable failure keys reported through {@link Decision}. */
+    public static final String FAIL_STALE = "STALE";
+    public static final String FAIL_ITEM_GONE = "ITEM_GONE";
+    public static final String FAIL_NO_SPACE = "NO_SPACE";
+    public static final String FAIL_REDUNDANT = "REDUNDANT";
+    public static final String FAIL_FOLDER_GONE = "FOLDER_GONE";
+    public static final String FAIL_PROFILE_MISMATCH = "PROFILE_MISMATCH";
+    public static final String FAIL_UNSUPPORTED = "UNSUPPORTED";
+    public static final String FAIL_WRITE_FAILED = "WRITE_FAILED";
+
+    /** One favorites-row projection. Plain data; no Android types. */
+    public static final class Row {
+        public final int id;
+        public final int container;
+        public final int screenId;
+        public final int cellX;
+        public final int cellY;
+        public final int spanX;
+        public final int spanY;
+        public final int itemType;
+        public final int rank;
+        public final long userSerial;
+
+        public Row(int id, int container, int screenId, int cellX, int cellY,
+                int spanX, int spanY, int itemType, int rank, long userSerial) {
+            this.id = id;
+            this.container = container;
+            this.screenId = screenId;
+            this.cellX = cellX;
+            this.cellY = cellY;
+            this.spanX = spanX;
+            this.spanY = spanY;
+            this.itemType = itemType;
+            this.rank = rank;
+            this.userSerial = userSerial;
+        }
+    }
+
+    /**
+     * Immutable projection of the current layout state used for pure
+     * validation. {@code screenIds} is the workspace page order; rows include
+     * desktop, hotseat and folder-child rows.
+     */
+    public static final class Snapshot {
+        public final int columnCount;
+        public final int rowCount;
+        public final int[] screenIds;
+        public final Row[] rows;
+
+        public Snapshot(int columnCount, int rowCount, int[] screenIds, Row[] rows) {
+            this.columnCount = columnCount;
+            this.rowCount = rowCount;
+            this.screenIds = screenIds;
+            this.rows = rows;
+        }
+    }
+
+    /** Stage-2 decision produced by the fork-side validator. */
+    public static final class Decision {
+        public final boolean proceed;
+
+        /** One of the {@code FAIL_*} keys when {@link #proceed} is false. */
+        @Nullable
+        public final String failureReason;
+
+        private Decision(boolean proceed, @Nullable String failureReason) {
+            this.proceed = proceed;
+            this.failureReason = failureReason;
+        }
+
+        public static Decision proceed() {
+            return new Decision(true, null);
+        }
+
+        public static Decision reject(String failureReason) {
+            return new Decision(false, failureReason);
+        }
+    }
+
+    /**
+     * Stage-2 validator. The implementation (fork-side homeedit adapter)
+     * re-runs the pure planning function for the already-validated intent
+     * against {@code current} and only allows the write when the result still
+     * matches the stage-1 destination. Called on the model thread inside
+     * admission, before any model/DB change.
+     */
+    public interface Validator {
+        Decision validate(Snapshot current);
+    }
+
+    /**
+     * Result callback invoked on the model thread after the operation
+     * completed (or was rejected without any change). The old-placement
+     * fields plus {@code createdFolderId} carry the undo evidence required by
+     * Issue #450.
+     */
+    public interface ResultCallback {
+        void onResult(int itemId, boolean success,
+                @Nullable String failureReason,
+                int oldContainer, int oldScreenId, int oldCellX, int oldCellY,
+                int oldSpanX, int oldSpanY, int oldRank, int createdFolderId);
+    }
+}
