@@ -151,11 +151,11 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 - Scope type: research/decision（成果物は文書。Issue labelはtype: featureだが、決定Issueであり実装は別Issue）
 - Accepted spec + commit: specs/446-new-app-destination-policy/spec.md（status: accepted。本PR内でaccepted化）
 - Bug oracle: N/A（research/decision。成果物は文書）
-- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 8）
+- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 9）
 - Base SHA: 824b468614c39c3f60353f09499f2588db4f4028（#445 merge後の現行main）
 - Head SHA: 本PRのcurrent head（PR本文に記録）
 - Phase 1 review: round 1〜5。round 5 Clear（https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854429674）
-- Phase 2 review: round 1 Request changes（指摘1〜2）、round 2 Request changes（指摘1〜2。Decision 12参照漏れとhandoff残骸）。対応は本Revision
+- Phase 2 review: round 1 Request changes（指摘1〜2）、round 2 Request changes（指摘1〜2。Decision 12参照漏れとhandoff残骸）、round 3 Request changes（指摘1〜2。round 2 permalink誤りとPR本文handoff未同期。対応はRevision 9）
 - CI evidence: current headのCI / High-risk gateともにsuccess（PRのChecksで確認）
 - Executed evidence: 上記Verification参照
-- 次の1手: 本Revision（Decision 12参照同期＋handoff更新）をpushし、ChatGPTへPhase 2再reviewを依頼 → clear後に独立監査（別session）→ merge operator check → merge
+- 次の1手: round 4 review結果を本packetとPR本文へ反映 → clear後に独立監査（別session）→ merge operator check → merge
