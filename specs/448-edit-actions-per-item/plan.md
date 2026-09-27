@@ -5,6 +5,7 @@
 > Status: draft
 > Risk tier: H — Issue #448（メモ§4.7）が本機能を階層Hへ割り当て済み。現行workflowの階層H条件「Launcher DBへの新しい書込み経路を作る」「上流のmodel/loaderへのbridgeを作るまたは変える」に当たる（`ModelWriter.java` への最小操作追加 + fork側homeedit moduleの新設）。手順は現行どおり: accepted spec + plan.md、Execution and approval contract、`risk: layout-data` labelによる高リスク独立エビデンス（`final-status` + `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit）。
 > Revision 2: 2026-09-27 — Phase 1 review（[#448 comment](https://github.com/nunu1733/NunuLauncher/issues/448#issuecomment-5856887871)）の指摘1〜4に対応。指摘1: 新規フォルダの置き先を「置き先ページ選択 → そのページの空きセルに1x1」へ一意化（Current evidence/Design/Alternatives/Undo evidenceを同期）。指摘2: 「外す」を即時1回DELETEへ変更し、上流 `prepareToUndoDelete` + snackbarの再利用をやめる（#450所有。Current evidence/Design/Alternatives/Verificationを同期）。指摘3: 現行main（d3b5aba550503c6023224e64452426d8a1b32353、PR #471でADR-0014収録）へmergeし、ADR-0014参照を `docs/adr/0014-edit-surface.md`（Proposed Revision 2）へ更新。指摘4: stage-1 snapshotの権威と実行threadをmodel executorへ固定し、data flow・module説明・test oracleを同期。
+> Revision 3: 2026-09-27 — Phase 1 再review round 2（[#448 comment](https://github.com/nunu1733/NunuLauncher/issues/448#issuecomment-5856991631)）の指摘1〜4に対応。指摘1: `CreateFolderAndAdd` intentの置き先page/screenをplanner入力契約へ明記（module説明/Design）。指摘2: Verification表をB2/B3/B4の第1段単独記録へ拡張（新規フォルダ経路の会計を含む）。指摘3: AC-14（アクセシビリティevidence）の割付を追加。指摘4: handoff packetのrevision/head/diffを現状へ同期。
 > Phase 1（本書の初版）: spec + planの起草とreviewを追跡する。Phase 2（実装）は同じbranch/PRで行い、本planのRevisionで追跡する。
 
 ## Current evidence
@@ -64,6 +65,8 @@ app.lawnchair.homeedit/                  （fork側。新設）
 ├── HomeEditPlanner.kt                   # 純粋計画関数（intent → closed result）
 │                                        #   成功: MoveToPage / AddToFolder / CreateFolderAndAdd / Remove
 │                                        #   失敗: Reject(typed理由)
+│                                        #   CreateFolderAndAddのintentは選択済み置き先page/screenを必ず含み、
+│                                        #   stage 1/2ともその同じ置き先を検証する
 ├── HomeEditAdapter.kt                   # model/DeviceProfile → HomeEditSnapshot の投影
 │                                        #   + DirectEditContract のvalidator実装（Plannerへ委譲）
 ├── HomeEditExecutor.kt                  # 確定UI flow: 一覧取得(model executor) → dialog
@@ -146,9 +149,11 @@ popup tap → HomeEditExecutor: model executor（MODEL_EXECUTOR経由のmodel ta
 |---|---|---|
 | AC-5 (a)(b)(c)(d) | instrumentation: admission前無変更 / defer後stale（stage-1 snapshot取得後の状態変化もstage 2で検出することを含む）/ coordinator排他 / 1 transaction | `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...`（shared-writer lane。CI: `organizer-instrumentation-shared-writer-tests`） |
 | AC-2/3/4 振る舞い | instrumentation: 移動・フォルダ・削除の書込み結果と周辺行不変 | 同上 |
-| AC-6 | JVM planner test | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'`（CI: `organizer-unit-tests`） |
+| AC-6 | JVM planner test（`CreateFolderAndAdd` intentの置き先page/screenを含む入力契約の検証を含む） | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'`（CI: `organizer-unit-tests`） |
 | AC-7 process死 | instrumentation process-death smokeの慣行に従うtest | shared-writer laneに同梱 |
-| AC-1/10/11 | エミュレータでのpopup表示・操作・計測（ベンチマーク§7手順） | android-emulator plugin / 実機はowner確認 |
+| AC-1/10 | エミュレータでのpopup表示・操作・応答計測 | android-emulator plugin / 実機はowner確認 |
+| AC-11 | ベンチマーク§7のagent手順によるエミュレータ実行記録（B2/B3/B4の第1段単独コスト。B3は既存フォルダ経路と新規フォルダ経路（置き先ページ選択含む）を区別して記録） | android-emulator plugin（PR本文へ記録） |
+| AC-14 | dialog/shortcut構築のJVM test（文言がリソース由来かつ空でない）+ エミュレータTalkBack読み上げ記録 | JVM test + android-emulator plugin / 実機はowner確認 |
 | 全体 | lint/format/build/repo-contract | `./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebugDebug`、`python3 tools/repo-contract/validate_repo_contract.py`、`python3 tools/repo-contract/test_validate_repo_contract.py`、`python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` |
 
 test-audit審査の要点（新規test・CI filter変更のため）: (1) 既存test/laneで新module契約をカバーできない（homeeditは未存在のため）、(2) oracleは最下層（純粋計画はJVM、DB/排他/deferは実framework・実DBを要するためinstrumentation）、(3) 新規laneは作らず既存 `organizer-unit-tests` gateとshared-writer laneへ統合、(4) 既存coverageとの重複なし（直接編集の書込みは既存testが対象外）、(5) 恒久gateへの昇格はsurface ownership（surface_jvm / surface_layout_write）の延長でありscheduled sweepでは不足。
@@ -177,10 +182,10 @@ test-audit審査の要点（新規test・CI filter変更のため）: (1) 既存
 - Scope type: feature
 - Accepted spec + commit: Phase 1 reviewでacceptedへ進める（本PRのmergeが受入）
 - Bug oracle: N/A（feature。振る舞いoracleは本specのBehavior scenarios / AC）
-- Plan + revision: specs/448-edit-actions-per-item/plan.md（本書、初版）
+- Plan + revision: specs/448-edit-actions-per-item/plan.md（本書、Revision 3）
 - Base SHA: d3b5aba550503c6023224e64452426d8a1b32353（現行main。PR #471でADR-0014収録後。指摘3対応でbranchへmerge済み）
-- Head SHA: Phase 1 push後にPR/Issueへ記録（rev 2のheadはpush時に記録）
-- Diff: Phase 1 push後にcompare URLを記録
-- Diff boundary: Phase 1はdocs-only（spec.md + plan.md の2ファイル）。full diffを確認対象とする
-- Executed evidence: `python3 tools/repo-contract/validate_repo_contract.py` -> PASS予定; `git diff --stat` 目視
-- 次の1手: Revision 2をpushし、ChatGPTへPhase 1再reviewを依頼（結果はIssue #448コメントへ投稿）→ clear後、Phase 2（実装）→ Phase 2 review → PR作成・独立監査・merge
+- Head SHA: round 2 review対象 `ed5055dc3f05c8b1c9dc72001ae73f70e6a2549d`。Revision 3のheadは、本欄を含むcommit自体がheadを変えるためIssue #448へのhandoffコメントで記録する（正本）
+- Diff: current main...headの実質差分は `specs/448-edit-actions-per-item/spec.md` / `plan.md` の2ファイル（compare URLはpush後に記録）
+- Diff boundary: Phase 1はdocs-only（上記2ファイル）。full diffを確認対象とする
+- Executed evidence: `python3 tools/repo-contract/validate_repo_contract.py` -> PASS（refocus-drafts/配下の未追跡ローカルdraftに起因する既存3件のみ非該当）; `git diff --stat` 目視
+- 次の1手: Revision 3をpushし、ChatGPTへPhase 1再review（round 3）を依頼（結果はIssue #448コメントへ投稿）→ clear後、Phase 2（実装）→ Phase 2 review → PR作成・独立監査・merge

@@ -32,7 +32,7 @@ updated: 2026-09-27
 ## Scope
 
 - **編集アクションmodule（`app.lawnchair.homeedit`。本Issueが最初の実装を所有）**:
-  - **純粋計画関数（UI・DB・model状態に触れない）**: 入力は「現在のレイアウトの投影（snapshot。device profileの格子、ページ順とscreenId、各アイテムのcontainer/screen/cell/span/type/profile、フォルダの存在と所属と件数）」「対象アイテムの識別（itemId、現在のcontainer/screen/cell）」「意図（移動先ページ、移動先フォルダ、新規フォルダ、または外す）」。出力はclosed result（`MoveToPage` / `AddToFolder` / `CreateFolderAndAdd` / `Remove` の各成功plan、または `Reject` とtypedな理由）。保存（conservation）・重なりなし・device profile内・container参照・profile分離を検証する（メモ§4.2条件2）。
+  - **純粋計画関数（UI・DB・model状態に触れない）**: 入力は「現在のレイアウトの投影（snapshot。device profileの格子、ページ順とscreenId、各アイテムのcontainer/screen/cell/span/type/profile、フォルダの存在と所属と件数）」「対象アイテムの識別（itemId、現在のcontainer/screen/cell）」「意図（移動先ページ、移動先フォルダ、新規フォルダ（選択済みの置き先ページを必ず含む）、または外す）」。出力はclosed result（`MoveToPage` / `AddToFolder` / `CreateFolderAndAdd` / `Remove` の各成功plan、または `Reject` とtypedな理由）。保存（conservation）・重なりなし・device profile内・container参照・profile分離を検証する（メモ§4.2条件2）。`CreateFolderAndAdd` のintentは選択済みの置き先page/screenを必ず含み、stage 1とstage 2の両検証がその同じ置き先を検証する（意図の再解釈・無音の再計画はしない）。
   - **即時書込み経路（本Issue。ADR-0013に従う）**: 計画の確定から `ModelWriter` 同経路に追加する最小操作（ADR-0013契約4どおり「validation → MODEL_WRITER admission → admission後の再検証 → model/DB変更」の順序がadmissionの内側で完結する構造）での書込み、結果のtypedな通知まで。既存 `ModelWriter` メソッドがadmission前に `ItemInfo` を変更する構造（`ModelWriter.java` の `updateItemInfoProps` が `executeOnModelThread` より先）を踏まない。
   - **一括確定経路の受け皿（#449が使う。本Issueではinterfaceの分離のみ）**: 純粋計画関数とsnapshot投影は即時書込み経路から独立しており、#449は同一の計算を視覚的編集画面から呼び、適用はorganizerの安全な適用経路で行える（メモ§4.3「計算を共有し、書き方だけが異なる」）。本Issueは#449用のUI・適用・一括書込みを実装しない。
   - **Undo記録（情報の記録のみ。実装・寿命・UIは#450が所有）**: 各アクションの成功時に、逆操作に必要な情報（対象itemId、元のcontainer/screen/cell/rank/span、移動先、新規作成したフォルダの参照とその置き先、「外す」対象の削除前配置）をprocess内に記録する。形式の詳細化・複数段・永続化は#450に委ねる。
@@ -171,9 +171,10 @@ And 「ホームから外す」の場合、dialogの表示にロックも削除�
 - [ ] AC-8: `app.lawnchair.homeedit` が純粋計画（#449共有）と即時書込み経路（popup）を分離したinterfaceを持ち、popup経路からのみADR-0013の書込みが行われる構造である。一括確定適用（#449）の実装は含まない。
 - [ ] AC-9: 各アクション成功時にUndo記録の情報（対象itemId、元のcontainer/screen/cell/rank/span、移動先、新規フォルダの参照と置き先、削除前配置）がprocess内へ記録される。本体・寿命・UIは#450に委ねる旨が文書に記録されている。
 - [ ] AC-10: NFR-013の応答性: 排他なしの通常時、アクション確定から視覚反映までが即時である（目標1秒以内。エミュレータ計測値をPRに記録し、実機計測をowner確認に含める）。ORGANIZER lease中のdefer時は、反映がlease解放後になることを明記する（遅延中の追加の進捗表示は作らない）。
-- [ ] AC-11: ベンチマーク: B2〜B4の合否はNow-2全体（#448+#449のうち適した方）で判定するため本Issueでは確定しない。B2の第1段単独の重み付きコスト（目安: 1個あたり 長押し2 + tap 1 + 対象ページ選択 1 = 4、5個で20）をエミュレータでの実行記録（ベンチマーク§7の手順に従う）として残し、baseline 48からの削減幅を記録する。
+- [ ] AC-11: ベンチマーク: B2〜B4の合否はNow-2全体（#448+#449のうち適した方）で判定するため本Issueでは確定しない。B2・B3・B4のそれぞれについて、第1段単独の重み付きコストを実行記録として残し、baseline（B2=48 / B3=21 / B4=25）からの削減幅を記録する。会計は最終UI flowに従う（目安: B2=1個あたり 長押し2 + tap 1 + 対象ページ選択 1 = 4、B3=既存フォルダ経路 4 / 新規フォルダ経路（置き先ページ選択を含む）5、B4=長押し2 + tap 1 = 3）。エミュレータでの実行記録はベンチマーク§7の手順に従う。
 - [ ] AC-12: patch surface: PR上で `measure_upstream_patch_surface.py --target HEAD --enforce-baseline` を実行し、結果をPR本文に記録する。src/側の新規・変更ファイル（bridge）がbaseline比で増える場合、NFR-010としてPRで記録する。
 - [ ] AC-13: 文書: specが `implemented` になり、`DESIGN.md`（homeedit moduleの位置づけと、直接編集のgate 2系統（ADR-0013）行）、`CONTEXT.md`（domain language 3語）が更新される。高リスクpath一覧へのhomeedit追加要否の判断（本specは「fork側homeeditはDB書込みを直接行わないため追加なし。書込みは既に一覧内の `ModelWriter.java` に集約」と決定。`validate_writer_inventory.py` のscanがhomeedit配下のDB書込みpatternを検出した場合はCI failで機械的に露見する）をplanへ記録する。
+- [ ] AC-14: アクセシビリティ: 3つのshortcutラベル、対象選択dialogの選択肢・拒否理由・ロック注記が、支援技術（TalkBack）で読み上げ可能な文字列リソースから供給される。自動検証（dialog構築のtestで文言が空でないこと・リソース由来であること）に加え、エミュレータTalkBackでの読み上げ確認を記録し、実機確認をowner確認に含める。
 
 ## Test oracle
 
@@ -189,9 +190,10 @@ And 「ホームから外す」の場合、dialogの表示にロックも削除�
 | AC-8 | homeedit package構造のJVM test（計画moduleがmodel/DB/UI型をimportしないことの構造検証またはPublicSeamShapeTest相当） |
 | AC-9 | Undo記録のJVM test（各アクション結果にevidenceが載ること。寿命は試験しない） |
 | AC-10 | エミュレータでの操作計測（確定→反映の記録）+ owner実機確認 |
-| AC-11 | ベンチマーク§7のagent手順によるエミュレータ実行記録（PR本文） |
+| AC-11 | ベンチマーク§7のagent手順によるエミュレータ実行記録（B2/B3/B4。PR本文） |
 | AC-12 | `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` の出力（PR本文） |
 | AC-13 | `validate_repo_contract.py` 成功 + diff確認（DESIGN.md/CONTEXT.md/spec status） |
+| AC-14 | dialog/shortcut構築のJVM test（文言がリソース由来かつ空でないこと）+ エミュレータTalkBackでの読み上げ記録 + owner実機確認 |
 
 ## Open questions
 
@@ -201,3 +203,4 @@ And 「ホームから外す」の場合、dialogの表示にロックも削除�
 
 - 2026-09-27: Draft created for #448（Phase 1）。出典: Issue #448本文 + 承認済み再焦点化方針メモ（Revision 5）§4.2/§4.3/§4.8/§4.9、ADR-0013（#445受入）、ベンチマーク正本（#441確定）、ADR-0015（#446受入）のbridge書込み構造先例。
 - 2026-09-27: Revision 2 — Phase 1 review（[#448 comment](https://github.com/nunu1733/NunuLauncher/issues/448#issuecomment-5856887871)）の指摘1〜4に対応。指摘1: 新規フォルダの置き先を「置き先ページ選択 → そのページの空きセルに1x1」に一意化し（Issue Outcomeどおり）、hotseat上のsourceではワークスペースページ上に作ることを明記（Scope/Scenario/AC-3/Open questions）。指摘2: 「外す」を即時の1回DELETEへ戻し、上流snackbar・窓・Undo UIの#448への取り込みをやめて#450へ委ねる（Scope/Scenario/AC-4）。指摘3: ADR-0014の参照を現行mainの正本 `docs/adr/0014-edit-surface.md`（Proposed Revision 2）へ更新し、branchをcurrent mainへmerge。指摘4: stage-1 snapshotの取得threadをmodel executorへ固定（plan側で対応）。
+- 2026-09-27: Revision 3 — Phase 1 再review round 2（[#448 comment](https://github.com/nunu1733/NunuLauncher/issues/448#issuecomment-5856991631)）の指摘1〜4に対応。指摘1: 純粋計画関数の入力契約へ「新規フォルダintentは選択済みの置き先page/screenを必ず含む。stage 1/2が同じ置き先を検証する」を明記。指摘2: AC-11/Test oracleをB2・B3・B4すべての第1段単独記録へ拡張（新規フォルダ経路は置き先ページ選択を含む会計）。指摘3: アクセシビリティの受入evidence（自動test + エミュレータTalkBack + owner実機確認）をAC-14/Test oracleへ追加。指摘4: plan handoff packetのrevision/head/diffを現状へ同期（plan側で対応）。
