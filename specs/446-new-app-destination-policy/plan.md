@@ -17,6 +17,8 @@
 > Revision 11: 2026-09-27 — Phase 2 review round 5（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854890057)）の指摘1〜3に対応。指摘1: PR本文のReview recommendationへround 4のRequest changes判定とRevision 10対応済み状態を明記。指摘2: 本packetにRevision 10履歴を追加し、round 4/current head/次の1手を同期。指摘3: PR本文のPlan revision・diff数値をcurrent head基準へ更新。
 > Revision 12: 2026-09-27 — Phase 2 review round 6（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854946338)）の指摘1〜3に対応。指摘1: PR本文のReview recommendationへround 5のRequest changes判定とRevision 11対応済み状態を明記。指摘2: 本packetにRevision 11履歴を追加し、round 5/current head/次の1手を同期。指摘3: PR本文のPlan revision・diff数値をRevision 11 head基準へ更新。
 > Revision 13: 2026-09-27 — Phase 2 review round 7（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5855020136)）の指摘1〜3に対応。指摘1: PR本文のReview recommendationへround 6のRequest changes判定とRevision 12対応済み状態を明記。指摘2: 本packetにRevision 12履歴を追加し、round 6/current head/次の1手を同期。指摘3: PR本文のPlan revision・diff数値をRevision 12 head基準へ更新。
+> Revision 14: 2026-09-27 — Phase 2 review round 8（[PR #470 comment](https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5855090234)）の指摘1〜3に対応。指摘1: PR本文のReview recommendationへround 7のRequest changes判定とRevision 13対応済み状態を明記。指摘2: 本packetにRevision 13履歴を追加し、round 7/current head/次の1手を同期。指摘3: PR本文のPlan revision・diff数値をRevision 13 head基準へ更新。
+> **以後の運用（round 9指摘2で確定）**: review provenanceの同期だけを目的とするcommitはPlan revisionを増やさない。Plan revisionは契約内容（spec/planの規範的記述）のrevisionであり、review provenanceの同期はPR本文のReview記録とhead SHAの更新で追跡する。この自己参照ループを止める。
 
 ## Current evidence
 
@@ -155,11 +157,11 @@ Language節へ1語追加する（spec Domain languageどおり。定義文案は
 - Scope type: research/decision（成果物は文書。Issue labelはtype: featureだが、決定Issueであり実装は別Issue）
 - Accepted spec + commit: specs/446-new-app-destination-policy/spec.md（status: accepted。本PR内でaccepted化）
 - Bug oracle: N/A（research/decision。成果物は文書）
-- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 13）
+- Plan + revision: specs/446-new-app-destination-policy/plan.md（本書、Revision 14。以後、review provenanceだけの同期ではPlan revisionを増やさない。round 9指摘2で確定）
 - Base SHA: 824b468614c39c3f60353f09499f2588db4f4028（#445 merge後の現行main）
 - Head SHA: 本PRのcurrent head（PR本文に記録）
 - Phase 1 review: round 1〜5。round 5 Clear（https://github.com/nunu1733/NunuLauncher/pull/470#issuecomment-5854429674）
-- Phase 2 review: round 1〜7すべてRequest changes。round 3はRevision 9、round 4はRevision 10、round 5はRevision 11、round 6はRevision 12、round 7（review provenance同期の残り3点。メタデータのみ）はRevision 13で対応済み
+- Phase 2 review: round 1〜8すべてRequest changes。round 3はRevision 9、round 4はRevision 10、round 5はRevision 11、round 6はRevision 12、round 7はRevision 13、round 8（review provenance同期の残り3点。メタデータのみ）はRevision 14で対応済み。以後、review provenanceだけの同期はPlan revisionを増やさずPR本文とhead SHAで追跡する（round 9指摘2）
 - CI evidence: current headのCI / High-risk gateともにsuccess（PRのChecksで確認）
 - Executed evidence: 上記Verification参照
-- 次の1手: round 8 review結果を本packetとPR本文へ反映 → clear後に独立監査（別session）→ merge operator check → merge
+- 次の1手: round 9 review結果を本packetとPR本文へ反映 → clear後に独立監査（別session）→ merge operator check → merge
