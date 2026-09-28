@@ -1494,7 +1494,14 @@ class OrganizerHubPreferencesInstrumentationTest {
         // action; the DPAD order oracle continues from the diagnostics row
         // (the row itself is a plain navigation row, not part of the
         // deterministic focus order under test).
-        composeRule.onNode(hasScrollAction()).performScrollToNode(
+        // Scroll the outer LazyColumn (the scrollable covering the whole
+        // hub surface — an inner card's scrollable would never reveal the
+        // row) until the row composes, then assert its click action. The
+        // list is picked deterministically as the tallest scrollable.
+        val scrollables = composeRule.onAllNodes(hasScrollAction()).fetchSemanticsNodes()
+        val listIndex = scrollables.indices.maxByOrNull { scrollables[it].boundsInRoot.height }
+            ?: error("no scrollable container found in the hub fixture")
+        composeRule.onAllNodes(hasScrollAction())[listIndex].performScrollToNode(
             hasText(context.getString(R.string.edit_surface_menu_open)),
         )
         composeRule.onNodeWithText(
