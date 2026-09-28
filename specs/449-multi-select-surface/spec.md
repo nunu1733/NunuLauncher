@@ -1,6 +1,6 @@
 ---
 issue: "#449"
-status: draft
+status: accepted
 requirements:
   - FR-019
   - NFR-013
