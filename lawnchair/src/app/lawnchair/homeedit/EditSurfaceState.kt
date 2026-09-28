@@ -13,23 +13,20 @@ import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.TargetKey
 
 /**
- * Session-synthetic ids live in two disjoint ranges that never collide with
- * each other or with persisted favorites rowids (which are positive):
- * - session folders: [Int.MIN_VALUE + 1, Int.MIN_VALUE + 1 + SYNTHETIC_KEY_RANGE)
- * - reserved regions: [Int.MAX_VALUE - SYNTHETIC_KEY_RANGE + 1, Int.MAX_VALUE]
- * The container constants (DESKTOP/HOTSEAT, around -100) sit between the
- * ranges and only ever appear in [HomeEditItem.container], never as an item id.
+ * Session-synthetic ids live in two disjoint NEGATIVE ranges, and never
+ * collide with persisted favorites rowids (which are positive and
+ * monotonically allocated by the platform):
+ * - reserved regions: [Int.MIN_VALUE, Int.MIN_VALUE + SYNTHETIC_KEY_RANGE)
+ * - session folders:  [SYNTHETIC_FOLDER_KEY_BASE, SYNTHETIC_FOLDER_KEY_BASE + SYNTHETIC_KEY_RANGE)
+ * The session-folder range ends below the container constants
+ * (DESKTOP=-100 / HOTSEAT=-101), so a container constant is never classified
+ * as a synthetic id; container values only ever appear in
+ * [HomeEditItem.container], never as an item id.
  */
 const val SYNTHETIC_KEY_RANGE: Int = 1 shl 20
 
-/** Session-synthetic id for the [ordinal]-th (0-based) session folder. */
-fun editSurfaceNewFolderKey(ordinal: Int): Int {
-    require(ordinal in 0 until SYNTHETIC_KEY_RANGE) { "ordinal out of synthetic range: $ordinal" }
-    return Int.MIN_VALUE + 1 + ordinal
-}
-
-/** True only inside the session-folder synthetic range. */
-fun isEditSurfaceNewFolderKey(id: Int): Boolean = id in Int.MIN_VALUE + 1 until Int.MIN_VALUE + 1 + SYNTHETIC_KEY_RANGE
+/** Base of the session-folder synthetic range (ends at -1024 exclusive). */
+const val SYNTHETIC_FOLDER_KEY_BASE: Int = -1024 - SYNTHETIC_KEY_RANGE
 
 /**
  * Session-synthetic id for the [index]-th (0-based) platform-owned reserved
@@ -37,11 +34,20 @@ fun isEditSurfaceNewFolderKey(id: Int): Boolean = id in Int.MIN_VALUE + 1 until 
  */
 fun editSurfaceReservationKey(index: Int): Int {
     require(index in 0 until SYNTHETIC_KEY_RANGE) { "index out of synthetic range: $index" }
-    return Int.MAX_VALUE - index
+    return Int.MIN_VALUE + index
 }
 
 /** True only inside the reserved-region synthetic range. */
-fun isEditSurfaceReservationKey(id: Int): Boolean = id in Int.MAX_VALUE - SYNTHETIC_KEY_RANGE + 1..Int.MAX_VALUE
+fun isEditSurfaceReservationKey(id: Int): Boolean = id in Int.MIN_VALUE until Int.MIN_VALUE + SYNTHETIC_KEY_RANGE
+
+/** Session-synthetic id for the [ordinal]-th (0-based) session folder. */
+fun editSurfaceNewFolderKey(ordinal: Int): Int {
+    require(ordinal in 0 until SYNTHETIC_KEY_RANGE) { "ordinal out of synthetic range: $ordinal" }
+    return SYNTHETIC_FOLDER_KEY_BASE + ordinal
+}
+
+/** True only inside the session-folder synthetic range. */
+fun isEditSurfaceNewFolderKey(id: Int): Boolean = id in SYNTHETIC_FOLDER_KEY_BASE until -1024
 
 /**
  * 編集セッション内で確定済みの1アイテム分の変更（適用待ち）。実行順に保持され、

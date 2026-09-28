@@ -292,20 +292,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         }
     }
 
-    private fun rejectionTextFor(reason: PreWriteRejection): Int = when (reason) {
-        PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED -> R.string.edit_surface_error_blocked
-
-        PreWriteRejection.WRITER_BUSY -> R.string.edit_surface_error_busy
-
-        PreWriteRejection.STALE_REVISION, PreWriteRejection.EXACT_PRECONDITION_FAILED ->
-            R.string.edit_surface_error_stale_reopen
-
-        // Apply時の再captureでUNKNOWNになった場合（開始後にロック状態が変わった等）。
-        // 零書込み・セッション保持・理由表示（spec AC-7。既存LOCK_STATE_UNAVAILABLE契約）。
-        PreWriteRejection.LOCK_STATE_UNAVAILABLE -> R.string.edit_surface_error_lock_unknown
-
-        else -> R.string.edit_surface_error_generic
-    }
+    private fun rejectionTextFor(reason: PreWriteRejection): Int = editSurfaceRejectionText(reason)
 
     private fun rejectionText(reason: HomeEditRejection): Int = when (reason) {
         HomeEditRejection.STALE -> R.string.homeedit_error_stale
@@ -378,6 +365,25 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         draw(canvas)
         return bitmap.asImageBitmap()
     }
+}
+
+/**
+ * 確定前のtyped拒否reason → ユーザー向け理由リソース（AC-7。零書込み・セッション保持・
+ * 理由表示の契約の表示側。apply時の再captureでUNKNOWNになった場合を含む）。
+ * 純関数としてJVM testのoracleにする。
+ */
+internal fun editSurfaceRejectionText(reason: PreWriteRejection): Int = when (reason) {
+    PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED -> R.string.edit_surface_error_blocked
+
+    PreWriteRejection.WRITER_BUSY -> R.string.edit_surface_error_busy
+
+    PreWriteRejection.STALE_REVISION, PreWriteRejection.EXACT_PRECONDITION_FAILED ->
+        R.string.edit_surface_error_stale_reopen
+
+    // Apply時の再captureでUNKNOWNになった場合（開始後にロック状態が変わった等）。
+    PreWriteRejection.LOCK_STATE_UNAVAILABLE -> R.string.edit_surface_error_lock_unknown
+
+    else -> R.string.edit_surface_error_generic
 }
 
 @Composable
