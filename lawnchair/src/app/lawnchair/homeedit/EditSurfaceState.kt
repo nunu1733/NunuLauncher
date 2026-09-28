@@ -13,22 +13,35 @@ import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.TargetKey
 
 /**
- * Session-synthetic id for the [ordinal]-th (0-based) folder created inside
- * the session. Real favorites rowids are positive, and the only negative
- * constants in the homeedit vocabulary are the container ids, so the negative
- * range is unambiguous for item ids.
+ * Session-synthetic ids live in two disjoint ranges that never collide with
+ * each other or with persisted favorites rowids (which are positive):
+ * - session folders: [Int.MIN_VALUE + 1, Int.MIN_VALUE + 1 + SYNTHETIC_KEY_RANGE)
+ * - reserved regions: [Int.MAX_VALUE - SYNTHETIC_KEY_RANGE + 1, Int.MAX_VALUE]
+ * The container constants (DESKTOP/HOTSEAT, around -100) sit between the
+ * ranges and only ever appear in [HomeEditItem.container], never as an item id.
  */
-fun editSurfaceNewFolderKey(ordinal: Int): Int = Int.MIN_VALUE + 1 + ordinal
+const val SYNTHETIC_KEY_RANGE: Int = 1 shl 20
 
-/** True for the session-synthetic folder ids [editSurfaceNewFolderKey] issues. */
-fun isEditSurfaceNewFolderKey(id: Int): Boolean = id < 0
+/** Session-synthetic id for the [ordinal]-th (0-based) session folder. */
+fun editSurfaceNewFolderKey(ordinal: Int): Int {
+    require(ordinal in 0 until SYNTHETIC_KEY_RANGE) { "ordinal out of synthetic range: $ordinal" }
+    return Int.MIN_VALUE + 1 + ordinal
+}
+
+/** True only inside the session-folder synthetic range. */
+fun isEditSurfaceNewFolderKey(id: Int): Boolean = id in Int.MIN_VALUE + 1 until Int.MIN_VALUE + 1 + SYNTHETIC_KEY_RANGE
 
 /**
  * Session-synthetic id for the [index]-th (0-based) platform-owned reserved
- * region (QSB etc.) projected into the edit-surface snapshot. Below the
- * session-folder key range so the two synthetic id families never collide.
+ * region (QSB etc.) projected into the edit-surface snapshot.
  */
-fun editSurfaceReservationKey(index: Int): Int = Int.MIN_VALUE - 1 - index
+fun editSurfaceReservationKey(index: Int): Int {
+    require(index in 0 until SYNTHETIC_KEY_RANGE) { "index out of synthetic range: $index" }
+    return Int.MAX_VALUE - index
+}
+
+/** True only inside the reserved-region synthetic range. */
+fun isEditSurfaceReservationKey(id: Int): Boolean = id in Int.MAX_VALUE - SYNTHETIC_KEY_RANGE + 1..Int.MAX_VALUE
 
 /**
  * 編集セッション内で確定済みの1アイテム分の変更（適用待ち）。実行順に保持され、

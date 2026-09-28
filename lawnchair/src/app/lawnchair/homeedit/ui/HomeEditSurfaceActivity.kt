@@ -300,6 +300,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         PreWriteRejection.STALE_REVISION, PreWriteRejection.EXACT_PRECONDITION_FAILED ->
             R.string.edit_surface_error_stale_reopen
 
+        // Apply時の再captureでUNKNOWNになった場合（開始後にロック状態が変わった等）。
+        // 零書込み・セッション保持・理由表示（spec AC-7。既存LOCK_STATE_UNAVAILABLE契約）。
+        PreWriteRejection.LOCK_STATE_UNAVAILABLE -> R.string.edit_surface_error_lock_unknown
+
         else -> R.string.edit_surface_error_generic
     }
 

@@ -48,7 +48,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -322,6 +324,7 @@ private fun PageGrid(
                         },
                 )
             }
+        val pageIndex = diagram.pages.indexOf(screenId)
         diagram.items
             .filter { it.isOnWorkspace && it.screenId == screenId }
             .forEach { item ->
@@ -331,6 +334,10 @@ private fun PageGrid(
                     memberCount = diagram.folderMemberCounts[item.id] ?: 0,
                     icon = icons[item.id],
                     cellSize = cellSize,
+                    pageLabel = pageIndex.takeIf { it >= 0 }?.let { index ->
+                        stringResource(R.string.homeedit_page_label, index + 1)
+                    },
+                    cellLabel = "(${item.cellX}, ${item.cellY})",
                     modifier = Modifier.placeInGrid(
                         item.cellX,
                         item.cellY,
@@ -385,6 +392,8 @@ private fun DockRow(
                     memberCount = diagram.folderMemberCounts[item.id] ?: 0,
                     icon = icons[item.id],
                     cellSize = cellSize,
+                    pageLabel = null,
+                    cellLabel = null,
                     modifier = Modifier.fillMaxSize(),
                     onToggleSelection = null,
                 )
@@ -400,11 +409,14 @@ private fun DiagramItemView(
     memberCount: Int,
     icon: ImageBitmap?,
     cellSize: Dp,
+    // TalkBackの読み上げ要素（spec AC-15: title、位置、選択状態、選択不可の理由）。
+    pageLabel: String?,
+    cellLabel: String?,
     modifier: Modifier = Modifier,
     // dock上のアイテムは選択対象外（spec）。nullで非選択の描画になる。
     onToggleSelection: ((Int) -> Unit)?,
 ) {
-    val description = itemContentDescription(item, memberCount)
+    val description = itemContentDescription(item, memberCount, pageLabel, cellLabel, selected)
     val borderModifier = if (selected) {
         Modifier.border(
             border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
@@ -421,13 +433,21 @@ private fun DiagramItemView(
     } else {
         Modifier
     }
+    val selectedText = stringResource(R.string.edit_surface_a11y_selected)
     Column(
         modifier = modifier
             .then(borderModifier)
             .then(clickableModifier)
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp))
             .padding(1.dp)
-            .semantics { contentDescription = description },
+            .semantics {
+                contentDescription = description
+                // 選択状態はCompose標準のselected stateで支援技術に伝わる。
+                if (item.eligibility != SelectionEligibility.UNSUPPORTED) {
+                    this.selected = selected
+                }
+                stateDescription = if (selected) selectedText else ""
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -494,9 +514,15 @@ private fun DiagramItemView(
 }
 
 @Composable
-private fun itemContentDescription(item: EditSurfaceItem, memberCount: Int): String {
+private fun itemContentDescription(
+    item: EditSurfaceItem,
+    memberCount: Int,
+    pageLabel: String?,
+    cellLabel: String?,
+    selected: Boolean,
+): String {
     val label = item.label ?: stringResource(R.string.homeedit_folder_default_label)
-    val state = when (item.eligibility) {
+    val kind = when (item.eligibility) {
         SelectionEligibility.SELECTABLE ->
             if (item.itemType == HomeEditItemTypes.FOLDER) {
                 stringResource(R.string.edit_surface_a11y_folder, memberCount)
@@ -510,7 +536,13 @@ private fun itemContentDescription(item: EditSurfaceItem, memberCount: Int): Str
 
         SelectionEligibility.UNSUPPORTED -> stringResource(R.string.edit_surface_a11y_not_selectable)
     }
-    return listOf(label, state).filter { it.isNotBlank() }.joinToString(", ")
+    val selectionState = if (item.eligibility != SelectionEligibility.UNSUPPORTED && selected) {
+        stringResource(R.string.edit_surface_a11y_selected)
+    } else {
+        ""
+    }
+    val position = listOfNotNull(pageLabel, cellLabel?.takeIf { it.isNotBlank() }).joinToString(" ")
+    return listOf(label, kind, position, selectionState).filter { it.isNotBlank() }.joinToString(", ")
 }
 
 @Composable
