@@ -520,27 +520,47 @@ private fun itemContentDescription(
     pageLabel: String?,
     cellLabel: String?,
     selected: Boolean,
+): String = editSurfaceItemDescription(
+    label = item.label ?: stringResource(R.string.homeedit_folder_default_label),
+    eligibility = item.eligibility,
+    isFolder = item.itemType == HomeEditItemTypes.FOLDER,
+    memberCount = memberCount,
+    selected = selected,
+    selectedText = stringResource(R.string.edit_surface_a11y_selected),
+    lockedText = stringResource(R.string.edit_surface_a11y_locked),
+    lockUnknownText = stringResource(R.string.edit_surface_a11y_lock_unknown),
+    notSelectableText = stringResource(R.string.edit_surface_a11y_not_selectable),
+    folderText = stringResource(R.string.edit_surface_a11y_folder, memberCount),
+    pageLabel = pageLabel,
+    cellLabel = cellLabel,
+)
+
+/**
+ * 図アイテムのTalkBack読み上げ文言の純構築（AC-15のsemantics供給のoracle対象）。
+ * title、種別/選択不可の理由、位置（ページ+セル）、選択状態の4要素を常に含む。
+ * 純関数としてJVM testで各状態のsemantics供給を固定する。
+ */
+internal fun editSurfaceItemDescription(
+    label: String,
+    eligibility: SelectionEligibility,
+    isFolder: Boolean,
+    memberCount: Int,
+    selected: Boolean,
+    selectedText: String,
+    lockedText: String,
+    lockUnknownText: String,
+    notSelectableText: String,
+    folderText: String,
+    pageLabel: String?,
+    cellLabel: String?,
 ): String {
-    val label = item.label ?: stringResource(R.string.homeedit_folder_default_label)
-    val kind = when (item.eligibility) {
-        SelectionEligibility.SELECTABLE ->
-            if (item.itemType == HomeEditItemTypes.FOLDER) {
-                stringResource(R.string.edit_surface_a11y_folder, memberCount)
-            } else {
-                ""
-            }
-
-        SelectionEligibility.LOCKED -> stringResource(R.string.edit_surface_a11y_locked)
-
-        SelectionEligibility.LOCK_UNKNOWN -> stringResource(R.string.edit_surface_a11y_lock_unknown)
-
-        SelectionEligibility.UNSUPPORTED -> stringResource(R.string.edit_surface_a11y_not_selectable)
+    val kind = when (eligibility) {
+        SelectionEligibility.SELECTABLE -> if (isFolder) folderText else ""
+        SelectionEligibility.LOCKED -> lockedText
+        SelectionEligibility.LOCK_UNKNOWN -> lockUnknownText
+        SelectionEligibility.UNSUPPORTED -> notSelectableText
     }
-    val selectionState = if (item.eligibility != SelectionEligibility.UNSUPPORTED && selected) {
-        stringResource(R.string.edit_surface_a11y_selected)
-    } else {
-        ""
-    }
+    val selectionState = if (eligibility != SelectionEligibility.UNSUPPORTED && selected) selectedText else ""
     val position = listOfNotNull(pageLabel, cellLabel?.takeIf { it.isNotBlank() }).joinToString(" ")
     return listOf(label, kind, position, selectionState).filter { it.isNotBlank() }.joinToString(", ")
 }
