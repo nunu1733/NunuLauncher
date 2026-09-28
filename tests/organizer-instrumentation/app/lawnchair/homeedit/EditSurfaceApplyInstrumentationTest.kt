@@ -177,9 +177,20 @@ class EditSurfaceApplyInstrumentationTest {
         val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
         val capture = writer.captureCurrent(CaptureId("edit-surface-rollback"))
         val snapshot = EditSurfaceProjection.homeEditSnapshot(capture.layoutState)
-        val firstId = capture.layoutState.items
-            .map { (it.ref as app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem).itemId.value.toInt() }
-            .min()
+        // Pick the item at the known seeded placement (0,2,1) rather than the
+        // minimum row id: the emulator fixture can carry unrelated rows whose
+        // ids are lower and whose lifecycle the loader controls.
+        val firstId = capture.layoutState.items.mapNotNull { item ->
+            val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                ?: return@mapNotNull null
+            val page = workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage
+                ?: return@mapNotNull null
+            if (page.pageId.value.toInt() == 0 && workspace.cell.x == 2 && workspace.cell.y == 1) {
+                (item.ref as app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem).itemId.value.toInt()
+            } else {
+                null
+            }
+        }.first()
         val session = EditSurfaceSessionPlanner.plan(
             snapshot,
             emptyMap(),
