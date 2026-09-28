@@ -5,6 +5,7 @@
 > Status: draft
 > Risk tier: H — specの冒頭に同じ根拠を記載する（layout適用 + recovery pointを伴う適用。新しい書込み経路・上流bridgeは作らない）。手順は現行どおり: accepted spec + plan.md、Execution and approval contract、`risk: layout-data` labelによる高リスク独立エビデンス（`final-status` + `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit。auditは本実装sessionとは別の作業で行う）。
 > Phase 1（本書の初版）: spec + planの起草とreviewを追跡する。Phase 2（実装）は同じbranchで行い、本planのRevisionで追跡する。#448の先例（spec + planをPhase 1で起草し、review clearでspecをacceptedに進める。Phase 2を同じbranch/PRで実施）に従う。
+> Revision 2: 2026-09-28 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096): Request changes）の指摘1〜4のうちplan側の対応。指摘1（受入前提）: spec冒頭へ受入条件（ADR-0014の受入前提。#442結論待ち）を明記し、本planもPhase 2の開始条件に同じ前提を置く。指摘2: data flowを `ApplyResult` variantごとの観測契約へ修正。指摘3: 共有plannerへの「指定セルへの新規フォルダ作成」intent variant追加をDesign/Change setへ反映。指摘4: 結合点5（lockState UNKNOWN）を未決の確認事項から撤去し、既存 `LOCK_STATE_UNAVAILABLE` 契約と一致する設計（選択不可+確定ゲート）へ確定。
 
 ## Current evidence
 
@@ -25,6 +26,8 @@
 
 - `lawnchair/src/app/lawnchair/homeedit/HomeEditModel.kt:56-80` — `HomeEditIntent`（`sourcePlacement` precondition付きの `MoveToPage` / `AddToFolder` / `CreateFolderAndAdd` / `Remove`）。`:83-91` — `HomeEditRejection`（STALE / ITEM_GONE / NO_SPACE / REDUNDANT / FOLDER_GONE / PROFILE_MISMATCH / UNSUPPORTED）。`:94-123` — `HomeEditPlan`（`Move` / `CreateFolder` / `RemoveItem` / `Rejected`）。
 - `lawnchair/src/app/lawnchair/homeedit/HomeEditPlanner.kt:19` — `plan(snapshot, intent): HomeEditPlan`（純粋。決定的な空きセル探索 `firstFreeCell` を含む）。`HomeEditSnapshotMapper`（`HomeEditAdapter.kt:12`）は `DirectEditContract.Snapshot` → `HomeEditSnapshot` の投影であり、本機能のorganizer capture → `HomeEditSnapshot` 投影とは別の入口になる（authorityが異なる: #448はmodel thread読み取り、#449はorganizer capture）。
+- **`CreateFolderAndAdd` の置き先はrow-majorの最初の空きセルであり、指定セルを受けない**（`HomeEditPlanner.planCreateFolder`。対象をoccupiedから除いたうえでのfirst-fit）。specの置き先契約（先頭アイテムの元セル）を保証するには、指定セルを受け取るintent variantの追加が必要（review round 1 指摘3。本plan Designに反映）。
+- **lock列の既存契約**: `ApplyProtocol.kt:557-558` — capture内に1行でも `OrganizerLockState.UNKNOWN` があるとapply全体を `LOCK_STATE_UNAVAILABLE` で拒否。`RowManifestCodec.kt:247` — 列値の範囲外/読み取り失敗はUNKNOWNへ正規化。`DatabaseHelper.java:288-291` — ADR-0004の移行は既存行をUNKNOWN（0）に設定する。よって「UNKNOWNを選択可能にする」設計は既存適用契約と矛盾する（review round 1 指摘4。選択不可+確定ゲートへ確定）。
 
 **入口とCI**
 
@@ -66,6 +69,15 @@ app.lawnchair.homeedit/                          （fork側。#448 moduleへの�
     │                                            #   custom icon bytes優先。解決不能はplaceholder）
     └── (既存) EditActionsShortcuts.kt           # #448のpopup経路。変更しない
 
+共有moduleへの追加（#448の `app.lawnchair.homeedit`。additiveのみで既存経路は不変）
+├── HomeEditModel.kt                             # HomeEditIntent へ指定セル付きの新規フォルダ作成variantを追加
+│                                                #   （例: CreateFolderAt(sourcePlacement, screenId, cellX, cellY)。
+│                                                #    popup経路が使う既存4 intentとその振る舞いは変更しない）
+└── HomeEditPlanner.kt                           # 上記variantの計画追加: 指定セルが範囲内・1x1・
+                                                 #   対象を除いたsnapshotで空いていることの検証と
+                                                 #   既存 CreateFolder と同じ成功planの生成。違反はtyped拒否
+                                                 #   （既存testへの影響なし。variantの新規testを追加）
+
 organizer側（最小の追加。適用プロトコル・write set・recoveryの実装は変更しない）
 ├── LayoutApplicationModule                      # 新規: inspectCapture() — 読み取り専用capture
 │                                                #   （plan preview seam族 [spec 84/194] と同契約:
@@ -85,7 +97,8 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
 
 - **seam**: 呼び出し側とtestは (1) `EditSurfaceSessionPlanner`（セッション計画の純粋計算）、(2) `EditSurfacePlanBuilder`（適用計画の純粋構築）、(3) `HomeEditSurfaceAccess`（read-only capture / apply）の3つのseamを使う。`ApplyProtocol` / `prepareApplyWriteSet` / `applyWriteSet` / recovery storeの内部は検証しない（既存test群が所有）。#448の `HomeEditPlanner` はセッション計画から1アイテムずつ呼ばれ、単体で既存testが所有する。
 - **型の境界**: 純粋3層（projection / session planner / plan builder）はAndroid型・DB行型をinterfaceへ漏らさない（organizer public型とhomeedit型のみ）。`HomeEditSurfaceAccess` だけがorganizer protocol型（`CapturedSnapshot` / `ValidatedLayoutPlan` / `ApplyResult`）に触れる。UI層はhomeedit型のみを受け、organizer型に触れない。
-- **計画の共有（メモ§4.3「計算を共有し、書き方だけが異なる」）**: セッション計画の各アイテムの配置決定は #448 の `HomeEditPlanner.plan` そのものである。#449は複数アイテムの順序付け（視覚順）と all-or-nothing（1個でも `Rejected` なら全体を適用しない）と、適用計画への写像を追加するだけである。新規フォルダは先頭アイテムへの `CreateFolderAndAdd`（置き先=先頭セルの存在するページ）で作り、残りはsession内部の仮フォルダidへの `AddToFolder` として計画し、plan builderで `PlannedFolder` ordinalへ写像する。
+- **計画の共有（メモ§4.3「計算を共有し、書き方だけが異なる」）**: セッション計画の各アイテムの配置決定は #448 の `HomeEditPlanner.plan` そのものである。#449は複数アイテムの順序付け（視覚順）と all-or-nothing（1個でも `Rejected` なら全体を適用しない）と、適用計画への写像を追加するだけである。新規フォルダは、先頭アイテムの元セルを指定するintent variant（上記の共有module追加。review round 1 指摘3への対応。既存 `CreateFolderAndAdd` はrow-majorの最初の空きセルを選ぶため置き先契約を保証できない）で1回作り、残りはsession内部の仮フォルダidへの `AddToFolder` として計画し、plan builderで `PlannedFolder` ordinalへ写像する。
+- **lock列の扱い（review round 1 指摘4への対応。既存契約と一致）**: captureの `OrganizerLockState.LOCKED` 行は選択不可（現行安全規約の「ロック配置不変」の入力側保証）。`UNKNOWN` 行は既存の `LOCK_STATE_UNAVAILABLE` 契約（capture内に1行でもUNKNOWNがあればapply全体を拒否。`ApplyProtocol.kt:557-558`）と一致させ、選択不可かつ、セッションcapture内にUNKNOWN行が存在する間は確定を無効化して理由を示す（零書込み）。`UNLOCKED` 行のみが選択・確定の対象になる。
 - **一括適用の安全条件は適用経路の既存契約で満たる**: 適用計画のsourceState = セッション開始時のcaptureであり、確定時の再captureとの一致検証（`ApplyProtocol.kt:113/:118`）、checkpoint 1個（`:199`）、1 transaction、相関reload + 検証はすべて既存実装である。homeedit側は「選択アイテムのみを変える計画」を構築することでAGENTS.md安全規約の入力側条件（ロック不変: ロック中は選択不可、他行不変: Preserve、座標・参照有効: 純粋計画関数の検証）を満たす。
 - **stale時の開き直し**: `Rejected(STALE_REVISION / EXACT_PRECONDITION_FAILED)` を受けたUIは、セッションを破棄して `inspectCapture()` で最新captureを取り直し、同じActivityで図を組み直す（選択・アクションは破棄済み）。理由表示は破棄の前に行う。
 
@@ -102,11 +115,18 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
      → Applied(pointId)          → 編集画面を閉じる（ホームは相関reloadで更新される）
      → Rejected(STALE_REVISION / EXACT_PRECONDITION_FAILED)
                                  → 零書込み → セッション破棄 → 理由表示 → 最新captureで開き直し
-     → Rejected(RECOVERY_POINT_ADMISSION_BLOCKED / WRITER_BUSY) / ConcurrentRun
-                                 → 零書込み → 理由表示 + 再試行の促し（セッション保持）
-     → RolledBack / Recovered / Unresolved / RecoveryFailed
-                                 → 無変更 → 理由表示（ホームが変化していないことを示す）
+     → Rejected(RECOVERY_POINT_ADMISSION_BLOCKED / WRITER_BUSY / INVALID_PLAN /
+       RECOVERY_STORE_UNAVAILABLE 等) / ConcurrentRun
+                                 → 零書込み（pre-write拒否）→ 理由表示 + 再試行の促し（セッション保持）
+     → RolledBack                → transaction rollback後のpre-state（無変更）→ 理由表示
+     → Recovered                 → 自動復旧完了後のpre-state（無変更）→ 理由表示
+     → Unresolved / RecoveryFailed
+                                 → authoritativeState に従う。pre-stateを確認できない限り
+                                   「無変更」と断定せず、状態不明/復旧未完了としてfail-closed表示
+                                   （復旧への導線を含む。契約の正本は spec 13）
 ```
+
+確定の前提: セッション計画が空でないことに加え、セッション開始時のcapture内に `OrganizerLockState.UNKNOWN` 行が存在しないこと（存在する場合は確定を無効化し理由を示す。`LOCK_STATE_UNAVAILABLE` 契約との一致。review round 1 指摘4）。
 
 ### Alternatives rejected
 
@@ -117,11 +137,15 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
 - **「新しいフォルダ」の作成だけ #448経路（`ModelWriter`）で先行書込みする**: 1セッション = 1適用 = 1復元点の要件（メモ§4.3）を壊す。新規フォルダを含めて1つの適用計画に載せる。
 - **図の構成を「現在ページのみ表示」にする**: B3の会計（選択4tap、ページ越えのswipeを含まない）と「別々のページにある4アプリ」の課題構造に合わない。全ページ1面の縮小表示とする（spec決定済み）。
 - **アクション実行ごとの部分適用（空きが足りない分だけ移す）**: 選択全体への1操作というFR-019の振る舞いと、図の表示が常にセッション計画と一致するという予測可能性を優先し、all-or-nothing + typed理由とする（spec決定済み）。
+- **新規フォルダの作成に既存 `CreateFolderAndAdd` をそのまま使う**: `planCreateFolder` は対象ページのrow-majorで最初の空きセルを選ぶため、specの置き先契約（先頭アイテムの元セル）を保証できない（review round 1 指摘3）。指定セルを受け取るintent variantを共有moduleへ追加する（additive。popup経路の既存4 intentと振る舞いは不変）。
+- **`OrganizerLockState.UNKNOWN` を選択可能にする**: 既存適用契約はcapture内に1行でもUNKNOWNがあるとapply全体を `LOCK_STATE_UNAVAILABLE` で拒否する（`ApplyProtocol.kt:557-558`）。選択可能にすると「確定が必ず失敗するセッション」を許すことになり契約と矛盾する（review round 1 指摘4）。選択不可+確定ゲートとする。
+- **確定前にUNKNOWN行を除去・正規化する**: lock列の正規化はlock authoring（Issue #38系）とADR-0004の所有であり、編集画面がlock列を読みも書かない設計（#448と同じ）と矛盾する。確定ゲートと理由表示で利用者へ次の手段（既存のlock確認導線）を示すに留める。
 
 ## Change set
 
 | Area | Intended change | Why here |
 |---|---|---|
+| `lawnchair/src/app/lawnchair/homeedit/HomeEditModel.kt` / `HomeEditPlanner.kt` | 指定セル付き新規フォルダ作成のintent variantを追加（additive。popup経路の既存4 intent・振る舞い・既存testは不変。variantの新規testを追加） | specの置き先契約（先頭アイテムの元セル）を共有plannerで保証するため（review round 1 指摘3） |
 | `lawnchair/src/app/lawnchair/homeedit/EditSurface{State,Projection,SessionPlanner,PlanBuilder}.kt` | 新設（純粋4層。概算+600〜900行） | セッション計画と適用計画の純粋計算。テストの最下層oracle。図描画の分離可能構成（Next共有の受け皿） |
 | `lawnchair/src/app/lawnchair/homeedit/HomeEditSurfaceAccess.kt` | 新設（薄い窓。~60行） | 既存organizer module instanceへのcapture/applyの唯一の出口。homeedit uiがorganizer protocol型に触れない境界 |
 | `lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt` / `EditSurfaceScreen.kt` | 新設（全画面Activity + Compose。概算+800〜1,200行） | ADR-0014案Bの操作面。fork側のみで完結 |
@@ -151,7 +175,7 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
 2. **`NewFolder.naming` の表現**: `ValidatedLayoutPlan` の不変条件はPlannedFolder参照にNewFolder宣言（naming必須）を要求する。ユーザー作成フォルダのsemanticとして `FolderNaming` へvariant（UserCreated相当）を追加し、resolver側のmappingは契約（非blank）を満たす安全な既定へ追加する。resolverはhomeedit経路では呼ばれない。variant追加の影響範囲（exhaustive when）を確認して最小に保つ。
 3. **`ruleVersion` / `taxonomyVersion`**: 適用計画のprovenance列。homeeditの計画は整理ルール体系の外であるため、現行policy bundleのversionを記録値として使い、その旨をbuilderのdoc commentへ残す。取得経路を実装時に確認する。
 4. **runIdとdiagnostics**: runIdは既存 `newRunId()` 経路で発行する。編集画面の適用イベントが既存diagnostics経路（app-private journal、個人情報なし）へ流れる挙動を確認し、organizer runのUI/journal読み出しと混在しないことを記録する。問題がある場合は原因と対処（typed記録の分離等）をPRで記録し、`docs/engineering/organizer-diagnostics.md` への記載要否を判断する。
-5. **lockState `UNKNOWN` の扱い**: captureの `OrganizerLockState` がUNKNOWNの行は選択可能として扱う（LOCKEDのみ不可。specの「ロック中不可」はLOCKEDを指す）。capture正規化の実際の挙動を確認して記録する。
+5. ~~**lockState `UNKNOWN` の扱い**~~ — 解決（Revision 2。review round 1 指摘4）: 確認事項から設計へ確定した。`LOCKED` と `UNKNOWN` は選択不可、セッションcapture内にUNKNOWN行が存在する間は確定を無効化して理由を示す（既存 `LOCK_STATE_UNAVAILABLE` 契約と一致。`ApplyProtocol.kt:557-558`、`DatabaseHelper.java:288-291` の移行で既存行はUNKNOWNになる）。実装時の確認事項は「capture正規化でUNKNOWNになる実際の値域の再確認（`RowManifestCodec.kt:247`）と、確定ゲートのtest」に縮小する。
 6. **readinessGate / module mutex**: 起動直後等でmoduleのreadinessが未完了の場合の `apply` / `inspectCapture` の挙動を確認し、UIの待ち方（待機 or typed失敗+再試行）を決める。既存のSettings面の扱いに合わせる。
 
 ## Verification
@@ -162,7 +186,8 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
 | AC-2/3 計算 | projection（図投影・選択可否述語・icon fallback参照）のJVM test | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'`（CI: `organizer-unit-tests`） |
 | AC-4 / AC-9 | session plannerのJVM test（一括移動・空き不足all-or-nothing・フォルダ・新規フォルダ・外す・決定性・冪等性・typed拒否。`HomeEditPlanner`共有の呼出しを含む） | 同上 |
 | AC-5 構築 | plan builderのJVM test（Preserve/Update/Insert/不在、conservation、新規フォルダ宣言、sourceState一致） | 同上 |
-| AC-5/6/7/8/10 統合 | instrumentation: 編集セッション→適用（選択行のみ変化、recovery point 1個、相関reload）、stale零書込み+開き直し、lease中/blocked零書込み+セッション保持、リセット・キャンセル零書込み、失敗注入rollback | 既存lane（`surface_layout_write` 系）へ追加。実装時に該当laneのclass listを確定 |
+| AC-5/6/7/8/10 統合 | instrumentation: 編集セッション→適用（選択行のみ変化、recovery point 1個、相関reload）、stale零書込み+開き直し、lease中/blocked零書込み+セッション保持、UNKNOWN行の確定ゲート、リセット・キャンセル零書込み、失敗注入rollback | 既存lane（`surface_layout_write` 系）へ追加。実装時に該当laneのclass listを確定 |
+| AC-16 統合 | instrumentation: 失敗注入での `RolledBack`（pre-state表示）と `Unresolved` / `RecoveryFailed`（fail-closed表示。既存プロトコルの自動復旧testとの接続を確認） | 同上 |
 | AC-11 | エミュレータでの操作計測（選択反映≤100ms、確定→適用完了≤3秒目標。PR本文）+ owner実機確認 | android-emulator plugin |
 | AC-12 | ベンチマーク§5 fixture + §7手順に準拠したエミュレータ実行記録（B2=11 / B3=9 / B4=11、hub経由=4） | android-emulator plugin（PR本文へ記録） |
 | AC-13 | patch surface計測 | `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` |
@@ -192,16 +217,17 @@ test-audit審査の要点（JVM testの追加とinstrumentation class追加の�
 - [ ] Full relevant verification completed（Verification表の全行）
 - [ ] PR evidence and remaining risks recorded（実機確認はowner確認事項として明記）
 
-## Review / handoff packet（Phase 1時点）
+## Review / handoff packet（Phase 1 Revision 2時点）
 
 - Issue and all comments: https://github.com/nunu1733/NunuLauncher/issues/449; retrieved at 2026-09-28; state=OPEN; labels=type: feature
 - Scope type: feature
-- Accepted spec + commit: Phase 1 reviewでacceptedへ進める（本PRのmergeが受入）
+- Accepted spec + commit: **本specの受入はADR-0014の受入が前提**（spec冒頭に明記。review round 1 指摘1）。ADR-0014の受入は #442 の最終結論が前提であるため、specはreview clear後も `draft` を維持し、ADR-0014がAccepted化した時点でrevisionを取り込んで再照合のうえ受入手続きへ進める。Phase 2（実装）の開始可否は、この前提の扱いを含めてreviewに判断を求める
 - Bug oracle: N/A（feature。振る舞いoracleは本specのBehavior scenarios / AC）
-- Plan + revision: specs/449-multi-select-surface/plan.md（本書、初版）
+- Plan + revision: specs/449-multi-select-surface/plan.md（本書、Revision 2）
 - Base SHA: f35ff4494f447c3cdb253eef6c3d10c77083ba03（現行main。PR #472で#448収録後）
-- Head SHA: 本欄を含むcommitがheadを変えるため、Issue #449へのhandoffコメントで記録する（正本）
+- Head SHA: round 1 review対象 `c57cbaf1f74fad3d542da55117322187c3ea9ab1`。Revision 2のheadは、本欄を含むcommit自体がheadを変えるためIssue #449へのhandoffコメントで記録する（正本）
 - Diff: current main...headの実質差分は `specs/449-multi-select-surface/spec.md` / `plan.md` の2ファイル（compare URLはpush後に記録）
 - Diff boundary: Phase 1はdocs-only（上記2ファイル）。full diffを確認対象とする
+- Round 1 review: [判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096) Request changes（指摘1〜4）。Revision 2での対応: 指摘1=受入前提の明記（外部前提）、指摘2=適用結果のvariant別観測契約、指摘3=共有plannerへの指定セルvariant追加、指摘4=UNKNOWN契約の確定（選択不可+確定ゲート）
 - Executed evidence: `python3 tools/repo-contract/validate_repo_contract.py` の実行結果をpush後のhandoffコメントへ記録する
-- 次の1手: 本draftをpushし、ChatGPTへPhase 1 review（round 1）を依頼（結果はIssue #449コメントへ投稿）→ clear後、Phase 2（実装）を同じbranchで開始
+- 次の1手: Revision 2をpushし、ChatGPTへPhase 1再review（round 2）を依頼（結果はIssue #449コメントへ投稿）。あわせて、受入前提が未成立（#442結論待ち）の状態でのPhase 2開始の扱い（draft維持のまま実装を進める可否、または外部前提の完了まで停止）をreviewに判断を求める
