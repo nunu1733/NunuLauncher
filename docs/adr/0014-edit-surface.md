@@ -1,10 +1,11 @@
 ---
-status: proposed
+status: accepted
 ---
 
-> Status: Proposed（2026-09-27。#447の決定Issueで起草した。出典は #447 付録の承認済み草案（2026-09-24）であり、本ADRがその正本である。受入（Accepted）は #442 の最終結論を前提とする（メモ§4.3、§5。起草時点の #442 は暫定結論「A/C未確定」を記録済み。Decision節参照））
-> Date: 2026-09-27（起草 2026-09-24）
+> Status: Accepted（2026-09-28。#442の最終結論C（[research §6.2](../assessment/issue-442-android16-17-fitness-research.md)、[owner record](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)）を受けて受入した。起草（Proposed）は #447 の決定IssueでPR #471により行い、出典は #447 付録の承認済み草案（2026-09-24）である。本ADRがその正本である。受入PRは #447 をcloseする）
+> Date: 2026-09-28（起草 2026-09-24、Proposed 2026-09-27）
 > Revision 2: 2026-09-27 — PR #471 review（ラウンド1）の指摘に対応: ①「図の描画に使えるデータ」の記述を実際の契約へ修正（`icon` はcustom icon bitmapのoptionalな転写であり、通常アプリの表示iconは `TargetKey` とprofileからの `IconCache` 解決が要る。解決不能時のfallbackは#449 specの責務）。②案A/案Bの入口コストを確定手順（workspace空きスペース長押し2 + メニュー項目tap 1 = 3）で再計算（案A 9/8/9→10/9/10、案B 9/7/9→11/9/10）し、#441 §4の確定重みでの比較へ限定。「重みの取り方に依存しない」という一般の不変性の主張は撤回。判断内容（案B推奨）の変更はない。
+> Revision 3: 2026-09-28 — 受入（Proposed → Accepted）。#442の最終結論C（Lawnchair 16へのrebaseを専用Epic+ADRで計画）の確定を受けて、Decision節の受入gateを決着し、C確定下での再確認（実装順序とpatch surfaceの追加許容。Decision節末尾）を記録。判断内容（案B推奨）の変更はない。
 > 対応: #447（方針判断メモ: 再焦点化方針メモ（2026-09-24に承認、Revision 5）§4.3、R-5、D-014。以下「メモ§x」はこのメモの出典を指す）
 
 # 編集の操作面と上流workspaceへの変更
@@ -103,6 +104,12 @@ status: proposed
 
 この決定は#442（Android 16/17での日常利用適性とupstream同期判断）の結論が出るまで受け入れない（メモ§4.3、§5）。起草時点（2026-09-27）で#442のresearch（`docs/assessment/issue-442-android16-17-fitness-research.md`）は暫定結論「A/C未確定」を記録しており（同書§6.2。選択肢B=15系同期は不成立）、同書§6.1のC-(2)「ADR-0014の操作面方式が16-devで既に解決されている領域に依存するか」は不成立（操作面の方式は16-dev依存ではない）と評価されており、本ADRの基準2の定性的判断と整合する。#442が「先にrebaseすべき」（C）を最終結論した場合、案A/Bの比較自体は変わらないが、実装順序とpatch surfaceの追加許容を再確認する。
 
+**受入gateの決着（2026-09-28。受入PRで記録）**: #442は2026-09-28に最終結論**C**を確定した（research §6.2。owner record [issuecomment-5863040551](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)）。C確定下での再確認の結果:
+
+- **案A/Bの比較は不変**: 4基準は15 baseline上での操作面の比較であり、rebaseの要不要の結論に依存しない。むしろC確定は、上流変更量とrebase costを最小化する案B（基準2）の価値を強化する方向である。#442のresearch §6.1でもC-(2)（操作面方式の16-dev依存）は不成立と評価されており、本ADRの基準2と整合する。
+- **実装順序**: #448（第1段）と#449（第2段・案B）は15 baseline上での実装を継続する（#442 research §6.2-4）。rebaseの着手は専用Epic+ADRを経てから行われ、rebase後の再検証（#445〜#450）はEpic側で計画する（research §6.3-4）。本ADRの決定によりrebaseが前倒しされることはない。
+- **patch surfaceの追加許容**: 案Bの上流変更0〜1本（入口の追加のみ）という方針はC確定後も不変であり、将来のrebase costを増やさない。将来案Aを追加する場合の最小bridge限界も本Decisionどおり維持する。
+
 ## Consequences
 
 - #449は、fork側の視覚的編集画面のspecとして書かれる。適用はorganizerの安全な適用経路を再利用するため、#449のPRは `risk: layout-data` の対象になる（organizerの適用moduleを経由するため）。
@@ -115,4 +122,4 @@ status: proposed
 
 - **重みの仮定** — 決着（2026-09-27起草時。同日のreview指摘により表現を修正）: 本ADRのB2〜B5の概算は tap=1、長押し=2、同一ページdrag=2、ページ越drag=4+越えたページ数 の草案時点の仮の重みに基づく。正式な重み・baseline確定値・目標は#441（closed）が `docs/engineering/editing-burden-benchmark.md` §4/§6として確定し、重みは仮の重みと同一である。案A/案Bの「同等」という結論の根拠は、**この確定重みでの比較において両案の差がB2で1操作、B3/B4で同値であること**に限定して主張する（入口を確定手順の長押し+tapに固定して再計算済み。草案時点に置いていた「重みの取り方に依存しない」という一般の不変性の主張は、入口手順を実際より簡素に想定していたため撤回する）。絶対値の目標判定は同書§6（B2≤24、B3≤10、B4≤12、B5=1操作）に定義済みで、残る判断は#449実装時の合否測定である。
 - **案Bの「ずれ」の扱い（開き直すUIの詳細）**: 未解決。stale検出時に編集内容を破棄して最新のホームで開き直す第1版の挙動はDecisionで確定済み（メモ§4.3）。開き直すUIの詳細（理由表示の文言・配置、再captureのタイミング）はspec（#449）で決める。
-- **16-devのworkspace/state変更の具体量**: 未解決（#442の最終結論待ち）。本ADRでは定性的にのみ扱った。#442の暫定結論（research §6.1）はC-(2)を不成立（操作面の方式は16-dev解決済み領域に依存しない）と評価しているが、定量比較を出す場合、本ADRの基準2は更新されうる。
+- **16-devのworkspace/state変更の具体量** — 部分決着（2026-09-28受入時）: #442は最終結論Cを確定したが、16-devのworkspace/state変更量の把握は定性概観まで（research §3。compare API概観のみ）であり、本ADRの基準2も定性判断に留まる。本格的なpatch-surface計測（local object databaseへのfetchと `measure_upstream_patch_surface.py` による計測）は、rebase Epicの `type: upstream` Issueの対象である（research §6.3-1）。定量比較が出た場合、本ADRの基準2は更新されうる（判断の変更は新しいrevisionで記録する）。
