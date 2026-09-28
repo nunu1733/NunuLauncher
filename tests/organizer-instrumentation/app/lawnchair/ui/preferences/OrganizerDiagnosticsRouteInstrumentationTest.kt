@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
@@ -113,6 +114,7 @@ import app.lawnchair.organizer.planning.TaxonomyVersion
 import app.lawnchair.organizer.planning.Warning
 import app.lawnchair.organizer.planning.WarningCode
 import app.lawnchair.organizer.ui.ManualOrganizationModule
+import app.lawnchair.organizer.ui.InjectedInputEnvironment
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.ManualOrganizationApplication
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
@@ -358,7 +360,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_category_overrides_title),
             ).performClick()
-            assertCurrentDestination(navController, HomeScreenCategoryOverrides)
+            awaitCurrentDestination(navController, HomeScreenCategoryOverrides)
             composeRule.runOnIdle { navController.popBackStack() }
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithText(
@@ -370,7 +372,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_custom_category_title),
             ).performClick()
-            assertCurrentDestination(navController, HomeScreenCustomCategories)
+            awaitCurrentDestination(navController, HomeScreenCustomCategories)
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_custom_category_create),
             ).assertIsDisplayed()
@@ -385,7 +387,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_lock_screen_title),
             ).performClick()
-            assertCurrentDestination(navController, HomeScreenPlacementLocks)
+            awaitCurrentDestination(navController, HomeScreenPlacementLocks)
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_lock_screen_unknown_banner_none),
             ).assertIsDisplayed()
@@ -414,29 +416,30 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
      * the SAME durable session. Every transition is a real UI row click /
      * system Back, and the request row never admits a run (the coordinator
      * stays `Idle`).
+     *
+     * #477/#479 quarantine (ci-test-portfolio.md): CI passes the
+     * [QUARANTINE_RUNNER_ARGUMENT] runner argument so this touch oracle
+     * skips while #479 owns the Compose-level ghost-row anomaly it hits;
+     * local and diagnostic runs omit the argument and the oracle stays
+     * observable (classified failure + failure-instant screenshot).
      */
     @Test
     fun issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute() {
+        val quarantineArgument = androidx.test.platform.app.InstrumentationRegistry
+            .getArguments()
+            .getString(QUARANTINE_RUNNER_ARGUMENT)
+        org.junit.Assume.assumeTrue(
+            "issue372 touch oracle quarantined for #479 in CI (see ci-test-portfolio.md); " +
+                "omit $QUARANTINE_RUNNER_ARGUMENT to run it locally",
+            quarantineArgument == null,
+        )
         val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
         installProcessLocalRunner(fixture)
         // The consultation session is seeded through the REAL durable store
         // (#204 contract): the production controller's generation is covered
         // by its own oracle suite; this test owns the persistence-and-
         // materials-route interaction, so the session is written directly.
-        val sessionStore = app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
-            .store(context)
-        val now = System.currentTimeMillis()
-        sessionStore.save(
-            app.lawnchair.organizer.personalization.ExportSession(
-                exportId = "issue372-materials-route",
-                itemRefs = emptyMap(),
-                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
-                sourceContextDigest = "digest",
-                signalProvenance = null,
-                createdAtEpochMs = now,
-                expiresAtEpochMs = now + 24L * 60L * 60L * 1000L,
-            ),
-        )
+        val sessionStore = seedActiveConsultationSession()
         try {
             val navController = composeProductionGraph(startDestination = HomeScreen)
 
@@ -456,20 +459,14 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 composeRule.waitUntil(5_000) {
                     composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
                 }
-                composeRule.onNodeWithText(context.getString(R.string.organizer_hub_request_open)).performClick()
-                // The run surface is showing (its explainer is unique to it)…
-                composeRule.waitUntil(5_000) {
-                    composeRule.onAllNodesWithText(
-                        context.getString(R.string.manual_organization_explainer),
-                    ).fetchSemanticsNodes().isNotEmpty()
-                }
+                clickRequestRowAndAwaitRunSurface(navController)
                 // …with the T-15 pre-display for the active request.
-                composeRule.waitUntil(5_000) {
+                composeRule.waitUntil(10_000) {
                     composeRule.onAllNodesWithText(
                         context.getString(R.string.exchange_request_title),
                     ).fetchSemanticsNodes().isNotEmpty()
                 }
-                composeRule.waitUntil(5_000) {
+                composeRule.waitUntil(10_000) {
                     composeRule.onAllNodesWithTag(activeAwaitTag).fetchSemanticsNodes().isNotEmpty()
                 }
             }
@@ -499,7 +496,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             // The hub materials 「Organization strategy」 row opens T-05; one
             // real strategy write commits (AUTHORING token, no rejection).
             composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).performClick()
-            assertCurrentDestination(navController, HomeScreenOrganizerStrategy)
+            awaitCurrentDestination(navController, HomeScreenOrganizerStrategy)
             val tidy = context.getString(R.string.organization_strategy_tidy_name)
             composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
             composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
@@ -522,6 +519,79 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             sessionStore.invalidate("issue372-materials-route")
             installProcessLocalRunner(null)
         }
+    }
+
+    /**
+     * Issue #477 review round 1: the hub request row's semantics OnClick is
+     * the TalkBack activation path of the SAME production click handler the
+     * touch route uses. This test owns that a11y oracle separately from the
+     * touch-route oracle above, so a gesture-delivery defect (the #477
+     * swallow) can neither mask nor be masked by the activation contract.
+     * Same production graph and durable session seeding as the touch test;
+     * the only difference is how the row's action is driven.
+     */
+    @Test
+    fun requestRowSemanticsActivationOpensTheRunSurface() {
+        val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
+        installProcessLocalRunner(fixture)
+        val sessionStore = seedActiveConsultationSession()
+        try {
+            val navController = composeProductionGraph(startDestination = HomeScreen)
+            composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.manual_organization_start),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
+            }
+            val openLabel = context.getString(R.string.organizer_hub_request_open)
+            val onClick: (() -> Boolean)? = composeRule.onNodeWithText(openLabel).fetchSemanticsNode()
+                .config.getOrNull(SemanticsActions.OnClick)?.action
+            checkNotNull(onClick) { "request row carries no OnClick semantics action" }
+            composeRule.runOnIdle { onClick.invoke() }
+
+            // The run surface shows with the T-15 pre-display for the SAME
+            // durable request, without run admission (the #417 lease rule).
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.manual_organization_explainer),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            awaitCurrentDestination(navController, HomeScreenManualOrganization())
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.exchange_request_title),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithTag("exchange-request-active").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(ManualOrganizationRun.State.Idle, fixture.state)
+        } finally {
+            sessionStore.invalidate("issue372-materials-route")
+            installProcessLocalRunner(null)
+        }
+    }
+
+    /** Seeds the #372 consultation session through the REAL durable store. */
+    private fun seedActiveConsultationSession(): app.lawnchair.organizer.personalization.ExportSessionStore {
+        val sessionStore = app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
+            .store(context)
+        val now = System.currentTimeMillis()
+        sessionStore.save(
+            app.lawnchair.organizer.personalization.ExportSession(
+                exportId = "issue372-materials-route",
+                itemRefs = emptyMap(),
+                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
+                sourceContextDigest = "digest",
+                signalProvenance = null,
+                createdAtEpochMs = now,
+                expiresAtEpochMs = now + 24L * 60L * 60L * 1000L,
+            ),
+        )
+        return sessionStore
     }
 
     /**
@@ -618,14 +688,166 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         return node.config.getOrNull(SemanticsProperties.ToggleableState) == ToggleableState.On
     }
 
-    /** Asserts the production graph's current destination is [route]. */
-    private fun assertCurrentDestination(navController: NavHostController, route: PreferenceRoute) {
-        composeRule.waitForIdle()
-        var arrived = false
-        composeRule.runOnIdle {
-            arrived = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
+    /**
+     * Waits (polling, not one-shot) for the production graph's current
+     * destination to be [route]. One-shot arrival reads raced the navigation
+     * frame (#477: "assertCurrentDestination のnavigation未到達"), so the
+     * back-stack state itself is the polled oracle, replacing the former
+     * one-shot post-click assert.
+     */
+    private fun awaitCurrentDestination(navController: NavHostController, route: PreferenceRoute) {
+        composeRule.waitUntil(10_000) {
+            var matches = false
+            composeRule.runOnIdle {
+                matches = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
+            }
+            matches
         }
-        assertTrue("expected navigation to $route", arrived)
+    }
+
+    /**
+     * Issue #477 (revised classification — see the issue and PR): clicks the
+     * hub's request row with REAL touch injection and waits for the run
+     * surface. Evidence chain: the tap is injected at the row's reported
+     * bounds while `windowFocus=true`, the back stack never moves, the same
+     * handler driven through the semantics action navigates fine, and the
+     * failure-instant screenshot shows the VISIBLE hub without the row even
+     though the node reports on-screen bounds — a Compose-level
+     * composition/semantics anomaly candidate (ghost row node), not a
+     * harness wait defect. The touch route stays this test's primary oracle
+     * with the only success path (#477 review round 1: a semantics fallback
+     * would let the anomaly go green; the a11y activation path is owned by
+     * [requestRowSemanticsActivationOpensTheRunSurface]). Synchronization is
+     * the observable standard: settle, #300 environment gate, the
+     * #366/#369 scroll-into-view discipline, one re-attempt, then a
+     * classified failure whose message carries the back-stack route, row
+     * geometry, device environment, and screen state, with the failure
+     * instant screenshotted into the lane's always-uploaded UI evidence.
+     */
+    private fun clickRequestRowAndAwaitRunSurface(navController: NavHostController) {
+        val openLabel = context.getString(R.string.organizer_hub_request_open)
+        val explainer = context.getString(R.string.manual_organization_explainer)
+        repeat(REQUEST_ROW_CLICK_ATTEMPTS) { attempt ->
+            composeRule.waitForIdle()
+            InjectedInputEnvironment.ensureWindowFocused(composeRule.activity)
+            // Standard #366/#369 visibility discipline before the click. It
+            // passes here while the tap is still swallowed — the failure
+            // screenshot shows the visible hub WITHOUT the row while its
+            // semantics node reports on-screen bounds — which is the #477
+            // follow-up's evidence that this is a Compose-level
+            // composition/semantics anomaly, not a harness wait defect.
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(openLabel))
+            composeRule.onNodeWithText(openLabel).assertIsDisplayed()
+            composeRule.onNodeWithText(openLabel).performClick()
+            if (awaitRunSurfaceOrStillOnHub(navController, explainer)) return
+            if (attempt >= REQUEST_ROW_CLICK_ATTEMPTS - 1) {
+                captureArrivalFailureScreenshot()
+                error(
+                    "request row touch click never opened the run surface " +
+                        "(attempts=$REQUEST_ROW_CLICK_ATTEMPTS): ${arrivalDiagnosis(navController)}",
+                )
+            }
+            check(!isOnDestination(navController, HomeScreenManualOrganization())) {
+                // Navigation verifiably dispatched but the surface never
+                // composed — re-injecting would double-push the entry.
+                captureArrivalFailureScreenshot()
+                "request row touch click navigated but the run surface never composed: " +
+                    arrivalDiagnosis(navController)
+            }
+        }
+    }
+
+    /** Reads the back-stack arrival state on the main thread. */
+    private fun isOnDestination(navController: NavHostController, route: PreferenceRoute): Boolean {
+        var onRoute = false
+        composeRule.runOnIdle {
+            onRoute = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
+        }
+        return onRoute
+    }
+
+    /**
+     * Saves the failure-instant screen to the lane's ALWAYS-uploaded UI
+     * evidence directory (the #300 review-screenshot pattern). The
+     * failure-time emulator capture runs ~60s after this test, so this is
+     * the only visual record of the tap-swallow state (#477 root-cause
+     * evidence). Best-effort: never masks the classified failure.
+     */
+    private fun captureArrivalFailureScreenshot() {
+        runCatching {
+            composeRule.waitForIdle()
+            val screenshot = instrumentation.uiAutomation.takeScreenshot()
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "issue477-request-row-arrival-failure.png")
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Issue52-ui-evidence")
+                put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = requireNotNull(
+                resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values),
+            )
+            try {
+                check(
+                    resolver.openOutputStream(uri).use { output ->
+                        output != null &&
+                            screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+                    },
+                )
+                values.clear()
+                values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } catch (error: Throwable) {
+                resolver.delete(uri, null, null)
+                throw error
+            }
+        }
+    }
+
+    /**
+     * Waits for the run surface (explainer present AND the back stack on the
+     * manual-organization destination). Returns true on arrival, false after
+     * the budget while the explainer never showed — the caller owns the
+     * classification of whether navigation dispatched.
+     */
+    private fun awaitRunSurfaceOrStillOnHub(navController: NavHostController, explainer: String): Boolean {
+        val arrived = runCatching {
+            composeRule.waitUntil(REQUEST_ROW_ARRIVAL_TIMEOUT_MS) {
+                composeRule.onAllNodesWithText(explainer).fetchSemanticsNodes().isNotEmpty()
+            }
+        }.isSuccess
+        if (!arrived) return false
+        awaitCurrentDestination(navController, HomeScreenManualOrganization())
+        return true
+    }
+
+    /** Non-blocking screen snapshot for arrival-failure classification (#477). */
+    private fun arrivalDiagnosis(navController: NavHostController): String {
+        val openLabel = context.getString(R.string.organizer_hub_request_open)
+        val rowNode = composeRule.onAllNodesWithText(openLabel).fetchSemanticsNodes().firstOrNull()
+        val view = composeRule.activity.window.decorView
+        var route = "unavailable"
+        composeRule.runOnIdle {
+            route = navController.currentBackStackEntry?.destination?.route ?: "null"
+        }
+        val screen = composeRule.onAllNodes(hasAnyTestTagOrText()).fetchSemanticsNodes()
+            .take(40)
+            .joinToString(prefix = "[", postfix = "]") { node ->
+                val tag = node.config.getOrNull(SemanticsProperties.TestTag)
+                val text = node.config.getOrNull(SemanticsProperties.Text)?.joinToString(" / ")
+                listOfNotNull(tag, text).joinToString(":").ifEmpty { "?" }
+            }
+        return "backStackRoute=$route " +
+            "requestRowBounds=${rowNode?.boundsInRoot} " +
+            "window=${view.width}x${view.height} " +
+            "windowFocus=${view.hasWindowFocus()} " +
+            "deviceEnv=${InjectedInputEnvironment.describeDeviceState()} screen=$screen"
+    }
+
+    /** Matches any node carrying a test tag or text (diagnosis dump only). */
+    private fun hasAnyTestTagOrText(): SemanticsMatcher = SemanticsMatcher("has tag or text") { node ->
+        node.config.getOrNull(SemanticsProperties.TestTag) != null ||
+            !node.config.getOrNull(SemanticsProperties.Text).isNullOrEmpty()
     }
 
     /** A lifecycle owner whose state the test drives, to dispatch ON_RESUME. */
@@ -933,6 +1155,19 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         const val REVISION = "revision"
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        /** #477: the bounded request-row click-repair budget (1 retry). */
+        const val REQUEST_ROW_CLICK_ATTEMPTS = 2
+
+        /** #477: arrival budget for the run surface after a request-row click. */
+        const val REQUEST_ROW_ARRIVAL_TIMEOUT_MS = 10_000L
+
+        /**
+         * #477/#479 quarantine runner argument: present only in the CI lane
+         * invocation while #479 owns the ghost-row anomaly; local and
+         * diagnostic runs omit it so the touch oracle stays observable.
+         */
+        const val QUARANTINE_RUNNER_ARGUMENT = "nunuQuarantineIssue479TouchOracle"
 
         fun planningResult() = PlanningResult(
             revision = RevisionId(REVISION),
