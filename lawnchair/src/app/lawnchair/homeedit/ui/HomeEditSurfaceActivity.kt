@@ -54,11 +54,20 @@ import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
 import com.android.launcher3.icons.IconCache
 import com.android.launcher3.pm.UserCache
-import com.android.launcher3.util.Executors
 
 class HomeEditSurfaceActivity : ComponentActivity() {
 
     private val access by lazy { HomeEditSurfaceAccess.get(this) }
+
+    /**
+     * 適用とcaptureの実行スレッド。MODEL_EXECUTOR（単一のlauncher-loader
+     * Looperスレッド）は使わない: 相関reloadはLoaderTaskをMODEL_EXECUTORへ
+     * postし、その完了を待つ呼び出し元と同じスレッドで待つと、LoaderTaskが
+     * 永遠に実行されずタイムアウトする（MODEL_EXECUTOR上での自己待ち）。
+     * organizer runのapply（Dispatchers.IO）と同じく、待ちの間に
+     * MODEL_EXECUTORを塞がない専用スレッドで実行する。
+     */
+    private val surfaceExecutor by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "homeedit-surface") } }
 
     companion object {
         /** 編集画面を開く（workspace長押しメニューとOrganizer hubの共通入口）。 */
@@ -125,7 +134,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
 
     private fun reloadCapture() {
         busy = true
-        Executors.MODEL_EXECUTOR.execute {
+        surfaceExecutor.execute {
             val captured = access.inspectCapture()
             if (captured == null) {
                 runOnUiThread {
@@ -234,7 +243,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         applying = true
         busy = true
         reasonRes = null
-        Executors.MODEL_EXECUTOR.execute {
+        surfaceExecutor.execute {
             val runId: RunId = access.newRunId()
             val built = EditSurfacePlanBuilder.build(
                 layoutState,

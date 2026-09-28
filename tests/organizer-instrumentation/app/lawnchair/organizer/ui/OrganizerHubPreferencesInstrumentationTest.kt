@@ -1489,25 +1489,10 @@ class OrganizerHubPreferencesInstrumentationTest {
         ).performSemanticsAction(SemanticsActions.RequestFocus)
         awaitFocused(context.getString(R.string.manual_organization_recovery))
         // Issue #449: the edit-surface row joins the hub between the start
-        // CTA and the materials rows. It may sit below the fold in this
-        // fixture, so reveal it with an explicit scroll and assert its click
-        // action; the DPAD order oracle continues from the diagnostics row
-        // (the row itself is a plain navigation row, not part of the
-        // deterministic focus order under test).
-        // Scroll the outer LazyColumn (the scrollable covering the whole
-        // hub surface — an inner card's scrollable would never reveal the
-        // row) until the row composes, then assert its click action. The
-        // list is picked deterministically as the tallest scrollable.
-        val scrollables = composeRule.onAllNodes(hasScrollAction()).fetchSemanticsNodes()
-        val listIndex = scrollables.indices.maxByOrNull { scrollables[it].boundsInRoot.height }
-            ?: error("no scrollable container found in the hub fixture")
-        composeRule.onAllNodes(hasScrollAction())[listIndex].performScrollToNode(
-            hasText(context.getString(R.string.edit_surface_menu_open)),
-        )
-        composeRule.onNodeWithText(
-            context.getString(R.string.edit_surface_menu_open),
-        ).assertHasClickAction()
+        // CTA and the diagnostics row; the DPAD budget includes the extra
+        // row.
         val order = listOf(
+            R.string.edit_surface_menu_open,
             R.string.organizer_diagnostics_title,
             R.string.organizer_category_overrides_title,
             R.string.organizer_custom_category_title,

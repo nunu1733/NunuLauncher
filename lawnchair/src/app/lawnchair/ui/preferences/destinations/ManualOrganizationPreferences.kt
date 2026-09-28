@@ -639,15 +639,6 @@ fun ManualOrganizationPreferences(
                             onClick = { execute { coordinator.start(trigger) } },
                         )
                     }
-                    // Issue #449: the second entry to the visual edit surface
-                    // (ADR-0014 case B, hub row). Zero-write navigation; the
-                    // hub's run state machine is untouched.
-                    item {
-                        ClickablePreference(
-                            label = stringResource(R.string.edit_surface_menu_open),
-                            onClick = { app.lawnchair.homeedit.ui.HomeEditSurfaceActivity.start(context) },
-                        )
-                    }
                 }
 
                 // Issue #369 (TO-BE T-09): one integrated preparation face —
