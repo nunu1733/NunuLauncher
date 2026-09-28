@@ -253,8 +253,20 @@ class EditSurfaceApplyInstrumentationTest {
             bundle.bundle.taxonomy.version,
         ) as EditSurfaceApplyPlan.Ready
 
-        // The home changes after the session capture (a new icon appears).
-        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(0, 3, 1))
+        // The home changes after the session capture: add a fourth icon (a
+        // revision change) WITHOUT deleting the tracked row — deleting and
+        // re-seeding would allocate new row ids and the tracked row would
+        // vanish from the recapture.
+        db().beginTransaction()
+        try {
+            val id = launcher.model.modelDbController.generateNewItemId()
+            db().insertOrThrow(Favorites.TABLE_NAME, null, desktopRowValues(id.toLong(), 0, 3, 2))
+            db().setTransactionSuccessful()
+        } finally {
+            db().endTransaction()
+        }
+        launcher.model.forceReload()
+        waitForModelLoaded()
 
         val clock = SystemClock()
         val module = LayoutApplicationModule(
