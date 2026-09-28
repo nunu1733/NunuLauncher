@@ -356,13 +356,22 @@ class FakeLayoutWriter(
         }
     }
 
+    /**
+     * Issue #377 characterization hook: force the classification digest to an
+     * arbitrary value so a test can drive the NEITHER row (a DB state that is
+     * neither pre nor intended nor reviewed) through the real protocol seams.
+     * Null keeps the normal state-derived digest.
+     */
+    var classificationDigestOverride: ByteArray? = null
+
     override fun classifyAuthoritativeState(
         preDigest: ByteArray,
         intendedPostDigest: ByteArray,
         recoveryTargetDigest: ByteArray?,
         reviewedCurrentDigest: ByteArray?,
     ): AuthoritativeClass {
-        val currentDigest = RevisionCalculator.classificationDigestOf(stateRef.get())
+        val currentDigest = classificationDigestOverride
+            ?: RevisionCalculator.classificationDigestOf(stateRef.get())
         return when {
             currentDigest.contentEquals(preDigest) -> AuthoritativeClass.PRE_STATE
 

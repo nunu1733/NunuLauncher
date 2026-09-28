@@ -11,6 +11,8 @@ import app.lawnchair.organizer.planning.PageId
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
+import com.android.launcher3.WorkspaceLayoutManager.FIRST_SCREEN_ID
+import com.android.launcher3.config.FeatureFlags
 import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.util.IntSet
 import org.junit.After
@@ -26,7 +28,11 @@ import java.util.concurrent.TimeUnit
  * Page capture regression: desktop-rows-derived PageIds in deterministic
  * ascending order, model-only empty pages excluded by construction.
  *
- * Finding 1 (Stage B review).
+ * Finding 1 (Stage B review). Issue #155 / ADR-0008: when the platform QSB
+ * lives on the first screen, the rowless first screen is
+ * platform-authoritative and leads the page list even without desktop rows,
+ * so expectations are built from the same contract inputs (flag +
+ * [FIRST_SCREEN_ID]) as the accepted contract.
  */
 @RunWith(AndroidJUnit4::class)
 class PageCaptureInstrumentationTest {
@@ -35,6 +41,28 @@ class PageCaptureInstrumentationTest {
         const val VALID_INTENT =
             "#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
                 "component=com.android.settings/.Settings;launchFlags=0x10200000;end"
+
+        /**
+         * Expected page list for the given inserted desktop screens under the
+         * accepted #155 contract: the rowless first screen leads whenever the
+         * platform QSB is on the first screen; remaining pages follow in
+         * ascending numeric order.
+         */
+        fun expectedPages(vararg insertedScreens: Int): List<PageId> {
+            val rowPages = insertedScreens.map { PageId(it.toString()) }.distinct()
+                .sortedBy { it.value.toLong() }
+            return if (FeatureFlags.topQsbOnFirstScreenEnabled(
+                    InstrumentationRegistry.getInstrumentation().targetContext)
+            ) {
+                val firstScreen = PageId(FIRST_SCREEN_ID.toString())
+                buildList {
+                    add(firstScreen)
+                    addAll(rowPages.filterNot { it == firstScreen })
+                }.distinct()
+            } else {
+                rowPages
+            }
+        }
     }
 
     private lateinit var db: SQLiteDatabase
@@ -72,7 +100,7 @@ class PageCaptureInstrumentationTest {
             (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
         }
 
-        assertEquals(listOf(PageId("2"), PageId("5"), PageId("8")), pageIds)
+        assertEquals(expectedPages(5, 2, 8), pageIds)
     }
 
     @Test
@@ -86,7 +114,7 @@ class PageCaptureInstrumentationTest {
             (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
         }
 
-        assertEquals(listOf(PageId("0"), PageId("1")), pageIds)
+        assertEquals(expectedPages(0, 1), pageIds)
         assertTrue(
             "Page 3 has no desktop row and must be absent",
             pageIds.none { it.value == "3" },
@@ -103,7 +131,7 @@ class PageCaptureInstrumentationTest {
         val second = writer.captureCurrent(CaptureId("cap-2"))
         val third = writer.recaptureDb()
 
-        val expected = listOf(PageId("1"), PageId("3"))
+        val expected = expectedPages(3, 1)
         assertEquals(expected, first.layoutState.pages.map {
             (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
         })

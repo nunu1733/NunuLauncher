@@ -3,7 +3,7 @@ issue: "#210"
 status: implemented
 requirements: []
 risk: []
-updated: 2026-09-07
+updated: 2026-09-20
 ---
 
 # stale 適用試行後に「何も適用されていない・現 layout 無変更・次の一手」を画面文言で説明できる
@@ -82,6 +82,12 @@ origin 別詳細文は `manual_organization_safe_terminal` と同一の表現 (`
 ### D4: 適用安全性の再主張はしない — **zero-write は既存契約の継続である**
 
 stale 経路の zero-write は既に `LayoutApplicationModule` の revision 照合と E2E test (`staleProductionConfirmationDoesNotWrite`) が担保する。本 spec はその結果の「表現」を直すものであり、新たな安全機構を追加しない。outcome 文が「この整理案は適用されない・この操作による変更はない」と主張する対象は、この既存契約が保証する事実である。
+
+## Display-face integration (Issue #369 — 表示面のみの注記。文言契約は不変)
+
+- `State.Stale(APPLY_BLOCKED)`（適用時stale）は結果面（TO-BE T-12）の変種として表示される（outcome文・`APPLY_BLOCKED`詳細文・recapture actionの文言は本specの契約どおり不変）。
+- `State.Stale(DETECTED_BEFORE_REVIEW)`（入場前stale）は統合失敗面「実行できませんでした」（TO-BE T-13）の原因として表示される（D1由来の詳細文は文言不変）。
+- 表示面の統合は`specs/369-run-display-integration/spec.md`が所有する。本specのoutcome構成・origin区別・E2E契約は変更しない。
 
 ## Behavior scenarios
 
@@ -166,6 +172,8 @@ None。新たな permission、通信、telemetry は追加しない。表示文�
 None。文言と state 形状は §D1–D4 のとおり spec 時点で確定した。owner review は実装 PR で継続する。
 
 ## Change history
+
+- 2026-09-20: Issue #369 (accepted spec 369) による表示面統合の注記を追加: `APPLY_BLOCKED`は結果面（T-12）の変種、`DETECTED_BEFORE_REVIEW`は統合失敗面「実行できませんでした」（T-13）の原因として表示される旨。文言契約・outcome文・recapture・E2E (`staleProductionConfirmationDoesNotWrite`) は不変。
 
 - 2026-09-07: Drafted for Issue #210。Issue 本文 (exploratory review F-04)、`ManualOrganizationRun.kt` / `ManualOrganizationPreferences.kt` / strings の現行実装調査、spec 209・195 の UI 契約、E2E stale test (`staleProductionConfirmationDoesNotWrite`) の調査を入力に作成。実装 PR ([#240](https://github.com/nunu1733/NunuLauncher/pull/240)) で owner review を実施する。
 - 2026-09-07: Spec/Plan owner review ([Issue #210 コメント](https://github.com/nunu1733/NunuLauncher/issues/210#issuecomment-review), Request changes) 対応: (1) Blocker — D2 / AC-1 / Scenario の共通 outcome 文を適用試行スコープ (`This proposal was not applied. This attempt did not change your current home layout.` / `この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。`) へ変更。旧文言「現在のホームレイアウトは変更されていません」が直後の「layout が変更されたため破棄」詳細文と画面上で自己矛盾に読めるため。strings・ja を同時更新。(2) status を accepted → proposed へ訂正 (承認は owner review 完了後に行う)。plan.md に en/ja screenshot・visual review・`assembleLawnWithQuickstepGithubDebug` 完了確認を検証として追加。

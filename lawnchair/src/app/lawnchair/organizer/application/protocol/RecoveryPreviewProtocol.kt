@@ -1,6 +1,5 @@
 package app.lawnchair.organizer.application.protocol
 
-import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.public.OrganizerLockState
@@ -10,6 +9,7 @@ import app.lawnchair.organizer.application.public.RecoveryPreviewRejection
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryPreviewSummary
 import app.lawnchair.organizer.application.public.RecoveryPreviewUnavailable
+import app.lawnchair.organizer.application.store.RecoveryRecordCodec
 import app.lawnchair.organizer.planning.RevisionId
 
 /**
@@ -126,7 +126,7 @@ class RecoveryPreviewProtocol(
 
     private fun preflight(stored: RecoveryStorePort.InspectionProjection.Record): RecoveryPreviewRejection? {
         if (!stored.checksumValid) return RecoveryPreviewRejection.CORRUPT
-        if (stored.formatVersion != LifecycleReconciler.SUPPORTED_FORMAT) {
+        if (stored.formatVersion != RecoveryRecordCodec.RECORD_FORMAT_VERSION) {
             return RecoveryPreviewRejection.INCOMPATIBLE_VERSION
         }
         return when (stored.lifecycle) {

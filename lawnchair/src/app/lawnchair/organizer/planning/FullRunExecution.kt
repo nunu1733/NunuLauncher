@@ -107,22 +107,35 @@ internal fun unitPreferenceRank(
  */
 internal object FullRunExecution {
 
-    fun execute(context: FullRunContext): PlacementOutput = when (context.strategy.unitOrder) {
-        UnitOrdering.CANONICAL_TIE_BREAK -> executeCanonicalPageCompact(context)
+    fun execute(context: FullRunContext): PlacementOutput {
+        // Issue #398: a strategy that declares a preferred region runs its own
+        // executor — the region is part of the declared semantics and must
+        // never fall through to another strategy's layout.
+        if (context.strategy.preferredRegion != null) return executeRegionSweep(context)
 
-        UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL ->
-            executePageLocalLiftThenPlace(
-                context,
-                preferenceLayeredOrder(context, capturedVisualOrder()),
+        return when (context.strategy.unitOrder) {
+            UnitOrdering.CANONICAL_TIE_BREAK -> executeCanonicalPageCompact(context)
+
+            UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL ->
+                executePageLocalLiftThenPlace(
+                    context,
+                    preferenceLayeredOrder(context, capturedVisualOrder()),
+                )
+
+            UnitOrdering.CAPTURED_VISUAL_GLOBAL -> executeGlobalCompact(context)
+
+            // Registered only with a declared preferredRegion (routed above);
+            // an inconsistent registration fails loudly.
+            UnitOrdering.CAPTURED_VISUAL_GLOBAL_REVERSED -> throw IllegalStateException(
+                "UnitOrdering CAPTURED_VISUAL_GLOBAL_REVERSED requires a declared preferredRegion",
             )
 
-        UnitOrdering.CAPTURED_VISUAL_GLOBAL -> executeGlobalCompact(context)
-
-        UnitOrdering.CATEGORY_CONTIGUOUS_PAGE_LOCAL ->
-            executePageLocalLiftThenPlace(
-                context,
-                preferenceLayeredOrder(context, categoryContiguousOrder(context)),
-            )
+            UnitOrdering.CATEGORY_CONTIGUOUS_PAGE_LOCAL ->
+                executePageLocalLiftThenPlace(
+                    context,
+                    preferenceLayeredOrder(context, categoryContiguousOrder(context)),
+                )
+        }
     }
 
     /**
@@ -652,6 +665,195 @@ internal object FullRunExecution {
             ),
         )) {
             val allocated = allocator.allocateCapturedThenNew(GridSpan(1, 1))
+                ?: error("Validated folder ${group.ordinal} could not be allocated")
+            val (pageRef, cell) = allocated
+            allocator.markOccupied(pageRef, cell, GridSpan(1, 1))
+            outputNewFolders += NewFolder(
+                ordinal = group.ordinal,
+                profile = group.profile,
+                naming = folderNamingFor(group.key),
+                workspacePlacement = PlacementTarget.WorkspaceTarget(pageRef, cell, GridSpan(1, 1)),
+                members = group.members,
+            )
+            for ((rank, memberId) in group.members.withIndex()) {
+                placements += PlannedPlacement(
+                    item = memberId,
+                    disposition = Disposition.Moved(PlacementCode.FOLDER_MEMBER),
+                    target = PlacementTarget.FolderMember(NewFolderRef(group.ordinal), rank),
+                )
+            }
+        }
+
+        appendPreservedPlacements(context, placements)
+
+        return PlacementOutput(
+            placements = placements.sortedBy { it.item },
+            newPages = allocator.buildNewPages(),
+            newFolders = outputNewFolders.sortedBy { it.ordinal },
+            preservationWarnings = context.preservationWarnings,
+        )
+    }
+
+    /**
+     * Canonical grouping identity (spec 12 P-04/P-05, spec 337 D-6): the
+     * accepted intent's `groupSemantic` is the item's formation key — an
+     * existing-category reference resolves to its identity, a run-scoped
+     * proposal label becomes a `Proposed` key — falling back to the resolved
+     * classification category. Used by the #398 region sweep; the canonical
+     * flow keeps its inline equivalent (byte-equivalence oracle).
+     */
+    private fun canonicalFormationKey(
+        context: FullRunContext,
+        preferenceByItem: Map<ItemId, app.lawnchair.organizer.personalization.ItemPreference>?,
+        itemId: ItemId,
+    ): FormationKey {
+        val preference = preferenceByItem?.get(itemId)
+        preference?.groupCategory?.let { return FormationKey.Existing(it) }
+        preference?.groupProposalLabel?.let { return FormationKey.Proposed(it) }
+        return FormationKey.Existing(
+            context.classification.decisions[itemId]?.category ?: context.input.catalog.fallback,
+        )
+    }
+
+    /**
+     * Issue #398 BOTTOM_REGION_V1: lower-preferred-region sweep. The bottom
+     * `ceil(rows/2)` rows of every page are the strategy's main placement
+     * area; upper rows stay open as intentional whitespace and never receive
+     * a movable placement — a full region overflows to the next page's region
+     * (captured pages in PageOrder, then created new pages, then new pages).
+     *
+     * Shape mirrors [executeGlobalCompact] (spec 182 V1): non-`1×1` movable
+     * units and existing folders are `STRATEGY_PRESERVED`; folder formation
+     * (canonical P-04/P-05 + intent `groupSemantic`) applies to the eligible
+     * `1×1` candidates only; the formed folders are placed after the sweeping
+     * units by `(preferred page key, NewFolderOrdinal)`. Consumption order is
+     * the mirrored positional order `CAPTURED_VISUAL_GLOBAL_REVERSED` layered
+     * with identity-stable intent bias classes (GROUPING, IMPORTANCE,
+     * REGION_AFFINITY BOTTOM-first); `minimizeMovement` needs no extra switch
+     * — the base order already reads the captured positions. `preserve` is a
+     * soft captured-cell hint (spec 204 `preferenceCellHint` contract): the
+     * captured cell exactly, but only when it lies inside the region window
+     * and is free at the unit's turn; any other case degrades to the plain
+     * sweep, so the hint can never worsen displacement versus the
+     * no-preference run. The materialized reverse-visual reading restores the
+     * consumption assignment (spec 398 idempotence argument).
+     */
+    internal fun executeRegionSweep(context: FullRunContext): PlacementOutput {
+        val input = context.input
+        val strategy = context.strategy
+        val catalog = input.catalog
+        val device = input.snapshot.device
+        val allocator = context.allocator
+        val regionWindow = lowerPreferredRegion(device.rows)
+
+        val strategyFixed = context.movableItems.filter { !strategy.eligibleUnitFilter(it) }
+        val eligible = context.movableItems.filter { strategy.eligibleUnitFilter(it) }
+
+        val placements = mutableListOf<PlannedPlacement>()
+        for (item in strategyFixed) {
+            val ws = item.placement as CapturedPlacement.Workspace
+            allocator.markOccupied(PageRef(ws.page.pageId), ws.cell, ws.span)
+            placements += PlannedPlacement(
+                item = item.id,
+                disposition = Disposition.Preserved(PreserveReason.STRATEGY_PRESERVED),
+                target = capturedToOutput(item.placement),
+            )
+        }
+
+        val capacity = device.folderMaxColumns.toLong() * device.folderMaxRows.toLong()
+        val minGroupSize = input.rules.folderPolicy.minGroupSize
+        val preferenceByItem = context.preferences?.itemPreferences?.associateBy { it.item }
+        val folderGroups = if (strategy.createsFolders) {
+            formFolderGroups(
+                candidates = eligible
+                    .filter { it.kind != ItemKind.FOLDER }
+                    .map { item ->
+                        FolderCandidate(item.id, item.profile, canonicalFormationKey(context, preferenceByItem, item.id))
+                    },
+                fallbackCategory = catalog.fallback,
+                capacity = capacity,
+                minGroupSize = minGroupSize,
+            )
+        } else {
+            emptyList()
+        }
+        val folderMemberIds = folderGroups.flatMapTo(mutableSetOf()) { it.members }
+
+        // Consumption order: identity-stable bias classes (GROUPING,
+        // IMPORTANCE, REGION_AFFINITY BOTTOM-first) layered over the mirrored
+        // positional order. Every class key is a constant without a matching
+        // preference, so intent-less runs keep the pure reverse captured
+        // visual order.
+        val componentRanks = intentComponentRanks(context.preferences)
+        val reverseCapturedVisual = compareBy<CapturedItem>(
+            { pageOrderOf(context, (it.placement as CapturedPlacement.Workspace).page) },
+            { (it.placement as CapturedPlacement.Workspace).page.pageId },
+        )
+            .thenByDescending { (it.placement as CapturedPlacement.Workspace).cell.y }
+            .thenBy { (it.placement as CapturedPlacement.Workspace).cell.x }
+            .thenBy { it.id }
+        val workspaceUnits = eligible
+            .filter { it.id !in folderMemberIds }
+            .sortedWith(
+                compareBy<CapturedItem>(
+                    { componentRanks[it.id] ?: Int.MAX_VALUE },
+                    { item ->
+                        when (preferenceByItem?.get(item.id)?.importance) {
+                            app.lawnchair.organizer.personalization.Importance.HIGH -> 0
+                            app.lawnchair.organizer.personalization.Importance.LOW -> 2
+                            else -> 1
+                        }
+                    },
+                    { item ->
+                        if (preferenceByItem?.get(item.id)?.regionAffinity ==
+                            app.lawnchair.organizer.personalization.ExportRegionKind.BOTTOM
+                        ) {
+                            0
+                        } else {
+                            1
+                        }
+                    },
+                ).thenComparing(reverseCapturedVisual),
+            )
+
+        // Soft preserve hint (spec 204 preferenceCellHint contract): the
+        // captured cell exactly — but only when it lies inside the region
+        // window and is free at the unit's turn; any other case degrades to
+        // the plain sweep, so the hint can never worsen displacement versus
+        // the no-preference run.
+        fun preserveHint(item: CapturedItem): Pair<PageRef, GridCell>? {
+            if (preferenceByItem?.get(item.id)?.preserve != true) return null
+            val ws = item.placement as? CapturedPlacement.Workspace ?: return null
+            return PageRef(ws.page.pageId) to ws.cell
+        }
+
+        for (item in workspaceUnits) {
+            val ws = item.placement as CapturedPlacement.Workspace
+            val capturedTarget = PlacementTarget.WorkspaceTarget(PageRef(ws.page.pageId), ws.cell, ws.span)
+            val hint = preserveHint(item)
+            val allocated = hint?.let { (page, cell) ->
+                allocator.allocateAtCellInRegion(page, cell, ws.span, regionWindow)
+            } ?: allocator.allocateCapturedThenNewInRegion(ws.span, regionWindow)
+                ?: error("Validated item ${item.id} could not be allocated")
+            val (pageRef, cell) = allocated
+            allocator.markOccupied(pageRef, cell, ws.span)
+            val newTarget = PlacementTarget.WorkspaceTarget(pageRef, cell, ws.span)
+            val disposition = if (newTarget != capturedTarget) {
+                Disposition.Moved(PlacementCode.SINGLE_PLACEMENT)
+            } else {
+                Disposition.Preserved(PreserveReason.ALREADY_CANONICAL)
+            }
+            placements += PlannedPlacement(item.id, disposition, newTarget)
+        }
+
+        val outputNewFolders = mutableListOf<NewFolder>()
+        for (group in folderGroups.sortedWith(
+            compareBy<FolderGroup>(
+                { pageOrderOf(context, preferredPageOf(context, it.members)) },
+                { it.ordinal.value },
+            ),
+        )) {
+            val allocated = allocator.allocateCapturedThenNewInRegion(GridSpan(1, 1), regionWindow)
                 ?: error("Validated folder ${group.ordinal} could not be allocated")
             val (pageRef, cell) = allocated
             allocator.markOccupied(pageRef, cell, GridSpan(1, 1))

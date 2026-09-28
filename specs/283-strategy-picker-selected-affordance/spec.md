@@ -5,7 +5,7 @@ requirements:
   - FR-016
   - NFR-009
 risk: []
-updated: 2026-09-13
+updated: 2026-09-19
 ---
 
 # 整理ストラテジー選択の現在値を視覚的に判別できるようにする
@@ -41,9 +41,9 @@ picker を見ただけで、effective selected strategy が一意に判別でき
 - planner、composer、application、selection store の semantics 変更。`LayoutStrategySelectionModule` の read/write contract、fail-closed 規則、Rule Management write command 経由の選択 ([spec 182](../182-layout-strategy-catalog/spec.md) Selection contract) は不変である。
 - effective selection の導出規則の変更 (absent 選択時に bundle default を表示する規則、読取失敗時に非選択表示とする規則の維持)。
 - 選択状態の新規永続化、新規 preference、新規 diagnostics event。
-- picker の候補集合・順序・section 表題・run 表面への配置の変更。
+- picker の候補集合・順序・section 表題の変更。（#368 amend、2026-09-19: run 表面への配置の変更凍結は解除 — picker は materials 面 T-05 へ移設され run 表面からは撤去された。T-05 での本 spec の契約は不変）
 - preview 表面の strategy identity 表示 (`manual_organization_preview_strategy`) や consequence counts の変更 ([spec 194](../194-plan-preview-seam/spec.md) / [spec 195](../195-organizer-confirmation-change-list/spec.md) / [spec 235](../235-widget-strategy-placement/spec.md))。
-- 選択時の active run の dismiss + 再計画の挙動変更 ([spec 182](../182-layout-strategy-catalog/spec.md)、現行 `onStrategySelected` の契約維持)。
+- （#368 amend、2026-09-19: 「選択時の active run の dismiss + 再計画の挙動変更」凍結は解除 — run 差し替え経路そのものが廃止され、選択は次回 run の composition にのみ効く ([spec 182](../182-layout-strategy-catalog/spec.md) write-authority step 4)。affordance 契約は不変。）
 - canonical strategy 以外の strategy description の文言修正 (具体問題が確認されていないため)。ja/en 以外の locale の新規翻訳。
 - 色覚以外の視覚様式 (animation、shape 変化の常時演出) を用いた新表現の導入。
 
@@ -173,3 +173,4 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 - 2026-09-13: Draft created for #283 (baseline main `f9afd8bfde`, 2026-09-12 UTC 取得)。
 - 2026-09-13: Spec/plan review の Request changes (P1: `RadioButton(onClick = null)` は visual-only、P2: AC-3 の visual oracle、P2: 200% font-scale evidence) を反映。selection semantics の唯一の truth を parent row に固定し、視覚・font-scale evidence を screenshot または bounds 検査で拘束した。
 - 2026-09-13: ユーザー承認により spec を `accepted` に遷移し、実装を開始する。
+- 2026-09-19: Amended by #368 — Non-goals の「run 表面への配置」「dismiss + 再計画」凍結を解除し、AC-1〜AC-9 の selected affordance 契約が materials 面 T-05 に適用されることを追記（契約節本体は不変）。

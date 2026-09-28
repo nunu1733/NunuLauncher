@@ -105,6 +105,9 @@ class IntentPreferenceStrategyMatrixTest {
             LayoutStrategyRegistry.BOTTOM_FIRST_V2,
             LayoutStrategyRegistry.GLOBAL_COMPACT_V1,
             LayoutStrategyRegistry.GLOBAL_COMPACT_V2,
+            // Issue #398: the lower-region sweep consumes the same accepted
+            // capabilities through its own executor.
+            LayoutStrategyRegistry.BOTTOM_REGION_V1,
         )
         for (strategy in strategies) {
             val plain = planner.plan(input(strategy)).outcome as Planned

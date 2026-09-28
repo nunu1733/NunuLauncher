@@ -17,7 +17,9 @@ class BuiltInOrganizerPolicyBundleSourceTest {
 
         // Issue #235 published -v2.6 with both widget-relocating successors
         // enabled on one mainline (STABLE_PAGE_TIDY_V2, BOTTOM_FIRST_V2).
-        assertEquals("organization-policy-v2.6", bundle.identity.semanticVersion)
+        // Issue #398 published -v2.7 with the lower-region successor
+        // (BOTTOM_REGION_V1).
+        assertEquals("organization-policy-v2.7", bundle.identity.semanticVersion)
         assertEquals("v2", bundle.rules.version.value)
         assertEquals("v1", bundle.taxonomy.version.value)
         assertEquals(34, bundle.taxonomy.allowedCategories.size)

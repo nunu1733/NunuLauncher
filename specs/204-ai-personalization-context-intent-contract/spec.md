@@ -11,6 +11,8 @@ updated: 2026-09-15
 # AI personalization用 Context / PersonalizedIntent exchange contract
 
 > Status: **accepted** (2026-09-15) — 本specは契約 (contract) の定義のみを対象とし、provider実装・network・UIを含まない。新しい Later functional requirement (**FR-017**) を [requirements.md](../../docs/product/requirements.md) へ割り当て済み (受入PR)。1st〜5th review (いずれもRequest changes) の指摘と受入gate (Q1/Q3/Q4/Q6) を解決し、2026-09-15の6th review (**Approve**, snapshot `52b9097c` 基準、Issueコメント `5677382260`) で契約として固定された。実装childは「Execution checklist」(plan.md) に従う。
+>
+> Amended by #417 (head `bc459e9fa0` / spec 417 accepted): [spec 417](../417-scope-first-method-choice/spec.md) が export sessionへのdurableなentry origin追加・storeへのfailure-aware invalidation（`invalidateIf`）追加をAmendする（schema/validator/framing不変）。
 
 ## Problem
 
@@ -52,7 +54,7 @@ updated: 2026-09-15
 
 ## Domain language
 
-`CONTEXT.md` への追加用語案 (受入時に反映)。
+本specが **export-scoped ID (Export Item Reference)** の定義の正本である（#444で `CONTEXT.md` から移動。`CONTEXT.md` は参照を保持する）。本節の他の用語の正本は引き続き `CONTEXT.md` である。
 
 **パーソナライゼーション文脈書き出し (Personalization Context Export)**:
 1回のpersonalization試行のために、app内canonical入力から生成される、export-scopedなIDで項目を参照する読み取り専用の最小文脈。privacy tierを持ち、raw DB row・内部`ItemId`・package名・raw usage時刻を含まないことを既定とする。
@@ -131,6 +133,8 @@ intent取り込みのstale判定に使うdigestは **export文書のfieldでは�
 ### privacy tier
 
 export生成時にtierを1つ選ぶ。tierは`PersonalizationContextExportV1`のmetadataとして明示される。
+
+> **UI語彙の2種固定 (#372改訂、D-14)**: 外部workflowのUIにおける選択肢は2種 (redacted / labels。TO-BE D-14語彙「情報を減らして送る / ラベル付きで送る」) に固定される。`LOCAL_FULL` は内部契約値 (将来のlocal LLM向け余地、#206) として維持し、外部workflowのUIに出現させない。本節のtier matrix・schema・validatorは不変であり、本改訂は文言のみである。
 
 | Tier | user作成自由文 (app label・folder title等) | category/semantic (taxonomy enum) | usage | 想定consumer |
 |---|---|---|---|---|
@@ -454,6 +458,10 @@ AI/agentは次をauthoritativeにしてはならない。これらを含むinten
 未解決のOpen questionは存在しない。残る課題はすべて実装child issueの実装詳細 (internal canonical structural projectionのserialization、`RandomIdAllocator` production乱数源、`AndroidExportSessionStore` 具体実装) であり、契約受入の対象外である。
 
 ## Change history
+
+- 2026-09-24: **Amended by #417** (accepted spec [spec 417](../417-scope-first-method-choice/spec.md), head `bc459e9fa0`): export sessionへのdurableなentry origin追加・storeへのfailure-aware invalidation（`invalidateIf`）追加をAmend（schema/validator/framing不変）。
+
+- 2026-09-21: **UI語彙の2種固定 ([spec 372](../372-ai-consultation-request-flow/spec.md) 所有。accepted、PR #390)** — Issue #372のaccepted specによる文言Amend (disposition §3.11)。「privacy tier」節へ「外部workflowのUI選択肢は2種 (redacted / labels、TO-BE D-14語彙)。`LOCAL_FULL` は内部契約値 (将来のlocal LLM向け余地、#206) として維持し、外部workflowのUIに出現させない」を追記。tier matrix・schema・validator・契約値はすべて不変であり、本改訂は文言のみである。
 
 - 2026-09-10: Draft created for Issue #204. Contract-only spec: ContextV1/IntentV1 schema, privacy tiers, fail-closed validation, intent identity/determinism, prompt-injection threat model, #182 seam connection, FR-017 proposal.
 - 2026-09-13: Re-entry re-anchor to baseline `f9afd8bfde` (2026-09-13時点 `origin/main`)。#228/#235/#271/#288 由来のmain差分を検証し、契約の核は不変のまま現行planner実態へ追従: `kind` 投影をsemantic placement role族 (widget含む、span不変) へ明確化、reservation制約projectionを明記、FORBIDDEN_CONTENTへwidget span/reservation指示を追加、intentが新run modeや対象追加を生まないことを明記。#203/#205/#206は依然OPEN (mainに実装・specなし)。statusはdraftのまま (受入判断はOwner)。

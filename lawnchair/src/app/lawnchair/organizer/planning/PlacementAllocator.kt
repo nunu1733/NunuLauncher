@@ -177,6 +177,72 @@ internal class Allocator(
     }
 
     /**
+     * Issue #398 BOTTOM_REGION_V1: region-restricted variant of
+     * [allocateCapturedThenNew] — scans captured pages (their list order,
+     * PageOrder) then already-created new pages considering only cells inside
+     * [rowWindow], and finally creates another new page whose placement also
+     * stays inside the window. Units therefore never land outside the
+     * strategy's preferred region, and a full region overflows to the next
+     * page instead of upper rows. Returns null only under an injected fault.
+     */
+    fun allocateCapturedThenNewInRegion(span: GridSpan, rowWindow: IntRange): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        for (page in capturedPages) {
+            val ref: PageTargetRef = PageRef(page.id)
+            val occupied = occupancy[ref] ?: emptyList()
+            val cell = findRowMajorFirstFit(occupied, device.columns, device.rows, span, cellTraversal, rowWindow)
+            if (cell != null) return ref to cell
+        }
+        for (np in newPages) {
+            val ref: PageTargetRef = NewPageRef(np.ordinal)
+            val occupied = occupancy[ref] ?: emptyList()
+            val cell = findRowMajorFirstFit(occupied, device.columns, device.rows, span, cellTraversal, rowWindow)
+            if (cell != null) return ref to cell
+        }
+        val ordinal = NewPageOrdinal(newPages.size)
+        val order = nextNewPageOrder
+        val cell = findRowMajorFirstFit(emptyList(), device.columns, device.rows, span, cellTraversal, rowWindow)
+            ?: error(
+                "Validated placement span ${span.width}x${span.height} does not fit the region window " +
+                    "of an empty ${device.columns}x${device.rows} page",
+            )
+        newPages += NewPage(ordinal, order)
+        nextNewPageOrder = nextNewPageOrder + 1
+        val ref: PageTargetRef = NewPageRef(ordinal)
+        return ref to cell
+    }
+
+    /**
+     * Issue #398 BOTTOM_REGION_V1: soft preserve hint — uses the hint cell
+     * exactly, but only when it lies inside [rowWindow] and is free; any
+     * other case returns null and the caller falls back to the strategy's own
+     * sweep. The hint can therefore never worsen the item's displacement
+     * versus the no-preference run (spec 204 `preferenceCellHint` contract),
+     * and never places an item outside the strategy's preferred region.
+     */
+    fun allocateAtCellInRegion(
+        page: PageRef,
+        cell: GridCell,
+        span: GridSpan,
+        rowWindow: IntRange,
+    ): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        val inRegion = cell.y >= rowWindow.first && cell.y + span.height - 1 <= rowWindow.last &&
+            cell.x >= 0 && cell.x + span.width <= device.columns
+        if (!inRegion) return null
+        val ref: PageTargetRef = page
+        val occupied = occupancy[ref] ?: emptyList()
+        val overlaps = occupied.any { rect ->
+            rect.y < cell.y + span.height && cell.y < rect.y + rect.height &&
+                rect.x < cell.x + span.width && cell.x < rect.x + rect.width
+        }
+        if (overlaps) return null
+        return ref to cell
+    }
+
+    /**
      * Issue #228 (review P1): page-local candidate placement for strategies
      * whose declared scope never creates or crosses pages
      * (`CAPTURED_PAGE_ONLY`); `null` means no free captured cell fits the

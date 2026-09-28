@@ -193,3 +193,4 @@ contradictory evidence. Only after that decision is accepted may a separate feat
 - 2026-08-21: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected Option B. The
   negative technical conclusion is unchanged; FR-008/FR-009 package-event incremental placement is deferred
   outside the MVP and #55 has no implementation handoff.
+- 2026-09-27: [ADR-0015](../adr/0015-new-app-destination-policy.md)（[#446](https://github.com/nunu1733/NunuLauncher/issues/446)）accepted。上流が追加を決めた1アイテムの配置先決定は、本書の分類対象である「増分整理proposal」ではなくprior absenceの証明を必要としない配置先決定として扱われる（ADR-0015 Decision 2）。本書の分類表（§4）は増分整理proposalの分類正本として維持される。本書の本文は変更していない。

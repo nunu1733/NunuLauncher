@@ -16,6 +16,8 @@
 | [product/mvp-release-readiness.md](./product/mvp-release-readiness.md) | MVP要件の実装根拠、制約、release blockerは何か | MVP要件のevidenceまたはblockerが変わるとき |
 | [assessment/initial-design-review.md](./assessment/initial-design-review.md) | 初期案の問題と根拠は何か | 原則固定。再調査は別文書にする |
 | [assessment/organizer-as-is-ux-data-flow-audit.md](./assessment/organizer-as-is-ux-data-flow-audit.md) | Organizer再設計 (#356) Phase AのAS-IS事実モデル（View / ER / timing / state）は何か | #356 Phase Aの調査更新時。TO-BE decisionは #361 が正本 |
+| [product/organizer-to-be-ux.md](./product/organizer-to-be-ux.md) | Organizer再設計のTO-BE情報設計・遷移・data timingは何か | TO-BE decision (#361) の改訂時 |
+| [product/organizer-disposition-migration.md](./product/organizer-disposition-migration.md) | 既存Issue/specの処分（Continue/Amend/Defer/Retire）と実装migrationの順序は何か | 処分・依存順の変更時 (#362)。実装backlogは #365〜#377 |
 | `assessment/pr-<n>-<slug>.md`（形式は [assessment/_template.md](./assessment/_template.md)） | 高リスクPRの独立audit証拠は何か | `risk: layout-data` / `risk: migration` PRのmerge前。手順は [project/github-workflow.md](./project/github-workflow.md) |
 | [project/github-workflow.md](./project/github-workflow.md) | Issue/spec/PRをどう流すか | 開発processが変わるとき |
 | [project/seed-backlog.md](./project/seed-backlog.md) | 起票済みIssueへのnavigationと未起票提案 | Issueの起票・close時に更新する |
@@ -25,6 +27,7 @@
 | [engineering/organizer-diagnostics.md](./engineering/organizer-diagnostics.md) | organizer runのdiagnosticのfield・redaction・保持・出力はどう決まるか | diagnostics契約が変わるとき |
 | [engineering/package-provenance.md](./engineering/package-provenance.md) | package eventの証拠源比較は何か | Issue #54のsource evidenceが変わるとき |
 | [engineering/performance-budgets.md](./engineering/performance-budgets.md) | organizerの性能をどう測り、暫定budgetをどう運用するか | 測定環境・budget・matrixが変わるとき |
+| [engineering/editing-burden-benchmark.md](./engineering/editing-burden-benchmark.md) | 編集負担（日常編集の手間）をどう測り、目標をどう確定するか | 課題・重み・fixture・計測手順が変わるとき（NFR-014の正本。Issue #441） |
 | [adr/](./adr/) | 変更しにくい判断をなぜ行ったか | 判断時。日々の進捗では更新しない |
 | [specs/](../specs/) | あるIssueの観測可能な振る舞いは何か | 受入条件が変わるとき |
 

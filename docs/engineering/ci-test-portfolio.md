@@ -1,80 +1,206 @@
 # CI Test Portfolio and Runtime Baseline
 
 > Status: Implemented
-> Scope: Issue #96 source-changing pull-request CI
-> Updated: 2026-08-24
+> Scope: source-changing Pull Request CI、main / scheduled regression sweep（Issue #422 の impact-based portfolio 再編後の正本）
+> Updated: 2026-09-25（Issue #458 で unrouted instrumentation/JVM class の semantic 監査と routing を実施。Issue #438 で全 10 instrumentation lane を live failure capture に統一。Issue #422 で監査・impact-based gate 化。Issue #96 時代の記録は履歴として末尾に残す）
 
-この文書は、source-changing Pull Request における CI テストの所有範囲、実行理由、および実測した時間の正本である。テストを短縮する目的は coverage を削ることではなく、同等の回帰検出能力、API 互換性、および状態隔離を保ったまま、不要な直列待機を除くことである。[1] [2]
+この文書は CI portfolio の監査表（contract・分類・起動条件・実行費用・過去 failure 分類）の
+正本である。lane↔surface 対応（edge）の normative 正本は
+[tools/repo-contract/ci_portfolio_map.yml](../../tools/repo-contract/ci_portfolio_map.yml)
+であり、本文書は同じ対応の human-readable mirror である。両者が食い違う場合は map file が
+正である（`validate_ci_portfolio.py` が map↔workflow の edge 完全一致を検証する）。
 
-## Baseline
+## Portfolio model（Issue #422）
 
-基準値は、Issue #53 を含む PR #95 の成功した `pull_request` event の CI 実行である。workflow は `2026-08-21T12:09:27Z` に開始し、`2026-08-21T12:24:41Z` に成功したため、最終 status までの wall time は **15分14秒** だった。単一の `organizer-instrumentation-tests` job が 14分33秒で最長 job であり、source-changing PR の critical path を支配していた。[3]
-
-| Job / step | Wall time | 基準上の意味 |
-|---|---:|---|
-| `validate-repo-contract` | 0分18秒 | すべての PR に必要な repository contract 検証。 |
-| `check-style` | 1分10秒 | source の整形・lint gate。 |
-| `build-debug-apk` | 3分46秒 | GitHub Debug APK の独立した build evidence。 |
-| `organizer-unit-tests` | 4分03秒 | organizer JVM contract/property regression evidence。 |
-| `organizer-instrumentation-tests` | **14分33秒** | 最長の required connected-test lane。 |
-| Issue #83 API 35 step | 6分52秒 | API 35 の production input seam evidence。 |
-| Issue #52 API 36 step | 4分14秒 | manual organization の DB/apply/recovery と UI evidence。 |
-| Issue #53 API 36 step | 2分47秒 | Launcher-host onboarding proposal evidence。 |
-
-## Ownership and retained protection
-
-| CI surface | 保護する契約・回帰 | PR での扱い | Issue #96 の判断 |
-|---|---|---|---|
-| `validate-repo-contract` | 文書リンク、Issue form、project contract | 全 PR | 維持する。 |
-| `check-style` | source formatting | source-changing PR | 維持する。 |
-| `build-debug-apk` | GitHub Debug APK の独立 buildability | source-changing PR | 維持する。artifact reuse の安全性が実証されるまで別 job のまま維持する。 |
-| `organizer-unit-tests` | pure planner/application の contract/property regression | source-changing PR | 維持する。 |
-| `organizer-instrumentation-shared-writer-tests` | shared-writer seam の coordinator/transaction/reload/restore 回帰。Issue #113 の `MODEL_WRITER` self-deadlock regression (`ModelWriterTransactionReentryTest`)、lease admission/FIFO (`LayoutWriteCoordinatorTest`)、Binder future (`BinderOperationFutureTest`)、Issue #117 の whole-unit nested `SQLiteTransaction` contract (`NestedTransactionTest`)、Issue #119 の決定的なA→B reload supersession/stale completion/cancellation (`OrganizerReloadSupersessionTest`)、Issue #120 の restore helper lifecycle/file-set replacement (`RestoreLeaseSerializationTest`) を API 36 emulator で常設実行する | source-changing PR | PR #114レビュー後、Issue #117/#119/#120の回帰を同じclean API 36 laneへ追加。coordinator/transaction/restore各caseはisolated fixture DBを使い、reload caseは実Launcher modelを使う。#120はmain-only delete、`-journal`/`-wal`/`-shm`を含む完全なraw file-set replacement、fresh controller reopen、API 36 query oracleを検証する。lane全体にはUI laneのapp stateとは独立したclean emulatorを与える。 |
-| `organizer-instrumentation-db-migration-tests` | schema upgrade/downgrade の transaction ownership 失敗意味論。Issue #118 の poisoning regression (`MigrationTransactionOwnershipTest`)、#14 由来の schema-33 fixture (`DatabaseHelperSchema33Test`, `DowngradeSchema33Test`, `InactiveGridDbNormalizationTest`)、実 schema-32 rollback target replica (`rollback32.Schema32RollbackBinaryTest`) を API 36 emulator で常設実行する | source-changing PR | Issue #118 で追加。#115 が、DB migration suite が compile-only のまま実 platform 契約の下で失敗し続けていたことを実証したのと同じ escape を防ぐ。isolated fixture DB のみを使い、UI lane の app state とは独立した clean emulator を与える。 |
-| `organizer-instrumentation-api35-tests` | `ProductionOrganizationInputComposer` と実 platform evidence adapter の互換性、および Issue #117 の nested `SQLiteTransaction` whole-unit contract の API 35 回帰 | source-changing PR | **API 35 lane を維持する**。Issue #117 の同じ test class をAPI 35でも実行し、API-version mythの再導入を検出する。この compatibility requirement を API 36 に置換できる根拠はまだない。[4] |
-| `organizer-instrumentation-issue52-tests` | production Launcher DB capture、apply、recovery、UI/recreation | source-changing PR | 維持する。fresh fixture/recovery cleanup を伴う高リスク evidence である。[5] |
-| `organizer-instrumentation-issue53-tests` | 実際の Launcher host における onboarding proposal、Back、focus、recreation、Review admission | source-changing PR | 維持する。Issue #52 と同じ app/process state では実行しない。[6] |
-
-## Implemented orchestration change
-
-`.github/workflows/**` の変更を専用 `ci` path filter として扱い、通常の source path と同じ build、JVM、connected-test jobs を起動する。workflow-only PR が更新した command、job dependency、path filter、自動 emulator provisioning を検証なしに merge gate へ導入することを防ぐ。
-
-Issue #83、#52、#53 の focused connected suite を、共通の `changes` gate の後に開始する**独立した emulator job**へ分割する。各 job は own checkout、Gradle setup、KVM setup、emulator provisioning、target-app state、instrumentation process、failure report artifact を持つ。したがって #52 の database-heavy fixture state を #53 が引き継がず、#53 の Launcher-owned proposal state も #52 の高リスク DB evidence を汚染しない。[5] [6]
-
-この選択は、共有 emulator の package-state reset が active launcher package で許可されない CI image でも、clean-state isolation を推測で補うことなく実行できる。最適化対象は emulator provisioning の**直列待機**であり、テスト class、API baseline、Gradle class filter、必要な evidence は削除または統合しない。
-
-> Issue #52 と #53 を同一の dirty process や同一 target-app state で実行しない。各 suite は新しい emulator 上で開始する。
-
-## Deferred candidates
-
-| Candidate | 現時点の判断 | 再評価に必要な証拠 |
+| 分類 | 対象 | どこで走るか |
 |---|---|---|
-| API 35 と API 36 の統合 | 保留 | API 35 固有の production adapter compatibility を API 36 の evidence で代替できる受入済み根拠。 |
-| `build-debug-apk` と connected lane の artifact reuse | 保留 | variant、signing、test APK、installation inputs と failure artifact が同等であることの再現可能な検証。 |
-| source path filter の狭小化 | 保留 | organizer shared Launcher surface を見落とさない conservative な path-to-contract inventory。 |
-| test/check の削除 | 実施しない | 同じ failure mode を適切な layer で検出する、明示的で reviewable な coverage equivalence。 |
-| 共有 emulator / 異なる class filter の Gradle invocation 統合 | 実施しない | Android Test Orchestrator 等により、suite 間の deterministic isolation と failure attribution を実証する設計。 |
+| Permanent PR gate | `validate-repo-contract`、`check-style`、`build-debug-apk`、`organizer-unit-tests` | `validate-repo-contract` は全 run（docs-only 含む）。残り 3 つは `permanent_run`（source \|\| ci \|\| full \|\| smoke） |
+| Conditional PR gate | 10 本の instrumentation lane | `instrumentation_enabled && (full \|\| own surface)`。surface は変更 diff から `changes` job が判定 |
+| Main / scheduled regression | 同一 portfolio 全量 | main push・週次 schedule・`workflow_call`・`workflow_dispatch(full-portfolio=true)` は path にかかわらず全 lane（Permanent gate を含む） |
+| Smoke | repository contract + Permanent gate のみ | `workflow_dispatch(full-portfolio=false)`。paths 判定に依存しない決定的実行（instrumentation 全 skip） |
+| Diagnostic only | planner stress matrix、#418 系の診断 run | merge gate に恒久追加しない。`planner-stress.yml`（週次 / manual）と個別診断 branch |
 
-## Post-change measurement result
+起動判定の正本は `tools/ci/compute_ci_gating.py` が適用する次の規則である。
 
-PR #97 の `pull_request` event CI は commit `c4a0727276db40634b7fc3d4f6f7d364b3da2d37` で成功した。workflow は `2026-08-21T14:09:01Z` から `2026-08-21T14:18:03Z` までの **9分02秒** で完了した。これは `.github/workflows/ci.yml` を含む CI configuration change であり、`ci` path filter により build、JVM、3つの focused connected-test job の全てが skip されずに成功した。[7]
+```text
+unmapped_files = source_files - (∪ surface マッチ file)   # per-path fail-closed
+smoke          = workflow_dispatch && full-portfolio == false
+full           = !smoke && ( ci || unmapped あり || schedule || workflow_call
+                            || main push || dispatch-full )
+permanent_run  = source || ci || full || smoke
+instrumentation_enabled = !smoke
+```
 
-| Metric | PR #95 baseline | PR #97 result | Difference | 判定 |
-|---|---:|---:|---:|---|
-| Critical-path wall time | 15分14秒 | **9分02秒** | **6分12秒短縮（40.7%）** | Pass |
-| Connected critical path | 14分33秒 | **8分37秒**（Issue #52） | **5分56秒短縮（40.7%）** | Pass |
-| Total runner work | 24分20秒 | 33分10秒 | **8分50秒増加（36.3%）** | wall-clock 改善と引き換えに増加。明示的に受容し、追加最適化の対象とする。 |
-| Required focused evidence | #83 API 35、#52 API 36、#53 API 36 | 3つの独立 job がすべて success | coverage 削除なし | Pass |
-| State isolation | 単一 job 内で順次実行 | clean emulator を持つ別 job | #52/#53 の process・target state を非共有 | Pass |
+- **per-path fail-closed**: diff に 1 件でも未 mapping の source file（`quickstep/**`、
+  `src/` 直下の未 mapping file、build script、`Android.bp` 等）があれば全 source lane が
+  起動する。mapped / unmapped 混在でも発火する。mapping の隙間が gate の静かな skip と
+  して現れないための保守 default である。
+- **event ごとの差分評価**: 増分単位の conditional 判定は `pull_request` event が所有
+  する（PR files API）。`push` event（`*-dev` branch）では dorny/paths-filter は
+  branch と default branch の差分を評価する（増分の上位集合のため常に安全側へ働く。
+  実測: 2026-09-24 の `422-demo-dev` run）。main push は常に全量、schedule /
+  workflow_call / workflow_dispatch は paths 判定を使わない。
+- test path は directory 粒度で surface 割り当てており、隣接 lane の過剰起動（over-trigger）
+  を意図的に許容する（list 二重管理による取りこぼしより安全側である）。ただし各 lane が
+  実行する test class の path はその lane の surface に必ず含み、**test のみの変更でも
+  当該 lane が自己検証される**（db-migration の schema 4 test file は広い glob と重複
+  しても明示指定する）。
+- `source` filter は docs / specs / `.github` / `tools/repo-contract` 等を除外する広い
+  母集合（Issue #8 由来）。未知の上流 module は自動的に unmapped → full となる。
 
-この結果は critical path の material reduction を示す一方、emulator/job を3つに分けたことで total runner work は増えている。したがって、API 35 consolidation、artifact reuse、path-filter narrowing、または test removal をこの結果だけで正当化しない。これらは各々に追加の coverage/isolation evidence を必要とする。
+## lane↔surface mapping（map file の mirror）
 
-## References
+| Lane（job ID） | 起動する surface | 守る contract（概要） |
+|---|---|---|
+| organizer-instrumentation-shared-writer-tests | surface_layout_write | coordinator / transaction / reload / restore-lease seam（#113/#117/#119/#120/#156）+ direct-edit write shape（#448: folder作成2行transaction rollback・admission内stage-2検証の順序）+ direct-edit production seam（#448: `DirectEditModelWriterTest`。実`ModelWriter` direct-edit操作のadmission・stage-2検証・DB+model+`FolderInfo.contents`同期・失敗注入rollback・ORGANIZER lease defer） |
+| organizer-instrumentation-db-migration-tests | surface_db_schema | schema upgrade/downgrade transaction ownership（#118/#115/#14、rollback32）。#458 で grid-migration success path（#458 R-2a）、commit-aware preferences primitive（#59）、Deck retirement startup migration 冪等性（#57）、restore profile remap の lock 保持（#58）を追加（GridMigrationFailureTest は #461 所有） |
+| organizer-instrumentation-restore-capture-tests | surface_backup_restore | Nova restore → capture 契約（#299、cross-process 2 stage）。#458 で cleanUpDatabases restore lease guard（#168）を独立 connected invocation として追加 |
+| organizer-instrumentation-production-input-tests | surface_production_input, surface_layout_write | production input composer / 実 adapter 互換（#83、API 35）+ nested transaction の API 版依存回帰 |
+| organizer-instrumentation-manual-organization-ui-tests | surface_organizer_ui | manual organization E2E / hub / strategy picker / exchange import success / diagnostics route（#52 系の広い UI sweep）。#458 で diagnostics export timestamp + recreation 契約（#288）を co-occupant 追加。#441 で editing-burden benchmark fixture seeding 契約（同一入力→同一fixture・hotseat/予約領域保持・identity構成）を co-occupant 追加 |
+| organizer-instrumentation-reservation-recovery-tests | surface_layout_write | QSB reservation / recovery store / overlap gate / #265/#269 の実 writer oracle（#155 系）。#458 で recovery store inspection/publication/durable-status/chunked-manifest（#84/#89/#271/#174）、#265 gate-FAILED fail-closed routes、page capture ordering、実 DB lock authoring（#38）を追加（focused validation で順序非依存を確認） |
+| organizer-instrumentation-category-override-tests | surface_organizer_ui | category override authoring UI（#99）+ custom category management UI（#336/#342）。#458 で lock UI semantics/focus/font-scale（#38/#211）を co-occupant 追加 |
+| organizer-instrumentation-exchange-import-ui-tests | surface_organizer_ui | exchange import surface UI（#332/#345） |
+| organizer-instrumentation-method-choice-journey-tests | surface_organizer_ui | method-choice face の connected journey（scope確定後の AI依頼作成・取り込み・attach、#417 AC-8 (g)-(v)） |
+| organizer-instrumentation-onboarding-proposal-tests | surface_organizer_ui | onboarding proposal lifecycle / 実入力 environment（#53/#300） |
 
-[1]: https://github.com/nunu1733/NunuLauncher/issues/96 "Issue #96 — Audit and reduce CI test/runtime overhead after #53"
-[2]: ../../AGENTS.md "Repository work rules — test and isolation requirements"
-[3]: https://github.com/nunu1733/NunuLauncher/actions/runs/32480533543 "PR #95 successful CI run — baseline"
-[4]: ../../specs/83-production-organization-input-sources/plan.md "Issue #83 plan — API 35 production input evidence"
-[5]: ../../specs/52-manual-full-organization-vertical-slice/plan.md "Issue #52 plan — high-risk connected evidence and fixture restoration"
-[6]: ../../specs/53-onboarding-organization-proposal/plan.md "Issue #53 plan — onboarding isolation and connected acceptance evidence"
-[7]: https://github.com/nunu1733/NunuLauncher/actions/runs/32490574667 "PR #97 successful CI run — post-change measurement"
+surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
+
+| Surface | 主な path | 備考 |
+|---|---|---|
+| surface_layout_write | `LayoutWriteCoordinator.java`、`ModelWriter.java`、`ModelDbController.java`、`organizer/application/**` + 該当 test 群。#458 で `tests/organizer-instrumentation/app/lawnchair/organizer/locks/**` を追加（LockAuthoringInstrumentationTest の自己起動。surface_organizer_ui との重複は安全側） | apply / recovery / store seam。fan-out 先 2 lane + production-input lane |
+| surface_db_schema | `provider/**`、`DatabaseHelper.java`、`GridSizeMigrationUtil.java`、`lawnchair/src/app/lawnchair/migration/**` + 該当 test 群（schema 4 test file は明示指定で self-trigger を保証。`com/.../organizer/` 直下は surface_layout_write の広い glob と重複するため）。#458 で `LauncherPrefsCommitTest.java` と `RestoreProfileRemapTest.java` を明示追加（#458 で lane class list に加わったため） | |
+| surface_backup_restore | `lawnchair/src/app/lawnchair/backup/**`、`LauncherBackupAgent.java` + 該当 test 群 | |
+| surface_production_input | `organizer/integration/**` + 該当 test 群 | API 35 互換契約 |
+| surface_organizer_ui | `organizer/ui/**`、`organizer/*`（root file 群）、`lawnchair/src/app/lawnchair/ui/**`、`organizer/personalization/**`、`lawnchair/res/**` + 該当 test 群。#458 で `tests/organizer-instrumentation/app/lawnchair/organizer/locks/**` と `.../organizer/diagnostics/export/**` を追加（OrganizerLockScreenTest / OrganizerDiagnosticsExportTimestampInstrumentationTest の自己起動） | v1 は UI 4 lane を同一 group とする（画面単位分割は後続） |
+| surface_jvm | `organizer/planning/**`、`organizer/rules/**`、`organizer/diagnostics/**`、`organizer/locks/**`、`tests/unit/**` | instrumentation lane なし。`organizer-unit-tests`（Permanent gate）が所有。planner 契約は JVM corpus / property test が oracle であり、PR での emulator 起動は要求しない（main / scheduled sweep は通過検証する） |
+
+## 監査表（全 job・補助処理）
+
+監査項目は Issue #422 の定義による: 守る production regression、低層 test では不足する理由、
+必要 impact surface、fan-out、重複、独立実行要件、過去 failure 分類、PR gate 必要性、
+費用、分類。
+
+| Job / 処理 | 監査結果 | 分類 |
+|---|---|---|
+| changes | path filter + per-path fail-closed 集約（`compute_ci_gating.py`）。0.4 分。自己検証は `validate-repo-contract` job 内の self-test（15 case、悪意ある filename・smoke・混在 diff を含む）と workflow 変更 PR の全量自己実行 | Permanent（全 run） |
+| validate-repo-contract | 文書 link・Issue form・repo contract 各種 validator + 本 portfolio validator。0.9 分。全 run で必要（docs-only も対象）。低層での代替なし | Permanent（全 run） |
+| check-style | spotlessCheck。1.1 分。source の最低 gate。style は JVM test より低層で判定可能な契約 | Permanent |
+| build-debug-apk | assembleLawnWithQuickstepGithubDebug。5.3 分。buildability の独立 evidence。artifact reuse は未検証のため独立維持（#96 判断を踏襲） | Permanent |
+| organizer-unit-tests | organizer JVM contract / property / unit 一式。5.8 分。planner・rules・diagnostics・locks・personalization import・bugreport・backup unit の oracle。`surface_jvm` 領域の一次 gate。#458 で `app.lawnchair.migration.*`（#57 artifact names 契約）と `DeviceProfileOverridesPresetResolutionTest`（#134 preset 解決契約）を filter 追加（旧来 unrouted だった純 JVM class）。#443 で凍結対象のAI交換UI suite（`app.lawnchair.organizer.ui.exchange.*`、6 class / 139 test、#352 oracleを含む）を `-Pnunu.excludeAiExchangeUnitTests=true` のproperty-gated filter（build.gradle）でmerge gateから除外。pipeline/contract層（`integration.exchange`、`personalization.exchange`）はgateに維持。除外の根拠はFR-017凍結（#439、#352は「lane外し後にclose」の取り決め）。凍結suiteは自動CI（main/weekly/scheduled含む）では実行されず、local/manual実行のみで観測する | Permanent |
+| shared-writer lane | 8.9 分。`MODEL_WRITER` deadlock・lease admission・Binder future・nested transaction・reload supersession・restore lease・Hotseat admission・direct-edit write shape + production seam（#448）。JVM で再現不能な実 framework transaction / binder / loader threadaffinity に依存するため emulator 必須（#113〜#120 の実績）。isolated fixture DB で UI と状態分離。過去 failure: production regression として捉えた実績（compile-only escape #115 は db-migration 側） | Conditional（surface_layout_write） |
+| db-migration lane | 9.1 分。schema upgrade/downgrade の失敗意味論・rollback32 binary。実 SQLite / platform 依存。#115 で「compile-only のまま実契約下で失敗し続けていた」実績があり emulator 実行が本質。#458 で +4 class（grid-migration success path、commit-aware prefs、Deck retirement migration 冪等性、restore profile remap lock 保持）。#458 追加分の実測は本再編 PR の CI run で更新 | Conditional（surface_db_schema） |
+| restore-capture lane | 9.5 分。Nova restore の cross-process 2 stage・widget window・unknown provider。実 backup 成形と process death が必須。class ごとに独立 `am instrument`（#299 手順書が正本）。#458 で NovaRestoreGridApplicationTest（#168 cleanUpDatabases lease guard）を独立 connected invocation として末尾に追加。#458 追加分の実測は本再編 PR の CI run で更新 | Conditional（surface_backup_restore） |
+| production-input lane | 9.3 分（API 35）。実 platform での production input composer 互換（#83）。API 36 で代替できない根拠は未取得（#96 からの繰越判断）。category override atomic file の restart writer/reader も実 filesystem 必須 | Conditional（surface_production_input + surface_layout_write） |
+| manual-organization-ui lane | 8.7 分。manual organization の縦切り E2E（capture→plan→apply→recovery→UI）。DB heavy fixture を他 lane と共有しない。UI evidence 画像を常時 upload。#458 で diagnostics export timestamp + recreation 契約（#288）を co-occupant 追加。#441 で editing-burden benchmark fixture seeding 契約（DB reload + 実 package 解決が必須）を co-occupant 追加。#441/#458 追加分の実測は本再編 PR の CI run で更新 | Conditional（surface_organizer_ui） |
+| reservation-recovery lane | 9.4 分。QSB 予約・recovery store lifecycle・overlap acceptance gate・#265/#269 の実 writer/recovery oracle。独立 storage を扱うため clean emulator 必須。#458 で +7 class（recovery store inspection/publication/durable-status/chunked-manifest、#265 gate-FAILED routes、page capture、実 DB lock authoring）。focused local validation で co-occupancy の順序非依存を確認（audit §8.6）。#458 追加分の実測は本再編 PR の CI run で更新 | Conditional（surface_layout_write） |
+| category-override lane | 8.1 分。authoring UI の semantics / focus / font-scale / touch target。#342 で #336 管理UI（`CustomCategoryPreferences`）を co-occupant として追加（同一 surface 内 class 追加のため map edge 変更なし）。#458 で lock UI semantics/focus/font-scale（#38/#211 `OrganizerLockScreenTest`）を同様の co-occupant として追加（fake module・DB なし）。Compose UI 検証は JVM で代替不能。#458 追加分の実測は本再編 PR の CI run で更新 | Conditional（surface_organizer_ui） |
+| exchange-import-ui lane | 10.2 分。exchange import surface の Compose 検証（#345 で local-only から昇格。CI green の実績あり） | Conditional（surface_organizer_ui） |
+| method-choice-journey lane | method-choice face の connected journey（#417 AC-8 (g)-(v) evidence。scope-first で凍結した scope 上の AI依頼作成 → 取り込み → attach を固定する per-class lane） | Conditional（surface_organizer_ui） |
+| onboarding-proposal lane | 9.7 分。proposal lifecycle / Back / focus / recreation / review admission。実入力注入は focus 観測を前提とする（#300 accepted、#304/#418 で環境系 failure 実績） | Conditional（surface_organizer_ui） |
+| failure-time evidence capture | 全 10 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。Issue #438 で全 10 lane が live emulator-runner wrapper内 capture に統一された（#437 が manual-organization-ui / category-override / onboarding-proposal、#438 が残り 7 lane）。restore-capture と production-input の複数 stage 列は per-lane helper script（`run-restore-capture-instrumentation.sh` / `run-production-input-instrumentation.sh`）に保持され、最初の失敗 stage で teardown 前に capture する。production-input は tee→grep oracle の既存 failure semantics を保持するため `set -eu`（pipefail なし）。validator が「live wrapper 必須・runner 外 capture step（timeout 記法や step 名に依存しない token 単位の検出）拒否」を機械検証 | 補助（各 lane） |
+| failure capture lifecycle self-test | `validate-repo-contract` で全 run（docs-only 含む）に起動する 0.1 分未満の契約test。既存のcapture helper smoke testが各adb commandのtimeout・budget・出力上限を検証するのに対し、本testは `android-emulator-runner@v2` のrunner `script`が物理行単位で実行される境界、failure captureがemulator teardown前に走ること、元command statusの保持、success時の無capture、全 10 lane（#437 の 3 lane + #438 の 7 lane、helper 経由 lane の実行可否を含む）のworkflow wiringを検証する。分類は CI wrapper / artifact handling。10 laneのimpact surfaceを新設せず、既存のfailure-time capture補助処理の全lane契約を検査するため、既存testとの重複はない | 補助（`validate-repo-contract` 全 run） |
+| final-status | 「当該 run に必要と判定された gate が完了したこと」を集約。skip は成功扱い、failure/cancelled のみ fail。needs の必須集合は validator が map file と突き合わせ | 集約（branch protection required check） |
+| planner-stress.yml | 8 seed × 512 case の exploration matrix。週次 / manual のみで PR gate でない（#46 の時点から分類適合） | Scheduled / Diagnostic |
+| high-risk-gate.yml | risk label / 高リスク path PR への独立 audit 記録検証。job ID 結合（`organizer-unit-tests` / `check-style` / `build-debug-apk` / `final-status`）は map file の `permanent_gates` 固定点として validator が保護 | Permanent（label/path 条件付き） |
+
+### 未 routing test の disposition（Issue #458 semantic 監査）
+
+`tests/organizer-instrumentation/` には CI lane の class list に含まれない instrumentation
+test が 32 candidate 存在した（tracked 31 class + #265 が untracked working-tree evidence
+として保持していた harness 1 class。各 lane の Gradle invocation は明示 class filter のため、
+未 routing class は full portfolio でも実行されない。#422 で記録、routing 判断は後続
+Issue に deferred）。Issue #458 が全 32 candidate を semantic 監査し、正本は
+[specs/458-semantic-test-audit/audit.md](../../specs/458-semantic-test-audit/audit.md)
+である。結果の要約:
+
+- **Route（14 class → 既存 5 lane）**: recovery store inspection / publication /
+  durable-status / chunked-manifest（#84/#89/#271/#174）、#265 gate-FAILED routes、page
+  capture、実 DB lock authoring（#38）→ reservation-recovery lane。grid-migration success
+  path（#458 R-2a）、commit-aware prefs（#59）、Deck retirement migration 冪等性（#57）、
+  restore profile remap（#58）→ db-migration lane。NovaRestoreGridApplicationTest
+  （#168）→ restore-capture lane（独立 invocation）。OrganizerLockScreenTest（#38/#211）
+  → category-override lane。OrganizerDiagnosticsExportTimestamp（#288）→
+  manual-organization-ui lane。focused local validation（audit §8.6）で初回 baseline を
+  取得済み。
+- **Route（JVM 2 class → organizer-unit-tests filter）**:
+  `app.lawnchair.migration.DeckRetirementArtifactNamesTest`、
+  `app.lawnchair.DeviceProfileOverridesPresetResolutionTest`。
+- **Move boundary（1 class）**: `BackupExclusionTest`（recovery DB の backup allowlist
+  外 guard）は JVM test（`RecoveryDbBackupExclusionTest`）へ移管し、instrumentation class
+  は削除。
+- **Diagnostic-local-only（16 class）**: smoke/evidence driver 群（Deck retirement
+  upgrade/downgrade walk、organizer process-death smoke、#376 cold-process evidence、
+  #368 T-05 evidence、#203 probes、#108/#134 evidence、GridChangeUnknownLockRecovery、
+  #57 retirement guards）。恒久 lane へ昇格しない。個別の理由は audit §3.2。
+- **Routing 分離（1 class）**: `GridMigrationFailureTest` — focused validation で corrupt
+  durable-recovery source に対する fail-closed 契約違反（category 6 調査）を初検出。
+  production 調査・修正と routing は [#461](https://github.com/nunu1733/NunuLauncher/issues/461)
+  が所有する。
+- **前提修復（3 class、test のみ・契約 assertion 構造は不変）**: #417 scope-first flow への
+  整合 + #371 granted fast path 前提（#265GateFailedRoute）、#155 first screen 契約への
+  期待値整合（PageCapture）、active DB 生成前提の追加（DeckRetirementMigration）。
+  併せて #265GateFailedRoute の report-only writerBusy 観測は #265 の
+  will-not-investigate disposition に従い、同 file 内の別 class
+  `Issue265WriterBusyObservationTest`（CI 非routing・diagnostic）へ分離した。
+
+`tests/organizer-instrumentation/com/android/launcher3/model/**` の `surface_db_schema`
+mapping は、#458 で `GridMigrationSuccessTest` が db-migration lane class list に加わった
+ため over-trigger のみの mapping ではなくなった（`GridMigrationFailureTest` は #461 で
+routing されるまで実行対象外）。
+
+## intermittent failure の分類と evidence・retry 方針
+
+正本は [quality-strategy.md](./quality-strategy.md) の該当 section。要約:
+
+- 失敗は (1) product regression、(2) deterministic test defect、(3) test synchronization /
+  test harness defect、(4) CI wrapper / artifact handling defect、(5) emulator / runner /
+  platform environment defect、(6) unknown のいずれかに分類してから再実行する。
+- rerun で green になっても、分類と（失敗時）capture 証拠なしに merge evidence としない。
+- 一時的 failure = production 無関係とは扱わない。#304/#418 の環境系 signature は調査
+  Issue が所有し、merge gate からの無条件除外は行わない。
+- Issue / PR の acceptance evidence は「full workflow N 連続 green」を機械的に要求せず、
+  変更 risk と対象 surface に対応して選択する（[github-workflow.md](../project/github-workflow.md)
+  の evidence 選択原則）。
+
+### Failure capture lifecycle self-test の追加判定
+
+`tools/ci/test_emulator_failure_capture_lifecycle.sh` は `validate-repo-contract` job 内の
+全run self-testであり、新しいinstrumentation lane、production surface、artifact routing edgeを
+追加しない。ただしquality-strategyの新規test規則に従い、`tools/repo-contract/ci_portfolio_map.yml`
+の`contract_tests` metadataにpath・command・owner・trigger・impactを記録し、validatorがworkflow
+invocationと一致することを検査する。
+
+| 審査項目 | 判定 |
+|---|---|
+| 既存testで不足する理由 | `test_capture_emulator_failure_evidence.sh` は fake `adb` によるsnapshot収集契約だけを検査する。runner actionが emulator をteardownする前に wrapper が capture を呼ぶこと、元のcommand statusを保持すること、workflowの実script/upload wiringを検査できないため、runner境界のlifecycle oracleを別に置く。 |
+| 分類・impact・所有 | deterministic repository contract self-test、impactは `ci-wrapper-artifact-handling`、ownerは `validate-repo-contract`。instrumentation laneやproduction behaviorのcoverageを所有しない。 |
+| 重複 | helper smokeはbounded snapshotのtimeout/budget/truncationを担当し、本testはwrapperのstatus保持、device-gone、runner action identity、実scriptの`--`、failure-time upload pathを担当する。別emulator laneのtestとは重複しない。 |
+| 起動条件 | `contract_tests` metadataの`trigger: every_run`に固定し、docs-onlyを含む全runで既存repo-contract jobから実行する。emulator laneの再実行は発生させない。 |
+
+残り7 laneのlive化は Issue #438 で完了した（#437 の 3 lane とあわせ全 10 lane が live
+wrapper capture に統一され、runner 外 capture step は削除済み）。validator 側も live
+capture 必須契約へ引き上げられており、runner 外 capture への退行は repo-contract gate
+で機械阻止される。
+
+## 実測（参考値）
+
+- source 変更 PR の全量 run（旧構成、run 35864884049 / PR #420）: wall 約 10.7 分、
+  runner 合計約 96 分（9 emulator lane 並列）。本再編後は、mapped-only の PR では
+  起動 lane が減り、planner-only 変更（`surface_jvm`）は emulator 0 本になる。
+- docs-only PR: 約 1〜2 分（repo contract のみ）。この挙動は本再編でも不変。
+- 週次 schedule は planner-stress（日曜 18:30 UTC）と時間をずらし 19:30 UTC に設定。
+
+## 新規 test / CI lane 追加時の審査ルール
+
+正本は [quality-strategy.md](./quality-strategy.md)。追加時は (1) 既存 lane / test で
+cover できないか、(2) より低く速く決定的な層に置けないか、(3) どの impact surface に
+属し何时起動するか、(4) 既存 lane と重複しないか、(5) scheduled では不足する理由、を
+PR に記載し、`ci_portfolio_map.yml` と本監査表を同じ PR で更新する（validator が整合を
+強制する）。Issue 完了時の一時 diagnostic test をそのまま恒久 PR gate にしない。
+
+## 履歴（Issue #96 時代の記録）
+
+2026-08-21 時点の baseline（PR #95: 15分14秒 wall / 単一 instrumentation job 14分33秒）から
+PR #97（9分02秒、lane 分割による直列待ち解消、runner 総量は増加）への計測と判断の経緯は
+git 履歴（Issue #96 実装時点の本文）を参照。API 35/36 統合・artifact reuse・path filter
+狭小化の保留判断は本監査が引き継いだ（上記の監査表の通り、統合は見送り・reuse は独立維持）。

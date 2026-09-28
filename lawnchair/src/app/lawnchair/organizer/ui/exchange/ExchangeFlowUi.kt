@@ -26,8 +26,10 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,35 +44,64 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.public.RunId
+import app.lawnchair.organizer.integration.UsageAccess
 import app.lawnchair.organizer.integration.exchange.ClipboardImportRead
 import app.lawnchair.organizer.integration.exchange.ClipboardImportTransport
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
+import app.lawnchair.organizer.integration.exchange.ExchangeGenerationPreparation
 import app.lawnchair.organizer.integration.exchange.ExchangeGenerationResult
 import app.lawnchair.organizer.integration.exchange.ExchangeImportOutcome
+import app.lawnchair.organizer.integration.exchange.ExchangePreparedEncodeResult
+import app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportFailure
 import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
 import app.lawnchair.organizer.integration.exchange.FileExchangeRead
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
+import app.lawnchair.organizer.integration.exchange.SessionPersistOutcome
+import app.lawnchair.organizer.personalization.DiscardIfResult
+import app.lawnchair.organizer.personalization.DurablePendingIntent
+import app.lawnchair.organizer.personalization.ExportEntryOrigin
+import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.IntentValidationFailure
+import app.lawnchair.organizer.personalization.PendingImportEntryKind
+import app.lawnchair.organizer.personalization.PendingImportedIntentStore
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
+import app.lawnchair.organizer.personalization.durablePendingIntentFrom
 import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportSummary
+import app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate
 import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
+import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
+import app.lawnchair.organizer.personalization.exchange.RebindIntentRebuilder
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportFraming
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
+import app.lawnchair.organizer.personalization.exchange.durableImportSummary
 import app.lawnchair.organizer.personalization.exchange.exchangeImportSummary
+import app.lawnchair.organizer.personalization.exchange.reconcilePendingIntent
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.UsageAccessJitGate
+import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
+import app.lawnchair.organizer.ui.UsageAccessJitRequestDialog
+import app.lawnchair.organizer.ui.awaitUsageAccessGrant
+import app.lawnchair.organizer.ui.openUsageAccessSettings
 import com.android.launcher3.R
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -87,7 +118,19 @@ import kotlinx.coroutines.withContext
 sealed interface ExchangeScreen {
     data object Closed : ExchangeScreen
 
-    data class SelectingPrivacy(val replacementConfirmationRequired: Boolean) : ExchangeScreen
+    /**
+     * T-15 (issue #372): the request-creation face. Besides the replacement
+     * gate snapshot it carries the ACTIVE REQUEST PRE-DISPLAY projection from
+     * the last read — existence plus the session's `expiresAtEpochMs` and the
+     * read instant (the display root), never the session itself. Display
+     * only: the effective gate re-reads the store at generation time
+     * (spec 205 AC-13 unchanged).
+     */
+    data class SelectingPrivacy(
+        val replacementConfirmationRequired: Boolean,
+        val activeRequestExpiresAtEpochMs: Long? = null,
+        val activeRequestReadAtEpochMs: Long? = null,
+    ) : ExchangeScreen
 
     /** Explicit pre-generation confirmation (spec 205 AC-13). */
     data class ReplacementConfirm(
@@ -133,33 +176,103 @@ sealed interface ExchangeScreen {
         val attemptToken: Long,
         val continuing: Boolean = false,
     ) : ExchangeScreen
+
+    /**
+     * Issue #374 (spec 374 DI-AC-01 "ImportReview再開面", cold process到達範囲):
+     * the resume face of an imported proposal (T-18's review form), reached
+     * from the hub status card through
+     * [ExchangeFlowStateHolder.openPendingImportReview]. Carries the
+     * privacy-safe summary reconstructed from the durable record plus the
+     * session ([durableImportSummary] — the same pure derivation and inputs
+     * as the success face), the remaining-time display root (the SESSION's
+     * expiry and the read instant — the session stays the display master),
+     * and the persisted entry kind. It holds NO attempt anchor (the durable
+     * record is the anchor) and offers NO continuation CTA — #375 owns the
+     * rebind; the only actions are the D-13 discard and the zero-write close.
+     */
+    data class ImportReview(
+        val summary: ExchangeImportSummary,
+        val expiresAtEpochMs: Long,
+        val readAtEpochMs: Long,
+        val entryKind: ExchangeImportEntryKind,
+        /**
+         * Issue #375 (spec SR-AC-07): the rebind CTA single-flight flag —
+         * flipped synchronously on the press; while true, the discard/Back
+         * entry points are refused (spec 328 AC-3 discipline).
+         */
+        val continuing: Boolean = false,
+    ) : ExchangeScreen
+
+    /**
+     * Issue #374 (spec 374 DI-AC-13): the typed failure of the durable
+     * persistence step. It is NOT one of the 20 import validation classes —
+     * validation already passed; only the durable save of the record failed.
+     * The pending intent and its attempt stay anchored in the holder, so the
+     * face's retry re-runs ONLY the store save (never validation); closing
+     * interrupts without saving anything (the record is absent, so the status
+     * card can never show this proposal — guaranteed by not saving).
+     */
+    data class ImportPersistenceFailure(
+        val attemptToken: Long,
+        val entryKind: ExchangeImportEntryKind,
+        /** True while a retry save is in flight (the retry is single-flight). */
+        val retrying: Boolean = false,
+    ) : ExchangeScreen
+
+    /**
+     * Issue #371 (spec 371): the JIT Usage Access request pause for one
+     * generation attempt. The attempt's [attemptToken] anchors the pending
+     * generation: resume applies only when the current screen still carries
+     * the same token, exactly once, so a close + regenerate sequence can
+     * never be resumed by a stale callback. Owner destruction (close,
+     * another transition, host navigation teardown) follows the gate's
+     * owner-destruction rules — release while un-presented, abandon-resolve
+     * once presented — so the process-wide barrier is never orphaned.
+     */
+    data class AwaitingUsageAccessJit(
+        val attemptToken: Long,
+        val tier: PrivacyTier,
+        /** The run-in scoped selection the generation continues with. */
+        val scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
+        /** Whether this surface owns the presentation (gate decision at entry). */
+        val isPresenter: Boolean,
+    ) : ExchangeScreen
+
+    /**
+     * Issue #417 (spec 417 "方法選択面からの他由来依頼の取り込みは不可"): the
+     * method-choice face's 作り直し guidance — the imported reply belongs to a
+     * request that was NOT created from this run's confirmed scope (a legacy
+     * IDLE request, or a session generated by another run), so it cannot be
+     * imported here. Nothing was saved (no durable record, no import attempt
+     * survives). The remedy is the existing replacement-confirmation
+     * generation flow: the action re-enters the request face, whose create
+     * CTA builds the new request for this very scope.
+     */
+    data object RecreateRequestGuidance : ExchangeScreen
 }
-
-/**
- * Issue #328 (spec 328 strategy mutual exclusion): the entry-specific
- * write-start gate — a strategy write must not begin while the run-in entry's
- * import attempt lives, nor while the idle entry's import continuation runs.
- * Pure so the hosting wiring and tests share one truth table.
- */
-internal fun strategyWriteStartBlockedFor(
-    runInEntry: Boolean,
-    importAttemptActive: Boolean,
-    importContinuationActive: Boolean,
-): Boolean = importContinuationActive || (runInEntry && importAttemptActive)
-
-/**
- * Issue #328: the commit-time restart suppression — a committed selection may
- * not dismiss/restart the run the import is bound to: while the continuation
- * runs (both entries), or while a run-in import attempt lives.
- */
-internal fun strategyRestartSuppressedFor(
-    runInEntry: Boolean,
-    importAttemptActive: Boolean,
-    importContinuationActive: Boolean,
-): Boolean = importContinuationActive || (runInEntry && importAttemptActive)
 
 /** Issue #328: which exchange entry produced the import attempt. */
 enum class ExchangeImportEntryKind { IDLE, RUN_IN }
+
+/**
+ * Issue #417 (spec 417 "hosting再配置"): which face hosts the exchange flow,
+ * and therefore whether a creation entry exists at all.
+ *
+ * - [METHOD_CHOICE]: the method-choice face (the run's frozen scope,
+ *   `State.ScopeConfirmed`) — hosts the FULL creation+import flow. Generation
+ *   composes the export from the confirmed scope (selection + candidate
+ *   labels supplied by the run state, never live UI selection), and imports
+ *   are gated to requests created from this very scope.
+ * - [IMPORT_ONLY]: the entry/idle face — hosts IMPORT-ONLY: existing active
+ *   request info, reply import and the existing discard paths. The #417
+ *   Retire removed the idle creation entry; new requests are created within
+ *   an organize run (the method-choice face). The hub `ExchangeOpen.REQUEST`
+ *   pre-open resolves here.
+ */
+enum class ExchangeHostMode {
+    METHOD_CHOICE,
+    IMPORT_ONLY,
+}
 
 /**
  * Issue #205 (PR review P1): the disclosure lifecycle of one generated package.
@@ -233,8 +346,52 @@ class ExchangeFlowStateHolder(
      * settle decision completed. Production passes the no-op default.
      */
     internal var onSettleObserved: ((ExchangeDisclosureState, Boolean) -> Unit)? = null,
+    /**
+     * Issue #371: the process-wide JIT Usage Access request gate. Defaults to
+     * an always-resolved gate so existing holder tests keep today's behavior;
+     * production passes the shared singleton (UsageAccessJitGateProvider) so
+     * run and exchange draw on one process-scoped request opportunity. Public
+     * read access: the hosting surface collects the gate snapshot for waiter
+     * wakeup and drives the dialog from it.
+     */
+    val usageAccessGate: UsageAccessJitGate = UsageAccessJitGate(isGranted = { true }),
+    /**
+     * Issue #374 (spec 374 "store契約"): the durable pending imported intent
+     * store. Production injects the real store (`PendingImportedIntentModule`);
+     * the benign default keeps hosts/fixtures that predate the durable contract
+     * at today's behavior (a save/discard that "succeeds" without persisting,
+     * so the success/discard lifecycles are unchanged where no durable
+     * contract is under test).
+     */
+    private val pendingImportStore: PendingImportedIntentStore = NoopPendingImportedIntentStore,
+    /**
+     * Issue #375 (spec "exchange mutation gate"): the process-wide
+     * serialization point shared by every durable-record / active-session
+     * mutation and by the rebind admission anchor. The default (a fresh
+     * instance) keeps existing holder fixtures self-contained; production
+     * injects the single process-wide instance so holder and controller draw
+     * on the same gate.
+     */
+    val exchangeMutationGate: ExchangeMutationGate = ExchangeMutationGate(),
 ) {
-    private val controller: ExchangeFlowController by lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
+    private val controllerLazy = lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
+    private val controller: ExchangeFlowController get() = controllerLazy.value
+
+    /**
+     * Issue #372 (AC-13 structural gate read): the ACTIVE REQUEST gate reads
+     * the store fresh — but only through an ALREADY-initialized controller.
+     * In production `requestGeneration` is only reachable from the open T-15
+     * face, and `openFlow()` has initialized the controller by then, so the
+     * fresh read always happens. An uninitialized holder means no request
+     * flow was ever opened in this holder, so there is nothing to confirm
+     * and touching the factory (whose fixtures may be hostile, issue #371)
+     * is not part of the gate's contract.
+     */
+    private fun activeSessionForGate(): ExportSession? = if (controllerLazy.isInitialized()) {
+        controller.activeSession()
+    } else {
+        null
+    }
 
     /** Backing state; exposed as Compose state through [screenState] for tests. */
     private val screenState = mutableStateOf<ExchangeScreen>(ExchangeScreen.Closed)
@@ -253,40 +410,210 @@ class ExchangeFlowStateHolder(
             statusState.value = value
         }
 
+    /** The one expiry-scheduled T-15 re-read (issue #372); replaced on every read. */
+    private var expiryReReadJob: Job? = null
+
+    /**
+     * Issue #417: the host mode of the face currently hosting this flow —
+     * decided by the OPEN entry, never by the rendered screen. [IMPORT_ONLY]
+     * is the safe default (the entry/idle face hosts no creation entry); only
+     * the method-choice face's open ([openMethodChoiceFlow]) enables the
+     * scoped creation + import flow.
+     */
+    var hostMode: ExchangeHostMode = ExchangeHostMode.IMPORT_ONLY
+        private set
+
     fun openFlow() {
+        // Issue #417: the entry/idle face hosts IMPORT-ONLY — the hub
+        // `ExchangeOpen.REQUEST` pre-open resolves here too.
+        hostMode = ExchangeHostMode.IMPORT_ONLY
+        abandonAwaitingUsageAccessJit()
         status = null
-        screen = ExchangeScreen.SelectingPrivacy(replacementConfirmationRequired = controller.activeSession() != null)
-    }
-
-    fun openImport() {
-        invalidateImportAttempt()
-        status = null
-        screen = ExchangeScreen.Importing("")
-    }
-
-    fun close() {
-        invalidateImportAttempt()
-        status = null
-        screen = ExchangeScreen.Closed
+        screen = readActiveRequestIntoSelecting()
     }
 
     /**
-     * Issue #331: when [scoped] is set (the run-in entry), generation composes
-     * the export from the frozen selection via the scope-composed canonical
-     * seam instead of the idle full-organization composition.
+     * Issue #417: the entry/idle face's hosting invariant — IMPORT-ONLY, no
+     * creation entry (spec 205 V1 host rule + the #417 Retire). The mode is
+     * decided by the OPEN entry, but a flow left open when the host moved to
+     * another face (a run transition while the request face was up) can carry
+     * a stale METHOD_CHOICE onto the entry face; the hosting surface calls
+     * this whenever the entry face is shown so the flow can never offer the
+     * creation UI there.
+     */
+    fun resetToImportOnlyHostMode() {
+        hostMode = ExchangeHostMode.IMPORT_ONLY
+    }
+
+    /**
+     * Issue #417: opens the flow from the method-choice face — the FULL
+     * creation+import hosting backed by the run's frozen scope
+     * (`State.ScopeConfirmed` supplies the selection and candidate labels at
+     * generation time; the state, not live UI selection, is the source).
+     */
+    fun openMethodChoiceFlow() {
+        hostMode = ExchangeHostMode.METHOD_CHOICE
+        abandonAwaitingUsageAccessJit()
+        status = null
+        screen = readActiveRequestIntoSelecting()
+    }
+
+    /**
+     * Issue #417: the 作り直し guidance's action — re-enters the request face
+     * (the existing replacement-confirmation flow applies there: with an
+     * active session the create CTA confirms the replacement first, spec 205
+     * AC-13 unchanged), so the new request is generated from this run's
+     * confirmed scope. Zero-write.
+     */
+    fun beginRequestRecreation() {
+        openMethodChoiceFlow()
+    }
+
+    /**
+     * Issue #372 (T-15): re-read the active request and refresh the pre-display
+     * projection (existence, remaining time, replacement-confirmation need)
+     * from the same `activeSession()` seam the generation gate uses. Fired on
+     * the face's lifecycle resume and by the expiry-scheduled re-read; never
+     * mutates any other face.
+     */
+    fun refreshActiveRequest() {
+        if (screen !is ExchangeScreen.SelectingPrivacy) return
+        screen = readActiveRequestIntoSelecting()
+    }
+
+    private fun readActiveRequestIntoSelecting(): ExchangeScreen.SelectingPrivacy {
+        val readAt = controller.nowEpochMs()
+        val active = controller.activeSession()
+        scheduleExpiryReRead(active?.expiresAtEpochMs)
+        return ExchangeScreen.SelectingPrivacy(
+            replacementConfirmationRequired = active != null,
+            activeRequestExpiresAtEpochMs = active?.expiresAtEpochMs,
+            activeRequestReadAtEpochMs = if (active != null) readAt else null,
+        )
+    }
+
+    /**
+     * Issue #372 (review round 2): ONE re-read scheduled at the displayed
+     * session's expiry, so a T-15 face kept in the foreground crosses the TTL
+     * with no lifecycle event and its display still matches the store
+     * (`active()` reads expired sessions as absent). No continuous ticking;
+     * the pending job is cancelled and replaced on every read, and it dies
+     * with the holder's scope on screen exit (the next entry re-reads).
+     */
+    private fun scheduleExpiryReRead(expiresAtEpochMs: Long?) {
+        expiryReReadJob?.cancel()
+        expiryReReadJob = if (expiresAtEpochMs == null) {
+            null
+        } else {
+            scope.launch {
+                delay((expiresAtEpochMs - controller.nowEpochMs()).coerceAtLeast(0L))
+                withContext(uiDispatcher) { refreshActiveRequest() }
+            }
+        }
+    }
+
+    fun openImport() {
+        abandonAwaitingUsageAccessJit()
+        requestAttemptInvalidation {
+            status = null
+            screen = ExchangeScreen.Importing("")
+        }
+    }
+
+    fun close() {
+        expiryReReadJob?.cancel()
+        abandonAwaitingUsageAccessJit()
+        requestAttemptInvalidation {
+            status = null
+            screen = ExchangeScreen.Closed
+        }
+    }
+
+    /**
+     * Issue #371: owner-destruction rules for the JIT pause, applied whenever
+     * the awaiting screen leaves the machine (close, a newer transition, host
+     * teardown). The gate's atomic [UsageAccessJitGate.abandon] completes the
+     * state-specific action under one monitor — release while un-presented,
+     * abandon-resolve once presented — so a racing presentation can never
+     * orphan the barrier; the abandoned attempt's generation is never resumed.
+     */
+    private fun abandonAwaitingUsageAccessJit() {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return
+        usageAccessGate.abandon(ExchangeJitAttemptOwner(awaiting.attemptToken))
+    }
+
+    /**
+     * Issue #371 (review round 3): host-teardown hook. The hosting surface
+     * must call this from its `DisposableEffect` onDispose — the holder is
+     * `remember`ed, so a route change or activity recreation discards it
+     * without any other lifecycle signal, and a live JIT pause would
+     * otherwise strand the process-wide gate (a `Reserved` reservation never
+     * re-acquirable, a `Presented` barrier never resolved).
+     */
+    fun dispose() {
+        abandonAwaitingUsageAccessJit()
+        // Invalidate the pending attempt itself: a stale resume callback must
+        // find no awaiting screen to match its token against. Only when the
+        // pause is still on screen — the normal-resolution unmount (screen
+        // already `Generating`/past) must not be clobbered.
+        if (screen is ExchangeScreen.AwaitingUsageAccessJit) {
+            screen = ExchangeScreen.Closed
+        }
+    }
+
+    /**
+     * Issue #371 (review round 4): attempt-bound teardown for the JIT dialog
+     * host's unmount. Acts only when the CURRENT screen is still the SAME
+     * attempt's awaiting state — a stale host unmounting after the pending
+     * generation moved to a newer attempt must never abandon the new one
+     * (JIT-AC-05 identity binding).
+     */
+    fun disposeUsageAccessJitAttempt(attemptToken: Long) {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return
+        if (awaiting.attemptToken != attemptToken) return
+        abandonAwaitingUsageAccessJit()
+        if (screen is ExchangeScreen.AwaitingUsageAccessJit) {
+            screen = ExchangeScreen.Closed
+        }
+    }
+
+    /**
+     * Issue #417: the confirmed-scope generation supply — the frozen scope of
+     * the run's `State.ScopeConfirmed` (the sorted selection plus its
+     * candidate labels). On the method-choice face the STATE supplies the
+     * generation inputs; live UI selection is never read. The replacement
+     * gate itself is still decided from a FRESH `activeSession()` read at
+     * each start (spec 205 AC-13 unchanged).
+     */
+    private fun confirmedGenerationScope(): Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? {
+        val confirmed = run.state as? ManualOrganizationRun.State.ScopeConfirmed ?: return null
+        return confirmed.selection to confirmed.candidateLabels
+    }
+
+    /**
+     * Issue #417: starts the request creation. When [scoped] is not supplied
+     * (the method-choice face's CTA) the run's confirmed scope is the supply;
+     * a stale face with no live confirmed scope settles as the typed
+     * not-confirmed failure (zero-write). The replacement gate is decided
+     * from a FRESH `activeSession()` read (spec 205 AC-13 unchanged).
      */
     fun requestGeneration(
-        replacementConfirmationRequired: Boolean,
         tier: PrivacyTier,
         scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
     ) {
-        if (replacementConfirmationRequired) {
-            screen = ExchangeScreen.ReplacementConfirm(tier, scoped)
-        } else if (scoped != null) {
-            generateScoped(tier, scoped.first, scoped.second)
-        } else {
-            generate(tier)
+        // Issue #371: starting a new request abandons any prior JIT pause.
+        abandonAwaitingUsageAccessJit()
+        val scope = scoped ?: confirmedGenerationScope()
+        if (scope == null) {
+            status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_NOT_CONFIRMED)
+            screen = readActiveRequestIntoSelecting()
+            return
         }
+        if (activeSessionForGate() != null) {
+            screen = ExchangeScreen.ReplacementConfirm(tier, scope)
+            return
+        }
+        generateScoped(tier, scope.first, scope.second)
     }
 
     /** The user confirmed discarding the existing exchange (spec 205 AC-13). */
@@ -294,7 +621,14 @@ class ExchangeFlowStateHolder(
         tier: PrivacyTier,
         scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
     ) {
-        if (scoped != null) generateScoped(tier, scoped.first, scoped.second) else generate(tier)
+        abandonAwaitingUsageAccessJit()
+        val scope = scoped ?: confirmedGenerationScope()
+        if (scope == null) {
+            status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_NOT_CONFIRMED)
+            screen = readActiveRequestIntoSelecting()
+            return
+        }
+        generateScoped(tier, scope.first, scope.second)
     }
 
     /** The user declined; the existing session stays untouched and importable. */
@@ -302,35 +636,344 @@ class ExchangeFlowStateHolder(
         close()
     }
 
+    /**
+     * Issue #417 (Retire): the IDLE creation entry is retired from every
+     * hosted face — the entry/idle face is import-only
+     * ([ExchangeHostMode.IMPORT_ONLY]) and new requests are created from the
+     * method-choice face's confirmed scope. This internal generation branch
+     * stays ONLY as the legacy-compatible path for existing fixtures that
+     * drive non-run generation; production faces never route here.
+     */
     fun generate(tier: PrivacyTier) {
-        screen = ExchangeScreen.Generating
-        scope.launch(Dispatchers.IO) {
-            val result = controller.generate(tier)
-            withContext(uiDispatcher) { handleGeneration(result, tier) }
+        val attemptToken = nextJitAttemptToken()
+        when (val decision = usageAccessGate.evaluate(ExchangeJitAttemptOwner(attemptToken))) {
+            UsageAccessJitGate.Decision.Proceed -> startGeneration(tier, scoped = null)
+
+            else -> screen = ExchangeScreen.AwaitingUsageAccessJit(
+                attemptToken = attemptToken,
+                tier = tier,
+                scoped = null,
+                isPresenter = decision == UsageAccessJitGate.Decision.Present,
+            )
         }
     }
 
     /**
-     * Issue #331: run-in (scope-composed) generation from the selection
-     * surface. The export scope is the frozen selection composed by the same
-     * canonical seam the planner consumes; the ordering contract (gate →
-     * build → save → compose → disclose) is the controller's.
+     * Issue #371: resolves the JIT request for [attemptToken] and continues
+     * the pending generation. Applies only when the current screen is still
+     * the same attempt's awaiting state (a close + regenerate sequence mints
+     * a new token, so a stale resume is dropped), and exactly once — after
+     * the resume the screen has moved on and a late callback finds nothing to
+     * continue.
+     */
+    fun continueUsageAccessJit(attemptToken: Long) {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return
+        if (awaiting.attemptToken != attemptToken) return
+        usageAccessGate.resolve(ExchangeJitAttemptOwner(attemptToken))
+        if (awaiting.scoped != null) {
+            startGeneration(awaiting.tier, scoped = awaiting.scoped)
+        } else {
+            startGeneration(awaiting.tier, scoped = null)
+        }
+    }
+
+    /**
+     * Issue #371: re-checks whether this awaiting surface can (still) present
+     * the request dialog — used when the gate state observed by the host
+     * changes (e.g. the previous owner released before presenting and this
+     * waiter may now acquire the presentation right). Returns whether this
+     * attempt currently holds the reservation.
+     */
+    fun tryAcquireJitPresentation(attemptToken: Long): Boolean {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return false
+        if (awaiting.attemptToken != attemptToken) return false
+        return when (usageAccessGate.ownedPhase(ExchangeJitAttemptOwner(attemptToken))) {
+            UsageAccessJitGate.Phase.Reserved -> true
+
+            UsageAccessJitGate.Phase.Available -> {
+                val decision = usageAccessGate.evaluate(ExchangeJitAttemptOwner(attemptToken))
+                decision == UsageAccessJitGate.Decision.Present
+            }
+
+            else -> false
+        }
+    }
+
+    private fun startGeneration(tier: PrivacyTier, scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>?) {
+        screen = ExchangeScreen.Generating
+        scope.launch(Dispatchers.IO) {
+            if (scoped != null) {
+                val outcome = generateWithCommit(tier, scoped)
+                withContext(uiDispatcher) { handleScopedGeneration(outcome, tier) }
+            } else {
+                // Issue #417: the retired idle creation branch — legacy
+                // fixtures only (see [generate]).
+                val result = controller.generate(tier)
+                withContext(uiDispatcher) { handleGeneration(result, tier) }
+            }
+        }
+    }
+
+    /** Issue #417: the holder-local result of one atomic scoped generation. */
+    private sealed interface ScopedGenerationOutcome {
+        data class Generated(val packageText: String, val session: ExportSession) : ScopedGenerationOutcome
+
+        data class InputNotReady(val reason: app.lawnchair.organizer.integration.InputReadinessReason) : ScopedGenerationOutcome
+
+        /** Epoch claim/commit rejected (no live confirmed scope, stale epoch) — zero-write. */
+        data object Superseded : ScopedGenerationOutcome
+
+        /** The durable session save failed inside the commit — nothing bound, retryable. */
+        data object StoreFailure : ScopedGenerationOutcome
+
+        /** The post-commit encode failed — the committed session needs the run-owned cleanup. */
+        data class EncodeFailure(
+            val problem: app.lawnchair.organizer.personalization.ExportEncodeProblem,
+            val exportId: String,
+        ) : ScopedGenerationOutcome
+    }
+
+    /**
+     * Issue #417 (spec 417 "原子commit"): the scoped generation's fixed order —
+     * (1) `claimGenerationEpoch` under the run lock (a stale/no confirmed
+     * scope is a zero-write typed refusal); (2) the lock-free prepare
+     * (canonical composition + pure export build, session tagged with its
+     * durable RUN_IN origin); (3) `commitGeneratedSession` — the session
+     * save, the epoch re-verification and the `boundExportId` update in ONE
+     * run lock → gate critical section (no save→bind window); (4) the encode
+     * AFTER the commit (spec 205 order unchanged).
+     */
+    private fun generateWithCommit(
+        tier: PrivacyTier,
+        scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>,
+    ): ScopedGenerationOutcome {
+        val epoch = run.claimGenerationEpoch(scoped.first) ?: return ScopedGenerationOutcome.Superseded
+        val prepared = when (val phase = controller.prepareScopedGeneration(tier, scoped.first, scoped.second)) {
+            is ExchangeGenerationPreparation.InputNotReady -> return ScopedGenerationOutcome.InputNotReady(phase.reason)
+            is ExchangeGenerationPreparation.Prepared -> phase
+        }
+        val commit = run.commitGeneratedSession(epoch, prepared.session.exportId) {
+            when (controller.commitPreparedSession(prepared)) {
+                SessionPersistOutcome.Committed -> ManualOrganizationRun.PersistOutcome.Committed
+                SessionPersistOutcome.WriteFailed -> ManualOrganizationRun.PersistOutcome.WriteFailed
+            }
+        }
+        return when (commit) {
+            is ManualOrganizationRun.GenerationCommitOutcome.Rejected -> ScopedGenerationOutcome.Superseded
+
+            ManualOrganizationRun.GenerationCommitOutcome.WriteFailed -> ScopedGenerationOutcome.StoreFailure
+
+            ManualOrganizationRun.GenerationCommitOutcome.Committed -> when (val encoded = controller.encodePrepared(prepared)) {
+                is ExchangePreparedEncodeResult.Encoded -> ScopedGenerationOutcome.Generated(encoded.packageText, prepared.session)
+                is ExchangePreparedEncodeResult.Failure -> ScopedGenerationOutcome.EncodeFailure(encoded.problem, prepared.session.exportId)
+            }
+        }
+    }
+
+    private fun handleScopedGeneration(outcome: ScopedGenerationOutcome, tier: PrivacyTier) {
+        when (outcome) {
+            is ScopedGenerationOutcome.Generated -> {
+                // Issue #374 (spec 374 DI-AC-03): a saved new session means the
+                // user approved the replacement — the in-process half of the
+                // invalidation follows the commit exactly as before.
+                invalidateImportedIntentForReplacement()
+                screen = ExchangeScreen.Disclosing(
+                    ExchangeDisclosureState(
+                        session = outcome.session,
+                        packageText = outcome.packageText,
+                        tier = tier,
+                    ),
+                )
+            }
+
+            is ScopedGenerationOutcome.InputNotReady -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
+                screen = readActiveRequestIntoSelecting()
+            }
+
+            ScopedGenerationOutcome.Superseded -> {
+                // Issue #417: a stale epoch or a dead confirmed scope — the
+                // zero-write discard of a late generation completion.
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_NOT_CONFIRMED)
+                screen = readActiveRequestIntoSelecting()
+            }
+
+            ScopedGenerationOutcome.StoreFailure -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_STORE_FAILURE)
+                screen = readActiveRequestIntoSelecting()
+            }
+
+            is ScopedGenerationOutcome.EncodeFailure -> settleExportCleanup(
+                exportId = outcome.exportId,
+                afterTerminal = {
+                    invalidateImportedIntentForReplacement()
+                    status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
+                    screen = readActiveRequestIntoSelecting()
+                },
+            )
+        }
+    }
+
+    /**
+     * The cleanup anchor of a `WriteFailed` run-owned export cleanup — the
+     * SAME cleanup (same expectedExportId, same terminal behavior) kept
+     * retryable until a terminal outcome lands.
+     */
+    private var pendingExportCleanup: (() -> Unit)? = null
+
+    /**
+     * Issue #417 (spec 417, oracle (u)): the run-owned cleanup of the bound
+     * export — encode failure and pre-send discard both retire the session
+     * through [ManualOrganizationRun.cleanupBoundExport] (gate-held, the
+     * conditional invalidation clears the binding only when it matches this
+     * exact exportId). A `WriteFailed` does NOT settle: the typed retryable
+     * persistence failure is surfaced and the SAME expectedExportId cleanup
+     * stays retryable through [retryExportCleanup] (session, binding and UI
+     * owner stay consistent). A `Superseded` cleanup (stale binding or no
+     * live owner) falls back to the gate-held failure-aware exact
+     * invalidation (`invalidateIf`, never a bare delete) —
+     * exportId-conditional itself, so it never touches a replacement, and a
+     * fallback `WriteFailed` keeps the same retryable state.
+     */
+    private fun settleExportCleanup(exportId: String, afterTerminal: () -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val outcome = run.cleanupBoundExport(exportId) {
+                toStoreInvalidationOutcome(controller.invalidateSessionIf(exportId))
+            }
+            withContext(uiDispatcher) { settleExportCleanupOutcome(exportId, outcome, afterTerminal) }
+        }
+    }
+
+    private fun settleExportCleanupOutcome(
+        exportId: String,
+        outcome: ManualOrganizationRun.ExportCleanupOutcome,
+        afterTerminal: () -> Unit,
+    ) {
+        when (outcome) {
+            ManualOrganizationRun.ExportCleanupOutcome.Cleared -> {
+                pendingExportCleanup = null
+                afterTerminal()
+            }
+
+            ManualOrganizationRun.ExportCleanupOutcome.Superseded -> {
+                // Stale binding or no live owner: the run-owned seam is a
+                // typed no-op. The fallback keeps the no-ghost-session
+                // contract through the SAME failure-aware primitive as the
+                // main path — the exact `invalidateIf(expectedExportId)` under
+                // the gate — so a persistence failure is OBSERVED and stays
+                // retryable instead of an unobserved best-effort delete
+                // (implementation-review finding 3). The retry re-runs this
+                // fallback (the run-owned seam stays `Superseded` once the
+                // binding is gone — only the exact invalidation can reach a
+                // terminal outcome), and it is exact-exportId-conditional
+                // itself, so it never touches a replacement.
+                pendingExportCleanup = null
+                launchSupersededExportFallback(exportId, afterTerminal)
+            }
+
+            ManualOrganizationRun.ExportCleanupOutcome.WriteFailed -> {
+                pendingExportCleanup = { settleExportCleanup(exportId, afterTerminal) }
+                status = ExchangeStatus(ExchangeStatus.Kind.EXPORT_CLEANUP_FAILED)
+            }
+        }
+    }
+
+    /**
+     * The gate-held fallback of a `Superseded` run-owned cleanup (stale
+     * binding or no live owner): the exact `invalidateIf(expectedExportId)`.
+     * `Committed`/`NoMatch` are terminal; a `WriteFailed` keeps the typed
+     * retryable state with the SAME anchor contract as the main cleanup path
+     * (the session, the UI owner and the retryable handle stay consistent
+     * until the invalidation lands).
+     */
+    private fun launchSupersededExportFallback(exportId: String, afterTerminal: () -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val fallback = exchangeMutationGate.withGate {
+                toStoreInvalidationOutcome(controller.invalidateSessionIf(exportId))
+            }
+            withContext(uiDispatcher) { settleSupersededExportFallback(exportId, fallback, afterTerminal) }
+        }
+    }
+
+    private fun settleSupersededExportFallback(
+        exportId: String,
+        fallback: ManualOrganizationRun.StoreInvalidationOutcome,
+        afterTerminal: () -> Unit,
+    ) {
+        when (fallback) {
+            ManualOrganizationRun.StoreInvalidationOutcome.Committed,
+            ManualOrganizationRun.StoreInvalidationOutcome.NoMatch,
+            -> {
+                pendingExportCleanup = null
+                afterTerminal()
+            }
+
+            ManualOrganizationRun.StoreInvalidationOutcome.WriteFailed -> {
+                pendingExportCleanup = { launchSupersededExportFallback(exportId, afterTerminal) }
+                status = ExchangeStatus(ExchangeStatus.Kind.EXPORT_CLEANUP_FAILED)
+            }
+        }
+    }
+
+    /** Issue #417: re-runs an outstanding (WriteFailed) run-owned export cleanup. */
+    fun retryExportCleanup() {
+        pendingExportCleanup?.invoke()
+    }
+
+    private fun toStoreInvalidationOutcome(result: app.lawnchair.organizer.personalization.ExportInvalidationResult): ManualOrganizationRun.StoreInvalidationOutcome = when (result) {
+        app.lawnchair.organizer.personalization.ExportInvalidationResult.Committed -> ManualOrganizationRun.StoreInvalidationOutcome.Committed
+        app.lawnchair.organizer.personalization.ExportInvalidationResult.NoMatch -> ManualOrganizationRun.StoreInvalidationOutcome.NoMatch
+        app.lawnchair.organizer.personalization.ExportInvalidationResult.WriteFailed -> ManualOrganizationRun.StoreInvalidationOutcome.WriteFailed
+    }
+
+    /**
+     * Issue #331: run-in (scope-composed) generation from the confirmed
+     * scope. The export scope is the frozen selection composed by the same
+     * canonical seam the planner consumes.
+     *
+     * Issue #417: the ATOMIC creation path — the order is
+     * `claimGenerationEpoch` → lock-free prepare → `commitGeneratedSession`
+     * (session save + epoch re-verification + `boundExportId` update in one
+     * run lock → gate critical section) → encode, so a saved session always
+     * carries its binding ([generateWithCommit]).
      */
     fun generateScoped(
         tier: PrivacyTier,
         selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
         candidateLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
     ) {
-        screen = ExchangeScreen.Generating
-        scope.launch(Dispatchers.IO) {
-            val result = controller.generateForSelection(tier, selection, candidateLabels)
-            withContext(uiDispatcher) { handleGeneration(result, tier) }
+        // Issue #371: starting a new request abandons any prior JIT pause —
+        // the same rule [requestGeneration] applies. The scoped entry is a
+        // hosted entry in its own right (the method-choice face calls it
+        // directly), so a pause it replaces must never strand the process-wide
+        // gate under the stale attempt's ownership.
+        abandonAwaitingUsageAccessJit()
+        val scoped = selection to candidateLabels
+        val attemptToken = nextJitAttemptToken()
+        when (val decision = usageAccessGate.evaluate(ExchangeJitAttemptOwner(attemptToken))) {
+            UsageAccessJitGate.Decision.Proceed -> startGeneration(tier, scoped = scoped)
+
+            else -> screen = ExchangeScreen.AwaitingUsageAccessJit(
+                attemptToken = attemptToken,
+                tier = tier,
+                scoped = scoped,
+                isPresenter = decision == UsageAccessJitGate.Decision.Present,
+            )
         }
     }
 
     private fun handleGeneration(result: ExchangeGenerationResult, tier: PrivacyTier) {
         when (result) {
-            is ExchangeGenerationResult.Generated ->
+            is ExchangeGenerationResult.Generated -> {
+                // Issue #374 (spec 374 DI-AC-03): a saved new session means the
+                // user approved the replacement — the imported proposal is
+                // discarded in ALL of its three holding places. The durable
+                // record was already deleted by the controller right after the
+                // new session's save (write order 「新session保存 → 旧pending
+                // 無効化」); here the in-process places follow: the pending slot
+                // and the showing success/persistence-failure state. This is
+                // replacement, not a user discard — no IMPORT_DISCARDED status.
+                invalidateImportedIntentForReplacement()
                 screen = ExchangeScreen.Disclosing(
                     ExchangeDisclosureState(
                         session = result.session,
@@ -338,21 +981,63 @@ class ExchangeFlowStateHolder(
                         tier = tier,
                     ),
                 )
+            }
 
             is ExchangeGenerationResult.InputNotReady -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                // Issue #372 (implementation review, AC-13): failure settles
+                // re-read the store truth — E1 may still be active here (the
+                // failed attempt replaced nothing), so the next start must see
+                // the confirmation requirement again.
+                screen = readActiveRequestIntoSelecting()
             }
 
             ExchangeGenerationResult.SessionStoreFailure -> {
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_STORE_FAILURE)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                screen = readActiveRequestIntoSelecting()
             }
 
             is ExchangeGenerationResult.EncodeFailure -> {
+                // Issue #374 (review finding 4, DI-AC-03): the controller
+                // commits the replacement BEFORE the encode runs — the new
+                // session is durably saved and the old proposal's durable
+                // record is already deleted. An encode failure can therefore
+                // only occur AFTER the replacement commit, so the in-process
+                // half of the invalidation must follow it exactly like the
+                // Generated settle: the pending slot and any showing
+                // success/persistence face are discarded here (the durable
+                // side is gone; nothing may keep referencing it). The typed
+                // oversize guidance still surfaces, and the failed attempt
+                // replaced nothing session-wise (the store was re-read below).
+                invalidateImportedIntentForReplacement()
                 status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
-                screen = ExchangeScreen.SelectingPrivacy(false)
+                screen = readActiveRequestIntoSelecting()
             }
+        }
+    }
+
+    /**
+     * Issue #374 (spec 374 DI-AC-03): the in-process half of the replacement
+     * invalidation — clears the pending slot and any showing import success /
+     * persistence-failure state when a new request's generation got PAST the
+     * replacement commit (the new session's durable save, which is also the
+     * point where the controller deletes the old durable record). Applied at
+     * BOTH post-commit terminals: the Generated settle and the EncodeFailure
+     * settle (review finding 4 — the encode runs after the commit, so its
+     * failure cannot un-commit the replacement). No-op when no imported
+     * proposal exists in-process (the controller-side durable delete is
+     * unconditional and cheap on an absent record).
+     */
+    private fun invalidateImportedIntentForReplacement() {
+        if (pendingValidated == null &&
+            screen !is ExchangeScreen.ImportSuccess &&
+            screen !is ExchangeScreen.ImportPersistenceFailure
+        ) {
+            return
+        }
+        requestAttemptInvalidation {
+            status = null
+            screen = ExchangeScreen.Closed
         }
     }
 
@@ -361,6 +1046,13 @@ class ExchangeFlowStateHolder(
      * invalidates exactly the disclosure's own (unsent) session. After a
      * successful transport the package may already have left the device, so
      * the session survives and the reply stays importable (review P1).
+     *
+     * Issue #372 (implementation review): a BUSY unsent disclosure — transport
+     * in flight, or a cancel already accepted and its invalidate still in
+     * flight — refuses to close. Closing it would let the user leave (and
+     * dispose the holder's composition-owned scope) before the settle, which
+     * is exactly the race the Back contract's BLOCKED action guards; the
+     * visible action must not re-open it.
      */
     fun closeDisclosure() {
         // Decide and mark synchronously on Main from the holder's CURRENT
@@ -369,14 +1061,36 @@ class ExchangeFlowStateHolder(
         // no further transport can start or settle against it, and the
         // session invalidated below is exactly the never-sent one.
         val disclosing = (screen as? ExchangeScreen.Disclosing)?.state
-        if (disclosing == null || !disclosing.cancelable) {
+        if (disclosing == null) {
             close()
             return
         }
-        screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
-        scope.launch(Dispatchers.IO) {
-            controller.cancelDisclosure(disclosing.session)
-            withContext(uiDispatcher) { close() }
+        when {
+            disclosing.cancelable -> {
+                screen = ExchangeScreen.Disclosing(disclosing.copy(cancelling = true))
+                val exportId = disclosing.session.exportId
+                scope.launch(Dispatchers.IO) {
+                    // Issue #417: the pre-send discard retires a BOUND session
+                    // through the run-owned cleanup seam — the gate-held
+                    // conditional invalidation clears the binding only when it
+                    // matches this exact exportId. `WriteFailed` does NOT
+                    // settle (oracle (u)): the session, the binding and the
+                    // cancelling face stay consistent and the same cleanup is
+                    // retryable. With no matching binding the legacy gate-held
+                    // invalidation keeps the #205/#375 cancel contract.
+                    val cleanup = run.cleanupBoundExport(exportId) {
+                        toStoreInvalidationOutcome(controller.invalidateSessionIf(exportId))
+                    }
+                    withContext(uiDispatcher) {
+                        settleExportCleanupOutcome(exportId, cleanup, afterTerminal = { close() })
+                    }
+                }
+            }
+
+            disclosing.sent -> close()
+
+            // In flight or cancelling: refuse — wait for the settle.
+            else -> Unit
         }
     }
 
@@ -536,29 +1250,49 @@ class ExchangeFlowStateHolder(
         // a success state. The Clear affordance runs through this same path.
         val shown = (screenState.value as? ExchangeScreen.Importing)?.replyText
         if (text != shown) {
-            invalidateImportAttempt()
+            // The supersede (new text adoption) commits only after the
+            // replaced attempt's invalidation landed (spec 375: WriteFailed
+            // keeps the old text/face and stays retryable).
+            requestAttemptInvalidation {
+                screen = ExchangeScreen.Importing(text)
+            }
+        } else {
+            screen = ExchangeScreen.Importing(text)
         }
-        screen = ExchangeScreen.Importing(text)
     }
 
     /**
-     * Issue #328: process-local settle anchor for one import attempt —
-     * assigned when the import starts (before validation runs), captured with
-     * the entry kind and, for the run-in entry, the owning run id.
+     * Issue #328: process-local settle anchor for one import attempt.
+     *
+     * Issue #417 (spec 417 AC-6): the attempt itself carries NO entry kind —
+     * the `entryKind` provenance is the SESSION's durable origin
+     * (`resolvedEntryOrigin`), attached at the validated settle and never
+     * derived from the run state at begin. [owningRunId] is the confirmed
+     * scope's run id observed at begin — the live-owner candidate for the
+     * direct-attach fences; `null` is a legitimate ownerless import (the
+     * process-death/hub recovery path), never dropped for it.
      */
     private data class ImportAttempt(
         val token: Long,
-        val entryKind: ExchangeImportEntryKind,
+        /** Attached at the validated settle from the session's resolvedEntryOrigin. */
+        val entryKind: ExchangeImportEntryKind? = null,
         val owningRunId: RunId?,
     )
 
     private var nextAttemptToken = 0L
 
     /**
-     * Snapshot-backed so the hosting screen's freeze predicates (idle start
-     * row / strategy picker) recompose the moment an attempt starts or ends,
-     * including the editor-press path where the screen state itself does not
-     * change.
+     * Issue #371: JIT request attempt tokens come from the process-wide
+     * counter (UsageAccessJitGateProvider), never an instance-local one — a
+     * recreated holder must never re-emit a token a disposed holder used
+     * (stale-owner ABA).
+     */
+    private fun nextJitAttemptToken(): Long = UsageAccessJitGateProvider.nextAttemptToken()
+
+    /**
+     * Snapshot-backed so the hosting screen's freeze predicate (the idle
+     * start row) recomposes the moment an attempt starts or ends, including
+     * the editor-press path where the screen state itself does not change.
      */
     private val activeAttemptState = mutableStateOf<ImportAttempt?>(null)
     private var activeAttempt: ImportAttempt?
@@ -570,11 +1304,21 @@ class ExchangeFlowStateHolder(
     private var pendingValidated: ValidatedPersonalizedIntent? = null
 
     /**
+     * Issue #374: the durable record built at the validated settle. Kept
+     * anchored with the attempt so [retryPendingIntentSave] re-runs ONLY the
+     * store save of the identical record (byte-stable retry). Cleared the
+     * moment the save settles as ADOPTED — from then on the record belongs to
+     * the proposal lifecycle (its disappearance paths are discard / expiry /
+     * replacement only), and an attempt invalidation must never fence it away.
+     */
+    private var pendingDurableRecord: DurablePendingIntent? = null
+
+    /**
      * Issue #328 (spec: import attempt生存中の競合freeze): true from the
      * moment an attempt is numbered until the attempt reaches its terminal
      * (failure surface shown, success state closed/discarded/replaced, or a
      * stale settle dropped). The hosting screen freezes the idle start row
-     * and the run-in strategy picker while this is true.
+     * while this is true.
      */
     val importAttemptActive: Boolean get() = activeAttempt != null
 
@@ -588,34 +1332,138 @@ class ExchangeFlowStateHolder(
         get() = (screenState.value as? ExchangeScreen.ImportSuccess)?.continuing == true
 
     /**
-     * Issue #328 (spec: strategy書込との相互排他): true while the hosting
-     * screen's [app.lawnchair.organizer.ui.StrategyWriteArbiter] is non-idle
-     * (strategy write or run restart in progress). The holder refuses new
-     * imports and CTA starts while true; the default no-op keeps injected
-     * holder tests (which never render the settings screen) unaffected.
+     * Issue #375 (spec "gate上への線形化統一"): the outstanding invalidation
+     * operation. While one exists, EVERY subsequent invalidating action's
+     * transition is queued behind it — it commits only when the gate-held
+     * conditional tombstone lands `Committed`/`NoMatch`; a `WriteFailed`
+     * keeps the old face/state, surfaces the typed persistence notice, and
+     * the SAME commit stays retryable. The rebind admission anchor refuses a
+     * record whose invalidation operation is outstanding.
      */
-    var strategyArbiterBusy: () -> Boolean = { false }
+    private var invalidationOperation: InvalidationOperation? = null
+
+    private class InvalidationOperation(val expected: DurablePendingIntent) {
+        val continuations = mutableListOf<() -> Unit>()
+
+        @Volatile
+        var failed: Boolean = false
+    }
 
     private fun invalidateImportAttempt() {
-        activeAttempt = null
-        pendingValidated = null
+        requestAttemptInvalidation(continuation = {})
     }
 
     /**
-     * Numbers a fresh import attempt from the CURRENT run state: the run-in
-     * entry is the one whose owning run holds the selection surface.
-     * Main-confined (called from the receipt paths and the editor action).
+     * Issue #375: requests the current attempt's INVALIDATION COMMIT as ONE
+     * result-carrying operation. The caller's transition ([continuation] —
+     * close / supersede face / new attempt / review open) is queued behind
+     * any outstanding operation and commits only when the gate-held
+     * conditional tombstone lands `Committed`/`NoMatch`; a `WriteFailed`
+     * preserves the old face/state, surfaces the typed persistence notice,
+     * and leaves the SAME commit retryable through
+     * [retryPendingInvalidation]. The gate hold is short (one AtomicFile
+     * read-compare-tombstone; no suspension).
      */
-    private fun beginImportAttempt(): ImportAttempt {
-        val selecting = run.state as? ManualOrganizationRun.State.Selecting
-        val attempt = ImportAttempt(
-            token = ++nextAttemptToken,
-            entryKind = if (selecting != null) ExchangeImportEntryKind.RUN_IN else ExchangeImportEntryKind.IDLE,
-            owningRunId = selecting?.runId,
-        )
-        activeAttempt = attempt
+    private fun requestAttemptInvalidation(continuation: () -> Unit) {
+        // The in-memory attempt slots drop immediately (the attempt is dead
+        // either way — its late settles are token-fenced); what is GATED is
+        // the caller's transition: it runs only after the durable tombstone
+        // landed.
+        val record = pendingDurableRecord
+        activeAttempt = null
         pendingValidated = null
-        return attempt
+        pendingDurableRecord = null
+
+        val outstanding = invalidationOperation
+        if (outstanding != null) {
+            // A commit is in flight or failed-unresolved: the caller's
+            // transition queues behind it — it must not run before the
+            // outstanding commit lands. The queue is LAST-WINS: a later
+            // invalidating action (close / edit / newer import) supersedes
+            // the queued one, so a drained supersede can never be re-invalidated
+            // by an action it already replaced (spec 375 queuing contract).
+            synchronized(outstanding) {
+                outstanding.continuations.clear()
+                outstanding.continuations += continuation
+            }
+            if (outstanding.failed) retryPendingInvalidation()
+            return
+        }
+        if (record == null) {
+            retryPendingInvalidation()
+            continuation()
+            return
+        }
+        val operation = InvalidationOperation(record)
+        synchronized(operation) { operation.continuations += continuation }
+        invalidationOperation = operation
+        scope.launch(Dispatchers.IO) {
+            val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(record) }
+            withContext(uiDispatcher) { settleInvalidation(operation, result) }
+        }
+    }
+
+    /** Applies one invalidation commit result: terminal on Committed/NoMatch, retryable on WriteFailed. */
+    private fun settleInvalidation(operation: InvalidationOperation, result: DiscardIfResult) {
+        when (result) {
+            DiscardIfResult.Committed, DiscardIfResult.NoMatch -> {
+                invalidationOperation = null
+                val queued = synchronized(operation) {
+                    val list = operation.continuations.toList()
+                    operation.continuations.clear()
+                    list
+                }
+                retryPendingInvalidation()
+                queued.forEach { it() }
+            }
+
+            DiscardIfResult.WriteFailed -> {
+                // The invalidation did NOT take effect: the proposal stays
+                // valid, the old face/state is preserved (queued transitions
+                // do not run), the typed persistence notice surfaces, and the
+                // SAME commit stays retryable.
+                operation.failed = true
+                status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
+            }
+        }
+    }
+
+    /**
+     * Issue #375: re-runs an outstanding invalidation commit (a previous
+     * `WriteFailed`) inside the gate; terminal on `Committed`/`NoMatch` (the
+     * queued transitions then run).
+     */
+    private fun retryPendingInvalidation() {
+        val operation = invalidationOperation ?: return
+        scope.launch(Dispatchers.IO) {
+            val result = exchangeMutationGate.withGate { pendingImportStore.discardIf(operation.expected) }
+            withContext(uiDispatcher) { settleInvalidation(operation, result) }
+        }
+    }
+
+    /** True while an invalidation commit of [record] is outstanding (in flight or failed-unresolved). */
+    private fun isInvalidationPending(record: DurablePendingIntent?): Boolean = record != null && invalidationOperation?.expected == record
+
+    /**
+     * Numbers a fresh import attempt. Main-confined (called from the receipt
+     * paths and the editor action). The previous attempt's invalidation is
+     * the fenced one — an uncommitted record of a superseded attempt is
+     * scheduled for removal, never inherited.
+     *
+     * Issue #417: the ONLY thing captured here is the live-owner candidate —
+     * the confirmed scope's run id, when the run holds its frozen scope right
+     * now. The provenance (`entryKind`) is the session's durable origin,
+     * attached at the settle.
+     */
+    private fun beginImportAttempt(onBegun: (ImportAttempt) -> Unit) {
+        requestAttemptInvalidation {
+            val attempt = ImportAttempt(
+                token = ++nextAttemptToken,
+                owningRunId = (run.state as? ManualOrganizationRun.State.ScopeConfirmed)?.runId,
+            )
+            activeAttempt = attempt
+            onBegun(attempt)
+        }
     }
 
     /**
@@ -626,18 +1474,11 @@ class ExchangeFlowStateHolder(
      * newer import or an input edit are dropped).
      */
     fun import(replyText: String) {
-        // The structural arbiter gate: a strategy write/restart in progress
-        // refuses the import before any IO (spec 328 strategy mutual
-        // exclusion; the hosting affordance is disabled too, but disabled
-        // states are affordances only).
-        if (strategyArbiterBusy()) {
-            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY)
-            return
-        }
-        val attempt = beginImportAttempt()
-        scope.launch(Dispatchers.IO) {
-            val outcome = controller.importReply(replyText)
-            withContext(uiDispatcher) { settleImport(attempt, outcome, replyText) }
+        beginImportAttempt { attempt ->
+            scope.launch(Dispatchers.IO) {
+                val outcome = controller.importReply(replyText)
+                withContext(uiDispatcher) { settleImport(attempt, outcome, replyText) }
+            }
         }
     }
 
@@ -647,43 +1488,403 @@ class ExchangeFlowStateHolder(
      * import / an input edit is dropped and never (re)creates a success
      * state (spec 328 attempt anchor). Failures keep the established outcome
      * surface (spec: 既存失敗経路の無変更).
+     *
+     * Issue #417 (spec 417 AC-6): the provenance is the session's durable
+     * origin — `resolvedEntryOrigin` decides the entryKind, so re-importing
+     * the same session keeps it (no flip), and a legacy record decodes
+     * through the store rule (absent origin + non-empty scope = RUN_IN,
+     * absent + empty = IDLE).
+     *
+     * Issue #417 (spec 417 "方法選択面からの取り込み制限"): on the
+     * method-choice face only a request created from THIS run's confirmed
+     * scope may be imported — the process-local binding
+     * (`isLiveScopeOwner`) must match the reply's session. Anything else
+     * (legacy IDLE, another run's session) surfaces the 作り直し guidance
+     * instead of the import path; nothing is saved.
      */
     private fun settleImport(attempt: ImportAttempt, outcome: ExchangeImportOutcome, replyText: String) {
         if (activeAttempt?.token != attempt.token) return
         val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
         if (pipeline is ExchangeImportResult.Validated) {
-            // Run-in entries: the owning run must still hold its selection
-            // surface (defense-in-depth — the hosting freeze normally makes a
-            // replacement impossible). Otherwise the settle drops silently.
-            if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
-                val selecting = run.state as? ManualOrganizationRun.State.Selecting
-                if (attempt.owningRunId == null || selecting?.runId != attempt.owningRunId) {
+            val entryKind = when (pipeline.validated.session.resolvedEntryOrigin) {
+                ExportEntryOrigin.IDLE -> ExchangeImportEntryKind.IDLE
+                ExportEntryOrigin.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+            }
+            val attempt = attempt.copy(entryKind = entryKind)
+            // The enriched attempt IS the live attempt from here on: the CTA
+            // (continueImport) and the ownerless projection below read the
+            // slot, so the origin-derived entryKind must land in it — a
+            // copy-only enrichment left the slot's null entryKind in place and
+            // the CTA connected as IDLE (ran run.start instead of attaching).
+            activeAttempt = attempt
+            // Live-owner defense-in-depth: a RUN_IN-origin import whose begin
+            // observed a confirmed-scope owner requires that same run to hold
+            // its frozen scope at the settle. An ownerless import (no owner
+            // observed at begin — the process-death/hub recovery path)
+            // proceeds to the durable RUN_IN pending save instead.
+            if (entryKind == ExchangeImportEntryKind.RUN_IN && attempt.owningRunId != null) {
+                val confirmed = run.state as? ManualOrganizationRun.State.ScopeConfirmed
+                if (confirmed?.runId != attempt.owningRunId) {
                     activeAttempt = null
                     return
                 }
             }
-            pendingValidated = pipeline.validated
-            val scopeCount = if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN) {
-                pipeline.validated.session.scopeCandidates.size
-            } else {
-                0
+            if (hostMode == ExchangeHostMode.METHOD_CHOICE) {
+                val owningRunId = attempt.owningRunId
+                val ownedByThisScope = owningRunId != null && run.isLiveScopeOwner(owningRunId, pipeline.validated.session.exportId)
+                if (!ownedByThisScope) {
+                    activeAttempt = null
+                    screen = ExchangeScreen.RecreateRequestGuidance
+                    return
+                }
             }
-            screen = ExchangeScreen.ImportSuccess(
-                summary = exchangeImportSummary(
-                    pipeline.validated.completed,
-                    scopeCount,
-                    // Issue #337: the advertised ref kinds of the same accepted
-                    // export, so the summary can tell an existing category from
-                    // a run-scoped proposal.
-                    categoryKindByRef = pipeline.validated.export.categories.associate { it.ref to it.kind },
-                ),
-                entryKind = attempt.entryKind,
-                attemptToken = attempt.token,
-            )
+            pendingValidated = pipeline.validated
+            // Issue #374 (spec 374 DI-AC-01/DI-AC-13): the durable save is part
+            // of this settle — ImportSuccess is adopted only after the record
+            // is durably saved; a failed save adopts the retryable
+            // ImportPersistenceFailure face instead (never a success state).
+            persistPendingImport(attempt, pipeline.validated)
         } else {
             activeAttempt = null
             screen = ExchangeScreen.ImportOutcomeScreen(outcome, rawText = replyText)
         }
+    }
+
+    /**
+     * Issue #374: builds the durable record of the validated proposal and
+     * saves it through the attempt-fenced write below. The settle anchors to
+     * the attempt token exactly like the validation settle — a late save
+     * result after a cancel / a newer import / an input edit is dropped AND
+     * its record is fenced out of the store.
+     */
+    private fun persistPendingImport(attempt: ImportAttempt, validated: ValidatedPersonalizedIntent) {
+        val entryKind = attempt.entryKind ?: ExchangeImportEntryKind.IDLE
+        val record = durablePendingIntentFrom(
+            completed = validated.completed,
+            identity = validated.identity,
+            entryKind = when (entryKind) {
+                ExchangeImportEntryKind.IDLE -> PendingImportEntryKind.IDLE
+                ExchangeImportEntryKind.RUN_IN -> PendingImportEntryKind.RUN_IN
+            },
+            nowEpochMs = controller.nowEpochMs(),
+            expiresAtEpochMs = validated.session.expiresAtEpochMs,
+        )
+        pendingDurableRecord = record
+        launchDurablePendingIntentSave(attempt, record)
+    }
+
+    /**
+     * Issue #374/#375: the attempt-fenced durable write, executed as ONE
+     * exchange-gate-held critical section on IO. The gate is the process-wide
+     * serialization point shared with session replacement, discard and the
+     * rebind admission anchor; holding it here means a save, a stale fence
+     * and the anchor's fresh read can never interleave.
+     *
+     * - Fence 1 (pre-write currency): an attempt already invalidated before
+     *   the gate was granted never writes at all;
+     * - Fence 2 (post-write currency): a write that LANDED while its attempt
+     *   went stale is INVALIDATED by `discardIf(record)` (conditional
+     *   tombstone — `Committed`/`NoMatch` settle it; `WriteFailed` keeps the
+     *   proposal valid as the invalidation retry anchor) inside the SAME gate
+     *   hold — never a newer attempt's record;
+     * - the RUN_IN owning-run fence also completes inside the gate (its
+     *   `discardIf` tombstone too), so every durable mutation of the save
+     *   path happens under one gate hold.
+     *
+     * Issue #417 (fence (b), spec 417 AC-6): the RUN_IN fence splits by
+     * direct-attach authority — a LIVE OWNER (the run still holds its frozen
+     * scope, same runId, AND the binding matches the record's exportId) keeps
+     * the existing adopt-and-attach behavior; an OWNERLESS RUN_IN origin (no
+     * owner observed at begin) saves as a plain RUN_IN pending WITHOUT any
+     * attach requirement — the save-success face becomes the ImportReview
+     * resume path, never the direct-attach success state.
+     *
+     * Issue #417 (implementation-review fix, oracles (l)/(s)): the lock order
+     * is the accepted 正順 — the run owns its lock FIRST. A LIVE-OWNER RUN_IN
+     * save is the run-owned transaction
+     * [ManualOrganizationRun.savePendingImportForLiveOwner]: the run lock is
+     * taken before the gate-held critical section opens and kept across the
+     * whole hold; the ownership verdict is (re-)verified under that lock in
+     * the gate-held callback that also runs the conditional tombstone — the
+     * binding cannot change under the hold, because its mutations need the
+     * very run lock this thread holds. The former shape (this holder opening
+     * the gate and calling `run.isLiveScopeOwner` inside the hold) was a
+     * gate→run-lock acquisition: a rebind admission holding the run lock and
+     * waiting on the gate crossed it as an ABBA deadlock. Ownerless RUN_IN
+     * and IDLE saves stay gate-only — no run lock is involved there, and no
+     * `withGate` block in this holder touches a run seam that takes the run
+     * lock.
+     *
+     * The gate is RELEASED before the UI settle runs: the settle is a pure
+     * screen/state projection (it never touches the store — spec 375
+     * "gate解放後のUI settleは純粋投影"). No suspension point exists inside
+     * the gate hold.
+     */
+    private fun launchDurablePendingIntentSave(attempt: ImportAttempt, record: DurablePendingIntent) {
+        scope.launch(Dispatchers.IO) {
+            val outcome: DurableSaveOutcome = if (attempt.entryKind == ExchangeImportEntryKind.RUN_IN && attempt.owningRunId != null) {
+                // Live-owner RUN_IN save: run lock → gate (the run-owned
+                // transaction), never gate → run lock. The ownership verdict
+                // handed to the gate-held callback is re-verified under the
+                // run lock AFTER the save body — the lock is held across the
+                // whole hold, so it is exactly as fresh as the binding.
+                run.savePendingImportForLiveOwner(
+                    attempt.owningRunId!!,
+                    record.exportId,
+                    save = { attemptFencedDurableSave(attempt, record) },
+                ) { provisional, ownedByLiveScope ->
+                    when {
+                        provisional is DurableSaveOutcome.Written && !ownedByLiveScope -> {
+                            // Issue #417 fence (b): the owner observed at begin
+                            // no longer binds this exact export — the landed
+                            // write is invalidated INSIDE the same gate hold
+                            // (a store failure keeps the record as the
+                            // invalidation retry anchor).
+                            val invalidation = if (provisional.saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
+                            DurableSaveOutcome.OwningRunDropped(record, invalidation)
+                        }
+
+                        else -> provisional
+                    }
+                }
+            } else {
+                // Ownerless RUN_IN / IDLE save: gate-only, no run lock taken.
+                exchangeMutationGate.withGate<DurableSaveOutcome> {
+                    attemptFencedDurableSave(attempt, record)
+                }
+            }
+            withContext(uiDispatcher) { settlePendingIntentSave(attempt, outcome) }
+        }
+    }
+
+    /**
+     * The attempt-fenced durable body of one pending-import save, executed
+     * inside the exchange gate hold (via the run-owned transaction for a
+     * live-owner RUN_IN save, via the holder's `withGate` otherwise).
+     *
+     * - Fence 1 (pre-write currency): an attempt already invalidated before
+     *   the gate was granted never writes at all;
+     * - Fence 2 (post-write currency): a write that LANDED while its attempt
+     *   went stale is INVALIDATED by `discardIf(record)` (conditional
+     *   tombstone — `Committed`/`NoMatch` settle it; `WriteFailed` keeps the
+     *   proposal valid as the invalidation retry anchor) inside the SAME gate
+     *   hold — never a newer attempt's record. The live-owner fence itself
+     *   runs in the run-owned callback that wraps this body.
+     */
+    private fun attemptFencedDurableSave(attempt: ImportAttempt, record: DurablePendingIntent): DurableSaveOutcome {
+        // Fence 1.
+        if (activeAttempt?.token != attempt.token) {
+            return DurableSaveOutcome.FencedBeforeWrite
+        }
+        val saved = pendingImportStore.save(record)
+        val stillCurrent = activeAttempt?.token == attempt.token
+        if (!stillCurrent) {
+            // Fence 2: a stale landed write is INVALIDATED inside the
+            // same gate hold via the conditional tombstone (the
+            // accepted spec's invalidation commit — `Committed`/
+            // `NoMatch` are invalidation successes; `WriteFailed`
+            // leaves the proposal valid and stays typed/retryable).
+            // A newer attempt's record is never the victim (full
+            // equality). The in-memory slots already belong to the
+            // successor attempt — the settle must not touch them.
+            val invalidation = if (saved) pendingImportStore.discardIf(record) else DiscardIfResult.NoMatch
+            return DurableSaveOutcome.FencedAfterWrite(record, invalidation)
+        }
+        return DurableSaveOutcome.Written(saved)
+    }
+
+    /** Pure result of the gate-held durable save critical section. */
+    private sealed interface DurableSaveOutcome {
+        /** The attempt was already invalidated before the write; nothing written. */
+        data object FencedBeforeWrite : DurableSaveOutcome
+
+        /** The write landed but the attempt went stale mid-flight; invalidated inside the gate. */
+        data class FencedAfterWrite(val record: DurablePendingIntent, val invalidation: DiscardIfResult) : DurableSaveOutcome
+
+        /** The run-in owning run lost its binding; the landed write was invalidated inside the same gate hold. */
+        data class OwningRunDropped(val record: DurablePendingIntent, val invalidation: DiscardIfResult) : DurableSaveOutcome
+
+        /** The write landed for a still-current attempt; settle adopts/fails per [saved]. */
+        data class Written(val saved: Boolean) : DurableSaveOutcome
+    }
+
+    /**
+     * Issue #374/#375: applies the PURE result of the gate-held durable save.
+     * Runs on the UI dispatcher AFTER the exchange gate was released, and is a
+     * projection only — it never touches the store (spec 375: gate解放後の
+     * UI settleは純粋投影; all durable mutations happened inside the gate
+     * hold in [launchDurablePendingIntentSave]).
+     */
+    private fun settlePendingIntentSave(attempt: ImportAttempt, outcome: DurableSaveOutcome) {
+        when (outcome) {
+            DurableSaveOutcome.FencedBeforeWrite -> {
+                // The attempt was already invalidated and that path cleared
+                // the in-memory slots; nothing left to project.
+                pendingDurableRecord = null
+                return
+            }
+
+            is DurableSaveOutcome.FencedAfterWrite -> {
+                // The write landed but the attempt went stale mid-flight: the
+                // record was invalidated (tombstone) INSIDE the gate; the
+                // in-memory slots already belong to the successor attempt —
+                // the settle must not touch them. A `WriteFailed`
+                // invalidation leaves the record valid: it becomes the
+                // invalidation RETRY ANCHOR (the rebind anchor refuses it as
+                // invalidation-pending until the commit lands).
+                if (outcome.invalidation is DiscardIfResult.WriteFailed && invalidationOperation == null) {
+                    invalidationOperation = InvalidationOperation(outcome.record)
+                }
+                return
+            }
+
+            is DurableSaveOutcome.OwningRunDropped -> {
+                // The run-in owning run lost its surface before adoption: the
+                // record was invalidated INSIDE the gate; the dropped
+                // attempt's slots clear here (pure in-memory projection). A
+                // `WriteFailed` keeps the record as the invalidation RETRY
+                // ANCHOR (the same commit is re-run; until it lands, the
+                // rebind anchor refuses this record as invalidation-pending).
+                pendingDurableRecord = null
+                pendingValidated = null
+                activeAttempt = null
+                if (outcome.invalidation is DiscardIfResult.WriteFailed && invalidationOperation == null) {
+                    invalidationOperation = InvalidationOperation(outcome.record)
+                    status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
+                }
+                return
+            }
+
+            is DurableSaveOutcome.Written -> Unit
+        }
+        val saved = outcome.saved
+        if (activeAttempt?.token != attempt.token) return
+        val isRetry = screenState.value is ExchangeScreen.ImportPersistenceFailure
+        if (saved) {
+            // The record is durably committed and the success state adopts it:
+            // the disappearance paths are now discard / expiry / replacement
+            // only (spec 374 Contract notes 6), so the attempt-fenced cleanup
+            // must never target it again.
+            pendingDurableRecord = null
+            // Issue #417 (spec 417 "ownerless RUN_IN保存成功後の表示遷移"): an
+            // ownerless RUN_IN-origin save does NOT adopt the direct-attach
+            // success face — the saved record is read back through the
+            // existing reconcile path into the ImportReview resume face, and
+            // the continuation stays the rebind 1-path (#375). The
+            // same-process direct-attach CTA exists only for a live owner.
+            val validated = pendingValidated
+            val owningRunId = attempt.owningRunId
+            val ownerlessRunIn = attempt.entryKind == ExchangeImportEntryKind.RUN_IN &&
+                (owningRunId == null || validated == null || !run.isLiveScopeOwner(owningRunId, validated.session.exportId))
+            if (ownerlessRunIn) {
+                pendingValidated = null
+                activeAttempt = null
+                adoptOwnerlessImportReview()
+            } else {
+                adoptImportSuccess(attempt)
+            }
+        } else {
+            if (isRetry) {
+                // The face did not change on a failed retry — surface the
+                // typed notice so the failure is observable.
+                status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_PERSIST_FAILED)
+            }
+            screen = ExchangeScreen.ImportPersistenceFailure(
+                attemptToken = attempt.token,
+                entryKind = attempt.entryKind ?: ExchangeImportEntryKind.IDLE,
+            )
+        }
+    }
+
+    /**
+     * Issue #417: the ownerless RUN_IN save-success projection — reads the
+     * just-saved record back through the EXISTING reconcile path (the same
+     * gate-held read as the hub's review open; no new seam) and adopts the
+     * [ExchangeScreen.ImportReview] resume face. No continuation CTA is
+     * adopted here — #375 owns the rebind from the review face.
+     */
+    private fun adoptOwnerlessImportReview() {
+        scope.launch(Dispatchers.IO) {
+            val (now, decision, session) = readReconciledProposal()
+            withContext(uiDispatcher) {
+                when {
+                    decision is PendingIntentReconcile.Valid && session != null -> {
+                        val proposal = decision.proposal
+                        screen = ExchangeScreen.ImportReview(
+                            summary = durableImportSummary(proposal, session),
+                            expiresAtEpochMs = session.expiresAtEpochMs,
+                            readAtEpochMs = now,
+                            entryKind = when (proposal.entryKind) {
+                                PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                            },
+                        )
+                    }
+
+                    // Fail-closed: nothing is invented; the flow closes (the
+                    // durable record stays the hub's reconcile truth).
+                    else -> {
+                        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                        screen = ExchangeScreen.Closed
+                    }
+                }
+            }
+        }
+    }
+
+    /** The gate-held record/session read + reconcile (+ invalid cleanup), shared by the review open and the ownerless projection. */
+    private fun readReconciledProposal(): Triple<Long, PendingIntentReconcile, ExportSession?> = exchangeMutationGate.withGate {
+        val now = controller.nowEpochMs()
+        val record = pendingImportStore.load()
+        val session = controller.activeSession()
+        val decision = reconcilePendingIntent(record, session, now)
+        if (decision is PendingIntentReconcile.Invalid) {
+            pendingImportStore.delete()
+        }
+        Triple(now, decision, session)
+    }
+
+    /** The pre-#374 ImportSuccess adoption, unchanged (summary + anchors). */
+    private fun adoptImportSuccess(attempt: ImportAttempt) {
+        val validated = pendingValidated ?: return
+        val entryKind = attempt.entryKind ?: ExchangeImportEntryKind.IDLE
+        val scopeCount = if (entryKind == ExchangeImportEntryKind.RUN_IN) {
+            validated.session.scopeCandidates.size
+        } else {
+            0
+        }
+        screen = ExchangeScreen.ImportSuccess(
+            summary = exchangeImportSummary(
+                validated.completed,
+                scopeCount,
+                // Issue #337: the advertised ref kinds of the same accepted
+                // export, so the summary can tell an existing category from a
+                // run-scoped proposal.
+                categoryKindByRef = validated.export.categories.associate { it.ref to it.kind },
+            ),
+            entryKind = entryKind,
+            attemptToken = attempt.token,
+        )
+    }
+
+    /**
+     * Issue #374 (spec 374 DI-AC-13): the primary remedy of the persistence
+     * failure face — re-runs ONLY the store save of the anchored record
+     * (validation is never repeated). Single-flight through the synchronous
+     * [ExchangeScreen.ImportPersistenceFailure.retrying] flip; valid only
+     * while the failure face and the attempt are current.
+     */
+    fun retryPendingIntentSave() {
+        val failure = screenState.value as? ExchangeScreen.ImportPersistenceFailure ?: return
+        if (failure.retrying) return
+        val attempt = activeAttempt ?: return
+        if (attempt.token != failure.attemptToken) return
+        val record = pendingDurableRecord ?: return
+        screen = failure.copy(retrying = true)
+        // The retry runs through the same attempt-fenced write: an interrupt
+        // (close / editor change) between the launch and the settle leaves no
+        // record behind.
+        launchDurablePendingIntentSave(attempt, record)
     }
 
     /** The single continuation settle outcomes (spec 328 CTA scenario). */
@@ -709,28 +1910,55 @@ class ExchangeFlowStateHolder(
     internal var connectRunOverride: (suspend (RunConnectionRequest) -> ContinueOutcome)? = null
 
     /**
+     * Issue #375 test seam (SR-AC-07/08 race oracles): invoked on the rebind
+     * path after [RebindIntentRebuilder] succeeded and BEFORE `run.start` —
+     * the exact window the admission anchor guards. Tests use it to complete
+     * a REAL world mutation (e.g. the controller's session replacement) on
+     * another execution context and await it, deterministically, before the
+     * anchor's fresh re-read. Production leaves it null.
+     */
+    internal var preAdmissionBarrier: (() -> Unit)? = null
+
+    /**
      * The real run-connection seam: run-in entries attach to the owning run
      * (after re-checking its identity), idle entries start a fresh run.
+     *
+     * Issue #417 (fence (c), spec 417 AC-6): the RUN_IN direct attach
+     * authority is the process-local binding — the run must currently hold
+     * ITS frozen scope ([State.ScopeConfirmed], same runId) AND
+     * [ManualOrganizationRun.isLiveScopeOwner] must match the imported
+     * session's exact exportId. Scope equality alone never establishes
+     * same-run; an ownerless RUN_IN import never reaches here (its save
+     * success adopts the ImportReview face).
      */
     private fun connectRun(request: RunConnectionRequest): ContinueOutcome {
         return if (request.entryKind == ExchangeImportEntryKind.RUN_IN) {
-            val selecting = run.state as? ManualOrganizationRun.State.Selecting
-            if (request.owningRunId == null || selecting?.runId != request.owningRunId) {
-                // Owning run replaced: never attach into a different run
-                // (spec 328 defense-in-depth).
+            val owningRunId = request.owningRunId
+            if (owningRunId == null || !run.isLiveScopeOwner(owningRunId, request.validated.session.exportId)) {
+                // Owning run replaced / authority lost: never attach into a
+                // different run (spec 328 defense-in-depth).
                 ContinueOutcome.Failed
             } else {
                 when (run.attachIntent(request.validated)) {
                     ManualOrganizationRun.AttachIntentOutcome.Attached -> ContinueOutcome.Success(null)
+
                     ManualOrganizationRun.AttachIntentOutcome.NotAttachable -> ContinueOutcome.NotAttachable
+
+                    // Issue #417 (spec 417): Rejected only occurs at
+                    // ScopeConfirmed — a fresh-availability drift between the
+                    // frozen scope and the composition. The typed refusal
+                    // settles as non-attachable.
+                    is ManualOrganizationRun.AttachIntentOutcome.Rejected -> ContinueOutcome.NotAttachable
                 }
             }
         } else {
             // `start` is synchronously heavy (capture/composition/planning) —
-            // always on IO (audit P2-1).
+            // always on IO (audit P2-1). No admission anchor on this legacy
+            // in-process path (spec 328 flow); a refusal cannot occur.
             when (val started = run.start(intent = request.validated)) {
                 is ManualOrganizationRun.StartOutcome.Started -> ContinueOutcome.Success(started.runId)
                 ManualOrganizationRun.StartOutcome.Busy -> ContinueOutcome.Busy
+                ManualOrganizationRun.StartOutcome.AdmissionRefused -> ContinueOutcome.Busy
             }
         }
     }
@@ -747,14 +1975,17 @@ class ExchangeFlowStateHolder(
         if (current.continuing) return
         val attempt = activeAttempt ?: return
         if (attempt.token != current.attemptToken) return
-        if (strategyArbiterBusy()) {
-            status = ExchangeStatus(ExchangeStatus.Kind.CTA_STRATEGY_BUSY)
-            return
-        }
         val validated = pendingValidated ?: return
         screen = current.copy(continuing = true)
         scope.launch(Dispatchers.IO) {
-            val request = RunConnectionRequest(attempt.entryKind, attempt.owningRunId, validated)
+            // Issue #417 (spec 417): the resolved origin is the entryKind
+            // truth; the null default only guards attempts created before the
+            // origin settle (same IDLE fallback as the other settle sites).
+            val request = RunConnectionRequest(
+                attempt.entryKind ?: ExchangeImportEntryKind.IDLE,
+                attempt.owningRunId,
+                validated,
+            )
             val outcome = try {
                 connectRunOverride?.invoke(request) ?: connectRun(request)
             } catch (failure: Throwable) {
@@ -782,6 +2013,13 @@ class ExchangeFlowStateHolder(
                 }
                 activeAttempt = null
                 pendingValidated = null
+                pendingDurableRecord = null
+                // Issue #374 / #375 contract (spec 374 Contract notes 6): the
+                // durable record is deliberately NOT written or deleted on a
+                // successful continuation settle — "継続成功は提案を消費しない"
+                // (a successful continue does not consume the proposal). The
+                // disappearance paths are discard / expiry / replacement only;
+                // the record outlives the run for #375's rebind.
                 // A refused-CTA guidance must not linger on the next surface.
                 status = null
                 screen = ExchangeScreen.Closed
@@ -800,29 +2038,409 @@ class ExchangeFlowStateHolder(
     }
 
     /**
-     * The run id comparison only exists where the run state exposes one
-     * (`State.Selecting.runId`); composed phases hide it, so those settle
-     * without the comparison (spec 328: 「取得でき、かつ一致しない場合」).
+     * The run id comparison exists wherever the run state exposes one. Issue
+     * #417: `State.ScopeConfirmed` is a live selection surface with a runId
+     * (the direct-attach surface), so a started runId is compared against it
+     * exactly like `State.Selecting` — a settle whose run id no longer
+     * matches the live surface is a failure, never a success. Composed phases
+     * hide the runId and settle without the comparison (spec 328: 「取得でき、
+     * かつ一致しない場合」).
      */
     private fun runIdMatches(startedRunId: RunId?): Boolean {
         if (startedRunId == null) return true
-        val selecting = run.state as? ManualOrganizationRun.State.Selecting ?: return true
-        return selecting.runId == startedRunId
+        return when (val state = run.state) {
+            is ManualOrganizationRun.State.Selecting -> state.runId == startedRunId
+            is ManualOrganizationRun.State.ScopeConfirmed -> state.runId == startedRunId
+            else -> true
+        }
     }
 
     /**
-     * Issue #328 (spec 328 D-2): the explicit discard. Refused while the CTA
-     * is continuing — a started seam cannot be withdrawn, so the discard side
-     * is the one that yields. The export session is NOT invalidated:
+     * Issue #374 (spec 374 DI-AC-01 "ImportReview再開面"): opens the
+     * cold-process resume face from the hub status card. Loads the durable
+     * record plus the ACTIVE export session on IO, applies the read-time
+     * reconcile (the master validity defense), and:
+     * - Valid → adopts [ExchangeScreen.ImportReview] with the summary
+     *   reconstructed by [durableImportSummary] (the same derivation and
+     *   inputs as the success face) and the SESSION's expiry as the
+     *   remaining-time display root;
+     * - Invalid → fail-closed: the record is cleaned (`delete`) and the typed
+     *   [ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE] status surfaces while
+     *   the screen stays Closed (nothing is invented);
+     * - Absent → the same typed status.
+     *
+     * The run state is never touched and no CTA exists on the adopted face
+     * (#375 owns the rebind). The adoption is anchored to the Closed state
+     * this open leaves — a face that moved on while the read was in flight is
+     * never clobbered by a late review adoption (the Invalid cleanup is
+     * store-state and still applies).
+     */
+    fun openPendingImportReview() {
+        abandonAwaitingUsageAccessJit()
+        status = null
+        requestAttemptInvalidation {
+            scope.launch(Dispatchers.IO) {
+                // Issue #375: the read + reconcile + Invalid-cleanup mutation
+                // holds the exchange mutation gate (short AtomicFile ops only —
+                // the face adoption below runs after release).
+                val (now, decision, session) = readReconciledProposal()
+                withContext(uiDispatcher) {
+                    if (screenState.value !is ExchangeScreen.Closed) return@withContext
+                    when {
+                        decision is PendingIntentReconcile.Valid && session != null -> {
+                            val proposal = decision.proposal
+                            screen = ExchangeScreen.ImportReview(
+                                summary = durableImportSummary(proposal, session),
+                                expiresAtEpochMs = session.expiresAtEpochMs,
+                                readAtEpochMs = now,
+                                entryKind = when (proposal.entryKind) {
+                                    PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                    PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                                },
+                            )
+                        }
+
+                        else -> status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Issue #375 (spec "再開面CTA"): the rebind continuation CTA on the
+     * ImportReview resume face. Sequence per the accepted contract:
+     *
+     * 1. single-flight (`ImportReview.continuing` — while true, discard and
+     *    Back are refused; spec 328 AC-3 discipline);
+     * 2. OUTSIDE the exchange mutation gate: fresh record/session/clock read,
+     *    reconcile, and the rebuild seam (structural-digest re-verification
+     *    included; identity injected from the record);
+     * 3. `run.start(intent, admissionAnchor, selectionRestore)` — the caller
+     *    does NOT hold the gate. The anchor acquires the gate itself at the
+     *    admission instant, re-reads record/session/clock fresh, requires
+     *    reconcile-Valid + full-record equality + unexpired, and on Admit runs
+     *    the operation creation INSIDE the gate hold, releasing it before the
+     *    run's detection begins;
+     * 4. settle is a pure projection: `Started` closes the face (the run
+     *    surface takes over); `Busy`/`AdmissionRefused` are typed refusals —
+     *    a refusal re-reads the resume face so a replaced/invalidated record
+     *    never lingers as stale display.
+     *
+     * The durable record is never written or deleted on the success settle
+     * ("継続成功は提案を消費しない"); failures leave it untouched.
+     */
+    fun continuePendingImport() {
+        val current = screenState.value as? ExchangeScreen.ImportReview ?: return
+        if (current.continuing) return
+        screen = current.copy(continuing = true)
+        scope.launch(Dispatchers.IO) {
+            // (2) Gate-out: preliminary read + reconcile + rebuild.
+            val now = controller.nowEpochMs()
+            val record = pendingImportStore.load()
+            val session = controller.activeSession()
+            val outcome = RebindIntentRebuilder.rebuild(
+                record = record,
+                session = session,
+                currentStructural = when (val structural = controller.currentStructural()) {
+                    is ExchangeStructuralResult.Ready -> structural.structural
+
+                    // Composition not ready (transient): fail-closed, retryable —
+                    // the proposal is untouched and the face stays operable.
+                    is ExchangeStructuralResult.NotReady -> return@launch settleRebindNotReady()
+                },
+                nowEpochMs = now,
+            )
+            when (outcome) {
+                is RebindIntentRebuilder.Outcome.InvalidProposal -> {
+                    // Fail-closed per #374. The preliminary judgment was made
+                    // OUTSIDE the gate, so the cleanup re-reads the current
+                    // record/session/clock INSIDE the gate and re-runs the
+                    // reconcile: only a record that is STILL invalid is
+                    // removed; a record a concurrent path saved as valid is
+                    // re-adopted into the face instead of being destroyed
+                    // (single-active durable truth; spec "reconcile清掃もgate配下").
+                    val reAdopted: Pair<DurablePendingIntent, ExportSession>? = exchangeMutationGate.withGate {
+                        val freshNow = controller.nowEpochMs()
+                        val freshRecord = pendingImportStore.load()
+                        val freshSession = controller.activeSession()
+                        when (reconcilePendingIntent(freshRecord, freshSession, freshNow)) {
+                            is PendingIntentReconcile.Invalid -> {
+                                pendingImportStore.delete()
+                                null
+                            }
+
+                            else -> if (freshRecord != null && freshSession != null) freshRecord to freshSession else null
+                        }
+                    }
+                    withContext(uiDispatcher) {
+                        if (reAdopted != null) {
+                            val (proposal, adoptSession) = reAdopted
+                            screen = ExchangeScreen.ImportReview(
+                                summary = durableImportSummary(proposal, adoptSession),
+                                expiresAtEpochMs = adoptSession.expiresAtEpochMs,
+                                readAtEpochMs = controller.nowEpochMs(),
+                                entryKind = when (proposal.entryKind) {
+                                    PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                    PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                                },
+                            )
+                        } else {
+                            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE)
+                            screen = ExchangeScreen.Closed
+                        }
+                    }
+                    return@launch
+                }
+
+                is RebindIntentRebuilder.Outcome.ContextStale -> {
+                    withContext(uiDispatcher) {
+                        status = ExchangeStatus(ExchangeStatus.Kind.REBIND_CONTEXT_STALE)
+                        screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                    }
+                    return@launch
+                }
+
+                is RebindIntentRebuilder.Outcome.Rebuilt -> Unit
+            }
+            val rebuilt = outcome.intent
+            val sourceRecord = outcome.sourceRecord
+            // Test seam: the deterministic point between "rebuild succeeded"
+            // and "admission begins" — race oracles complete a REAL world
+            // mutation here (another execution context) before admitting.
+            try {
+                preAdmissionBarrier?.invoke()
+            } catch (failure: Throwable) {
+                if (!currentCoroutineContext().isActive) throw failure
+                withContext(uiDispatcher) {
+                    status = ExchangeStatus(ExchangeStatus.Kind.REBIND_START_FAILED)
+                    screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                }
+                return@launch
+            }
+            val restoreMode = when (sourceRecord.entryKind) {
+                PendingImportEntryKind.RUN_IN -> ManualOrganizationRun.SelectionRestore.PreviousExplicit
+                else -> ManualOrganizationRun.SelectionRestore.None
+            }
+            // (3) Admission — the anchor acquires the exchange gate itself at
+            // the admission instant (fresh read → verdict → operation creation
+            // inside one gate hold), so a replacement, a discard tombstone or
+            // an expiry can never slip between the verification and the
+            // admission.
+            val started = try {
+                run.start(
+                    intent = rebuilt,
+                    admissionAnchor = ManualOrganizationRun.StartAdmissionAnchor { complete ->
+                        val admitted = exchangeMutationGate.withGate {
+                            val fresh = pendingImportStore.load()
+                            val freshSession = controller.activeSession()
+                            val verdict = reconcilePendingIntent(fresh, freshSession, controller.nowEpochMs())
+                            val matches = verdict is PendingIntentReconcile.Valid &&
+                                fresh == sourceRecord &&
+                                // An outstanding invalidation commit of this
+                                // very record (a landed `WriteFailed`) is an
+                                // invalidation-pending state — never Valid
+                                // for continuation.
+                                !isInvalidationPending(fresh)
+                            if (matches) complete()
+                            matches
+                        }
+                        admitted
+                    },
+                    selectionRestore = restoreMode,
+                )
+            } catch (failure: Throwable) {
+                if (!currentCoroutineContext().isActive) throw failure
+                withContext(uiDispatcher) {
+                    status = ExchangeStatus(ExchangeStatus.Kind.REBIND_START_FAILED)
+                    screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                }
+                return@launch
+            }
+            // (4) Pure projection settle.
+            withContext(uiDispatcher) {
+                when (started) {
+                    is ManualOrganizationRun.StartOutcome.Started -> {
+                        // The run surface takes over; the proposal is NOT
+                        // consumed (継続成功は提案を消費しない).
+                        status = null
+                        screen = ExchangeScreen.Closed
+                    }
+
+                    ManualOrganizationRun.StartOutcome.Busy -> {
+                        status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
+                        screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+                    }
+
+                    ManualOrganizationRun.StartOutcome.AdmissionRefused -> {
+                        status = ExchangeStatus(ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED)
+                        // The refusal means the durable world changed; re-read
+                        // it so stale display never lingers. Same gate-held
+                        // read/reconcile/cleanup as the open path.
+                        scope.launch(Dispatchers.IO) {
+                            val (reDecision, reSession, reNow) = exchangeMutationGate.withGate {
+                                val reNow = controller.nowEpochMs()
+                                val reRecord = pendingImportStore.load()
+                                val reSession = controller.activeSession()
+                                val reDecision = reconcilePendingIntent(reRecord, reSession, reNow)
+                                if (reDecision is PendingIntentReconcile.Invalid) {
+                                    pendingImportStore.delete()
+                                }
+                                Triple(reDecision, reSession, reNow)
+                            }
+                            withContext(uiDispatcher) {
+                                when {
+                                    reDecision is PendingIntentReconcile.Valid && reSession != null -> {
+                                        val proposal = reDecision.proposal
+                                        // The anchor-refusal notice persists: the
+                                        // re-adopted face shows the CURRENT truth.
+                                        screen = ExchangeScreen.ImportReview(
+                                            summary = durableImportSummary(proposal, reSession),
+                                            expiresAtEpochMs = reSession.expiresAtEpochMs,
+                                            readAtEpochMs = reNow,
+                                            entryKind = when (proposal.entryKind) {
+                                                PendingImportEntryKind.IDLE -> ExchangeImportEntryKind.IDLE
+                                                PendingImportEntryKind.RUN_IN -> ExchangeImportEntryKind.RUN_IN
+                                            },
+                                        )
+                                    }
+
+                                    else -> {
+                                        // The invalidation took effect: fail-closed
+                                        // cleanup and close. The anchor-refusal
+                                        // notice stays (it explains the close).
+                                        screen = ExchangeScreen.Closed
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Projects the transient "composition not ready" refusal — the face stays, retryable. */
+    private fun settleRebindNotReady() {
+        status = ExchangeStatus(ExchangeStatus.Kind.REBIND_START_FAILED)
+        screen = (screenState.value as? ExchangeScreen.ImportReview)?.copy(continuing = false) ?: screenState.value
+    }
+
+    /**
+     * Issue #328 (spec 328 rev.2 D-13 / spec 374 DI-AC-08): the explicit
+     * discard — generalized by #374 to cover BOTH faces that hold an imported
+     * proposal: the 取り込み成功状態 (anchored to its attempt token) and the
+     * ImportReview resume face (anchored to the durable record itself — no
+     * attempt exists there). Refused while the CTA is continuing — a started
+     * seam cannot be withdrawn, so the discard side is the one that yields.
+     * The durable record is discarded through the tombstone two-phase commit
+     * (`store.discard()` on IO): the face closes ONLY after the tombstone
+     * commit succeeds; a failed commit is a typed notice and keeps the face
+     * and the proposal (retryable). The export session is NOT invalidated:
      * re-importing the same reply stays possible while the request is valid.
      */
     fun discardImport() {
-        val current = screenState.value as? ExchangeScreen.ImportSuccess ?: return
-        if (current.continuing) return
-        activeAttempt = null
-        pendingValidated = null
-        status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARDED)
-        screen = ExchangeScreen.Closed
+        val current = screenState.value
+        val attemptToken: Long? = when (current) {
+            is ExchangeScreen.ImportSuccess -> {
+                if (current.continuing) return
+                current.attemptToken
+            }
+
+            // Issue #375 (spec SR-AC-07): on the resume face the rebind CTA's
+            // single-flight (`continuing`) refuses the discard — a started
+            // seam cannot be withdrawn (spec 328 AC-3 discipline).
+            is ExchangeScreen.ImportReview -> {
+                if (current.continuing) return
+                null
+            }
+
+            else -> return
+        }
+        scope.launch(Dispatchers.IO) {
+            // Issue #375: the tombstone commit is a durable-record mutation —
+            // it holds the exchange mutation gate (the same serialization
+            // point as the rebind admission anchor), and the gate is released
+            // before the settle projects the result (no store calls there).
+            val discarded = exchangeMutationGate.withGate { pendingImportStore.discard() }
+            withContext(uiDispatcher) { settleDiscardImport(attemptToken, discarded) }
+        }
+    }
+
+    /**
+     * Issue #374 (DI-AC-08): applies the tombstone commit result. On the
+     * success face the settle stays bound to the attempt token and refused
+     * while continuing, exactly like the CTA settle; on the ImportReview face
+     * the durable record IS the anchor, so the result applies directly — a
+     * late result never closes a replaced face in either case.
+     */
+    private fun settleDiscardImport(attemptToken: Long?, discarded: Boolean) {
+        val current = screenState.value
+        val applies = when (current) {
+            is ExchangeScreen.ImportSuccess -> current.attemptToken == attemptToken && !current.continuing
+            is ExchangeScreen.ImportReview -> true
+            else -> false
+        }
+        if (!applies) return
+        if (!discarded) {
+            // Tombstone commit failed: the proposal stays valid and shown;
+            // the discard is retryable (the confirmation can be re-raised).
+            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARD_FAILED)
+            return
+        }
+        requestAttemptInvalidation {
+            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_DISCARDED)
+            screen = ExchangeScreen.Closed
+        }
+    }
+
+    /**
+     * Issue #417 (spec 417 "scope-bound依頼破棄"): retires the AI request
+     * created from this run's frozen scope so the selection can be re-edited.
+     * The holder does NOT discard on its own — the whole operation is the
+     * run-owned ONE seam ([ManualOrganizationRun.discardScopeBoundRequest]):
+     * the run invalidates its current generation epoch under its lock BEFORE
+     * the capability call, the capability (the same gate-held transaction the
+     * commit uses) runs `invalidateIf(boundExportId)` inside the exchange
+     * mutation gate, and only `Committed`/`NoMatch` clears the binding — the
+     * `NoMatch`-as-success proof is limited to this current-binding discard.
+     *
+     * - `Discarded`: the session and binding are gone; the dependent
+     *   imported-proposal cleanup follows the existing reconcile contract
+     *   (the record's disappearance is the read-time reconcile's job) and
+     *   [onSettled] receives the outcome — the hosting surface may then call
+     *   [ManualOrganizationRun.reopenSelection]. The flow closes.
+     * - `WriteFailed`: the session, the pending proposal and the frozen
+     *   scope are ALL kept — the typed retryable failure surfaces on the
+     *   method-choice face, which stays; re-invoking retries.
+     * - `NotDiscardable`: typed no-op (no live confirmed scope).
+     */
+    fun discardScopeBoundRequest(onSettled: (ManualOrganizationRun.ScopeDiscardOutcome) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val outcome = run.discardScopeBoundRequest { boundExportId ->
+                toStoreInvalidationOutcome(controller.invalidateSessionIf(boundExportId))
+            }
+            withContext(uiDispatcher) {
+                when (outcome) {
+                    ManualOrganizationRun.ScopeDiscardOutcome.Discarded -> {
+                        // The dependent imported proposal (if any is showing
+                        // in-process) follows the existing replacement-
+                        // invalidation primitive; the durable record's
+                        // disappearance is the read-time reconcile's job (the
+                        // session is already invalidated).
+                        invalidateImportedIntentForReplacement()
+                        status = null
+                        screen = ExchangeScreen.Closed
+                    }
+
+                    ManualOrganizationRun.ScopeDiscardOutcome.WriteFailed ->
+                        status = ExchangeStatus(ExchangeStatus.Kind.SCOPE_DISCARD_FAILED)
+
+                    ManualOrganizationRun.ScopeDiscardOutcome.NotDiscardable -> Unit
+                }
+                onSettled(outcome)
+            }
+        }
     }
 }
 
@@ -847,18 +2465,6 @@ data class ExchangeStatus(val kind: Kind) {
         CLIPBOARD_NOT_TEXT,
 
         /**
-         * Issue #328: an import was refused because a strategy write/restart
-         * is in progress (arbiter non-idle). Zero-write, retryable.
-         */
-        IMPORT_STRATEGY_BUSY,
-
-        /**
-         * Issue #328: the continuation CTA was refused because the strategy
-         * arbiter is non-idle. Zero-write, retryable.
-         */
-        CTA_STRATEGY_BUSY,
-
-        /**
          * Issue #328: the run-connection seam failed (exception, or a
          * started run that no longer matches). The success state stays
          * operable (retry / discard).
@@ -867,6 +2473,71 @@ data class ExchangeStatus(val kind: Kind) {
 
         /** Issue #328: the pending import was explicitly discarded. */
         IMPORT_DISCARDED,
+
+        /**
+         * Issue #374 (spec 374 DI-AC-13): the durable save of the imported
+         * proposal failed on a retry — a persistence-step typed failure, not
+         * one of the 20 import validation classes. The face stays; the retry
+         * remains possible.
+         */
+        IMPORT_PERSIST_FAILED,
+
+        /**
+         * Issue #374 (spec 374 DI-AC-08): the discard's tombstone commit
+         * failed — the proposal stays valid and shown, the discard retryable.
+         */
+        IMPORT_DISCARD_FAILED,
+
+        /**
+         * Issue #374 (spec 374 DI-AC-01 "ImportReview再開面"): the hub's
+         * ImportReview open found no valid proposal (expired, invalidated, or
+         * absent) — the typed notice of the fail-closed open; no review face
+         * is invented.
+         */
+        IMPORT_REVIEW_UNAVAILABLE,
+
+        /**
+         * Issue #375 (spec SR-AC-08): the rebind's pre-admission structural
+         * re-verification failed (`CONTEXT_STALE` semantics — the home
+         * structure changed since the export, or reconstruction diverged).
+         * The proposal survives; the remedy is re-creating the request.
+         */
+        REBIND_CONTEXT_STALE,
+
+        /**
+         * Issue #375 (spec "rebind admission anchor"): the admission anchor
+         * refused — the durable proposal was invalidated, replaced, or
+         * expired between rebuild and admission. No run admission occurred;
+         * the resume face re-reads the current truth.
+         */
+        REBIND_ANCHOR_REFUSED,
+
+        /**
+         * Issue #375: the rebind CTA could not start the run (a live-context
+         * failure of the connection seam). The resume face stays operable.
+         */
+        REBIND_START_FAILED,
+
+        /**
+         * Issue #417: the scoped generation could not start — the run no
+         * longer holds the confirmed scope the face was opened from (a stale
+         * face or a stale epoch). Zero-write; the face re-reads the store.
+         */
+        GENERATION_NOT_CONFIRMED,
+
+        /**
+         * Issue #417 (oracle (u)): the run-owned export cleanup's store write
+         * failed — the session and the binding are kept, the flow does NOT
+         * settle, and the same expectedExportId cleanup stays retryable.
+         */
+        EXPORT_CLEANUP_FAILED,
+
+        /**
+         * Issue #417: the scope-bound request discard's store write failed —
+         * the session, the imported proposal and the frozen scope are ALL
+         * kept; the method-choice face stays and the discard is retryable.
+         */
+        SCOPE_DISCARD_FAILED,
     }
 
     companion object {
@@ -878,52 +2549,50 @@ data class ExchangeStatus(val kind: Kind) {
     }
 }
 
-/** The exchange items. Hosted only while the run is not active (Idle/Cancelled). */
-fun LazyListScope.exchangeFlowItems(
-    holder: ExchangeFlowStateHolder,
-    clipboardTransport: (Context, String) -> ExchangeTransportResult,
-    shareTransport: (Context, String) -> ExchangeTransportResult,
-    fileTransport: FileExchangeTransport,
-) {
-    exchangeFlowItems(holder, null, emptyMap(), clipboardTransport, shareTransport, fileTransport)
-}
-
 /**
- * Issue #331: the exchange items with the run-in (scope-composed) entry.
- * Hosted inside the selection surface while a run holds it; when
- * [scopedSelection] is non-null the generation composes the export from the
- * frozen selection instead of the idle full-organization scope.
+ * The exchange items, hosted by one face at a time (issue #417 hosting
+ * re-placement):
+ *
+ * - the method-choice face (`State.ScopeConfirmed`, the run's frozen scope)
+ *   hosts the FULL creation+import flow — the holder enters it through
+ *   [ExchangeFlowStateHolder.openMethodChoiceFlow] and the generation supply
+ *   is the confirmed scope (state-supplied, never live UI selection);
+ * - the entry/idle face hosts IMPORT-ONLY (spec 205 V1 host rule retained,
+ *   creation retired by #417): existing active request info, reply import
+ *   and the existing discard paths.
+ *
+ * [onDiscardRequest] converges the T-16 破棄 button and system Back on the
+ * host's one discard confirmation (issue #372, D-13).
+ * [onImportDiscardRequest] is the #374 equivalent for the import success
+ * state's 破棄して閉じる button: it converges with system Back on the host's
+ * ONE import-discard confirmation (spec 328 rev.2 D-13), and
+ * [importDiscardFocus] is where the host restores focus after the dialog is
+ * dismissed. [onOpenDiagnostics] reaches the existing diagnostics route from
+ * the failure face's 診断を開く (issue #373); null hides the row where no
+ * route exists.
  */
 fun LazyListScope.exchangeFlowItems(
     holder: ExchangeFlowStateHolder,
-    scopedSelection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>?,
-    scopedLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
+    onDiscardRequest: () -> Unit,
+    discardFocus: FocusRequester? = null,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
+    onOpenDiagnostics: (() -> Unit)? = null,
+    onImportDiscardRequest: () -> Unit = {},
+    importDiscardFocus: FocusRequester? = null,
 ) {
-    val scoped = scopedSelection?.let { it to scopedLabels }
     when (val current = holder.screen) {
-        ExchangeScreen.Closed -> {
-            item(key = "exchange-entry") {
-                if (scoped != null) {
-                    ExchangeScopedEntryRow(
-                        onOpenFlow = holder::openFlow,
-                        onOpenImport = holder::openImport,
-                    )
-                } else {
-                    ExchangeEntryRow(
-                        onOpenFlow = holder::openFlow,
-                        onOpenImport = holder::openImport,
-                    )
-                }
-            }
-        }
+        // Issue #417: the entry rows are gone — the scoped entry row (the
+        // selection surface's secondary entry, spec 367 superseded) and the
+        // idle creation entry alike. The method-choice face opens the flow
+        // through openMethodChoiceFlow; the entry face is import-only.
+        ExchangeScreen.Closed -> Unit
 
         is ExchangeScreen.SelectingPrivacy -> {
             item(key = "exchange-privacy") {
                 Column {
-                    if (scoped != null) {
+                    if (holder.hostMode == ExchangeHostMode.METHOD_CHOICE) {
                         // Issue #331: announce the frozen selection (a11y).
                         Text(
                             text = stringResource(R.string.exchange_scoped_freeze_notice),
@@ -933,12 +2602,27 @@ fun LazyListScope.exchangeFlowItems(
                                 .semantics { liveRegion = LiveRegionMode.Assertive }
                                 .testTag("exchange-scoped-freeze-notice"),
                         )
+                        ExchangePrivacySelection(
+                            activeRequestExpiresAtEpochMs = current.activeRequestExpiresAtEpochMs,
+                            activeRequestReadAtEpochMs = current.activeRequestReadAtEpochMs,
+                            requiresConfirmation = current.replacementConfirmationRequired,
+                            onGenerate = { tier -> holder.requestGeneration(tier) },
+                            onCancel = holder::close,
+                            onOpenImport = holder::openImport,
+                        )
+                    } else {
+                        // Issue #417: the entry face is IMPORT-ONLY — the
+                        // active request info, the import lead-in and the
+                        // existing cancel; no creation entry (the request is
+                        // created within an organize run).
+                        ExchangeImportOnlyEntry(
+                            activeRequestExpiresAtEpochMs = current.activeRequestExpiresAtEpochMs,
+                            activeRequestReadAtEpochMs = current.activeRequestReadAtEpochMs,
+                            requiresConfirmation = current.replacementConfirmationRequired,
+                            onOpenImport = holder::openImport,
+                            onCancel = holder::close,
+                        )
                     }
-                    ExchangePrivacySelection(
-                        requiresConfirmation = current.replacementConfirmationRequired,
-                        onGenerate = { tier -> holder.requestGeneration(current.replacementConfirmationRequired, tier, scoped) },
-                        onCancel = holder::close,
-                    )
                 }
             }
         }
@@ -970,6 +2654,8 @@ fun LazyListScope.exchangeFlowItems(
                 ExchangeDisclosure(
                     holder = holder,
                     state = current.state,
+                    onDiscardRequest = onDiscardRequest,
+                    discardFocus = discardFocus,
                     clipboardTransport = clipboardTransport,
                     shareTransport = shareTransport,
                     fileTransport = fileTransport,
@@ -989,7 +2675,7 @@ fun LazyListScope.exchangeFlowItems(
 
         is ExchangeScreen.ImportOutcomeScreen -> {
             item(key = "exchange-import-outcome") {
-                ExchangeImportOutcome(current.outcome, current.rawText, holder)
+                ExchangeImportOutcome(current.outcome, current.rawText, holder, onOpenDiagnostics)
             }
         }
 
@@ -998,7 +2684,58 @@ fun LazyListScope.exchangeFlowItems(
                 ExchangeImportSuccess(
                     state = current,
                     onContinue = holder::continueImport,
-                    onDiscard = holder::discardImport,
+                    // Issue #374 (spec 328 rev.2 D-13): the explicit discard
+                    // button raises the SAME confirmation dialog as system
+                    // Back — the confirm itself runs holder.discardImport().
+                    onDiscard = onImportDiscardRequest,
+                    discardFocus = importDiscardFocus,
+                )
+            }
+        }
+
+        is ExchangeScreen.ImportPersistenceFailure -> {
+            item(key = "exchange-import-persist-failed") {
+                ExchangeImportPersistenceFailure(
+                    state = current,
+                    onRetry = holder::retryPendingIntentSave,
+                    onInterrupt = holder::close,
+                    onOpenDiagnostics = onOpenDiagnostics,
+                )
+            }
+        }
+
+        is ExchangeScreen.ImportReview -> {
+            // Issue #375: the review face emits its own LazyListScope items —
+            // the actions are separate items so the list scrolls them into
+            // view individually (SR-AC-10 reachability at large font scales).
+            exchangeImportReviewItems(
+                state = current,
+                // Issue #375 (spec "再開面CTA"): the rebind continuation.
+                onContinue = holder::continuePendingImport,
+                // Issue #374 (spec 328 rev.2 D-13): the review face's
+                // 破棄して閉じる button converges with system Back priority
+                // on the HOST's ONE import-discard confirmation — exactly
+                // the same dialog entry the success face's button uses.
+                onDiscard = onImportDiscardRequest,
+                discardFocus = importDiscardFocus,
+            )
+        }
+
+        is ExchangeScreen.AwaitingUsageAccessJit -> {
+            item(key = "exchange-usage-access-jit") {
+                ExchangeUsageAccessJitDialogHost(state = current, holder = holder)
+            }
+        }
+
+        ExchangeScreen.RecreateRequestGuidance -> {
+            // Issue #417: the method-choice face's 作り直し guidance — the
+            // reply's request was not created from this run's confirmed
+            // scope, so nothing was imported; the action walks the existing
+            // replacement-confirmation generation flow for THIS scope.
+            item(key = "exchange-recreate-request") {
+                ExchangeRecreateRequestGuidance(
+                    onRecreate = holder::beginRequestRecreation,
+                    onDismiss = holder::close,
                 )
             }
         }
@@ -1017,42 +2754,95 @@ fun LazyListScope.exchangeFlowItems(
     }
 }
 
+/**
+ * Issue #371: exchange-surface host of the JIT request dialog. Presentation
+ * ownership mirrors the run surface: only the attempt holding the gate
+ * reservation presents; a waiter wakes on the gate's resolution or
+ * re-acquires when the reservation was released. Returning from the system
+ * settings runs the bounded grant re-read before the pending generation
+ * resumes (granted or not — the decline is never a failure).
+ */
 @Composable
-private fun ExchangeEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(
-            text = stringResource(R.string.exchange_entry_title),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.testTag("exchange-entry-title"),
-        )
-        Text(
-            text = stringResource(R.string.exchange_entry_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        ExchangeCapabilityNotes(
-            modifier = Modifier
-                .padding(top = 4.dp)
-                .testTag("exchange-entry-capability"),
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(onClick = onOpenFlow, modifier = Modifier.testTag("exchange-entry-open")) {
-                Text(stringResource(R.string.exchange_entry_open))
-            }
-            OutlinedButton(onClick = onOpenImport, modifier = Modifier.testTag("exchange-entry-import")) {
-                Text(stringResource(R.string.exchange_entry_import))
+private fun ExchangeUsageAccessJitDialogHost(
+    state: ExchangeScreen.AwaitingUsageAccessJit,
+    holder: ExchangeFlowStateHolder,
+) {
+    val context = LocalContext.current
+    val gateSnapshot by holder.usageAccessGate.snapshot.collectAsStateWithLifecycle()
+    var presenter by remember(state.attemptToken) { mutableStateOf(state.isPresenter) }
+    var settingsRequested by remember(state.attemptToken) { mutableStateOf(false) }
+    var settingsLaunchFailed by remember(state.attemptToken) { mutableStateOf(false) }
+    var grantCheckTick by remember(state.attemptToken) { mutableIntStateOf(0) }
+    val owner = ExchangeJitAttemptOwner(state.attemptToken)
+
+    // Unmount while the pause is unresolved (navigation away, a run admission
+    // leaving the Idle face, host teardown): apply the owner-destruction
+    // rules — release while un-presented, abandon-resolve once presented — so
+    // the process barrier is never orphaned. No-op on the normal-resolution
+    // unmount (the screen has already moved past the awaiting state).
+    DisposableEffect(state.attemptToken) {
+        // Bind the cleanup to THIS attempt's identity: a stale host unmount
+        // (the screen already moved to a newer attempt) must not act on it.
+        val ownToken = state.attemptToken
+        onDispose { holder.disposeUsageAccessJitAttempt(ownToken) }
+    }
+
+    // Waiter wakeup: deterministic observation of the gate snapshot.
+    LaunchedEffect(gateSnapshot, state.attemptToken) {
+        if (presenter) return@LaunchedEffect
+        when (gateSnapshot.phase) {
+            UsageAccessJitGate.Phase.Resolved -> holder.continueUsageAccessJit(state.attemptToken)
+
+            UsageAccessJitGate.Phase.Available ->
+                if (holder.tryAcquireJitPresentation(state.attemptToken)) presenter = true
+
+            else -> Unit
+        }
+    }
+    // Presenting consumes the re-presentation right exactly once.
+    LaunchedEffect(presenter, state.attemptToken) {
+        if (presenter) holder.usageAccessGate.markPresented(owner)
+    }
+    // Returning from the system settings: observe ON_RESUME, run the bounded
+    // grant re-read, then resume the pending generation (granted or not).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && settingsRequested) {
+                settingsRequested = false
+                grantCheckTick += 1
             }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(grantCheckTick, state.attemptToken) {
+        if (grantCheckTick == 0) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            awaitUsageAccessGrant(isGranted = { UsageAccess.isGranted(context) })
+        }
+        holder.continueUsageAccessJit(state.attemptToken)
+    }
+
+    if (presenter) {
+        UsageAccessJitRequestDialog(
+            settingsLaunchFailed = settingsLaunchFailed,
+            onOpenSettings = {
+                if (openUsageAccessSettings(context)) {
+                    settingsRequested = true
+                } else {
+                    settingsLaunchFailed = true
+                }
+            },
+            onContinue = { holder.continueUsageAccessJit(state.attemptToken) },
+        )
     }
 }
 
 /**
- * Issue #327: the user-facing capability explanation shared by both exchange
- * entries. It describes what the AI can do in concrete user-language
+ * Issue #327: the user-facing capability explanation shared by the run-in
+ * exchange entry and the T-15 request face (issue #372 relocated the idle
+ * entry's copy here). It describes what the AI can do in concrete user-language
  * examples (never schema terms), states that the AI never changes the home
  * screen directly, and explains the expected conversation flow — the
  * interview happens inside the external AI app, the conversation never
@@ -1095,55 +2885,172 @@ internal fun exchangeCapabilityExampleResourceIds(): List<Int> = listOf(
 )
 
 /**
- * Issue #331: the run-in entry row. The export scope is the frozen selection
- * (existing placements plus the selected missing apps), so the reply can
- * advise the candidates the user is about to organize.
+ * Issue #417: the entry/idle face's IMPORT-ONLY hosting — the active request
+ * info (the #372 T-15 pre-display vocabulary, D-02), the import lead-in the
+ * entry row used to own, and the zero-write cancel. The creation entry is
+ * retired: a new request is created within an organize run (the method-choice
+ * face), so the guidance points there (#372's T-15 info display contract is
+ * retained; the create CTA and the tier choice are not hosted here).
  */
 @Composable
-private fun ExchangeScopedEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
+private fun ExchangeImportOnlyEntry(
+    activeRequestExpiresAtEpochMs: Long?,
+    activeRequestReadAtEpochMs: Long?,
+    requiresConfirmation: Boolean,
+    onOpenImport: () -> Unit,
+    onCancel: () -> Unit,
+) {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
-            text = stringResource(R.string.exchange_scoped_entry_title),
+            text = stringResource(R.string.exchange_request_title),
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.testTag("exchange-scoped-entry-title"),
+            modifier = Modifier.testTag("exchange-request-title"),
         )
-        Text(
-            text = stringResource(R.string.exchange_scoped_entry_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        if (activeRequestExpiresAtEpochMs != null && activeRequestReadAtEpochMs != null) {
+            ActiveRequestPreDisplay(
+                expiresAtEpochMs = activeRequestExpiresAtEpochMs,
+                readAtEpochMs = activeRequestReadAtEpochMs,
+            )
+        }
+        if (requiresConfirmation) {
+            // Issue #417: the active request is importable here, but the
+            // recreation of a request lives inside an organize run.
+            Text(
+                text = stringResource(R.string.exchange_entry_import_only_notice),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+                    .testTag("exchange-entry-import-only-notice"),
+            )
+        }
         ExchangeCapabilityNotes(
             modifier = Modifier
                 .padding(top = 4.dp)
-                .testTag("exchange-scoped-entry-capability"),
+                .testTag("exchange-entry-capability"),
         )
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Button(onClick = onOpenFlow, modifier = Modifier.testTag("exchange-scoped-entry-open")) {
-                Text(stringResource(R.string.exchange_scoped_entry_open))
-            }
-            OutlinedButton(onClick = onOpenImport, modifier = Modifier.testTag("exchange-scoped-entry-import")) {
+            OutlinedButton(
+                onClick = onOpenImport,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("exchange-entry-import"),
+            ) {
                 Text(stringResource(R.string.exchange_entry_import))
+            }
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.exchange_cancel))
             }
         }
     }
 }
 
+/**
+ * Issue #417: the method-choice face's 作り直し guidance face — the reply's
+ * request was NOT created from this run's confirmed scope (a legacy IDLE
+ * request or another run's session), so nothing was imported and nothing was
+ * saved. The single remedy is re-creating the request for this scope through
+ * the existing replacement-confirmation generation flow.
+ */
+@Composable
+private fun ExchangeRecreateRequestGuidance(
+    onRecreate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(R.string.exchange_recreate_request_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("exchange-recreate-request-title"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_recreate_request_body),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = onRecreate,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("exchange-recreate-request-action"),
+            ) {
+                Text(stringResource(R.string.exchange_recreate_request_action))
+            }
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.exchange_cancel))
+            }
+        }
+    }
+}
+
+/**
+ * Issue #372 (T-15「依頼を作る」): the request-creation face. It carries the
+ * active-request pre-display (existence + remaining time, D-02), the D-09
+ * expectation statement, the two-choice tier vocabulary (D-14), the create CTA
+ * (through the replacement confirmation when an active request exists), and
+ * the import lead-in the removed idle entry row used to own. Cancel is the
+ * zero-write 「キャンセル」 (nothing to discard yet, D-13 §9).
+ */
 @Composable
 private fun ExchangePrivacySelection(
+    activeRequestExpiresAtEpochMs: Long?,
+    activeRequestReadAtEpochMs: Long?,
     requiresConfirmation: Boolean,
     onGenerate: (PrivacyTier) -> Unit,
     onCancel: () -> Unit,
+    onOpenImport: () -> Unit,
 ) {
     var labelInclusive by remember { mutableStateOf(false) }
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
-            text = stringResource(R.string.exchange_privacy_title),
+            text = stringResource(R.string.exchange_request_title),
             style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.testTag("exchange-privacy-title"),
+            modifier = Modifier.testTag("exchange-request-title"),
+        )
+        if (activeRequestExpiresAtEpochMs != null && activeRequestReadAtEpochMs != null) {
+            ActiveRequestPreDisplay(
+                expiresAtEpochMs = activeRequestExpiresAtEpochMs,
+                readAtEpochMs = activeRequestReadAtEpochMs,
+            )
+        }
+        ExchangeCapabilityNotes(
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .testTag("exchange-request-capability"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_expectation_fixed_home),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("exchange-expectation"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_privacy_title),
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag("exchange-privacy-title"),
         )
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1175,24 +3082,68 @@ private fun ExchangePrivacySelection(
                     .semantics { liveRegion = LiveRegionMode.Assertive },
             )
         }
-        Row(
+        // Issue #372 (implementation review, EX-AC-10): the three actions
+        // stack vertically so 200% font scale reflows the column instead of
+        // clipping a fixed-width row (ja copy is the widest case).
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Button(
                 onClick = {
                     onGenerate(if (labelInclusive) PrivacyTier.EXTERNAL_WITH_LABELS else PrivacyTier.EXTERNAL_REDACTED)
                 },
-                modifier = Modifier.testTag("exchange-generate"),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("exchange-generate"),
             ) {
                 Text(stringResource(R.string.exchange_generate))
             }
-            OutlinedButton(onClick = onCancel) {
+            OutlinedButton(
+                onClick = onOpenImport,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.exchange_entry_import))
+            }
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Text(stringResource(R.string.exchange_cancel))
             }
         }
+    }
+}
+
+/**
+ * Issue #372 (T-15, D-02): the active-request pre-display — existence plus the
+ * remaining time. Both values come from the holder's read (the projection's
+ * display root): no second clock touches the face, and the holder's reads
+ * (entry, resume, expiry-scheduled) keep it consistent with the store, so
+ * this row never needs a ticking clock.
+ */
+@Composable
+private fun ActiveRequestPreDisplay(expiresAtEpochMs: Long, readAtEpochMs: Long) {
+    val remaining = requestRemainingDisplay(expiresAtEpochMs, readAtEpochMs)
+    Column(
+        modifier = Modifier
+            .padding(top = 8.dp)
+            .testTag("exchange-request-active"),
+    ) {
+        Text(
+            text = stringResource(R.string.exchange_request_active_line),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        Text(
+            text = when (remaining) {
+                is RequestRemaining.Hours -> pluralStringResource(R.plurals.exchange_request_remaining_hours, remaining.count, remaining.count)
+                RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -1228,10 +3179,24 @@ private fun ExchangeReplacementConfirm(
     }
 }
 
+/**
+ * Issue #372 (T-16「送信前確認」, D-10): the pre-send confirmation as a
+ * summary-first face. The informed-consent summary (what kinds, how many
+ * items, what ceiling) is the primary surface; the generated package's full
+ * text is collapsed by default and expandable for review (the expandable text
+ * is the identical immutable value the transports hand out — spec 205 AC-12).
+ * The D-09 expectation statement is repeated here, one consent point before
+ * any external disclosure. The unsent cancel is the 「破棄」 vocabulary with
+ * ONE confirmation dialog (D-13), shared with system Back through
+ * [onDiscardRequest]; after a send the same slot becomes the no-confirm
+ * 閉じる and the request survives.
+ */
 @Composable
 private fun ExchangeDisclosure(
     holder: ExchangeFlowStateHolder,
     state: ExchangeDisclosureState,
+    onDiscardRequest: () -> Unit,
+    discardFocus: FocusRequester?,
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
@@ -1242,6 +3207,13 @@ private fun ExchangeDisclosure(
     ) { uri: Uri? ->
         if (uri != null) holder.writeFile(fileTransport, state.packageText, uri)
     }
+    // Collapsed by default (issue #372 review: the full text never forces
+    // itself on the user); the expand state is announced to TalkBack through
+    // the state description and the toggle label, keyed per generated package.
+    var expanded by remember(state.session.exportId) { mutableStateOf(false) }
+    val expandedStateText = stringResource(R.string.exchange_disclosure_collapse)
+    val collapsedStateText = stringResource(R.string.exchange_disclosure_expand)
+    val summary = exchangeDisclosureSummary(state)
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.exchange_disclosure_title),
@@ -1258,19 +3230,54 @@ private fun ExchangeDisclosure(
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
         Text(
+            text = stringResource(R.string.exchange_disclosure_summary_items, summary.itemCount),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag("exchange-disclosure-summary-items"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_disclosure_summary_limit),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag("exchange-disclosure-summary-limit"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_expectation_fixed_home),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("exchange-expectation"),
+        )
+        Text(
             text = stringResource(R.string.exchange_disclosure_hint),
             style = MaterialTheme.typography.bodySmall,
         )
-        Text(
-            text = state.packageText,
-            style = MaterialTheme.typography.bodySmall,
+        TextButton(
+            onClick = { expanded = !expanded },
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp)
-                .heightIn(max = 240.dp)
-                .verticalScroll(rememberScrollState())
-                .testTag("exchange-disclosure-package"),
-        )
+                .padding(top = 4.dp)
+                .testTag("exchange-disclosure-expand")
+                .semantics { stateDescription = if (expanded) expandedStateText else collapsedStateText },
+        ) {
+            Text(
+                stringResource(
+                    if (expanded) R.string.exchange_disclosure_collapse else R.string.exchange_disclosure_expand,
+                ),
+            )
+        }
+        if (expanded) {
+            Text(
+                text = state.packageText,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState())
+                    .testTag("exchange-disclosure-package"),
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1299,18 +3306,34 @@ private fun ExchangeDisclosure(
             OutlinedButton(
                 onClick = { if (state.transportAllowed) fileSaver.launch("nunu-launcher-exchange.txt") },
                 enabled = state.transportAllowed,
-                modifier = Modifier.testTag("exchange-send-file"),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("exchange-send-file"),
             ) {
                 Text(stringResource(R.string.exchange_save_file))
             }
+            // Issue #372 (implementation review): during `cancelling` the
+            // invalidate is still in flight — the close slot disables, so the
+            // face cannot be left (nor the flow closed) before the settle;
+            // this mirrors the Back contract's BLOCKED action.
             OutlinedButton(
-                onClick = holder::closeDisclosure,
-                enabled = !state.transportInFlight,
-                modifier = Modifier.testTag("exchange-cancel"),
+                onClick = { if (state.cancelable) onDiscardRequest() else holder.closeDisclosure() },
+                enabled = when {
+                    state.cancelable -> true
+                    state.cancelling -> false
+                    state.sent -> true
+                    else -> !state.transportInFlight
+                },
+                // Issue #372: the host owns the dialog-dismiss focus
+                // restoration through this requester (deterministic restore).
+                modifier = Modifier
+                    .weight(1f)
+                    .then(discardFocus?.let { Modifier.focusRequester(it) } ?: Modifier)
+                    .testTag("exchange-discard"),
             ) {
                 Text(
                     stringResource(
-                        if (state.cancelable) R.string.exchange_cancel else R.string.exchange_close,
+                        if (state.cancelable) R.string.exchange_discard else R.string.exchange_close,
                     ),
                 )
             }
@@ -1449,47 +3472,243 @@ private val IMPORT_EDITOR_MAX_HEIGHT = 200.dp
 private const val IMPORT_EDITOR_MAX_LINES = 8
 
 /**
- * Issue #328 (spec 328 D-2): the system-Back interception for the import
- * success state. It MUST be composed at the always-composed hosting screen
- * level, AFTER the screen-level navigation handler — never inside the success
- * lazy item, whose composition can leave the viewport under large font. When
- * enabled (success state shown) it takes Back before the host fallback: a
- * non-continuing Back asks for the explicit discard confirmation; a
- * continuing Back is swallowed (a started run-connection seam cannot be
- * withdrawn mid-flight).
+ * Issue #328 (spec 328 rev.2 D-13 / #374): the system-Back interception for
+ * the import success state. It MUST be composed at the always-composed
+ * hosting screen level, AFTER the screen-level navigation handler — never
+ * inside the success lazy item, whose composition can leave the viewport
+ * under large font. When enabled (success state shown) it takes Back before
+ * the host fallback: a non-continuing Back asks for the explicit discard
+ * confirmation; a continuing Back is swallowed (a started run-connection
+ * seam cannot be withdrawn mid-flight).
+ *
+ * [onDiscardRequest] routes Back into the HOST's shared import-discard
+ * confirmation — the same dialog state the 破棄して閉じる button raises
+ * (spec 328 rev.2 D-13: both entries confirm exactly once). When null (hosts
+ * that only need the Back contract), the confirmation is hosted here.
  */
 @Composable
-fun ExchangeImportSuccessBackHandler(holder: ExchangeFlowStateHolder) {
+fun ExchangeImportSuccessBackHandler(
+    holder: ExchangeFlowStateHolder,
+    onDiscardRequest: (() -> Unit)? = null,
+) {
     val importSuccessState = holder.screen as? ExchangeScreen.ImportSuccess
     var showDiscardConfirm by remember { mutableStateOf(false) }
     BackHandler(enabled = importSuccessState != null) {
         if (importSuccessState?.continuing != true) {
-            showDiscardConfirm = true
+            val request = onDiscardRequest
+            if (request != null) {
+                request()
+            } else {
+                showDiscardConfirm = true
+            }
         }
     }
-    if (showDiscardConfirm && importSuccessState != null) {
-        AlertDialog(
-            onDismissRequest = { showDiscardConfirm = false },
-            title = { Text(stringResource(R.string.exchange_import_discard_confirm_title)) },
-            text = { Text(stringResource(R.string.exchange_import_discard_confirm_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDiscardConfirm = false
-                        holder.discardImport()
-                    },
-                ) {
-                    Text(stringResource(R.string.exchange_import_discard_confirm_confirm))
-                }
+    if (onDiscardRequest == null && showDiscardConfirm && importSuccessState != null) {
+        ExchangeImportDiscardConfirmDialog(
+            onConfirm = {
+                showDiscardConfirm = false
+                holder.discardImport()
             },
-            dismissButton = {
-                TextButton(onClick = { showDiscardConfirm = false }) {
-                    Text(stringResource(R.string.exchange_cancel))
-                }
-            },
+            onDismiss = { showDiscardConfirm = false },
         )
     }
 }
+
+/**
+ * Issue #374 (spec 328 rev.2 D-13): the ONE import-discard confirmation,
+ * shared by the 砄棄して閉じる button and system Back. Confirm runs the
+ * holder's [ExchangeFlowStateHolder.discardImport] (the durable tombstone
+ * two-phase commit — the face closes only after the commit succeeds);
+ * dismiss keeps the success state and the pending proposal. No timeout
+ * auto-confirm/cancel (organization-run-ux §6). Focus ownership is
+ * deterministic: the SAFE action (dismiss / keep) takes focus when the dialog
+ * opens, and the CALLER restores focus to the face's 破棄 action on dismissal
+ * via its own FocusRequester (explicit restoration — platform dialog focus
+ * restore is not deterministic).
+ */
+@Composable
+fun ExchangeImportDiscardConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val safeActionFocus = remember { FocusRequester() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = stringResource(R.string.exchange_import_discard_confirm_title))
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.exchange_import_discard_confirm_body),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.exchange_import_discard_confirm_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.focusRequester(safeActionFocus),
+            ) {
+                Text(stringResource(R.string.exchange_cancel))
+            }
+        },
+    )
+    LaunchedEffect(Unit) { safeActionFocus.requestFocus() }
+}
+
+/**
+ * Issue #372 (EX-AC-11): what system Back does on an exchange face. The
+ * accepted TO-BE §5.3/§9 contract ("Back always returns to the previous face;
+ * work-destroying Back confirms once") made structural for the request faces:
+ * the T-15 faces close zero-write, the unsent T-16 goes through the discard
+ * confirmation, a sent T-16 closes with the request surviving, and a busy face
+ * (generating / in-flight transport / cancelling) is CONSUMED — leaving it
+ * would dispose the composition and cancel the holder's `rememberCoroutineScope`
+ * operations (generation, file write, invalidate), contradicting the
+ * "operations continue and settle" contract. Import faces stay on the current
+ * contracts (spec 328/332, #373 owns their rework).
+ */
+enum class ExchangeBackAction { CLOSE, REQUEST_DISCARD, BLOCKED, NONE }
+
+internal fun exchangeBackAction(screen: ExchangeScreen): ExchangeBackAction = when (screen) {
+    ExchangeScreen.Closed,
+    is ExchangeScreen.Importing,
+    is ExchangeScreen.ImportOutcomeScreen,
+    is ExchangeScreen.ImportSuccess,
+    -> ExchangeBackAction.NONE
+
+    // Issue #374 (spec 374 DI-AC-13): Back on the persistence-failure face is
+    // the zero-write 中断 — the record was never saved, so there is no
+    // durable proposal to lose and no confirmation is needed (D-13 §9; the
+    // face body already states the re-import recovery path).
+    is ExchangeScreen.ImportPersistenceFailure -> ExchangeBackAction.CLOSE
+
+    // Issue #417: Back on the 作り直し guidance is the zero-write close —
+    // nothing was imported or saved, so there is nothing to confirm.
+    ExchangeScreen.RecreateRequestGuidance -> ExchangeBackAction.CLOSE
+
+    // Issue #374 (spec 374 "ImportReview再開面"): Back on the resume face is
+    // the PLAIN zero-write close — closing keeps the durable record (opening
+    // the face discards nothing), so no D-13 confirmation. The flow-level
+    // handler (always composed at the hosting level) owns it.
+    is ExchangeScreen.ImportReview -> ExchangeBackAction.CLOSE
+
+    ExchangeScreen.Generating -> ExchangeBackAction.BLOCKED
+
+    // Issue #371 integration: the usage-access JIT pause is a generation
+    // pending resume — Back is consumed (the dialog's own Back, when
+    // presented, is the #371 「続行」 affordance and never reaches here).
+    is ExchangeScreen.AwaitingUsageAccessJit -> ExchangeBackAction.BLOCKED
+
+    is ExchangeScreen.SelectingPrivacy, is ExchangeScreen.ReplacementConfirm -> ExchangeBackAction.CLOSE
+
+    is ExchangeScreen.Disclosing -> when {
+        screen.state.cancelable -> ExchangeBackAction.REQUEST_DISCARD
+        screen.state.sent -> ExchangeBackAction.CLOSE
+        else -> ExchangeBackAction.BLOCKED
+    }
+}
+
+/**
+ * Issue #372 (EX-AC-11): the always-composed host-level Back handler for the
+ * request faces — the same placement principle as
+ * [ExchangeImportSuccessBackHandler] (never inside a lazy item, whose
+ * composition can leave the viewport under large font). Composed BEFORE the
+ * import-success handler in the host, so the success state keeps Back
+ * priority; composed AFTER the screen-level D-13 gate, so an open flow takes
+ * Back before the dismiss/navigate fallback. [onDiscardRequest] lets the host
+ * converge the Back path and the T-16 破棄 button on ONE confirmation dialog.
+ */
+@Composable
+fun ExchangeFlowBackHandler(holder: ExchangeFlowStateHolder, onDiscardRequest: () -> Unit) {
+    BackHandler(enabled = exchangeBackAction(holder.screen) != ExchangeBackAction.NONE) {
+        when (exchangeBackAction(holder.screen)) {
+            ExchangeBackAction.CLOSE -> holder.close()
+            ExchangeBackAction.REQUEST_DISCARD -> onDiscardRequest()
+            ExchangeBackAction.BLOCKED, ExchangeBackAction.NONE -> Unit
+        }
+    }
+}
+
+/**
+ * Issue #372 (D-13): the ONE pre-send discard confirmation, shared by the
+ * T-16 破棄 button and system Back. Confirm invalidates exactly the unsent
+ * session (through the holder's existing `closeDisclosure` structural gate);
+ * dismiss keeps the T-16 face. No timeout auto-confirm/cancel (organization-
+ * run-ux §6). Focus ownership is deterministic: the SAFE action (dismiss /
+ * keep) takes focus when the dialog opens, and the CALLER restores focus to
+ * the face's 破棄 action on dismissal via its own FocusRequester (explicit
+ * restoration — platform dialog focus restore is not deterministic).
+ */
+@Composable
+fun ExchangeDiscardConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val safeActionFocus = remember { FocusRequester() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.exchange_discard_confirm_title),
+                modifier = Modifier.testTag("exchange-discard-confirm-title"),
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.exchange_discard_confirm_body),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                modifier = Modifier.testTag("exchange-discard-confirm"),
+            ) {
+                Text(stringResource(R.string.exchange_discard_confirm_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .focusRequester(safeActionFocus)
+                    .testTag("exchange-discard-dismiss"),
+            ) {
+                Text(stringResource(R.string.exchange_cancel))
+            }
+        },
+    )
+    LaunchedEffect(Unit) { safeActionFocus.requestFocus() }
+}
+
+/**
+ * Issue #372 (T-16, D-10): the informed-consent summary derived from the
+ * generated immutable session — the exported ITEM count (labelled as the item
+ * count, not a total record count; the tier line already explains the
+ * category collection), the tier, and the V1 content limits as the contract
+ * ceiling. Live state is never re-read here (AC-12 identity: the summary
+ * describes exactly the value the transports hand out).
+ */
+data class ExchangeDisclosureSummary(val itemCount: Int, val tier: PrivacyTier)
+
+internal fun exchangeDisclosureSummary(state: ExchangeDisclosureState): ExchangeDisclosureSummary = ExchangeDisclosureSummary(
+    itemCount = state.session.itemRefs.size,
+    tier = state.tier,
+)
+
+/** The T-15 remaining-time display root (issue #372). Pure and unit-tested. */
+internal sealed interface RequestRemaining {
+    data class Hours(val count: Int) : RequestRemaining
+    data object UnderOneHour : RequestRemaining
+}
+
+internal fun requestRemainingDisplay(expiresAtEpochMs: Long, nowMs: Long): RequestRemaining {
+    val remainingMs = expiresAtEpochMs - nowMs
+    if (remainingMs <= 0L) return RequestRemaining.UnderOneHour
+    val hours = (remainingMs / MILLIS_PER_HOUR).toInt()
+    return if (hours >= 1) RequestRemaining.Hours(hours) else RequestRemaining.UnderOneHour
+}
+
+internal const val MILLIS_PER_HOUR = 60L * 60L * 1000L
 
 /**
  * Issue #328: the import success state (spec 328 "取り込み成功状態"). Shows
@@ -1504,6 +3723,7 @@ private fun ExchangeImportSuccess(
     state: ExchangeScreen.ImportSuccess,
     onContinue: () -> Unit,
     onDiscard: () -> Unit,
+    discardFocus: FocusRequester? = null,
 ) {
     val summary = state.summary
     val warning = summary.noJudgmentCount > 0
@@ -1529,6 +3749,64 @@ private fun ExchangeImportSuccess(
                 .focusable()
                 .testTag("exchange-import-success-title"),
         )
+        ExchangeImportSummaryContent(
+            summary = summary,
+            showScopeCandidates = state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0,
+        )
+        Button(
+            onClick = onContinue,
+            enabled = !state.continuing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .testTag("exchange-import-continue"),
+        ) {
+            Text(
+                stringResource(
+                    if (state.entryKind == ExchangeImportEntryKind.RUN_IN) {
+                        R.string.exchange_import_cta_run_in
+                    } else {
+                        R.string.exchange_import_cta_idle
+                    },
+                ),
+            )
+        }
+        OutlinedButton(
+            onClick = onDiscard,
+            enabled = !state.continuing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp)
+                // Issue #374: the host restores focus here after the shared
+                // import-discard confirmation is dismissed (deterministic
+                // restore, mirroring the T-16 破棄 slot).
+                .then(discardFocus?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .testTag("exchange-import-discard"),
+        ) {
+            Text(stringResource(R.string.exchange_import_discard))
+        }
+    }
+}
+
+/**
+ * Issue #374: the privacy-safe summary block shared verbatim by the 取り込み
+ * 成功状態 ([ExchangeImportSuccess], spec 328 AC-4) and the ImportReview
+ * resume face ([ExchangeImportReview]) — recognized count, the no-judgment
+ * total, the four-kind breakdown plus proposed groups, the run-in scope count
+ * (caller-gated), the whole-policy line, and the not-yet-applied statement.
+ * Extracted from the success face unchanged (same styles, same test tags);
+ * the two faces are mutually exclusive states of one flow, so the shared tags
+ * identify exactly the face that is showing.
+ */
+@Composable
+private fun ExchangeImportSummaryContent(
+    summary: ExchangeImportSummary,
+    showScopeCandidates: Boolean,
+) {
+    // Single top-level emitter (compose lint); a plain zero-spacing Column
+    // keeps the extracted block visually identical to its inline original.
+    Column {
+        val warning = summary.noJudgmentCount > 0
         Text(
             text = pluralStringResource(
                 R.plurals.exchange_import_summary_recognized,
@@ -1551,7 +3829,7 @@ private fun ExchangeImportSuccess(
                 modifier = Modifier.testTag("exchange-import-summary-no-judgment"),
             )
         }
-        if (state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0) {
+        if (showScopeCandidates) {
             Text(
                 text = pluralStringResource(
                     R.plurals.exchange_import_summary_scope_candidates,
@@ -1604,121 +3882,369 @@ private fun ExchangeImportSuccess(
                 .padding(top = 8.dp)
                 .testTag("exchange-import-not-applied"),
         )
+    }
+}
+
+/**
+ * Issue #374 (spec 374 DI-AC-01 "ImportReview再開面", cold process到達範囲):
+ * the resume face of an imported proposal — the SAME privacy-safe summary as
+ * the success face (reconstructed from the durable record plus the session),
+ * the remaining time of the underlying request (the session's expiry — the
+ * same vocabulary and derivation as T-15: `requestRemainingDisplay` over the
+ * same plurals, no ticking clock), and the D-13 破棄して閉じる routed through
+ * the host's ONE import-discard confirmation. **NO continuation CTA** — not
+ * even a disabled or placeholder one (#375 owns the rebind; the #366
+ * capability-先取り禁止 principle). System Back is the plain zero-write
+ * close ([exchangeBackAction] → CLOSE): closing keeps the record.
+ */
+private fun LazyListScope.exchangeImportReviewItems(
+    state: ExchangeScreen.ImportReview,
+    onContinue: () -> Unit,
+    onDiscard: () -> Unit,
+    discardFocus: FocusRequester? = null,
+) {
+    val summary = state.summary
+    val warning = summary.noJudgmentCount > 0
+    item(key = "exchange-import-review") {
+        // The arrival moves focus to the face heading (the success face's
+        // FocusTargetText pattern) in addition to the live-region announcement.
+        val headingFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) {
+            runCatching { headingFocus.requestFocus() }
+        }
+        val remaining = requestRemainingDisplay(state.expiresAtEpochMs, state.readAtEpochMs)
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag("exchange-import-review"),
+        ) {
+            Text(
+                text = stringResource(
+                    if (warning) R.string.exchange_import_success_warning_title else R.string.exchange_import_success_title,
+                ),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+                    .focusRequester(headingFocus)
+                    .focusable()
+                    .testTag("exchange-import-review-title"),
+            )
+            ExchangeImportSummaryContent(
+                summary = summary,
+                showScopeCandidates = state.entryKind == ExchangeImportEntryKind.RUN_IN && summary.scopeCandidateCount > 0,
+            )
+            Text(
+                text = when (remaining) {
+                    is RequestRemaining.Hours -> pluralStringResource(R.plurals.exchange_request_remaining_hours, remaining.count, remaining.count)
+                    RequestRemaining.UnderOneHour -> stringResource(R.string.exchange_request_remaining_under_hour)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .testTag("exchange-import-review-remaining"),
+            )
+        }
+    }
+    // Issue #375 (spec "再開面CTAの有効化"): the rebind continuation — TO-BE
+    // T-18 vocabulary (spec 328 rev.2 D-3 unified copy). Shown for every
+    // reconcile-passed proposal (the #374 open gate guarantees it); the
+    // buttons are their OWN LazyColumn items so the list scrolls them into
+    // view individually at any font scale (spec SR-AC-10 reachability).
+    item(key = "exchange-import-review-continue") {
         Button(
             onClick = onContinue,
             enabled = !state.continuing,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
-                .testTag("exchange-import-continue"),
+                .padding(horizontal = 16.dp)
+                .testTag("exchange-import-review-continue"),
         ) {
-            Text(
-                stringResource(
-                    if (state.entryKind == ExchangeImportEntryKind.RUN_IN) {
-                        R.string.exchange_import_cta_run_in
-                    } else {
-                        R.string.exchange_import_cta_idle
-                    },
-                ),
-            )
+            Text(stringResource(R.string.exchange_import_continue))
         }
+    }
+    item(key = "exchange-import-review-discard") {
         OutlinedButton(
             onClick = onDiscard,
             enabled = !state.continuing,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp)
-                .testTag("exchange-import-discard"),
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                // Issue #374: the host restores focus here after the shared
+                // import-discard confirmation is dismissed (deterministic
+                // restore, mirroring the success face's 破棄 slot).
+                .then(discardFocus?.let { Modifier.focusRequester(it) } ?: Modifier)
+                .testTag("exchange-import-review-discard"),
         ) {
             Text(stringResource(R.string.exchange_import_discard))
         }
     }
 }
 
+/**
+ * Issue #374 (spec 374 DI-AC-13, #373 D-11 projection style): the typed
+ * failure face of the durable persistence step. Validation already passed —
+ * this is not one of the 20 validation classes — so the primary remedy is
+ * ONE action (save again, retrying only the store save of the anchored
+ * record); the face-level means are always present: 中断する closes without
+ * saving (nothing durable exists, so no confirmation — D-13 §9) and 診断を開く
+ * walks the existing diagnostics route where one exists. The body states the
+ * interruption consequence and the re-import recovery path.
+ */
 @Composable
-private fun ExchangeImportOutcome(outcome: ExchangeImportOutcome, rawText: String, holder: ExchangeFlowStateHolder) {
+private fun ExchangeImportPersistenceFailure(
+    state: ExchangeScreen.ImportPersistenceFailure,
+    onRetry: () -> Unit,
+    onInterrupt: () -> Unit,
+    onOpenDiagnostics: (() -> Unit)?,
+) {
+    // The arrival moves focus to the face heading (FocusTargetText pattern)
+    // in addition to the live-region announcement.
+    val headingFocus = remember { FocusRequester() }
+    LaunchedEffect(state.attemptToken) {
+        runCatching { headingFocus.requestFocus() }
+    }
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("exchange-import-persist-failed"),
+    ) {
+        Text(
+            text = stringResource(R.string.exchange_import_persist_failed_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .focusRequester(headingFocus)
+                .focusable()
+                .testTag("exchange-import-persist-failed-title"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_import_persist_failed_body),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .testTag("exchange-import-persist-failed-body"),
+        )
+        Button(
+            onClick = onRetry,
+            enabled = !state.retrying,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .testTag("exchange-import-persist-retry"),
+        ) {
+            Text(stringResource(R.string.exchange_import_persist_retry))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(
+                onClick = onInterrupt,
+                modifier = Modifier.testTag("exchange-import-persist-interrupt"),
+            ) {
+                Text(stringResource(R.string.exchange_import_interrupt))
+            }
+            if (onOpenDiagnostics != null) {
+                TextButton(
+                    onClick = onOpenDiagnostics,
+                    modifier = Modifier.testTag("exchange-import-persist-open-diagnostics"),
+                ) {
+                    Text(stringResource(R.string.exchange_import_open_diagnostics))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExchangeImportOutcome(
+    outcome: ExchangeImportOutcome,
+    rawText: String,
+    holder: ExchangeFlowStateHolder,
+    onOpenDiagnostics: (() -> Unit)?,
+) {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.exchange_import_result_title),
             style = MaterialTheme.typography.titleMedium,
         )
+        // Issue #373 (TO-BE D-11): the primary face carries only the remedy
+        // projection — one remedy copy and one action. The typed cause (the
+        // classification name and the inherited typed copy), the recognition
+        // facts and the raw text are auxiliary information, shown only inside
+        // the collapsed detail expansion below.
         val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
-        val message = when {
-            pipeline is ExchangeImportResult.Failure -> exchangeFailureText(pipeline.failure)
+        val display = (pipeline as? ExchangeImportResult.Failure)?.failure
+            ?.let { exchangeImportFailureDisplay(it) }
+        val primaryText = when {
+            display != null -> stringResource(display.primaryTextRes)
 
             outcome is ExchangeImportOutcome.InputNotReady ->
                 stringResource(R.string.exchange_generation_input_not_ready)
 
             else -> stringResource(R.string.exchange_import_result_unknown)
         }
+        // InputNotReady / unknown have no typed classification — the remedy is
+        // re-running the import itself (the former 再取り込み path).
+        val actionRes = when (display) {
+            null -> R.string.exchange_import_failure_action_reimport
+            else -> display.primaryActionLabelRes
+        }
         Text(
-            text = message,
+            text = primaryText,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier
                 .padding(vertical = 8.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite }
                 .testTag("exchange-import-outcome-message"),
         )
-        // Issue #332 (spec D-5 parse-first presentation): the recognized
-        // framing / accepted version / authored entry count lead the display;
-        // the raw text stays collapsed by default (bounded, internal scroll).
-        // InputNotReady settles AFTER the decode, so its recognition facts
-        // display exactly like a pipeline failure's (spec D-6).
+        OutlinedButton(
+            onClick = {
+                if (display?.remedy == ImportFailureRemedy.RECREATE_REQUEST) {
+                    // 依頼を作り直す: the existing generation-flow seam — the
+                    // replacement gate (spec 205 AC-13) still applies at the
+                    // request face; this action writes nothing (zero-write).
+                    holder.openFlow()
+                } else {
+                    // もう一度取り込む / 貼り直す: back to the import input;
+                    // the raw text is discarded here (spec 332 AC-7 boundary).
+                    holder.openImport()
+                }
+            },
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .testTag("exchange-import-failure-action"),
+        ) {
+            Text(stringResource(actionRes))
+        }
+
+        // Face-level means (spec #373): typed-failure-independent remedies,
+        // always present on the failure face. 中断する closes zero-write —
+        // nothing can be lost, so no confirmation (D-13 §9); the request
+        // (export session) survives. 診断を開く walks the existing diagnostics
+        // route after recording the current attempt's typed cause into the
+        // process-scoped transient holder (never persisted).
+        val detailExplanation = display?.let { stringResource(it.detailTextRes) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(
+                onClick = holder::close,
+                modifier = Modifier.testTag("exchange-import-interrupt"),
+            ) {
+                Text(stringResource(R.string.exchange_import_interrupt))
+            }
+            if (onOpenDiagnostics != null) {
+                TextButton(
+                    onClick = {
+                        // Record the CURRENT attempt's typed cause; an attempt
+                        // without one (InputNotReady / unknown) empties the
+                        // recording instead — a previous attempt's cause is
+                        // never presented as the current failure (issue #373
+                        // implementation review).
+                        display?.let {
+                            ExchangeImportFailureDiagnostics.record(
+                                RecentImportFailure(
+                                    typeName = it.detailTypeName,
+                                    explanation = detailExplanation ?: "",
+                                ),
+                            )
+                        } ?: ExchangeImportFailureDiagnostics.clear()
+                        onOpenDiagnostics()
+                    },
+                    modifier = Modifier.testTag("exchange-import-open-diagnostics"),
+                ) {
+                    Text(stringResource(R.string.exchange_import_open_diagnostics))
+                }
+            }
+        }
+
         val info = when (outcome) {
             is ExchangeImportOutcome.Pipeline -> exchangeImportDisplayInfo(outcome.result)
             is ExchangeImportOutcome.InputNotReady -> exchangeImportDisplayInfo(outcome.recognized)
         }
-        if (info.framing != null) {
-            ExchangeImportInfoRow(
-                label = stringResource(R.string.exchange_recognized_framing),
-                value = exchangeFramingText(info.framing),
-                tag = "exchange-import-outcome-framing",
+        val hasDetail = display != null ||
+            info.framing != null ||
+            info.intentSchemaVersion != null ||
+            info.authoredEntryCount != null ||
+            rawText.isNotEmpty()
+        if (hasDetail) {
+            var detailOpen by remember { mutableStateOf(false) }
+            val detailStateText = stringResource(
+                if (detailOpen) {
+                    R.string.exchange_import_failure_detail_hide
+                } else {
+                    R.string.exchange_import_failure_detail_show
+                },
             )
-        }
-        if (info.intentSchemaVersion != null) {
-            ExchangeImportInfoRow(
-                label = stringResource(R.string.exchange_recognized_version),
-                value = info.intentSchemaVersion,
-                tag = "exchange-import-outcome-version",
-            )
-        }
-        if (info.authoredEntryCount != null) {
-            ExchangeImportInfoRow(
-                label = stringResource(R.string.exchange_recognized_entries),
-                value = info.authoredEntryCount.toString(),
-                tag = "exchange-import-outcome-entries",
-            )
-        }
-        if (rawText.isNotEmpty()) {
-            var rawOpen by remember { mutableStateOf(false) }
             TextButton(
-                onClick = { rawOpen = !rawOpen },
-                modifier = Modifier.testTag("exchange-import-raw-toggle"),
+                onClick = { detailOpen = !detailOpen },
+                modifier = Modifier
+                    .semantics { stateDescription = detailStateText }
+                    .testTag("exchange-import-detail-toggle"),
             ) {
                 Text(
                     stringResource(
-                        if (rawOpen) R.string.exchange_import_raw_hide else R.string.exchange_import_raw_show,
+                        if (detailOpen) {
+                            R.string.exchange_import_failure_detail_hide
+                        } else {
+                            R.string.exchange_import_failure_detail_show
+                        },
                     ),
                 )
             }
-            if (rawOpen) {
-                Text(
-                    text = rawText,
-                    style = MaterialTheme.typography.bodySmall,
+            if (detailOpen) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 240.dp)
                         .verticalScroll(rememberScrollState())
-                        .testTag("exchange-import-raw-detail"),
-                )
+                        .testTag("exchange-import-failure-detail"),
+                ) {
+                    display?.let { d ->
+                        Text(
+                            text = stringResource(
+                                R.string.exchange_import_failure_detail_type_format,
+                                d.detailTypeName,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("exchange-import-detail-type"),
+                        )
+                        Text(
+                            text = stringResource(d.detailTextRes),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .testTag("exchange-import-detail-explanation"),
+                        )
+                    }
+                    if (info.framing != null) {
+                        ExchangeImportInfoRow(
+                            label = stringResource(R.string.exchange_recognized_framing),
+                            value = exchangeFramingText(info.framing),
+                            tag = "exchange-import-outcome-framing",
+                        )
+                    }
+                    if (info.intentSchemaVersion != null) {
+                        ExchangeImportInfoRow(
+                            label = stringResource(R.string.exchange_recognized_version),
+                            value = info.intentSchemaVersion,
+                            tag = "exchange-import-outcome-version",
+                        )
+                    }
+                    if (info.authoredEntryCount != null) {
+                        ExchangeImportInfoRow(
+                            label = stringResource(R.string.exchange_recognized_entries),
+                            value = info.authoredEntryCount.toString(),
+                            tag = "exchange-import-outcome-entries",
+                        )
+                    }
+                    if (rawText.isNotEmpty()) {
+                        Text(
+                            text = rawText,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("exchange-import-raw-detail"),
+                        )
+                    }
+                }
             }
-        }
-        Text(
-            text = stringResource(R.string.exchange_import_retry_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        OutlinedButton(onClick = holder::openImport, modifier = Modifier.padding(top = 8.dp)) {
-            Text(stringResource(R.string.exchange_import_retry))
         }
     }
 }
@@ -1778,54 +4304,66 @@ fun exchangeImportDisplayInfo(result: ExchangeImportResult?): ExchangeImportDisp
  */
 fun exchangeStatusTextResource(kind: ExchangeStatus.Kind): Int = when (kind) {
     ExchangeStatus.Kind.TRANSPORT_SUCCESS -> R.string.exchange_transport_success
+
     ExchangeStatus.Kind.TRANSPORT_CLIPBOARD_FAILED -> R.string.exchange_transport_clipboard_failed
+
     ExchangeStatus.Kind.TRANSPORT_SHARE_ABSENT -> R.string.exchange_transport_share_absent
+
     ExchangeStatus.Kind.TRANSPORT_FILE_FAILED -> R.string.exchange_transport_file_failed
+
     ExchangeStatus.Kind.FILE_READ_FAILED -> R.string.exchange_status_file_read_failed
+
     ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY -> R.string.exchange_generation_input_not_ready
+
     ExchangeStatus.Kind.GENERATION_STORE_FAILURE -> R.string.exchange_generation_store_failure
+
     ExchangeStatus.Kind.GENERATION_OVERSIZE -> R.string.exchange_generation_oversize
+
     ExchangeStatus.Kind.INPUT_OVERSIZE -> R.string.exchange_failure_input_oversize
+
     ExchangeStatus.Kind.RUN_BUSY -> R.string.exchange_run_busy
+
     ExchangeStatus.Kind.CLIPBOARD_EMPTY -> R.string.exchange_status_clipboard_empty
+
     ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT -> R.string.exchange_status_clipboard_not_text
-    ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY -> R.string.exchange_import_strategy_busy
-    ExchangeStatus.Kind.CTA_STRATEGY_BUSY -> R.string.exchange_import_cta_strategy_busy
+
     ExchangeStatus.Kind.CTA_START_FAILED -> R.string.exchange_import_cta_failed
+
     ExchangeStatus.Kind.IMPORT_DISCARDED -> R.string.exchange_import_discarded_guidance
+
+    ExchangeStatus.Kind.IMPORT_PERSIST_FAILED -> R.string.exchange_import_persist_failed_title
+
+    ExchangeStatus.Kind.IMPORT_DISCARD_FAILED -> R.string.exchange_import_discard_failed
+
+    ExchangeStatus.Kind.IMPORT_REVIEW_UNAVAILABLE -> R.string.exchange_import_review_unavailable
+
+    // Issue #375: rebind typed notices (spec SR-AC-07/08).
+    ExchangeStatus.Kind.REBIND_CONTEXT_STALE -> R.string.exchange_rebind_context_stale
+
+    ExchangeStatus.Kind.REBIND_ANCHOR_REFUSED -> R.string.exchange_rebind_anchor_refused
+
+    ExchangeStatus.Kind.REBIND_START_FAILED -> R.string.exchange_rebind_start_failed
+
+    // Issue #417: the atomic-generation refusal and the run-owned cleanup /
+    // discard persistence failures (typed, retryable).
+    ExchangeStatus.Kind.GENERATION_NOT_CONFIRMED -> R.string.exchange_generation_not_confirmed
+
+    ExchangeStatus.Kind.EXPORT_CLEANUP_FAILED -> R.string.exchange_export_cleanup_failed
+
+    ExchangeStatus.Kind.SCOPE_DISCARD_FAILED -> R.string.exchange_scope_discard_failed
 }
 
 @Composable
 private fun exchangeStatusText(kind: ExchangeStatus.Kind): String = stringResource(exchangeStatusTextResource(kind))
 
-@Composable
-private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (failure) {
-    is ExchangeImportFailure.Envelope -> when (failure.failure) {
-        ExchangeEnvelopeFailure.InputOversize -> stringResource(R.string.exchange_failure_input_oversize)
-        ExchangeEnvelopeFailure.FramingMissing -> stringResource(R.string.exchange_failure_framing_missing)
-        ExchangeEnvelopeFailure.FramingAmbiguous -> stringResource(R.string.exchange_failure_framing_ambiguous)
-        ExchangeEnvelopeFailure.FramingEmpty -> stringResource(R.string.exchange_failure_framing_empty)
-    }
-
-    // Spec 329: normalizer failures settle before the codec — their guidance
-    // is about the recognizable import formats, not the intent content.
-    is ExchangeImportFailure.Normalization -> when (failure.failure) {
-        ImportNormalizationFailure.AmbiguousBlocks ->
-            stringResource(R.string.exchange_failure_normalization_ambiguous)
-
-        ImportNormalizationFailure.UnrecognizedFormat ->
-            stringResource(R.string.exchange_failure_normalization_unrecognized)
-    }
-
-    is ExchangeImportFailure.Contract -> exchangeContractFailureText(failure.failure)
-}
-
 /**
  * The 14-class #204 contract failure mapping (spec 204 + spec 331 D-5 + spec
- * 337 D-8). The
- * exhaustive `when` is the compile-time guarantee that every contract class —
- * including the 17th unified outcome `SCOPE_MISMATCH`, raised by the run-side
- * scope binding gate — reaches the failure UI.
+ * 337 D-8). Since issue #373 the T-18 failure face goes through the
+ * remedy-projection table ([exchangeImportFailureDisplay]) instead — this
+ * mapping remains for its two run-side call sites (the selection surface's
+ * `scopeRejection` row and the `ScopeMismatchFailed` state, issues
+ * #369/#375) and the exhaustive `when` keeps its compile-time guarantee that
+ * every contract class reaches a failure UI.
  */
 @Composable
 fun exchangeContractFailureText(failure: IntentValidationFailure): String = when (failure) {
@@ -1854,7 +4392,38 @@ fun exchangeContractFailureText(failure: IntentValidationFailure): String = when
     IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
 
     // Issue #331 (17th outcome): the scope binding gate's typed rejection.
-    is IntentValidationFailure.ScopeMismatch -> stringResource(R.string.exchange_failure_scope_mismatch)
+    is IntentValidationFailure.ScopeMismatch -> when (failure.cause) {
+        // Issue #375 (spec SR-AC-01): a set mismatch is fixable on this very
+        // surface — the same proposal continues once the selection matches.
+        app.lawnchair.organizer.personalization.ScopeMismatchCause.SET_MISMATCH ->
+            stringResource(R.string.exchange_scope_set_mismatch)
+
+        // Issue #375 (spec SR-AC-02): unresolvable/projection drift cannot be
+        // fixed by editing the selection — the only remedy is a new request.
+        app.lawnchair.organizer.personalization.ScopeMismatchCause.CANDIDATE_UNRESOLVED ->
+            stringResource(R.string.exchange_scope_unresolvable_mismatch)
+
+        app.lawnchair.organizer.personalization.ScopeMismatchCause.PROJECTION_MISMATCH ->
+            stringResource(R.string.exchange_scope_unresolvable_mismatch)
+    }
 
     is IntentValidationFailure.UnknownCategoryRef -> stringResource(R.string.exchange_failure_unknown_category_ref)
+}
+
+/** Issue #371: gate owner identity of one generation attempt's JIT request. */
+internal data class ExchangeJitAttemptOwner(val attemptToken: Long)
+
+/**
+ * Issue #374: the benign default of the holder's [PendingImportedIntentStore]
+ * seam — success without persisting, so holders/fixtures that do not wire the
+ * durable store keep the pre-#374 lifecycles. Production always injects the
+ * real store through `PendingImportedIntentModule`.
+ */
+private object NoopPendingImportedIntentStore : PendingImportedIntentStore {
+    override fun save(proposal: DurablePendingIntent): Boolean = true
+    override fun load(): DurablePendingIntent? = null
+    override fun discard(): Boolean = true
+    override fun delete() = Unit
+    override fun deleteIf(proposal: DurablePendingIntent): Boolean = false
+    override fun discardIf(expected: DurablePendingIntent): DiscardIfResult = DiscardIfResult.Committed
 }

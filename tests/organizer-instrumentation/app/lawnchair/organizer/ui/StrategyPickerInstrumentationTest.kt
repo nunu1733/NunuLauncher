@@ -27,6 +27,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToString
+import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
 import com.android.launcher3.R
 import app.lawnchair.organizer.application.public.ApplyResult
@@ -54,6 +56,7 @@ import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
 import app.lawnchair.organizer.rules.LayoutStrategySelectionWriteResult
 import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
+import app.lawnchair.ui.preferences.destinations.OrganizerStrategyPreferences
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -84,10 +87,28 @@ class StrategyPickerInstrumentationTest {
     }
 
     @Test
-    fun pickerListsAllRuntimeSupportedStrategiesWithLocalizedNames() {
+    fun theRunSurfaceShowsNoStrategyPicker() {
+        // Issue #368 AC-1 (negative observation): the manual-run surface
+        // hosts no strategy section, radio rows, or frozen reason — the
+        // picker's only home is the T-05 materials surface. The idle entry
+        // is the representative state; the Selecting/Preview surfaces are
+        // exercised picker-free by the run-surface suite itself.
         clearSelectionStore()
         composeRule.setContent {
             LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+        }
+
+        composeRule.onNodeWithTag(STRATEGY_PICKER_TAG).assertDoesNotExist()
+        composeRule.onNodeWithText(
+            context().getString(R.string.manual_organization_strategy_section),
+        ).assertDoesNotExist()
+    }
+
+    @Test
+    fun pickerListsAllRuntimeSupportedStrategiesWithLocalizedNames() {
+        clearSelectionStore()
+        composeRule.setContent {
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         composeRule.onNodeWithText(context().getString(R.string.manual_organization_strategy_section))
@@ -95,13 +116,15 @@ class StrategyPickerInstrumentationTest {
         // Issue #235: the catalog has eight rows and the tail rows sit below
         // the fold on the CI emulator — scroll each row into view before the
         // display assertion (the picker itself stays non-virtualized for the
-        // radio-group a11y contract).
+        // radio-group a11y contract). Issue #398 adds BOTTOM_REGION_V1 (nine
+        // rows).
         for (name in listOf(
             R.string.organization_strategy_canonical_name,
             R.string.organization_strategy_tidy_name,
             R.string.organization_strategy_tidy_v2_name,
             R.string.organization_strategy_bottom_first_name,
             R.string.organization_strategy_bottom_first_v2_name,
+            R.string.organization_strategy_bottom_region_name,
             R.string.organization_strategy_global_name,
             R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,
@@ -119,7 +142,7 @@ class StrategyPickerInstrumentationTest {
         // nothing is persisted yet.
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val canonicalName = context().getString(R.string.organization_strategy_canonical_name)
@@ -135,7 +158,7 @@ class StrategyPickerInstrumentationTest {
         // rows announce name + selected state + description as single nodes.
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val sectionNode = composeRule.onNodeWithText(
@@ -167,7 +190,7 @@ class StrategyPickerInstrumentationTest {
         file.parentFile?.mkdirs()
         file.writeText("corrupt selection store")
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         composeRule.onNodeWithText(context().getString(R.string.organization_strategy_canonical_name))
@@ -180,7 +203,7 @@ class StrategyPickerInstrumentationTest {
     fun strategyPickerIsWrappedInASelectableGroup() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val groups = composeRule
@@ -194,14 +217,15 @@ class StrategyPickerInstrumentationTest {
     fun strategyRowsKeepSelectionSemanticsOnTheParentRow() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val pickerClickTargets = composeRule.onAllNodes(
             inStrategyPicker(hasClickAction()),
             useUnmergedTree = true,
         ).fetchSemanticsNodes()
-        assertEquals(8, pickerClickTargets.size)
+        // Issue #398: the catalog gained the BOTTOM_REGION_V1 row (nine rows).
+        assertEquals(9, pickerClickTargets.size)
         assertTrue(pickerClickTargets.all { it.config.getOrNull(SemanticsProperties.Role) == Role.RadioButton })
 
         val pickerSelectableTargets = composeRule.onAllNodes(
@@ -226,12 +250,16 @@ class StrategyPickerInstrumentationTest {
     fun selectingAStrategyMovesTheSingleSelectedParentRow() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val canonical = context().getString(R.string.organization_strategy_canonical_name)
         val tidy = context().getString(R.string.organization_strategy_tidy_name)
         composeRule.onNodeWithText(canonical).assertIsSelected()
+        // The T-05 list keeps all eight rows composed (radio-group a11y
+        // contract) but the row sits below the fold — scroll it into view so
+        // the injected tap lands inside the window.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
         composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
         composeRule.waitUntil(5_000) {
             val read = LayoutStrategySelectionModule.store(context()).read()
@@ -251,7 +279,7 @@ class StrategyPickerInstrumentationTest {
     fun selectingTheEffectiveStrategyIsAStoreAndVisualNoOp() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
         val before = LayoutStrategySelectionModule.store(context()).read()
@@ -275,7 +303,7 @@ class StrategyPickerInstrumentationTest {
         clearSelectionStore()
         composeRule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
-                LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+                LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
             }
         }
 
@@ -286,6 +314,7 @@ class StrategyPickerInstrumentationTest {
             R.string.organization_strategy_tidy_v2_name,
             R.string.organization_strategy_bottom_first_name,
             R.string.organization_strategy_bottom_first_v2_name,
+            R.string.organization_strategy_bottom_region_name,
             R.string.organization_strategy_global_name,
             R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,
@@ -308,9 +337,14 @@ class StrategyPickerInstrumentationTest {
     fun selectingAStrategyPublishesThroughTheValidatedWriteCommand() {
         clearSelectionStore()
         composeRule.setContent {
-            LawnchairTheme { ManualOrganizationPreferences(run = previewlessRunner()) }
+            LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
         }
 
+        // The row sits below the fold — scroll it into view first so the
+        // injected tap lands inside the window.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context().getString(R.string.organization_strategy_tidy_name)),
+        )
         composeRule.onNodeWithText(context().getString(R.string.organization_strategy_tidy_name))
             .performClick()
         composeRule.waitUntil(5_000) {
@@ -376,6 +410,7 @@ class StrategyPickerInstrumentationTest {
         ) = error("not reached: composition is NotReady")
 
         override fun readDurableOrganizerStatus() = app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = null
 
         override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
             kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)

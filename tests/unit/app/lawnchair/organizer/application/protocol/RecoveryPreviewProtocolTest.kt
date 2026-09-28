@@ -5,7 +5,6 @@ import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
-import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.public.OrganizerLockState
@@ -17,6 +16,7 @@ import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryPreviewUnavailable
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.revision.RevisionCalculator
+import app.lawnchair.organizer.application.store.RecoveryRecordCodec
 import app.lawnchair.organizer.planning.RevisionId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -115,32 +115,32 @@ class RecoveryPreviewProtocolTest {
             MatrixCase(
                 LifecycleState.VERIFIED,
                 false,
-                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryRecordCodec.RECORD_FORMAT_VERSION,
                 RecoveryPreviewRejection.CORRUPT,
             ),
             MatrixCase(LifecycleState.VERIFIED, true, 99, RecoveryPreviewRejection.INCOMPATIBLE_VERSION),
             MatrixCase(
                 LifecycleState.RESTORED,
                 true,
-                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryRecordCodec.RECORD_FORMAT_VERSION,
                 RecoveryPreviewRejection.ALREADY_RESTORED,
             ),
             MatrixCase(
                 LifecycleState.EXPIRED,
                 true,
-                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryRecordCodec.RECORD_FORMAT_VERSION,
                 RecoveryPreviewRejection.EXPIRED,
             ),
             MatrixCase(
                 LifecycleState.CORRUPT,
                 true,
-                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryRecordCodec.RECORD_FORMAT_VERSION,
                 RecoveryPreviewRejection.CORRUPT,
             ),
             MatrixCase(
                 LifecycleState.INCOMPATIBLE,
                 true,
-                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryRecordCodec.RECORD_FORMAT_VERSION,
                 RecoveryPreviewRejection.INCOMPATIBLE_VERSION,
             ),
         )
@@ -350,7 +350,7 @@ class RecoveryPreviewProtocolTest {
         createdAtMs: Long = FakeClock.nowMillis(),
         updatedAtMs: Long = FakeClock.nowMillis(),
         checksumValid: Boolean = true,
-        formatVersion: Int = LifecycleReconciler.SUPPORTED_FORMAT,
+        formatVersion: Int = RecoveryRecordCodec.RECORD_FORMAT_VERSION,
     ) {
         val state = writer.currentState()
         val manifest = PersistenceManifest(

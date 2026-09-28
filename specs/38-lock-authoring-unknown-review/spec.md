@@ -68,6 +68,11 @@ screen readers and localized; no state is communicated by color alone.
     line (cell / parent title) for placements the description collapses, so
     same-named placements are distinguishable from the dialog text alone
     ([spec 211](../211-lock-dialog-target-identity/spec.md)).
+  - Issue #367 (entry notation only, contract unchanged): since the organizer
+    materials relocation (TO-BE §5.2), the settings-side entry to this
+    management screen is the Organizer hub (T-01) materials group instead of
+    a Home-screen Layout-group row. The screen, its route, the AUTHORING
+    lease, and every lock-authoring contract are unchanged.
 - Localized, accessible state/effect/error/result messaging.
 
 ## Non-goals
