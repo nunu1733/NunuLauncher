@@ -5,10 +5,12 @@
 
 - Auditor: 独立session（general-purpose subagent）。実装sessionではなく、本PRのdiff作成・Phase 1/2 review・検証実行に関与していない。
 - PR: https://github.com/nunu1733/NunuLauncher/pull/472
-- Head SHA: acfc62fb0c14d677050348668a6df716f9495253
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36351985137
+- Head SHA: 95f38252c3db32c1a4248525842ac11aae17c4c3
+- Head SHA note: PR merge head。audited内容は `acfc62fb` までのcode delta + その後のdocs-only修正（plan rev 8 / spec Change history / 本record更新）
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36361245059（head `95f38252`、success。`acfc62fb` のrun 36351985137もsuccess）
 - Base audit: head `226d4ac9c01a8fd27e659de0bdbf4c0c62337f13`（run 36339364515）に対する初回audit。以下の「Re-audit」節がcode変更後の再監査（delta `226d4ac9..acfc62fb`）である。
 - Re-audit: head `acfc62fb0c14d677050348668a6df716f9495253`（delta `226d4ac9..acfc62fb`、4 files, +166/-5）。実施 2026-09-27 UTC / 2026-09-28 JST。
+- Re-audit coverage extension（2026-09-28）: `acfc62fb` 以降はR2対応のdocs修正（plan rev 8、spec Change history）と本record更新のみであり、code deltaの追加はない。merge head `95f38252` のCI run 36361245059はsuccess（manual-organization-ui / category-override両laneは初回attemptでenvironment failure → failed-lane rerunでgreen。分類は#473とPR #472コメント記録のとおり）。
 - Criteria: [spec 448](../../specs/448-edit-actions-per-item/spec.md) の FR-018 / NFR-013 / AC-5 / AC-6 / AC-7
 
 ## Scope
