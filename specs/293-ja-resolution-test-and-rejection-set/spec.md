@@ -2,10 +2,15 @@
 issue: "#293"
 status: draft
 requirements: []
-updated: 2026-09-19
+updated: 2026-09-28
 ---
 
 # issue #228 follow-up: ja解決test拡張とspec 13 `PreWriteRejection` 追記
+
+Risk tier: **L** ([docs/project/github-workflow.md](../../docs/project/github-workflow.md)
+Risk tiers、Issue #444運用。test拡張 + docs-only追記であり、高リスクpath・
+新規書込み経路・migrationに触れない。階層LはPRのみで足りるため本specは
+実装PRの判断資料であり、acceptedを必要としない)。
 
 > 本specは [Issue #293](https://github.com/nunu1733/NunuLauncher/issues/293) の
 > maintenance/docs+test-only follow-upを拘束契約として定義する。要件の正本は
@@ -20,8 +25,12 @@ PR #289 (issue #228) のmerge前監査
 ([docs/assessment/pr-289-organizer-missing-app-selection.md](../../docs/assessment/pr-289-organizer-missing-app-selection.md) §5) が
 非blocking follow-up 2件を記録した。
 
-1. **ja-locale解決test (spec 228 AC-12)** — issue #228が追加した20リソース
-   (18 strings + 2 plurals) は `values-ja` へのkey存在確認のみで、
+1. **ja-locale解決test (spec 228 AC-12)** — issue #228が追加したリソース
+   (PR #289時点で18 strings + 2 plurals。うち
+   `manual_organization_missing_apps_empty` は #369実装 (2026-09-20の
+   spec 228 Amend、TO-BE D-06「0件なら選択面を表示せず続行」) で削除され、
+   現mainには **17 strings + 2 plurals = 19リソース** が残存) は
+   `values-ja` へのkey存在確認のみで、
    `ManualOrganizationPreferencesInstrumentationTest.japaneseResourcesResolveEveryConcretePreviewString`
    によるja configuration contextでの解決assert (en fallbackの検出) が未整備である。
    spec 123 AC-5/AC-6とspec 228 AC-12のtest oracle
@@ -34,7 +43,8 @@ PR #289 (issue #228) のmerge前監査
 
 ## Outcome
 
-- issue #228由来の全20リソースがja configuration contextで解決することを
+- issue #228由来で現mainに残存する全19リソース (17 strings + 2 plurals) が
+  ja configuration contextで解決することを
   既存instrumentation testが機械的にassertする。
 - spec 13 の `PreWriteRejection` 閉集合と change history が
   `CANDIDATE_UNAVAILABLE` を runtime / contract test と矛盾なく記載する。
@@ -45,16 +55,18 @@ PR #289 (issue #228) のmerge前監査
 
 `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt`
 の `japaneseResourcesResolveEveryConcretePreviewString` へ、次のissue #228由来
-リソースを追加する (2026-09-19時点、baseline `3076bdae7ebf8dbb086f251203968c06e9986258`
+リソースを追加する (2026-09-28時点、baseline `c5a7840b880ed4c436b67170930ca87d4ef7f148`
 で再確認済みの `lawnchair/res/values/strings.xml`
-`<!-- Issue #228: missing-app selection and Add rows -->` ブロックと
-`unplaced_strategy_scope` / `selection_stale` / `candidate_unresolved` の3件を含む)。
+`<!-- Issue #228: missing-app selection and Add rows -->` ブロック (L1246、
+`values-ja` 側はL320) と `unplaced_strategy_scope` / `selection_stale` /
+`candidate_unresolved` の3件を含む。PR #289時点に存在した
+`manual_organization_missing_apps_empty` は #369実装でvalues/values-jaともに
+削除済みのため対象外)。
 
-strings (18件、既存の `addedPreviewStrings` リストへ追加):
+strings (17件、既存の `addedPreviewStrings` リストへ追加):
 
 - `manual_organization_detecting_missing_apps`
 - `manual_organization_missing_apps_title`
-- `manual_organization_missing_apps_empty`
 - `manual_organization_missing_apps_search_hint`
 - `manual_organization_missing_apps_select_all`
 - `manual_organization_missing_apps_clear_all`
@@ -91,10 +103,15 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 - production source、`ApplyResultContractTest` を含むunit test、
   `ApplyProtocol` / `Results.kt` の変更 (いずれもPR #289で実施済み)。
 - issue #235が後から追加したwidget系string
-  (`manual_organization_widget_moved_count` 等)、およびissue #336が追加した
+  (`manual_organization_widget_moved_count` 等)、issue #336が追加した
   `manual_organization_rejection_invalid_category_provenance`
-  (2026-09-19時点 (baseline `3076bdae7ebf8dbb086f251203968c06e9986258`) でも
-  引き続きvalues側のみに存在しvalues-ja未整備) のja解決test追加
+  (2026-09-28時点 (baseline `c5a7840b880ed4c436b67170930ca87d4ef7f148`) でも
+  引き続きvalues側のみに存在しvalues-ja未整備)、issue #417が追加した
+  `manual_organization_missing_apps_empty_continue` (0件続行の明示告知。
+  en/jaとも存在するが#417由来であり#228由来ではない)、およびissue #443が
+  追加した `exchange_ai_consultation_toggle_label` /
+  `exchange_ai_consultation_toggle_description` (AI相談凍結toggle。2026-09-28時点で
+  values側のみでvalues-ja未整備) のja解決test追加
   (別scope。各IssueのAC-12相当の追跡が必要なら別Issueとする)。
 - 上流Lawnchair文字列の翻訳、ja以外localeへの展開 (spec 123の非対象を引き継ぐ)。
 - `PreWriteRejection` の意味論・順序・型shapeの変更 (記載の正本化のみ)。
@@ -103,15 +120,15 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 
 | AC | 受入条件 | 必要evidence |
 |---|---|---|
-| AC-293-01 | 上記20リソースがja configuration contextで解決し、en fallbackしないことがinstrumentation testで固定される。pluralsはja (`other` のみ) での解決に加え、enの `one`/`other` 数量の区別を既存パターンと同様にassertする。 | `connectedLawnWithQuickstepGithubDebugAndroidTest` (対象class指定) のgreen logとCI run |
+| AC-293-01 | 上記19リソースがja configuration contextで解決し、en fallbackしないことがinstrumentation testで固定される。pluralsはja (`other` のみ) での解決に加え、enの `one`/`other` 数量の区別を既存パターンと同様にassertする。 | `connectedLawnWithQuickstepGithubDebugAndroidTest` (対象class指定) のgreen logとCI run |
 | AC-293-02 | spec 13 が `CANDIDATE_UNAVAILABLE` を閉集合として記載し、`Results.kt` と `ApplyResultContractTest.kt` の宣言と矛盾しない。change historyへ #185 precedentと同形式の記録がある。 | spec 13 diffとruntime宣言の突合 |
 | AC-293-03 | 変更はdocs+test-onlyであり、production source・DB・依存に差分がない。 | PR diffのfile list |
 
 ## Constraints
 
 - ja値がenと等価なリソースを `assertNotEquals` パターンへ追加しない
-  (2026-09-19時点 (baseline `3076bdae7ebf8dbb086f251203968c06e9986258`) で
-  18 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
+  (2026-09-28時点 (baseline `c5a7840b880ed4c436b67170930ca87d4ef7f148`) で
+  17 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
   衝突が生じた場合は、当該keyのassert形式を既存pluralsの「解決すること」
   assertionへ寄せ、en fallback検出を弱めない)。
 - 既存testのassertion様式 (context vs ja context、failure message、
@@ -229,3 +246,34 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   行位置は不変、issue52 laneは引き続き対象test classを実行する。
   `CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md` の変更は
   本Issueの対象語彙・契約に無関係。契約内容の変更なし。
+- 2026-09-28: baseline `origin/main` = `c5a7840b880ed4c436b67170930ca87d4ef7f148`
+  で再入場検証。前回baseline以降の419 commitを調査し、**対象key集合を初めて
+  実質更新**した。(1) #369実装 (commit `5b138bd33d`、spec 228は2026-09-20に
+  Amend済み: 0候補時は選択面を表示せずcapture/planへ続行) により
+  `manual_organization_missing_apps_empty` がvalues/values-jaともに削除された
+  ため、対象を18 strings + 2 plurals = 20リソースから **17 strings + 2 plurals
+  = 19リソース** へ縮小 (17 stringsのja≠enは機械突合で17/17、2 pluralsは
+  en `one`/`other` vs ja `other`のみ、を現baselineで再確認)。
+  (2) #417が `manual_organization_missing_apps_empty_continue` (en/jaとも存在)、
+  #443が `exchange_ai_consultation_toggle_label` / `_description`
+  (values側のみ) を追加 — いずれも#228由来ではないためNon-goalsへ記録
+  (現mainのmanual_organization/exchange系values-only欠落は#443の2件と
+  #336のprovenanceの計3件)。(3) 対象test fileは #417/#443のjourney test等の
+  追加で再び大きく変化したが、`japaneseResourcesResolveEveryConcretePreviewString`
+  自体は内容不変のままL1606-1748からL2124-2267へ移動、#228keyは依然0件
+  (L2124-2267を機械検索して0 match)。(4) CIが #422 (impact-based CI portfolio)
+  で再構成され、旧 `organizer-instrumentation-issue52-tests` laneは廃止。
+  対象classは新lane `organizer-instrumentation-manual-organization-ui-tests`
+  (API 36、runner `tools/ci/run-manual-organization-ui-instrumentation.sh` の
+  classlistに含まれる) が実行し、`surface_organizer_ui` (対象test pathを含む)
+  でtest-only変更もself-triggerする。`final-status` gate (L1011) は同laneを
+  needsに含む。(5) #444によりworkflowへRisk tiersが導入され、本Issueは
+  **階層L** (test+docs-only、高リスクpath不変) と判定して冒頭へ明記した
+  (階層LはPRのみで足りるため本spec/planは判断資料扱い)。
+  (6) spec 13 (閉集合L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま)、
+  `Results.kt` (L83、L74/L90間)、`ApplyResultContractTest.kt` (L72)、
+  spec 228 change historyの#293委譲 (L17/L285)、監査記録 §5 (L105)、
+  spec 123 AC-5/AC-6 (L132-133) はいずれも分岐基点 `f9afd8bfde12` から
+  現mainまでblob単位で無変更のため、本branchのspec 13草案は現mainへ
+  そのまま適用可能。`values` 側 `<!-- Issue #228 -->` ブロックはL1246、
+  values-ja側はL320へ移動。
