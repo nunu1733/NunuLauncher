@@ -416,7 +416,23 @@ private fun DiagramItemView(
     // dock上のアイテムは選択対象外（spec）。nullで非選択の描画になる。
     onToggleSelection: ((Int) -> Unit)?,
 ) {
-    val description = itemContentDescription(item, memberCount, pageLabel, cellLabel, selected)
+    val selectedText = stringResource(R.string.edit_surface_a11y_selected)
+    val lockedText = stringResource(R.string.edit_surface_a11y_locked)
+    val lockUnknownText = stringResource(R.string.edit_surface_a11y_lock_unknown)
+    val notSelectableText = stringResource(R.string.edit_surface_a11y_not_selectable)
+    val folderText = stringResource(R.string.edit_surface_a11y_folder, memberCount)
+    val semanticsDescriptor = editSurfaceItemSemantics(
+        item,
+        memberCount,
+        pageLabel,
+        cellLabel,
+        selected,
+        selectedText,
+        lockedText,
+        lockUnknownText,
+        notSelectableText,
+        folderText,
+    )
     val borderModifier = if (selected) {
         Modifier.border(
             border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
@@ -433,7 +449,6 @@ private fun DiagramItemView(
     } else {
         Modifier
     }
-    val selectedText = stringResource(R.string.edit_surface_a11y_selected)
     Column(
         modifier = modifier
             .then(borderModifier)
@@ -441,12 +456,13 @@ private fun DiagramItemView(
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp))
             .padding(1.dp)
             .semantics {
-                contentDescription = description
-                // 選択状態はCompose標準のselected stateで支援技術に伝わる。
-                if (item.eligibility != SelectionEligibility.UNSUPPORTED) {
-                    this.selected = selected
+                // 純descriptor（editSurfaceItemSemantics）がsemantics供給の単一の権威。
+                // contentDescription / selected / stateDescription の全てがここから流れる。
+                this.contentDescription = semanticsDescriptor.description
+                if (semanticsDescriptor.selectable) {
+                    this.selected = semanticsDescriptor.selected
                 }
-                stateDescription = if (selected) selectedText else ""
+                this.stateDescription = semanticsDescriptor.stateDescription
             },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -511,6 +527,59 @@ private fun DiagramItemView(
             }
         }
     }
+}
+
+/**
+ * 図アイテムのsemantics供給の純descriptor（AC-15）。contentDescription /
+ * selected / stateDescription の全ての値を1つの純関数が決定し、
+ * [DiagramItemView] のsemantics blockはこの値を書き込むのみ。UI接続の
+ * 回帰oracle（[EditSurfaceA11yDescriptionTest]）はこの型を検証する。
+ */
+data class EditSurfaceItemSemantics(
+    val description: String,
+    /** 選択対象か（UNSUPPORTED以外）。falseならselected stateを設定しない。 */
+    val selectable: Boolean,
+    val selected: Boolean,
+    val stateDescription: String,
+)
+
+/** [EditSurfaceItemSemantics] の純構築。全semantics値の単一の権威。 */
+internal fun editSurfaceItemSemantics(
+    item: EditSurfaceItem,
+    memberCount: Int,
+    pageLabel: String?,
+    cellLabel: String?,
+    selected: Boolean,
+    selectedText: String,
+    lockedText: String,
+    lockUnknownText: String,
+    notSelectableText: String,
+    folderText: String,
+): EditSurfaceItemSemantics {
+    val description = editSurfaceItemDescription(
+        label = item.label ?: "",
+        eligibility = item.eligibility,
+        isFolder = item.itemType == HomeEditItemTypes.FOLDER,
+        memberCount = memberCount,
+        selected = selected,
+        selectedText = selectedText,
+        lockedText = lockedText,
+        lockUnknownText = lockUnknownText,
+        notSelectableText = notSelectableText,
+        folderText = folderText,
+        pageLabel = pageLabel,
+        cellLabel = cellLabel,
+    )
+    return EditSurfaceItemSemantics(
+        description = description,
+        selectable = item.eligibility != SelectionEligibility.UNSUPPORTED,
+        selected = selected,
+        stateDescription = if (item.eligibility != SelectionEligibility.UNSUPPORTED && selected) {
+            selectedText
+        } else {
+            ""
+        },
+    )
 }
 
 @Composable

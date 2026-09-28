@@ -95,4 +95,85 @@ class EditSurfaceA11yDescriptionTest {
         val description = describe(SelectionEligibility.SELECTABLE, selected = false, pageLabel = null, cellLabel = null)
         assertEquals("Alpha", description)
     }
+
+    // --- descriptor: the single authority the Compose semantics reads ---
+
+    private fun descriptor(
+        eligibility: SelectionEligibility,
+        selected: Boolean,
+        isFolder: Boolean = false,
+    ): app.lawnchair.homeedit.ui.EditSurfaceItemSemantics {
+        val item = EditSurfaceItem(
+            id = 1,
+            itemType = if (isFolder) HomeEditItemTypes.FOLDER else HomeEditItemTypes.APPLICATION,
+            label = "Alpha",
+            iconBytes = null,
+            targetKey = null,
+            userSerial = SERIAL_A,
+            lockState = when (eligibility) {
+                SelectionEligibility.LOCKED -> app.lawnchair.organizer.application.public.OrganizerLockState.LOCKED
+                SelectionEligibility.LOCK_UNKNOWN -> app.lawnchair.organizer.application.public.OrganizerLockState.UNKNOWN
+                else -> app.lawnchair.organizer.application.public.OrganizerLockState.UNLOCKED
+            },
+            container = HomeEditContainers.DESKTOP,
+            screenId = 0,
+            cellX = 0,
+            cellY = 1,
+            spanX = 1,
+            spanY = 1,
+            rank = 0,
+            isSessionCreated = false,
+        )
+        return app.lawnchair.homeedit.ui.editSurfaceItemSemantics(
+            item,
+            memberCount = 2,
+            pageLabel = "Page 1",
+            cellLabel = "(0, 1)",
+            selected = selected,
+            selectedText = texts.getValue("selected"),
+            lockedText = texts.getValue("locked"),
+            lockUnknownText = texts.getValue("lockUnknown"),
+            notSelectableText = texts.getValue("notSelectable"),
+            folderText = texts.getValue("folder"),
+        )
+    }
+
+    @Test
+    fun `descriptor carries description selected state and state description for a selected item`() {
+        val d = descriptor(SelectionEligibility.SELECTABLE, selected = true)
+        assertTrue("description missing title/position/selection: ${d.description}", d.description.contains("Alpha") && d.description.contains("selected"))
+        assertTrue(d.selectable)
+        assertTrue(d.selected)
+        assertEquals(texts.getValue("selected"), d.stateDescription)
+    }
+
+    @Test
+    fun `descriptor of a deselected item clears the state description`() {
+        val d = descriptor(SelectionEligibility.SELECTABLE, selected = false)
+        assertTrue(d.selectable)
+        assertFalse(d.selected)
+        assertEquals("", d.stateDescription)
+    }
+
+    @Test
+    fun `descriptor of an unsupported item never sets the selected state`() {
+        // The descriptor derives eligibility from the item itself; a folder row
+        // (real folder, not session-created) is the UNSUPPORTED fixture here.
+        val d = descriptor(SelectionEligibility.UNSUPPORTED, selected = true, isFolder = true)
+        assertFalse(d.selectable)
+        assertEquals("", d.stateDescription)
+        assertTrue(d.description.contains("not selectable"))
+    }
+
+    @Test
+    fun `descriptor of a locked item carries the lock reason`() {
+        val d = descriptor(SelectionEligibility.LOCKED, selected = false)
+        assertTrue(d.description.contains("placement locked"))
+    }
+
+    @Test
+    fun `descriptor of a lock unknown item carries the lock unknown reason`() {
+        val d = descriptor(SelectionEligibility.LOCK_UNKNOWN, selected = false)
+        assertTrue(d.description.contains("lock state unavailable"))
+    }
 }
