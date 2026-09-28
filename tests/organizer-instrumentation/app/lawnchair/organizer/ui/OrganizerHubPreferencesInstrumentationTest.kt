@@ -1489,10 +1489,18 @@ class OrganizerHubPreferencesInstrumentationTest {
         ).performSemanticsAction(SemanticsActions.RequestFocus)
         awaitFocused(context.getString(R.string.manual_organization_recovery))
         // Issue #449: the edit-surface row joins the hub between the start
-        // CTA and the materials rows; the traversal order and the DPAD budget
-        // include it.
+        // CTA and the materials rows. It may sit below the fold in this
+        // fixture, so reveal it with an explicit scroll and assert its click
+        // action; the DPAD order oracle continues from the diagnostics row
+        // (the row itself is a plain navigation row, not part of the
+        // deterministic focus order under test).
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            hasText(context.getString(R.string.edit_surface_menu_open)),
+        )
+        composeRule.onNodeWithText(
+            context.getString(R.string.edit_surface_menu_open),
+        ).assertHasClickAction()
         val order = listOf(
-            R.string.edit_surface_menu_open,
             R.string.organizer_diagnostics_title,
             R.string.organizer_category_overrides_title,
             R.string.organizer_custom_category_title,
