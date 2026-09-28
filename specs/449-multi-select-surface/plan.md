@@ -7,6 +7,7 @@
 > Phase 1（本書の初版）: spec + planの起草とreviewを追跡する。Phase 2（実装）は同じbranchで行い、本planのRevisionで追跡する。#448の先例（spec + planをPhase 1で起草し、review clearでspecをacceptedに進める。Phase 2を同じbranch/PRで実施）に従う。
 > Revision 2: 2026-09-28 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096): Request changes）の指摘1〜4のうちplan側の対応。指摘1（受入前提）: spec冒頭へ受入条件（ADR-0014の受入前提。#442結論待ち）を明記し、本planもPhase 2の開始条件に同じ前提を置く。指摘2: data flowを `ApplyResult` variantごとの観測契約へ修正。指摘3: 共有plannerへの「指定セルへの新規フォルダ作成」intent variant追加をDesign/Change setへ反映。指摘4: 結合点5（lockState UNKNOWN）を未決の確認事項から撤去し、既存 `LOCK_STATE_UNAVAILABLE` 契約と一致する設計（選択不可+確定ゲート）へ確定。
 > Revision 3: 2026-09-28 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862337471): Request changes。round 1指摘3・4は解消認定）の指摘2（variant契約の残差）に対応: data flowで `ConcurrentRun` を独立variantとして明示、`NoChanges` の到達不能不変条件（builderの空差分計画の禁止+test）と防御到達時の扱いを追加、`Migration and recovery` の旧来の包括表現（「失敗時は変更前へ戻る」）をvariant分類へ同期。指摘1（受入前提）は判定どおり外部前提の完了が解除条件であり、specは `draft` 維持、Phase 2実装は開始しない。
+> Revision 4: 2026-09-28 — 受入前提の成立。#442最終結論C確定 → ADR-0014 Accepted（Revision 3、受入PR #475）を受けて、現行main（`c5a7840b88`）を本branchへmergeし、受入revisionとの整合を再照合した。照合結果: 受入ADRの再確認3点（案A/B比較不変、#448/#449の15 baseline継続、patch surface方針不変）は本plan/specと矛盾しない。実質変更はなく、spec冒頭の受入前提の記述を「成立済み」へ更新するのみ。round 3判定の保留条件が満たされたためround 4再reviewへ進める。
 
 ## Current evidence
 
@@ -210,7 +211,7 @@ test-audit審査の要点（JVM testの追加とinstrumentation class追加の�
 - [ ] `docs/product/requirements.md`（FR-019 / NFR-013のstatus。FR-018は#448分を実装merge済みであることへの言及とともにstatus更新）
 - [ ] `docs/engineering/ci-test-portfolio.md` / `tools/repo-contract/ci_portfolio_map.yml`（instrumentation classの割付記録。lane↔surface対応は不変の見込み）
 - [ ] `docs/engineering/organizer-diagnostics.md`（結合点4の確認結果に応じて記載要否を判断）
-- [ ] ADR（新設しない。ADR-0013/0014を参照するのみ。ADR-0014は #442 結論後の受入時に再照合）
+- [ ] ADR（新設しない。ADR-0013/0014を参照するのみ。ADR-0014は2026-09-28にAccepted（Revision 3）。受入revisionとの整合再照合は完了し、実質変更はなかった（本plan Revision 4））
 
 ## Execution checklist
 
@@ -222,17 +223,17 @@ test-audit審査の要点（JVM testの追加とinstrumentation class追加の�
 - [ ] Full relevant verification completed（Verification表の全行）
 - [ ] PR evidence and remaining risks recorded（実機確認はowner確認事項として明記）
 
-## Review / handoff packet（Phase 1 Revision 3時点）
+## Review / handoff packet（Phase 1 Revision 4時点）
 
 - Issue and all comments: https://github.com/nunu1733/NunuLauncher/issues/449; retrieved at 2026-09-28; state=OPEN; labels=type: feature
 - Scope type: feature
-- Accepted spec + commit: **本specの受入はADR-0014の受入が前提**（spec冒頭に明記。round 1指摘1、round 2指摘1で判定確定: 判定は「(b) ADR-0014の受入完了までPhase 1 clear自体を保留」）。解除条件: #442最終結論 → ADR-0014 Accepted → Accepted revisionを本branchへ取り込み → spec/planとの整合再照合 → 再reviewでclear/accepted。それまでspecは `draft` を維持し、Phase 2実装は開始しない（workflow `docs/project/github-workflow.md` L112-L124 / L153-L162のStart gateどおり）
+- Accepted spec + commit: **受入前提は成立済み**（#442最終結論C → ADR-0014 Accepted Revision 3、受入PR #475で #447 決着。main `c5a7840b88`を本branchへmerge済み。受入revisionとの再照合完了、実質変更なし）。round 4再reviewでclearとなった場合にspecを `accepted` へ進める
 - Bug oracle: N/A（feature。振る舞いoracleは本specのBehavior scenarios / AC）
-- Plan + revision: specs/449-multi-select-surface/plan.md（本書、Revision 3）
-- Base SHA: f35ff4494f447c3cdb253eef6c3d10c77083ba03（現行main。PR #472で#448収録後）
-- Head SHA: round 2 review対象 `30a5ccf29be5272dac59cc96378325555284e71f`。Revision 3のheadは、本欄を含むcommit自体がheadを変えるためIssue #449へのhandoffコメントで記録する（正本）
+- Plan + revision: specs/449-multi-select-surface/plan.md（本書、Revision 4）
+- Base SHA: f35ff4494f447c3cdb253eef6c3d10c77083ba03（Phase 1起草時のmain）。branchは現行main（`c5a7840b88`、ADR-0014受入後）へ同期済み
+- Head SHA: round 3 review対象 `bf6d81145511996b2a29bc664111cc0839ed193c`。Revision 4（merge + 再照合記録）のheadは、本欄を含むcommit自体がheadを変えるためIssue #449へのhandoffコメントで記録する（正本）
 - Diff: current main...headの実質差分は `specs/449-multi-select-surface/spec.md` / `plan.md` の2ファイル（compare URLはpush後に記録）
-- Diff boundary: Phase 1はdocs-only（上記2ファイル）。full diffを確認対象とする
-- Review履歴: round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096) Request changes、指摘1〜4）→ Revision 2 → round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862337471) Request changes。round 1指摘3・4は解消認定。指摘1=外部前提によるclear保留、指摘2=variant契約の残差）→ Revision 3（指摘2の残差同期: `ConcurrentRun` 独立variant化、`NoChanges` 到達不能契約、`Migration and recovery` の同期）
+- Diff boundary: Phase 1はdocs-only（上記2ファイル。merge commitによるmain同期を除く）。full diffを確認対象とする
+- Review履歴: round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096) Request changes、指摘1〜4）→ Revision 2 → round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862337471) Request changes。指摘3・4解消、指摘1=外部前提でclear保留、指摘2=variant残差）→ Revision 3 → round 3（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862418500) 指摘2解消確認。clear保留は外部前提待ち）→ **#442最終結論C確定・ADR-0014受入（Revision 3、PR #475）** → Revision 4（受入revision取り込みと再照合。実質変更なし）
 - Executed evidence: `python3 tools/repo-contract/validate_repo_contract.py` の実行結果をpush後のhandoffコメントへ記録する
-- 次の1手: Revision 3をpushし、ChatGPTへPhase 1再review（round 3。範囲は「round 2指摘2の残差同期の確認」に限定。clear自体は外部前提の完了まで保留されたまま）を依頼（結果はIssue #449コメントへ投稿）。その後は #442の最終結論とADR-0014の受入を待ち、Accepted revision取り込みheadで再review → clear後にPhase 2（実装）を同じbranchで開始する
+- 次の1手: Revision 4をpushし、ChatGPTへPhase 1再review（round 4。範囲は「受入前提の成立、受入revision取り込みと再照合の妥当性」に限定）を依頼（結果はIssue #449コメントへ投稿）→ clear後、specを `accepted` へ更新してPhase 2（実装）を同じbranchで開始する
