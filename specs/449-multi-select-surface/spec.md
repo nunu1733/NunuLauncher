@@ -43,8 +43,11 @@ updated: 2026-09-28
   - **stale時（ずれ検出。メモ§4.3）**: 確定時の再captureでrevisionまたは状態が一致しない場合、適用経路は零書込みでtyped拒否する。編集画面はセッション（選択とアクション結果）を破棄し、理由を表示したうえで最新のホームで編集画面を開き直す（第1版。編集内容の載せ直しはNon-goals）。
   - **復元点の扱い（ADR-0014 Decision）**: 1セッション = 1適用 = 1復元点。activeな未確定復元点が3つある等により `RECOVERY_POINT_ADMISSION_BLOCKED`（`ApplyProtocol.kt:199`。#166の受付制限はPR #183で解消済みのため正常系で起きない）が観測された場合は、書かずにその理由を示して再試行を促す。このときセッションは保持する（理由が解消した後に再確定できる）。
   - **organizer runとの排他**: 適用はorganizer application moduleの既存のlease（`LayoutWriteCoordinator` のORGANIZER。`src/com/android/launcher3/model/LayoutWriteCoordinator.java:53-58`）を経由するため、organizer runの適用と同時に書かれない。organizer run適用中に確定した場合は書かず、その旨のtyped理由を示して再試行を促す（セッション保持）。逆に編集画面の適用中はorganizer runの適用は開始できない（既存の排他機構とmodule mutex）。
-  - **適用結果ごとの観測可能な契約（既存 `ApplyResult` の各variantに対応）**:
-    - **確定前のtyped拒否（pre-writeの `Rejected`。`STALE_REVISION` / `EXACT_PRECONDITION_FAILED` / `INVALID_PLAN` / `RECOVERY_POINT_ADMISSION_BLOCKED` / `RECOVERY_STORE_UNAVAILABLE` / `WRITER_BUSY` / `ConcurrentRun` / `LOCK_STATE_UNAVAILABLE` 等）**: 零書込みである。理由の表示と、拒否理由ごとの次の操作（staleは開き直し、blocked・busyは再試行の促し）は上記の各節のとおり。
+  - **適用結果ごとの観測可能な契約（既存 `ApplyResult` の各variantに対応。`Results.kt:45-68`）**:
+    - **`Applied(pointId)`（成功）**: 1回の適用と1個の復元点が完了し、相関reloadと適用後検証を満たす。編集画面を閉じ、ホームは相関reloadで更新される。
+    - **確定前のtyped拒否（pre-writeの `Rejected`。`STALE_REVISION` / `EXACT_PRECONDITION_FAILED` / `INVALID_PLAN` / `RECOVERY_POINT_ADMISSION_BLOCKED` / `RECOVERY_STORE_UNAVAILABLE` / `WRITER_BUSY` / `LOCK_STATE_UNAVAILABLE` 等）**: 零書込みである。理由の表示と、拒否理由ごとの次の操作（staleは開き直し、blocked・busyは再試行の促し）は上記の各節のとおり。
+    - **`ConcurrentRun`（独立variant。`PreWriteRejection` ではない）**: 零書込みである。organizer run等の他操作が進行中である旨の理由を表示し、再試行を促す（セッション保持。本specの排他の節と同じ扱い）。
+    - **`NoChanges`**: 本経路では到達不能にする。確定はセッション計画が空でない間のみ可能であり、適用計画builderは空差分（全Preserve・sourceState==intendedState）の計画を生成しないことを不変条件とし、testで検証する。防御として到達した場合（実装不具合）は零書込みで「変更が反映されなかった」旨を表示し、セッションを保持する。
     - **`RolledBack`**: transaction rollback後のpre-stateである（無変更）。理由を表示し、ホームが変化していないことを示す。
     - **`Recovered`**: 自動復旧完了後のpre-stateである（無変更）。理由を表示し、ホームが変化していないことを示す。
     - **`Unresolved` / `RecoveryFailed`**: `authoritativeState` が示す状態に従う。pre-stateの確認ができない限り「ホームは変化していない」と断定せず、状態不明または復旧未完了としてfail-closedに扱う。理由と、復旧への導線（アプリ内の復元導線。適用と復旧の契約の正本は spec 13）を表示する。
@@ -230,7 +233,7 @@ Then 図は適用後の最新ホームのcaptureから描画される
 - [ ] AC-13: patch surface: PR上で `measure_upstream_patch_surface.py --target HEAD --enforce-baseline` を実行し、結果をPR本文に記録する。入口追加はfork側ファイル（`LauncherOptionsPopup.kt`）への追加分であり、src/側の変更が発生した場合はNFR-010としてPRで記録し、bridge ownerを明示する。
 - [ ] AC-14: 文書: specが `implemented` になり、`DESIGN.md`（homeedit moduleの記述へ編集画面と一括適用の追加）、`CONTEXT.md`（domain language 3語）、[requirements.md](../../docs/product/requirements.md)（FR-019 / NFR-013のstatus。FR-018は#448分を含めて実装mergeを根拠に更新）が更新される。
 - [ ] AC-15: アクセシビリティ: 図アイテムのラベル・選択状態・選択不可の理由、4アクション、確定・キャンセル・リセット、理由表示がリソース由来かつ空でない文字列から供給されることの自動検証に加え、エミュレータTalkBackでの読み上げ確認を記録し、実機確認をowner確認に含める。
-- [ ] AC-16: 適用結果の観測契約が既存 `ApplyResult` の各variantに対応する: 確定前の `Rejected` は零書込み、`RolledBack` と `Recovered` はpre-state（無変更）の表示、`Unresolved` と `RecoveryFailed` は `authoritativeState` に従いpre-stateを確認できない限り「無変更」と断定しないfail-closed表示（復旧導線の表示を含む）。テストで確認する。
+- [ ] AC-16: 適用結果の観測契約が既存 `ApplyResult` の全variant（`Applied` / `Rejected` / `ConcurrentRun` / `NoChanges` / `RolledBack` / `Recovered` / `Unresolved` / `RecoveryFailed`）に対応する: 確定前の `Rejected` と `ConcurrentRun` は零書込み、`RolledBack` と `Recovered` はpre-state（無変更）の表示、`Unresolved` と `RecoveryFailed` は `authoritativeState` に従いpre-stateを確認できない限り「無変更」と断定しないfail-closed表示（復旧導線の表示を含む）。`NoChanges` は到達不能（確定はセッション計画が空でない間のみ可能、builderは空差分計画を生成しない不変条件。防御到達時は零書込み+変更未反映の表示）。テストで確認する。
 
 ## Test oracle
 
@@ -240,7 +243,7 @@ Then 図は適用後の最新ホームのcaptureから描画される
 | AC-4 | セッション計画構築のJVM test（一括移動・空き不足・フォルダ・新規フォルダ・外す・決定性・冪等性・typed拒否）+ エミュレータ操作記録 |
 | AC-5 | instrumentation（適用経路の既存seam）: 編集セッション→適用計画→applyの統合test（選択行のみ変化、recovery point 1個、相関reload、1 transaction、選択外の行不変）。既存の適用プロトコル自体の契約テスト（rollback・失敗注入・検証）は既存test群が所有し、本Issueでは回帰確認のみ |
 | AC-6 / AC-7 / AC-8 | instrumentation: 適用前にDBを変えて零書込みと開き直し（stale）、lease保持中の零書込みと理由（排他・blocked）、リセット・キャンセルの零書込み、UNKNOWN行存在時の確定無効化と選択不可 |
-| AC-16 | instrumentation: 失敗注入での `RolledBack`（pre-state表示）と `Unresolved` / `RecoveryFailed`（fail-closed表示。既存プロトコルの自動復旧testとの接続を確認） |
+| AC-16 | instrumentation: 失敗注入での `RolledBack`（pre-state表示）と `Unresolved` / `RecoveryFailed`（fail-closed表示。既存プロトコルの自動復旧testとの接続を確認）。`NoChanges` 到達不能のJVM test（builderが空差分計画を生成しない不変条件） | instrumentation lane + `tests/unit/app/lawnchair/homeedit/` |
 | AC-9 | `tests/unit/app/lawnchair/homeedit/` のJVM test群。`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'`（CI: `organizer-unit-tests`。#448でfilter追加済み） |
 | AC-10 | instrumentation（既存laneへの追加。新laneは作らない）: 上記AC-5/6/7/8の実framework・実DB test群 |
 | AC-11 | エミュレータでの操作計測（選択反映・確定→適用完了。PR本文）+ owner実機確認 |
@@ -257,3 +260,4 @@ Then 図は適用後の最新ホームのcaptureから描画される
 
 - 2026-09-28: Draft created for #449（Phase 1）。出典: Issue #449本文と同コメント（ADR-0014 Revision 2に伴う前提同期。icon前提と入口コストの修正を反映）+ 承認済み再焦点化方針メモ（Revision 5）§4.3/§4.5/§4.8/§4.9 + ADR-0014（Proposed Revision 2）+ ADR-0013（#445受入）+ ベンチマーク正本（#441確定）+ #448実装済みmodule（PR #472、main `f35ff4494f`）。
 - 2026-09-28: Revision 2 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096): Request changes）の指摘に対応。指摘1（受入前提）: 冒頭へ「本specの受入はADR-0014の受入が前提。受入まで `draft` を維持し、Accepted化時にrevisionを取り込んで再照合する」を明記（外部前提は #442 の結論待ち。本revisionでは対応の明示のみ）。指摘2: 適用結果を `ApplyResult` のvariantごとの観測契約へ分離し（pre-write拒否=零書込み、`RolledBack` / `Recovered`=pre-state、`Unresolved` / `RecoveryFailed`=`authoritativeState` に従うfail-closed）、Scenario・AC-16・test oracleへ同期（旧「すべて無変更」の記述を撤回）。指摘3: 新規フォルダの置き先契約（先頭アイテムの元セル）を保証するため、共有moduleへの「指定セルへの新規フォルダ作成」intent variant追加（additive）をScopeへ明記（詳細はplan）。指摘4: `OrganizerLockState.UNKNOWN` の扱いを既存 `LOCK_STATE_UNAVAILABLE` 契約（`ApplyProtocol.kt:557-558`）と一致させ、UNKNOWN行は選択不可+確定無効化とし、Scenario・AC-7・test oracleへ同期。
+- 2026-09-28: Revision 3 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862337471): Request changes。round 1指摘3・4は解消認定）の指摘2（variant契約の残差）に対応。①`ConcurrentRun` を `Rejected` のreason列挙から除外し、独立variant（`PreWriteRejection` ではない）として零書込み+再試行の契約を明記。②`NoChanges` の観測契約を追加（到達不能: 確定はセッション計画が空でない間のみ可能+builderが空差分計画を生成しない不変条件とtest。防御到達時は零書込み+変更未反映の表示）。③`Applied` を成功経路として明示し、AC-16・test oracleを全variant表記へ同期。指摘1（受入前提）は本revisionでは対応範囲外（#442最終結論→ADR-0014受入→Accepted revision取り込み→再照合、が解除条件。specは `draft` を維持し、Phase 2実装は開始しない）。
