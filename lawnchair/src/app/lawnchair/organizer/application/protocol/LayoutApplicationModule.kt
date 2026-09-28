@@ -255,6 +255,31 @@ internal class LayoutApplicationModule<S>(
     internal fun newManualRunId(): RunId = operationIds.newRunId()
 
     /**
+     * Issue #449: read-only capture for the visual edit surface. Same seam
+     * family as the plan preview (spec 84/194): no write, no lifecycle
+     * mutation, silent diagnostically, serialized against writers through the
+     * same non-blocking run-mutex lease as the other read-only inspections.
+     * An unready gate, mutex contention, or any capture failure maps to
+     * `null` — fail-closed; the edit surface opens or reopens only from a
+     * fresh authoritative capture.
+     */
+    internal fun inspectCapture(): CapturedSnapshot? = readinessGate.runWhenReady(
+        unavailable = { null },
+    ) {
+        val runId = operationIds.newRunId()
+        if (!ordinaryMutex.tryAcquire(runId)) return@runWhenReady null
+        try {
+            try {
+                writer.captureCurrent(CaptureId("edit-surface-inspect"))
+            } catch (_: RuntimeException) {
+                null
+            }
+        } finally {
+            ordinaryMutex.release(runId)
+        }
+    }
+
+    /**
      * Read-only plan preview (Issue #194). Captures authoritative current state
      * under a short non-blocking lease, verifies the planning snapshot revision,
      * materializes the exact plan for this input/result pair, and projects it

@@ -19,6 +19,8 @@
 # Surface meaning (path filters live in ci.yml's `changes` job):
 #   surface_layout_write      - layout write coordinator / ModelWriter / DB
 #                               controller seam + organizer application module
+#                               (+ Issue #449 edit surface: the homeedit session
+#                               drives the same apply path)
 #   surface_db_schema         - provider / schema upgrade / grid migration
 #   surface_backup_restore    - old-backup restore capture + backup agent
 #   surface_production_input  - production input composer / platform adapters

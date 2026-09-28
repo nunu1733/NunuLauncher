@@ -69,8 +69,16 @@ fun buildUndoEvidence(
     val target = plan.targetItemPlacement
     val action = when (intent) {
         is HomeEditIntent.MoveToPage -> HomeEditActionKind.MOVE_TO_PAGE
+
         is HomeEditIntent.AddToFolder -> HomeEditActionKind.ADD_TO_FOLDER
+
         is HomeEditIntent.CreateFolderAndAdd -> HomeEditActionKind.CREATE_FOLDER_AND_ADD
+
+        // Issue #449: the edit-surface variant never reaches the #448 popup
+        // undo path (the surface applies through the organizer protocol, not
+        // ModelWriter direct-edit). Kept total for the exhaustive when.
+        is HomeEditIntent.CreateFolderAt -> HomeEditActionKind.CREATE_FOLDER_AND_ADD
+
         is HomeEditIntent.Remove -> HomeEditActionKind.REMOVE
     }
     val folderId = createdFolderId.takeIf { it != 0 }

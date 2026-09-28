@@ -21,6 +21,7 @@ object HomeEditPlanner {
             is HomeEditIntent.MoveToPage -> planMoveToPage(snapshot, intent)
             is HomeEditIntent.AddToFolder -> planAddToFolder(snapshot, intent)
             is HomeEditIntent.CreateFolderAndAdd -> planCreateFolder(snapshot, intent)
+            is HomeEditIntent.CreateFolderAt -> planCreateFolderAt(snapshot, intent)
             is HomeEditIntent.Remove -> planRemove(snapshot, intent)
         }
     }
@@ -92,6 +93,32 @@ object HomeEditPlanner {
         )
     }
 
+    /**
+     * Issue #449: 置き先セル指定の新規フォルダ作成。指定セルがグリッド内かつ
+     * （対象自身を除いた）空きであることだけを検証し、決定的にそのセルへ置く。
+     * first-fit探索を行わないことが既存 CreateFolderAndAdd との違いである。
+     */
+    private fun planCreateFolderAt(
+        snapshot: HomeEditSnapshot,
+        intent: HomeEditIntent.CreateFolderAt,
+    ): HomeEditPlan {
+        val target = editableTarget(snapshot, intent) ?: return rejectTarget(snapshot, intent)
+        if (intent.screenId !in snapshot.screenIds) {
+            return HomeEditPlan.Rejected(HomeEditRejection.STALE)
+        }
+        val inBounds = intent.cellX in 0 until snapshot.columnCount &&
+            intent.cellY in 0 until snapshot.rowCount
+        if (!inBounds || !isCellFree(snapshot, intent.screenId, intent.cellX, intent.cellY, target.id)) {
+            return HomeEditPlan.Rejected(HomeEditRejection.NO_SPACE)
+        }
+        return HomeEditPlan.CreateFolder(
+            targetItemPlacement = target,
+            screenId = intent.screenId,
+            cellX = intent.cellX,
+            cellY = intent.cellY,
+        )
+    }
+
     private fun planRemove(
         snapshot: HomeEditSnapshot,
         intent: HomeEditIntent.Remove,
@@ -137,6 +164,30 @@ object HomeEditPlanner {
                 else -> HomeEditRejection.UNSUPPORTED
             },
         )
+    }
+
+    /**
+     * True when the 1x1 cell ([cellX], [cellY]) on [screenId] is free, ignoring
+     * the row with [ignoreItemId] (the target itself is vacated by the action).
+     */
+    private fun isCellFree(
+        snapshot: HomeEditSnapshot,
+        screenId: Int,
+        cellX: Int,
+        cellY: Int,
+        ignoreItemId: Int,
+    ): Boolean {
+        for (item in snapshot.items) {
+            if (item.id == ignoreItemId) continue
+            if (item.container != HomeEditContainers.DESKTOP) continue
+            if (item.screenId != screenId) continue
+            if (cellX >= item.cellX && cellX < item.cellX + item.spanX &&
+                cellY >= item.cellY && cellY < item.cellY + item.spanY
+            ) {
+                return false
+            }
+        }
+        return true
     }
 
     /**

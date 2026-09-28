@@ -135,6 +135,12 @@ jobs:
               - 'tests/organizer-instrumentation/com/android/launcher3/hybridhotseat/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/application/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/planning/**'
+              # Issue #449: the edit surface drives the organizer apply path
+              # (session → plan → apply). Its production tree and its
+              # instrumentation test self-trigger the lane that owns the
+              # write path.
+              - 'lawnchair/src/app/lawnchair/homeedit/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/homeedit/**'
               # Issue #458: LockAuthoringInstrumentationTest joined the
               # reservation-recovery lane class list; keep test-only changes
               # self-triggering the lane that owns them.

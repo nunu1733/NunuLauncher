@@ -8,6 +8,7 @@
 > Revision 2: 2026-09-28 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096): Request changes）の指摘1〜4のうちplan側の対応。指摘1（受入前提）: spec冒頭へ受入条件（ADR-0014の受入前提。#442結論待ち）を明記し、本planもPhase 2の開始条件に同じ前提を置く。指摘2: data flowを `ApplyResult` variantごとの観測契約へ修正。指摘3: 共有plannerへの「指定セルへの新規フォルダ作成」intent variant追加をDesign/Change setへ反映。指摘4: 結合点5（lockState UNKNOWN）を未決の確認事項から撤去し、既存 `LOCK_STATE_UNAVAILABLE` 契約と一致する設計（選択不可+確定ゲート）へ確定。
 > Revision 3: 2026-09-28 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862337471): Request changes。round 1指摘3・4は解消認定）の指摘2（variant契約の残差）に対応: data flowで `ConcurrentRun` を独立variantとして明示、`NoChanges` の到達不能不変条件（builderの空差分計画の禁止+test）と防御到達時の扱いを追加、`Migration and recovery` の旧来の包括表現（「失敗時は変更前へ戻る」）をvariant分類へ同期。指摘1（受入前提）は判定どおり外部前提の完了が解除条件であり、specは `draft` 維持、Phase 2実装は開始しない。
 > Revision 4: 2026-09-28 — 受入前提の成立。#442最終結論C確定 → ADR-0014 Accepted（Revision 3、受入PR #475）を受けて、現行main（`c5a7840b88`）を本branchへmergeし、受入revisionとの整合を再照合した。照合結果: 受入ADRの再確認3点（案A/B比較不変、#448/#449の15 baseline継続、patch surface方針不変）は本plan/specと矛盾しない。実質変更はなく、spec冒頭の受入前提の記述を「成立済み」へ更新するのみ。round 3判定の保留条件が満たされたためround 4再reviewへ進める。
+> Revision 5: 2026-09-28 — Phase 2実装中の結合点発見（fail-closedプロトコルに従い実装を止めて本revisionで確定）。**結合点7（新設、解決済み）: 「削除はintendedStateからの不在で表現される」というCurrent evidence/Designの前提が現行適用経路と不一致だった。** `LauncherLayoutAdapter.applyWriteSet` の通常branch（`recoveryActions` が空の経路）は `intendedManifest.rows` のupdate/insertのみを行い、captureの行のうちintendedManifestに欠落した行は**削除されずに残存する**（削除を書くのはrecovery経路の `RecoveryAction.DeleteRow` のみ。`LauncherLayoutAdapter.kt:356-372`）。このまま「外す」を不在表現で構築すると、DBに削除対象行が残り、A7のexact検証（`ApplyProtocol.kt:373-381`）が必ず失敗して自動復旧（`Recovered`）に至る。**最小拡張（specの観測可能な振る舞い=行削除を維持するため）**: 通常branchの書込み後に、`before.manifest.rows` のうち `intendedManifest.rows` に含まれない行を削除するpassを1段追加する（manifest置換セマンティクスの完成。A2のexact一致検証済みpre-stateから派生するため安全性は既存契約に従属。public契約の変更なし、`ApplyAction`/`ApplyResult`/`ApplyProtocol`の変更なし、recovery経路は不変）。これに伴い「適用経路の実装は変更しない」の記述を「**結合点7の削除passの最小拡張を除き**変更しない」へ修正し、Change setへ `LauncherLayoutAdapter.kt` の行を追加。あわせて結合点2（`FolderNaming.FromUserCreation` variant追加を確定）、結合点3（policy versionは `BuiltInOrganizerPolicyBundleSource.readActive()` から取得しbuilderへ渡す）の確認結果を記録した。
 
 ## Current evidence
 
@@ -15,7 +16,7 @@
 
 **適用経路（既存の安全な適用。本機能はこれを再利用し、実装を変更しない）**
 
-- `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt:94` — `captureCurrent`（読み取り専用captureの実体）。`:180` — `prepareApplyWriteSet`（再captureとのrevision/状態一致検証を含み、intendedStateのitemsからwrite setをmaterializeする。PersistentItemはcaptureの行と対応し、欠落は削除として表現される。`FolderTitleResolver` は呼ばれず、folder行のtitleは `CanonicalItemState.title` 由来）。`:293` — `applyWriteSet`（1 transaction）。`:428` — `requestCorrelatedReload`。
+- `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt:94` — `captureCurrent`（読み取り専用captureの実体）。`:180` — `prepareApplyWriteSet`（再captureとのrevision/状態一致検証を含み、intendedStateのitemsからwrite setをmaterializeする。PersistentItemはcaptureの行と対応する。**`FolderTitleResolver` は呼ばれず、folder行のtitleは `CanonicalItemState.title` 由来（`Absent` → TITLE null。無題フォルダ可。結合点1はinstrumentation testで裏取り）。**:293 — `applyWriteSet`（1 transaction。**通常branchはintendedManifest行のupdate/insertのみで、欠落行は削除しない。削除passは結合点7の最小拡張として追加（Revision 5）**）。`:428` — `requestCorrelatedReload`。
 - `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt:113` / `:118` / `:199` — 確定時の再captureに対する `STALE_REVISION` / `EXACT_PRECONDITION_FAILED` 検証と、checkpointの `RECOVERY_POINT_ADMISSION_BLOCKED`。適用はcheckpoint → `markApplying` → 1 transaction → 分類（`classifyApplyOutcome`。相関reload + 検証を成功条件に含む）の順である。
 - `lawnchair/src/app/lawnchair/organizer/application/public/Results.kt:45-68` / `:71-104` — `ApplyResult`（`NoChanges` / `Applied(pointId)` / `Rejected(PreWriteRejection)` / `RolledBack` / `Recovered` / `Unresolved` / `RecoveryFailed` / `ConcurrentRun`）と `PreWriteRejection`（`WRITER_BUSY` 等を含む）。
 - `lawnchair/src/app/lawnchair/organizer/application/public/LayoutState.kt:27` — `LayoutState`。`:117` — `CanonicalItemState`（placement / `TargetKey` / title `OptionalText` / icon `OptionalBytes` / `OrganizerLockState` / profile availability）。`:260-279` — `ApplyAction`（`Preserve` / `Update` / `Insert`。削除はintendedStateからの不在で表現される）。
@@ -80,7 +81,7 @@ app.lawnchair.homeedit/                          （fork側。#448 moduleへの�
                                                  #   既存 CreateFolder と同じ成功planの生成。違反はtyped拒否
                                                  #   （既存testへの影響なし。variantの新規testを追加）
 
-organizer側（最小の追加。適用プロトコル・write set・recoveryの実装は変更しない）
+organizer側（最小の追加。適用プロトコル・write set・recoveryの実装は**結合点7の削除passの最小拡張を除き**変更しない）
 ├── LayoutApplicationModule                      # 新規: inspectCapture() — 読み取り専用capture
 │                                                #   （plan preview seam族 [spec 84/194] と同契約:
 │                                                #    書込み・lifecycle遷移・diagnostics発行なし）
@@ -113,7 +114,8 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
       conservation（全アイテムが保持・移動・削除に説明可能）をbuilder内でも検証）
 → HomeEditSurfaceAccess.apply(plan, runId)
      → module.applyWithRunId（既存。module mutex / ORGANIZER lease / 再capture検証 /
-       checkpoint 1個 / 1 transaction / 相関reload + 検証）
+       checkpoint 1個 / 1 transaction / 相関reload + 検証。intendedStateからの不在は
+       適用経路の削除pass（結合点7。`LauncherLayoutAdapter` の最小拡張）で行削除として物理化される）
      → Applied(pointId)          → 編集画面を閉じる（ホームは相関reloadで更新される）
      → Rejected(STALE_REVISION / EXACT_PRECONDITION_FAILED)
                                  → 零書込み → セッション破棄 → 理由表示 → 最新captureで開き直し
@@ -156,6 +158,7 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
 | `lawnchair/src/app/lawnchair/homeedit/HomeEditSurfaceAccess.kt` | 新設（薄い窓。~60行） | 既存organizer module instanceへのcapture/applyの唯一の出口。homeedit uiがorganizer protocol型に触れない境界 |
 | `lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt` / `EditSurfaceScreen.kt` | 新設（全画面Activity + Compose。概算+800〜1,200行） | ADR-0014案Bの操作面。fork側のみで完結 |
 | `organizer/application/protocol/LayoutApplicationModule.kt` | `inspectCapture()` 追加（読み取り専用。~15行） | plan preview seam族と同契約の読み取り。セッション開始captureとstale時の再captureに使う |
+| `organizer/application/adapter/LauncherLayoutAdapter.kt` | `applyWriteSet` 通常branchへのmanifest-absence行の削除pass追加（~10行。結合点7の最小拡張。Revision 5） | 「ホームから外す」の行削除を既存の安全な適用経路で表現するため。public契約・recovery経路は不変 |
 | `organizer/ui/ManualOrganizationRun.kt`（`ManualOrganizationApplication`） | 編集画面用の最小accessor追加（capture + apply。~30行） | 既存単一instanceの共有。run状態機械を経由しない |
 | `organizer/planning/PlanningResult.kt` + resolver mapping | `FolderNaming` へユーザー作成variant追加（結合点2が確定した場合のみ。~15行） | ユーザー作成フォルダの真実のprovenance。plannerのsemantic namingと混同しない |
 | `lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt` | 「編集画面」option追加（~10行） | 既存fork拡張点。上流patch surfaceを増やさない |
@@ -166,7 +169,7 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
 | `.github/workflows/ci.yml` / `tools/repo-contract/ci_portfolio_map.yml` / `docs/engineering/ci-test-portfolio.md` | instrumentation class追加時のlane割付とpath routingの記録更新（lane↔surface対応自体は不変の見込み） | quality-strategyのtest審査規約（同じPRで更新） |
 | spec status / `CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md` | `implemented`、domain language 3語、homeedit記述への編集画面追加とread-only seamの追記、FR-019/NFR-013（+FR-018）status | 正本の分担（AC-14） |
 
-**高リスクpath一覧の扱い**: 本設計はDB書込みを既存のorganizer適用経路（`LauncherLayoutAdapter` / `ApplyProtocol`。既に一覧収録・inventory済み）に集約し、fork側homeeditは直接DB書込みを持たない。よって高リスクpath一覧へのhomeedit追加は行わない（#448と同じ判断。`validate_writer_inventory.py` が機械的に裏付ける）。`LayoutApplicationModule` / `ManualOrganizationRun` への追加は適用プロトコルの実装変更を含まない（読み取りseamとaccessorの追加のみ）が、PR本文へ明記する。
+**高リスクpath一覧の扱い**: 本設計はDB書込みを既存のorganizer適用経路（`LauncherLayoutAdapter` / `ApplyProtocol`。既に一覧収録・inventory済み）に集約し、fork側homeeditは直接DB書込みを持たない。よって高リスクpath一覧へのhomeedit追加は行わない（#448と同じ判断。`validate_writer_inventory.py` が機械的に裏付ける）。`LayoutApplicationModule` / `ManualOrganizationRun` への追加は適用プロトコルの実装変更を含まない（読み取りseamとaccessorの追加のみ）。`LauncherLayoutAdapter` への追加は結合点7の削除pass（既存の1 transaction内の書込みbranchへの1段追加。プロトコル・契約型・recovery経路は不変）であり、PR本文へ明記する。
 
 ## Migration and recovery
 
@@ -177,12 +180,13 @@ organizer側（最小の追加。適用プロトコル・write set・recoveryの
 
 ## 実装時に確認する結合点（fail-closed。確認結果をplan revisionへ記録する）
 
-1. **無題フォルダのtitle**: `prepareApplyWriteSet` はfolder行のtitleを `CanonicalItemState.title` 由来で書く（`FolderTitleResolver` は経由しない）。`title = OptionalText.Absent` のplanned folderがTITLE null（無題。上流drag生成と同じ）として書けることをinstrumentation testで確認する。もし書込み経路が非blank titleを要求して拒否する場合は実装を止め、specの観測可能な振る舞い（無題フォルダ）を維持するための最小拡張をこのplanのrevisionで確定してから進める。
-2. **`NewFolder.naming` の表現**: `ValidatedLayoutPlan` の不変条件はPlannedFolder参照にNewFolder宣言（naming必須）を要求する。ユーザー作成フォルダのsemanticとして `FolderNaming` へvariant（UserCreated相当）を追加し、resolver側のmappingは契約（非blank）を満たす安全な既定へ追加する。resolverはhomeedit経路では呼ばれない。variant追加の影響範囲（exhaustive when）を確認して最小に保つ。
-3. **`ruleVersion` / `taxonomyVersion`**: 適用計画のprovenance列。homeeditの計画は整理ルール体系の外であるため、現行policy bundleのversionを記録値として使い、その旨をbuilderのdoc commentへ残す。取得経路を実装時に確認する。
+1. **無題フォルダのtitle**: `prepareApplyWriteSet` はfolder行のtitleを `CanonicalItemState.title` 由来で書く（`FolderTitleResolver` は経由しない）。`rowFor` の実装確認では `title = OptionalText.Absent` → TITLE null として書ける（`LauncherLayoutAdapter.kt:672`付近。`(item.title as? OptionalText.Present)?.value`）。instrumentation testで裏取りする。もし書込み経路が非blank titleを要求して拒否する場合は実装を止め、specの観測可能な振る舞い（無題フォルダ）を維持するための最小拡張をこのplanのrevisionで確定してから進める。
+2. **`NewFolder.naming` の表現** — 確定（Revision 5）: `FolderNaming` へ `FromUserCreation` variant（data object。フィールドなし。ユーザー作成のsemantic）を追加する。exhaustive `when` の影響範囲は `GeneratedFolderTitles.resolver`（`GeneratedFolderTitles.kt:75`）の1箇所のみで、safeな既定（汎用fallback title）を追加する。`withCompositionCatalog` は `else` 分岐のため影響なし。resolverはhomeedit経路では呼ばれない（homeeditはtitleを `OptionalText.Absent` で書く）。
+3. **`ruleVersion` / `taxonomyVersion`** — 確定（Revision 5）: `BuiltInOrganizerPolicyBundleSource.readActive()` の `Ready(bundle)` から `bundle.rules.version` / `bundle.taxonomy.version` を取得し、`HomeEditSurfaceAccess` がbuilderへ渡す（builderは純粋のままversionsを引数で受ける）。`Ready` 以外（UnsupportedVersion/Corrupt。静的bundleでは起きない）の場合は適用を構築せずtyped失敗（零書込み）とする。builderのdoc commentへ「homeeditの計画は整理ルール体系の外であり、現行policy bundleのversionを記録値として使う」旨を残す。
 4. **runIdとdiagnostics**: runIdは既存 `newRunId()` 経路で発行する。編集画面の適用イベントが既存diagnostics経路（app-private journal、個人情報なし）へ流れる挙動を確認し、organizer runのUI/journal読み出しと混在しないことを記録する。問題がある場合は原因と対処（typed記録の分離等）をPRで記録し、`docs/engineering/organizer-diagnostics.md` への記載要否を判断する。
-5. ~~**lockState `UNKNOWN` の扱い**~~ — 解決（Revision 2。review round 1 指摘4）: 確認事項から設計へ確定した。`LOCKED` と `UNKNOWN` は選択不可、セッションcapture内にUNKNOWN行が存在する間は確定を無効化して理由を示す（既存 `LOCK_STATE_UNAVAILABLE` 契約と一致。`ApplyProtocol.kt:557-558`、`DatabaseHelper.java:288-291` の移行で既存行はUNKNOWNになる）。実装時の確認事項は「capture正規化でUNKNOWNになる実際の値域の再確認（`RowManifestCodec.kt:247`）と、確定ゲートのtest」に縮小する。
-6. **readinessGate / module mutex**: 起動直後等でmoduleのreadinessが未完了の場合の `apply` / `inspectCapture` の挙動を確認し、UIの待ち方（待機 or typed失敗+再試行）を決める。既存のSettings面の扱いに合わせる。
+5. ~~**lockState `UNKNOWN` の扱い**~~ — 解決（Revision 2。review round 1 指摘4）: 確認事項から設計へ確定した。`LOCKED` と `UNKNOWN` は選択不可、セッションcapture内にUNKNOWN行が存在する間は確定を無効化して理由を示す（既存 `LOCK_STATE_UNAVAILABLE` 契約と一致。`ApplyProtocol.kt:557-558`、`DatabaseHelper.java:288-291` の移行で既存行はUNKNOWNになる）。実装時の確認事項は「capture正規化でUNKNOWNになる実際の値域の再確認（`RowManifestCodec.kt:247`）と、確定ゲートのtest」に縮小する。`RowManifestCodec` の確認結果: 範囲外/読み取り失敗はUNKNOWNへ正規化（Revision 5確認済み）。確定ゲートはセッション計画層とUI層で実装しtestする。
+6. **readinessGate / module mutex**: 起動直後等でmoduleのreadinessが未完了の場合の `apply` / `inspectCapture` の挙動を確認し、UIの待ち方（待機 or typed失敗+再試行）を決める。既存のSettings面の扱いに合わせる。確認結果: `applyWithRunId` は未ready時に `Rejected(WRITER_BUSY)` / `RECOVERY_STORE_UNAVAILABLE` を返す（`LayoutApplicationModule.kt:143-156`）。`inspectCapture` も同契約（未ready・mutex競合はnull。UIは再試行可能な待ち表示）で実装する（Revision 5確認済み）。
+7. ~~**「削除はintendedStateからの不在で表現される」の妥当性**~~ — **解決（Revision 5）**: 前提は現行適用経路と不一致だった。`LauncherLayoutAdapter.applyWriteSet` の通常branchはupdate/insertのみで欠落行を削除せず、このままでは「ホームから外す」の適用がA7 exact検証で必ず失敗し自動復旧に至る（`ApplyProtocol.kt:373-381` の `db.layoutState == writeSet.intendedState && db.manifest == writeSet.intendedManifest`）。**最小拡張**: 通常branchのupdate/insert後に、`before.manifest.rows` のうち `intendedManifest.rows` に含まれない行を削除するpassを追加する。削除集合はA2のexact一致検証済みcapture manifestから派生するため、既存のprecondition契約（A2/A5）に従属し、新たなpreconditionは不要。recovery経路（`RecoveryAction.DeleteRow`）と`prepareRecoveryWriteSet` は不変。instrumentation testで「削除行のDELETE、非選択行の不変、A7検証成功」を検証する。
 
 ## Verification
 
@@ -223,17 +227,22 @@ test-audit審査の要点（JVM testの追加とinstrumentation class追加の�
 - [ ] Full relevant verification completed（Verification表の全行）
 - [ ] PR evidence and remaining risks recorded（実機確認はowner確認事項として明記）
 
-## Review / handoff packet（Phase 1 Revision 4時点）
+## Review / handoff packet（Phase 2 Revision 5時点）
 
 - Issue and all comments: https://github.com/nunu1733/NunuLauncher/issues/449; retrieved at 2026-09-28; state=OPEN; labels=type: feature
 - Scope type: feature
-- Accepted spec + commit: **受入前提は成立済み**（#442最終結論C → ADR-0014 Accepted Revision 3、受入PR #475で #447 決着。main `c5a7840b88`を本branchへmerge済み。受入revisionとの再照合完了、実質変更なし）。round 4再reviewでclearとなった場合にspecを `accepted` へ進める
+- Accepted spec + commit: 受入前提成立済み（ADR-0014 Accepted Revision 3）。specは `accepted`（commit 0cdb2b0d88）。Phase 2実装は同じbranchで実施（本Revision 5で追跡）
 - Bug oracle: N/A（feature。振る舞いoracleは本specのBehavior scenarios / AC）
-- Plan + revision: specs/449-multi-select-surface/plan.md（本書、Revision 4）
-- Base SHA: f35ff4494f447c3cdb253eef6c3d10c77083ba03（Phase 1起草時のmain）。branchは現行main（`c5a7840b88`、ADR-0014受入後）へ同期済み
-- Head SHA: round 3 review対象 `bf6d81145511996b2a29bc664111cc0839ed193c`。Revision 4（merge + 再照合記録）のheadは、本欄を含むcommit自体がheadを変えるためIssue #449へのhandoffコメントで記録する（正本）
-- Diff: current main...headの実質差分は `specs/449-multi-select-surface/spec.md` / `plan.md` の2ファイル（compare URLはpush後に記録）
-- Diff boundary: Phase 1はdocs-only（上記2ファイル。merge commitによるmain同期を除く）。full diffを確認対象とする
-- Review履歴: round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096) Request changes、指摘1〜4）→ Revision 2 → round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862337471) Request changes。指摘3・4解消、指摘1=外部前提でclear保留、指摘2=variant残差）→ Revision 3 → round 3（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862418500) 指摘2解消確認。clear保留は外部前提待ち）→ **#442最終結論C確定・ADR-0014受入（Revision 3、PR #475）** → Revision 4（受入revision取り込みと再照合。実質変更なし）
-- Executed evidence: `python3 tools/repo-contract/validate_repo_contract.py` の実行結果をpush後のhandoffコメントへ記録する
-- 次の1手: Revision 4をpushし、ChatGPTへPhase 1再review（round 4。範囲は「受入前提の成立、受入revision取り込みと再照合の妥当性」に限定）を依頼（結果はIssue #449コメントへ投稿）→ clear後、specを `accepted` へ更新してPhase 2（実装）を同じbranchで開始する
+- Plan + revision: specs/449-multi-select-surface/plan.md（本書、Revision 5。Phase 2実装中の結合点発見をfail-closedプロトコルで記録：結合点7=削除passの最小拡張、結合点1/2/3/5/6確認結果記録）
+- Base SHA: f35ff4494f447c3cdb253eef6c3d10c77083ba03（Phase 1起草時のmain）。branchは現行main（`c5a7840b88`）へ同期済み
+- Phase 2 head SHA / diff: 実装commitのheadはpush後のIssue #449 handoffコメントで記録する（正本）
+- Diff boundary: Phase 2は実装（homeedit純粋4層+accessor+UI+入口、organizer最小追加、adapter削除pass、JVM/instrumentation test、CI routing、strings、manifest）。full diffをreview対象とする
+- Review履歴: round 1〜4（Phase 1。round 4 clear、spec accepted）
+- Executed evidence（Phase 2実装時点、2026-09-28）:
+  - `./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.homeedit.*'` — 78 tests, 0 failed
+  - `./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.organizer.*'` — BUILD SUCCESSFUL（回帰なし）
+  - `./gradlew spotlessCheck` / `./gradlew assembleLawnWithQuickstepGithubDebug` — BUILD SUCCESSFUL
+  - `python3 tools/repo-contract/validate_repo_contract.py` — 本diff起因の指摘0件（既存2件は未追跡ローカル `refocus-drafts/` 由来でpush済みtreeには存在しない）
+  - `python3 tools/repo-contract/validate_ci_portfolio.py` — OK
+  - 未実施（review後に実施）: instrumentation test（emulator必要）、patch surface計測、ベンチマーク実行、TalkBack確認。これらはPR段階で記録する
+- 次の1手: 実装をcommit/pushし、Issue #449へPhase 2 handoffコメントを投稿。PR作成（`risk: layout-data` label）→ ChatGPT review → 独立監査（`docs/assessment/pr-<番号>-<slug>.md`）→ final-status確認後にmerge

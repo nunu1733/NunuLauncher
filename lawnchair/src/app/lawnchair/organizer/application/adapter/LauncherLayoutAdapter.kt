@@ -369,6 +369,17 @@ internal class LauncherLayoutAdapter(
                     }
                     faults.afterLauncherWrite(index, pointId)
                 }
+                // Issue #449 (plan 結合点7): the intended manifest is a complete
+                // replacement of the captured rows, so rows of the exact-verified
+                // pre-state (A2 checked capture == plan.sourceState) that are
+                // absent from it are explicit deletions. Without this pass an
+                // intended deletion would leave the row in place and fail the A7
+                // exact verification. The recovery branch above keeps its own
+                // explicit DeleteRow actions.
+                val intendedIds = writeSet.intendedManifest.rows.map { it.rowId }.toHashSet()
+                before.manifest.rows.filter { it.rowId !in intendedIds }.forEach { row ->
+                    db.delete(Favorites.TABLE_NAME, "${Favorites._ID}=?", arrayOf(row.rowId.toString()))
+                }
             }
             when (faults.atTransactionClose(pointId)) {
                 FaultInjector.TransactionCloseDirective.PROCEED -> Unit
