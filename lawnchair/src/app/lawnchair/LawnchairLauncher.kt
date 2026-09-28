@@ -42,6 +42,7 @@ import app.lawnchair.factory.LawnchairWidgetHolder
 import app.lawnchair.gestures.GestureController
 import app.lawnchair.gestures.VerticalSwipeTouchController
 import app.lawnchair.gestures.config.GestureHandlerConfig
+import app.lawnchair.homeedit.ui.EditActionsShortcuts
 import app.lawnchair.nexuslauncher.OverlayCallbackImpl
 import app.lawnchair.organizer.ui.OrganizationOnboardingProposal
 import app.lawnchair.preferences.PreferenceManager
@@ -289,8 +290,17 @@ class LawnchairLauncher : QuickstepLauncher() {
             Stream.of(LawnchairShortcut.UNINSTALL, LawnchairShortcut.CUSTOMIZE),
             Stream.concat(
                 if (LawnchairApp.isRecentsEnabled) Stream.of(LawnchairShortcut.PAUSE_APPS) else Stream.empty(),
-                // Issue #38: placement lock authoring for shortcut-capable rows.
-                Stream.of(OrganizerLockShortcut.PLACEMENT_LOCK),
+                Stream.concat(
+                    // Issue #38: placement lock authoring for shortcut-capable rows.
+                    Stream.of(OrganizerLockShortcut.PLACEMENT_LOCK),
+                    // Issue #448: per-item edit actions (move to page / add to
+                    // folder / remove from home) via the homeedit module.
+                    Stream.of(
+                        EditActionsShortcuts.MOVE_TO_PAGE,
+                        EditActionsShortcuts.ADD_TO_FOLDER,
+                        EditActionsShortcuts.REMOVE_FROM_HOME,
+                    ),
+                ),
             ),
         ),
     )

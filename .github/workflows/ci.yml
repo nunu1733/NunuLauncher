@@ -122,10 +122,16 @@ jobs:
               # maintaining a second per-class list that can drift.
               - 'src/com/android/launcher3/model/LayoutWriteCoordinator.java'
               - 'src/com/android/launcher3/model/ModelWriter.java'
+              - 'src/com/android/launcher3/model/DirectEditContract.java'
               - 'src/com/android/launcher3/model/ModelDbController.java'
               - 'lawnchair/src/app/lawnchair/organizer/application/**'
               - 'tests/organizer-instrumentation/com/android/launcher3/organizer/**'
               - 'tests/organizer-instrumentation/com/android/launcher3/OrganizerReloadCompletionOrderingTest.java'
+              # Issue #448: the production-seam direct-edit tests live in the
+              # com.android.launcher3 package (LauncherModel subclass needs
+              # its package-private constructor); keep them owned and
+              # self-triggering for the shared-writer lane.
+              - 'tests/organizer-instrumentation/com/android/launcher3/DirectEditModelWriterTest.java'
               - 'tests/organizer-instrumentation/com/android/launcher3/hybridhotseat/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/application/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/planning/**'
@@ -345,7 +351,7 @@ jobs:
         # Issue #443: -Pnunu.excludeAiExchangeUnitTests excludes the frozen AI
         # exchange UI suite (app.lawnchair.organizer.ui.exchange.*) from the
         # blocking merge gate; see build.gradle and specs/443-freeze-ai-exchange.
-        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.homeedit.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -408,7 +414,7 @@ jobs:
           # runner still owns the live emulator and returns the original
           # command status.
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/shared-writer-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.organizer.RestoreLeaseDeferredLoaderThreadAffinityTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/shared-writer-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.DirectEditModelWriterTest,com.android.launcher3.organizer.DirectEditWriteShapeTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.organizer.RestoreLeaseDeferredLoaderThreadAffinityTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest
       - name: Upload shared-writer instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

@@ -22,12 +22,15 @@ import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 
 import android.content.ContentValues;
 import android.content.Context;
+import android.os.UserManager;
 import android.text.TextUtils;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.android.launcher3.InvariantDeviceProfile;
+import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherModel;
 import com.android.launcher3.LauncherModel.CallbackTask;
 import com.android.launcher3.LauncherSettings.Favorites;
@@ -38,6 +41,7 @@ import com.android.launcher3.config.FeatureFlags;
 import com.android.launcher3.logging.FileLog;
 import com.android.launcher3.model.BgDataModel.Callbacks;
 import com.android.launcher3.model.data.CollectionInfo;
+import com.android.launcher3.model.data.FolderInfo;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.LauncherAppWidgetInfo;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
@@ -588,6 +592,312 @@ public class ModelWriter {
                 r.run();
             }
         };
+    }
+
+    /**
+     * Issue #448: direct-edit move (page move, or add into an existing
+     * folder). ADR-0013 contract 4: unlike the public update methods above,
+     * nothing is mutated before admission — {@code validator} re-runs the pure
+     * planning function against the current state inside admission (contract 2
+     * stage 2) and only a positive decision reaches the model/DB change.
+     * The write is one row update (naturally atomic, contract 3).
+     *
+     * @param targetContainer {@link Favorites#CONTAINER_DESKTOP} for a page
+     *     move ({@code targetScreenId} is the destination page), or an
+     *     existing folder id to append the item to that folder (rank ends up
+     *     at {@code targetRank}, folder-internal position is derived).
+     */
+    public void moveItemForDirectEdit(int itemId, int targetContainer, int targetScreenId,
+            int targetCellX, int targetCellY, int targetRank,
+            DirectEditContract.Validator validator, DirectEditContract.ResultCallback callback) {
+        new DirectEditMoveTask(itemId, targetContainer, targetScreenId,
+                targetCellX, targetCellY, targetRank, validator, callback).executeOnModelThread();
+    }
+
+    /**
+     * Issue #448: direct-edit "new folder" creation. Validates inside
+     * admission, then inserts one folder row and moves the item into it as a
+     * single transaction (contract 3). The item id is generated inside
+     * admission; nothing is written before it.
+     */
+    public void createFolderAndMoveForDirectEdit(int itemId, int folderScreenId,
+            int folderCellX, int folderCellY,
+            DirectEditContract.Validator validator, DirectEditContract.ResultCallback callback) {
+        new DirectEditCreateFolderTask(itemId, folderScreenId, folderCellX, folderCellY,
+                validator, callback).executeOnModelThread();
+    }
+
+    /**
+     * Issue #448: direct-edit "remove from home". Validates inside admission,
+     * then deletes exactly the selected row (contract 6: an uninstall is not
+     * performed and folder contents are left untouched).
+     */
+    public void removeItemForDirectEdit(int itemId,
+            DirectEditContract.Validator validator, DirectEditContract.ResultCallback callback) {
+        new DirectEditRemoveTask(itemId, validator, callback).executeOnModelThread();
+    }
+
+    /**
+     * Builds the pure-data projection of the current state used by the
+     * stage-2 validator. Model thread only.
+     */
+    private DirectEditContract.Snapshot buildDirectEditSnapshot() {
+        InvariantDeviceProfile idp = LauncherAppState.getIDP(mContext);
+        int[] screenIds = mBgDataModel.collectWorkspaceScreens().toArray();
+        List<DirectEditContract.Row> rows = new ArrayList<>();
+        UserManager um = mContext.getSystemService(UserManager.class);
+        for (ItemInfo item : mBgDataModel.itemsIdMap) {
+            rows.add(new DirectEditContract.Row(item.id, item.container, item.screenId,
+                    item.cellX, item.cellY, item.spanX, item.spanY, item.itemType, item.rank,
+                    um.getSerialNumberForUser(item.user)));
+        }
+        // The QSB reservation occupies the head of the first screen; without
+        // it the empty-cell scan would plan onto the search bar region.
+        if (FeatureFlags.topQsbOnFirstScreenEnabled(mContext) && screenIds.length > 0) {
+            rows.add(new DirectEditContract.Row(-1, Favorites.CONTAINER_DESKTOP, screenIds[0],
+                    0, 0, idp.numSearchContainerColumns, 1, Favorites.ITEM_TYPE_APPLICATION, 0, 0));
+        }
+        return new DirectEditContract.Snapshot(
+                idp.numColumns, idp.numRows, screenIds, rows.toArray(new DirectEditContract.Row[0]));
+    }
+
+    /**
+     * Base for admitted direct-edit tasks: fetch the item, run stage-2
+     * validation against the current state, and only then perform the change.
+     * Reports a typed failure without any change otherwise.
+     */
+    private abstract class DirectEditTask extends UpdateItemBaseRunnable {
+        protected final int mItemId;
+        private final DirectEditContract.Validator mValidator;
+        private final DirectEditContract.ResultCallback mCallback;
+        // The superclass keeps its capture private; direct-edit tasks record
+        // their own evidence for the model consistency checks below.
+        protected final StackTraceElement[] mEditStackTrace = new Throwable().getStackTrace();
+        protected final ModelVerifier mEditVerifier = new ModelVerifier();
+
+        DirectEditTask(int itemId,
+                DirectEditContract.Validator validator, DirectEditContract.ResultCallback callback) {
+            mItemId = itemId;
+            mValidator = validator;
+            mCallback = callback;
+        }
+
+        @Override
+        public final void runImpl() {
+            ItemInfo item = mBgDataModel.itemsIdMap.get(mItemId);
+            DirectEditContract.Decision decision = mValidator.validate(buildDirectEditSnapshot());
+            if (!decision.proceed || item == null) {
+                reportFailure(item == null && decision.proceed
+                        ? DirectEditContract.FAIL_ITEM_GONE : decision.failureReason);
+                return;
+            }
+            runAdmitted(item);
+        }
+
+        protected abstract void runAdmitted(ItemInfo item);
+
+        protected void reportFailure(String reason) {
+            mCallback.onResult(mItemId, false, reason, 0, 0, 0, 0, 0, 0, 0, 0, null);
+        }
+
+        protected void reportSuccess(ItemInfo item, int oldContainer, int oldScreenId,
+                int oldCellX, int oldCellY, int oldSpanX, int oldSpanY, int oldRank,
+                int createdFolderId, @Nullable FolderInfo createdFolder) {
+            mCallback.onResult(item.id, true, null, oldContainer, oldScreenId,
+                    oldCellX, oldCellY, oldSpanX, oldSpanY, oldRank, createdFolderId,
+                    createdFolder);
+        }
+    }
+
+    private class DirectEditMoveTask extends DirectEditTask {
+        private final int mTargetContainer;
+        private final int mTargetScreenId;
+        private final int mTargetCellX;
+        private final int mTargetCellY;
+        private final int mTargetRank;
+
+        DirectEditMoveTask(int itemId, int targetContainer, int targetScreenId,
+                int targetCellX, int targetCellY, int targetRank,
+                DirectEditContract.Validator validator, DirectEditContract.ResultCallback callback) {
+            super(itemId, validator, callback);
+            mTargetContainer = targetContainer;
+            mTargetScreenId = targetScreenId;
+            mTargetCellX = targetCellX;
+            mTargetCellY = targetCellY;
+            mTargetRank = targetRank;
+        }
+
+        @Override
+        protected void runAdmitted(ItemInfo item) {
+            int oldContainer = item.container;
+            int oldScreenId = item.screenId;
+            int oldCellX = item.cellX;
+            int oldCellY = item.cellY;
+            int oldSpanX = item.spanX;
+            int oldSpanY = item.spanY;
+            int oldRank = item.rank;
+
+            boolean toDesktop = mTargetContainer == Favorites.CONTAINER_DESKTOP;
+            // Build the row values without touching the live ItemInfo yet: a
+            // failed update must leave the in-memory model unchanged too.
+            ContentWriter writer = new ContentWriter(mContext)
+                    .put(Favorites.CONTAINER, mTargetContainer)
+                    .put(Favorites.CELLX, toDesktop ? mTargetCellX : -1)
+                    .put(Favorites.CELLY, toDesktop ? mTargetCellY : -1)
+                    .put(Favorites.RANK, toDesktop ? oldRank : mTargetRank)
+                    .put(Favorites.SPANX, 1)
+                    .put(Favorites.SPANY, 1)
+                    .put(Favorites.SCREEN, toDesktop ? mTargetScreenId : 0);
+            try {
+                mModel.getModelDbController().update(TABLE_NAME, writer.getValues(mContext),
+                        itemIdMatch(item.id), null);
+            } catch (Exception e) {
+                FileLog.e(TAG, "direct-edit move failed; nothing changed", e);
+                reportFailure(DirectEditContract.FAIL_WRITE_FAILED);
+                return;
+            }
+            // DB commit succeeded; now bring the live model object in sync.
+            item.container = mTargetContainer;
+            item.screenId = toDesktop ? mTargetScreenId : 0;
+            item.cellX = toDesktop ? mTargetCellX : -1;
+            item.cellY = toDesktop ? mTargetCellY : -1;
+            // Issue #269: desktop icons are persisted as 1x1; folder children
+            // are container-placed and the folder open path normalizes the
+            // internal grid positions in batch.
+            item.spanX = 1;
+            item.spanY = 1;
+            item.rank = toDesktop ? oldRank : mTargetRank;
+            if (!toDesktop) {
+                // updateItemArrays only maintains workspaceItems; the folder
+                // membership bookkeeping mirrors the loader path. Silent
+                // contents add: FolderInfo.add would notify the bound
+                // FolderIcon from the model thread (view touch).
+                CollectionInfo collection = mBgDataModel.collections.get(mTargetContainer);
+                if (collection instanceof FolderInfo folder) {
+                    folder.getContents().add(item);
+                }
+            }
+            updateItemArrays(item, item.id);
+            reportSuccess(item, oldContainer, oldScreenId, oldCellX, oldCellY,
+                    oldSpanX, oldSpanY, oldRank, 0, null);
+        }
+    }
+
+    private class DirectEditCreateFolderTask extends DirectEditTask {
+        private final int mFolderScreenId;
+        private final int mFolderCellX;
+        private final int mFolderCellY;
+
+        DirectEditCreateFolderTask(int itemId, int folderScreenId, int folderCellX, int folderCellY,
+                DirectEditContract.Validator validator, DirectEditContract.ResultCallback callback) {
+            super(itemId, validator, callback);
+            mFolderScreenId = folderScreenId;
+            mFolderCellX = folderCellX;
+            mFolderCellY = folderCellY;
+        }
+
+        @Override
+        protected void runAdmitted(ItemInfo item) {
+            int oldContainer = item.container;
+            int oldScreenId = item.screenId;
+            int oldCellX = item.cellX;
+            int oldCellY = item.cellY;
+            int oldSpanX = item.spanX;
+            int oldSpanY = item.spanY;
+            int oldRank = item.rank;
+
+            FolderInfo folderInfo = new FolderInfo();
+            folderInfo.id = mModel.getModelDbController().generateNewItemId();
+            folderInfo.container = Favorites.CONTAINER_DESKTOP;
+            folderInfo.screenId = mFolderScreenId;
+            folderInfo.cellX = mFolderCellX;
+            folderInfo.cellY = mFolderCellY;
+            folderInfo.spanX = 1;
+            folderInfo.spanY = 1;
+            folderInfo.user = item.user;
+
+            try (SQLiteTransaction t = mModel.getModelDbController().newTransaction()) {
+                ContentWriter folderWriter = new ContentWriter(mContext);
+                folderInfo.onAddToDatabase(folderWriter);
+                folderWriter.put(Favorites._ID, folderInfo.id);
+                mModel.getModelDbController().insert(
+                        Favorites.TABLE_NAME, folderWriter.getValues(mContext));
+
+                // Explicit child values: the live ItemInfo is mutated only
+                // after the commit so a failed transaction leaves model and
+                // DB both at the old placement (contract 3).
+                ContentWriter childWriter = new ContentWriter(mContext)
+                        .put(Favorites.CONTAINER, folderInfo.id)
+                        .put(Favorites.CELLX, -1)
+                        .put(Favorites.CELLY, -1)
+                        .put(Favorites.RANK, 0)
+                        .put(Favorites.SPANX, 1)
+                        .put(Favorites.SPANY, 1)
+                        .put(Favorites.SCREEN, 0);
+                mModel.getModelDbController().update(TABLE_NAME,
+                        childWriter.getValues(mContext), itemIdMatch(item.id), null);
+                t.commit();
+            } catch (Exception e) {
+                FileLog.e(TAG, "direct-edit folder creation failed; rolled back", e);
+                reportFailure(DirectEditContract.FAIL_WRITE_FAILED);
+                return;
+            }
+
+            // Commit succeeded; sync the live model objects.
+            item.container = folderInfo.id;
+            item.screenId = 0;
+            item.cellX = -1;
+            item.cellY = -1;
+            item.spanX = 1;
+            item.spanY = 1;
+            item.rank = 0;
+            synchronized (mBgDataModel) {
+                checkItemInfoLocked(folderInfo.id, folderInfo, mEditStackTrace);
+                mBgDataModel.addItem(mContext, folderInfo, true);
+                mEditVerifier.verifyModel();
+                // Silent contents add; the executor refreshes the folder UI.
+                folderInfo.getContents().add(item);
+                updateItemArrays(item, item.id);
+            }
+            notifyOtherCallbacks(c -> c.bindItems(Collections.singletonList(folderInfo), false));
+            notifyOtherCallbacks(c -> c.bindItemsModified(Collections.singletonList(item)));
+            reportSuccess(item, oldContainer, oldScreenId, oldCellX, oldCellY,
+                    oldSpanX, oldSpanY, oldRank, folderInfo.id, folderInfo);
+        }
+    }
+
+    private class DirectEditRemoveTask extends DirectEditTask {
+        DirectEditRemoveTask(int itemId,
+                DirectEditContract.Validator validator, DirectEditContract.ResultCallback callback) {
+            super(itemId, validator, callback);
+        }
+
+        @Override
+        protected void runAdmitted(ItemInfo item) {
+            int oldContainer = item.container;
+            int oldScreenId = item.screenId;
+            int oldCellX = item.cellX;
+            int oldCellY = item.cellY;
+            int oldSpanX = item.spanX;
+            int oldSpanY = item.spanY;
+            int oldRank = item.rank;
+
+            try {
+                mModel.getModelDbController().delete(TABLE_NAME, itemIdMatch(item.id), null);
+            } catch (Exception e) {
+                FileLog.e(TAG, "direct-edit remove failed; nothing changed", e);
+                reportFailure(DirectEditContract.FAIL_WRITE_FAILED);
+                return;
+            }
+            synchronized (mBgDataModel) {
+                mBgDataModel.removeItem(mContext, item);
+                mEditVerifier.verifyModel();
+            }
+            notifyOtherCallbacks(c -> c.bindWorkspaceComponentsRemoved(
+                    ItemInfoMatcher.ofItems(Collections.singletonList(item))));
+            reportSuccess(item, oldContainer, oldScreenId, oldCellX, oldCellY,
+                    oldSpanX, oldSpanY, oldRank, 0, null);
+        }
     }
 
     /**
