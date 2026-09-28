@@ -161,6 +161,9 @@ class ExchangeImportSuccessInstrumentationTest {
         )
 
     private class NotReadyApplication : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
         override val diagnostics = object : app.lawnchair.organizer.diagnostics.DiagnosticsPort {
             override fun emit(event: app.lawnchair.organizer.diagnostics.model.RunEvent) = Unit
             override fun snapshot() = emptyList<app.lawnchair.organizer.diagnostics.model.RunEvent>()

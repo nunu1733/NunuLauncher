@@ -71,10 +71,15 @@ class EditSurfaceApplyInstrumentationTest {
         )
         val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
         val capture = writer.captureCurrent(CaptureId("edit-surface-apply"))
-        val ids = capture.layoutState.items
-            .filter { it.placement is app.lawnchair.organizer.application.public.PlacementState.Workspace }
-            .associateBy { (it.placement as app.lawnchair.organizer.application.public.PlacementState.Workspace).let { p -> Triple(p.page.pageId.value.toInt(), p.cell.x, p.cell.y) } }
-            .mapValues { (it.value.ref as app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem).itemId.value.toInt() }
+        val ids = capture.layoutState.items.mapNotNull { item ->
+            val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                ?: return@mapNotNull null
+            val page = workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage
+                ?: return@mapNotNull null
+            val ref = item.ref as? app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem
+                ?: return@mapNotNull null
+            Triple(page.pageId.value.toInt(), workspace.cell.x, workspace.cell.y) to ref.itemId.value.toInt()
+        }.toMap()
         val aId = ids.getValue(Triple(0, 2, 1))
         val bId = ids.getValue(Triple(0, 0, 1))
         val cId = ids.getValue(Triple(1, 0, 0))
@@ -133,9 +138,9 @@ class EditSurfaceApplyInstrumentationTest {
             null,
         ).use {
             assertTrue("the new folder row is missing", it.moveToFirst())
-            it.getLong(0)
+            it.getLong(0).toInt()
         }
-        fun queryRow(id: Int, column: String): Any? = db().query(
+        fun queryRowOrNull(id: Int, column: String): Any? = db().query(
             Favorites.TABLE_NAME,
             arrayOf(column),
             "${Favorites._ID}=?",
@@ -150,11 +155,14 @@ class EditSurfaceApplyInstrumentationTest {
                 else -> it.getLong(0)
             }
         }
-        assertEquals(null, queryRow(folderId, Favorites.TITLE))
-        assertEquals(folderId, queryRow(aId, Favorites.CONTAINER))
-        assertEquals(0L, queryRow(aId, Favorites.RANK))
-        assertEquals(folderId, queryRow(cId, Favorites.CONTAINER))
-        assertEquals(1L, queryRow(cId, Favorites.RANK))
+        assertTrue(
+            "the new folder row must be untitled",
+            queryRowOrNull(folderId, Favorites.TITLE) == null,
+        )
+        assertEquals(folderId.toLong(), queryRowOrNull(aId, Favorites.CONTAINER))
+        assertEquals(0L, queryRowOrNull(aId, Favorites.RANK))
+        assertEquals(folderId.toLong(), queryRowOrNull(cId, Favorites.CONTAINER))
+        assertEquals(1L, queryRowOrNull(cId, Favorites.RANK))
 
         launcher.model.forceReload()
         waitForModelLoaded()
@@ -187,7 +195,7 @@ class EditSurfaceApplyInstrumentationTest {
         val prepared = writer.prepareApplyWriteSet(capture, built.plan) as? WriteSetPreparation.Ready
             ?: error("session plan did not materialize")
 
-        val failing = object : FaultInjector {
+        val failing = object : FaultInjector by FaultInjector.NOOP {
             override fun beforeLauncherWrite(indexInTransaction: Int, pointId: RecoveryPointId?) {
                 throw IllegalStateException("injected write failure")
             }

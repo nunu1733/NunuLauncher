@@ -197,6 +197,9 @@ class StrategyT05VisualEvidenceTest {
     /** A runner parked on the selection surface — an active run operation. */
     private fun selectingRunner(): ManualOrganizationRun {
         val application = object : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
             override val diagnostics = object : DiagnosticsPort {
                 override fun emit(event: RunEvent) = Unit
                 override fun snapshot(): List<RunEvent> = emptyList()
@@ -244,6 +247,9 @@ class StrategyT05VisualEvidenceTest {
                 override fun emit(event: RunEvent) = Unit
                 override fun snapshot(): List<RunEvent> = emptyList()
             }
+
+            // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+            override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
 
             override fun newRunId() = RunId("0123456789abcdef0123456789abcdef")
 

@@ -1645,6 +1645,9 @@ class OrganizerHubPreferencesInstrumentationTest {
      * hub must never call is left to fail loudly.
      */
     private class FakeHubApplication : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
         override val diagnostics = RecordingDiagnostics()
         var applyCalls = 0
 

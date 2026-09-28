@@ -464,6 +464,9 @@ private class NotReadyApplication(
     private val context: Context,
     private val emptyCutDetection: Boolean = false,
 ) : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
     val events = mutableListOf<RunEvent>()
     var usageGrantedAtCompose: Boolean? = null
     private val recordingDiagnostics = object : DiagnosticsPort {

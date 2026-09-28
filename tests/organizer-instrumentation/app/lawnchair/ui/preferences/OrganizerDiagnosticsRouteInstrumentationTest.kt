@@ -1080,6 +1080,9 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
     }
 
     private class FakeManualOrganizationApplication : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
         override val diagnostics = RecordingPort()
         var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
 
