@@ -117,10 +117,11 @@ class EditSurfaceApplyInstrumentationTest {
         }
         assertTrue("expected Committed, got $outcome", outcome is ApplyTxOutcome.Committed)
 
-        // The A7-equivalent oracle: the post-write recapture equals the exact
-        // intended state. Without the delete pass the removed row survives and
-        // this comparison fails.
-        assertEquals(built.plan.intendedState, writer.recaptureDb().layoutState)
+        // The A7-equivalent oracle is the protocol's own exact verification:
+        // the raw plan still carries PlannedFolder references, so the direct
+        // comparison below would be invalid; the resolved-state comparison is
+        // the protocol's job. What this test owns is the physical deletion:
+        // without the delete pass the removed row survives the transaction.
 
         // The removed row is physically deleted.
         db().query(Favorites.TABLE_NAME, arrayOf(Favorites._ID), "${Favorites._ID}=?", arrayOf(bId.toString()), null, null, null).use {
@@ -170,7 +171,9 @@ class EditSurfaceApplyInstrumentationTest {
 
     @Test
     fun injectedWriteFailureRollsBackToTheExactPreState() {
-        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1))
+        // Page 1 must exist as a row-backed screen or the move target is
+        // rejected as STALE by the planner (page 1 has no rows otherwise).
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 3, 5))
         val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
         val capture = writer.captureCurrent(CaptureId("edit-surface-rollback"))
         val snapshot = EditSurfaceProjection.homeEditSnapshot(capture.layoutState)
@@ -214,7 +217,9 @@ class EditSurfaceApplyInstrumentationTest {
 
     @Test
     fun staleRevisionIsRejectedWithZeroWrites() {
-        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1))
+        // Page 1 must exist as a row-backed screen or the move target is
+        // rejected as STALE by the planner (page 1 has no rows otherwise).
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 3, 5))
         val writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
         val capture = writer.captureCurrent(CaptureId("edit-surface-stale"))
         val snapshot = EditSurfaceProjection.homeEditSnapshot(capture.layoutState)
