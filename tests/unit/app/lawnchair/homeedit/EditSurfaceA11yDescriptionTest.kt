@@ -135,6 +135,7 @@ class EditSurfaceA11yDescriptionTest {
             lockUnknownText = texts.getValue("lockUnknown"),
             notSelectableText = texts.getValue("notSelectable"),
             folderText = texts.getValue("folder"),
+            defaultLabelText = "Folder",
         )
     }
 
@@ -172,8 +173,80 @@ class EditSurfaceA11yDescriptionTest {
     }
 
     @Test
+    fun `null label falls back to the default label text`() {
+        val item = EditSurfaceItem(
+            id = 1,
+            itemType = HomeEditItemTypes.APPLICATION,
+            label = null,
+            iconBytes = null,
+            targetKey = null,
+            userSerial = SERIAL_A,
+            lockState = app.lawnchair.organizer.application.public.OrganizerLockState.UNLOCKED,
+            container = HomeEditContainers.DESKTOP,
+            screenId = 0,
+            cellX = 0,
+            cellY = 1,
+            spanX = 1,
+            spanY = 1,
+            rank = 0,
+            isSessionCreated = false,
+        )
+        val d = app.lawnchair.homeedit.ui.editSurfaceItemSemantics(
+            item,
+            memberCount = 2,
+            pageLabel = "Page 1",
+            cellLabel = "(0, 1)",
+            selected = false,
+            selectedText = texts.getValue("selected"),
+            lockedText = texts.getValue("locked"),
+            lockUnknownText = texts.getValue("lockUnknown"),
+            notSelectableText = texts.getValue("notSelectable"),
+            folderText = texts.getValue("folder"),
+            defaultLabelText = "Folder",
+        )
+        assertTrue("default title missing: ${d.description}", d.description.startsWith("Folder"))
+    }
+
+    @Test
     fun `descriptor of a lock unknown item carries the lock unknown reason`() {
         val d = descriptor(SelectionEligibility.LOCK_UNKNOWN, selected = false)
         assertTrue(d.description.contains("lock state unavailable"))
+    }
+
+    // --- wiring contract: the Compose semantics block reads only the descriptor ---
+
+    /**
+     * AC-15 wiring oracle (review round 4/5): the production source's
+     * DiagramItemView semantics block must assign all three properties from
+     * the pure descriptor and nothing else. A JVM-readable source contract is
+     * the deterministic oracle for the wiring; a Compose UI test on an
+     * emulator is the runtime confirmation recorded as owner evidence.
+     */
+    @Test
+    fun `diagram item semantics wiring reads only from the descriptor`() {
+        val source = java.io.File(System.getProperty("user.dir")!!)
+            .let { dir ->
+                generateSequence(dir) { it.parentFile }
+                    .map { java.io.File(it, "lawnchair/src/app/lawnchair/homeedit/ui/EditSurfaceScreen.kt") }
+                    .firstOrNull { it.exists() }
+                    ?: error("EditSurfaceScreen.kt not found")
+            }
+            .readText()
+        val block = source.substringAfter(".semantics {\n                // 純descriptor").substringBefore("},")
+        // All three properties are assigned from the descriptor.
+        assertTrue("contentDescription must come from the descriptor", block.contains("this.contentDescription = semanticsDescriptor.description"))
+        assertTrue("selected must come from the descriptor", block.contains("this.selected = semanticsDescriptor.selected"))
+        assertTrue("stateDescription must come from the descriptor", block.contains("this.stateDescription = semanticsDescriptor.stateDescription"))
+        // No other selected/stateDescription assignment remains in the file.
+        val elsewhere = source.replaceRange(
+            source.indexOf("純descriptor") - 200,
+            source.indexOf("},", source.indexOf("純descriptor")) + 2,
+            "",
+        )
+        assertFalse("stray selected assignment outside the descriptor block", elsewhere.contains(".selected ="))
+        assertFalse(
+            "stray stateDescription assignment outside the descriptor block",
+            elsewhere.contains(Regex("this[.]stateDescription\\s*=")),
+        )
     }
 }

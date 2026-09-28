@@ -421,6 +421,7 @@ private fun DiagramItemView(
     val lockUnknownText = stringResource(R.string.edit_surface_a11y_lock_unknown)
     val notSelectableText = stringResource(R.string.edit_surface_a11y_not_selectable)
     val folderText = stringResource(R.string.edit_surface_a11y_folder, memberCount)
+    val defaultLabelText = stringResource(R.string.homeedit_folder_default_label)
     val semanticsDescriptor = editSurfaceItemSemantics(
         item,
         memberCount,
@@ -432,6 +433,7 @@ private fun DiagramItemView(
         lockUnknownText,
         notSelectableText,
         folderText,
+        defaultLabelText,
     )
     val borderModifier = if (selected) {
         Modifier.border(
@@ -555,9 +557,10 @@ internal fun editSurfaceItemSemantics(
     lockUnknownText: String,
     notSelectableText: String,
     folderText: String,
+    defaultLabelText: String,
 ): EditSurfaceItemSemantics {
     val description = editSurfaceItemDescription(
-        label = item.label ?: "",
+        label = item.label ?: defaultLabelText,
         eligibility = item.eligibility,
         isFolder = item.itemType == HomeEditItemTypes.FOLDER,
         memberCount = memberCount,
@@ -581,28 +584,6 @@ internal fun editSurfaceItemSemantics(
         },
     )
 }
-
-@Composable
-private fun itemContentDescription(
-    item: EditSurfaceItem,
-    memberCount: Int,
-    pageLabel: String?,
-    cellLabel: String?,
-    selected: Boolean,
-): String = editSurfaceItemDescription(
-    label = item.label ?: stringResource(R.string.homeedit_folder_default_label),
-    eligibility = item.eligibility,
-    isFolder = item.itemType == HomeEditItemTypes.FOLDER,
-    memberCount = memberCount,
-    selected = selected,
-    selectedText = stringResource(R.string.edit_surface_a11y_selected),
-    lockedText = stringResource(R.string.edit_surface_a11y_locked),
-    lockUnknownText = stringResource(R.string.edit_surface_a11y_lock_unknown),
-    notSelectableText = stringResource(R.string.edit_surface_a11y_not_selectable),
-    folderText = stringResource(R.string.edit_surface_a11y_folder, memberCount),
-    pageLabel = pageLabel,
-    cellLabel = cellLabel,
-)
 
 /**
  * 図アイテムのTalkBack読み上げ文言の純構築（AC-15のsemantics供給のoracle対象）。
