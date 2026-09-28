@@ -416,9 +416,23 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
      * the SAME durable session. Every transition is a real UI row click /
      * system Back, and the request row never admits a run (the coordinator
      * stays `Idle`).
+     *
+     * #477/#479 quarantine (ci-test-portfolio.md): CI passes the
+     * [QUARANTINE_RUNNER_ARGUMENT] runner argument so this touch oracle
+     * skips while #479 owns the Compose-level ghost-row anomaly it hits;
+     * local and diagnostic runs omit the argument and the oracle stays
+     * observable (classified failure + failure-instant screenshot).
      */
     @Test
     fun issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute() {
+        val quarantineArgument = androidx.test.platform.app.InstrumentationRegistry
+            .getArguments()
+            .getString(QUARANTINE_RUNNER_ARGUMENT)
+        org.junit.Assume.assumeTrue(
+            "issue372 touch oracle quarantined for #479 in CI (see ci-test-portfolio.md); " +
+                "omit $QUARANTINE_RUNNER_ARGUMENT to run it locally",
+            quarantineArgument == null,
+        )
         val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
         installProcessLocalRunner(fixture)
         // The consultation session is seeded through the REAL durable store
@@ -733,7 +747,23 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                         "(attempts=$REQUEST_ROW_CLICK_ATTEMPTS): ${arrivalDiagnosis(navController)}",
                 )
             }
+            check(!isOnDestination(navController, HomeScreenManualOrganization())) {
+                // Navigation verifiably dispatched but the surface never
+                // composed — re-injecting would double-push the entry.
+                captureArrivalFailureScreenshot()
+                "request row touch click navigated but the run surface never composed: " +
+                    arrivalDiagnosis(navController)
+            }
         }
+    }
+
+    /** Reads the back-stack arrival state on the main thread. */
+    private fun isOnDestination(navController: NavHostController, route: PreferenceRoute): Boolean {
+        var onRoute = false
+        composeRule.runOnIdle {
+            onRoute = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
+        }
+        return onRoute
     }
 
     /**
@@ -1131,6 +1161,13 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
         /** #477: arrival budget for the run surface after a request-row click. */
         const val REQUEST_ROW_ARRIVAL_TIMEOUT_MS = 10_000L
+
+        /**
+         * #477/#479 quarantine runner argument: present only in the CI lane
+         * invocation while #479 owns the ghost-row anomaly; local and
+         * diagnostic runs omit it so the touch oracle stays observable.
+         */
+        const val QUARANTINE_RUNNER_ARGUMENT = "nunuQuarantineIssue479TouchOracle"
 
         fun planningResult() = PlanningResult(
             revision = RevisionId(REVISION),
