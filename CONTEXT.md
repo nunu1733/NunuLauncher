@@ -247,3 +247,15 @@ _Avoid_: 重み付きコスト (dragの距離・待ち時間を反映する別�
 **重複アイテム (duplicate item)**:
 同一起動先 (アプリ項目はcomponent + profileの一致) を持つ複数の配置アイテム。B7の対象であり、fixtureでは指定した2組のみがこれに該当する ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md) §5)。
 _Avoid_: 同じアイコン (視覚的一致ではなくidentityの一致)、重複アプリ (単一installのアプリが複数の配置アイテムを持つ状態を指す)
+
+**編集アクション (Edit Action)**:
+利用者が長押しpopupで明示的に選んだ、1個の配置アイテムへの単一の即時変更（ページへ移動、フォルダへ入れる、ホームから外す）。ADR-0013対象(a)であり、正本の操作面と契約は [spec 448](./specs/448-edit-actions-per-item/spec.md)。
+_Avoid_: 適用 (apply)（organizerのplan適用と混同）、整理 (organization)
+
+**編集意図 (Edit Intent)**:
+編集アクションの対象と移動先の組（対象itemId + 移動先ページ / フォルダ / 新規フォルダ（置き先ページを含む）/ 外す）。純粋計画関数への入力であり、二段階検証の両段で同じ値が使われる ([spec 448](./specs/448-edit-actions-per-item/spec.md))。
+_Avoid_: 意図 (UserReviewedIntent)（lock authoringの語）、plan（organizerのplan artifactと混同）
+
+**編集snapshot (Edit Snapshot)**:
+1回の編集意図の計画と検証のために、現在のホームレイアウトを投影した読み取り専用の入力。organizerのレイアウトsnapshotより小さく、単一操作の検証に必要なfieldのみを持つ ([spec 448](./specs/448-edit-actions-per-item/spec.md))。
+_Avoid_: レイアウトsnapshot（organizer runの入力。別の粒度）

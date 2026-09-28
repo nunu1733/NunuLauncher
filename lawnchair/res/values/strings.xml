@@ -923,6 +923,27 @@
 
     <!-- Organizer placement locks (Issue #38). States are always shown as text, never color alone. -->
     <string name="organizer_lock_menu_title">Placement lock</string>
+    <!-- Issue #448: per-item edit actions -->
+    <string name="homeedit_menu_move_to_page">Move to page\u2026</string>
+    <string name="homeedit_menu_add_to_folder">Add to folder\u2026</string>
+    <string name="homeedit_menu_remove_from_home">Remove from Home</string>
+    <string name="homeedit_dialog_title_move_to_page">Destination page</string>
+    <string name="homeedit_dialog_title_add_to_folder">Destination folder</string>
+    <string name="homeedit_dialog_title_new_folder_page">Page for the new folder</string>
+    <string name="homeedit_list_new_folder">New folder</string>
+    <string name="homeedit_page_label">Page %1$d</string>
+    <string name="homeedit_folder_entry">%1$s (%2$d items)</string>
+    <string name="homeedit_folder_default_label">Folder</string>
+    <string name="homeedit_lock_note_locked">This icon is placement-locked. The lock is kept when moved.</string>
+    <string name="homeedit_lock_note_locked_remove">This icon is placement-locked. Removing it also removes the lock.</string>
+    <string name="homeedit_error_stale">The layout changed meanwhile. Try again.</string>
+    <string name="homeedit_error_item_gone">The icon is already gone.</string>
+    <string name="homeedit_error_no_space">The selected page has no free space.</string>
+    <string name="homeedit_error_redundant">The icon is already at that position.</string>
+    <string name="homeedit_error_folder_gone">The folder is already gone.</string>
+    <string name="homeedit_error_profile_mismatch">A work-profile icon cannot go into this folder.</string>
+    <string name="homeedit_error_unsupported">This icon is not supported by the edit actions.</string>
+    <string name="homeedit_error_write_failed">The write failed. The layout is unchanged.</string>
     <string name="organizer_lock_state_locked">Locked</string>
     <string name="organizer_lock_state_unlocked">Unlocked</string>
     <string name="organizer_lock_state_unknown">Needs review</string>
