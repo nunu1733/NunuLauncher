@@ -438,6 +438,16 @@ data class ExportSession(
      * record written before v4 (those refs cannot resolve -> typed fail-closed).
      */
     val categoryRefs: Map<String, CategoryIdentity> = emptyMap(),
+    /**
+     * Issue #417 (spec 417 "Data and state"): the durable entry origin —
+     * whether this request was authored inside a run with an explicit scope
+     * selection ([ExportEntryOrigin.RUN_IN]) or outside one
+     * ([ExportEntryOrigin.IDLE]). Written exactly once at session creation
+     * (save) and immutable afterwards. `null` only on a record written before
+     * #417 (absent = unknown); readers observe it through
+     * [resolvedEntryOrigin].
+     */
+    val entryOrigin: ExportEntryOrigin? = null,
 ) {
     init {
         require(exportId.isNotEmpty())
@@ -458,6 +468,22 @@ data class ExportSession(
             val ids = scopeCandidates.map { CandidatePlanningIds.planningId(it) }.toSet()
             return itemRefs.filterValues { it in ids }.keys
         }
+
+    /**
+     * Issue #417 legacy decode rule (spec 417 "Data and state"): the entry
+     * origin callers observe. A present [entryOrigin] is respected as-is
+     * (written once at session creation, immutable afterwards). An ABSENT
+     * origin decodes from the durable scope fields: non-empty
+     * [scopeCandidates] = legacy RUN_IN — a pre-#417 record could only carry
+     * candidates when authored in a scope-selected run, so the origin is
+     * uniquely recoverable and #375's selection-restore rebind semantics are
+     * kept; empty scope = IDLE, the fail-safe arm (a legacy IDLE record and a
+     * zero-selection RUN_IN record are indistinguishable, and neither may
+     * regain direct attach authority).
+     */
+    val resolvedEntryOrigin: ExportEntryOrigin
+        get() = entryOrigin
+            ?: if (scopeCandidates.isEmpty()) ExportEntryOrigin.IDLE else ExportEntryOrigin.RUN_IN
 }
 
 /** Identity of the #203 snapshot used at export time. */

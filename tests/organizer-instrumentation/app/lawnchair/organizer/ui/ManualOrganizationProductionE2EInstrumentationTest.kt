@@ -159,10 +159,21 @@ class ManualOrganizationProductionE2EInstrumentationTest {
      * Issue #228: these E2E cases exercise the plain full-organization
      * contract, so they pass through the selection surface with an empty
      * selection (equivalent to the pre-#228 flow).
+     *
+     * Issue #417 (spec 417, AC-1): a manual run stops at [State.ScopeConfirmed]
+     * once the (empty) selection is confirmed — the frozen scope parks at the
+     * method-choice face. The plain flow takes the 「このまま整理」 arm
+     * ([planWithConfirmedScope]) to enter the composed phase on the frozen
+     * scope; an empty cut reaches this state directly (AC-3) and plans into
+     * [State.NoChanges] through the same arm.
      */
     private fun ManualOrganizationRun.startPlain() {
         start()
         (state as? ManualOrganizationRun.State.Selecting)?.let { confirmSelection(emptySet()) }
+        check(state is ManualOrganizationRun.State.ScopeConfirmed) {
+            "Plain run did not reach the method-choice face: $state"
+        }
+        planWithConfirmedScope()
     }
 
     @Test

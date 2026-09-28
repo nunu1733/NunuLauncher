@@ -113,12 +113,18 @@ public final class OrganizerModelReloadAdapter {
             while (!completed[0]) {
                 long remaining = deadline - System.currentTimeMillis();
                 if (remaining <= 0) {
+                    // Issue #376: a giving-up caller must not leave a stale
+                    // pending token for a later generation to complete.
+                    model.cancelOrganizerReloadIfCurrent(requestId);
                     return new RequestResult(Outcome.TIMEOUT, null);
                 }
                 try {
                     lock.wait(remaining);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                    // Issue #376: a giving-up caller must not leave a stale
+                    // pending token for a later generation to complete.
+                    model.cancelOrganizerReloadIfCurrent(requestId);
                     return new RequestResult(Outcome.FAILED, null);
                 }
             }

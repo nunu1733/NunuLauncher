@@ -35,7 +35,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 |---|---|
 | 目的、範囲、優先度、進捗、担当、依存関係 | GitHub Issue |
 | 観測可能な振る舞い、受入条件、非対象 | `spec.md` |
-| 実装順序、変更module、migration、検証方法 | 同じspecディレクトリの `plan.md` |
+| 実装順序、変更module、migration、検証方法（階層H。階層Mはaccepted軽量specが正本であり `plan.md` を持たない） | 同じspecディレクトリの `plan.md` |
 | 全体のmodule構造、interface、seam、システム不変条件 | `DESIGN.md` |
 | ドメイン用語 | `CONTEXT.md` |
 | 変更困難な設計判断と理由 | `docs/adr/` |
@@ -48,11 +48,13 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 1. Issueの問題、成果、非対象、要件ID、リスク、終了条件を確認する。
 2. 機能変更ではspecを作成または更新し、シナリオと失敗時の振る舞いを具体化する。
 3. 未決定の製品判断が残る場合は実装せず、research/decision Issueへ分離する。
-4. spec承認後に `plan.md` を作り、変更するmodule、seam、migration、rollback、検証を記載する。
+4. 階層Hの変更では、spec承認後に `plan.md` を作り、変更するmodule、seam、migration、rollback、検証を記載する。階層Mはaccepted軽量spec（[specs/_template/spec-lite.md](./specs/_template/spec-lite.md)）だけで実装開始でき、`plan.md` は要求しない。
 5. 最小の縦切りで実装し、interfaceを通したテストを先に追加する。
 6. 実行した検証と結果をPRへ記録し、必要な文書を同じPRで更新する。
 7. PR本文のIssue関係を成果の完了度に合わせる。Issueの終了条件を満たす最終PRだけが `Closes #<issue>` を含め、中間のspec/plan/research/調査・証跡PRは `Refs #<issue>` を使う。括弧書き（例: `Closes #<issue> (実装後)`）で自動closeを遅延できない。
-8. Worker/Reviewの開始・handoff・承認は [GitHub workflowの実行契約](./docs/project/github-workflow.md#execution-and-approval-contract) に従う。accepted specのcommit、workflowで定義されたbug oracleのrevision identity、plan revision、base/head SHA、diff、検証結果、未確認範囲を同じpacketへ記録し、モデルが異なるだけで独立review済みとは扱わない。条件付き承認や承認後の実質変更は、条件確認または再reviewが終わるまで実装開始・mergeへ進めない。脆弱性の疑いは公開Issue/PRへ記載せず、[SECURITY.md](./SECURITY.md)の非公開報告窓口を使う。
+8. Worker/Reviewの開始・handoff・承認は [GitHub workflowの実行契約](./docs/project/github-workflow.md#execution-and-approval-contract) に従う。accepted specのcommit、workflowで定義されたbug oracleのrevision identity、plan revision（階層Hのみ。階層Mはaccepted軽量specのcommitのみ）、base/head SHA、diff、検証結果、未確認範囲を同じpacketへ記録し、モデルが異なるだけで独立review済みとは扱わない。条件付き承認や承認後の実質変更は、条件確認または再reviewが終わるまで実装開始・mergeへ進めない。脆弱性の疑いは公開Issue/PRへ記載せず、[SECURITY.md](./SECURITY.md)の非公開報告窓口を使う。
+
+進め方はリスク階層で分ける（[docs/project/github-workflow.md](./docs/project/github-workflow.md) の Risk tiers）。Launcher DB書込み、migration、recovery、上流model/loader bridge（階層H）は現行の厳格さを維持する。新しい書込み経路を持たないUX/機能（階層M）は軽量specと実機確認で進めてよいが、specには改善するベンチマーク課題と目標（編集負担ベンチマーク、NFR-014）を含める。文書・テスト・refactor（階層L）はPRのみでよい。階層の判定と格上げの規則はworkflow文書に従う。
 
 詳細は [docs/project/github-workflow.md](./docs/project/github-workflow.md) を参照する。
 
@@ -82,6 +84,8 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 
 `favorites` の無条件な全削除→再挿入、遅延時間への依存、手動バックアップだけをundoとみなす実装は禁止する。例外が必要なら、受入済みADRと破壊・復旧テストを要求する。
 
+ユーザーが明示的に選んだ1個のアイテムへの即時の編集アクション、上流が行う単一アイテムの追加の配置先決定、および前者のUndoは、この規約ではなくADR-0013（直接編集の書込み契約、`docs/adr/0013-direct-edit-write-contract.md`）に従う。これらは1アクション = 1 DB transaction、書込み前の副作用のない検証、fail-closedなUndoを要求するが、snapshot revision照合・recovery point・相関reload・適用後の全体再検証は要求しない。この段落に列挙されないLauncher DBへのlayout書込みは、引き続きこの節の条件に従う。
+
 ## テスト規約
 
 - 計画module: fixture、境界値、property test、決定性、冪等性をinterface経由で検証する。
@@ -89,6 +93,8 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 - integration: package追加、work profile、grid変更、restore、プロセス再起動を対象にする。
 - UI: 確認、失敗、復旧、アクセシビリティを検証する。
 - 修正は失敗を再現するテストを伴う。テストできない場合は理由と代替証拠をPRに記載する。
+- testの新規作成・変更・review・監査、またはCI test routingの変更では [test-audit skill](./.agents/skills/test-audit/SKILL.md) を適用し、protected contract・credible regression・primary owner boundary・既存coverageとの重複・impact surface・CI分類を先に確定する。skillは手順であり、正本はquality strategy / CI portfolio / workflowとする。
+- 新規test/CI lane追加は、既存coverage・低層への配置・impact surface・重複・起動条件を審査してから行う。CI portfolioの監査表（[docs/engineering/ci-test-portfolio.md](./docs/engineering/ci-test-portfolio.md)）とlane↔surface map（`tools/repo-contract/ci_portfolio_map.yml`）を同じPRで更新する。詳細は [docs/engineering/quality-strategy.md](./docs/engineering/quality-strategy.md) に従う。
 
 ## 高リスクPRの独立エビデンス
 

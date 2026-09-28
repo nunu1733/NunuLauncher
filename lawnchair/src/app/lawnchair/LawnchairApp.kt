@@ -128,6 +128,22 @@ class LawnchairApp : Application() {
     internal fun ensureOrganizerStartupReconciliation() {
         if (!organizerReconciliationStarted.compareAndSet(false, true)) return
         thread(name = "organizer-startup-reconciliation") {
+            // Issue #374 (spec 374 DI-AC-05 / Contract notes 8): the pending
+            // imported intent's startup reconcile is store-complete (pending
+            // store + session store + clock only), so it runs at the HEAD of
+            // this shared idempotent trigger — before the model-load wait and
+            // independently of the readiness gate. A fresh process cleans a
+            // stale proposal record even when the hub is never opened. Never
+            // throws: a read failure degrades to "no record" and the startup
+            // reconciliation below continues undisturbed.
+            app.lawnchair.organizer.integration.exchange.PendingImportStartupReconcile.reconcileAtStartup(
+                store = app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule.store(this@LawnchairApp),
+                sessionStore = app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule.store(this@LawnchairApp),
+                nowEpochMs = System.currentTimeMillis(),
+                // Issue #375: the startup cleanup is a durable-record mutation,
+                // so it shares THE process-wide exchange mutation gate.
+                gate = app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule.gate(),
+            )
             val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
             com.android.launcher3.util.Executors.MAIN_EXECUTOR.execute {
                 if (!model.isModelLoaded && !model.hasCallbacks()) {

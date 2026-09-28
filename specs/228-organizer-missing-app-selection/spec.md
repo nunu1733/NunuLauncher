@@ -9,7 +9,7 @@ requirements:
   - NFR-009
 risk:
   - layout-data
-updated: 2026-09-12
+updated: 2026-09-20
 ---
 
 # ホーム未配置アプリを選択してOrganizerの対象へ追加できる
@@ -68,7 +68,7 @@ launchable installed apps (per-profile, LauncherApps権限で列挙)
 追加要件:
 
 - 未選択のまま確定することは「候補を追加しない従来どおりの全体整理」として有効である。
-- 検出された候補が0件の場合、その旨を表示して従来flowに戻る (エラーではない)。
+- 検出された候補が0件の場合、選択UIを表示せず従来flowへ続行する (エラーではない。Issue #369 TO-BE D-06: 0件時の選択面は必須通過でなく、coordinator内部で選択stateを経由した直後にcapture/planへ続行する)。
 - 選択stateはprocess-localなUI stateであり、persistしない。
 - **選択stateと検索/filterの相互作用** (受入条件の一部):
   - 選択stateは候補の安定identityで保持され、検索語・filterの変更では選択を保持する (非表示になっても解除しない)。
@@ -268,7 +268,7 @@ Then 当該appは候補一覧に現れない。
 
 ## Decisions (owner決定の記録)
 
-- **D-1 初期選択policy: unchecked-by-default** — owner決定 (2026-09-11, [Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5634964606))。
+- **D-1 初期選択policy: unchecked-by-default** — owner決定 (2026-09-11, [Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5634964606))。 **Issue #375 Amendment**: run-in由来のrebind (durable取り込み済み提案からのprocess死後再開) に限り、依頼時の明示選択と一致する候補 (現行検出cutで解決可能なもの) を **選択面の初期値として復元** できる。復元値はあくまで初期値であり、選択面の編集は自由で、確定は明示的confirm (1回) のみが行うため、本D-1のunchecked-by-default・明示的選択契約は弱められない。非rebind経路 (通常run・idle継続) の初期値はuncheckedのままである。
 - **D-2 run mode composition: 新規run mode (scope-composed organize) 採用** — owner決定 (2026-09-11, 同コメント)。`FullOrganization` の「additions空」不変条件と既存検証は無変更。
 - **D-3 候補一覧の表示順**: 実装PR内で確定 (owner判断)。決定性 (NFR-003) を満たす決定的順序であること (locale依存の表示label順はplan §4のID規約の採番には使わない; 表示順としての可否は実装PRで決める)。
 
@@ -283,6 +283,8 @@ Then 当該appは候補一覧に現れない。
 - 2026-09-11: **owner受入により status を accepted へ移行**。レビュー条件解消後の改訂版 (commit `3d028dda68`) に対するowner指示 (2026-09-11セッション、Phase 1指示) による。本specに基づく実装を開始可能になる。
 - 2026-09-11: accepted移行後のreview (code-reviewer-1, Approve @ `562fc327cd`) の非blocking指摘 (P3×5) を反映。シナリオ・Non-goalsの表示順文言をD-3 (実装PR確定) と整合させ、§1の参照を「(§6)」へ修正、依存関係表の#208行にvariant集合の意図的拡張を明記。
 - 2026-09-12: **status を implemented へ移行**。実装PR [#289](https://github.com/nunu1733/NunuLauncher/pull/289) merge (merge commit `85047244680bf476dd585b7217113d587c9059c9`)。実装は3回のreview round (code-reviewer-1 Request changes → 修正、code-reviewer-2 Approve、owner review 2回 Request changes → 修正) と独立監査 3版 ([docs/assessment/pr-289-organizer-missing-app-selection.md](../../docs/assessment/pr-289-organizer-missing-app-selection.md) — 最終版はhead `9cd3522883` + [run 34665957437](https://github.com/nunu1733/NunuLauncher/actions/runs/34665957437) 対応) を経て受理。AC-1〜AC-15の充足は監査記録と [Issue close記録](https://github.com/nunu1733/NunuLauncher/issues/228#issuecomment-5643169817) を正本とする。owner指摘に伴う契約拡張: (1) strategy意味論を候補tailへ適用 (`createsFolders`/`pageScope`消費、`UnplacedReason.STRATEGY_SCOPE_FULL` によるoverflow契約の実装)、(2) `PreWriteRejection.CANDIDATE_UNAVAILABLE` 追加 (spec 13閉集合への記載はissue #293)、(3) `PlanPreviewResult.CandidateResolutionFailed` 追加。残follow-upはissue #293、テストflake追跡はissue #292。
+
+- 2026-09-20: Amended by Issue #369 (accepted spec 369) per accepted disposition §3.13: §2の0件規定を「0件でも選択面を表示」から「0件なら選択面を表示せずcapture/planへ続行」へ改訂 (TO-BE D-06、V-09の解消)。明示選択契約 (icon/label/multi-select/選択数/search/Select all/Clear all、D-1 unchecked初期値、process-local選択state) とAC-2/AC-14は不変。0件表示を固定していたoracle (`zeroCandidatesShowsTheEmptyNoticeAndStillContinues`) は0件非表示の否定的観測oracleへ更新される (obsolete理由: 無意味な1 tapの廃止)。
 
 ## References
 

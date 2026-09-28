@@ -28,7 +28,7 @@ object RecoveryRecordCodec {
      * Logical recovery-record format version. Persisted in
      * `recovery_points.format_version` and tombstone `format_version`, included
      * in the payload checksum, and required by [decode] and
-     * [app.lawnchair.organizer.application.lifecycle.LifecycleReconciler].
+     * the restart/in-flight protocol classification gates (Issue #377 consolidation).
      * Physical schema 3 records keep this value; migration never rewrites it.
      */
     const val RECORD_FORMAT_VERSION: Int = 2

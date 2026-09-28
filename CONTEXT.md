@@ -1,6 +1,6 @@
 # Home Layout Organization
 
-ユーザーのホーム画面を、安全かつ再現可能な規則で整理するためのドメイン用語を定義する。ここでは実装クラスやデータベース構造を扱わない。
+ユーザーのホーム画面を、安全かつ再現可能な規則で整理するためのドメイン用語を定義する。ここでは実装クラスやデータベース構造を扱わない。実装・契約語彙のうち#444で移動した語の定義は、各所有specの Domain language または `DESIGN.md` が正本であり、本書には参照を残す。それ以外の語（境界語として残置したexport session、対象scope凍結、中断・破棄・キャンセル等を含む）の正本は引き続き本書である。
 
 ## Language
 
@@ -16,6 +16,10 @@ _Avoid_: App（配置対象がアプリだけでない場合）、Favorite
 配置アイテムと、そのページ・領域・セルまたは親フォルダとの対応。
 _Avoid_: Position（座標だけを意味する場合）
 
+**配置先ポリシー (New App Destination Policy)**:
+上流が既にホームへ追加するアイコン（`pref_add_icon_to_home`が有効で上流の追加条件を満たすもの）について、どこへ置くかを決めるユーザー選択の規則（ADR-0015）。追加するかどうかの判定は含まない。
+_Avoid_: 増分配置 (Incremental Placement)（既存アイテムを動かす整理runを指す既存語との混同）、自動配置（ユーザー選択の規則であることの不明瞭化）
+
 **対象集合 (Target Set)**:
 1回の整理で移動、保持、または新規配置を検討する配置アイテムの明示的な集合。
 _Avoid_: 全アプリ（対象範囲が曖昧な場合）
@@ -25,8 +29,12 @@ _Avoid_: 全アプリ（対象範囲が曖昧な場合）
 _Avoid_: 設定、XMLルール
 
 **レイアウトストラテジー (Layout Strategy)**:
-対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、選択identityがpolicy provenanceへ参加する ([spec 182](./specs/182-layout-strategy-catalog/spec.md))。
+対象集合をどのような配置方針へ変換するかを決める、version付きの組み込み計画戦略。folder形成、対象unit、unit順序、page範囲、cell探索をcurated catalogの1メンバーとして固定し、選択identityがpolicy provenanceへ参加する ([spec 182](./specs/182-layout-strategy-catalog/spec.md))。primary success metricは「ユーザーが選んだ/表明したHome構成意図との一致」であり、page/folder/density等の数量指標は補助指標・tie-breakerである ([spec 398](./specs/398-strategy-intent-first-bottom-region/spec.md))。
 _Avoid_: 並べ替え設定 (組合せ式toggleを想起させる)、Theme、OrderingPolicy (旧単一値の型名)
+
+**下部優先領域 (lower preferred region)**:
+layout strategyが配置候補cellを制限するために、device profileの行数から決定的に導出する、page下部の行帯。`BOTTOM_REGION_V1` が採用し、pageの下 `ceil(rows/2)` 行を主な配置領域として上側を意図的余白として保持する。`regionAffinity` のBOTTOM band（行数3等分区の下带）とは別の、strategy構造の正本概念である ([spec 398](./specs/398-strategy-intent-first-bottom-region/spec.md))。
+_Avoid_: widget band（captured widget帯との混同）、region band（intent hintの行帯との混同）、下段（行数非依存の概念であることの不明瞭化）
 
 **ストラテジー固定unit (strategy-fixed unit)**:
 あるlayout strategyが「本来はmovableだが、そのstrategyの意図として動かさない」と決めたtop-level unit。配置上の占有を維持し、自然に保持されたunitとは別の理由として扱う ([spec 237](./specs/237-global-compact-v2-folder-relocation/spec.md))。
@@ -97,8 +105,7 @@ _Avoid_: taxonomy (組み込みbundle内容との混同)、カテゴリ一覧 (U
 _Avoid_: Backup（長期保存用バックアップと混同する場合）、Undo（操作そのものを指す場合）
 
 **organizer durable status (永続整理状態)**:
-application moduleがrecovery storeの永続recordとtombstoneから導出する、閉じた語彙の状態表示。永続化せず毎回導出するため、記述対象のrecordより長く生存しない。recordの中身、revision、digest、アイテム識別子を含まない。
-_Avoid_: Organizer status（process-localなrun状態と混同する場合）、Backup state
+recovery storeの永続recordとtombstoneから導出する、閉じた語彙の状態表示。実装・契約語彙のため、定義の正本は [DESIGN.md](./DESIGN.md) §4.2 の Durable status vocabulary（#444で移動）。
 
 **有効プリセット (enabled preset)**:
 宣言カタログのうち、現在の端末種別に対してプラットフォーム宣言上有効と判定されたグリッドプリセット。
@@ -129,8 +136,7 @@ intentが `groupSemantic.proposalLabel` で表現する、active taxonomyに存�
 ユーザーが明示的に選んだ場合にのみ、提案グループを #336 の通常authoring pathでpersistent user-defined categoryへ保存する操作。AI専用のwriterは存在しない。
 
 **export-scoped ID (Export Item Reference)**:
-1つのcontext export内でのみ有効な、itemを指すopaqueな識別子。export生成ごとに新鮮な乱数から割り当てられ、内部`ItemId`・DB row IDとは無関係かつ逆算不可能である。対応付けはexport sessionのみが保持する。
-_Avoid_: ItemId (内部正本IDとの混同)、package名、安定な仮名化identifier (pseudonym)
+1つのcontext export内でのみ有効な、itemを指すopaqueな識別子。実装・契約語彙のため、定義の正本は [spec 204](./specs/204-ai-personalization-context-intent-contract/spec.md) の Domain language（#444で移動）。
 
 **export session (エクスポートセッション)**:
 1つのcontext exportに対応する、app-privateで期限付きのdurableな対応記録 (`exportId`、ref↔内部`ItemId`のmap、privacy tier、structural source context digest、signal provenance、生成・失効時刻)。外部アプリ滞在中のprocess deathを跨いでintent取り込みを可能にする。backup対象外であり、label等のuser作成自由文を含まない。
@@ -153,28 +159,36 @@ _Avoid_: privacy policy (静的文書との混同)
 _Avoid_: auto-apply、paste-to-layout
 
 **取り込み成功状態 (Import Success State)**:
-AI回答のvalidation通過後、run接続 (attach / fresh run開始) の前に表示される中間状態 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。取り込み済みであること、privacy-safeな件数summary (canonical `CompletedPersonalIntent` のAuthored計数と判断なし合算、planner-effectiveな `minimizeMovement` の全体方針行)、まだホーム画面へ適用されていないこと、次のOrganizer操作への明示的CTAを含む。CTA押下または明示的な破棄によって終了し、その間のrun接続seamの起動は一度だけである。
-_Avoid_: 適用完了 (未適用であることとの混同)、プレビュー (#194 previewとの混同)
+AI回答のvalidation通過後、run接続 (attach / fresh run開始) の前に表示される中間状態。実装・契約語彙のため、定義の正本は [spec 328](./specs/328-exchange-import-success-state/spec.md) の Domain language（#444で移動）。
 
 **取り込み破棄 (Import Discard)**:
-取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。pendingなvalidated intentを破棄する (zero-write)。export sessionはinvalidateしないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は明示ボタン (追加確認なし) とsystem Back (確認dialog) の2つで、CTA処理中はどちらも不受理。
-_Avoid_: 取り消し (apply済み変更のrollbackとの混同。何も適用されていない)
+取り込み成功状態をCTAなしに閉じる操作。実装・契約語彙のため、定義の正本は [spec 328](./specs/328-exchange-import-success-state/spec.md) の Domain language（#444で移動。durable record側は [spec 374](./specs/374-durable-imported-intent/spec.md)）。
+
+**手段別失敗投影 (Failure Remedy Projection)**:
+import失敗のtyped分類を、ユーザーの次の行動の語彙へ再投影した表示モデル ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-11)。実装・契約語彙のため、定義の正本は [spec 373](./specs/373-import-display-reprojection/spec.md) の Domain language（#444で移動）。
+
+**原因別remedy (Cause-Specific Remedy)**:
+`SCOPE_MISMATCH` の原因種別に対応づけられた救済action ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-17)。実装・契約語彙のため、定義の正本は [spec 375](./specs/375-scope-remedy-rebind/spec.md) の Domain language（#444で移動）。
+
+**rebind (process死後再開 / fresh run rebind)**:
+process死後にdurableな取り込み済み提案からfresh runを開始し、依頼時scopeとの一致検証を経て提案を新しいrunへ結合する操作 ([#375](https://github.com/nunu1733/NunuLauncher/issues/375))。実装・契約語彙のため、定義の正本は [spec 375](./specs/375-scope-remedy-rebind/spec.md) の Domain language（#444で移動）。
+
+**選択復元初期値 (Selection Restore Initial Values)**:
+rebindの選択面で、依頼時の明示選択と一致する候補を初期選択値として設定すること ([#375](https://github.com/nunu1733/NunuLauncher/issues/375))。実装・契約語彙のため、定義の正本は [spec 375](./specs/375-scope-remedy-rebind/spec.md) の Domain language（#444で移動）。
 
 **判断なし項目 (no-judgment items)**:
 #330 v3 canonical representation (`CompletedPersonalIntent`) 上、`RefDecision.Authored` 以外の決定 (明示unresolved・bare entry正規化・未言及) を持つexport ref ([spec 328](./specs/328-exchange-import-success-state/spec.md))。3表現はsemantic identity・planner効果が同一 (#330 D-5/D-6) であり、UIでは合算1件数のみを表示してprovenanceを出さない。
 _Avoid_: 失敗項目 (取り込み自体は成功している)、未対応 (AIが判断しなかっただけでpreferenceなしとして整理対象)
 
 **インポート正規化 (Import Normalizer)**:
-import textの外形 (framing/transport表現) のみを認識・canonical化する境界層 ([spec 329](./specs/329-import-normalizer/spec.md))。accepted framingはmarker形式 (canonical)・単一fenced `json` code block・standalone JSON objectの3種で、それ以外はtyped失敗 (曖昧/認識不能) でzero-write rejectする。fuzzy extraction (複数候補からの推測選択・`{...}` の任意拾い) は禁止で、payloadは正規化済入力の部分文字列 (semantic無変更) に限られる。
-_Avoid_: 意味レベルcanonicalization (field値・ref集合・schemaVersionの書換え)、markdown全体実装、provider固有formatへの密結合
+import textの外形 (framing/transport表現) のみを認識・canonical化する境界層。実装・契約語彙のため、定義の正本は [spec 329](./specs/329-import-normalizer/spec.md) の Domain language（#444で移動）。
 
 **交換フレーミング (Exchange Framing)**:
 外部agentの返答text内で `PersonalizedIntentV1` 本体を囲むmarker対 (完全行marker `-----BEGIN/END NUNULAUNCHER INTENT-----`) と、そこから本体を一意に抽出する規則 ([spec 205](./specs/205-external-agent-exchange/spec.md) 所有)。framing内のpayloadのschema解釈は行わない (それは #204)。framingの不成立・曖昧性は #205側のtyped parse失敗である。marker形式以外の外形受理 (fenced `json` block・standalone JSON) は [spec 329](./specs/329-import-normalizer/spec.md) が導入したインポート正規化層の所有であり、本規則はcanonical formとして不変。
 _Avoid_: schema (payload本体の契約は #204)、system prompt (instruction部の一部との混同)
 
 **交換セッション置換確認 (Session Replacement Confirmation)**:
-activityなexport sessionが存在する状態で新規exchange package生成を開始するとき、#204 single-active-session規則により既存exchangeが無効化されることを明示し、userの承認を得る確認step。承認なしには生成を開始しない。
-_Avoid_: 上書き保存 (既存exchange宛回答が以降import不可となる破壊的操作であることの表示を省く呼称)
+activityなexport sessionが存在する状態で新規exchange package生成を開始するときの、既存exchange無効化の明示とuser承認の確認step。実装・契約語彙のため、定義の正本は [spec 205](./specs/205-external-agent-exchange/spec.md) の Domain language（#444で移動）。
 
 **整理方針確認 (policy confirmation)**:
 interview-firstなExternal Agent Exchangeにおいて、外部AIがヒアリング結果から理解した整理方針を短く要約してuserに提示し、了承を得るstep ([spec 327](./specs/327-agent-exchange-interview-first/spec.md))。了承 (またはuserによる明示的なskip宣言) 後にのみ最終 `PersonalizedIntent` の生成が行われる。確認のやり取りは外部AIアプリ内の会話であり、Launcher ↔ AI間のartifact交換 (request package 1回・final artifact 1回) には数えられない。launcher側はこの会話順序を検証しない (安全性はframing抽出・#204 validator・preview/confirmが所有する)。
@@ -185,5 +199,63 @@ External Agent Exchangeのexportにおいて、現在Homeに配置されてい�
 _Avoid_: 仮配置 (配置の作成を示唆する)、新規アイテム (Add行というplan表現と混同)
 
 **scope binding gate (scope束縛検証)**:
-validated intentをorganizer runへ適用する時点で、runの確定した対象scopeのcandidate集合がexchange exportの対象scopeと完全一致し、各候補の投影 (identity + availability + 解決済み分類) がexport時と一致することを検証するfail-closedな検証step ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。違反はtyped失敗 `SCOPE_MISMATCH` としてzero-write処理される。
-_Avoid_: staleチェック (配置構造変化の検出とは別段)、再検証 (availability再検証と混同)
+validated intentをorganizer runへ適用する時点の、対象scopeの完全一致を検証するfail-closedな検証step。実装・契約語彙のため、定義の正本は [spec 331](./specs/331-exchange-target-scope-coupling/spec.md) の Domain language（#444で移動）。
+
+**Organizer hub (整理ハブ)**:
+Organizerの恒常作業領域かつprimary entry面 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-01/D-02、§5.2)。durable status・進行中のAI依頼・取り込み済み提案・最近のrun結果 (process内のみ) を示すstatus cardと、整理の開始、材料群、診断への導線を1面に集約する。設定側には入口rowだけを残す。onboarding提案 (T-19)・workspace長押しlock (T-20)・選択面からのAI相談・safe terminalからの診断等のsecondary entryは維持される。
+_Avoid_: 設定画面 (入口rowを指す場合)、ダッシュボード、唯一の入口 (secondary entryを否定する誤解)
+
+**材料 (organizer materials)**:
+分類・ロック・整理方針・使用状況ヒントの総称 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) §10)。run外の恒常storeへ即時保存されるauthoring対象であり、run中の恒常authoringは不可で「中断してから変更する」が唯一の規則である (D-03)。
+_Avoid_: 設定 (runと区別する語彙として使う場合)、プレファレンス
+
+**依頼 (AI相談の依頼)**:
+「AIに相談」で作る、export session (durableな対応記録) と送出文書 (交換パッケージ) の一組 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) §10)。active依頼は単一で24h有効であり、依頼作成時点のホームで固定される (D-09)。置換・未送信依頼の破棄・TTLで消える。
+_Avoid_: エクスポートセッション (構成要素の1つを指す既存語)、AI連携
+
+**取り込み済み提案 (取り込み済み・未適用の提案)**:
+AI回答のvalidation通過後、run接続の前に存在する提案状態 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-08、[spec 374](./specs/374-durable-imported-intent/spec.md))。依頼と同一の有効期限 (24h) を持つdurable artifactであり、process死・画面離脱で消えない。期限切れ・置換・破棄で無効になる。durable保存の成功が取り込み済み状態の成立条件であり、継続CTA成功後も保持される (継続後の再開は #375)。
+_Avoid_: 適用済み提案 (未適用である)、プレビュー (run接続後の確認対象と混同)
+
+**中断・破棄・キャンセル (中止語彙規約)**:
+ユーザー向け中止語彙の規約 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-13/§9)。不可逆に捨てる操作 (取り込み済み提案の破棄、依頼の置換、未送信依頼の無効化) は「破棄」ラベルと必須確認、zero-writeでrunを止めてhubへ戻るのは「中断」、何も壊さず中止するのは「キャンセル」(確認不要) とする。「キャンセル」ラベルの不可逆操作への混用を禁止し、現行のpre-send cancelは「破棄」へ改める (spec 205側の語彙改訂は後続実装Issueが行う)。
+_Avoid_: Cancelの混用 (zero-write中断と不可逆session無効化の同一ラベル化)
+
+**対象scope凍結 (Frozen Organization Scope)**:
+1回の整理runについて、方法選択より前にユーザーが明示確定した対象集合 ([spec 417](./specs/417-scope-first-method-choice/spec.md))。配置済み対象 (常に全体) と、選択済み未配置候補 (0件以上) からなる。確定後はAI export・deterministic planner・import検証のすべてがこの同一scopeを参照する。
+_Avoid_: 対象選択 (凍結前の編集中状態との混同)、依頼時scope (再開検証に使われる依頼作成時点のscope記録との混同)
+
+**方法選択面 (method choice)**:
+scope凍結後に現れる「このまま整理 / AIに相談」の選択面 ([spec 417](./specs/417-scope-first-method-choice/spec.md))。旧T-07前置き面の方法選択 (spec 369/372) はここへ移る。
+_Avoid_: 前置き面 (方法選択を含まない入口面T-07との混同)、run前置きでの方法選択 (T-07で方法を選ぶ旧構成の示唆)
+
+**scope-bound依頼破棄 (scope-bound request discard)**:
+凍結scopeの再編集のために、そのscopeから作成したactive依頼を順序付きに無効化する明示操作。実装・契約語彙のため、定義の正本は [spec 417](./specs/417-scope-first-method-choice/spec.md) の Domain language（#444で移動）。
+
+**編集負担ベンチマーク (Editing Burden Benchmark)**:
+ホーム画面の日常的な編集と、散らからない状態の維持にかかる手間を、再現可能な課題 (B1〜B7) と重み付き操作コストで測る測定体系 ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md)が正本)。NFR-014の正本であり、Now段階の機能specは改善する課題と目標値をここから引用する ([spec 441](./specs/441-editing-burden-benchmark/spec.md))。
+_Avoid_: 性能budget (organizer runの性能はperformance-budgetsが正本。面が異なる)、UX指標 (測定対象は操作コストであり満足度ではない)
+
+**重み付き操作コスト (weighted operation cost)**:
+課題あたりの主指標。操作種別ごとの確定重み (tap=1、長押し=2、ページをまたぐdrag=4+越えたページ数等) の合計 ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md) §4)。
+_Avoid_: 操作時間 (副指標。実測時間は補助)、難易度 (主観値ではなく操作回数から決定的に算出される)
+
+**操作数 (operation count)**:
+利用者の手順の数。tapも長押しも1と数え、重み付きコストとは別の指標 ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md) §4)。#452等の「n操作以下」の数え方の正本である。
+_Avoid_: 重み付きコスト (dragの距離・待ち時間を反映する別指標)、タップ数 (長押し等も1と数える)
+
+**重複アイテム (duplicate item)**:
+同一起動先 (アプリ項目はcomponent + profileの一致) を持つ複数の配置アイテム。B7の対象であり、fixtureでは指定した2組のみがこれに該当する ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md) §5)。
+_Avoid_: 同じアイコン (視覚的一致ではなくidentityの一致)、重複アプリ (単一installのアプリが複数の配置アイテムを持つ状態を指す)
+
+**編集アクション (Edit Action)**:
+利用者が長押しpopupで明示的に選んだ、1個の配置アイテムへの単一の即時変更（ページへ移動、フォルダへ入れる、ホームから外す）。ADR-0013対象(a)であり、正本の操作面と契約は [spec 448](./specs/448-edit-actions-per-item/spec.md)。
+_Avoid_: 適用 (apply)（organizerのplan適用と混同）、整理 (organization)
+
+**編集意図 (Edit Intent)**:
+編集アクションの対象と移動先の組（対象itemId + 移動先ページ / フォルダ / 新規フォルダ（置き先ページを含む）/ 外す）。純粋計画関数への入力であり、二段階検証の両段で同じ値が使われる ([spec 448](./specs/448-edit-actions-per-item/spec.md))。
+_Avoid_: 意図 (UserReviewedIntent)（lock authoringの語）、plan（organizerのplan artifactと混同）
+
+**編集snapshot (Edit Snapshot)**:
+1回の編集意図の計画と検証のために、現在のホームレイアウトを投影した読み取り専用の入力。organizerのレイアウトsnapshotより小さく、単一操作の検証に必要なfieldのみを持つ ([spec 448](./specs/448-edit-actions-per-item/spec.md))。
+_Avoid_: レイアウトsnapshot（organizer runの入力。別の粒度）

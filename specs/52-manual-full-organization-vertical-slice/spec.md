@@ -16,7 +16,7 @@ requirements:
   - NFR-011
 risk:
   - layout-data
-updated: 2026-09-08
+updated: 2026-09-20
 ---
 
 # Manual full-organization vertical slice
@@ -66,6 +66,8 @@ The feature deliberately excludes onboarding proposal (**#53**), package-event i
 ### Manual-run composition
 
 The implementation introduces one manual-run coordinator behind a narrow organizer UI port. It owns ephemeral UI state and invokes existing ports; it does not own planning policy, SQL, recovery records, lock mutation, or diagnostics storage. The coordinator may expose state such as `capturing`, `preview`, `awaiting confirmation`, `applying`, `result`, and `recovery preview`, but that state is not a second source of truth for layout state or a substitute for the application lifecycle.
+
+Issue #369 (TO-BE D-05/D-06): the run surface displays these states through the TO-BE 8 user faces (前置き T-07 → 対象選択 T-08〔候補あり時のみ〕→ 準備中 T-09 → 提案の確認 T-10 → 適用中 T-11 → 結果 T-12 → 復元の確認 T-14 → 実行できませんでした T-13). This is display integration only: the coordinator's state machine, typed outcomes, and journal correlation are unchanged (disposition §3.3). At the face level, a zero-candidate detection cut never shows the selection surface — the machine still enters the selection state and the coordinator's own dedicated continuation immediately proceeds to the composed phase, so `State.Selecting` with an empty cut (no export-scope candidates, no rejection) maps deterministically to the preparation face (spec RD-3/RD-7, accepted spec 369).
 
 The capture adapter converts platform data into `OrganizationInput`. It must preserve all captured layout items, pages, device capabilities, profile availability, lock state, target membership, rule/taxonomy versions, and classification signals needed by the planner. The adapter must reuse the canonical capture/canonical-state conversion used at the application boundary; any platform or persistence-only representation remains on the integration side of the boundary.
 
@@ -193,7 +195,7 @@ Implementation is delivered in one high-risk feature PR that closes Issue #52 af
 
 | AC | Acceptance criterion | Required evidence |
 |---|---|---|
-| MFO-AC-01 | Explicit manual start completes capture → plan → accessible preview → explicit confirmation → checkpoint/apply → verification/result through the accepted planner and application seams. | Coordinator protocol tests, Compose UI test, and API 36.1 instrumentation E2E test. |
+| MFO-AC-01 | Explicit manual start completes detection → [selection] → capture → plan → accessible preview → explicit confirmation → checkpoint/apply → verification/result through the accepted planner and application seams (Issue #369: the detection phase is part of the canonical order; a zero-candidate cut continues without the selection surface). | Coordinator protocol tests, Compose UI test, and API 36.1 instrumentation E2E test. |
 | MFO-AC-02 | A canonical `OrganizationInput` is built from current accepted capture/rule/taxonomy/signal sources; no UI-specific planner or direct UI database read/write exists. | Capture-adapter tests, dependency review, and static/source-boundary tests. |
 | MFO-AC-03 | Empty diff returns no changes and performs zero Launcher/recovery writes and zero model reload. | Public-seam counters and UI result test. |
 | MFO-AC-04 | Cancel before checkpoint writes nothing; stale confirmation discards the old preview and forces recapture/replan. | Coordinator race/cancel tests and instrumentation stale test. |
@@ -204,6 +206,10 @@ Implementation is delivered in one high-risk feature PR that closes Issue #52 af
 | MFO-AC-09 | Process recreation does not blindly replay a plan/apply; unresolved application lifecycle is reconciled before a new action. | Restart/recreation instrumentation test and lifecycle integration test. |
 | MFO-AC-10 | TalkBack, focus restoration, 200% reflow, non-color-only warnings, keyboard/switch traversal, and phase progress satisfy the Issue #4 acceptance contract. | Compose semantics, font-scale, focus, and navigation tests. |
 | MFO-AC-11 | Formatting, organizer JVM tests, instrumentation/debug-build checks, repository-contract checks, CI final status, and independent high-risk audit all succeed and are recorded in the PR. | Exact command output, CI URL, and `docs/assessment/pr-<n>-<slug>.md`. |
+
+## Change history
+
+- 2026-09-20: Amended by Issue #369 (accepted spec `specs/369-run-display-integration/spec.md`) per accepted disposition §3.3: (1) MFO-AC-01 gained the detection phase in the canonical order and the D-06 zero-candidate continuation note; (2) the Manual-run composition section records that the run surface displays the coordinator's 20 states through the TO-BE 8 user faces (display integration; internal state machine, typed outcomes, and journal correlation unchanged). The safe-apply contract table and all other acceptance criteria are unchanged.
 
 ## References
 

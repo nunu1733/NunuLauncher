@@ -8,6 +8,13 @@
 > Method: only repository source-of-truth records were used: accepted specs and
 > ADRs, merged PRs, exact-head CI, independent assessment records, and GitHub
 > Issues/comments. A closed Issue by itself is not implementation evidence.
+> Note (2026-09-25): the organizer MVP outcome assessment above is final;
+> subsequent outcome judgments moved to editing-burden reduction (see the
+> "Now outcome" section of [product-brief.md](./product-brief.md) and
+> [#441](https://github.com/nunu1733/NunuLauncher/issues/441)). Requirements
+> added or redefined by the 2026-09 refocus (FR-008, FR-017, FR-018–FR-023,
+> NFR-013/014) are tracked in [requirements.md](./requirements.md) and their
+> owning issues, not in this inventory.
 
 ## Status vocabulary
 

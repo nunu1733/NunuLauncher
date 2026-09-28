@@ -111,6 +111,19 @@ data object HomeScreenCustomCategories : PreferenceRoute
 @Serializable
 data object HomeScreenOrganizerDiagnostics : PreferenceRoute
 
+// Issue #366: Organizer hub (T-01) — the persistent organizing workspace.
+// Argument-less like the other organizer destinations: it carries no run
+// state and no write authority.
+@Serializable
+data object HomeScreenOrganizer : PreferenceRoute
+
+// Issue #368: strategy materials surface (TO-BE T-05) — the permanent home
+// of the strategy picker, reached only from the hub materials section.
+// Argument-less: it carries no run state; write admission goes through the
+// shared OrganizationOperationLease domain, not navigation.
+@Serializable
+data object HomeScreenOrganizerStrategy : PreferenceRoute
+
 // Issues #52/#53: persist only the stable caller context, never run state or write authority.
 // Issue #116: typed Navigation resolves this enum argument by its default fully qualified
 // name at runtime, so minification must not rename or remove the class identity.
@@ -121,9 +134,32 @@ enum class OrganizationEntry {
     ONBOARDING,
 }
 
+// Issue #374: the hub status-card rows' one-shot pre-open of the exchange flow
+// on the run surface (依頼行 → T-15, 提案行 → ImportReview). Same minification
+// rule as [OrganizationEntry]: typed Navigation resolves this enum argument by
+// its fully qualified name at runtime, so the class identity must be kept.
+@Keep // This is refed by a Kotlin serializer, we must keep it's fully qualified name.
+@Serializable
+enum class ExchangeOpen {
+    /** The 進行中のAI依頼 row: open T-15 (the request-creation face). */
+    REQUEST,
+
+    /** The 取り込み済みの提案 row: open the ImportReview (T-18) resume face. */
+    PENDING_REVIEW,
+}
+
 @Serializable
 data class HomeScreenManualOrganization(
     val entry: OrganizationEntry = OrganizationEntry.MANUAL,
+    // Issue #376 (D-15): the hub's restore CTA lands here with this flag set;
+    // the run destination then owns the durable-entry admission (and pops
+    // itself on a silent rejection). Persisted only as part of the nav back
+    // stack, never as run state or write authority.
+    val durableRecovery: Boolean = false,
+    // Issue #374: null (the default) keeps every existing caller unchanged —
+    // no exchange pre-open. The argument carries no run state and no write
+    // authority (the review face's only write is its own D-13 discard).
+    val exchangeOpen: ExchangeOpen? = null,
 ) : PreferenceRoute {
     val trigger: Trigger
         get() = when (entry) {

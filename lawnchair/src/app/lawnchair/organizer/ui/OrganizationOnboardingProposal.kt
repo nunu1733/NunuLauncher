@@ -462,7 +462,8 @@ internal class OrganizationOnboardingProposal(
 /**
  * Issue #232: non-blocking one-shot guidance shown right after the onboarding proposal's
  * `Later` records its defer. The hint only points back at the persistent re-entry path
- * (Home settings → Home screen → Organize home layout); it owns no state, records no
+ * (Home settings → Home screen → the Organizer hub entry row, issue #370's D-01
+ * entry-row-only end state); it owns no state, records no
  * outcome, and dismisses on Back, an outside touch, or the [REENTRY_HINT_TIMEOUT_MS]
  * timeout — none of which touches the proposal's persistence.
  */
@@ -581,7 +582,10 @@ internal class OrganizationOnboardingReentryHint(
             R.string.organization_onboarding_reentry_hint_body,
             context.getString(R.string.settings_button_text),
             context.getString(R.string.home_screen_label),
-            context.getString(R.string.manual_organization_title),
+            // Issue #370 (D-16/D-01): the hint points at the hub entry row — the
+            // only organizer row left in the settings Home screen after the #367
+            // materials relocation and this issue's removal of the manual run row.
+            context.getString(R.string.organizer_hub_title),
         )
 
         internal fun combinedAccessibilityText(context: android.content.Context): String = context.getString(R.string.organization_onboarding_reentry_hint_title) + " " + reentryBodyText(context)

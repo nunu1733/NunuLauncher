@@ -5,7 +5,6 @@ import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
-import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.public.AuthoritativeState
@@ -17,6 +16,7 @@ import app.lawnchair.organizer.application.public.RecoveryRejection
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.revision.RevisionCalculator
+import app.lawnchair.organizer.application.store.RecoveryRecordCodec
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.RunEvent
@@ -172,7 +172,7 @@ class LayoutApplicationModuleRecoveryEntryTest {
                 override val itemCount: Int = 0
                 override val resourceCount: Int = 0
                 override val checksumValid: Boolean = true
-                override val formatVersion: Int = LifecycleReconciler.SUPPORTED_FORMAT
+                override val formatVersion: Int = RecoveryRecordCodec.RECORD_FORMAT_VERSION
             },
         )
     }

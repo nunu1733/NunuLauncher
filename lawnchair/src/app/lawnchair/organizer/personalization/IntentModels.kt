@@ -46,8 +46,11 @@ enum class Importance {
  *   a display name.
  * - [proposalLabel] — a run-scoped proposal: a normalized label (the #336
  *   category-name rule) that becomes the item's formation key for this run
- *   only. It is never interpreted as a category identity and nothing is
- *   persisted.
+ *   only. It is never interpreted as a category identity and is never
+ *   persisted to the layout DB or the category store; the one carve-out
+ *   (Issue #374) is the durable pending imported intent store — app-private,
+ *   backup-excluded, TTL 24h — which keeps the label so a pending proposal
+ *   survives process death.
  *
  * The v3 any-of allowed both fields at once, which left the grouping authority
  * undecided; v4 accepts exactly one.

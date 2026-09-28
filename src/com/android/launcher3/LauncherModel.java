@@ -479,6 +479,12 @@ public class LauncherModel implements InstallSessionTracker.Callback {
                         // post-commit completion notification is delivered.
                         restoreToken.loaderStarted = true;
                     }
+                    if (organizerToken != null) {
+                        // Issue #376: same record-creation rule as the restore
+                        // token above — the async generation owns the terminal
+                        // signal even with an empty callback list.
+                        organizerToken.loaderStarted = true;
+                    }
                     mLoaderTask = new LoaderTask(
                             mApp, mBgAllAppsList, mBgDataModel, mModelDelegate, launcherBinder,
                             new UserManagerState(), organizerLeaseToken,
@@ -524,10 +530,25 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             @NonNull Runnable cancelled) {
         OrganizerReloadRequest token = new OrganizerReloadRequest(
                 requestId, organizerLeaseToken, completed, cancelled);
-        if (!hasCallbacks()) {
-            token.cancelled.run();
-            return;
-        }
+        // Issue #376: a settings-only cold process (the D-15 hub restore entry;
+        // the spec 271 DS-AC-10 bridge) holds a model loaded without bound
+        // callbacks, and the organizer reload's terminal signal rides the exact
+        // loader binder boundary — not the callback list. Like the Issue #299
+        // restore reload, an unbound Launcher UI must start the tokenless
+        // loader instead of cancelling the request, so the confirmed restore
+        // completes without ever binding the workspace.
+        //
+        // Like Issue #299, the token is registered on the caller thread
+        // FIRST, so a timeout/interrupt that gives up waiting can still
+        // cancel this exact request (cancelOrganizerReloadIfCurrent) even if
+        // the main executor is stalled. The main-executor step only verifies
+        // the token identity and starts the generation: the callback list is
+        // re-fetched there, so a callback unbind racing the earlier
+        // hasCallbacks() check degrades to the tokenless generation instead
+        // of leaving a pending token without a loader generation (the
+        // Issue #299 race, closed for this bridge too). startLoader's
+        // boolean only reports the direct-bind case — the async generation
+        // marks the token via loaderStarted.
         OrganizerReloadRequest superseded;
         synchronized (mLock) {
             stopLoader();
@@ -535,16 +556,38 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             mOrganizerReloadToken = token;
             mModelLoaded = false;
         }
-        // Issue #150: stopLoader only cancels the outstanding token when it actually
-        // stopped a running task. A request whose loader already closed its
-        // transaction but whose queued completion callback has not run yet would
-        // otherwise be overwritten here and never receive a terminal signal.
-        // Terminalize that leftover exactly once; requests already cancelled by
-        // stopLoader and requests already completed leave a null reference.
+        // Issue #150: terminalize a token displaced by this registration
+        // exactly once; requests already cancelled by stopLoader and already
+        // completed requests leave a null reference.
         if (superseded != null) {
             superseded.cancelled.run();
         }
-        startLoader();
+        MAIN_EXECUTOR.execute(() -> {
+            boolean neverStarted;
+            synchronized (mLock) {
+                if (mOrganizerReloadToken != token) return;
+                if (hasCallbacks()) {
+                    startLoader();
+                } else {
+                    // Issue #376: the settings-only cold process (D-15 hub
+                    // restore; the spec 271 DS-AC-10 bridge) has no bound
+                    // callbacks — the tokenless loader still completes the
+                    // organizer token at the binder boundary.
+                    startLoaderWithoutCallbacks();
+                }
+                neverStarted = mOrganizerReloadToken == token && !token.loaderStarted;
+                if (neverStarted) {
+                    mOrganizerReloadToken = null;
+                }
+            }
+            // Issue #299 symmetry: the terminal callback runs outside mLock —
+            // the adapter's cancel path holds its own request lock while
+            // calling back into mLock, so running it under mLock would close
+            // a lock-inversion window.
+            if (neverStarted) {
+                token.cancelled.run();
+            }
+        });
     }
 
     // Issue #14: only the token captured by the exact loader binder completes the request.
@@ -569,11 +612,31 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         if (token != null) token.cancelled.run();
     }
 
+    /**
+     * Issue #376: terminalize the pending organizer reload if (and only if)
+     * it is still this request's, so a caller that gave up waiting (adapter
+     * timeout) leaves no stale token for a later generation to complete.
+     * Mirrors {@link #cancelRestoreReloadIfCurrent(long)}.
+     */
+    public void cancelOrganizerReloadIfCurrent(long requestId) {
+        OrganizerReloadRequest token;
+        synchronized (mLock) {
+            token = mOrganizerReloadToken;
+            if (token == null || token.requestId != requestId) return;
+            mOrganizerReloadToken = null;
+        }
+        token.cancelled.run();
+    }
+
     private static final class OrganizerReloadRequest {
         final long requestId;
         final long organizerLeaseToken;
         final Consumer<ModelSnapshot> completed;
         final Runnable cancelled;
+        // Issue #376: set by startLoader when the request's async loader
+        // generation is created (mirrors RestoreReloadRequest.loaderStarted) —
+        // startLoader's boolean return only reports the direct-bind case.
+        boolean loaderStarted;
 
         OrganizerReloadRequest(long requestId, long organizerLeaseToken,
                 Consumer<ModelSnapshot> completed, Runnable cancelled) {

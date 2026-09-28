@@ -6,6 +6,7 @@ import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.IntentCodec
 import app.lawnchair.organizer.personalization.IntentValidationFailure
+import app.lawnchair.organizer.personalization.PendingImportedIntentStore
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.RandomIdAllocator
 import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
@@ -14,10 +15,12 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeGenerationGateOu
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
+import app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate
 import app.lawnchair.organizer.personalization.exchange.IntentFramingResult
 import app.lawnchair.organizer.personalization.exchange.IntentImportParser
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.recognizedInfo
+import app.lawnchair.organizer.personalization.exchange.withGateOrNull
 import app.lawnchair.organizer.planning.CandidateTarget
 
 /**
@@ -50,6 +53,28 @@ class ExchangeFlowController(
         { _, _, _ ->
             ExchangeInputResult.NotReady(app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending)
         },
+
+    /**
+     * Issue #374 (spec 374 DI-AC-03): the durable pending imported intent
+     * store, wired for the replacement invalidation — right after the NEW
+     * session's durable save succeeds, the previous imported proposal's
+     * record is deleted (the fixed write order 「新session保存 → 旧pending無効化」).
+     * The read-time reconcile stays the master correctness defense, so a
+     * process death between the two writes is caught by the exportId check.
+     * Null (the default) skips the delete — fixtures that never exercise the
+     * replacement contract keep the pre-#374 behavior.
+     */
+    private val pendingImportStore: PendingImportedIntentStore? = null,
+    /**
+     * Issue #375 (spec "exchange mutation gate"): the process-wide
+     * serialization point. When injected, every durable-record / active-
+     * session mutation this controller performs (the replacement commit's
+     * new-session save + old-record invalidation, and the pre-send
+     * invalidation) runs inside one gate hold, so it can never interleave
+     * with the rebind admission anchor's fresh verification. Null (the
+     * default) keeps legacy fixtures running un-gated.
+     */
+    private val exchangeMutationGate: ExchangeMutationGate? = null,
 ) {
 
     constructor(
@@ -57,6 +82,8 @@ class ExchangeFlowController(
         store: ExportSessionStore,
         allocator: RandomIdAllocator,
         clock: () -> Long,
+        pendingImportStore: PendingImportedIntentStore? = null,
+        exchangeMutationGate: ExchangeMutationGate? = null,
     ) : this(
         composeExportInputs = adapter::composeForExport,
         currentStructuralInputs = adapter::currentStructural,
@@ -64,10 +91,19 @@ class ExchangeFlowController(
         allocator = allocator,
         clock = clock,
         composeScopedExportInputs = adapter::composeForExport,
+        pendingImportStore = pendingImportStore,
+        exchangeMutationGate = exchangeMutationGate,
     )
 
     /** The active (unexpired) session, if any — drives the replacement gate. */
     fun activeSession(): ExportSession? = store.active(clock())
+
+    /**
+     * Issue #372: the same clock the generation and store reads use, exposed
+     * for the T-15 pre-display's expiry-scheduled re-read so the display and
+     * the gate never read two different time sources.
+     */
+    fun nowEpochMs(): Long = clock()
 
     /** Gate decision for starting a new generation flow (spec 205 AC-13). */
     fun generationGate(userConfirmation: Boolean?): ExchangeGenerationGateOutcome = ExchangeGenerationGate.evaluate(activeSession() != null, userConfirmation)
@@ -83,6 +119,13 @@ class ExchangeFlowController(
      * run's fixed selection composed by the same canonical seam the planner
      * consumes. Same ordering contract as [generate]: gate → build → save →
      * compose → disclose.
+     *
+     * Issue #417: LEGACY-COMPAT generation path only — the run-in scoped
+     * creation entry moved to the atomic commit seam ([prepareScopedGeneration]
+     * inside the run-owned transaction, spec 417); this method keeps the
+     * pre-#417 behavior for existing fixtures and readers. Its sessions carry
+     * no explicit origin, so the durable provenance decodes through the
+     * legacy rule (absent origin + non-empty scope = RUN_IN).
      */
     fun generateForSelection(
         tier: PrivacyTier,
@@ -90,15 +133,113 @@ class ExchangeFlowController(
         candidateLabels: Map<CandidateTarget.AppKey, String>,
     ): ExchangeGenerationResult = generate(tier, composeScopedExportInputs(clock(), selection, candidateLabels))
 
+    /**
+     * Issue #417 (spec 417 "生成seamの責務分割"): the LOCK-FREE prepare half
+     * of the scoped generation — canonical composition (capture) and the pure
+     * export build, with the session tagged ONCE with its durable entry
+     * origin ([ExportEntryOrigin.RUN_IN]; a scoped request is only authored
+     * from a confirmed scope). No store access, no gate, no run state: the
+     * caller claims the generation epoch first and runs the returned
+     * preparation through [commitPreparedSession] inside the run-owned
+     * transaction's gate hold.
+     */
+    fun prepareScopedGeneration(
+        tier: PrivacyTier,
+        selection: List<CandidateTarget.AppKey>,
+        candidateLabels: Map<CandidateTarget.AppKey, String>,
+    ): ExchangeGenerationPreparation {
+        val composed = composeScopedExportInputs(clock(), selection, candidateLabels)
+        val inputs = when (composed) {
+            is ExchangeInputResult.NotReady -> return ExchangeGenerationPreparation.InputNotReady(composed.reason)
+            is ExchangeInputResult.ExportReady -> composed.inputs
+        }
+        val built = ContextExportBuilder.build(inputs, tier, allocator)
+        return ExchangeGenerationPreparation.Prepared(
+            export = built.export,
+            session = built.session.copy(entryOrigin = app.lawnchair.organizer.personalization.ExportEntryOrigin.RUN_IN),
+        )
+    }
+
+    /**
+     * Issue #417 (spec 417 "生成seamの責務分割"): the DURABLE mutation half of
+     * the scoped generation — the new session save (with its immutable origin)
+     * followed by the #374 previous-pending invalidation. MUST run inside the
+     * run-owned transaction's gate hold ([commitGeneratedSession]); the
+     * typed outcome is what the run's gate-held bind callback consumes (a
+     * write failure never binds). The post-commit encode stays the caller's
+     * next step (spec 205 generation order unchanged).
+     */
+    fun commitPreparedSession(prepared: ExchangeGenerationPreparation.Prepared): SessionPersistOutcome {
+        if (!store.save(prepared.session)) {
+            // Fail-closed: without a durable session the package can never be
+            // imported after a process death, so nothing may be disclosed.
+            return SessionPersistOutcome.WriteFailed
+        }
+        // Issue #374 (spec 374 DI-AC-03): the replacement write order is
+        // fixed — the NEW session is durable FIRST, then the previous
+        // imported proposal's record is invalidated (best-effort delete; the
+        // read-time reconcile is the master). E2's session and binding are
+        // never rolled back on this path.
+        pendingImportStore?.delete()
+        return SessionPersistOutcome.Committed
+    }
+
+    /**
+     * Issue #417: the post-commit encode + package composition of a committed
+     * preparation (spec 205 order: save → encode → return). On failure the
+     * caller retires the session through the run-owned cleanup seam
+     * ([cleanupBoundExport] with [invalidateSessionIf]) instead of a bare
+     * invalidate, so the binding clear stays gate-held and binding-conditional.
+     */
+    fun encodePrepared(prepared: ExchangeGenerationPreparation.Prepared): ExchangePreparedEncodeResult = when (val encoded = encodeExport(prepared.export)) {
+        is app.lawnchair.organizer.personalization.ContextExportResult.Failure ->
+            ExchangePreparedEncodeResult.Failure(encoded.problem)
+
+        is app.lawnchair.organizer.personalization.ContextExportResult.Success ->
+            ExchangePreparedEncodeResult.Encoded(
+                packageText = app.lawnchair.organizer.personalization.exchange.ExchangePackageComposer.compose(
+                    encoded.bytes.decodeToString(),
+                ),
+            )
+    }
+
+    /**
+     * Issue #417: the failure-aware conditional session invalidation
+     * (`invalidateIf`) the run-owned capability callbacks run INSIDE the gate
+     * hold of [cleanupBoundExport] / [discardScopeBoundRequest]. The gate is
+     * already held by the capability when this is invoked (the monitor is
+     * re-entrant, and the run's default capability runs the mutation
+     * un-gated), so this body itself takes no gate.
+     */
+    fun invalidateSessionIf(expectedExportId: String): app.lawnchair.organizer.personalization.ExportInvalidationResult = store.invalidateIf(expectedExportId)
+
     private fun generate(tier: PrivacyTier, composedInputs: ExchangeInputResult): ExchangeGenerationResult {
         val inputs = when (composedInputs) {
             is ExchangeInputResult.NotReady -> return ExchangeGenerationResult.InputNotReady(composedInputs.reason)
             is ExchangeInputResult.ExportReady -> composedInputs.inputs
         }
         val built = ContextExportBuilder.build(inputs, tier, allocator)
-        if (!store.save(built.session)) {
-            // Fail-closed: without a durable session the package can never be
-            // imported after a process death, so nothing is disclosed.
+        // Issue #375: the replacement commit (new session save + old record
+        // invalidation) is a session-and-record mutation — inside one exchange
+        // gate hold when the process-wide gate is injected, so it can never
+        // interleave with the rebind admission anchor's fresh verification.
+        val replacementCommitted = exchangeMutationGate.withGateOrNull {
+            if (!store.save(built.session)) {
+                // Fail-closed: without a durable session the package can never
+                // be imported after a process death, so nothing is disclosed.
+                return@withGateOrNull false
+            }
+            // Issue #374 (spec 374 DI-AC-03): the replacement write order is
+            // fixed — the NEW session is durable FIRST, then the previous
+            // imported proposal's record is invalidated (a plain best-effort
+            // delete: the read-time reconcile is the master, so no tombstone
+            // is needed here). Placed before the encode/compose so a
+            // replacement can never disclose a package while the old
+            // proposal's record still reads as active.
+            pendingImportStore?.delete()
+            true
+        }
+        if (!replacementCommitted) {
             return ExchangeGenerationResult.SessionStoreFailure
         }
         val exportJson = when (val encoded = encodeExport(built.export)) {
@@ -125,8 +266,27 @@ class ExchangeFlowController(
      * this flow, so nothing else is affected.
      */
     fun cancelDisclosure(session: ExportSession) {
-        store.invalidate(session.exportId)
+        // Issue #375: a session invalidation is a gate-held mutation (short;
+        // no suspension inside).
+        exchangeMutationGate.withGateOrNull {
+            store.invalidate(session.exportId)
+        }
     }
+
+    /**
+     * Issue #417: the exportId-addressed legacy invalidation used by the
+     * holder when the run-owned cleanup seam reports a stale binding
+     * (`Superseded`) — the exact-exportId-conditional delete inside the gate,
+     * so it never touches a replacement session.
+     */
+    fun invalidateSession(expectedExportId: String) {
+        exchangeMutationGate.withGateOrNull {
+            store.invalidate(expectedExportId)
+        }
+    }
+
+    /** Issue #375: the current structural inputs for the rebind's pre-admission re-verification. */
+    fun currentStructural(): app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult = currentStructuralInputs()
 
     /**
      * Imports an agent reply (spec 205 data flow ordering): the untrusted reply
@@ -180,6 +340,35 @@ sealed interface ExchangeGenerationResult {
     data object SessionStoreFailure : ExchangeGenerationResult
 
     data class EncodeFailure(val problem: app.lawnchair.organizer.personalization.ExportEncodeProblem) : ExchangeGenerationResult
+}
+
+/**
+ * Issue #417 (spec 417 "生成seamの責務分割"): the prepared (lock-free) half of
+ * a scoped generation — everything the run-owned durable commit needs. The
+ * session already carries its immutable durable entry origin.
+ */
+sealed interface ExchangeGenerationPreparation {
+    data class Prepared(
+        val export: app.lawnchair.organizer.personalization.PersonalizationContextExportV1,
+        val session: ExportSession,
+    ) : ExchangeGenerationPreparation
+
+    data class InputNotReady(val reason: app.lawnchair.organizer.integration.InputReadinessReason) : ExchangeGenerationPreparation
+}
+
+/**
+ * Issue #417: the typed persist outcome of [ExchangeFlowController.commitPreparedSession]
+ * — the controller-local mirror of the run's `PersistOutcome` (the holder maps
+ * it inside the run's transaction lambda; the controller stays decoupled from
+ * the run type).
+ */
+enum class SessionPersistOutcome { Committed, WriteFailed }
+
+/** Issue #417: the post-commit encode outcome of a committed preparation. */
+sealed interface ExchangePreparedEncodeResult {
+    data class Encoded(val packageText: String) : ExchangePreparedEncodeResult
+
+    data class Failure(val problem: app.lawnchair.organizer.personalization.ExportEncodeProblem) : ExchangePreparedEncodeResult
 }
 
 /** Import outcome surfaced to the import UI. */

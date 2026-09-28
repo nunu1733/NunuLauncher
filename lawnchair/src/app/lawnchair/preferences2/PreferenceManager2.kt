@@ -284,6 +284,19 @@ class PreferenceManager2 private constructor(private val context: Context) :
         },
     )
 
+    /**
+     * Issue #443: whether the frozen AI consultation (external agent
+     * exchange, FR-017) entry is offered. Default OFF — the method-choice
+     * face's 「AIに相談」 arm is hidden and runs go straight to the plain
+     * organize path. Durable session state (an active request or an imported
+     * proposal) stays reachable from the hub status card until its TTL
+     * expires regardless of this toggle.
+     */
+    val exchangeAiConsultationEnabled = preference(
+        key = booleanPreferencesKey(name = "exchange_ai_consultation_enabled"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_exchange_ai_consultation),
+    )
+
     val forceWidgetResize = preference(
         key = booleanPreferencesKey(name = "force_widget_resize"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_force_widget_resize),
