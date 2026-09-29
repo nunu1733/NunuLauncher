@@ -322,5 +322,7 @@ internal fun buildHomeEditSnapshot(launcher: android.content.Context): HomeEditS
         rowCount = LauncherAppState.getIDP(launcher).numRows,
         screenIds = screens,
         items = items,
+        hotseatCount = LauncherAppState.getIDP(launcher)
+            .getDeviceProfile(launcher).numShownHotseatIcons,
     )
 }

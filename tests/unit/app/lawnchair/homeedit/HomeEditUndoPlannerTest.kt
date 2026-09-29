@@ -193,7 +193,7 @@ class HomeEditUndoPlannerTest {
     fun `create folder undo removes the folder when it is untouched`() {
         val folder = item(55, cellX = 1, cellY = 1, itemType = HomeEditItemTypes.FOLDER)
         val child = item(100, container = 55, screenId = 0, cellX = -1, cellY = -1, rank = 0)
-        val snapshot = HomeEditSnapshot(4, 6, listOf(0), listOf(folder, child))
+        val snapshot = HomeEditSnapshot(4, 6, listOf(0), listOf(folder, child), hotseatCount = 4)
         val plan = HomeEditUndoPlanner.verify(snapshot, entry(createFolderEntry()), null)
         assertEquals(
             HomeEditUndoPlan.UndoCreateFolder(100, 55, HomeEditContainers.HOTSEAT, 0, 3, 0, 1, 1, 0),
@@ -301,6 +301,38 @@ class HomeEditUndoPlannerTest {
         assertEquals(HomeEditUndoPlan.Rejected(HomeEditUndoRejection.STALE), plan)
     }
 
+    // --- hotseat restore: capacity of the CURRENT device profile ---
+
+    private fun hotseatEntry(slot: Int) = evidence(
+        HomeEditActionKind.ADD_TO_FOLDER,
+        oldContainer = HomeEditContainers.HOTSEAT,
+        oldScreenId = slot,
+        newContainer = 55,
+        newScreenId = 0,
+        newCellX = -1,
+        newCellY = -1,
+        newRank = 1,
+    )
+
+    @Test
+    fun `hotseat undo restores when the recorded slot is within the current capacity and free`() {
+        val child = item(100, container = 55, screenId = 0, cellX = -1, cellY = -1, rank = 1)
+        val snapshot = HomeEditSnapshot(4, 6, listOf(0), listOf(child), hotseatCount = 4)
+        val plan = HomeEditUndoPlanner.verify(snapshot, entry(hotseatEntry(3)), null)
+        assertEquals(
+            HomeEditUndoPlan.RestorePlacement(100, HomeEditContainers.HOTSEAT, 3, 1, 2, 1, 1, 0),
+            plan,
+        )
+    }
+
+    @Test
+    fun `hotseat undo rejects with zero write when the current hotseat shrank below the recorded slot`() {
+        val child = item(100, container = 55, screenId = 0, cellX = -1, cellY = -1, rank = 1)
+        val snapshot = HomeEditSnapshot(4, 6, listOf(0), listOf(child), hotseatCount = 3)
+        val plan = HomeEditUndoPlanner.verify(snapshot, entry(hotseatEntry(3)), null)
+        assertEquals(HomeEditUndoPlan.Rejected(HomeEditUndoRejection.NO_SPACE), plan)
+    }
+
     // --- determinism and typed key mapping ---
 
     @Test
@@ -352,6 +384,7 @@ class HomeEditUndoPlannerTest {
                 it.spanX, it.spanY, it.itemType, it.rank, it.userSerial,
             )
         }.toTypedArray(),
+        4,
     )
 
     @Test

@@ -22,7 +22,7 @@ private fun contractRow(
     userSerial: Long = 10L,
 ) = DirectEditContract.Row(id, container, screenId, cellX, cellY, spanX, spanY, itemType, rank, userSerial)
 
-private fun contractSnapshot(rows: List<DirectEditContract.Row>) = DirectEditContract.Snapshot(4, 6, intArrayOf(0, 1, 2), rows.toTypedArray())
+private fun contractSnapshot(rows: List<DirectEditContract.Row>) = DirectEditContract.Snapshot(4, 6, intArrayOf(0, 1, 2), rows.toTypedArray(), 4)
 
 class HomeEditStage2ValidatorTest {
 

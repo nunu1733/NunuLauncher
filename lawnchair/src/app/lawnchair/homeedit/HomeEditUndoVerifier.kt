@@ -12,7 +12,6 @@ package app.lawnchair.homeedit
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.LauncherApps
-import android.os.Process
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.DirectEditContract
 import com.android.launcher3.pm.UserCache
@@ -31,8 +30,14 @@ class ProductionHomeEditUndoAvailabilitySource(
         return try {
             val launcherApps =
                 context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
-            val user = UserCache.INSTANCE.get(context)
-                .getUserForSerialNumber(payload.userSerial) ?: Process.myUserHandle()
+            // The recorded profile identity is part of the availability
+            // contract (component × profile): an unresolvable serial (removed
+            // work profile, unknown serial) is NOT the current user — it is a
+            // verification failure and must fail closed (UNDO_ITEM_UNAVAILABLE),
+            // never a fallback that could accept a same-component row on
+            // another profile.
+            val user = UserCache.INSTANCE.get(context).getUserForSerialNumber(payload.userSerial)
+                ?: return HomeEditUndoAvailability.UNKNOWN
             when {
                 payload.itemType == Favorites.ITEM_TYPE_APPLICATION && payload.componentName != null -> {
                     val component = ComponentName.unflattenFromString(payload.componentName)

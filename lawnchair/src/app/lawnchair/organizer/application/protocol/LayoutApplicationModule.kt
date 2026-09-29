@@ -157,19 +157,30 @@ internal class LayoutApplicationModule<S>(
 
     /**
      * Issue #450: the undo receipt — the apply result plus the verified
-     * post-apply revision for the undo record's `expectedCurrentRevision`.
-     * The revision is the exact operand of the apply path's post-write
-     * verification (the materialized post-state), read from the protocol's
-     * run-keyed receipt; no post-apply re-capture. Public apply contract
+     * post-apply revision for the undo record's `expectedCurrentRevision`,
+     * returned in ONE invocation. The revision is the exact operand of the
+     * apply path's post-write verification (the materialized post-state),
+     * captured invocation-locally at the `Applied` assembly point; no shared
+     * slot read after the mutex release, so a concurrent apply can never make
+     * a successful confirm lose its receipt. Public apply contract
      * ([ApplyResult]) is unchanged; null revision for any non-Applied result.
      */
     internal fun applyWithUndoReceipt(
         plan: ValidatedLayoutPlan,
         runId: RunId,
-    ): Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?> {
-        val result = applyWithRunId(plan, runId)
-        val revision = if (result is ApplyResult.Applied) applyProtocol.verifiedPostRevisionOf(runId) else null
-        return result to revision
+    ): Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?> = readinessGate.runWhenReady(
+        unavailable = { state ->
+            ApplyResult.Rejected(
+                runId,
+                if (state == ReadinessGate.State.FAILED) {
+                    PreWriteRejection.RECOVERY_STORE_UNAVAILABLE
+                } else {
+                    PreWriteRejection.WRITER_BUSY
+                },
+            ) to null
+        },
+    ) {
+        applyProtocol.applyWithUndoReceipt(plan, runId)
     }
 
     /**

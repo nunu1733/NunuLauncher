@@ -49,7 +49,7 @@ public class DirectEditUndoModelWriterTest {
     private static final long TIMEOUT_MS = 10_000;
 
     private Context mContext;
-    private ModelDbController mController;
+    private TestController mController;
     private BgDataModel mBgDataModel;
     private ModelWriter mWriter;
 
@@ -71,6 +71,7 @@ public class DirectEditUndoModelWriterTest {
 
     private static class TestController extends ModelDbController {
         private final Context mContext;
+        volatile boolean failOnDelete;
 
         TestController(Context context) {
             super(context);
@@ -80,6 +81,14 @@ public class DirectEditUndoModelWriterTest {
         @Override
         protected DatabaseHelper createDatabaseHelper(boolean forMigration) {
             return new DatabaseHelper(mContext, TEST_DB, user -> 0L, () -> { });
+        }
+
+        @Override
+        public int delete(String table, String selection, String[] selectionArgs) {
+            if (failOnDelete) {
+                throw new IllegalStateException("injected delete failure");
+            }
+            return super.delete(table, selection, selectionArgs);
         }
     }
 
@@ -251,6 +260,88 @@ public class DirectEditUndoModelWriterTest {
         // Zero writes: the child is still in the folder and the folder row exists.
         assertEquals(folderId, queryInt(501, Favorites.CONTAINER));
         assertEquals(Favorites.ITEM_TYPE_FOLDER, queryInt(folderId, Favorites.ITEM_TYPE));
+    }
+
+    // --- (d2) AC-3: the folder undo is one transaction — an injected delete
+    // failure between the child restore and the folder delete rolls both back ---
+
+    @Test
+    public void undoCreateFolderRollsBackBothWritesWhenTheDeleteFails() throws Exception {
+        seedAppItem(501, Favorites.CONTAINER_HOTSEAT, 0, 3, 0, 2);
+        awaitCallback(latch -> mWriter.createFolderAndMoveForDirectEdit(501, 0, 0, 0,
+                proceed(), done(latch, true, null)));
+        int folderId = queryInt(501, Favorites.CONTAINER);
+
+        // Inject the failure into the second write (folder DELETE): the child
+        // UPDATE and the folder DELETE must both roll back (contract 3).
+        mController.failOnDelete = true;
+        CountDownLatch failed = new CountDownLatch(1);
+        AtomicReference<String> reason = new AtomicReference<>("none");
+        mWriter.undoCreateFolderForDirectEdit(501, folderId,
+                Favorites.CONTAINER_HOTSEAT, 0, 3, 0, 1, 1, 2,
+                proceed(),
+                (id, success, failure, oc, os, ox, oy, osx, osy, orank, fid, created,
+                        removedRow) -> {
+                    reason.set(failure);
+                    failed.countDown();
+                });
+        assertTrue(failed.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+        mController.failOnDelete = false;
+
+        assertEquals(DirectEditContract.FAIL_UNDO_WRITE_FAILED, reason.get());
+        // DB rolled back: the child is still in the folder, the folder row exists.
+        assertEquals(folderId, queryInt(501, Favorites.CONTAINER));
+        assertEquals(Favorites.ITEM_TYPE_FOLDER, queryInt(folderId, Favorites.ITEM_TYPE));
+        // Live model unchanged: the folder is still a collection holding the item.
+        synchronized (mBgDataModel) {
+            FolderInfo folder =
+                    mBgDataModel.collections.get(folderId) instanceof FolderInfo f ? f : null;
+            assertNotNull("folder must remain in the model after rollback", folder);
+            assertTrue(folder.getContents().stream().anyMatch(i -> i.id == 501));
+        }
+    }
+
+    // --- (d3) AC-4: an undo submitted during an ORGANIZER lease defers and
+    // re-validates inside admission after the lease is released ---
+
+    @Test
+    public void undoDefersDuringOrganizerLeaseAndRevalidatesAfterRelease() throws Exception {
+        seedAppItem(501, Favorites.CONTAINER_DESKTOP, 0, 1, 2, 0);
+        awaitCallback(latch -> mWriter.moveItemForDirectEdit(501, Favorites.CONTAINER_DESKTOP, 1, 0, 0, 0,
+                proceed(), done(latch, true, null)));
+
+        // Hold the ORGANIZER lease while the undo is submitted: the undo must
+        // not run until the lease is released. The deferred undo's callback
+        // records its post-release outcome.
+        CountDownLatch undoDone = new CountDownLatch(1);
+        AtomicReference<Boolean> undoSuccess = new AtomicReference<>(null);
+        try (com.android.launcher3.model.LayoutWriteCoordinator.Lease lease =
+                com.android.launcher3.model.LayoutWriteCoordinator.getInstance()
+                        .tryAcquire(com.android.launcher3.model.LayoutWriteCoordinator.OwnerKind.ORGANIZER)) {
+            assertNotNull(lease);
+            mWriter.restorePlacementForDirectEdit(501,
+                    Favorites.CONTAINER_DESKTOP, 0, 1, 2, 1, 1, 0,
+                    proceed(),
+                    (id, success, reason, oc, os, ox, oy, osx, osy, orank, fid, created,
+                            removedRow) -> {
+                        undoSuccess.set(success);
+                        undoDone.countDown();
+                    });
+            // Give the deferred undo no time to run while the lease is held:
+            // a successful run here would mean the undo bypassed the lease.
+            Thread.sleep(300);
+            assertEquals(
+                    "undo must defer while the ORGANIZER lease is held",
+                    1, queryInt(501, Favorites.SCREEN));
+        }
+        // After the lease is released the deferred undo runs its stage-2
+        // re-validation and completes.
+        assertTrue("deferred undo did not finish after lease release",
+                undoDone.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+        // The first undo (deferred above) restored the row; the recorded
+        // outcome is a success and the DB/model agree.
+        assertEquals(Boolean.TRUE, undoSuccess.get());
+        assertEquals(0, queryInt(501, Favorites.SCREEN));
     }
 
     // --- (e) availability fail-closed: a gone launch target is never resurrected ---

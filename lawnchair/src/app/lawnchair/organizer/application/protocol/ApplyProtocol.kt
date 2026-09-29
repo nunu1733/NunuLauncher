@@ -27,6 +27,15 @@ import app.lawnchair.organizer.diagnostics.projection.ApplyProjection
 private class ApplyContext {
     var terminalApplyStage: ApplyStage? = null
     var terminalPointId: String? = null
+
+    /**
+     * Issue #450: the revision of the exact state the post-apply verification
+     * compared the DB against (`writeSet.intendedState`, the materialized
+     * post-state), captured when `Applied` is assembled into this
+     * invocation-local context — never a shared slot — so the undo receipt
+     * cannot be lost to a concurrent apply.
+     */
+    var verifiedPostRevision: app.lawnchair.organizer.planning.RevisionId? = null
 }
 
 /** Implements the accepted A0-A8 apply protocol while holding one outer writer lease. */
@@ -71,17 +80,36 @@ class ApplyProtocol(
     }
 
     /**
-     * Issue #450: the revision of the exact state the post-apply verification
-     * compared the DB against (`writeSet.intendedState`, the materialized
-     * post-state), captured when `Applied` is assembled. The undo record uses
-     * it as `expectedCurrentRevision` without any post-apply re-capture.
-     * Written only while the run mutex/ORGANIZER lease is held (applies are
-     * serialized), keyed by run id; a run-id mismatch reads as null.
+     * Issue #450: the undo receipt — apply plus the verified post-apply
+     * revision in ONE invocation. The revision is captured at the `Applied`
+     * assembly point into the invocation-local [ApplyContext] (never a shared
+     * slot read after the mutex release) and returned together with the
+     * result, so a concurrent apply can never make a successful confirm lose
+     * its undo receipt. Public apply contract ([ApplyResult]) is unchanged.
      */
-    fun verifiedPostRevisionOf(runId: RunId): app.lawnchair.organizer.planning.RevisionId? = verifiedPostRevisionByRunId?.takeIf { it.first == runId.value }?.second
-
-    @Volatile
-    private var verifiedPostRevisionByRunId: Pair<String, app.lawnchair.organizer.planning.RevisionId>? = null
+    fun applyWithUndoReceipt(
+        plan: ValidatedLayoutPlan,
+        runId: RunId,
+    ): Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?> {
+        if (!mutex.tryAcquire(runId)) {
+            emitSafely(
+                RunEvent(
+                    journalSequence = 0L,
+                    phase = PhaseCode.CONCURRENT_RUN_REJECTED,
+                    runId = runId.value,
+                ),
+            )
+            return ApplyResult.ConcurrentRun to null
+        }
+        val ctx = ApplyContext()
+        return try {
+            val result = applyWithRunMutex(runId, plan, ctx)
+            emitTerminalApplyEvent(result, plan, ctx)
+            result to ctx.verifiedPostRevision
+        } finally {
+            mutex.release(runId)
+        }
+    }
 
     private fun applyWithRunMutex(runId: RunId, plan: ValidatedLayoutPlan, ctx: ApplyContext): ApplyResult {
         validatePlan(plan)?.let {
@@ -410,8 +438,9 @@ class ApplyProtocol(
         ctx.terminalApplyStage = ApplyStage.A8
         ctx.terminalPointId = pointId.value
         // Issue #450: record the revision of the verified post-state — the
-        // exact operand of the exact-DB check above — before returning.
-        verifiedPostRevisionByRunId = runId.value to app.lawnchair.organizer.application.revision
+        // exact operand of the exact-DB check above — into the invocation-local
+        // context before returning.
+        ctx.verifiedPostRevision = app.lawnchair.organizer.application.revision
             .RevisionCalculator.revisionOf(writeSet.intendedState)
         return ApplyResult.Applied(runId, pointId)
     }

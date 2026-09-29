@@ -697,7 +697,8 @@ public class ModelWriter {
                     0, 0, idp.numSearchContainerColumns, 1, Favorites.ITEM_TYPE_APPLICATION, 0, 0));
         }
         return new DirectEditContract.Snapshot(
-                idp.numColumns, idp.numRows, screenIds, rows.toArray(new DirectEditContract.Row[0]));
+                idp.numColumns, idp.numRows, screenIds, rows.toArray(new DirectEditContract.Row[0]),
+                LauncherAppState.getIDP(mContext).getDeviceProfile(mContext).numShownHotseatIcons);
     }
 
     /**

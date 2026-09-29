@@ -219,7 +219,12 @@ object HomeEditUndoPlanner {
             }
 
             HomeEditContainers.HOTSEAT -> {
-                // Hotseat rows use screen as the slot index.
+                // Hotseat rows use screen as the slot index; the recorded slot
+                // must still exist in the CURRENT device profile (a grid
+                // change can shrink the hotseat below the recorded slot).
+                if (screenId < 0 || screenId >= snapshot.hotseatCount) {
+                    return HomeEditUndoPlan.Rejected(HomeEditUndoRejection.NO_SPACE)
+                }
                 val occupied = snapshot.items.any {
                     it.id != excludeItemId &&
                         it.container == HomeEditContainers.HOTSEAT &&

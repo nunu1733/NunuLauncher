@@ -174,6 +174,75 @@ class EditSurfaceUndoInstrumentationTest {
         assertTrue("the applied layout must survive the stale undo", moved)
     }
 
+    @Test
+    fun undoAfterARestoreIsRejectedAsAlreadyRestored() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val (plan, _) = buildMovePlan()
+        val runId = module.newManualRunId()
+        val (result, verified) = module.applyWithUndoReceipt(plan, runId)
+        val pointId = (result as ApplyResult.Applied).pointId
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // First undo restores.
+        val first = module.recover(RecoveryRequest(pointId, verified!!))
+        assertTrue("expected Restored, got $first", first is RecoveryResult.Restored)
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // Second undo: the point is already restored — typed rejection,
+        // zero write.
+        val second = module.recover(RecoveryRequest(pointId, verified))
+        assertTrue(
+            "expected NotRestorable, got $second",
+            second is RecoveryResult.NotRestorable &&
+                (second as RecoveryResult.NotRestorable).reason ==
+                RecoveryRejection.ALREADY_RESTORED,
+        )
+    }
+
+    @Test
+    fun undoWithAMismatchedRevisionIsRejectedAsStale() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val (plan, _) = buildMovePlan()
+        val runId = module.newManualRunId()
+        val (result, verified) = module.applyWithUndoReceipt(plan, runId)
+        val pointId = (result as ApplyResult.Applied).pointId
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // A receipt revision that does not describe the current state is
+        // rejected before any write. The applied state has the item on page 1,
+        // so a state variant with the item moved back to page 0 is a revision
+        // the current state cannot match.
+        val appliedCapture = adapter.captureCurrent(CaptureId("edit-surface-undo-stale-probe"))
+        val appliedState = appliedCapture.layoutState
+        val variant = app.lawnchair.organizer.application.public.LayoutState(
+            pages = appliedState.pages,
+            profiles = appliedState.profiles,
+            deviceCapabilities = appliedState.deviceCapabilities,
+            items = appliedState.items.map { item ->
+                val workspace = item.placement
+                    as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                    ?: return@map item
+                item.copy(
+                    placement = workspace.copy(
+                        page = app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage(
+                            app.lawnchair.organizer.planning.PageId("0"),
+                        ),
+                    ),
+                )
+            },
+            reservedWorkspaceRegions = appliedState.reservedWorkspaceRegions,
+        )
+        val staleRevision = RevisionCalculator.revisionOf(variant)
+        val undo = module.recover(RecoveryRequest(pointId, staleRevision))
+        assertTrue(
+            "expected STALE_REVISION, got $undo",
+            undo is RecoveryResult.NotRestorable && undo.reason == RecoveryRejection.STALE_REVISION,
+        )
+    }
+
     // --- helpers ---
 
     /** Builds a one-move session plan (page 0 → page 1) and returns it with its capture. */

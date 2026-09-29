@@ -93,18 +93,25 @@ public final class DirectEditContract {
      * Immutable projection of the current layout state used for pure
      * validation. {@code screenIds} is the workspace page order; rows include
      * desktop, hotseat and folder-child rows.
+     *
+     * <p>Issue #450: {@code hotseatCount} is the current device profile's
+     * hotseat capacity; the undo planner verifies a recorded hotseat slot
+     * against it so a shrunken hotseat rejects the restore (zero write).
      */
     public static final class Snapshot {
         public final int columnCount;
         public final int rowCount;
         public final int[] screenIds;
         public final Row[] rows;
+        /** Issue #450: current hotseat capacity (numHotseatIcons). */
+        public final int hotseatCount;
 
-        public Snapshot(int columnCount, int rowCount, int[] screenIds, Row[] rows) {
+        public Snapshot(int columnCount, int rowCount, int[] screenIds, Row[] rows, int hotseatCount) {
             this.columnCount = columnCount;
             this.rowCount = rowCount;
             this.screenIds = screenIds;
             this.rows = rows;
+            this.hotseatCount = hotseatCount;
         }
     }
 
