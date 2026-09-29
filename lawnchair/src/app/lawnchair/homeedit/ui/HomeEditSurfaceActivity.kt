@@ -232,6 +232,12 @@ class HomeEditSurfaceActivity : ComponentActivity() {
 
     internal fun toggleSelectionForTest(itemId: Int) = toggleSelection(itemId)
 
+    /** Test-only: the second selectable item (different id, page 0). */
+    internal fun secondSelectableItemIdForTest(excludeId: Int): Int? = diagram?.items?.firstOrNull {
+        it.eligibility == SelectionEligibility.SELECTABLE &&
+            it.isOnWorkspace && it.screenId == 0 && it.id != excludeId
+    }?.id
+
     internal fun createFolderForTest() = createFolder()
 
     /** Test-only: the current typed reason (null when none). */
