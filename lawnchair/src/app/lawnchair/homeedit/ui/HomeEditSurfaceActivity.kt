@@ -237,8 +237,14 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     /** Test-only: the current typed reason (null when none). */
     internal fun reasonResForTest(): Int? = reasonRes
 
+    /** Test-only: re-runs the capture (the same path reloadCapture uses). */
+    internal fun recaptureForTest() = reloadCapture()
+
     /** Test-only: the last non-Applied apply result, for oracle diagnostics. */
     internal var lastApplyResultForTest: ApplyResult? = null
+
+    /** Test-only: the last plan built by confirm(), for oracle diagnostics. */
+    internal var lastPlanForTest: EditSurfaceApplyPlan? = null
 
     internal fun moveToPageForTest(screenId: Int) = moveToPage(screenId)
 
@@ -278,6 +284,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 versions.first,
                 versions.second,
             )
+            lastPlanForTest = built
             val receipt = when (built) {
                 is EditSurfaceApplyPlan.Ready -> access.applyForUndo(built.plan, runId)
 

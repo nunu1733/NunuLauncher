@@ -32,7 +32,14 @@ AC-1（直後のsnackbar Undo tap 1操作で元に戻る）は、エミュレー
 - 項目単位の4アクションのundo（移動・フォルダ追加・新規フォルダ・削除）が1操作で戻ること（`DirectEditUndoModelWriterTest` 9 tests）。
 - 画面への反映は相関reload（復元経路）とUI refresh（逆操作経路）で行われる（`refreshAfterUndo`/`refreshAfterRestorePlacement`）。
 
-エミュレータスクリーンショット（`build/450-ac1-home.png`）を本PRに添付する。
+エミュレータのホーム状態スクリーンショット（`01-home.png`）を `docs/assessment/450-edit-undo-ac1-screenshots/01-home.png` に記録した。undo前後の状態遷移自体は上記のinstrumentation oracle（実 `confirm()` flow → undo → `Restored`/確定前layout復元）がmodel/DB levelで証明しており、可視記録は録画の代わりに「エミュレータでの実行記録+ホーム状態スクリーンショット+oracle結果」の組で構成する（録画はrepository非収録のため）。
+
+## AC-9のaccessibility確認（エミュレータ）
+
+- **TalkBack有効化**: エミュレータ `nunu_qpr2_api36_1` でTalkBack（`com.google.android.marvin.talkback`）を有効化し、`dumpsys accessibility` でbound service（FEEDBACK_SPOKEN）を確認した。
+- **accessibility node tree**: UI Automatorの `android_ui_describe` で launcher workspaceの全アイテムが contentDescription/text付きのaccessibility nodeとして現れることを確認した（Gmail/YouTube/Phone/Messages/Chrome等が読み上げ対象として列挙）。undo snackbarは上流の `Snackbar` の仕組み（文字列リソース由来のlabel/action、TalkBackで読めるTextView）をそのまま再利用するため、同一の読み上げ経路に乗る。
+- **構造的保証**: 新規文字列は `homeedit_undo_*`（en+ja、`HomeEditAcceptanceOraclesTest.all undo strings are defined and non-empty in en and ja` で自動検証済み）。undo失敗の理由はspec 448と同じToast慣行（文字列リソース由来）。`Snackbar` の表示時間は `AccessibilityManagerCompat.getRecommendedTimeoutMillis`（FLAG_CONTENT_TEXT | FLAG_CONTENT_CONTROLS）によるaccessibility設定準拠の実時間（既存実装を変えない）。
+- **詳細な読み上げ音声は録音記録の対象外**（エミュレータ環境の制約）。実機での読み上げ確認はowner decision item。
 
 ## AC-9のaccessibility確認（エミュレータ）
 

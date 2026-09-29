@@ -412,7 +412,6 @@ class EditSurfaceUndoInstrumentationTest {
         expectedFailureRes: Int,
         zeroWriteProbe: () -> Boolean,
         expectedRawReason: ((RecoveryResult) -> Boolean)? = null,
-        rawResultRef: java.util.concurrent.atomic.AtomicReference<RecoveryResult?>? = null,
     ) {
         // The instrumentation process has no Launcher activity by default;
         // launch one (ActivityScenario) so `LawnchairLauncher.instance` is
@@ -426,6 +425,18 @@ class EditSurfaceUndoInstrumentationTest {
             launcherInstance = app.lawnchair.LawnchairLauncher.instance
             if (launcherInstance != null) break
             Thread.sleep(200)
+        }
+        if (launcherInstance == null) {
+            // The confirm flow ran without the launcher pre-launched; launch
+            // it now so the executor's undo path runs against the real
+            // launcher (model writer, stats log, Toast).
+            androidx.test.core.app.ActivityScenario.launch(app.lawnchair.LawnchairLauncher::class.java)
+            val launcherDeadline = System.currentTimeMillis() + 30_000
+            while (System.currentTimeMillis() < launcherDeadline) {
+                launcherInstance = app.lawnchair.LawnchairLauncher.instance
+                if (launcherInstance != null) break
+                Thread.sleep(300)
+            }
         }
         if (launcherInstance == null) {
             error("launcher instance unavailable after activity launch")
@@ -447,8 +458,8 @@ class EditSurfaceUndoInstrumentationTest {
         assertTrue("undo display did not fire", displayedLatch.await(30, java.util.concurrent.TimeUnit.SECONDS))
         assertEquals("typed failure display mismatch", expectedFailureRes, displayed.get())
         // The internal reason is pinned alongside the display resource.
-        if (expectedRawReason != null && rawResultRef != null) {
-            val raw = rawResultRef.get()
+        if (expectedRawReason != null) {
+            val raw = rawResult.get()
             assertTrue("raw recovery result not observed", raw != null)
             assertTrue("raw recovery reason mismatch: $raw", expectedRawReason(raw!!))
         }
@@ -524,6 +535,7 @@ class EditSurfaceUndoInstrumentationTest {
                                 ?.pageId?.value?.toIntOrNull() == 1
                     }
                     },
+                    expectedRawReason = { it is RecoveryResult.WriterBusy },
                 )
             }
     }
@@ -579,6 +591,10 @@ class EditSurfaceUndoInstrumentationTest {
         runUndoThroughExecutorAndAssertDisplay(
             token2,
             com.android.launcher3.R.string.homeedit_undo_error_not_restorable,
+            // The point was created on the test-owned module's store; the
+            // executor recovers through the production store, where the point
+            // is unknown — the typed rejection is MISSING (zero write).
+            expectedRawReason = { it is RecoveryResult.NotRestorable && it.reason == RecoveryRejection.MISSING },
             zeroWriteProbe = {
             // The restored state (pre-apply) is unchanged by the failed undo.
             val post = adapter.captureCurrent(CaptureId("edit-surface-undo-executor-already"))
@@ -870,34 +886,55 @@ class EditSurfaceUndoInstrumentationTest {
 
     @Test
     fun productionConfirmFlowWithNewFolderUndoRestoresToThePreApplyState() {
-        // Known environment finding (recorded for owner triage, split to the
-        // #449 surface): the new-folder confirm through the REAL activity
-        // flow fails A7 verification in this test environment, while the
-        // SAME plan applied directly through the production module
+        // Known environment finding (owner-triage item, split to the #449
+        // surface): the new-folder confirm through the REAL activity flow
+        // fails A7 verification (VERIFICATION_FAILED → automatic recovery)
+        // in this test environment, while the IDENTICAL plan applied directly
+        // through the production module
         // (productionModuleDirectApplyOfNewFolderPlanIsApplied) is Applied
-        // and verified. The undo contract itself is pinned by that oracle
-        // plus the production-flow oracles below; skip here instead of
-        // failing the shared lane on an issue owned by the #449 surface.
+        // and verified — planDiff shows the plans are identical, so the cause
+        // is the activity flow's execution environment (UI thread →
+        // surfaceExecutor → applyForUndo), not the plan itself. The undo
+        // contract for the new-folder case is pinned by the production-module
+        // oracle (receiptRevisionEqualsPostApplyCaptureForANewFolderConfirm);
+        // skip here instead of failing the shared lane on an issue owned by
+        // the #449 surface.
         org.junit.Assume.assumeTrue(
-            "new-folder confirm-flow A7 failure is tracked for owner triage (production-module direct apply passes)",
+            "new-folder confirm-flow A7 failure is tracked for owner triage (production-module direct apply passes with an identical plan)",
             java.lang.Boolean.parseBoolean(
                 androidx.test.platform.app.InstrumentationRegistry.getArguments()
                     .getString("runNewFolderConfirm", "false"),
             ),
         )
         seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
-        // The executor's undo path runs against the real launcher; register
-        // the launcher instance first (the confirm flow's snackbar hook and
-        // the executor both need it).
+        // The production module's readiness gate must be READY BEFORE the
+        // activity's onCreate capture runs — inspectCapture is fail-closed on
+        // a non-READY gate and the activity only recaptures on stale reopen.
+        val reconciliation = app.lawnchair.LawnchairApp.instance.layoutApplicationModule.reconcileAtStart()
+        // Launch the launcher FIRST and wait for its model loading to settle:
+        // a launcher-driven reload racing the confirm apply fails the A7
+        // verification with an ItemInfo mismatch.
         androidx.test.core.app.ActivityScenario.launch(app.lawnchair.LawnchairLauncher::class.java)
-        val launcherWaitDeadline = System.currentTimeMillis() + 30_000
-        while (System.currentTimeMillis() < launcherWaitDeadline) {
-            if (app.lawnchair.LawnchairLauncher.instance != null) break
+        var launcherInstance: app.lawnchair.LawnchairLauncher? = null
+        val launcherDeadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < launcherDeadline) {
+            launcherInstance = app.lawnchair.LawnchairLauncher.instance
+            if (launcherInstance != null) break
             Thread.sleep(300)
         }
-        // The capture inside the activity reads the model projection; give the
-        // reload a moment to settle before launching the surface.
-        Thread.sleep(1_000)
+        if (launcherInstance == null) {
+            error("launcher instance unavailable for the confirm flow")
+        }
+        appState.model.forceReload()
+        waitForModelLoaded()
+        // Diagnose the activity's capture-unavailable reason: run the same
+        // capture the inspectCapture seam runs and surface any exception.
+        val captureProbe = runCatching {
+            adapter.captureCurrent(CaptureId("edit-surface-undo-probe"))
+        }
+        if (captureProbe.isFailure) {
+            error("activity capture would fail: " + captureProbe.exceptionOrNull())
+        }
         val scenario = androidx.test.core.app.ActivityScenario.launch(
             app.lawnchair.homeedit.ui.HomeEditSurfaceActivity::class.java,
         )
@@ -905,20 +942,35 @@ class EditSurfaceUndoInstrumentationTest {
         scenario.onActivity { activityRef = it }
         val activity = activityRef ?: error("activity not launched")
 
-        val captureDeadline = System.currentTimeMillis() + 60_000
-        var selectable: Int? = null
+        // The activity's own capture may still be settling after the launcher
+        // pre-launch; retry the capture via the activity's reload path.
+        var itemId: Int? = null
+        var captureReason: Int? = null
+        val captureDeadline = System.currentTimeMillis() + 90_000
         while (System.currentTimeMillis() < captureDeadline) {
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-                .runOnMainSync { selectable = activity.firstSelectableItemIdForTest() }
-            if (selectable != null) break
-            Thread.sleep(500)
+                .runOnMainSync {
+                    itemId = activity.firstSelectableItemIdForTest()
+                    captureReason = activity.reasonResForTest()
+                }
+            if (itemId != null) break
+            // The capture is fail-closed on a busy mutex/gate; retry the
+            // activity's own capture path instead of spinning on a stale
+            // diagram.
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                .runOnMainSync { activity.recaptureForTest() }
+            Thread.sleep(1_000)
         }
-        val itemId = selectable ?: error("no selectable item on the diagram")
+        val targetItemId = itemId ?: error(
+            "no selectable item on the diagram (reason=" +
+                captureReason?.let { activity.getString(it) } +
+                "; reconciliation=" + reconciliation + ")",
+        )
 
         app.lawnchair.LawnchairApp.instance.layoutApplicationModule.reconcileAtStart()
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .runOnMainSync {
-                activity.toggleSelectionForTest(itemId)
+                activity.toggleSelectionForTest(targetItemId)
                 activity.createFolderForTest()
                 activity.confirm()
             }
@@ -939,7 +991,33 @@ class EditSurfaceUndoInstrumentationTest {
             ?: error(
                 "the confirm flow did not record an undo entry (reason=" +
                     lastReason?.let { activity.getString(it) } +
-                    "; applyResult=" + (activity.lastApplyResultForTest?.toString() ?: "null") + ")",
+                    "; applyResult=" + (activity.lastApplyResultForTest?.toString() ?: "null") +
+                    "; planDiff=" + run {
+                        val builtPlan = activity.lastPlanForTest as? EditSurfaceApplyPlan.Ready
+                        if (builtPlan == null) "null" else {
+                            // Compare the activity's plan with the plan the
+                            // direct apply oracle builds from the same state.
+                            val (directPlan, _) = buildNewFolderPlan()
+                            val a = builtPlan.plan
+                            val b = directPlan
+                            val diff = StringBuilder()
+                            if (a.sourceRevision != b.sourceRevision) diff.append(" sourceRev")
+                            if (a.intendedState.items.size != b.intendedState.items.size) diff.append(" itemCount(${a.intendedState.items.size}/${b.intendedState.items.size})")
+                            for ((ia, ib) in a.intendedState.items.zip(b.intendedState.items)) {
+                                if (ia != ib) {
+                                    diff.append(" item(")
+                                    diff.append((ia.ref as? app.lawnchair.organizer.application.public.ApplicationItemRef.PersistentItem)?.itemId?.value ?: ia.ref.toString())
+                                    diff.append(": placement=").append(ia.placement::class.simpleName)
+                                    diff.append("/").append(ib.placement::class.simpleName)
+                                    diff.append(" kind=").append(ia.kind).append("/").append(ib.kind)
+                                    diff.append(" structure=").append(ia.structure).append("/").append(ib.structure)
+                                    diff.append(")")
+                                }
+                            }
+                            if (diff.isEmpty()) diff.append(" identical")
+                            diff.toString()
+                        }
+                    } + ")",
             )
         val token = HomeEditUndoRecord.currentTokenForTest()
             ?: error("no token captured from the confirm flow")
@@ -951,22 +1029,16 @@ class EditSurfaceUndoInstrumentationTest {
         // capturing the applied state and comparing the undo result instead:
         // the oracle pins that the undo returns the layout to the item's
         // original cell with no folder row — the observable pre-apply state.
-        // The confirm flow's snackbar hook registered the launcher instance;
-        // wait for it (the edit-surface activity finish may race).
-        var launcherInstance: app.lawnchair.LawnchairLauncher? = null
-        val launcherDeadline = System.currentTimeMillis() + 30_000
-        while (System.currentTimeMillis() < launcherDeadline) {
-            launcherInstance = app.lawnchair.LawnchairLauncher.instance
-            if (launcherInstance != null) break
-            Thread.sleep(200)
-        }
-        if (launcherInstance == null) {
-            error("launcher instance unavailable after confirm flow")
-        }
+        // The undo runs through the executor with a raw recovery observer
+        // (a successful restore fires no failure display). The launcher was
+        // pre-launched before the confirm flow, so its model loading has
+        // already settled.
+        val undoLauncher = app.lawnchair.LawnchairLauncher.instance
+            ?: error("launcher instance unavailable for the undo")
         val recovered = java.util.concurrent.atomic.AtomicReference<RecoveryResult?>(null)
         val recoveredLatch = java.util.concurrent.CountDownLatch(1)
         val executor = HomeEditUndoExecutor(
-            launcherInstance,
+            undoLauncher,
             failureDisplayObserver = { },
             recoveryResultObserver = { result ->
                 recovered.set(result)
