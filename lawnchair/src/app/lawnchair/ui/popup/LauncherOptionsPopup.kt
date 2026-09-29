@@ -17,6 +17,7 @@ object LauncherOptionsPopup {
         LauncherOptionPopupItem("carousel", true),
         LauncherOptionPopupItem("lock", false),
         LauncherOptionPopupItem("edit_mode", false),
+        LauncherOptionPopupItem("edit_surface", true),
         LauncherOptionPopupItem("wallpaper", true),
         LauncherOptionPopupItem("widgets", true),
         LauncherOptionPopupItem("home_settings", true),
@@ -85,6 +86,20 @@ object LauncherOptionsPopup {
                 LauncherEvent.LAUNCHER_SETTINGS_BUTTON_TAP_OR_LONGPRESS,
                 onStartEditMode,
             ),
+            // Issue #449: visual edit surface entry (ADR-0014 case B). The
+            // handler stays inside this fork file, so the upstream bridge
+            // signature is unchanged. Hidden while the home screen is locked
+            // together with edit_mode/widgets below.
+            "edit_surface" to OptionItem(
+                launcher,
+                R.string.edit_surface_menu_open,
+                R.drawable.ic_folder,
+                LauncherEvent.IGNORE,
+                { view ->
+                    app.lawnchair.homeedit.ui.HomeEditSurfaceActivity.start(view.context)
+                    true
+                },
+            ),
             "wallpaper" to OptionItem(
                 launcher,
                 wallpaperResString,
@@ -115,7 +130,8 @@ object LauncherOptionsPopup {
             }
             .filter {
                 if (lockHomeScreen) {
-                    it.identifier != "edit_mode" && it.identifier != "widgets"
+                    it.identifier != "edit_mode" && it.identifier != "widgets" &&
+                        it.identifier != "edit_surface"
                 } else {
                     true
                 }
@@ -147,6 +163,11 @@ object LauncherOptionsPopup {
             "edit_mode" -> LauncherOptionMetadata(
                 label = R.string.edit_home_screen,
                 icon = R.drawable.enter_home_gardening_icon,
+            )
+
+            "edit_surface" -> LauncherOptionMetadata(
+                label = R.string.edit_surface_menu_open,
+                icon = R.drawable.ic_folder,
             )
 
             "wallpaper" -> LauncherOptionMetadata(

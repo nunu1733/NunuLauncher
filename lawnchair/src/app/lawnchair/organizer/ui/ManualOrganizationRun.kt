@@ -3,6 +3,7 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import app.lawnchair.LawnchairApp
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
+import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.ApplyResult
@@ -123,6 +124,14 @@ internal interface ManualOrganizationApplication {
      * without the user navigating away.
      */
     val readinessState: StateFlow<ReadinessGate.State>
+
+    /**
+     * Issue #449: read-only capture for the visual edit surface (zero-write,
+     * fail-closed; `null` = unready gate / mutex contention / capture failure).
+     * The edit surface session starts from — and a stale session reopens with —
+     * this capture. It never touches the run state machine.
+     */
+    fun inspectCapture(): CapturedSnapshot?
 }
 
 internal class ProductionManualOrganizationApplication(
@@ -167,11 +176,18 @@ internal class ProductionManualOrganizationApplication(
 
     override val readinessState: StateFlow<ReadinessGate.State>
         get() = module.readinessGate.stateFlow
+
+    override fun inspectCapture(): CapturedSnapshot? = module.inspectCapture()
 }
 
 /** Process-local composition holder. Construction itself is read-only. */
 internal object ManualOrganizationModule {
     @Volatile private var instance: ManualOrganizationRun? = null
+
+    // Issue #449: the same application seam, reachable for the edit surface
+    // without the run state machine. Never a second construction — the edit
+    // surface shares the single process instance created by [get].
+    @Volatile private var editSurfaceApplication: ManualOrganizationApplication? = null
 
     fun get(context: Context): ManualOrganizationRun = instance ?: synchronized(this) {
         instance ?: run {
@@ -190,6 +206,7 @@ internal object ManualOrganizationModule {
                 app,
                 app.layoutApplicationModule,
             ).let { application ->
+                editSurfaceApplication = application
                 // Issue #371: the process-wide JIT Usage Access request gate is
                 // created here so the run machine and the exchange holder
                 // share one instance (the request opportunity is process-
@@ -213,6 +230,20 @@ internal object ManualOrganizationModule {
                     ),
                 ).also { instance = it }
             }
+        }
+    }
+
+    /**
+     * Issue #449: the minimal edit-surface accessor over the shared application
+     * seam (inspectCapture + apply + newRunId). Reuses [get]'s single
+     * construction (including the LauncherAppState bootstrap and the startup
+     * reconciliation trigger) and never builds a second application instance.
+     */
+    fun applicationForEditSurface(context: Context): ManualOrganizationApplication = editSurfaceApplication ?: synchronized(this) {
+        editSurfaceApplication ?: run {
+            get(context)
+            editSurfaceApplication
+                ?: error("ManualOrganizationModule.get did not bind the edit-surface application")
         }
     }
 }

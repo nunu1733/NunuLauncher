@@ -119,4 +119,57 @@ class HomeEditAcceptanceOraclesTest {
             }
         }
     }
+
+    // --- Issue #449 AC-15: edit-surface strings exist and are non-empty ---
+
+    private fun readEditSurfaceStrings(localeDir: String): Map<String, String> {
+        val text = stringsFile(localeDir).readText()
+        val regex = Regex("<string name=\"(edit_surface_[^\"]+)\">(.*?)</string>")
+        return regex.findAll(text).associate { it.groupValues[1] to it.groupValues[2] }
+    }
+
+    @Test
+    fun `all edit surface strings are defined and non-empty in en and ja`() {
+        val expected = listOf(
+            "edit_surface_menu_open",
+            "edit_surface_title",
+            "edit_surface_snapshot_notice",
+            "edit_surface_selection_count",
+            "edit_surface_action_move_to_page",
+            "edit_surface_action_add_to_folder",
+            "edit_surface_action_create_folder",
+            "edit_surface_action_remove",
+            "edit_surface_confirm",
+            "edit_surface_reset",
+            "edit_surface_cancel",
+            "edit_surface_error_capture_unavailable",
+            "edit_surface_error_empty_session",
+            "edit_surface_error_lock_unknown",
+            "edit_surface_error_stale_reopen",
+            "edit_surface_error_busy",
+            "edit_surface_error_blocked",
+            "edit_surface_error_no_changes",
+            "edit_surface_error_unchanged",
+            "edit_surface_error_unresolved",
+            "edit_surface_error_generic",
+            "edit_surface_widget_label",
+            "edit_surface_a11y_selected",
+            "edit_surface_a11y_not_selectable",
+            "edit_surface_a11y_locked",
+            "edit_surface_a11y_lock_unknown",
+            "edit_surface_a11y_widget",
+            "edit_surface_a11y_folder",
+            "edit_surface_a11y_reserved",
+            "edit_surface_a11y_dock",
+            "edit_surface_a11y_page",
+        )
+        for (localeDir in listOf("values", "values-ja")) {
+            val strings = readEditSurfaceStrings(localeDir)
+            for (name in expected) {
+                val value = strings[name]
+                assertTrue("$localeDir/$name missing", value != null)
+                assertTrue("$localeDir/$name empty", value!!.isNotBlank())
+            }
+        }
+    }
 }

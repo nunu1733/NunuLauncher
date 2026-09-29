@@ -137,6 +137,15 @@ sealed interface FolderNaming {
      * category-name domain when the intent is accepted.
      */
     data class FromProposalLabel(val label: String) : FolderNaming
+
+    /**
+     * Issue #449: a folder the user created explicitly in the visual edit
+     * surface. It carries no semantic grouping identity (the user picked the
+     * members, not a rule), so there is nothing to name it from; the canonical
+     * folder row is written untitled by the edit-surface plan builder and the
+     * resolver branch only keeps the non-blank contract total.
+     */
+    data object FromUserCreation : FolderNaming
 }
 
 /**
