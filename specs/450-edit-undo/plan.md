@@ -2,7 +2,7 @@
 
 > Issue: #450
 > Spec: [spec.md](./spec.md)
-> Status: draft（specと同じく本起草時点では未受入）。Revision 2（2026-09-29。Phase 1 re-entry + review round 1の3指摘対応）
+> Status: draft（specと同じく本起草時点では未受入）。Revision 3（2026-09-29。Phase 1 re-entry + review round 2の2指摘対応）
 > Risk tier: H — 項目単位の逆操作は `src/com/android/launcher3/model/ModelWriter.java`（高リスクpath一覧・writer inventory収録済み）への新規最小操作であり、階層H条件「上流のmodel/loaderへのbridgeを作るまたは変える」に当たる。実装PRは `risk: layout-data` label、独立audit（`docs/assessment/pr-<PR番号>-<slug>.md`）+ `final-status` 成功を要する。編集画面確定のundoは既存organizer復元経路の呼出しのみ（新規書込み経路なし）。
 
 ## Current evidence
@@ -14,7 +14,8 @@
 - `lawnchair/src/app/lawnchair/homeedit/HomeEditUndoLog.kt:16-37` — `HomeEditUndoEvidence`（action種別、itemId、old/new配置、span、rank、`createdFolderId` とその配置）。**:37の時点で「外す」の逆INSERTに必要な行内容（itemType、profile、起動先intent、title等）は含まない**（#450の拡張点）。
 - `HomeEditUndoLog.kt:39-50` — `HomeEditUndoLog`（process内単一slot、`@Volatile`、`record`/`last` のみ。**世代識別子とcompare-and-consumeは持たない**）。`:57-111` — `buildUndoEvidence`（純粋builder。intent+plan+task報告値からevidenceを組む。`:77-80` に#449の `CreateFolderAt` 分岐追加済み）。
 - `lawnchair/src/app/lawnchair/homeedit/HomeEditExecutor.kt:135-143`（confirm: MODEL_EXECUTOR上でstage-1 snapshot→planner）、`:145-206`（submit: stage-2 validator + ResultCallback、成功時 `recordUndoEvidence` :250-276）、`:216-248`（成功後のUI refresh: 旧view除去 + bind + ページsnap。accessibility precedent）、`:284-309`（typed拒否のToast表示）。
-- `src/com/android/launcher3/model/DirectEditContract.java:44-51`（FAIL_* keys）、`:53-98`（Row/Snapshotの純JDK型投影）、`:101-131`（Decision/Validator）、`:140-146`（ResultCallback: old配置欄+`createdFolderId`/`createdFolder` がundo evidenceの運搬経路）。
+- `src/com/android/launcher3/model/DirectEditContract.java:44-51`（FAIL_* keys）、`:53-98`（Row/Snapshotの純JDK型投影）、`:101-131`（Decision/Validator）、`:140-146`（ResultCallback: old配置欄+`createdFolderId`/`createdFolder` がundo evidenceの運搬経路。**row payloadを運ぶ欄はない**。実装者はfork側 `HomeEditExecutor.kt:148` のみでtest実装は現行なし — round 2指摘2の運搬seam拡張の影響範囲）。
+- `src/com/android/launcher3/model/DirectEditContract.java` は#448が作成したfork所有のbridge契約file（「src/ はlawnchair moduleに依存しない、純JDK型のみ」の境界doc comment付き）。**#450での明示的な拡張（ResultCallbackへのpayload引数追加等）はこのfileの所有のもとで行い、src/側の既存メソッドの振る舞いは変えない**。
 - `src/com/android/launcher3/model/ModelWriter.java:610-638` — 直接編集3操作（`moveItemForDirectEdit` / `createFolderAndMoveForDirectEdit` / `removeItemForDirectEdit`）。`:644-662` — `buildDirectEditSnapshot`（admission内の現在状態投影。QSB予約行の合成込み）。`:669-710` — `DirectEditTask` 基底（admission内でstage-2 validator → 変更。失敗はtyped通知。`runImpl` :686-695）。`:712-784` — `DirectEditMoveTask`（単一UPDATE。desktop以外はcell=-1、span 1x1正規化）。`:786-866` — `DirectEditCreateFolderTask`（`newTransaction()` でINSERT+UPDATEの1 transaction、commit成功後にlive model同期）。`:869-901` — `DirectEditRemoveTask`（1回DELETE。**削除前の行内容はcallbackへ運ばない**。`runAdmitted` :876-900、DELETE :886）。
 - `ModelWriter.java:404-446` — 上流の遅延commit削除（`prepareToUndoDelete`/`enqueueDeleteRunnable`/`commitDelete`/`abortDelete`）。fork編集の「外す」は即時commitのためこの機構は使えない（spec Decision）。
 - `lawnchair/src/app/lawnchair/homeedit/HomeEditAdapter.kt:12-44`（Snapshot mapper + 拒否key対応）、`:53`（`HomeEditStage2Validator`: 同一planner再実行、stage-1 planと一致でのみproceed）。
@@ -33,15 +34,16 @@
 - `lawnchair/src/app/lawnchair/organizer/application/public/RecoveryRequest.kt:14-17`（pointId + `expectedCurrentRevision`）。
 - `lawnchair/src/app/lawnchair/organizer/application/public/ValidatedLayoutPlan.kt:16-25`（`intendedState` はpublic。適用計画からpost-stateを参照できる）。
 
-**revision契約（`expectedCurrentRevision` の正本の根拠。review指摘2）**
+**revision契約（`expectedCurrentRevision` の正本の根拠。review round 1指摘2 + round 2指摘1）**
 
 - `lawnchair/src/app/lawnchair/organizer/application/revision/RevisionCalculator.kt:34-39` — `revisionOf(state)`（PRE_STATE digest。capture revisionと同種。canonical状態の決定的関数）、`:46-50` — `intendedRevisionOf`（INTENDED_POST_STATE digest。**digest種が異なるためundoの `expectedCurrentRevision` には使わない**）。
-- `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt:375-381` — `Applied` 返却前のexact-DB検証（`db.layoutState == writeSet.intendedState && db.manifest == writeSet.intendedManifest`。不一致は自動復旧へ）。`:392-399` — VERIFIED登録後のみ `Applied(runId, pointId)` を返す。**したがって `Applied` 受信時点で現在revision == `revisionOf(intendedState)` が経路の契約として成立する。**
+- **materialize経路（plan.intendedStateがpost-stateではない根拠。round 2指摘1）**: `lawnchair/src/app/lawnchair/homeedit/EditSurfacePlanBuilder.kt:124` — 編集画面の適用計画は新規フォルダを `ApplicationItemRef.PlannedFolder(ordinal)` のまま含む未解決 `intendedState` を作る。applyでは `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt:212-219` がplanned itemへ永続IDを採番し、`:231-234` が `IntendedStateResolution.resolveAndFinalize` でplanned ref→persistent refへ解決、`:236-239` がpage正規化（Issue #155）を施した **`materializedState`** を作る。このmaterialized後の状態が `MaterializedWriteSet.intendedState`（`lawnchair/src/app/lawnchair/organizer/application/protocol/Ports.kt:121`）である。したがって **新規フォルダを含む確定では `plan.intendedState` のrevisionは実際のpost-state revisionと一致しない**。
+- `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt:47`（`apply(plan, runId): ApplyResult`）、`:375-381` — `Applied` 返却前のexact-DB検証（`db.layoutState == writeSet.intendedState && db.manifest == writeSet.intendedManifest`。不一致は自動復旧へ）。`:335-342`（`continueCommitted` は `writeSet: MaterializedWriteSet` を引数に持ち、`:392-399` で `Applied` を返す。**したがってこの地点で `RevisionCalculator.revisionOf(writeSet.intendedState)` を計算すれば、`Applied` 受信時点の現在capture revisionと等しいverified revisionを競合なしに得られる**）。
 - `lawnchair/src/app/lawnchair/organizer/application/protocol/RecoveryProtocol.kt:113-116` — 復元は新規captureのrevisionと `expectedCurrentRevision` を比較し、不一致は `NotRestorable(STALE_REVISION)`・零書込み。
 - `lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt:124` — capture revisionは `RevisionCalculator.revisionOf(captured.state)`（`revisionOf` と同種の比較が成立する根拠）。
-- 結合oracle（AC-5）: `Applied` 直後に新規captureのrevisionが `revisionOf(intendedState)` と等価であること、およびその後の別書込みが `STALE_REVISION`・零書込みのundoになることをtestで固定する。
+- 結合oracle（AC-5）: (i) 新規フォルダ作成を含む確定 → 他書込みなし → undo `Restored`（正常系。Revision 2契約では必ず失敗するケース）; (ii) 記録revision == apply直後の新規capture revision（等価の固定。正本はapply内部値）; (iii) 確定後の別書込み → `STALE_REVISION`・零書込み。
 
-**availability照合の既存seam族（「外す」undoの照合入力。review指摘3）**
+**availability照合の既存seam族（「外す」undoの照合入力。review round 1指摘3）**
 
 - `lawnchair/src/app/lawnchair/organizer/application/protocol/CandidateResolution.kt:47-59` — `CandidateAvailabilityPort.verifyLaunchable(List<CandidateTarget.AppKey>)`（#228。pre-write boundaryでのavailability再検証の実例。`ApplyProtocol.kt:129-147`）。**AppKey（アプリcomponent）のみでdeep shortcutは対象外**のため、undo側はshortcut availabilityを含む独自の検証入力を持つ（下記Design）。
 - `lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt:341-345`（アプリcomponent availability解決の実例: `launcherApps.getActivityList`）、`:348-360`（deep shortcut availability解決の実例: `getShortcuts` PINNED|MANIFEST）。undoのproduction verifierはこれらと同一の判定を使う。
@@ -79,9 +81,9 @@ app.lawnchair.homeedit/                          （fork側。#450の主戦場�
 ├── HomeEditUndoRecord.kt                        # 取り消し記録の型と単一slot holder
 │                                                #   HomeEditUndoEntry = DirectEditEntry | EditSessionEntry
 │                                                #   DirectEditEntry: HomeEditUndoEvidence + 削除前行内容
-│                                                #     （UndoRowPayload: 復元列 + availability identity）
+│                                                #     （UndoRowPayload: callback拡張で運ばれる復元列 + availability identity）
 │                                                #   EditSessionEntry: RecoveryPointId + expectedCurrentRevision
-│                                                #     （= RevisionCalculator.revisionOf(intendedState)。確定完了時に決定）
+│                                                #     （= apply receiptのverified post revision。materialized post-stateのrevision）
 │                                                #   Slot = (generation: Long, entry)。generationはprocess内単調増加
 │                                                #   record(entry) -> HomeEditUndoToken（generation値）
 │                                                #   compareAndConsume(token) -> HomeEditUndoEntry?
@@ -117,17 +119,21 @@ app.lawnchair.homeedit/                          （fork側。#450の主戦場�
                                                  #   （instanceがnullなら表示しない。recordのみ残る）
 
 src/com/android/launcher3/model/                （platform側。bridgeの最小）
-├── DirectEditContract.java                      # 拡張（純JDK型のまま。既存型は変更しない）:
+├── DirectEditContract.java                      # 拡張（純JDK型のまま。#448が作ったfork所有bridge契約の明示的拡張）:
 │                                                #   UndoRowPayload — 「外す」の削除前行の復元列投影
 │                                                #     （itemType/container/screen/cell/span/rank/userSerial/intent/
 │                                                #      title/options等、再INSERTに必要な列。availability identityを含む）
+│                                                #   ResultCallback.onResult への payload引数追加
+│                                                #     （削除成功時のみ非null。既存実装者は HomeEditExecutor.kt:148 と
+│                                                #      新規testのみ。拡張はdoc commentに#450として記録）
 │                                                #   AvailabilityVerifier — UndoRowPayload -> int(AVAILABLE/UNAVAILABLE/UNKNOWN)
 │                                                #     （fork側から注入。ModelWriter自身はLauncherAppsを呼ばない。
 │                                                #      Validator注入と同じパターン）
 │                                                #   FAIL_UNDO_* keys（UNDO_STALE/UNDO_NO_SPACE/UNDO_FOLDER_CHANGED/
 │                                                #     UNDO_ITEM_UNAVAILABLE/UNDO_WRITE_FAILED 相当）
-└── ModelWriter.java                             # 逆操作3種を追加（DirectEditTaskと同じ構造。既存メソッド・classは
-                                                 #   変更しない。`DirectEditRemoveTask` のみ削除前行のpayload captureを追加）
+└── ModelWriter.java                             # 逆操作3種を追加（DirectEditTaskと同じ構造。既存メソッドのシグネチャ・
+                                                 #   既存classの振る舞いは変更しない。`DirectEditRemoveTask` のみ削除前行の
+                                                 #   payload captureを追加し、成功callbackへpayloadを渡す）
     ├── restorePlacementForDirectEdit(...)       #   admission内: 再照合 → 明示配置への1回UPDATE
     │                                            #   （containerは DESKTOP/HOTSEAT/folderId いずれも可）
     ├── restoreRemovedItemForDirectEdit(...)     #   admission内: availability再照合（注入verifier）→ 再照合
@@ -135,13 +141,24 @@ src/com/android/launcher3/model/                （platform側。bridgeの最小
     │                                            #   元の_idでもない第三の値は作らない。実装時にmodel/DB整合で確定）
     └── undoCreateFolderForDirectEdit(...)       #   admission内: 再照合 → newTransaction()
                                                  #   （子の逆UPDATE + フォルダ行DELETE）→ model同期
+
+organizer適用module（internal seamの最小追加。public契約は不変）
+├── ApplyProtocol.kt                             # continueCommitted の Applied 組み立て点（:392-399）で
+│                                                #   RevisionCalculator.revisionOf(writeSet.intendedState) を計算し、
+│                                                #   internalなapply receipt（result + verifiedPostRevision）で返す
+│                                                #   （apply/recoveryの振る舞い契約・public返値型 ApplyResult は不変）
+├── LayoutApplicationModule.kt                   # internalなreceipt付きapply accessorを追加（既存 applyWithRunId は
+│                                                #   既存呼出し側のために ApplyResult のみを返し続ける）
+└── （fork側）ManualOrganizationRun.kt           # ManualOrganizationApplication へ receipt付きapplyのadditive method
+                                                 #   追加 + production impl（HomeEditSurfaceAccess と同じ単一instance経由）
 ```
 
 - **seam**: 呼び出し側（snackbar action）とtestは `HomeEditUndoPlanner`（純粋照合）と `ModelWriter` の逆操作（書込み）の2つのseamを使う。`ModelWriter` 内部の既存task classは検証しない（spec 448と同じ規約）。availabilityは `HomeEditUndoAvailability`（純data）+ `HomeEditUndoVerifier`（port）+ `DirectEditContract.AvailabilityVerifier`（stage-2注入）で運び、plannerは純粋関数のまま Android型・DB行型を受けない。
 - **型の境界**: `HomeEditUndoPlanner` はAndroid型・DB行型をinterfaceへ漏らさない（`HomeEditSnapshot` 投影）。`DirectEditContract` は純JDK型のまま。SQLは `ModelWriter.java` に集約し、homeedit配下はDB書込みpatternを持たない（`validate_writer_inventory.py` のbackstopが自動検証）。
 - **二段階照合の同一関数性**: stage-1（submit時、MODEL_EXECUTOR上のsnapshot+availability）とstage-2（admission内、`buildDirectEditSnapshot`+注入verifierのavailability）で**同一の** `HomeEditUndoPlanner` 関数を通す。構造は#448の `HomeEditStage2Validator` と同じ（validator関数を渡す）。stage-1と異なる結果・拒否は書かない。availabilityは同一のproduction `HomeEditUndoVerifier` instanceを使い、stage-1/stage-2で同一判定を保証する（review指摘3の「二段階で同一判定」の実装）。
 - **記録の単一slotと世代**: `HomeEditUndoLog` を `HomeEditUndoRecord` へ発展させる（既存 `HomeEditUndoLogTest` を移植・拡張）。slotは `AtomicReference<Slot>`（`Slot(generation, entry)`）で置換・消費をatomicに行い、`compareAndConsume(token)` は同一generationのときのみ取り出す。record/consumeはmodel thread(callback)、UI thread(snackbar tap)、編集画面activity threadから挟まるため、可視性と原子的な置換・消費はこの1箇所に集約する（review指摘1の実装）。
-- **編集画面entryのrevision決定（review指摘2の実装）**: `handleApplyResult` の `Applied` 分岐で `HomeEditUndoRecord.record(EditSessionEntry(result.pointId, RevisionCalculator.revisionOf((built as EditSurfaceApplyPlan.Ready).plan.intendedState)))` を行う。post-hoc captureは行わない。根拠の契約はCurrent evidenceのrevision契約節（`Applied` ⇔ exact-DB検証）。**_threading_: EditSession undoの `recover` は相関reloadの完了待ちを含むため、`HomeEditSurfaceActivity.surfaceExecutor`（:70）と同じ専用スレッドで実行する（MODEL_EXECUTOR上で待つとLoaderTaskが永久に実行されないデッドロックの再発を避ける）。
+- **編集画面entryのrevision決定（review round 1指摘2 + round 2指摘1の実装）**: `handleApplyResult` の `Applied` 分岐で、apply receipt（apply経路が `continueCommitted` の `Applied` 組み立て点で計算した `revisionOf(writeSet.intendedState)`。exact-DB検証の比較対象そのもの）から `HomeEditUndoRecord.record(EditSessionEntry(result.pointId, receipt.verifiedPostRevision))` を行う。**`plan.intendedState` は使わない**（planned ref解決とpage正規化でmaterialize後の状態が変わるため。新規フォルダを含む確定の正常系が必ず `STALE_REVISION` になる）。post-hoc captureも行わない。public契約（`ApplyResult`）は不変で、receiptはinternal seamで運ぶ。**_threading_: EditSession undoの `recover` は相関reloadの完了待ちを含むため、`HomeEditSurfaceActivity.surfaceExecutor`（:70）と同じ専用スレッドで実行する（MODEL_EXECUTOR上で待つとLoaderTaskが永久に実行されないデッドロックの再発を避ける）。
+- **削除前行payloadの運搬（review round 2指摘2の実装）**: `DirectEditRemoveTask.runAdmitted` がDELETE直前に `UndoRowPayload` をcaptureし（同一admission内でstage-1〜stage-2間の変化を構造的に排除）、拡張した `ResultCallback.onResult` のpayload引数で成功callbackへ返す。fork側の唯一の実装（`HomeEditExecutor.kt:148` のcallback）がそれを受け取り、`recordUndoEvidence` と同じ成功callback内で `HomeEditUndoRecord` の `DirectEditEntry` へ格納する（model thread上、atomic slot）。src/からlawnchair側のrecordを直接触る経路は作らない（既存module境界を維持）。
 - **Snackbar表示の引き渡し**: popup経路（`HomeEditExecutor` 成功callback。launcher上）はそのまま `Snackbar.show`。編集画面経路はactivity上ではなくlauncher上に表示する必要があるため、`LawnchairLauncher.instance`（:581）へtoken+label付きで表示を依頼する（instance nullなら表示しない）。launcher側のhookはsrc/に触れない（`HomeEditUndoSnackbar` がlauncherのDragLayerへattachする既存 `Snackbar.show` 慣行のまま）。
 
 ### Data flow（「ページへ移動…」のundoの例）
@@ -167,7 +184,7 @@ undo tap（UI thread）
               失敗なら typed Toast（いずれもrecordはcompareAndConsume済み）
 ```
 
-編集画面entry（Phase B）: 確定完了（`handleApplyResult` の `Applied` 分岐）: `token = record(EditSessionEntry(pointId, revisionOf(intendedState)))` → `LawnchairLauncher.instance` へsnackbar表示依頼 → `finish()`。undo tap → `compareAndConsume(token)`（不一致は無操作）→ 専用スレッドで `HomeEditSurfaceAccess.recover(RecoveryRequest(pointId, expectedRevision))` → `Restored`: 復元経路の相関reloadに任せる / `NotRestorable`・`WriterBusy`・`RestoreFailed`: typed Toast（`RecoveryResult` mapper。純粋関数、JVM test対象）+ recordは消費済み。
+編集画面entry（Phase B）: 確定完了（`handleApplyResult` の `Applied` 分岐）: `token = record(EditSessionEntry(pointId, receipt.verifiedPostRevision))`（receiptはinternal apply seamが運ぶverified post revision。materialized post-stateのrevision）→ `LawnchairLauncher.instance` へsnackbar表示依頼 → `finish()`。undo tap → `compareAndConsume(token)`（不一致は無操作）→ 専用スレッドで `HomeEditSurfaceAccess.recover(RecoveryRequest(pointId, expectedRevision))` → `Restored`: 復元経路の相関reloadに任せる / `NotRestorable`・`WriterBusy`・`RestoreFailed`: typed Toast（`RecoveryResult` mapper。純粋関数、JVM test対象）+ recordは消費済み。
 
 ### Alternatives rejected
 
@@ -177,28 +194,31 @@ undo tap（UI thread）
 - **undo tap時に対象を再探索して「近い位置」へ戻す**: Rejected。fail-closed（メモ§4.2条件5）に反する。復帰先が埋まればtyped失敗とし、代替配置はしない。
 - **取り消し記録の永続化（preference/新規store）**: Rejected（第1版）。寿命はメモ§10/§11 B-3で確定済み（process内で次の編集まで）。DB migration・backup契約を避ける。
 - **`moveItemForDirectEdit` の流用**: undoはHOTSEAT戻し・folder→元配置など既存moveの前提（desktop/folder宛て・span正規化）と異なるため、明示配置へ戻す専用の最小操作を追加する（ADR-0013契約4「同経路に追加する最小の操作」）。
-- **apply完了後に再captureして `expectedCurrentRevision` を記録する（post-hoc capture）**: Rejected（review指摘2）。apply完了とcaptureの間の別書込み後のrevisionを記録しかねず、「確定直後の状態からのずれを拒否する」目的に反する。`Applied` はexact-DB検証（`ApplyProtocol.kt:375-381`）を経るため、適用計画からの `revisionOf(intendedState)` 決定と等価であり、競合を持たない。
-- **世代識別子なしの単一slot消費（Revision 1草案）**: Rejected（review指摘1）。snackbarの置換がmain threadへpostされる構造では「旧snackbar表示中に新recordへ置換済み・新snackbar未表示」の窓が必ず存在し、旧snackbarのtapが新編集を消費しうる。token閉じ込め+compareAndConsumeで構造的に排除する。
-- **availability照合をUI層（stage-1）だけに置く**: Rejected（review指摘3）。defer中のアンインストール・shortcut無効化をadmission内で再照合しないと、消えた起動先の古いrowを再INSERTしうる（ADR-0013契約2の二段階検証にavailabilityを含める）。
+- **apply完了後に再captureして `expectedCurrentRevision` を記録する（post-hoc capture）**: Rejected（review round 1指摘2）。apply完了とcaptureの間の別書込み後のrevisionを記録しかねず、「確定直後の状態からのずれを拒否する」目的に反する。
+- **適用計画の `plan.intendedState` から `expectedCurrentRevision` を決定する（Revision 2の判断）**: Rejected（review round 2指摘1）。編集画面の適用計画は新規フォルダを未解決の `ApplicationItemRef.PlannedFolder` のまま含み（`EditSurfacePlanBuilder.kt:124`）、apply内部の永続ID採番（`LauncherLayoutAdapter.kt:215`）、planned ref解決（`:231`）、page正規化（`:239`）を経たmaterialized post-stateが実際のpost-stateである。`Applied` がexact-DB検証で保証するのはmaterialized側との一致のみであり、plan由来のrevisionでは新規フォルダを含む確定の正常系undoが必ず `STALE_REVISION` になる。正本はapply経路自身が検証に使った `writeSet.intendedState` のrevisionとし、internal receiptで運ぶ。
+- **世代識別子なしの単一slot消費（Revision 1草案）**: Rejected（review round 1指摘1）。snackbarの置換がmain threadへpostされる構造では「旧snackbar表示中に新recordへ置換済み・新snackbar未表示」の窓が必ず存在し、旧snackbarのtapが新編集を消費しうる。token閉じ込め+compareAndConsumeで構造的に排除する。
+- **availability照合をUI層（stage-1）だけに置く**: Rejected（review round 1指摘3）。defer中のアンインストール・shortcut無効化をadmission内で再照合しないと、消えた起動先の古いrowを再INSERTしうる（ADR-0013契約2の二段階検証にavailabilityを含める）。
+- **削除前行payloadを既存callback経路に載せない（Revision 2草案）**: Rejected（review round 2指摘2）。現行 `ResultCallback.onResult` はpayloadを運べず、src/からlawnchair側recordを直接触ることもmodule境界上できない。`DirectEditContract`（fork所有bridge契約）の明示的拡張（payload引数追加）でadmission内capture→成功callback→record格納の経路を固定する。
 
 ## Change set
 
 | Area | Intended change | Why here |
 |---|---|---|
 | `lawnchair/src/app/lawnchair/homeedit/HomeEditUndoRecord.kt` | 新設（`HomeEditUndoLog` からの発展・置換。evidence拡張+EditSessionEntry+世代付きcompare-and-consume） | 記録の形式・寿命は#450所有（spec 448 AC-9の委任） |
-| `lawnchair/src/app/lawnchair/homeedit/HomeEditUndoAvailability.kt` | 新設（純dataのavailability入力）+ `HomeEditUndoVerifier.kt`（port+production実装。LauncherApps） | stage-1/stage-2同一判定のavailability照合（review指摘3） |
+| `lawnchair/src/app/lawnchair/homeedit/HomeEditUndoAvailability.kt` | 新設（純dataのavailability入力）+ `HomeEditUndoVerifier.kt`（port+production実装。LauncherApps） | stage-1/stage-2同一判定のavailability照合（review round 1指摘3） |
 | `lawnchair/src/app/lawnchair/homeedit/HomeEditUndoPlanner.kt` | 新設（純粋照合関数。availability入力込み。`HomeEditPlanner` の占有/境界helper再利用） | AGENTS.mdテスト規約（計画moduleはinterface経由・副作用なし） |
 | `lawnchair/src/app/lawnchair/homeedit/HomeEditUndoExecutor.kt` | 新設（undo flow。世代照合・snackbar出力含む。EditSessionは専用スレッドでrecover） | spec 448の `HomeEditExecutor` と対称な構成 |
 | `lawnchair/src/app/lawnchair/homeedit/ui/HomeEditUndoSnackbar.kt` | 新設（snackbar表示。token閉じ込め。launcher引き渡し） | 入口はsnackbarのみ（spec Scope）。src/に触れない |
-| `lawnchair/src/app/lawnchair/homeedit/HomeEditExecutor.kt` | 成功callback末尾にsnackbar表示とrecord書込みの差し替え（`HomeEditUndoLog`→`HomeEditUndoRecord`） | 既存flowの最小変更 |
-| `lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt` | `Applied` 分岐へentry書込み+snackbar表示依頼を追加（既存分岐は変更しない） | #449接続点（spec Scope確定済み） |
-| `lawnchair/src/app/lawnchair/homeedit/HomeEditSurfaceAccess.kt` + `organizer/ui/ManualOrganizationRun.kt` | `recover` accessorのadditive追加（interface+production impl。`LayoutApplicationModule.recover` への委譲のみ） | undo tapの復元経路。organizer public契約の変更なし |
-| `src/com/android/launcher3/model/DirectEditContract.java` | `UndoRowPayload`・`AvailabilityVerifier`・FAIL_UNDO_* keysの追加（既存型・既存メソッドは変更しない） | 「外す」逆INSERTの行内容運搬とstage-2 availability注入 |
-| `src/com/android/launcher3/model/ModelWriter.java` | 逆操作3種を追加（`DirectEditTask` 構造に準拠。既存メソッド・classは変更しない。`DirectEditRemoveTask` は削除前行をpayloadへcaptureするよう拡張） | ADR-0013契約4。SQLの一元化（高リスクpath・inventory収録済みfile） |
+| `lawnchair/src/app/lawnchair/homeedit/HomeEditExecutor.kt` | 成功callback末尾にsnackbar表示とrecord書込みの差し替え（`HomeEditUndoLog`→`HomeEditUndoRecord`。拡張callbackのpayload受取込み） | 既存flowの最小変更 |
+| `lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt` | `Applied` 分岐へreceipt受取（pointId + verified post revision）+ entry書込み + snackbar表示依頼を追加（既存分岐は変更しない） | #449接続点（spec Scope確定済み） |
+| `lawnchair/src/app/lawnchair/homeedit/HomeEditSurfaceAccess.kt` + `organizer/ui/ManualOrganizationRun.kt` | `recover` accessorとreceipt付きapply accessorのadditive追加（interface+production impl。`LayoutApplicationModule` のinternal seamへの委譲のみ） | undo tapの復元経路とverified revisionの運搬。organizer public契約の変更なし |
+| `src/com/android/launcher3/model/DirectEditContract.java` | `UndoRowPayload`・`AvailabilityVerifier`・FAIL_UNDO_* keysの追加、`ResultCallback.onResult` へのpayload引数追加（削除成功時のみ非null。#448が作ったfork所有bridge契約の明示的拡張。既存の振る舞いは変えない） | 「外す」逆INSERTの行内容運搬とstage-2 availability注入（review round 2指摘2） |
+| `src/com/android/launcher3/model/ModelWriter.java` | 逆操作3種を追加（`DirectEditTask` 構造に準拠。既存メソッド・classは変更しない。`DirectEditRemoveTask` は削除前行をpayloadへcaptureし成功callbackへ渡すよう拡張） | ADR-0013契約4。SQLの一元化（高リスクpath・inventory収録済みfile） |
+| `src/com/android/launcher3/organizer/application/protocol/ApplyProtocol.kt` + `LayoutApplicationModule.kt`（organizer適用module、internal） | `continueCommitted` の `Applied` 組み立て点で `revisionOf(writeSet.intendedState)` を計算し、internal apply receipt（result + verifiedPostRevision）で返すaccessorを追加。既存 `applyWithRunId` / public `ApplyResult` は不変 | verified post revisionの競合なし運搬（review round 2指摘1）。apply/recoveryの振る舞い契約（spec 13）は不変。実装時に `DESIGN.md` へ追記（AC-10） |
 | `lawnchair/res/values/strings.xml` / `values-ja/strings.xml` | snackbar label、undo失敗理由（`homeedit_undo_error_*`）、a11y announce | fork文字列慣行 |
 | `tests/unit/app/lawnchair/homeedit/**` | UndoPlanner test（種別×照合×境界×availability×決定性）、UndoRecord test（置換・消費・世代不一致compare-and-consume）、evidence拡張のbuilder test、RecoveryResult mapper test、strings test拡張 | 純粋層の最下層oracle。gate収録済みfilterで自動実行 |
 | `tests/organizer-instrumentation/com/android/launcher3/DirectEditUndoModelWriterTest.java`（新規）等 | 逆操作の書込みtest（round-trip、行内容忠実度、transaction失敗注入、defer/stale、occupancy拒否、**availability失敗注入（package消失・shortcut消失・verifier失敗→零書込み）**、process死） | shared-writer laneの既存seam。class listへの追加のみ |
-| `tests/organizer-instrumentation` 配下の#449結合test（`EditSurfaceApplyInstrumentationTest` 隣接）または同lane新規class | 編集画面undoの結合oracle（`Applied`→`revisionOf(intendedState)`一致→`Restored`、apply後別書込み→`STALE_REVISION`零書込み） | AC-5の相手側が実装済みのため結合で検証 |
+| `tests/organizer-instrumentation` 配下の#449結合test（`EditSurfaceApplyInstrumentationTest` 隣接）または同lane新規class | 編集画面undoの結合oracle（新規フォルダ作成込みの正常系 `Restored`、記録revisionとpost-apply capture revisionの一致、apply後別書込み→`STALE_REVISION`零書込み） | AC-5の相手側が実装済みのため結合で検証 |
 | `.github/workflows/ci.yml` | shared-writer lane class listへ新規test class追加（ci.yml:423。必要に応じpath routing） | 既存laneへの統合のみ（新規lane不作成） |
 | `CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md` | domain language 3語、homeedit undo構成の追記（必要最小限）、FR-020 status | 正本の分担（spec AC-10） |
 
@@ -225,10 +245,10 @@ undo tap（UI thread）
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-2（fail-closed。availability込み） | JVM: UndoPlanner typed拒否群（availability含む）+ instrumentation: 状態ずれ・占有・フォルダ変化・package消失・shortcut消失・verifier失敗の注入 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'` / shared-writer lane |
+| AC-2（fail-closed。availability込み） | JVM: UndoPlanner typed拒否群（availability含む）+ instrumentation: 状態ずれ・占有・フォルダ変化・package消失・shortcut消失・verifier失敗の注入。削除前行payloadのcallback経由record格納oracleを含む | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'` / shared-writer lane |
 | AC-3（1 transaction） | instrumentation: undoCreateFolderの2行目失敗注入→全rollback、model/DB一致 | `connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=...DirectEditUndoModelWriterTest` |
 | AC-4（排他/defer） | instrumentation: ORGANIZER lease中のundo defer→解放後stage-2（`DirectEditModelWriterTest` のdefer-stale testと同seam） | 同上 |
-| AC-5（編集画面undo） | 結合test: `Applied`→`revisionOf(intendedState)`一致→`Restored`、apply後別書込み→`STALE_REVISION`零書込み、evict/復元済み/WriterBusy表示 | shared-writer lane（#449結合test隣接）+ エミュレータ操作記録 |
+| AC-5（編集画面undo） | 結合test: 新規フォルダ作成込みの正常系（他書込みなし→ `Restored`）、記録revision == apply直後capture revision、apply後別書込み→`STALE_REVISION`零書込み、evict/復元済み/WriterBusy表示 | shared-writer lane（#449結合test隣接）+ エミュレータ操作記録 |
 | AC-11（世代紐付け） | JVM: record holderの世代不一致compare-and-consume（置換・無消費・現行undo可能）+ executor層のstale token無操作oracle | organizer-unit-tests gate |
 | AC-1/8/9（UI・実測・a11y） | エミュレータ操作記録（4アクション+確定undo、TalkBack読み上げ、accessibility timeout）、B5 §7手順の記録（4秒窓の有無を含む） | android-emulator plugin。実機はowner確認 |
 | AC-6（寿命） | JVM: UndoRecord置換・消費 + instrumentation process-death smokeの慣行 | 上記lane |
@@ -238,16 +258,16 @@ undo tap（UI thread）
 
 ## Incremental implementation order
 
-1. **Phase A-1 記録と契約の拡張**: `HomeEditUndoRecord`（世代付きslot+EditSessionEntry+消費）+ `HomeEditUndoAvailability`/`HomeEditUndoVerifier` + `DirectEditContract.UndoRowPayload`/`AvailabilityVerifier`/FAIL_UNDO_* + `DirectEditRemoveTask` の行capture。JVM test（builder・record・世代oracle）。
+1. **Phase A-1 記録と契約の拡張**: `HomeEditUndoRecord`（世代付きslot+EditSessionEntry+消費）+ `HomeEditUndoAvailability`/`HomeEditUndoVerifier` + `DirectEditContract.UndoRowPayload`/`AvailabilityVerifier`/FAIL_UNDO_*/`ResultCallback` payload拡張 + `DirectEditRemoveTask` の行captureとcallback受渡し。JVM test（builder・record・世代oracle・payload格納oracle）。
 2. **Phase A-2 純粋照合**: `HomeEditUndoPlanner` + JVM test群（AC-7/AC-11の純粋層）。
 3. **Phase A-3 逆操作の書込み**: `ModelWriter` 逆操作3種 + `DirectEditUndoModelWriterTest`（AC-2/3/4の書込み面。shared-writer lane class listへ追加）。
 4. **Phase A-4 UI**: snackbar表示（`HomeEditUndoSnackbar`）・`HomeEditUndoExecutor`・strings（en/ja）・a11y announce・LAUNCHER_UNDO log。エミュレータ操作記録（AC-1/8/9）。
-5. **Phase B 編集画面接続**: `HomeEditSurfaceAccess`/`ManualOrganizationApplication` への `recover` accessor追加、`handleApplyResult` `Applied` 分岐のentry書込み+表示依頼、`RecoveryResult` mapper、結合test（AC-5）。**#449はimplementedのためPhase A後すぐ着手できる（ブロッカなし）。**
+5. **Phase B 編集画面接続**: apply経路のinternal receipt（`ApplyProtocol`/`LayoutApplicationModule`）と `HomeEditSurfaceAccess`/`ManualOrganizationApplication` への `recover` accessor・receipt付きapply accessor追加、`handleApplyResult` `Applied` 分岐のreceipt受取+entry書込み+表示依頼、`RecoveryResult` mapper、結合test（AC-5。新規フォルダ作成込みの正常系を含む）。**#449はimplementedのためPhase A後すぐ着手できる（ブロッカなし）。**
 6. **文書**: CONTEXT/DESIGN/requirements FR-020 status（AC-10）。実装PRに独立audit（`docs/assessment/pr-<n>-edit-undo.md`）。
 
 ## Dependencies and blockers
 
-- **#449（implemented。PR #476）**: Phase Bの相手側は実装済み。本planの接続契約（`handleApplyResult` `Applied` 分岐でのentry書込み、`recover` accessorのadditive追加、`revisionOf(intendedState)` の正本）は現行実装のseam上で確定済み（Current evidence参照）。
+- **#449（implemented。PR #476）**: Phase Bの相手側は実装済み。本planの接続契約（`handleApplyResult` `Applied` 分岐でのreceipt受取+entry書込み、`recover` accessorとreceipt付きapply accessorのadditive追加、verified post revision（materialized post-state）の正本）は現行実装のseam上で確定済み（Current evidence参照）。
 - **ADR-0013要求テスト表「Undoのfail-closed」行**: 本実装PRで満たす（spec 448 AC-7が委任済み）。
 - **#441（closed）**: B5測定の手順・記録規則は確定済み（§4/§7）。
 
@@ -256,7 +276,7 @@ undo tap（UI thread）
 - `ModelWriter.java` への追加（高リスクpath）。既存メソッド・classを変更せず追加のみとし、`DirectEditTask` 構造を踏襲する（`DirectEditRemoveTask` のpayload captureは既存classへの最小拡張であり、削除の振る舞いは変えない）。独立audit + `final-status`。
 - 「外す」undoの行再構築の忠実度（intent/title/profile/lock値）。削除時captureをadmission内（DELETE直前）に行うことで、stage-1〜stage-2間の変化を構造的に排除する。行内容の等価性はinstrumentation testで検証。
 - availability照合のbinder呼出し（`LauncherApps`）をadmission内（model thread）で行うこと。上流のmodel threadでの `LauncherAppsCompat` 利用惯例と同じであり、副作用のないreadである（ADR-0013契約2の「副作用のない検証」を満たす）。verifier失敗はUNKNOWN→fail-closedで零書込み。
-- `revisionOf(intendedState)` と復元時の新規capture revisionの等価性は「canonical encodingが状態の決定的関数」に依存する。`Applied` のexact-DB検証（構造一致）が前提であるため、等価性を結合test（AC-5）で固定する。将来のcanonical encoding変更時は本契約の再検証が必要（spec 13のrevision契約に従う）。
+- `revisionOf(writeSet.intendedState)`（materialized post-stateのrevision）と復元時の新規capture revisionの等価性は「canonical encodingが状態の決定的関数」に依存する。`Applied` のexact-DB検証（構造一致）が前提であるため、等価性を結合test（AC-5。新規フォルダ作成込みを含む）で固定する。将来のcanonical encoding・materialize経路変更時は本契約の再検証が必要（spec 13のrevision契約に従う）。
 - HOTSEAT戻しの列慣行（cellX/rank/screenId解釈）は上流の書込み実例と突き合わせて実装時に確定する（未検証領域参照）。
 - Snackbar単一表示による連続編集時の前undo消失は仕様（FR-020「直前のみ」）であり、実装の複雑化（queue）で回避しない。世代不一致の競合はtoken閉じ込めで構造的に排除する。
 
