@@ -619,6 +619,10 @@ class EditSurfaceUndoInstrumentationTest {
         verifiedRef: java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.planning.RevisionId?>,
         pointIdRef: java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.application.public.RecoveryPointId?>,
     ) {
+        // The production module's readiness gate must be READY BEFORE the
+        // activity's onCreate capture runs — inspectCapture is fail-closed on
+        // a non-READY gate and the activity only recaptures on stale reopen.
+        app.lawnchair.LawnchairApp.instance.layoutApplicationModule.reconcileAtStart()
         val scenario = androidx.test.core.app.ActivityScenario.launch(
             app.lawnchair.homeedit.ui.HomeEditSurfaceActivity::class.java,
         )
@@ -639,12 +643,6 @@ class EditSurfaceUndoInstrumentationTest {
             Thread.sleep(300)
         }
         val itemId = selectable ?: error("no selectable item on the diagram")
-
-        // The production module's readiness gate must be READY before the
-        // confirm applies; in the instrumentation process the startup
-        // reconciliation may not have run yet, so drive it the same way the
-        // module composes it (the executor's recovery path needs it too).
-        app.lawnchair.LawnchairApp.instance.layoutApplicationModule.reconcileAtStart()
 
         // Drive the REAL confirm flow on the UI thread: select → move to
         // page 1 → confirm (capture → session → plan build → applyForUndo →
@@ -752,6 +750,17 @@ class EditSurfaceUndoInstrumentationTest {
             java.util.concurrent.atomic.AtomicReference<HomeEditUndoToken?>(null)
         val verifiedRef = java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.planning.RevisionId?>(null)
         seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        // Launch the launcher BEFORE the confirm flow: the executor's undo
+        // path needs the launcher instance, and the launcher's model loading
+        // must settle before the confirm apply.
+        androidx.test.core.app.ActivityScenario.launch(app.lawnchair.LawnchairLauncher::class.java)
+        val launcherDeadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < launcherDeadline) {
+            if (app.lawnchair.LawnchairLauncher.instance != null) break
+            Thread.sleep(300)
+        }
+        appState.model.forceReload()
+        waitForModelLoaded()
         val pointIdRef = java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.application.public.RecoveryPointId?>(null)
         confirmThroughProductionFlowAndCaptureToken(tokenCapture, verifiedRef, pointIdRef)
         val token = tokenCapture.get() ?: error("no token captured from the confirm flow")
@@ -770,9 +779,11 @@ class EditSurfaceUndoInstrumentationTest {
         // restored state is the pre-apply layout; pin its revision AFTER the
         // restore completes so the repeat-undo zero-write probe compares
         // against the state the restore actually produced.
-        val launcherInstance = app.lawnchair.LawnchairLauncher.instance
-            ?: error("launcher instance unavailable")
-        HomeEditUndoExecutor(launcherInstance) { }.start(token)
+        // AC-1 evidence: capture the applied (pre-undo) home state.
+        takeScreenshotForEvidence("undo-before")
+        val undoLauncher = app.lawnchair.LawnchairLauncher.instance
+            ?: error("launcher instance unavailable for the undo")
+        HomeEditUndoExecutor(undoLauncher) { }.start(token)
         val deadline = System.currentTimeMillis() + 60_000
         var restored = false
         var restoredRevision: app.lawnchair.organizer.planning.RevisionId? = null
@@ -789,6 +800,8 @@ class EditSurfaceUndoInstrumentationTest {
             Thread.sleep(300)
         }
         assertTrue("first undo did not restore", restored)
+        // AC-1 evidence: capture the restored (post-undo) home state.
+        takeScreenshotForEvidence("undo-after")
         val preRevision = restoredRevision ?: error("restored revision not captured")
 
         // Re-record the same session entry (a second confirm of the same
@@ -1040,6 +1053,27 @@ class EditSurfaceUndoInstrumentationTest {
             }
             },
         )
+    }
+
+    /**
+     * AC-1 evidence: captures the current screen via `screencap` into the
+     * instrumentation target's files dir (pulled to the repository after the
+     * run). Never throws — a capture failure degrades to a missing image, not
+     * a test failure.
+     */
+    private fun takeScreenshotForEvidence(label: String) {
+        try {
+            val out = java.io.File(
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                    .targetContext.getExternalFilesDir(null),
+                "450-edit-undo-ac1-$label.png",
+            )
+            out.parentFile?.mkdirs()
+            androidx.test.uiautomator.UiDevice.getInstance(
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation(),
+            ).takeScreenshot(out)
+        } catch (_: Throwable) {
+        }
     }
 
     // --- helpers ---
