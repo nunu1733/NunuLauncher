@@ -101,18 +101,21 @@ class HomeEditUndoEvidenceToolingTest {
         val launcher = currentLauncher()
         val item = desktopItem(launcher, screenId = 0)
 
-        // The destination page must already be the VISIBLE one: a move whose
-        // destination is off-screen rebinds the moved icon with the new-item
-        // bounce (refreshAfterMove's forceAnimateIcons rebind), whose delayed
-        // closeOpenViews (bindInflatedItems, NEW_APPS_PAGE_MOVE_DELAY) closes
-        // the freshly shown undo snackbar within ~0.5s. That self-close of
-        // the cross-page move snackbar is recorded as a product finding in
-        // the evidence doc; this oracle pins the UI seam on the path where
-        // the snackbar stays up.
-        device.swipe(900, 1200, 120, 1200, 12)
-        Thread.sleep(1_000)
-
-        confirmTapUndoEvidence("direct-move", launcher, item.id, HomeEditIntent.MoveToPage(item, 1))
+        // The REAL cross-page sequence: the source page is visible, the item
+        // moves to page 1 (off-screen), the launcher snaps to the
+        // destination, and the undo snackbar must SURVIVE the rebind (the
+        // round 12 production fix removed the animated rebind's delayed
+        // closeOpenViews that self-closed it ~500ms in). The >600ms
+        // wait below is the survival oracle; the tap then reverts the move.
+        confirmDirectEditAndAwaitUndoAction(launcher, item.id, HomeEditIntent.MoveToPage(item, 1))
+        // >600ms survival past the old self-close, then the post-write
+        // reload drain (keeps the undo task from being dropped).
+        Thread.sleep(700)
+        waitForModelSettled(2_500L)
+        val survivingAction = device.findObject(By.text(undoActionText()))
+            ?: error("the undo snackbar did not survive the cross-page move rebind")
+        captureEvidence("direct-move-before")
+        survivingAction.click()
         awaitSnackbarDismissed()
         awaitUndoState("the moved row back at its original page-0 cell") {
             val current = itemById(item.id)
@@ -156,38 +159,52 @@ class HomeEditUndoEvidenceToolingTest {
     }
 
     /**
-     * EXECUTED FINDING (owner triage; NOT an undo-contract oracle): the
-     * popup create-folder wraps ONE item into a single-child folder, and the
-     * launcher flattens a single-child folder back to an icon WITHIN the
-     * undo snackbar's window (a launcher DB write: the child takes the
-     * folder's cell, the folder row is deleted). The undo tap afterwards
-     * STALE-rejects ("Can't undo: the icon has moved since." — captured in
-     * the `-undo-t1` artifact) even though the layout has already
-     * self-reverted. The model-level inverse contract (folder undo = one
-     * transaction, child restored + folder row deleted) is pinned by
-     * `DirectEditUndoModelWriterTest`'s folder-undo oracle; the finding is
-     * the UI-window instability of the popup-created single-child folder.
+     * The popup create-folder undone by ONE real tap on the snackbar (the
+     * round 12 production fix keeps the direct-edit-created single-child
+     * folder alive through the undo window — the bind-time single-child
+     * cleanup no longer flattens it). The undo is the inverse transaction:
+     * the child back at its original placement AND the created folder row
+     * deleted.
      */
     @Test
-    fun createdSingleItemFolderIsFlattenedAndTheUndoStaleRejects() {
+    fun createFolderUndoByTappingTheRealSnackbarAction() {
         seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
         val launcher = currentLauncher()
         val item = desktopItem(launcher, screenId = 0)
 
         confirmDirectEditAndAwaitUndoAction(launcher, item.id, HomeEditIntent.CreateFolderAndAdd(item, 0))
         captureEvidence("direct-create-folder-before")
-        // The flattening write lands inside the snackbar window: the folder
-        // row disappears while the snackbar is still up.
-        awaitUndoState("the single-child folder flattened back to an icon") {
+        assertEquals("the created folder exists before the undo", 1, folderRowCount())
+        val action = device.findObject(By.text(undoActionText()))
+            ?: error("the undo snackbar action vanished before the tap")
+        action.click()
+        awaitSnackbarDismissed()
+        awaitUndoState("the created folder row gone and the child back at its original cell") {
+            val current = itemById(item.id)
+            current != null && current.container == HomeEditContainers.DESKTOP &&
+                current.screenId == 0 &&
+                current.cellX == item.cellX && current.cellY == item.cellY &&
+                folderRowCount() == 0
+        }
+        captureEvidence("direct-create-folder-after")
+    }
+
+    /**
+     * Regression oracle for the Issue #450 suppression scope: the bind-time
+     * single-child cleanup must KEEP working for folders the direct-edit
+     * path did not create (the loading-artifact case the cleanup exists
+     * for). A seeded single-child folder (no direct-edit flag) is flattened
+     * by the launcher's own write.
+     */
+    @Test
+    fun singleChildFolderCleanupStillFlattensNonDirectEditFolders() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        seedSingleChildFolder(920, screen = 0, cellX = 0, cellY = 2, childId = 921)
+        waitForModelSettled()
+        Thread.sleep(2_000)
+        awaitUndoState("the non-direct-edit single-child folder flattened by the launcher") {
             folderRowCount() == 0
         }
-        // The undo tap against the flattened state: the STALE rejection is
-        // recorded in the t1 artifact; the layout stays self-reverted.
-        device.findObject(By.text(undoActionText()))?.click()
-        Thread.sleep(1_000)
-        runCatching { device.takeScreenshot(evidenceFile("direct-create-folder-undo-t1")) }
-        assertEquals("the flattened state is unchanged by the rejected undo", 0, folderRowCount())
-        awaitSnackbarDismissed()
     }
 
     @Test
@@ -390,11 +407,11 @@ class HomeEditUndoEvidenceToolingTest {
     ) {
         confirmDirectEditAndAwaitUndoAction(launcher, itemId, intent)
         captureEvidence("$label-before")
-        // Tap immediately: the settle that protects the undo from load-races
-        // also loses the race against the launcher's 1-item folder conversion
-        // (a freshly created single-child folder is flattened back to an icon
-        // within ~1-2s, STALE-ing the undo). The write barrier in the confirm
-        // helper already drained the pending writes.
+        // Short capped settle before the tap: the confirm write schedules a
+        // correlated reload, and a load landing inside the undo task's
+        // execution window drops it silently (the ModelTask guard). The cap
+        // keeps the tap inside the ~4s snackbar window.
+        waitForModelSettled(3_000L)
         val action = device.findObject(By.text(undoActionText()))
             ?: error("the undo snackbar action vanished before the tap")
         action.click()
@@ -769,6 +786,53 @@ class HomeEditUndoEvidenceToolingTest {
                 db.insertOrThrow(Favorites.TABLE_NAME, null, child)
                 rank++
             }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        appState.model.forceReload()
+    }
+
+    /** Folder + one child in the stable on-DB shape (cell -1/-1, rank 0). */
+    private fun seedSingleChildFolder(folderId: Int, screen: Int, cellX: Int, cellY: Int, childId: Long) {
+        val db = appState.model.modelDbController.db
+        db.beginTransaction()
+        try {
+            val folder = ContentValues().apply {
+                put(Favorites._ID, folderId.toLong())
+                put(Favorites.TITLE, "Undo evidence folder $folderId")
+                put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
+                put(Favorites.SCREEN, screen)
+                put(Favorites.CELLX, cellX)
+                put(Favorites.CELLY, cellY)
+                put(Favorites.SPANX, 1)
+                put(Favorites.SPANY, 1)
+                put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_FOLDER)
+                put(Favorites.RANK, 0)
+                put(Favorites.PROFILE_ID, currentProfileSerial())
+            }
+            db.insertOrThrow(Favorites.TABLE_NAME, null, folder)
+            val child = ContentValues().apply {
+                put(Favorites._ID, childId)
+                put(Favorites.TITLE, "Undo evidence fixture $childId")
+                put(
+                    Favorites.INTENT,
+                    Intent(Intent.ACTION_MAIN)
+                        .addCategory(Intent.CATEGORY_LAUNCHER)
+                        .setComponent(ComponentName("com.android.chrome", "com.google.android.apps.chrome.Main"))
+                        .toUri(0),
+                )
+                put(Favorites.CONTAINER, folderId)
+                put(Favorites.SCREEN, 0)
+                put(Favorites.CELLX, -1)
+                put(Favorites.CELLY, -1)
+                put(Favorites.SPANX, 1)
+                put(Favorites.SPANY, 1)
+                put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPLICATION)
+                put(Favorites.RANK, 0)
+                put(Favorites.PROFILE_ID, currentProfileSerial())
+            }
+            db.insertOrThrow(Favorites.TABLE_NAME, null, child)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()

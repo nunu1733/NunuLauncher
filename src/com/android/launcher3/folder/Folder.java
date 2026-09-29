@@ -593,7 +593,11 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         }
         // In case any children didn't come across during loading, clean up the folder accordingly
         mFolderIcon.post(() -> {
-            if (getItemCount() <= 1 && !isInAppDrawer()) {
+            // Issue #450 (bridge): a direct-edit-created folder legitimately
+            // starts with a single child; flattening it here would undo the
+            // user's edit inside the undo snackbar's window. The flag is
+            // transient, so the cleanup returns after the next reload.
+            if (getItemCount() <= 1 && !isInAppDrawer() && !mInfo.createdByDirectEdit) {
                 replaceFolderWithFinalItem();
             }
         });

@@ -867,6 +867,11 @@ public class ModelWriter {
             folderInfo.cellY = mFolderCellY;
             folderInfo.spanX = 1;
             folderInfo.spanY = 1;
+            // Issue #450: the freshly created folder legitimately starts
+            // with this single child; mark it so the bind-time single-child
+            // cleanup (Folder) does not flatten it inside the undo
+            // snackbar's window.
+            folderInfo.createdByDirectEdit = true;
             folderInfo.user = item.user;
 
             try (SQLiteTransaction t = mModel.getModelDbController().newTransaction()) {

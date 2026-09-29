@@ -113,10 +113,14 @@ object HomeEditUndoPlanner {
                 )
                 val folderId = evidence.createdFolderId
                     ?: return HomeEditUndoPlan.Rejected(HomeEditUndoRejection.STALE)
+                // Membership + rank is the undo contract. The folder-internal
+                // cell is NOT: the folder view normalizes its children onto
+                // the folder grid at bind time (Issue #450 — a create wrote
+                // cell -1/-1 and the folder binding rewrote it to 0,0), so
+                // pinning the recorded projection would STALE every real
+                // undo. The stage-2 validator re-runs this same check inside
+                // admission, so stage-1 and stage-2 stay consistent.
                 val inFolder = item.container == folderId &&
-                    item.screenId == evidence.newScreenId &&
-                    item.cellX == evidence.newCellX &&
-                    item.cellY == evidence.newCellY &&
                     item.rank == evidence.newRank
                 if (!inFolder) return HomeEditUndoPlan.Rejected(HomeEditUndoRejection.STALE)
                 val folder = snapshot.itemById(folderId)

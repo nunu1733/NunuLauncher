@@ -162,7 +162,14 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
         }
         when {
             plan.container == Favorites.CONTAINER_DESKTOP && info != null -> {
-                launcher.bindItems(Collections.singletonList(info), true)
+                // Issue #450: bind WITHOUT the new-item bounce
+                // (forceAnimateIcons=false). The animated variant posts a
+                // delayed closeOpenViews (bindInflatedItems) that closed the
+                // undo snackbar ~500ms after a cross-page move — before the
+                // accessibility-aware timeout could be honored. The
+                // accessibility-path precedent binds without animation too;
+                // the destination snap below still runs.
+                launcher.bindItems(Collections.singletonList(info), false)
                 showDestinationPage(plan.screenId)
             }
 
