@@ -2,7 +2,7 @@
 
 > Issue: #450
 > Spec: [spec.md](./spec.md)
-> Status: draft（specと同じく本起草時点では未受入）。Revision 3（2026-09-29。Phase 1 re-entry + review round 2の2指摘対応）
+> Status: accepted（2026-09-29。review round 3でClear。Revision 3（2026-09-29。Phase 1 re-entry + review round 2の2指摘対応））
 > Risk tier: H — 項目単位の逆操作は `src/com/android/launcher3/model/ModelWriter.java`（高リスクpath一覧・writer inventory収録済み）への新規最小操作であり、階層H条件「上流のmodel/loaderへのbridgeを作るまたは変える」に当たる。実装PRは `risk: layout-data` label、独立audit（`docs/assessment/pr-<PR番号>-<slug>.md`）+ `final-status` 成功を要する。編集画面確定のundoは既存organizer復元経路の呼出しのみ（新規書込み経路なし）。
 
 ## Current evidence
@@ -214,7 +214,7 @@ undo tap（UI thread）
 | `lawnchair/src/app/lawnchair/homeedit/HomeEditSurfaceAccess.kt` + `organizer/ui/ManualOrganizationRun.kt` | `recover` accessorとreceipt付きapply accessorのadditive追加（interface+production impl。`LayoutApplicationModule` のinternal seamへの委譲のみ） | undo tapの復元経路とverified revisionの運搬。organizer public契約の変更なし |
 | `src/com/android/launcher3/model/DirectEditContract.java` | `UndoRowPayload`・`AvailabilityVerifier`・FAIL_UNDO_* keysの追加、`ResultCallback.onResult` へのpayload引数追加（削除成功時のみ非null。#448が作ったfork所有bridge契約の明示的拡張。既存の振る舞いは変えない） | 「外す」逆INSERTの行内容運搬とstage-2 availability注入（review round 2指摘2） |
 | `src/com/android/launcher3/model/ModelWriter.java` | 逆操作3種を追加（`DirectEditTask` 構造に準拠。既存メソッド・classは変更しない。`DirectEditRemoveTask` は削除前行をpayloadへcaptureし成功callbackへ渡すよう拡張） | ADR-0013契約4。SQLの一元化（高リスクpath・inventory収録済みfile） |
-| `src/com/android/launcher3/organizer/application/protocol/ApplyProtocol.kt` + `LayoutApplicationModule.kt`（organizer適用module、internal） | `continueCommitted` の `Applied` 組み立て点で `revisionOf(writeSet.intendedState)` を計算し、internal apply receipt（result + verifiedPostRevision）で返すaccessorを追加。既存 `applyWithRunId` / public `ApplyResult` は不変 | verified post revisionの競合なし運搬（review round 2指摘1）。apply/recoveryの振る舞い契約（spec 13）は不変。実装時に `DESIGN.md` へ追記（AC-10） |
+| `lawnchair/src/app/lawnchair/organizer/application/protocol/ApplyProtocol.kt` + `LayoutApplicationModule.kt`（organizer適用module、internal） | `continueCommitted` の `Applied` 組み立て点で `revisionOf(writeSet.intendedState)` を計算し、internal apply receipt（result + verifiedPostRevision）で返すaccessorを追加。既存 `applyWithRunId` / public `ApplyResult` は不変 | verified post revisionの競合なし運搬（review round 2指摘1）。apply/recoveryの振る舞い契約（spec 13）は不変。実装時に `DESIGN.md` へ追記（AC-10） |
 | `lawnchair/res/values/strings.xml` / `values-ja/strings.xml` | snackbar label、undo失敗理由（`homeedit_undo_error_*`）、a11y announce | fork文字列慣行 |
 | `tests/unit/app/lawnchair/homeedit/**` | UndoPlanner test（種別×照合×境界×availability×決定性）、UndoRecord test（置換・消費・世代不一致compare-and-consume）、evidence拡張のbuilder test、RecoveryResult mapper test、strings test拡張 | 純粋層の最下層oracle。gate収録済みfilterで自動実行 |
 | `tests/organizer-instrumentation/com/android/launcher3/DirectEditUndoModelWriterTest.java`（新規）等 | 逆操作の書込みtest（round-trip、行内容忠実度、transaction失敗注入、defer/stale、occupancy拒否、**availability失敗注入（package消失・shortcut消失・verifier失敗→零書込み）**、process死） | shared-writer laneの既存seam。class listへの追加のみ |

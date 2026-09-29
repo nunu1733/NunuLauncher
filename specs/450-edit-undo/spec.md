@@ -1,6 +1,6 @@
 ---
 issue: "#450"
-status: draft
+status: accepted
 requirements:
   - FR-020
   - NFR-013
@@ -266,3 +266,4 @@ Then 上流の4秒snackbar（遅延commit取消）が従来どおり動作し、
 - 2026-09-28: Draft created for #450。出典: Issue #450本文、ADR-0013（#445受入）、ADR-0014（#447受入）、spec 448（implemented、PR #472）、ベンチマーク正本（#441確定）。Issue本文の未解決事項4件（外すundo方式、記録の保存先、snackbar単一表示、復元点evict時挙動）を本specで決定した。
 - 2026-09-29: Revision 2 — Phase 1 re-entry + review round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/450#issuecomment-5873360451): Request changes）の3指摘対応と依存状態の再照合。指摘1（高）: 取り消し記録に世代識別子を導入し、snackbar actionとのcompare-and-consume契約・世代不一致時の零書込み無操作（現行recordを消費しない）をScope/Scenario/AC-11へ追加。指摘2（高）: 編集画面undoの `expectedCurrentRevision` の正本を「確定完了時に適用計画から `revisionOf(intendedState)` で決定」に固定し、post-hoc captureを禁止（根拠: `Applied` のexact-DB検証契約 `ApplyProtocol.kt:375-381` と復元のrevision照合契約 `RecoveryProtocol.kt:113-116`。「確定後に別書込み→`STALE_REVISION`零書込み」のScenario・AC-5を追加。`intendedRevisionOf` のdigest種違いを明記）。指摘3（中）: 「外す」undoのavailability照合入力（stage-1/stage-2同一判定・verifier注入・fail-closed）をScope/Failure vocabulary/AC-2へ追加し、package・shortcut消失の零書込みoracleをtest oracleへ追加。再照合: #449がimplemented（PR #476）となった現行main（`be7576c30a`）へ追従し、依存節・接続点（`handleApplyResult` の `Applied` 分岐）・`recover` 呼出し経路を確定。行番号根拠を現行mainで再検証。
 - 2026-09-29: Revision 3 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/450#issuecomment-5882646790): Request changes。round 1指摘1・3は解消認定）の残存2指摘に対応。指摘1（高）: `expectedCurrentRevision` の正本を **apply経路が適用後検証に使ったmaterialized post-state（`MaterializedWriteSet.intendedState`）のrevision** へ修正（Revision 2の「plan.intendedStateから決定」は、新規フォルダのplanned ref→persistent ref解決（`LauncherLayoutAdapter.kt:215,231`）とpage正規化（`:239`）により正常系でも一致しないため撤回）。apply内部（`Applied` 組み立て点・lease保持中）で計算し、internalなapply receiptでpointIdと同時に運ぶ（post-hoc captureは引き続き禁止）。public契約は不変。新規フォルダ作成込みの正常系undo `Restored` と記録revision≡post-apply capture revisionの結合oracleをAC-5へ追加。指摘2（中）: 削除前行payloadのplatform→fork運搬seamを `DirectEditContract.ResultCallback` の明示的拡張（削除成功時のみ非nullのpayload引数）として固定し、admission内capture→成功callback→record格納の経路とoracleをScope/AC-2/planへ記載。
+- 2026-09-29: `accepted` 化。Phase 1 re-review round 3（[判定](https://github.com/nunu1733/NunuLauncher/issues/450#issuecomment-5882787921): **Clear**）により、Revision 3の2指摘がいずれも現行実装のseamに沿った実装可能な契約とtest oracleまで含めて解消と認定された。round 3の非blocking指摘（plan Change set表の `ApplyProtocol.kt` path誤記）は本受入commitで修正。
