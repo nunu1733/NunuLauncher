@@ -2,7 +2,7 @@
 
 > Status: Accepted
 > Issue: [#110](https://github.com/nunu1733/NunuLauncher/issues/110)
-> Captured: 2026-08-23; recaptured 2026-09-29 at main `29476b10a0`（Issue #449 実装merge後。新bridge group `homeedit-edit-surface`（#449、ADR-0014案B。適用経路の削除passと `inspectCapture` seamを含む）、既存fork platform変更の整理（`fork-platform-preexisting`）、.agents/.codex agent設定のnon-production exclusion、`res/values-ja/strings.xml` のorganizer group帰属、DirectEditContract/InvariantDeviceProfile/HotseatRestoreHelper のmodel-reload group帰属を追加。Acquisition history は末尾）
+> Captured: 2026-08-23; recaptured 2026-09-29 at main `29476b10a0`（Issue #449 実装merge後。新bridge group `homeedit-edit-surface`（#449、ADR-0014案B。適用経路の削除passと `inspectCapture` seamを含む）、既存fork platform変更の整理（`fork-platform-preexisting`）、.agents/.codex agent設定のnon-production exclusion、`res/values-ja/strings.xml` のorganizer group帰属、DirectEditContract/InvariantDeviceProfile/HotseatRestoreHelper のmodel-reload group帰属を追加）; recaptured 2026-09-29 at branch `issue-450-spec-plan` `fa21c753d4`（Issue #450 実装。新bridge group `homeedit-edit-undo`（#450、ADR-0013契約5。世代付きundo record・純粋undo planner・availability verifier・undo executor/snackbar・recovery text mapper。逆操作は既収録のmodel-reload group `ModelWriter.java`/`DirectEditContract.java` への追加）。Acquisition history は末尾）
 > Upstream commit: `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Main commit: `79c1a7db6f1909c248f3bd22365ee9a240357ce1`
 
@@ -176,3 +176,9 @@ than being silently absorbed.
 [6]: ../adr/0003-organizer-recovery-point-storage.md "ADR-0003: Organizer recovery-point storage"
 [7]: ../adr/0004-organizer-lock-persistence.md "ADR-0004: Organizer lock persistence"
 [8]: ../../specs/118-sqlite-migration-transaction-audit/spec.md "Spec #118 SQLite migration transaction audit"
+
+## Acquisition history
+
+- 2026-08-23: Initial capture at upstream `505dbc40e6` / main `79c1a7db6f` (Issue #110).
+- 2026-09-29: Recapture at main `29476b10a0` — Issue #449 implementation merge. New bridge group `homeedit-edit-surface` (PR #476); `fork-platform-preexisting` recorded for measurement completeness; agent-config exclusions; resource attribution fixes.
+- 2026-09-29: Recapture at branch `issue-450-spec-plan` head `fa21c753d4` — Issue #450 implementation. New bridge group `homeedit-edit-undo` (7 files, +863 lines: generation-bound undo record, pure undo planner + availability verifier, undo executor/snackbar, recovery text mapper). The inverse operations are additions to the already-counted `model-reload-and-transaction-gates` files (`ModelWriter.java`, `DirectEditContract.java`), so no new src/ path enters the surface. Baseline delta: files +6, additions +1387, deletions +0 — owning Issue #450, accepted spec `specs/450-edit-undo/spec.md` (review round 3 Clear), responsibility recorded in the bridge group above; the alternative (reusing the existing direct-edit operations instead of minimal inverse additions) was rejected in the spec/plan Alternatives because undo needs explicit-placement restores, payload-carrying remove, and a two-row transaction that the #448 operations cannot express (ADR-0013 contract 4 "同経路に追加する最小の操作").
