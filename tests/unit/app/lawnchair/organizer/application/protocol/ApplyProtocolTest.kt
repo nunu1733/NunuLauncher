@@ -5,6 +5,7 @@ import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
+import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
@@ -147,6 +148,82 @@ class ApplyProtocolTest {
         // inside their own invocations — A's from A's intended state, B's from
         // B's — and neither was lost or cross-wired by the interleaving.
         assertEquals(planB.intendedState, writer.currentState())
+        assertTrue("receipts must be per-invocation", receiptA != receiptB)
+        writer.onApplyA5Reread = null
+    }
+
+    /**
+     * Issue #450 (round 4 finding 1): the receipt race oracle through the
+     * production module seam — `LayoutApplicationModule.applyWithUndoReceipt`
+     * — which is where the round-1 bug lived (the module read a shared slot
+     * AFTER the protocol released the mutex). A hook at A's A5 boundary
+     * starts B; B retries the run mutex until A's release lets it in and
+     * completes a full apply+receipt cycle. Under the removed shared-slot
+     * implementation, B's completion overwrote the slot before the module's
+     * post-release read, so A's receipt came back null; with the
+     * invocation-local context the receipt is decided before the release and
+     * must survive.
+     */
+    @Test
+    fun moduleReceiptSurvivesAConcurrentApplyRacingTheReleaseBoundary() {
+        val module = LayoutApplicationModule(
+            writer = writer,
+            store = store,
+            clock = FakeClock,
+            operationIds = FixedOperationIdSource(),
+            folderTitleResolver = app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
+        )
+        module.reconcileAtStart()
+
+        val planA = mutatingPlan()
+        val planB = mutatingPlan(
+            CanonicalFixtures.state(items = listOf(CanonicalFixtures.appItem(cell = GridCell(1, 1)))),
+        )
+        val aInApply = java.util.concurrent.CountDownLatch(1)
+        val bCompleted = java.util.concurrent.CountDownLatch(1)
+        val bOutcome = java.util.concurrent.atomic.AtomicReference<Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?>?>()
+        val aOutcome = java.util.concurrent.atomic.AtomicReference<Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?>?>()
+
+        writer.onApplyA5Reread = {
+            // A holds the run mutex at its A5 boundary. Signal the main
+            // thread to start B here — B retries the mutex until A releases,
+            // so B's completion races A's release/receipt boundary.
+            aInApply.countDown()
+        }
+        val threadB = Thread {
+            var attempt = 0
+            while (attempt < 400) {
+                val outcome = module.applyWithUndoReceipt(planB, RunId("b123456789abcdef0123456789abcdef"))
+                if (outcome.first is ApplyResult.Applied) {
+                    bOutcome.set(outcome)
+                    break
+                }
+                attempt += 1
+                Thread.sleep(25)
+            }
+            bCompleted.countDown()
+        }
+        threadB.isDaemon = true
+
+        val threadA = Thread {
+            aOutcome.set(module.applyWithUndoReceipt(planA, RunId("a123456789abcdef0123456789abcdef")))
+        }
+        threadA.isDaemon = true
+        threadA.start()
+        assertTrue("A never reached its A5 boundary", aInApply.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        threadB.start()
+        threadA.join(20_000)
+        assertTrue("B never completed", bCompleted.await(20, java.util.concurrent.TimeUnit.SECONDS))
+
+        val (resultA, receiptA) = aOutcome.get()!!
+        val (resultB, receiptB) = bOutcome.get()!!
+        assertTrue("expected Applied for A, got $resultA", resultA is ApplyResult.Applied)
+        assertTrue("expected Applied for B, got $resultB", resultB is ApplyResult.Applied)
+        // THE regression assertions: both receipts decided inside their own
+        // invocations. Under the shared-slot implementation A's post-release
+        // read returned null (B overwrote the slot first).
+        assertNotNull("A's receipt must survive B's concurrent completion", receiptA)
+        assertNotNull("B's receipt must carry its own verified post revision", receiptB)
         assertTrue("receipts must be per-invocation", receiptA != receiptB)
         writer.onApplyA5Reread = null
     }

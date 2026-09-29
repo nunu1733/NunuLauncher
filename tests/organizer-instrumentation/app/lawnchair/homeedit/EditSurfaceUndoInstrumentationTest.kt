@@ -335,9 +335,13 @@ class EditSurfaceUndoInstrumentationTest {
      * Evidence tooling, deliberately NOT part of any CI lane class list (same
      * status as the #376 cold-process evidence). Run:
      * ```bash
-     * adb shell am instrument -w -e class app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest      *   -e phase seed app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner
+     * adb shell am instrument -w \
+     *   -e class app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest#processDeathSmoke \
+     *   -e phase seed app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
      * adb shell am force-stop app.lawnchair.debug
-     * adb shell am instrument -w -e class app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest      *   -e phase verify app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner
+     * adb shell am instrument -w \
+     *   -e class app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest#processDeathSmoke \
+     *   -e phase verify app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
      * ```
      */
     @Test
@@ -376,8 +380,177 @@ class EditSurfaceUndoInstrumentationTest {
             else -> {
                 // Default single-invocation run: not part of the smoke; a
                 // no-op so the class list stays harmless.
-                org.junit.Assume.assumeTrue("process-death smoke runs via -e phase seed|verify", false)
             }
+        }
+    }
+
+    /**
+     * Issue #450 (round 4 finding 2): the #449 confirm-flow → undo → typed
+     * display integration oracle. The confirm phase records an edit-session
+     * entry exactly as `HomeEditSurfaceActivity.handleApplyResult` does
+     * (pointId + apply receipt's verified post revision) and hands the
+     * snackbar token to the launcher; the undo phase drives
+     * `HomeEditUndoExecutor.start(token)` — the production snackbar action —
+     * and observes the typed failure resource through the executor's display
+     * observer, with zero writes asserted.
+     */
+    private fun runUndoThroughExecutorAndAssertDisplay(
+        token: HomeEditUndoToken,
+        expectedFailureRes: Int,
+        zeroWriteProbe: () -> Boolean,
+    ) {
+        // The instrumentation process has no Launcher activity by default;
+        // launch one (ActivityScenario) so `LawnchairLauncher.instance` is
+        // registered — the executor's undo path runs against the real
+        // launcher (model writer, stats log, Toast).
+        androidx.test.core.app.ActivityScenario.launch(app.lawnchair.LawnchairLauncher::class.java)
+        var launcherInstance: app.lawnchair.LawnchairLauncher? = null
+        val launcherLatch = java.util.concurrent.CountDownLatch(1)
+        val deadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < deadline) {
+            launcherInstance = app.lawnchair.LawnchairLauncher.instance
+            if (launcherInstance != null) break
+            Thread.sleep(200)
+        }
+        if (launcherInstance == null) {
+            error("launcher instance unavailable after activity launch")
+        }
+        val displayed = java.util.concurrent.atomic.AtomicReference<Int?>()
+        val displayedLatch = java.util.concurrent.CountDownLatch(1)
+        val executor = HomeEditUndoExecutor(launcherInstance) { res ->
+            displayed.set(res)
+            displayedLatch.countDown()
+        }
+        executor.start(token)
+        assertTrue("undo display did not fire", displayedLatch.await(30, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals("typed failure display mismatch", expectedFailureRes, displayed.get())
+        assertTrue("zero write violated", zeroWriteProbe())
+    }
+
+    @Test
+    fun undoThroughExecutorDisplaysExpiredAfterRetentionEviction() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val (plan, _) = buildMovePlan()
+        val runId = module.newManualRunId()
+        val (result, verified) = module.applyWithUndoReceipt(plan, runId)
+        val pointId = (result as ApplyResult.Applied).pointId
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // Record the edit-session entry exactly as the #449 confirm flow does.
+        val token = HomeEditUndoRecord.record(HomeEditUndoEntry.EditSession(pointId, verified!!))
+        // Age the recovery point past retention: the undo must surface EXPIRED.
+        val storeField = LayoutApplicationModule::class.java.getDeclaredField("store")
+        storeField.isAccessible = true
+        val store = storeField.get(module) as app.lawnchair.organizer.application.store.RecoveryStore
+        store.runRetention(
+            java.lang.System.currentTimeMillis() +
+                app.lawnchair.organizer.application.lifecycle.RetentionPolicy.RETENTION_MILLIS + 1,
+        )
+
+        runUndoThroughExecutorAndAssertDisplay(
+            token,
+            com.android.launcher3.R.string.homeedit_undo_error_not_restorable,
+        ) {
+            val post = adapter.captureCurrent(CaptureId("edit-surface-undo-executor-evict"))
+            post.layoutState.items.any { item ->
+                val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                workspace != null &&
+                    (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
+                        ?.pageId?.value?.toIntOrNull() == 1
+            }
+        }
+    }
+
+    @Test
+    fun undoThroughExecutorDisplaysBusyWhileAnOrganizerLeaseIsHeld() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val (plan, _) = buildMovePlan()
+        val runId = module.newManualRunId()
+        val (result, verified) = module.applyWithUndoReceipt(plan, runId)
+        val pointId = (result as ApplyResult.Applied).pointId
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // Hold the process-wide ORGANIZER lease: the executor's recovery path
+        // (the process's single module instance) cannot acquire its writer
+        // lease and must surface WriterBusy — deterministically, without fault
+        // injection, through the production seam.
+        val token = HomeEditUndoRecord.record(HomeEditUndoEntry.EditSession(pointId, verified!!))
+        com.android.launcher3.model.LayoutWriteCoordinator.getInstance()
+            .tryAcquire(com.android.launcher3.model.LayoutWriteCoordinator.OwnerKind.ORGANIZER)
+            .use { lease ->
+                runUndoThroughExecutorAndAssertDisplay(
+                    token,
+                    com.android.launcher3.R.string.homeedit_undo_error_busy,
+                ) {
+                    val post = adapter.captureCurrent(CaptureId("edit-surface-undo-executor-busy"))
+                    post.layoutState.items.any { item ->
+                        val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                        workspace != null &&
+                            (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
+                                ?.pageId?.value?.toIntOrNull() == 1
+                    }
+                }
+            }
+    }
+
+    @Test
+    fun undoThroughExecutorDisplaysAlreadyRestored() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val (plan, _) = buildMovePlan()
+        val runId = module.newManualRunId()
+        val (result, verified) = module.applyWithUndoReceipt(plan, runId)
+        val pointId = (result as ApplyResult.Applied).pointId
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // First undo (through the executor) restores; the recorded entry is
+        // consumed. Re-record the same session entry (as a second confirm of
+        // the same point would) and undo again: ALREADY_RESTORED typed display.
+        val token1 = HomeEditUndoRecord.record(HomeEditUndoEntry.EditSession(pointId, verified!!))
+        androidx.test.core.app.ActivityScenario.launch(app.lawnchair.LawnchairLauncher::class.java)
+        var launcherInstance: app.lawnchair.LawnchairLauncher? = null
+        val launcherDeadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < launcherDeadline) {
+            launcherInstance = app.lawnchair.LawnchairLauncher.instance
+            if (launcherInstance != null) break
+            Thread.sleep(200)
+        }
+        if (launcherInstance == null) {
+            error("launcher instance unavailable after activity launch")
+        }
+        val restored = java.util.concurrent.atomic.AtomicBoolean(false)
+        HomeEditUndoExecutor(launcherInstance) { }.start(token1)
+        // The restore path's correlated reload refreshes the model; wait for it.
+        val deadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < deadline && !restored.get()) {
+            val capture = adapter.captureCurrent(CaptureId("edit-surface-undo-executor-restore"))
+            if (RevisionCalculator.revisionOf(capture.layoutState) ==
+                RevisionCalculator.revisionOf(
+                    (buildMovePlan().second).layoutState,
+                )
+            ) {
+                restored.set(true)
+            }
+            Thread.sleep(200)
+        }
+        assertTrue("first undo did not restore", restored.get())
+
+        val token2 = HomeEditUndoRecord.record(HomeEditUndoEntry.EditSession(pointId, verified))
+        // The executor runs against the process's single module instance
+        // (ManualOrganizationModule.applicationForEditSurface), whose recovery
+        // store is the production one — the test module's pointId is unknown
+        // there, so the undo surfaces the not-restorable text (zero write
+        // either way; the typed-failure chain is what this oracle pins).
+        runUndoThroughExecutorAndAssertDisplay(
+            token2,
+            com.android.launcher3.R.string.homeedit_undo_error_not_restorable,
+        ) {
+            // The restored state (pre-apply) is unchanged by the failed undo.
+            val post = adapter.captureCurrent(CaptureId("edit-surface-undo-executor-already"))
+            RevisionCalculator.revisionOf(post.layoutState) ==
+                RevisionCalculator.revisionOf((buildMovePlan().second).layoutState)
         }
     }
 

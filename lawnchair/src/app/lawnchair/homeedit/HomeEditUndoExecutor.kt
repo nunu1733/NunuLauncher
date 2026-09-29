@@ -24,7 +24,17 @@ import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.util.Executors
 import java.util.Collections
 
-class HomeEditUndoExecutor(private val launcher: LawnchairLauncher) {
+class HomeEditUndoExecutor(
+    private val launcher: LawnchairLauncher,
+    /**
+     * Test-only observer of the typed failure display: invoked with the
+     * string resource the executor shows (Toast in production). Production
+     * callers never pass it; the instrumentation oracle uses it to pin the
+     * #449-flow → undo → typed-display chain without asserting on Toast
+     * internals.
+     */
+    private val failureDisplayObserver: ((Int) -> Unit)? = null,
+) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -126,6 +136,7 @@ class HomeEditUndoExecutor(private val launcher: LawnchairLauncher) {
             )
         mainHandler.post {
             homeEditUndoRecoveryText(result)?.let { res ->
+                failureDisplayObserver?.invoke(res)
                 Toast.makeText(launcher, res, Toast.LENGTH_LONG).show()
             }
         }
@@ -204,6 +215,7 @@ class HomeEditUndoExecutor(private val launcher: LawnchairLauncher) {
             HomeEditUndoRejection.FOLDER_CHANGED -> R.string.homeedit_undo_error_folder_changed
             HomeEditUndoRejection.ITEM_UNAVAILABLE -> R.string.homeedit_undo_error_item_unavailable
         }
+        failureDisplayObserver?.invoke(res)
         Toast.makeText(launcher, res, Toast.LENGTH_LONG).show()
     }
 
@@ -215,6 +227,7 @@ class HomeEditUndoExecutor(private val launcher: LawnchairLauncher) {
             DirectEditContract.FAIL_UNDO_ITEM_UNAVAILABLE -> R.string.homeedit_undo_error_item_unavailable
             else -> R.string.homeedit_undo_error_write_failed
         }
+        failureDisplayObserver?.invoke(res)
         Toast.makeText(launcher, res, Toast.LENGTH_LONG).show()
     }
 }
