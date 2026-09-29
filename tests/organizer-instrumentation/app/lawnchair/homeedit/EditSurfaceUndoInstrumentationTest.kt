@@ -424,6 +424,9 @@ class EditSurfaceUndoInstrumentationTest {
         executor.start(token)
         assertTrue("undo display did not fire", displayedLatch.await(30, java.util.concurrent.TimeUnit.SECONDS))
         assertEquals("typed failure display mismatch", expectedFailureRes, displayed.get())
+        // Let any pending correlated reload settle before the zero-write probe.
+        appState.model.forceReload()
+        waitForModelLoaded()
         assertTrue("zero write violated", zeroWriteProbe())
     }
 
@@ -551,6 +554,230 @@ class EditSurfaceUndoInstrumentationTest {
             val post = adapter.captureCurrent(CaptureId("edit-surface-undo-executor-already"))
             RevisionCalculator.revisionOf(post.layoutState) ==
                 RevisionCalculator.revisionOf((buildMovePlan().second).layoutState)
+        }
+    }
+
+    /**
+     * Issue #450 (round 5 finding 2): the #449 confirm-completion flow driven
+     * through the production code path. The confirm applies through the
+     * process's single module instance (the one `HomeEditSurfaceAccess` and
+     * the executor share), then `HomeEditSurfaceActivity.handleApplyResult`'s
+     * Applied branch — the production code that records the undo entry and
+     * hands the snackbar token to the launcher — is invoked with the real
+     * receipt. The undo tap then runs `HomeEditUndoExecutor.start` against
+     * the SAME production module/store, so the failure reason is pinned
+     * exactly (no cross-store unknown-point ambiguity).
+     */
+    private fun confirmThroughProductionFlowAndCaptureToken(
+        tokenCapture: java.util.concurrent.atomic.AtomicReference<HomeEditUndoToken?>,
+        receiptRef: java.util.concurrent.atomic.AtomicReference<ApplyResult?>,
+        verifiedRef: java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.planning.RevisionId?>,
+    ): app.lawnchair.homeedit.ui.HomeEditSurfaceActivity {
+        androidx.test.core.app.ActivityScenario.launch(app.lawnchair.homeedit.ui.HomeEditSurfaceActivity::class.java)
+        // Wait for the activity's own capture to settle, then drive the
+        // confirm-completion branch with a real receipt from the process
+        // module (the same instance the executor will recover through).
+        val processModule = app.lawnchair.LawnchairApp.instance.layoutApplicationModule
+        val adapter = app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter(
+            context,
+            appState.model.modelDbController,
+            appState.model,
+        )
+        val capture = adapter.captureCurrent(CaptureId("edit-surface-undo-flow"))
+        val snapshot = EditSurfaceProjection.homeEditSnapshot(capture.layoutState)
+        val first = snapshot.items.first {
+            it.container == HomeEditContainers.DESKTOP && it.screenId == 0 && it.id > 0
+        }
+        val picked = EditSurfaceSessionPlanner.plan(
+            snapshot,
+            emptyMap(),
+            EditSurfaceSession.EMPTY,
+            listOf(first.id),
+            PendingSessionAction.MoveToPage(1),
+        ) as SessionPlanResult.Applied
+        val bundle = BuiltInOrganizerPolicyBundleSource.readActive() as BundleReadResult.Ready
+        val built = EditSurfacePlanBuilder.build(
+            capture.layoutState,
+            capture.revision,
+            picked.session,
+            bundle.bundle.rules.version,
+            bundle.bundle.taxonomy.version,
+        ) as EditSurfaceApplyPlan.Ready
+        val runId = processModule.newManualRunId()
+        val (result, verified) = processModule.applyWithUndoReceipt(built.plan, runId)
+        assertTrue("expected Applied, got $result", result is ApplyResult.Applied)
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // Snackbar token capture: hook the record through the same production
+        // path handleApplyResult uses (record → snackbar). The snackbar's
+        // token is what the executor consumes; capture it by reading the
+        // record slot after the branch ran.
+        var activity: app.lawnchair.homeedit.ui.HomeEditSurfaceActivity? = null
+        androidx.test.core.app.ActivityScenario.launch(
+            app.lawnchair.homeedit.ui.HomeEditSurfaceActivity::class.java,
+        ).onActivity { launched ->
+            activity = launched
+        }
+        val launchedActivity = activity ?: error("activity not launched")
+        // Drive the confirm-completion branch on the UI thread.
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .runOnMainSync {
+                launchedActivity.handleApplyResult(
+                    app.lawnchair.homeedit.HomeEditApplyReceipt(result, verified),
+                    built,
+                )
+            }
+        receiptRef.set(result)
+        verifiedRef.set(verified)
+        // The Applied branch records the entry; capture the token from the
+        // record's current generation via a test-only read of the slot.
+        val entry = HomeEditUndoRecord.inspectForTest()
+        assertTrue("the confirm flow must record an undo entry", entry != null)
+        assertTrue(entry is HomeEditUndoEntry.EditSession)
+        val editSession = entry as HomeEditUndoEntry.EditSession
+        assertEquals((result as ApplyResult.Applied).pointId, editSession.pointId)
+        assertEquals(verified, editSession.expectedRevision)
+        // Reconstruct the token from the slot's generation (test-only).
+        tokenCapture.set(HomeEditUndoRecord.currentTokenForTest())
+        return launchedActivity
+    }
+
+    @Test
+    fun productionConfirmFlowUndoExecutorDisplaysExpiredAfterEviction() {
+        val tokenCapture =
+            java.util.concurrent.atomic.AtomicReference<HomeEditUndoToken?>(null)
+        val receiptRef = java.util.concurrent.atomic.AtomicReference<ApplyResult?>(null)
+        val verifiedRef = java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.planning.RevisionId?>(null)
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        confirmThroughProductionFlowAndCaptureToken(tokenCapture, receiptRef, verifiedRef)
+        val token = tokenCapture.get() ?: error("no token captured from the confirm flow")
+
+        // Age the recovery point past retention on the production store.
+        val processModule = app.lawnchair.LawnchairApp.instance.layoutApplicationModule
+        val storeField = LayoutApplicationModule::class.java.getDeclaredField("store")
+        storeField.isAccessible = true
+        val store = storeField.get(processModule) as app.lawnchair.organizer.application.store.RecoveryStore
+        store.runRetention(
+            java.lang.System.currentTimeMillis() +
+                app.lawnchair.organizer.application.lifecycle.RetentionPolicy.RETENTION_MILLIS + 1,
+        )
+        // Sanity: the point existed on the production store before eviction.
+        // (The retention outcome above already implies the record was found.)
+
+        runUndoThroughExecutorAndAssertDisplay(
+            token,
+            com.android.launcher3.R.string.homeedit_undo_error_not_restorable,
+        ) {
+            val post = adapter.captureCurrent(CaptureId("edit-surface-undo-flow-evict"))
+            post.layoutState.items.any { item ->
+                val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                workspace != null &&
+                    (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
+                        ?.pageId?.value?.toIntOrNull() == 1
+            }
+        }
+    }
+
+    @Test
+    fun productionConfirmFlowUndoExecutorDisplaysBusyWhileLeaseHeld() {
+        val tokenCapture =
+            java.util.concurrent.atomic.AtomicReference<HomeEditUndoToken?>(null)
+        val receiptRef = java.util.concurrent.atomic.AtomicReference<ApplyResult?>(null)
+        val verifiedRef = java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.planning.RevisionId?>(null)
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        confirmThroughProductionFlowAndCaptureToken(tokenCapture, receiptRef, verifiedRef)
+        val token = tokenCapture.get() ?: error("no token captured from the confirm flow")
+
+        com.android.launcher3.model.LayoutWriteCoordinator.getInstance()
+            .tryAcquire(com.android.launcher3.model.LayoutWriteCoordinator.OwnerKind.ORGANIZER)
+            .use {
+                runUndoThroughExecutorAndAssertDisplay(
+                    token,
+                    com.android.launcher3.R.string.homeedit_undo_error_busy,
+                ) {
+                    val post = adapter.captureCurrent(CaptureId("edit-surface-undo-flow-busy"))
+                    post.layoutState.items.any { item ->
+                        val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                        workspace != null &&
+                            (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
+                                ?.pageId?.value?.toIntOrNull() == 1
+                    }
+                }
+            }
+    }
+
+    @Test
+    fun productionConfirmFlowUndoExecutorRestoresThenReportsNotRestorableOnRepeat() {
+        val tokenCapture =
+            java.util.concurrent.atomic.AtomicReference<HomeEditUndoToken?>(null)
+        val receiptRef = java.util.concurrent.atomic.AtomicReference<ApplyResult?>(null)
+        val verifiedRef = java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.planning.RevisionId?>(null)
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        confirmThroughProductionFlowAndCaptureToken(tokenCapture, receiptRef, verifiedRef)
+        val token = tokenCapture.get() ?: error("no token captured from the confirm flow")
+
+        // First undo through the executor restores (no display fires on
+        // success — the executor's observer only fires for failures). The
+        // restored state is the pre-apply layout; pin its revision AFTER the
+        // restore completes so the repeat-undo zero-write probe compares
+        // against the state the restore actually produced.
+        val launcherInstance = app.lawnchair.LawnchairLauncher.instance
+            ?: error("launcher instance unavailable")
+        HomeEditUndoExecutor(launcherInstance) { }.start(token)
+        val deadline = System.currentTimeMillis() + 60_000
+        var restored = false
+        var restoredRevision: app.lawnchair.organizer.planning.RevisionId? = null
+        while (System.currentTimeMillis() < deadline && !restored) {
+            val capture = adapter.captureCurrent(CaptureId("edit-surface-undo-flow-restore"))
+            // The restore is done when the moved item is back on page 0.
+            restored = capture.layoutState.items.any { item ->
+                val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                workspace != null &&
+                    (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
+                        ?.pageId?.value?.toIntOrNull() == 0
+            }
+            if (restored) restoredRevision = RevisionCalculator.revisionOf(capture.layoutState)
+            Thread.sleep(300)
+        }
+        assertTrue("first undo did not restore", restored)
+        val preRevision = restoredRevision ?: error("restored revision not captured")
+
+        // Re-record the same session entry (a second confirm of the same
+        // point) and undo again: the production store reports the typed
+        // rejection (STALE_REVISION after the restore changed the revision).
+        val (_, verified) = run {
+            val processModule = app.lawnchair.LawnchairApp.instance.layoutApplicationModule
+            val receipt = processModule.applyWithUndoReceipt(
+                buildMovePlan().first,
+                processModule.newManualRunId(),
+            )
+            receipt
+        }
+        // Re-record the SAME session point with the SAME receipt revision —
+        // exactly what a second undo of one confirm's snackbar would carry.
+        // The restore marked the point RESTORED, so the recovery path's
+        // preflight (RecoveryProtocol.kt:243) rejects it as ALREADY_RESTORED
+        // before any write; the typed display is the not-restorable text.
+        val token2 = HomeEditUndoRecord.record(
+            HomeEditUndoEntry.EditSession(
+                (receiptRef.get() as ApplyResult.Applied).pointId,
+                verifiedRef.get()!!,
+            ),
+        )
+        runUndoThroughExecutorAndAssertDisplay(
+            token2,
+            com.android.launcher3.R.string.homeedit_undo_error_not_restorable,
+        ) {
+            // The ALREADY_RESTORED rejection is zero-write: the restored
+            // layout (item back on page 0) is unchanged by the failed undo.
+            val post = adapter.captureCurrent(CaptureId("edit-surface-undo-flow-repeat"))
+            post.layoutState.items.any { item ->
+                val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+                workspace != null &&
+                    (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
+                        ?.pageId?.value?.toIntOrNull() == 0
+            }
         }
     }
 

@@ -110,6 +110,12 @@ object HomeEditUndoRecord {
      * process-local record died with the process.
      */
     fun inspectForTest(): HomeEditUndoEntry? = slot.get()?.entry
+
+    /**
+     * Test-only read of the current slot's token (no consumption) — used by
+     * the confirm-flow oracle to obtain the token the snackbar would carry.
+     */
+    fun currentTokenForTest(): HomeEditUndoToken? = slot.get()?.token
 }
 
 /**

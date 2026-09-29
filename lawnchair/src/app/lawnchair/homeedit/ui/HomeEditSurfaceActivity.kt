@@ -268,7 +268,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         }
     }
 
-    private fun handleApplyResult(receipt: HomeEditApplyReceipt?, built: EditSurfaceApplyPlan) {
+    // Internal so the instrumentation oracle can drive the #449 confirm-flow's
+    // Applied branch directly (the flow the undo record + snackbar hook lives
+    // in); production callers are unaffected.
+    internal fun handleApplyResult(receipt: HomeEditApplyReceipt?, built: EditSurfaceApplyPlan) {
         val result = receipt?.result
         applying = false
         busy = false
