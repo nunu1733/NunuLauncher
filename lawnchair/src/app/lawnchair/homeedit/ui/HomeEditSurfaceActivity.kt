@@ -237,6 +237,9 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     /** Test-only: the current typed reason (null when none). */
     internal fun reasonResForTest(): Int? = reasonRes
 
+    /** Test-only: the last non-Applied apply result, for oracle diagnostics. */
+    internal var lastApplyResultForTest: ApplyResult? = null
+
     internal fun moveToPageForTest(screenId: Int) = moveToPage(screenId)
 
     private fun addToFolder(folderId: Int) = runAction(PendingSessionAction.AddToFolder(folderId))
@@ -292,6 +295,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     // in); production callers are unaffected.
     internal fun handleApplyResult(receipt: HomeEditApplyReceipt?, built: EditSurfaceApplyPlan) {
         val result = receipt?.result
+        lastApplyResultForTest = if (result is ApplyResult.Applied) null else result
         applying = false
         busy = false
         when {

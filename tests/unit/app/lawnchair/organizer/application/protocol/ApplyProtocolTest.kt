@@ -166,13 +166,16 @@ class ApplyProtocolTest {
 
         override fun tryAcquire(runId: RunId): Boolean = delegate.tryAcquire(runId)
 
+        val actuallyReleased = java.util.concurrent.CountDownLatch(1)
+
         override fun release(runId: RunId) {
             if (runId == parkedRunId) {
-                releaseStarted.countDown()
-                // Release the mutex FIRST: the parked window is strictly
+                // Release the mutex FIRST and signal only AFTER the release
+                // has actually completed — the parked window is then strictly
                 // post-release (the mutex is free) while the caller's
                 // applyWithUndoReceipt call has not returned yet.
                 delegate.release(runId)
+                actuallyReleased.countDown()
                 releaseGate?.await()
             } else {
                 delegate.release(runId)
@@ -249,18 +252,17 @@ class ApplyProtocolTest {
         }
         threadB.isDaemon = true
 
-        // The watchdog starts B only after A's release has begun (the mutex
-        // is already free at that point), so B completes INSIDE A's parked
-        // post-release window.
+        // The watchdog starts B only after A's mutex is ACTUALLY released
+        // (not merely "release begun") — the deterministic post-release window.
         Thread {
-            gatedMutex.releaseStarted.await()
+            gatedMutex.actuallyReleased.await()
             threadB.start()
         }.apply {
             isDaemon = true
             start()
         }
 
-        assertTrue("A never began its release", gatedMutex.releaseStarted.await(20, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue("A never actually released", gatedMutex.actuallyReleased.await(20, java.util.concurrent.TimeUnit.SECONDS))
         assertTrue("B never completed inside A's post-release window", bCompleted.await(30, java.util.concurrent.TimeUnit.SECONDS))
         // B completed inside the window; now open the gate so A can return.
         gate.countDown()
