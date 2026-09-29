@@ -5,7 +5,7 @@
 
 - Auditor: 独立session（general-purpose subagent）。追跡監査を実施。実装sessionではなく、本PRのdiff作成・Phase 1/2 review・検証実行に関与していない。
 - PR: https://github.com/nunu1733/NunuLauncher/pull/476
-- Head SHA: e6190ef5bc72708f15b9b7eacdae322f8539dde5
+- Head SHA: `0e0ffbd64f`（追跡監査2、rebase後。経緯: c74e305ff0 → e6190ef5bc → bc32e0311d → main `2ac104aa93` へrebase → 0e0ffbd64f）
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36431255830（head `e6190ef5bc`、**failure**。final-status以外の15 job中14 success。`organizer-instrumentation-manual-organization-ui-tests` のみ failure（151 tests中150 pass、失敗は main と同一の既存flake 1件）→ `final-status` failure。**green な `final-status` run は branch に存在しない**）
 - High-risk gate run: https://github.com/nunu1733/NunuLauncher/actions/runs/36431255694（failure。理由: (1) audited Head SHA 以後の非docs変更（旧recordが `c74e305ff0` を指していたため）、(2) 参照CI run 36402204992 が失敗、(3) 成功した pull_request run が無い。本recordの更新で (1) は解消する。(2)(3) は成功CIが存在しない以上残る＝正しい挙動）
 - Criteria: [spec 449](../../specs/449-multi-select-surface/spec.md)（accepted）の AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16 / FR-019 / NFR-013 / NFR-014
@@ -174,6 +174,23 @@ gh run view --job 108957721730 -R nunu1733/NunuLauncher --log（high-risk gate r
 - 赤の内訳は main でも再現する既存flake 1件（#477）であり、本PRのdiffに帰因する失敗は0件。**(a) final-status赤のままmergeすることの可否、(b) mainでも赤の既存flakeをmerge gateのblockerと扱うかどうかは、いずれも owner の判断事項である（本auditは判断を代行しない）。**
 - ownerが (a)(b) を許容する場合の条件付きGO条件: (1) AC-13の実行結果（本record記載のnet-new 9 unassigned pathsとmain baseline超過）をPR本文へ記録する、(2) plan Designのhub同定とdevice-verified修正のplan/spec Change historyを更新する（AC-14残作業の少なくともplan分）、(3) #477の対応方針（quarantine / fix / waiver）をquality-strategyの分類手順に沿って確定する。
 - owner確認事項（エミュレータ操作・スクリーンショット、TalkBack、ベンチマーク、NFR-013実測、実機確認）は本auditでは代替していない。実機確認の記録はcommit `e6190ef5bc` のmessageにある。
+
+## 追跡監査2（head `0e0ffbd64f`、rebase後、2026-09-29）
+
+**結論: GO（現行gate定義を満たす）。**
+
+- **rebase**: main `2ac104aa93`（#478: manual-organization-ui laneのissue372恒常赤対応＝#477のCI改善）へrebaseし、force-push。新head `0e0ffbd64f`。
+- **内容ドリフトの範囲**: 監査済みhead `bc32e0311d` → `0e0ffbd64f` の差分はmain由来の3ファイルのみ（#477/#479の `OrganizerDiagnosticsRouteInstrumentationTest` へのtouch-oracle quarantineとrunner argument、`run-manual-organization-ui-instrumentation.sh`、`ci-test-portfolio.md` の記録更新）。本PR自身のdiff（`origin/main..HEAD`、54ファイル）はreview・監査済み内容から変化なし。
+- **quarantineの妥当性**: #479のquarantineは、本監査のFindings 4（owner判断事項）が指摘していた既存flake（#477）への実装側の対応であり、touch oracle 1 testをrunner argument `nunuQuarantineIssue479TouchOracle=true` でskipする形。signature・証拠・診断はlane内に維持され、local/manual実行ではoracle観測可能。quality-strategyの分類手順に沿った措置であることを確認。
+- **CI run 36499580878（head `0e0ffbd64f`、pull_request）: 15 jobすべてpass、`final-status` PASS。** manual-organization-ui lane（18m11s、quarantine適用後）を含む全instrumentation laneがgreen。初回・追跡監査1で赤だった内容jobは解消した。
+- **機械gate**: `final-status` が本commit上で成功したため、高リスク独立エビデンス要件の前者（検証対象commit上でのmerge gate成功）を満たす。後者は本record（この追跡監査2の更新を含む）。
+- **Findings残差の更新**:
+  - Findings 2/3（protocol-level成功oracle残差、AC-13未登録path）: 変化なし。AC-13は `--target HEAD` で引き続きbaseline超過（本PRのnet-new 9〜12 unassigned paths + 既存 `build.gradle` pinned-content）。PR本文への結果記録を推奨（前回どおり）。
+  - Findings 4（final-status赤・owner判断事項）: **解消**（quarantineによりlaneがgreen、final-status pass）。
+  - Findings 5（plan/spec鮮度）: 部分解消（plan Revision 6 = `bc32e0311d` でhub同定とdevice-verified修正を記録）。AC-14の正本更新（spec `implemented`、`DESIGN.md` / `CONTEXT.md` / `requirements.md`）は未実施のまま。
+  - Findings 6（`surfaceExecutor` 非shutdown）: 変化なし（低。activity破棄でもprocess終了時には回収される）。
+- **実機検証の記録**: head `e6190ef5bc` のcommit message（Pixel 9a、select→外す→確定→A4→A6→A8、1復元点、行削除、相関reload反映）。rebaseによりcommit SHAは変わったが内容は同一。
+- **残るowner確認事項**: TalkBack読み上げ、ベンチマーク実測（AC-12）、NFR-013実測、実機での入口2経路の表示確認（エミュレータでの動作は実装sessionが確認済み）。
 
 ## 前回監査（head `c74e305ff0`、初回、NO-GO）— 記録保持
 
