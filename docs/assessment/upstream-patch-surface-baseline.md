@@ -2,7 +2,7 @@
 
 > Status: Accepted
 > Issue: [#110](https://github.com/nunu1733/NunuLauncher/issues/110)
-> Captured: 2026-08-23; recaptured 2026-09-29 at main `29476b10a0`（Issue #449 実装merge後。新bridge group `homeedit-edit-surface`（#449、ADR-0014案B。適用経路の削除passと `inspectCapture` seamを含む）、既存fork platform変更の整理（`fork-platform-preexisting`）、.agents/.codex agent設定のnon-production exclusion、`res/values-ja/strings.xml` のorganizer group帰属、DirectEditContract/InvariantDeviceProfile/HotseatRestoreHelper のmodel-reload group帰属を追加）; recaptured 2026-09-29 at branch `issue-450-spec-plan` `02290535b4`（Issue #450 実装。新bridge group `homeedit-edit-undo`（#450、ADR-0013契約5。世代付きundo record・純粋undo planner・availability verifier・undo executor/snackbar・recovery text mapper。逆操作は既収録のmodel-reload group `ModelWriter.java`/`DirectEditContract.java` への追加）。Acquisition history は末尾）
+> Captured: 2026-08-23; recaptured 2026-09-29 at main `29476b10a0`（Issue #449 実装merge後。新bridge group `homeedit-edit-surface`（#449、ADR-0014案B。適用経路の削除passと `inspectCapture` seamを含む）、既存fork platform変更の整理（`fork-platform-preexisting`）、.agents/.codex agent設定のnon-production exclusion、`res/values-ja/strings.xml` のorganizer group帰属、DirectEditContract/InvariantDeviceProfile/HotseatRestoreHelper のmodel-reload group帰属を追加）; recaptured 2026-09-29 at branch `issue-450-spec-plan` `495060972e`（Issue #450 実装。新bridge group `homeedit-edit-undo`（#450、ADR-0013契約5。世代付きundo record・純粋undo planner・availability verifier・undo executor/snackbar・recovery text mapper。逆操作は既収録のmodel-reload group `ModelWriter.java`/`DirectEditContract.java` への追加）。Acquisition history は末尾）
 > Upstream commit: `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Main commit: `79c1a7db6f1909c248f3bd22365ee9a240357ce1`
 
