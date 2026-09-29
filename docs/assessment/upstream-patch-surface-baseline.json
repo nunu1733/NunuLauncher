@@ -3,7 +3,7 @@
   "status": "accepted",
   "captured_on": "2026-09-29",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "f81c31605a49252cf1f81d7d12f92317ea44b9eb",
+  "main_commit": "4a39a98a2a0339773b039fb72592f8eb123f91ec",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -511,11 +511,11 @@
     }
   ],
   "expected_measurement": {
-    "counted_additions": 19977,
+    "counted_additions": 20013,
     "counted_deletions": 1068,
     "counted_files": 90,
     "counted_paths_sha256": "23246c1776a959b8ee55a94fec45056d9852bb7ba6967a0faa33d0da2ebcdf8d",
-    "excluded_additions": 206087,
+    "excluded_additions": 206230,
     "excluded_deletions": 863,
     "excluded_files": 1177,
     "excluded_paths_sha256": "0d7a78cd3d9958693a4a858e61073a836ada7743aab04702970cc71698a53c56",
@@ -533,13 +533,13 @@
         "paths_sha256": "727291c82bd7181e70278f6926a041ce86c3fb2e54b8efeedcab771586d51dbd"
       },
       "homeedit-edit-surface": {
-        "additions": 8308,
+        "additions": 8336,
         "deletions": 1,
         "files": 20,
         "paths_sha256": "beb57d705e8e94dc3c8b5faa2320dcb8dc1eca92435a55fdbdf0b6bad7329fb8"
       },
       "homeedit-edit-undo": {
-        "additions": 894,
+        "additions": 902,
         "deletions": 0,
         "files": 7,
         "paths_sha256": "d14801b9705087db0f29ba4536116cd685151e9494de55b654d329046022187f"
