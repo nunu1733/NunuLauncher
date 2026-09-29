@@ -1,12 +1,12 @@
 ---
 issue: "#449"
-status: accepted
+status: implemented
 requirements:
   - FR-019
   - NFR-013
   - NFR-014
   - D-014
-updated: 2026-09-28
+updated: 2026-09-29
 ---
 
 # 複数選択の視覚的編集画面（選択への一括アクションと確定時の一括適用）
@@ -218,22 +218,22 @@ Then 図は適用後の最新ホームのcaptureから描画される
 
 ## Acceptance criteria
 
-- [ ] AC-1: 入口2経路（workspace長押しメニュー、Organizer hub row）から編集画面が開く。`lockHomeScreen` 有効時は長押しメニューの項目を出さない。エミュレータのスクリーンショットで構造を確認し、実機での表示・操作をownerが確認する。
-- [ ] AC-2: 図がcapture時点のホームを表示する（全ページ、実際の位置・ラベル・icon、widget footprint、フォルダicon、dockと予約領域の非選択表示）。icon解決不能時はplaceholderで表示され、選択・アクションが機能する。snapshot表示の明示がある。
-- [ ] AC-3: tap選択（複数）、選択数表示、選択解除が動作する。対象外（widget、フォルダ自身、dock上のアイテム、app pair、ロック中）は選択できず、ロック中はその旨が示される。
-- [ ] AC-4: 4アクションがセッション計画と図へ即座に反映される（決定的）。ページ移動は選択全体の一括移動（空き不足時は全体不適用+typed理由）、フォルダ追加は選択順rank末尾（profile混在はtyped理由）、新規フォルダは先頭アイテムの元セルに1x1+選択順rank、外すは削除計画。アクション実行済みアイテムは再操作対象にならず、リセットでのみ戻る。セッション計画が空の間は確定できない。
-- [ ] AC-5: 確定時の適用がorganizerの安全な適用経路で行われる: 適用前の再captureとrevision・状態一致検証（不一致時は零書込み）、recovery point 1個の作成、1 transaction（全成功か変更前へ戻る）、相関reload、適用後の不変条件再検証。適用が変えるのは選択アイテムとそれに伴う新規フォルダ行のみで、他の行・lock列・dock・予約領域は不変である（AGENTS.md安全規約の各条件）。テストで確認する。
-- [ ] AC-6: stale時に零書込みでセッションが破棄され、理由表示と最新ホームでの開き直しが動作する（Scenarioどおり）。
-- [ ] AC-7: 確定前のtyped拒否（`RECOVERY_POINT_ADMISSION_BLOCKED` 観測時、organizer run適用中のbusy、`LOCK_STATE_UNAVAILABLE` を含む）で、零書込み・理由表示・再試行の促し・セッション保持が動作する。capture内に `OrganizerLockState.UNKNOWN` の行が存在する場合、確定が無効化され理由が示され、UNKNOWN行は選択できない（テストで確認）。
-- [ ] AC-8: リセットとキャンセルが零書込みである（テストで確認）。
-- [ ] AC-9: セッション計画の構築（#448の純粋計画関数を共有する部分を含む）がinterface経由でテストされている（fixture、境界値、typed拒否理由、決定性、冪等性。AGENTS.mdテスト規約）。
-- [ ] AC-10: 編集セッションから構築した適用計画に対する適用のテストが、実DB（test DB）で行われている（選択行のみの変化、新規フォルダのINSERT+子UPDATEの1 transaction性、失敗注入でのrollback、stale、排他、process死後の整合）。
-- [ ] AC-11: NFR-013: 選択・選択解除・アクション実行の図への反映が即時である（目標100ms以内。セッション計画は純粋計算）。確定から適用完了（ホームへの反映）までの目標は3秒以内とし、エミュレータ計測値をPRに記録する（実機計測はowner確認に含める）。排他中・blocked中の表示（Scenarioどおり）を含む。
-- [ ] AC-12: ベンチマーク: 会計は [editing-burden-benchmark](../../docs/engineering/editing-burden-benchmark.md) §6の確定値と重みで行う。編集画面経由の会計は B2 = 入口3 + 選択tap 5 + アクション1 + 対象ページ1 + 確定1 = **11**（≤24）、B3 = 入口3 + 選択tap 4 + アクション1 + 確定1 = **9**（≤10）、B4 = 入口3 + 選択tap 6 + アクション1 + 確定1 = **11**（≤12）である（ADR-0014 Revision 2のB4=10は確定操作を含まない算出であり、確定1を含む本会計でも目標判定は変わらない）。hub経由入口=4を記録する。fixture（§5）を使うエミュレータでの実行記録（§7の手順に準拠）をPRに残し、B5は#450の経路に依存するため記録のみ（対象外）とする。
-- [ ] AC-13: patch surface: PR上で `measure_upstream_patch_surface.py --target HEAD --enforce-baseline` を実行し、結果をPR本文に記録する。入口追加はfork側ファイル（`LauncherOptionsPopup.kt`）への追加分であり、src/側の変更が発生した場合はNFR-010としてPRで記録し、bridge ownerを明示する。
-- [ ] AC-14: 文書: specが `implemented` になり、`DESIGN.md`（homeedit moduleの記述へ編集画面と一括適用の追加）、`CONTEXT.md`（domain language 3語）、[requirements.md](../../docs/product/requirements.md)（FR-019 / NFR-013のstatus。FR-018は#448分を含めて実装mergeを根拠に更新）が更新される。
-- [ ] AC-15: アクセシビリティ: 図アイテムのラベル・選択状態・選択不可の理由、4アクション、確定・キャンセル・リセット、理由表示がリソース由来かつ空でない文字列から供給されることの自動検証に加え、エミュレータTalkBackでの読み上げ確認を記録し、実機確認をowner確認に含める。
-- [ ] AC-16: 適用結果の観測契約が既存 `ApplyResult` の全variant（`Applied` / `Rejected` / `ConcurrentRun` / `NoChanges` / `RolledBack` / `Recovered` / `Unresolved` / `RecoveryFailed`）に対応する: 確定前の `Rejected` と `ConcurrentRun` は零書込み、`RolledBack` と `Recovered` はpre-state（無変更）の表示、`Unresolved` と `RecoveryFailed` は `authoritativeState` に従いpre-stateを確認できない限り「無変更」と断定しないfail-closed表示（復旧導線の表示を含む）。`NoChanges` は到達不能（確定はセッション計画が空でない間のみ可能、builderは空差分計画を生成しない不変条件。防御到達時は零書込み+変更未反映の表示）。テストで確認する。
+- [x] AC-1: 入口2経路（workspace長押しメニュー、Organizer hub row）から編集画面が開く。`lockHomeScreen` 有効時は長押しメニューの項目を出さない。エミュレータのスクリーンショットで構造を確認し、実機での表示・操作をownerが確認する。
+- [x] AC-2: 図がcapture時点のホームを表示する（全ページ、実際の位置・ラベル・icon、widget footprint、フォルダicon、dockと予約領域の非選択表示）。icon解決不能時はplaceholderで表示され、選択・アクションが機能する。snapshot表示の明示がある。
+- [x] AC-3: tap選択（複数）、選択数表示、選択解除が動作する。対象外（widget、フォルダ自身、dock上のアイテム、app pair、ロック中）は選択できず、ロック中はその旨が示される。
+- [x] AC-4: 4アクションがセッション計画と図へ即座に反映される（決定的）。ページ移動は選択全体の一括移動（空き不足時は全体不適用+typed理由）、フォルダ追加は選択順rank末尾（profile混在はtyped理由）、新規フォルダは先頭アイテムの元セルに1x1+選択順rank、外すは削除計画。アクション実行済みアイテムは再操作対象にならず、リセットでのみ戻る。セッション計画が空の間は確定できない。
+- [x] AC-5: 確定時の適用がorganizerの安全な適用経路で行われる: 適用前の再captureとrevision・状態一致検証（不一致時は零書込み）、recovery point 1個の作成、1 transaction（全成功か変更前へ戻る）、相関reload、適用後の不変条件再検証。適用が変えるのは選択アイテムとそれに伴う新規フォルダ行のみで、他の行・lock列・dock・予約領域は不変である（AGENTS.md安全規約の各条件）。テストで確認する。
+- [x] AC-6: stale時に零書込みでセッションが破棄され、理由表示と最新ホームでの開き直しが動作する（Scenarioどおり）。
+- [x] AC-7: 確定前のtyped拒否（`RECOVERY_POINT_ADMISSION_BLOCKED` 観測時、organizer run適用中のbusy、`LOCK_STATE_UNAVAILABLE` を含む）で、零書込み・理由表示・再試行の促し・セッション保持が動作する。capture内に `OrganizerLockState.UNKNOWN` の行が存在する場合、確定が無効化され理由が示され、UNKNOWN行は選択できない（テストで確認）。
+- [x] AC-8: リセットとキャンセルが零書込みである（テストで確認）。
+- [x] AC-9: セッション計画の構築（#448の純粋計画関数を共有する部分を含む）がinterface経由でテストされている（fixture、境界値、typed拒否理由、決定性、冪等性。AGENTS.mdテスト規約）。
+- [x] AC-10: 編集セッションから構築した適用計画に対する適用のテストが、実DB（test DB）で行われている（選択行のみの変化、新規フォルダのINSERT+子UPDATEの1 transaction性、失敗注入でのrollback、stale、排他、process死後の整合）。
+- [x] AC-11: NFR-013: 選択・選択解除・アクション実行の図への反映が即時である（目標100ms以内。セッション計画は純粋計算）。確定から適用完了（ホームへの反映）までの目標は3秒以内とし、エミュレータ計測値をPRに記録する（実機計測はowner確認に含める）。排他中・blocked中の表示（Scenarioどおり）を含む。（owner判断 2026-09-29: 詳細実測値の記録は省略。セッション計画が純粋計算である構造と、実機での確定→適用完了（APPLY_VERIFIEDまで数秒未満）の観察により目標達成を確認）
+- [x] AC-12:（owner判断 2026-09-29: 会計は下記のとおり本ACで確定済み。エミュレータでの操作実行（選択→アクション→確定→適用）を確認し、§7準拠の実測記録の提出は省略）ベンチマーク: 会計は [editing-burden-benchmark](../../docs/engineering/editing-burden-benchmark.md) §6の確定値と重みで行う。編集画面経由の会計は B2 = 入口3 + 選択tap 5 + アクション1 + 対象ページ1 + 確定1 = **11**（≤24）、B3 = 入口3 + 選択tap 4 + アクション1 + 確定1 = **9**（≤10）、B4 = 入口3 + 選択tap 6 + アクション1 + 確定1 = **11**（≤12）である（ADR-0014 Revision 2のB4=10は確定操作を含まない算出であり、確定1を含む本会計でも目標判定は変わらない）。hub経由入口=4を記録する。fixture（§5）を使うエミュレータでの実行記録（§7の手順に準拠）をPRに残し、B5は#450の経路に依存するため記録のみ（対象外）とする。
+- [x] AC-13: patch surface: PR上で `measure_upstream_patch_surface.py --target HEAD --enforce-baseline` を実行し、結果をPR本文に記録する。入口追加はfork側ファイル（`LauncherOptionsPopup.kt`）への追加分であり、src/側の変更が発生した場合はNFR-010としてPRで記録し、bridge ownerを明示する。
+- [x] AC-14: 文書: specが `implemented` になり、`DESIGN.md`（homeedit moduleの記述へ編集画面と一括適用の追加）、`CONTEXT.md`（domain language 3語）、[requirements.md](../../docs/product/requirements.md)（FR-019 / NFR-013のstatus。FR-018は#448分を含めて実装mergeを根拠に更新）が更新される。
+- [x] AC-15: アクセシビリティ: 図アイテムのラベル・選択状態・選択不可の理由、4アクション、確定・キャンセル・リセット、理由表示がリソース由来かつ空でない文字列から供給されることの自動検証に加え、エミュレータTalkBackでの読み上げ確認を記録し、実機確認をowner確認に含める。（owner判断 2026-09-29: TalkBack読み上げの実施記録は省略。自動検証（`edit_surface_*` 文字列の存在・非空oracle、semantics descriptor oracle、wiring oracle）で代用可能と判断）
+- [x] AC-16: 適用結果の観測契約が既存 `ApplyResult` の全variant（`Applied` / `Rejected` / `ConcurrentRun` / `NoChanges` / `RolledBack` / `Recovered` / `Unresolved` / `RecoveryFailed`）に対応する: 確定前の `Rejected` と `ConcurrentRun` は零書込み、`RolledBack` と `Recovered` はpre-state（無変更）の表示、`Unresolved` と `RecoveryFailed` は `authoritativeState` に従いpre-stateを確認できない限り「無変更」と断定しないfail-closed表示（復旧導線の表示を含む）。`NoChanges` は到達不能（確定はセッション計画が空でない間のみ可能、builderは空差分計画を生成しない不変条件。防御到達時は零書込み+変更未反映の表示）。テストで確認する。
 
 ## Test oracle
 
@@ -246,11 +246,11 @@ Then 図は適用後の最新ホームのcaptureから描画される
 | AC-16 | instrumentation: 失敗注入での `RolledBack`（pre-state表示）と `Unresolved` / `RecoveryFailed`（fail-closed表示。既存プロトコルの自動復旧testとの接続を確認）。`NoChanges` 到達不能のJVM test（builderが空差分計画を生成しない不変条件） | instrumentation lane + `tests/unit/app/lawnchair/homeedit/` |
 | AC-9 | `tests/unit/app/lawnchair/homeedit/` のJVM test群。`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'`（CI: `organizer-unit-tests`。#448でfilter追加済み） |
 | AC-10 | instrumentation（既存laneへの追加。新laneは作らない）: 上記AC-5/6/7/8の実framework・実DB test群 |
-| AC-11 | エミュレータでの操作計測（選択反映・確定→適用完了。PR本文）+ owner実機確認 |
-| AC-12 | ベンチマーク§5のfixture + §7の手順に準拠したエミュレータ実行記録（B2/B3/B4の編集画面経由会計、hub経由=4。PR本文） |
+| AC-11 | エミュレータでの操作計測（選択反映・確定→適用完了）— owner判断 2026-09-29: 詳細実測値の記録は省略（構造的根拠と実機観察で確認） |
+| AC-12 | ベンチマーク§5のfixture + §7の手順に準拠したエミュレータ実行 — owner判断 2026-09-29: 実測記録の提出は省略（会計は本spec AC-12で確定） |
 | AC-13 | `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` の出力（PR本文） |
 | AC-14 | `validate_repo_contract.py` 成功 + diff確認（DESIGN.md / CONTEXT.md / requirements.md / spec status） |
-| AC-15 | UI構築のJVM test（文言がリソース由来かつ空でない）+ エミュレータTalkBackでの読み上げ記録 + owner実機確認 |
+| AC-15 | UI構築のJVM test（文言がリソース由来かつ空でない。実装済み）+ semantics/wiring oracle — owner判断 2026-09-29: TalkBack読み上げ記録は省略 |
 
 ## Open questions
 
@@ -261,4 +261,5 @@ Then 図は適用後の最新ホームのcaptureから描画される
 - 2026-09-28: Draft created for #449（Phase 1）。出典: Issue #449本文と同コメント（ADR-0014 Revision 2に伴う前提同期。icon前提と入口コストの修正を反映）+ 承認済み再焦点化方針メモ（Revision 5）§4.3/§4.5/§4.8/§4.9 + ADR-0014（Proposed Revision 2）+ ADR-0013（#445受入）+ ベンチマーク正本（#441確定）+ #448実装済みmodule（PR #472、main `f35ff4494f`）。
 - 2026-09-28: Revision 2 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096): Request changes）の指摘に対応。指摘1（受入前提）: 冒頭へ「本specの受入はADR-0014の受入が前提。受入まで `draft` を維持し、Accepted化時にrevisionを取り込んで再照合する」を明記（外部前提は #442 の結論待ち。本revisionでは対応の明示のみ）。指摘2: 適用結果を `ApplyResult` のvariantごとの観測契約へ分離し（pre-write拒否=零書込み、`RolledBack` / `Recovered`=pre-state、`Unresolved` / `RecoveryFailed`=`authoritativeState` に従うfail-closed）、Scenario・AC-16・test oracleへ同期（旧「すべて無変更」の記述を撤回）。指摘3: 新規フォルダの置き先契約（先頭アイテムの元セル）を保証するため、共有moduleへの「指定セルへの新規フォルダ作成」intent variant追加（additive）をScopeへ明記（詳細はplan）。指摘4: `OrganizerLockState.UNKNOWN` の扱いを既存 `LOCK_STATE_UNAVAILABLE` 契約（`ApplyProtocol.kt:557-558`）と一致させ、UNKNOWN行は選択不可+確定無効化とし、Scenario・AC-7・test oracleへ同期。
 - 2026-09-28: Revision 3 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862337471): Request changes。round 1指摘3・4は解消認定）の指摘2（variant契約の残差）に対応。①`ConcurrentRun` を `Rejected` のreason列挙から除外し、独立variant（`PreWriteRejection` ではない）として零書込み+再試行の契約を明記。②`NoChanges` の観測契約を追加（到達不能: 確定はセッション計画が空でない間のみ可能+builderが空差分計画を生成しない不変条件とtest。防御到達時は零書込み+変更未反映の表示）。③`Applied` を成功経路として明示し、AC-16・test oracleを全variant表記へ同期。指摘1（受入前提）は本revisionでは対応範囲外（#442最終結論→ADR-0014受入→Accepted revision取り込み→再照合、が解除条件。specは `draft` を維持し、Phase 2実装は開始しない）。
+- 2026-09-29: `implemented` 化。Phase 2実装が [PR #476](https://github.com/nunu1733/NunuLauncher/pull/476) でmerge（merge commit `29476b10a0`）。実装詳細: 純粋4層（EditSurfaceState / EditSurfaceProjection / EditSurfaceSessionPlanner / EditSurfacePlanBuilder）+ `HomeEditSurfaceAccess`（薄い窓）+ 全画面Activity + 入口2経路（workspace長押しメニュー、Organizer hub `OrganizerHubPreferences` のrow。Review round 1〜6でClear）。plan Revision 5の結合点7により、適用経路の通常branchへmanifest欠落行の削除passを最小拡張（「ホームから外す」の行削除を既存の安全経路で物理化。public契約・recovery経路は不変）。実機検証（Pixel 9a）で2件を修正: 入口rowのhub同定訂正、capture/applyのMODEL_EXECUTORデッドロック解消（専用スレッドへ移動）。修正後、select→外す→確定→CHECKPOINTED(A4)→APPLY_COMMITTED(A6)→**APPLY_VERIFIED(A8)**、1個の復元点、行削除、相関reloadによるホーム反映を確認。検証: homeedit JVM tests 99件green、shared-writer laneに `EditSurfaceApplyInstrumentationTest`（物理DELETE・1 transaction・失敗注入rollback・stale零書込み）を追加し全instrumentation lane green、`final-status` pass、独立監査GO（`docs/assessment/pr-476-edit-surface.md`）。owner確認事項（TalkBack読み上げ、ベンチマークB2〜B4実測、NFR-013詳細実測）は省略をownerが判断（2026-09-29）。
 - 2026-09-28: Revision 4 — 受入前提の成立と受入revisionの取り込み。#442が最終結論Cで確定し、ADR-0014がAccepted（Revision 3。受入PR #475）となったため、main（`c5a7840b88`）を本branchへmergeし、受入revisionとの整合を再照合した。照合結果: ADR-0014 Revision 3の再確認3点（案A/B比較不変、#448/#449の15 baseline継続、patch surface方針不変）は本spec/planと矛盾しない。冒頭の受入前提の記述を「成立済み」へ更新した。round 3判定（[round 3](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862418500)）の保留条件が満たされたため、再review（round 4）でPhase 1 clear / spec acceptedの審査へ進める。
