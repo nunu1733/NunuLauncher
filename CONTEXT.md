@@ -259,3 +259,15 @@ _Avoid_: 意図 (UserReviewedIntent)（lock authoringの語）、plan（organize
 **編集snapshot (Edit Snapshot)**:
 1回の編集意図の計画と検証のために、現在のホームレイアウトを投影した読み取り専用の入力。organizerのレイアウトsnapshotより小さく、単一操作の検証に必要なfieldのみを持つ ([spec 448](./specs/448-edit-actions-per-item/spec.md))。
 _Avoid_: レイアウトsnapshot（organizer runの入力。別の粒度）
+
+**編集画面 (Edit Surface)**:
+現在のホームレイアウトをcapture時点の図で表示し、複数選択、選択への編集アクション、確定時の一括適用を提供するfork側の全画面UI（ADR-0014案B。正本の操作面と契約は [spec 449](./specs/449-multi-select-surface/spec.md)）。図の幾何はcaptureにセッション計画を適用した作業投影が単一の権威であり、icon解決はcustom bytes→TargetKey→placeholderの順で行う。
+_Avoid_: EDIT_MODE（上流のworkspace状態。案Aで不採用）、整理run面（organizer runの確認・結果面と混同）
+
+**編集セッション (Edit Session)**:
+編集画面を開いてから確定またはキャンセルで終わるまでの、1回の複数選択編集の試行。選択と、適用待ちのアクション結果（セッション計画）を持ち、process内でのみ存在する。確定 = 1回の適用 = 1個の復元点。
+_Avoid_: 整理run（organizerのsnapshot取得〜適用〜検証の一連の試行。別の粒度）、依頼（AI相談の語）
+
+**セッション計画 (Session Plan)**:
+編集セッション内でアクション実行の結果として図に反映されている、まだ適用されていない変更の集まり。#448の純粋計画関数の結果から構成される純dataであり、確定時にcaptureと照合される。
+_Avoid_: レイアウトplan（organizerのplan artifact。適用の正本と混同）、Undo記録（#450が所有する情報）
