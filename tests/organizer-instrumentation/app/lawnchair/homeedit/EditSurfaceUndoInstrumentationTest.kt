@@ -49,6 +49,17 @@ class EditSurfaceUndoInstrumentationTest {
     private lateinit var appState: LauncherAppState
     private lateinit var module: LayoutApplicationModule<RecoveryStore>
     private lateinit var adapter: LauncherLayoutAdapter
+
+    /** Issue #450: test-owned fault injection for the recovery WriterBusy oracle. */
+    private val undoFaults = FaultDelegate()
+
+    private class FaultDelegate : app.lawnchair.organizer.application.protocol.FaultInjector
+        by app.lawnchair.organizer.application.protocol.FaultInjector.NOOP {
+        @Volatile
+        var serializationContention = false
+
+        override fun serializationContention(): Boolean = serializationContention
+    }
     private var snapshotRows: List<ContentValues> = emptyList()
     private var modelCallback: com.android.launcher3.model.BgDataModel.Callbacks? = null
 
@@ -65,6 +76,7 @@ class EditSurfaceUndoInstrumentationTest {
             clock,
             SecureRandomOperationIdSource(),
             folderTitleResolver = GeneratedFolderTitles.resolver(context),
+            faults = undoFaults,
         )
         module.reconcileAtStart()
         // The correlated reload of the apply/recovery paths rides the loader
@@ -241,6 +253,33 @@ class EditSurfaceUndoInstrumentationTest {
             "expected STALE_REVISION, got $undo",
             undo is RecoveryResult.NotRestorable && undo.reason == RecoveryRejection.STALE_REVISION,
         )
+    }
+
+    @Test
+    fun undoUnderSerializationContentionReportsWriterBusyWithZeroWrite() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val (plan, _) = buildMovePlan()
+        val runId = module.newManualRunId()
+        val (result, verified) = module.applyWithUndoReceipt(plan, runId)
+        val pointId = (result as ApplyResult.Applied).pointId
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // Inject the recovery serialization contention: the undo tap is
+        // rejected as WriterBusy before any write (the applied state survives).
+        undoFaults.serializationContention = true
+        try {
+            val undo = module.recover(RecoveryRequest(pointId, verified!!))
+            assertTrue("expected WriterBusy, got $undo", undo is RecoveryResult.WriterBusy)
+        } finally {
+            undoFaults.serializationContention = false
+        }
+        // Zero writes: the applied placement (page 1) is still in effect and a
+        // retry without the fault restores.
+        appState.model.forceReload()
+        waitForModelLoaded()
+        val retry = module.recover(RecoveryRequest(pointId, verified))
+        assertTrue("expected Restored on retry, got $retry", retry is RecoveryResult.Restored)
     }
 
     // --- helpers ---

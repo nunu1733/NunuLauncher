@@ -304,44 +304,102 @@ public class DirectEditUndoModelWriterTest {
     // --- (d3) AC-4: an undo submitted during an ORGANIZER lease defers and
     // re-validates inside admission after the lease is released ---
 
+    // --- (d4) AC-4 (round 2): the deferred undo re-validates INSIDE admission
+    // after the lease release — a precondition broken while the lease was held
+    // becomes a typed rejection with zero writes ---
+
     @Test
-    public void undoDefersDuringOrganizerLeaseAndRevalidatesAfterRelease() throws Exception {
+    public void undoDeferredDuringOrganizerLeaseRevalidatesAndRejectsAfterRelease()
+            throws Exception {
         seedAppItem(501, Favorites.CONTAINER_DESKTOP, 0, 1, 2, 0);
         awaitCallback(latch -> mWriter.moveItemForDirectEdit(501, Favorites.CONTAINER_DESKTOP, 1, 0, 0, 0,
                 proceed(), done(latch, true, null)));
 
-        // Hold the ORGANIZER lease while the undo is submitted: the undo must
-        // not run until the lease is released. The deferred undo's callback
-        // records its post-release outcome.
+        // Hold the ORGANIZER lease, submit the undo (defers), and break the
+        // recorded precondition (move the item again) while the lease is held.
         CountDownLatch undoDone = new CountDownLatch(1);
-        AtomicReference<Boolean> undoSuccess = new AtomicReference<>(null);
+        AtomicReference<String> undoReason = new AtomicReference<>("none");
         try (com.android.launcher3.model.LayoutWriteCoordinator.Lease lease =
                 com.android.launcher3.model.LayoutWriteCoordinator.getInstance()
                         .tryAcquire(com.android.launcher3.model.LayoutWriteCoordinator.OwnerKind.ORGANIZER)) {
             assertNotNull(lease);
+            // The undo validator is the real fork-side stage-2 validator over
+            // the recorded entry: it re-runs the pure planner inside admission
+            // and must observe the broken precondition at stage 2.
             mWriter.restorePlacementForDirectEdit(501,
                     Favorites.CONTAINER_DESKTOP, 0, 1, 2, 1, 1, 0,
-                    proceed(),
+                    undoValidator,
                     (id, success, reason, oc, os, ox, oy, osx, osy, orank, fid, created,
                             removedRow) -> {
-                        undoSuccess.set(success);
+                        undoReason.set(reason);
                         undoDone.countDown();
                     });
-            // Give the deferred undo no time to run while the lease is held:
-            // a successful run here would mean the undo bypassed the lease.
-            Thread.sleep(300);
-            assertEquals(
-                    "undo must defer while the ORGANIZER lease is held",
-                    1, queryInt(501, Favorites.SCREEN));
+            // Break the precondition under the lease, on both the model and
+            // the DB. The stage-2 re-validation reads the live model
+            // (BgDataModel.itemsIdMap), so the model-side break is what it
+            // must observe; the DB-side break keeps model/DB consistent for
+            // the zero-write assertion. Both writes bypass the coordinator:
+            // a ModelWriter move here would defer behind this very lease, and
+            // a ModelDbController.update would acquireBlocking a MODEL_WRITER
+            // lease from THIS thread — a self-deadlock by construction.
+            synchronized (mBgDataModel) {
+                ItemInfo info = mBgDataModel.itemsIdMap.get(501);
+                assertNotNull(info);
+                info.cellX = 2;
+                info.cellY = 3;
+            }
+            ContentValues broken = new ContentValues();
+            broken.put(Favorites.CELLX, 2);
+            broken.put(Favorites.CELLY, 3);
+            assertEquals(1, mController.getDb().update(
+                    Favorites.TABLE_NAME, broken, Favorites._ID + "=501", null));
+            assertEquals(2, queryInt(501, Favorites.CELLX));
         }
-        // After the lease is released the deferred undo runs its stage-2
-        // re-validation and completes.
+        // After the release the deferred undo runs its stage-2 re-validation,
+        // sees the broken precondition, and rejects with zero writes.
         assertTrue("deferred undo did not finish after lease release",
                 undoDone.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
-        // The first undo (deferred above) restored the row; the recorded
-        // outcome is a success and the DB/model agree.
-        assertEquals(Boolean.TRUE, undoSuccess.get());
-        assertEquals(0, queryInt(501, Favorites.SCREEN));
+        assertEquals(DirectEditContract.FAIL_UNDO_STALE, undoReason.get());
+        // Zero writes: the item stays at the broken-state placement.
+        assertEquals(2, queryInt(501, Favorites.CELLX));
+        assertEquals(3, queryInt(501, Favorites.CELLY));
+    }
+
+    // --- (f) AC-6 process-death smoke: the undo record is process-local, and
+    // a death mid-transaction leaves the DB at the pre-state (existing
+    // process-death smoke convention: abandon without commit, reopen) ---
+
+    @Test
+    public void folderUndoAbandonedMidTransactionLeavesThePreStateAfterReopen()
+            throws Exception {
+        seedAppItem(501, Favorites.CONTAINER_HOTSEAT, 0, 3, 0, 2);
+        awaitCallback(latch -> mWriter.createFolderAndMoveForDirectEdit(501, 0, 0, 0,
+                proceed(), done(latch, true, null)));
+        int folderId = queryInt(501, Favorites.CONTAINER);
+
+        // "Process death": the undo transaction is abandoned without commit.
+        // The record and snackbar are process-local and die with the process;
+        // the DB must roll back to the applied state.
+        try (com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction abandoned =
+                mController.newTransaction()) {
+            ContentValues restore = new ContentValues();
+            restore.put(Favorites.CONTAINER, Favorites.CONTAINER_HOTSEAT);
+            restore.put(Favorites.SCREEN, 0);
+            restore.put(Favorites.CELLX, 3);
+            restore.put(Favorites.RANK, 2);
+            mController.update(Favorites.TABLE_NAME, restore,
+                    Favorites._ID + "=501", null);
+            mController.delete(Favorites.TABLE_NAME,
+                    Favorites._ID + "=" + folderId, null);
+            // no commit — abandoned like a process death
+        }
+        mController.closeActiveHelperForRestore();
+        // After the reopen: the applied state survives (child in the folder,
+        // folder row present) — nothing half-applied.
+        assertEquals(folderId, queryInt(501, Favorites.CONTAINER));
+        assertEquals(Favorites.ITEM_TYPE_FOLDER, queryInt(folderId, Favorites.ITEM_TYPE));
+        // The undo record itself never persisted: the process-local slot dies
+        // with the process (spec 450: process死後は取り消せない).
     }
 
     // --- (e) availability fail-closed: a gone launch target is never resurrected ---
@@ -394,6 +452,34 @@ public class DirectEditUndoModelWriterTest {
     private DirectEditContract.Validator proceed() {
         return current -> DirectEditContract.Decision.proceed();
     }
+
+    /**
+     * A stage-2 validator that re-verifies the recorded undo precondition
+     * against the current state (the same shape as the fork-side
+     * HomeEditUndoStage2Validator): the item must still sit at the recorded
+     * result placement. Used by the defer oracle to prove the re-validation
+     * runs inside admission after the lease release.
+     */
+    private DirectEditContract.Validator undoValidator =
+            current -> {
+                com.android.launcher3.model.DirectEditContract.Row target = null;
+                for (com.android.launcher3.model.DirectEditContract.Row row : current.rows) {
+                    if (row.id == 501) {
+                        target = row;
+                        break;
+                    }
+                }
+                if (target == null) {
+                    return DirectEditContract.Decision.reject(DirectEditContract.FAIL_UNDO_STALE);
+                }
+                boolean atResult = target.container == Favorites.CONTAINER_DESKTOP
+                        && target.screenId == 1
+                        && target.cellX == 0
+                        && target.cellY == 0;
+                return atResult
+                        ? DirectEditContract.Decision.proceed()
+                        : DirectEditContract.Decision.reject(DirectEditContract.FAIL_UNDO_STALE);
+            };
 
     private DirectEditContract.ResultCallback done(
             CountDownLatch latch, boolean expectSuccess, String expectReason) {

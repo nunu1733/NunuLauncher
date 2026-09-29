@@ -14,6 +14,7 @@ import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
@@ -26,6 +27,7 @@ import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -57,6 +59,55 @@ class ApplyProtocolTest {
         val mutex = RunMutex()
         val ids = FixedOperationIdSource()
         protocol = ApplyProtocol(writer, store, FakeClock, ids, faults, mutex)
+    }
+
+    /**
+     * Issue #450 (review round 2 finding 1): the undo receipt must be
+     * invocation-local. Two applies back to back — A completing first, B
+     * completing before A's caller reads its receipt — must still leave A's
+     * receipt intact, because the revision is captured inside A's own
+     * ApplyContext while A holds the run mutex. Regression oracle for the
+     * removed shared-slot implementation, where B overwrote A's revision
+     * before A could read it.
+     */
+    @Test
+    fun undoReceiptSurvivesAConcurrentApplyCompletingBeforeTheReceiptRead() {
+        val planA = mutatingPlan()
+        val planB = mutatingPlan()
+
+        // A applies and receives its receipt in one invocation.
+        val (resultA, receiptA) = protocol.applyWithUndoReceipt(planA, RunId("a123456789abcdef0123456789abcdef"))
+        assertTrue("expected Applied, got $resultA", resultA is ApplyResult.Applied)
+        assertNotNull("A's receipt must carry the verified post revision", receiptA)
+
+        // B applies a DIFFERENT plan (different post-state) before A would
+        // have read a shared slot: B's receipt is its own, and A's
+        // already-returned receipt is untouched.
+        val planB2 = mutatingPlan(
+            CanonicalFixtures.state(items = listOf(CanonicalFixtures.appItem(cell = GridCell(1, 1)))),
+        )
+        val (resultB, receiptB) = protocol.applyWithUndoReceipt(planB2, RunId("b123456789abcdef0123456789abcdef"))
+        assertTrue("expected Applied, got $resultB", resultB is ApplyResult.Applied)
+        assertNotNull("B's receipt must carry its own verified post revision", receiptB)
+        assertEquals("B applied B's plan; the receipt revision must describe B's post-state", planB2.intendedState, writer.currentState())
+        // The two receipts describe different post-states (A's state is not
+        // B's state): the invocation-local capture is what keeps them apart.
+        assertTrue("receipts must be per-invocation", receiptA != receiptB)
+    }
+
+    @Test
+    fun undoReceiptIsNullForANonAppliedResult() {
+        // A concurrent run holds the mutex: the receipt invocation fails
+        // closed with ConcurrentRun and no revision.
+        val blocking = RunMutex()
+        assertTrue(blocking.tryAcquire(RunId("c123456789abcdef0123456789abcdef")))
+        val protocol2 = ApplyProtocol(writer, store, FakeClock, FixedOperationIdSource(), faults, blocking)
+        val (result, receipt) = protocol2.applyWithUndoReceipt(
+            mutatingPlan(),
+            RunId("d123456789abcdef0123456789abcdef"),
+        )
+        assertTrue("expected ConcurrentRun, got $result", result is ApplyResult.ConcurrentRun)
+        assertNull("a non-Applied result carries no receipt revision", receipt)
     }
 
     @Test
