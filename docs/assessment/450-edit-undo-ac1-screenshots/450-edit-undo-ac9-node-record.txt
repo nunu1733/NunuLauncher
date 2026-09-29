@@ -1,0 +1,20 @@
+Issue #450 AC-9 evidence: real undo snackbar under TalkBack (emulator nunu_qpr2_api36_1)
+recorded: 2026-09-29T20:28:42.031528Z
+
+label node (expected contains "Edit applied"):
+  viewId: app.lawnchair.debug:id/label
+  text: Edit applied
+  class: android.widget.TextView
+  visibleToUser: true
+  clickable: false
+  focusable: false
+  bounds: Rect(210, 2132 - 734, 2258)
+
+action node (expected "Undo"):
+  viewId: app.lawnchair.debug:id/action
+  text: Undo
+  class: android.widget.TextView
+  visibleToUser: true
+  clickable: true
+  focusable: true
+  bounds: Rect(734, 2132 - 870, 2258)

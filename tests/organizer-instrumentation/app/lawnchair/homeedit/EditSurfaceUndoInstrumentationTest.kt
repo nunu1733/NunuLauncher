@@ -69,6 +69,7 @@ class EditSurfaceUndoInstrumentationTest {
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         appState = LauncherAppState.getInstance(context)
+        assertChromeFixtureAvailable()
         snapshotRows = snapshotFavorites()
         adapter = LauncherLayoutAdapter(context, appState.model.modelDbController, appState.model)
         val clock = SystemClock()
@@ -618,6 +619,11 @@ class EditSurfaceUndoInstrumentationTest {
         tokenCapture: java.util.concurrent.atomic.AtomicReference<HomeEditUndoToken?>,
         verifiedRef: java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.planning.RevisionId?>,
         pointIdRef: java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.application.public.RecoveryPointId?>,
+        sessionAction: (app.lawnchair.homeedit.ui.HomeEditSurfaceActivity, Int) -> Unit =
+            { activity, itemId ->
+                activity.toggleSelectionForTest(itemId)
+                activity.moveToPageForTest(1)
+            },
     ) {
         // The production module's readiness gate must be READY BEFORE the
         // activity's onCreate capture runs — inspectCapture is fail-closed on
@@ -644,13 +650,12 @@ class EditSurfaceUndoInstrumentationTest {
         }
         val itemId = selectable ?: error("no selectable item on the diagram")
 
-        // Drive the REAL confirm flow on the UI thread: select → move to
-        // page 1 → confirm (capture → session → plan build → applyForUndo →
+        // Drive the REAL confirm flow on the UI thread: select → session
+        // action → confirm (capture → session → plan build → applyForUndo →
         // handleApplyResult → record + snackbar).
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .runOnMainSync {
-                activity.toggleSelectionForTest(itemId)
-                activity.moveToPageForTest(1)
+                sessionAction(activity, itemId)
                 activity.confirm()
             }
         // Wait for the Applied branch to record the undo entry. On failure,
@@ -825,7 +830,7 @@ class EditSurfaceUndoInstrumentationTest {
             // store state) is observed; the typed rejection is zero-write.
             // The ALREADY_RESTORED reason itself is pinned at the protocol
             // level by undoAfterARestoreIsRejectedAsAlreadyRestored.
-            expectedRawReason = { it is RecoveryResult.NotRestorable },
+            expectedRawReason = { it is RecoveryResult.NotRestorable && it.reason == RecoveryRejection.ALREADY_RESTORED },
             zeroWriteProbe = {
             // The ALREADY_RESTORED rejection is zero-write: the restored
             // layout (item back on page 0) is unchanged by the failed undo.
@@ -903,30 +908,99 @@ class EditSurfaceUndoInstrumentationTest {
         )
     }
 
+    /**
+     * Issue #450 (review round 11 finding 1): the new-folder production
+     * confirm oracle runs in the default lane. The former environment finding
+     * (the undo's recovery revision check diverging into STALE_REVISION) was
+     * caused by the launcher-self seed component: the post-apply workspace
+     * loading fired LAUNCHER_FOLDER_CONVERTED_TO_ICON and mutated the DB
+     * between the apply and the undo's exact-state check. The Chrome fixture
+     * (desktopRowValues, asserted present in setUp) keeps the DB stable
+     * across the confirm→undo window, and the launcher is pre-launched and
+     * settled BEFORE the confirm flow so startup reloads cannot race the
+     * undo.
+     */
     @Test
     fun productionConfirmFlowWithNewFolderUndoRestoresToThePreApplyState() {
-        // Known environment finding (owner-triage item): the new-folder
-        // confirm through the REAL activity flow fails the undo's recovery
-        // revision check (STALE_REVISION) in this test environment — even
-        // with the readiness gate READY before the activity launch, a
-        // 2-item selection (no 1-item folder conversion), and a pre-undo
-        // capture whose revision equals the recorded expectedRevision. The
-        // recover-internal recapture still diverges, indicating an
-        // asynchronous state change between the test-side capture and the
-        // recovery transaction (launcher-driven reload processing in this
-        // shared-DB environment). The SAME plan applied directly through
-        // the production module is Applied and verified
-        // (productionModuleDirectApplyOfNewFolderPlanIsApplied), and the
-        // new-folder undo contract is pinned by
-        // receiptRevisionEqualsPostApplyCaptureForANewFolderConfirm and
-        // DirectEditUndoModelWriterTest's folder-undo oracles. Skip here
-        // instead of failing the shared lane on an environment finding.
-        org.junit.Assume.assumeTrue(
-            "new-folder confirm-flow recovery STALE_REVISION is tracked for owner triage (environment-specific; the undo contract is pinned elsewhere)",
-            java.lang.Boolean.parseBoolean(
-                androidx.test.platform.app.InstrumentationRegistry.getArguments()
-                    .getString("runNewFolderConfirm", "false"),
-            ),
+        androidx.test.core.app.ActivityScenario.launch(app.lawnchair.LawnchairLauncher::class.java)
+        val launcherDeadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < launcherDeadline) {
+            if (app.lawnchair.LawnchairLauncher.instance != null) break
+            Thread.sleep(300)
+        }
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        // Pre-apply state: the undo must return exactly here (no folder row).
+        val preCapture = adapter.captureCurrent(CaptureId("edit-surface-undo-newfolder-pre"))
+        val preRevision = RevisionCalculator.revisionOf(preCapture.layoutState)
+
+        val tokenCapture =
+            java.util.concurrent.atomic.AtomicReference<HomeEditUndoToken?>(null)
+        val verifiedRef = java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.planning.RevisionId?>(null)
+        val pointIdRef = java.util.concurrent.atomic.AtomicReference<app.lawnchair.organizer.application.public.RecoveryPointId?>(null)
+        confirmThroughProductionFlowAndCaptureToken(
+            tokenCapture,
+            verifiedRef,
+            pointIdRef,
+            sessionAction = { activity, itemId ->
+                activity.toggleSelectionForTest(itemId)
+                activity.createFolderForTest()
+            },
+        )
+        val token = tokenCapture.get() ?: error("no token captured from the confirm flow")
+
+        // AC-5 revision-equality oracle for the folder case: the recorded
+        // expectedRevision equals a fresh post-apply capture revision (the
+        // materialized post-state — not plan.intendedState, which the planned
+        // folder resolution and page normalization change).
+        val postApplyCapture = adapter.captureCurrent(CaptureId("edit-surface-undo-newfolder-post"))
+        assertEquals(
+            RevisionCalculator.revisionOf(postApplyCapture.layoutState).value,
+            verifiedRef.get()!!.value,
+        )
+        assertEquals(
+            "one folder row after the confirm",
+            1,
+            postApplyCapture.layoutState.items.count {
+                it.kind == app.lawnchair.organizer.application.public.CanonicalItemKind.Folder
+            },
+        )
+
+        // Undo through the production recovery path: Restored, back at the
+        // pre-apply revision with the created folder row gone.
+        val rawResult = java.util.concurrent.atomic.AtomicReference<RecoveryResult?>(null)
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val undoLauncher = app.lawnchair.LawnchairLauncher.instance
+            ?: error("launcher instance unavailable for the undo")
+        val executor = HomeEditUndoExecutor(
+            undoLauncher,
+            failureDisplayObserver = { },
+            recoveryResultObserver = { result ->
+                rawResult.set(result)
+                latch.countDown()
+            },
+        )
+        executor.start(token)
+        assertTrue("undo did not complete", latch.await(90, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(
+            "expected Restored, got ${rawResult.get()}",
+            rawResult.get() is RecoveryResult.Restored,
+        )
+        appState.model.forceReload()
+        waitForModelLoaded()
+        val postUndoCapture = adapter.captureCurrent(CaptureId("edit-surface-undo-newfolder-undone"))
+        assertEquals(
+            preRevision.value,
+            RevisionCalculator.revisionOf(postUndoCapture.layoutState).value,
+        )
+        assertEquals(
+            "the created folder row must be gone after the undo",
+            0,
+            postUndoCapture.layoutState.items.count {
+                it.kind == app.lawnchair.organizer.application.public.CanonicalItemKind.Folder
+            },
         )
     }
 
@@ -1127,7 +1201,7 @@ class EditSurfaceUndoInstrumentationTest {
             Favorites.INTENT,
             Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LAUNCHER)
-                .setComponent(ComponentName(context.packageName, LawnchairLauncher::class.java.name))
+                .setComponent(ComponentName("com.android.chrome", "com.google.android.apps.chrome.Main"))
                 .toUri(0),
         )
         put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
@@ -1143,6 +1217,31 @@ class EditSurfaceUndoInstrumentationTest {
             com.android.launcher3.pm.UserCache.INSTANCE.get(context)
                 .getSerialNumberForUser(android.os.Process.myUserHandle()),
         )
+    }
+
+    /**
+     * Fixture contract (review round 11 finding 1): the seeded rows point at
+     * a foreign, provisioned component — the launcher-self component made the
+     * post-apply workspace loading mutate the DB (folder-expansion write)
+     * inside the undo windows. Assert the fixture's presence up front so a
+     * missing provision fails with an actionable message instead of a layout
+     * race.
+     */
+    private fun assertChromeFixtureAvailable() {
+        val fixtureIntent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setComponent(ComponentName("com.android.chrome", "com.google.android.apps.chrome.Main"))
+        val resolved = context.packageManager.resolveActivity(
+            fixtureIntent,
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+        )
+        if (resolved == null) {
+            error(
+                "undo fixture missing: com.android.chrome must be provisioned on the " +
+                    "test device — the seeded rows require a stable foreign component " +
+                    "(launcher-self seeds mutate the DB inside the undo windows)",
+            )
+        }
     }
 
     private fun snapshotFavorites(): List<ContentValues> {

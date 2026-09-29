@@ -1,8 +1,25 @@
-# Issue #450 Edit Undo — B5 evidence（ベンチマーク記録）
+# Issue #450 Edit Undo — 実行証跡（AC-1 / AC-9 / B5）
 
 > Status: recorded（2026-09-30。agent実行記録。実機owner確認はowner decision item）
 > Issue: [#450](https://github.com/nunu1733/NunuLauncher/issues/450)（FR-020、D-013）
 > 正本: [editing-burden-benchmark](../engineering/editing-burden-benchmark.md) §4（snackbar方式の時間窓の記録規則）、§6（B5 baseline=削除1/移動8、目標=1操作）、§7（agent実行可能な検証手順）
+
+## 実行結果（本HEAD、1回のtooling実行分）
+
+エミュレータ `nunu_qpr2_api36_1`（API 36、en-US、`com.android.chrome` Provisión済み、本アプリをhome roleに設定）で、evidence tooling `HomeEditUndoEvidenceToolingTest`（CI lane外のon-demand tooling。#376 cold-process evidenceと同一扱い）を実行した。
+
+| flow | 結果 | 成果物（`docs/assessment/450-edit-undo-ac1-screenshots/`） |
+|---|---|---|
+| 移動（ページへ移動） | **pass** — 実snackbarのUndo actionを実tapし、DB levelで元のpage-0セルへ復元を確認 | `direct-move-before.png` / `direct-move-after.png` |
+| 既存フォルダ追加 | **pass** — 安定した2子フォルダfixtureへの実追加 → 実Undo tap → デスクトップ復帰を確認 | `direct-add-to-folder-before.png` / `direct-add-to-folder-after.png` |
+| ホームから外す | **pass** — 実削除 → 実Undo tap → 新idでの再挿入（元配置）を確認 | `direct-remove-before.png` / `direct-remove-after.png` |
+| 編集画面確定（#449経路） | **pass** — 実`confirm()` → 実snackbar tap → 復元（recovery経路）を確認 | `session-confirm-before.png` / `session-confirm-after.png` |
+| 新規フォルダ作成（popup経路） | **findings記録**（下記「見つかった製品課題」）— 1子フォルダがundo窓内でlauncher自身によりiconへflattenされるため、undoの可視操作系列は成立しない | `direct-create-folder-before.png` / `direct-create-folder-undo-t1.png`（「Can’t undo」Toast記録） |
+| AC-9（TalkBack） | **pass** — TalkBack有効（service bound）で実snackbarのlabel/actionがaccessibility treeに現れ、actionはfocusable/clickable | `ac9-talkback-snackbar.png` / `ac9-accessibility-dump.xml` / `ac9-node-record.txt` |
+
+各`before`画像は「実snackbarが表示されている状態（`Edit applied` + `Undo`）」、各`after`画像は「Undo tap 1操作後の状態」である。capture成功はtoolingがassertし、capture失敗はtest失敗になる（握りつぶしなし）。
+
+新規フォルダの逆操作（フォルダ行削除込みの1 transaction復元）の契約自体は、model levelで `DirectEditUndoModelWriterTest`（folder undo 1-transaction oracle、shared-writer lane常設）が担保する。
 
 ## B5の会計記録（§4の追加規則どおり）
 
@@ -10,39 +27,25 @@
 |---|---|
 | 課題 | B5「誤って動かした・外したアイコンを元に戻す」 |
 | baseline（確定値） | 削除1（4秒窓内のUndo tap）/ 移動8（逆drag） |
-| fork実装のB5 | **削除1 / 移動1**（いずれもundo snackbarのUndo tap 1操作） |
+| fork実装のB5 | **削除1 / 移動1**（いずれもundo snackbarのUndo tap 1操作。上表の移動・外すの実操作系列で裏付け） |
 | 目標 | 1操作（メモ§4.1）→ **達成** |
-| snackbar方式の時間窓 | 有り。上流の `Snackbar` と同一機構（`AccessibilityManagerCompat.getRecommendedTimeoutMillis`、基準4000ms。`Snackbar.java:184-188`）。既存実装を変えないためaccessibility設定準拠の実時間 |
+| snackbar方式の時間窓 | 有り。上流の `Snackbar` と同一機構（`AccessibilityManagerCompat.getRecommendedTimeoutMillis`、基準4000ms）。既存実装を変えないためaccessibility設定準拠の実時間 |
 | 対象範囲 | 項目単位の4アクション（#448経路の逆操作）+ 編集画面確定（#449経路の復元）。新規アプリの配置は対象外（メモ§4.1） |
 
-## 裏付け（automated evidence、本PR実行分）
+## 見つかった製品課題（owner triage item — 本PRでは製品を変更しない）
 
-B5の「1操作」は、操作の会計として次のautomated evidenceで裏付けられる（エミュレータ `nunu_qpr2_api36_1` API 36）:
-
-- **項目単位のundo（削除→逆INSERT、移動→逆UPDATE、新規フォルダ→1 transaction）**: `DirectEditUndoModelWriterTest` 9 tests green — 各逆操作が1操作（1回のsnackbar tap → 1回のadmission内書込み）で完了すること、失敗時は零書込みであることを実DBで確認。
-- **編集画面確定のundo（復元経路）**: `EditSurfaceUndoInstrumentationTest` 18 tests green — 実 `confirm()` flowで確定した復元点を、undo snackbar tap 1操作（`HomeEditUndoExecutor.start`）で `Restored`（確定前layoutへ戻る）ことを確認。
-
-**共有lane実行結果**: 18 pass + 1 skip。skipは `productionConfirmFlowWithNewFolderUndoRestoresToThePreApplyState`（新規フォルダの実confirm()経由oracle。recover内部の recapture が test側captureと分岐する環境固有の問題で、plan自体は同一。production module直呼びでは同一planが Applied確認済み。owner-triage itemとして #449表面へ切り分け済み。skipはgreen test数に含めない）。
-
-## AC-1のundo前後の可視記録（エミュレータ操作記録）
-
-AC-1の「undo前後が判別できる記録」は、録画の代わりに「instrumentation oracleの状態遷移assert + エミュレータスクリーンショット」の組で構成した:
-
-- **undo前（編集適用後）の状態**: `productionConfirmFlowUndoExecutorRestoresThenReportsNotRestorableOnRepeat` の revision-equality oracle が「confirm適用後のlayout（item移動先・folder行あり）」を `postApplyCapture` で固定し、`expectedRevision == post-apply capture revision` をassertする。
-- **undo後（復元後）の状態**: 同oracleの zero-write probe が「undo後のlayout（item元位置・folder行なし）」を `adapter.captureCurrent` で固定する。
-- **エミュレータスクリーンショット**（`docs/assessment/450-edit-undo-ac1-screenshots/`）:
-  - `01-home.png` — undo操作が行われるホーム画面の状態。
-  - `undo-before.png` — 編集画面確定で移動したアイテムが移動先（ページ1）に表示されている状態（undo前=編集適用後）。
-  - `undo-after.png` — undo snackbar tap 1操作でアイテムが元のページ0へ戻った状態（undo後=復元後）。
-- 4アクションのundo前後は `DirectEditUndoModelWriterTest`（9 tests）が実DBで「undo前=編集適用後の配置 / undo後=元の配置」を検証する。
+1. **別ページへの移動のsnackbar自己消滅**: `HomeEditExecutor.refreshAfterMove` が `bindItems(..., forceAnimateIcons=true)` で移動後iconを再bindし、`bindInflatedItems` の遅延 `closeOpenViews`（`NEW_APPS_PAGE_MOVE_DELAY`=500ms）が表示直後のundo snackbarを閉じる。移動先が表示中ページの場合は発生しない（本証跡の移動系列はこの経路）。ユーザー影響: 別ページ移動の直後約0.5秒のみsnackbarが見える。修正方針（`forceAnimateIcons=false` への変更等）は#448/#450仕様の再確認を要するため、owner triageへ分離する。
+2. **1子フォルダの自動flatten**: popupの「新しいフォルダ」は1アイテムの1子フォルダを作るが、launcherはundo窓内（約1〜2秒）で1子フォルダをiconへflattenする（DB書込み: 子がフォルダcellへ、フォルダ行削除）。Undo tapは「Can’t undo: the icon has moved since.」でSTALE拒否される（`direct-create-folder-undo-t1.png`）。layoutは既に自己復帰しているため状態は破壊されないが、undoは失敗表示になる。model levelの逆操作契約（フォルダ行削除込み1 transaction）は `DirectEditUndoModelWriterTest` が担保済み。
+3. **削除undoの新id再挿入**: `restoreRemovedItemForDirectEdit` はcaptureした行を**新id**で再挿入する（契約どおり）。行idでundo後を追うcallback/統計はid不変を仮定できない（本証跡のtoolingも配置+起動targetで突合した）。
 
 ## AC-9のaccessibility確認（エミュレータ）
 
-- **TalkBack有効化**: エミュレータ `nunu_qpr2_api36_1` でTalkBack（`com.google.android.marvin.talkback`）を有効化し、`dumpsys accessibility` でbound service（FEEDBACK_SPOKEN）を確認した。
-- **accessibility node tree**: UI Automatorの `android_ui_describe` で launcher workspaceの全アイテムが contentDescription/text付きのaccessibility nodeとして現れることを確認した（Gmail/YouTube/Phone/Messages/Chrome等が読み上げ対象として列挙）。undo snackbarは上流の `Snackbar` の仕組み（文字列リソース由来のlabel/action、TalkBackで読めるTextView）をそのまま再利用するため、同一の読み上げ経路に乗る。
-- **構造的保証**: 新規文字列は `homeedit_undo_*`（en+ja、`HomeEditAcceptanceOraclesTest.all undo strings are defined and non-empty in en and ja` で自動検証済み）。undo失敗の理由はspec 448と同じToast慣行（文字列リソース由来）。`Snackbar` の表示時間は `AccessibilityManagerCompat.getRecommendedTimeoutMillis`（FLAG_CONTENT_TEXT | FLAG_CONTENT_CONTROLS）によるaccessibility設定準拠の実時間（既存実装を変えない）。
+- TalkBack（`com.google.android.marvin.talkback`）をshell設定で有効化し、`dumpsys accessibility` でservice boundを確認した上で、実undo snackbarを表示した。
+- `ac9-node-record.txt`: label node（`app.lawnchair.debug:id/label`、text="Edit applied"、visibleToUser=true）とaction node（`app.lawnchair.debug:id/action`、text="Undo"、visibleToUser=true、clickable=true、focusable=true、ACTION_FOCUS受諾）を記録。
+- `ac9-accessibility-dump.xml`: 表示中のwindow hierarchy全体。
+- 表示時間のaccessibility設定準拠とresource由来文言は自動oracle（`HomeEditAcceptanceOraclesTest`、en+ja）が担保。
 - **実機での読み上げ確認はowner decision item**（下記）。
 
 ## 実機owner確認（owner decision item）
 
-実機Pixel 9aでのB5操作（4アクション+編集画面確定のundo、TalkBack読み上げを含む）は、オーナーの実機確認事項として残す（#448/#449と同じ扱い）。
+実機Pixel 9aでのB5操作（移動/フォルダ追加/新規フォルダ/外す + 編集画面確定のundo、TalkBack読み上げを含む）は、オーナーの実機確認事項として残す（#448/#449と同じ扱い）。上記の製品課題2件は実機確認時の体感にも影響するため、確認項目に含めることを推奨。
