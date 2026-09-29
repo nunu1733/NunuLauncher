@@ -1,12 +1,14 @@
 # High-risk audit: PR #476 複数選択の視覚的編集画面（#449 Phase 2）
 
 > Status: **NO-GO（final-status red。ただし赤は main でも同一に再現する manual-org lane の既存flake 1件のみで、初回NO-GOの「androidTestコンパイル不能 / instrumentation evidenceゼロ」は解消）**。本節は初回監査（head `c74e305ff0`、NO-GO）に対する**追跡監査**である。初回監査の全文は末尾「前回監査」節に保持する。
-> Audit date: 2026-09-28
+> Audit date: 2026-09-29
 
 - Auditor: 独立session（general-purpose subagent）。追跡監査を実施。実装sessionではなく、本PRのdiff作成・Phase 1/2 review・検証実行に関与していない。
 - PR: https://github.com/nunu1733/NunuLauncher/pull/476
-- Head SHA: `0e0ffbd64f`（追跡監査2、rebase後。経緯: c74e305ff0 → e6190ef5bc → bc32e0311d → main `2ac104aa93` へrebase → 0e0ffbd64f）
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36431255830（head `e6190ef5bc`、**failure**。final-status以外の15 job中14 success。`organizer-instrumentation-manual-organization-ui-tests` のみ failure（151 tests中150 pass、失敗は main と同一の既存flake 1件）→ `final-status` failure。**green な `final-status` run は branch に存在しない**）
+- Head SHA: 0e0ffbd64fe9979dd2d44000d80bcb8592cccc86
+- 監査の経緯: c74e305ff0（初回）→ e6190ef5bc（追跡監査1）→ bc32e0311d（文書更新）→ main `2ac104aa93` へrebase → 0e0ffbd64f（追跡監査2、本record）
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36499580878 （pull_request、head `0e0ffbd64fe9979dd2d44000d80bcb8592cccc86`、final-status PASS、15 jobすべてpass。manual-organization-ui laneは #477/#479 のquarantine適用後にgreen）
+- 参照run（歴史的記録、監査対象外）: [36431255830](https://github.com/nunu1733/NunuLauncher/actions/runs/36431255830)（head `e6190ef5bc`、15 job中14 success、manual-org-uiのみ既存flake 1件で `final-status` failure。green runは当時存在しなかった → 追跡監査2のquarantineで解消）
 - High-risk gate run: https://github.com/nunu1733/NunuLauncher/actions/runs/36431255694（failure。理由: (1) audited Head SHA 以後の非docs変更（旧recordが `c74e305ff0` を指していたため）、(2) 参照CI run 36402204992 が失敗、(3) 成功した pull_request run が無い。本recordの更新で (1) は解消する。(2)(3) は成功CIが存在しない以上残る＝正しい挙動）
 - Criteria: [spec 449](../../specs/449-multi-select-surface/spec.md)（accepted）の AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16 / FR-019 / NFR-013 / NFR-014
 - Criteria: [操作面のADR](../../docs/adr/0014-edit-surface.md) の ADR-0014（accepted。操作面の決定 D-014。本PRは案B）
@@ -201,7 +203,7 @@ gh run view --job 108957721730 -R nunu1733/NunuLauncher --log（high-risk gate r
 
 - Auditor: 独立session（general-purpose subagent）。実装sessionではなく、本PRのdiff作成・Phase 1/2 review・検証実行に関与していない。
 - PR: https://github.com/nunu1733/NunuLauncher/pull/476
-- Head SHA: c74e305ff0a76f4a53ed55ee6fdc80d7830da3df
+- 対象head（記録）: `c74e305ff0a76f4a53ed55ee6fdc80d7830da3df`（初回監査時点。現行の監査対象は上部の追跡監査2を参照）
 - CI run（初回当時）: https://github.com/nunu1733/NunuLauncher/actions/runs/36402204992（head `c74e305ff0`、**failure**。`organizer-unit-tests` / `check-style` / `build-debug-apk` / `validate-repo-contract` は success だが、全11 instrumentation lane が `:compileLawnWithQuickstepGithubDebugAndroidTestKotlin` のコンパイルエラーで failure → `final-status` failure）
 - High-risk gate run: https://github.com/nunu1733/NunuLauncher/actions/runs/36402205074（failure。理由は「no docs/assessment/pr-476-<slug>.md audit record」。本record追加後も、上記CIが赤のためgateは成立しない）
 - Criteria: [spec 449](../../specs/449-multi-select-surface/spec.md)（accepted）の AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9, AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16 / FR-019 / NFR-013 / NFR-014
