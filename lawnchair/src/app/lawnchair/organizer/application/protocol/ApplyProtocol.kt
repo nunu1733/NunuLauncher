@@ -70,6 +70,19 @@ class ApplyProtocol(
         }
     }
 
+    /**
+     * Issue #450: the revision of the exact state the post-apply verification
+     * compared the DB against (`writeSet.intendedState`, the materialized
+     * post-state), captured when `Applied` is assembled. The undo record uses
+     * it as `expectedCurrentRevision` without any post-apply re-capture.
+     * Written only while the run mutex/ORGANIZER lease is held (applies are
+     * serialized), keyed by run id; a run-id mismatch reads as null.
+     */
+    fun verifiedPostRevisionOf(runId: RunId): app.lawnchair.organizer.planning.RevisionId? = verifiedPostRevisionByRunId?.takeIf { it.first == runId.value }?.second
+
+    @Volatile
+    private var verifiedPostRevisionByRunId: Pair<String, app.lawnchair.organizer.planning.RevisionId>? = null
+
     private fun applyWithRunMutex(runId: RunId, plan: ValidatedLayoutPlan, ctx: ApplyContext): ApplyResult {
         validatePlan(plan)?.let {
             ctx.terminalApplyStage = ApplyStage.A2
@@ -396,6 +409,10 @@ class ApplyProtocol(
         }
         ctx.terminalApplyStage = ApplyStage.A8
         ctx.terminalPointId = pointId.value
+        // Issue #450: record the revision of the verified post-state — the
+        // exact operand of the exact-DB check above — before returning.
+        verifiedPostRevisionByRunId = runId.value to app.lawnchair.organizer.application.revision
+            .RevisionCalculator.revisionOf(writeSet.intendedState)
         return ApplyResult.Applied(runId, pointId)
     }
 

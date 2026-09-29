@@ -50,6 +50,17 @@ public final class DirectEditContract {
     public static final String FAIL_UNSUPPORTED = "UNSUPPORTED";
     public static final String FAIL_WRITE_FAILED = "WRITE_FAILED";
 
+    /**
+     * Issue #450: typed failure keys for the direct-edit inverse operations
+     * (undo). Spec 450 "Failure and rejection vocabulary"; the UI maps each
+     * key to a localized string, never a raw exception or internal id.
+     */
+    public static final String FAIL_UNDO_STALE = "UNDO_STALE";
+    public static final String FAIL_UNDO_NO_SPACE = "UNDO_NO_SPACE";
+    public static final String FAIL_UNDO_FOLDER_CHANGED = "UNDO_FOLDER_CHANGED";
+    public static final String FAIL_UNDO_ITEM_UNAVAILABLE = "UNDO_ITEM_UNAVAILABLE";
+    public static final String FAIL_UNDO_WRITE_FAILED = "UNDO_WRITE_FAILED";
+
     /** One favorites-row projection. Plain data; no Android types. */
     public static final class Row {
         public final int id;
@@ -120,11 +131,72 @@ public final class DirectEditContract {
     }
 
     /**
+     * Issue #450: full favorites-row projection of the item removed by a
+     * direct-edit remove, captured inside MODEL_WRITER admission immediately
+     * before the DELETE (spec 450: the undo re-INSERT needs the deleted row's
+     * content, which is not reconstructible after deletion). Plain data; no
+     * Android types. The availability identity fields are resolved by the
+     * platform side at capture time so the fork-side planner stays pure.
+     */
+    public static final class UndoRowPayload {
+        public final int itemId;
+        public final int itemType;
+        public final int container;
+        public final int screenId;
+        public final int cellX;
+        public final int cellY;
+        public final int spanX;
+        public final int spanY;
+        public final int rank;
+        public final long userSerial;
+        @Nullable public final String intent;
+        @Nullable public final String title;
+        public final int options;
+        /** The row's organizerLockState value, restored verbatim on re-INSERT. */
+        public final int organizerLockState;
+        /** Flattened component for an application row, null otherwise. */
+        @Nullable public final String componentName;
+        /** Package of a deep-shortcut row, null otherwise. */
+        @Nullable public final String packageName;
+        /** Shortcut id of a deep-shortcut row, null otherwise. */
+        @Nullable public final String shortcutId;
+
+        public UndoRowPayload(int itemId, int itemType, int container, int screenId,
+                int cellX, int cellY, int spanX, int spanY, int rank, long userSerial,
+                @Nullable String intent, @Nullable String title, int options,
+                int organizerLockState, @Nullable String componentName,
+                @Nullable String packageName, @Nullable String shortcutId) {
+            this.itemId = itemId;
+            this.itemType = itemType;
+            this.container = container;
+            this.screenId = screenId;
+            this.cellX = cellX;
+            this.cellY = cellY;
+            this.spanX = spanX;
+            this.spanY = spanY;
+            this.rank = rank;
+            this.userSerial = userSerial;
+            this.intent = intent;
+            this.title = title;
+            this.options = options;
+            this.organizerLockState = organizerLockState;
+            this.componentName = componentName;
+            this.packageName = packageName;
+            this.shortcutId = shortcutId;
+        }
+    }
+
+    /**
      * Stage-2 validator. The implementation (fork-side homeedit adapter)
      * re-runs the pure planning function for the already-validated intent
      * against {@code current} and only allows the write when the result still
      * matches the stage-1 destination. Called on the model thread inside
      * admission, before any model/DB change.
+     *
+     * <p>Issue #450: the undo validators are the same interface. The remove
+     * -undo validator re-verifies the captured launch-target availability
+     * itself (fork-side production verifier, identical determination at stage
+     * 1 and stage 2) — ModelWriter never resolves launchability.
      */
     public interface Validator {
         Decision validate(Snapshot current);
@@ -136,12 +208,19 @@ public final class DirectEditContract {
      * fields plus {@code createdFolderId}/{@code createdFolder} carry the
      * undo evidence required by Issue #450; {@code createdFolder} is the live
      * model row of the folder created by this action, for owner-side UI bind.
+     *
+     * <p>Issue #450 extension: {@code removedRowPayload} carries the
+     * pre-DELETE favorites-row projection for the remove-undo. It is non-null
+     * only when a direct-edit remove succeeded; every other outcome passes
+     * null. This widens the #448 result contract in place (the single
+     * production implementor lives in the fork-side executor).
      */
     public interface ResultCallback {
         void onResult(int itemId, boolean success,
                 @Nullable String failureReason,
                 int oldContainer, int oldScreenId, int oldCellX, int oldCellY,
                 int oldSpanX, int oldSpanY, int oldRank, int createdFolderId,
-                @Nullable FolderInfo createdFolder);
+                @Nullable FolderInfo createdFolder,
+                @Nullable UndoRowPayload removedRowPayload);
     }
 }

@@ -16,6 +16,7 @@ import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryRequest
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RestorableRecoveryEntry
 import app.lawnchair.organizer.application.public.RunId
@@ -60,6 +61,7 @@ import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.PreserveReason
 import app.lawnchair.organizer.planning.RejectionCode
+import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
@@ -132,6 +134,21 @@ internal interface ManualOrganizationApplication {
      * this capture. It never touches the run state machine.
      */
     fun inspectCapture(): CapturedSnapshot?
+
+    /**
+     * Issue #450: apply plus the verified post-apply revision for the undo
+     * record (internal receipt; the public [ApplyResult] contract is
+     * unchanged). The revision is the exact operand of the apply path's
+     * post-write verification — the materialized post-state — and is null for
+     * any non-Applied result.
+     */
+    fun applyWithUndoReceipt(plan: ValidatedLayoutPlan, runId: RunId): Pair<ApplyResult, RevisionId?>
+
+    /**
+     * Issue #450: the undo tap's recovery request (the existing public
+     * recovery mutation entry; no new write path).
+     */
+    fun recover(request: RecoveryRequest): RecoveryResult
 }
 
 internal class ProductionManualOrganizationApplication(
@@ -178,6 +195,10 @@ internal class ProductionManualOrganizationApplication(
         get() = module.readinessGate.stateFlow
 
     override fun inspectCapture(): CapturedSnapshot? = module.inspectCapture()
+
+    override fun applyWithUndoReceipt(plan: ValidatedLayoutPlan, runId: RunId): Pair<ApplyResult, RevisionId?> = module.applyWithUndoReceipt(plan, runId)
+
+    override fun recover(request: RecoveryRequest): RecoveryResult = module.recover(request)
 }
 
 /** Process-local composition holder. Construction itself is read-only. */

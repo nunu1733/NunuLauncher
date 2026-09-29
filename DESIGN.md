@@ -224,6 +224,13 @@ lawnchair/src/app/lawnchair/homeedit/     # Issue #448: per-item edit actions
 │                                         # apply path — ORGANIZER lease, one recovery point,
 │                                         # 1 transaction, correlated reload + verification.
 │                                         # ADR-0014 case B)
+│                                         # Issue #450: edit undo (undo record with a
+│                                         # generation-bound compare-and-consume slot, pure
+│                                         # undo planner + availability verifier, inverse
+│                                         # operations in ModelWriter via DirectEditContract
+│                                         # ADR-0013 contract 5; edit-session undo flows
+│                                         # through the existing organizer recovery path with
+│                                         # the apply receipt's verified post revision)
 ```
 
 package数をこの図に合わせること自体を目的にしない。interfaceを深く保ち、変更のlocalityが高まる分割だけを採用する。platform source側には最小のbridgeを置く。テスト配置は上流のconvention確認後に決める。

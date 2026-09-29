@@ -33,15 +33,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
+import app.lawnchair.LawnchairLauncher
 import app.lawnchair.homeedit.EditSurfaceApplyPlan
 import app.lawnchair.homeedit.EditSurfaceDiagram
 import app.lawnchair.homeedit.EditSurfacePlanBuilder
 import app.lawnchair.homeedit.EditSurfaceProjection
 import app.lawnchair.homeedit.EditSurfaceSession
 import app.lawnchair.homeedit.EditSurfaceSessionPlanner
+import app.lawnchair.homeedit.HomeEditApplyReceipt
 import app.lawnchair.homeedit.HomeEditRejection
 import app.lawnchair.homeedit.HomeEditSnapshot
 import app.lawnchair.homeedit.HomeEditSurfaceAccess
+import app.lawnchair.homeedit.HomeEditUndoEntry
+import app.lawnchair.homeedit.HomeEditUndoRecord
 import app.lawnchair.homeedit.PendingSessionAction
 import app.lawnchair.homeedit.SelectionEligibility
 import app.lawnchair.homeedit.SessionPlanResult
@@ -252,24 +256,37 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 versions.first,
                 versions.second,
             )
-            val result = when (built) {
-                is EditSurfaceApplyPlan.Ready -> access.apply(built.plan, runId)
+            val receipt = when (built) {
+                is EditSurfaceApplyPlan.Ready -> access.applyForUndo(built.plan, runId)
 
                 is EditSurfaceApplyPlan.Empty -> null
 
                 // 確定ゲートが空セッションを阻止済み（防御）
                 is EditSurfaceApplyPlan.Inconsistent -> null
             }
-            runOnUiThread { handleApplyResult(result, built) }
+            runOnUiThread { handleApplyResult(receipt, built) }
         }
     }
 
-    private fun handleApplyResult(result: ApplyResult?, built: EditSurfaceApplyPlan) {
+    private fun handleApplyResult(receipt: HomeEditApplyReceipt?, built: EditSurfaceApplyPlan) {
+        val result = receipt?.result
         applying = false
         busy = false
         when {
             result is ApplyResult.Applied -> {
                 // 1回の適用と1個の復元点が完了。ホームは相関reloadで更新される。
+                // Undo記録（spec 450）: pointId + 適用経路のverified post
+                // revision（receipt正本。post-hoc captureではない）。snackbarは
+                // 閉じたあとのlauncher画面へ出す（launcher不在時は出さない）。
+                val revision = receipt?.verifiedPostRevision
+                if (revision != null) {
+                    val token = HomeEditUndoRecord.record(
+                        HomeEditUndoEntry.EditSession(result.pointId, revision),
+                    )
+                    LawnchairLauncher.instance?.let { launcher ->
+                        HomeEditUndoSnackbar.show(launcher, token)
+                    }
+                }
                 finish()
                 return
             }

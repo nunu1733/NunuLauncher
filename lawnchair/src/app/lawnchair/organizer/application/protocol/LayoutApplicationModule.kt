@@ -156,6 +156,23 @@ internal class LayoutApplicationModule<S>(
     }
 
     /**
+     * Issue #450: the undo receipt — the apply result plus the verified
+     * post-apply revision for the undo record's `expectedCurrentRevision`.
+     * The revision is the exact operand of the apply path's post-write
+     * verification (the materialized post-state), read from the protocol's
+     * run-keyed receipt; no post-apply re-capture. Public apply contract
+     * ([ApplyResult]) is unchanged; null revision for any non-Applied result.
+     */
+    internal fun applyWithUndoReceipt(
+        plan: ValidatedLayoutPlan,
+        runId: RunId,
+    ): Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?> {
+        val result = applyWithRunId(plan, runId)
+        val revision = if (result is ApplyResult.Applied) applyProtocol.verifiedPostRevisionOf(runId) else null
+        return result to revision
+    }
+
+    /**
      * Internal, policy-owned composition for a fresh manual full-organization
      * input. Capture is itself a new manual action, so it is fail-closed until
      * startup reconciliation has reached a terminal state.
