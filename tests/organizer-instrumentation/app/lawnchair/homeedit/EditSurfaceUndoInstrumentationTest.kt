@@ -37,6 +37,7 @@ import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -280,6 +281,104 @@ class EditSurfaceUndoInstrumentationTest {
         waitForModelLoaded()
         val retry = module.recover(RecoveryRequest(pointId, verified))
         assertTrue("expected Restored on retry, got $retry", retry is RecoveryResult.Restored)
+    }
+
+    @Test
+    fun undoAfterRetentionEvictionIsRejectedAsExpiredWithZeroWrite() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val (plan, _) = buildMovePlan()
+        val runId = module.newManualRunId()
+        val (result, verified) = module.applyWithUndoReceipt(plan, runId)
+        val pointId = (result as ApplyResult.Applied).pointId
+        appState.model.forceReload()
+        waitForModelLoaded()
+
+        // Age the recovery point past the retention window via the store's
+        // retention pass (same seam the reconciler uses): the record is
+        // tombstoned as EXPIRED, so the undo must be a typed rejection with
+        // zero writes.
+        val storeField = LayoutApplicationModule::class.java.getDeclaredField("store")
+        storeField.isAccessible = true
+        val store = storeField.get(module) as app.lawnchair.organizer.application.store.RecoveryStore
+        val retention = store.runRetention(
+            java.lang.System.currentTimeMillis() +
+                app.lawnchair.organizer.application.lifecycle.RetentionPolicy.RETENTION_MILLIS + 1,
+        )
+        assertTrue("expected retention to apply, got $retention",
+            retention is app.lawnchair.organizer.application.protocol.RecoveryStorePort.RetentionOutcome.Applied)
+
+        val undo = module.recover(RecoveryRequest(pointId, verified!!))
+        assertTrue(
+            "expected NotRestorable(EXPIRED), got $undo",
+            undo is RecoveryResult.NotRestorable && undo.reason == RecoveryRejection.EXPIRED,
+        )
+        // Zero writes: the applied placement (page 1) is still in effect.
+        val postCapture = adapter.captureCurrent(CaptureId("edit-surface-undo-evicted"))
+        val moved = postCapture.layoutState.items.any { item ->
+            val workspace = item.placement as? app.lawnchair.organizer.application.public.PlacementState.Workspace
+            workspace != null &&
+                (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
+                    ?.pageId?.value?.toIntOrNull() == 1
+        }
+        assertTrue("the applied layout must survive the evicted undo", moved)
+    }
+
+    /**
+     * Issue #450 AC-6 process-death smoke (round 3 finding 3): two separate
+     * `am instrument` invocations, each its own process (same convention as
+     * OrganizerRestoreColdProcessEvidenceTest). Phase `seed` records an undo
+     * entry into the process-local slot and dumps the slot state to a marker
+     * file; after `am force-stop` (the process boundary), phase `verify`
+     * runs in a fresh process where the slot MUST be empty — the record died
+     * with the process and no undo entry survives.
+     *
+     * Evidence tooling, deliberately NOT part of any CI lane class list (same
+     * status as the #376 cold-process evidence). Run:
+     * ```bash
+     * adb shell am instrument -w -e class app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest      *   -e phase seed app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner
+     * adb shell am force-stop app.lawnchair.debug
+     * adb shell am instrument -w -e class app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest      *   -e phase verify app.lawnchair.debug.test/androidx.test.runner.AndroidJUnitRunner
+     * ```
+     */
+    @Test
+    fun processDeathSmoke() {
+        val phase = androidx.test.platform.app.InstrumentationRegistry.getArguments()
+            .getString("phase") ?: "default"
+        when (phase) {
+            "seed" -> {
+                seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+                val (plan, _) = buildMovePlan()
+                val runId = module.newManualRunId()
+                val (result, verified) = module.applyWithUndoReceipt(plan, runId)
+                val pointId = (result as ApplyResult.Applied).pointId
+                appState.model.forceReload()
+                waitForModelLoaded()
+                // Record the edit-session entry into the process-local slot.
+                HomeEditUndoRecord.record(HomeEditUndoEntry.EditSession(pointId, verified!!))
+                val slotBefore = HomeEditUndoRecord.inspectForTest()
+                assertTrue("seed must leave an undo entry in the slot", slotBefore != null)
+                // Marker: the seeded state, for the verify phase to compare.
+                java.io.File(context.filesDir, "issue450_process_death.marker").writeText(
+                    "seeded:${slotBefore != null}",
+                )
+            }
+
+            "verify" -> {
+                // Fresh process after `am force-stop`: the slot must be empty.
+                val slotAfter = HomeEditUndoRecord.inspectForTest()
+                assertNull("the undo record must not survive a process death", slotAfter)
+                val marker = java.io.File(context.filesDir, "issue450_process_death.marker")
+                assertTrue("marker from the seed phase must exist", marker.exists())
+                assertTrue(marker.readText().startsWith("seeded:true"))
+                marker.delete()
+            }
+
+            else -> {
+                // Default single-invocation run: not part of the smoke; a
+                // no-op so the class list stays harmless.
+                org.junit.Assume.assumeTrue("process-death smoke runs via -e phase seed|verify", false)
+            }
+        }
     }
 
     // --- helpers ---

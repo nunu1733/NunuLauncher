@@ -22,14 +22,19 @@ interface HomeEditUndoAvailabilitySource {
     fun availabilityOf(payload: DirectEditContract.UndoRowPayload): HomeEditUndoAvailability
 }
 
-class ProductionHomeEditUndoAvailabilitySource(
+open class ProductionHomeEditUndoAvailabilitySource(
     private val context: Context,
 ) : HomeEditUndoAvailabilitySource {
 
+    /**
+     * The platform read seam. Open so a test can inject a throwing read and
+     * pin the catch-all → UNKNOWN (fail-closed) mapping deterministically.
+     */
+    protected open fun launcherApps(): LauncherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+
     override fun availabilityOf(payload: DirectEditContract.UndoRowPayload): HomeEditUndoAvailability {
         return try {
-            val launcherApps =
-                context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+            val launcherApps = launcherApps()
             // The recorded profile identity is part of the availability
             // contract (component × profile): an unresolvable serial (removed
             // work profile, unknown serial) is NOT the current user — it is a

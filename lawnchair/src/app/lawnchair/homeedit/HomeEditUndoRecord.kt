@@ -103,6 +103,13 @@ object HomeEditUndoRecord {
             if (slot.compareAndSet(current, null)) return current.entry
         }
     }
+
+    /**
+     * Test-only read of the current slot (no consumption). Exposes whether an
+     * undo entry exists — used by the process-death smoke to observe that the
+     * process-local record died with the process.
+     */
+    fun inspectForTest(): HomeEditUndoEntry? = slot.get()?.entry
 }
 
 /**

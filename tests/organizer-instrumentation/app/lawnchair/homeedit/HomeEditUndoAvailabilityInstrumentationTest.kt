@@ -140,6 +140,28 @@ class HomeEditUndoAvailabilityInstrumentationTest {
     }
 
     @Test
+    fun aVerifierExceptionFailsClosedAsUnknown() {
+        // Deterministic exception injection at the production source seam
+        // (round 3 finding 4): the same identity as the installed app, but the
+        // platform read throws — the catch-all branch must map the failure to
+        // UNKNOWN (fail-closed), never AVAILABLE.
+        val componentName = android.content.ComponentName(
+            context.packageName,
+            app.lawnchair.LawnchairLauncher::class.java.name,
+        ).flattenToString()
+        val throwingSource = object : ProductionHomeEditUndoAvailabilitySource(context) {
+            override fun launcherApps(): android.content.pm.LauncherApps =
+                throw java.lang.IllegalStateException("injected binder failure")
+        }
+        assertEquals(
+            HomeEditUndoAvailability.UNKNOWN,
+            throwingSource.availabilityOf(
+                payload(Favorites.ITEM_TYPE_APPLICATION, componentName = componentName),
+            ),
+        )
+    }
+
+    @Test
     fun aRowWithoutAResolvableLaunchTargetFailsClosed() {
         // A captured row with neither component nor shortcut identity has no
         // undoable precondition: typed rejection, never a resurrect.

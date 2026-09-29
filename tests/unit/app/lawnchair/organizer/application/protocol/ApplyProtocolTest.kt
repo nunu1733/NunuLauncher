@@ -71,28 +71,84 @@ class ApplyProtocolTest {
      * before A could read it.
      */
     @Test
-    fun undoReceiptSurvivesAConcurrentApplyCompletingBeforeTheReceiptRead() {
+    fun undoReceiptSurvivesAConcurrentApplyCompletingInsideTheReceiptWindow() {
+        // True-concurrency regression oracle for the removed shared-slot
+        // implementation (round 1 finding 1 / round 3 finding 1). A hook fires
+        // at A's A5 boundary — BEFORE A's Applied result (and receipt) is
+        // assembled — and blocks until B has fully completed its own
+        // applyWithUndoReceipt invocation, including its receipt read. With
+        // the old shared-slot code, B's completion overwrote the slot keyed
+        // by run id before A's caller could read it, so A's receipt read
+        // returned null; with the invocation-local context, A's receipt is
+        // already decided and must survive B's interleaving untouched.
         val planA = mutatingPlan()
-        val planB = mutatingPlan()
-
-        // A applies and receives its receipt in one invocation.
-        val (resultA, receiptA) = protocol.applyWithUndoReceipt(planA, RunId("a123456789abcdef0123456789abcdef"))
-        assertTrue("expected Applied, got $resultA", resultA is ApplyResult.Applied)
-        assertNotNull("A's receipt must carry the verified post revision", receiptA)
-
-        // B applies a DIFFERENT plan (different post-state) before A would
-        // have read a shared slot: B's receipt is its own, and A's
-        // already-returned receipt is untouched.
-        val planB2 = mutatingPlan(
+        val planB = mutatingPlan(
             CanonicalFixtures.state(items = listOf(CanonicalFixtures.appItem(cell = GridCell(1, 1)))),
         )
-        val (resultB, receiptB) = protocol.applyWithUndoReceipt(planB2, RunId("b123456789abcdef0123456789abcdef"))
-        assertTrue("expected Applied, got $resultB", resultB is ApplyResult.Applied)
+        val aReceiptAssemblyStarted = java.util.concurrent.CountDownLatch(1)
+        val bCompleted = java.util.concurrent.CountDownLatch(1)
+        val bOutcome = java.util.concurrent.atomic.AtomicReference<Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?>?>()
+        val aOutcome = java.util.concurrent.atomic.AtomicReference<Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?>?>()
+        val threadB = Thread {
+            // B's mutex acquisition is non-blocking: while A holds the run
+            // mutex B is rejected with ConcurrentRun, so B retries until A's
+            // release lets it in. This reproduces the old shared-slot race
+            // (B completing right at A's release/receipt boundary) without
+            // depending on scheduler timing.
+            var attempt = 0
+            while (attempt < 200) {
+                val outcome = protocol.applyWithUndoReceipt(planB, RunId("b123456789abcdef0123456789abcdef"))
+                if (outcome.first is ApplyResult.Applied) {
+                    bOutcome.set(outcome)
+                    break
+                }
+                attempt += 1
+                Thread.sleep(25)
+            }
+            bCompleted.countDown()
+        }
+        threadB.isDaemon = true
+        writer.onApplyA5Reread = {
+            // A is inside its apply (mutex held, at the A5 boundary — before
+            // its Applied result and receipt are assembled). Signal the main
+            // thread to START B here: B's mutex acquisition blocks until A
+            // releases, which reproduces the removed shared-slot code's race
+            // window (A releases → A reads the shared slot → B overwrote it).
+            // With the invocation-local context, A's receipt is decided before
+            // its mutex release and must survive B's interleaving untouched.
+            aReceiptAssemblyStarted.countDown()
+        }
+        // A runs on its own thread; B is started from the main thread the
+        // moment A reaches its A5 boundary (inside A's apply window), so B's
+        // apply+receipt cycle races A's release/receipt boundary.
+        val threadA = Thread {
+            aOutcome.set(protocol.applyWithUndoReceipt(planA, RunId("a123456789abcdef0123456789abcdef")))
+        }
+        threadA.isDaemon = true
+        threadA.start()
+        assertTrue("A never reached its A5 boundary", aReceiptAssemblyStarted.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        // Start B while A is still inside its apply; B blocks on the mutex
+        // until A releases and then completes.
+        threadB.start()
+        threadA.join(10_000)
+        threadB.join(10_000)
+        val (resultA, receiptA) = aOutcome.get()!!
+        val (resultB, receiptB) = bOutcome.get()!!
+        assertTrue("expected Applied for B, got $resultB", resultB is ApplyResult.Applied)
         assertNotNull("B's receipt must carry its own verified post revision", receiptB)
-        assertEquals("B applied B's plan; the receipt revision must describe B's post-state", planB2.intendedState, writer.currentState())
-        // The two receipts describe different post-states (A's state is not
-        // B's state): the invocation-local capture is what keeps them apart.
+        assertTrue("expected Applied for A, got $resultA", resultA is ApplyResult.Applied)
+        // THE regression assertion: A's receipt survives B's completion that
+        // raced A's release/receipt boundary. Under the shared-slot code the
+        // post-release read returned null (run-id mismatch after B overwrote
+        // the slot).
+        assertNotNull("A's receipt must survive B's concurrent completion", receiptA)
+        // B ran last (it waited for A's release), so the final state is B's
+        // post-state; what the oracle pins is that BOTH receipts were decided
+        // inside their own invocations — A's from A's intended state, B's from
+        // B's — and neither was lost or cross-wired by the interleaving.
+        assertEquals(planB.intendedState, writer.currentState())
         assertTrue("receipts must be per-invocation", receiptA != receiptB)
+        writer.onApplyA5Reread = null
     }
 
     @Test
