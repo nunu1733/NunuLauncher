@@ -3,7 +3,7 @@
   "status": "accepted",
   "captured_on": "2026-09-29",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "495060972eee706b97092358db6344ac50865d5f",
+  "main_commit": "f81c31605a49252cf1f81d7d12f92317ea44b9eb",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",

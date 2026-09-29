@@ -73,10 +73,19 @@ internal class LayoutApplicationModule<S>(
     // wiring; a plan that carries candidates fails closed when either is null.
     private val candidateApplicationResolver: CandidateApplicationResolver? = null,
     private val candidateAvailability: CandidateAvailabilityPort? = null,
+    // Issue #450: test-only injection of the run mutex (a controllable double
+    // for the receipt race oracle). Production composition never passes it —
+    // the default builds the real RunMutex.
+    runMutexOverride: RunMutexPort? = null,
 ) where S : RecoveryStorePort, S : RecoveryStoreReconciliationPort {
 
     private val mutex: RunMutex = RunMutex()
-    private val ordinaryMutex: RunMutexPort = mutex
+
+    // The ordinary operations (apply/recover/preview) serialize through the
+    // injected port when a test provides one; the reconciliation issuer keeps
+    // binding to the real mutex (reconciliation is not part of the receipt
+    // contract under test).
+    private val ordinaryMutex: RunMutexPort = runMutexOverride ?: mutex
     private val reconciliationStore: RecoveryStoreReconciliationPort = store
     private val reconciliationIssuer: RecoveryStoreReconciliationIssuer =
         requireNotNull(reconciliationStore.bindReconciliationIssuer(mutex)) {

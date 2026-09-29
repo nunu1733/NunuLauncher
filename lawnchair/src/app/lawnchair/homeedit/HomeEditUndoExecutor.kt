@@ -34,6 +34,13 @@ class HomeEditUndoExecutor(
      * internals.
      */
     private val failureDisplayObserver: ((Int) -> Unit)? = null,
+    /**
+     * Test-only observer of the raw recovery result (round 6 finding 2): lets
+     * the instrumentation oracle pin the INTERNAL reason (e.g.
+     * `NotRestorable(EXPIRED)`) on the production seam, not just the display
+     * resource. Production callers never pass it.
+     */
+    private val recoveryResultObserver: ((app.lawnchair.organizer.application.public.RecoveryResult) -> Unit)? = null,
 ) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -134,6 +141,7 @@ class HomeEditUndoExecutor(
                     entry.expectedRevision,
                 ),
             )
+        recoveryResultObserver?.invoke(result)
         mainHandler.post {
             homeEditUndoRecoveryText(result)?.let { res ->
                 failureDisplayObserver?.invoke(res)

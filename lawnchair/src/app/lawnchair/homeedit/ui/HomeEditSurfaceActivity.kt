@@ -223,6 +223,22 @@ class HomeEditSurfaceActivity : ComponentActivity() {
 
     private fun moveToPage(screenId: Int) = runAction(PendingSessionAction.MoveToPage(screenId))
 
+    // Issue #450: instrumentation hooks (same module, internal). They expose
+    // the same production callbacks the UI wiring uses; no behavior change.
+    internal fun firstSelectableItemIdForTest(): Int? = diagram?.items?.firstOrNull {
+        it.eligibility == SelectionEligibility.SELECTABLE &&
+            it.isOnWorkspace && it.screenId == 0
+    }?.id
+
+    internal fun toggleSelectionForTest(itemId: Int) = toggleSelection(itemId)
+
+    internal fun createFolderForTest() = createFolder()
+
+    /** Test-only: the current typed reason (null when none). */
+    internal fun reasonResForTest(): Int? = reasonRes
+
+    internal fun moveToPageForTest(screenId: Int) = moveToPage(screenId)
+
     private fun addToFolder(folderId: Int) = runAction(PendingSessionAction.AddToFolder(folderId))
 
     private fun createFolder() = runAction(PendingSessionAction.CreateFolder)
@@ -235,7 +251,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         reasonRes = null
     }
 
-    private fun confirm() {
+    // Internal so the instrumentation oracle can drive the real #449 confirm
+    // flow (capture → session → plan build → applyForUndo → handleApplyResult)
+    // end to end; production callers are within this class only.
+    internal fun confirm() {
         val layoutState = captureState ?: return
         val revision = captureRevision ?: return
         if (applying || session.isEmpty) return
