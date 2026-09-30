@@ -2,8 +2,8 @@
 
 > Issue: #451
 > Spec: [spec.md](./spec.md)
-> Status: draft
-> Risk tier: H（spec冒頭の提案判定に同じ。最終判定は実装PRでownerが確定する）
+> Status: accepted（2026-09-30。spec acceptedに基づく）
+> Risk tier: H（2026-09-30にowner確定。`risk: layout-data` labelを付与し、高リスクPRの独立エビデンス契約を適用する。spec冒頭のRisk tier引用ブロック参照）
 > Analysis baseline: `origin/main` `092c44b46e7c6074f0623b146cc975d9ec862e53`（2026-09-30のRe-entryで再基準化。初版のcode調査は `c5a7840b880ed4c436b67170930ca87d4ef7f148`（2026-09-28）基準。行番号は再基準化時点のもの）
 
 ## Current evidence
@@ -132,7 +132,7 @@
 - [ ] 5. bundle version上げ（AC-6）とrules test
 - [ ] 6. ui文言（en/ja）とpreview test（AC-7 unit分）
 - [ ] 7. docs更新（spec 12注記、benchmark目標表、requirements status）とspotless / assemble / `git diff --check`
-- [ ] 8. 実機確認（AC-7のスクリーンショット。tier判定に従い `risk: layout-data` label運用と独立auditが必要なら `docs/assessment/pr-<n>-...md` を作成）
+- [ ] 8. 実機確認（AC-7のスクリーンショット）。tier H確定（2026-09-30 owner決定）のため `risk: layout-data` labelを付与し、高リスクPRの独立エビデンス契約が必須: CI merge gate（`final-status`）の成功に加え、独立audit記録 `docs/assessment/pr-<n>-<slug>.md`（対象head SHA、参照したspecの受入条件、実行したtest表面、成功したCI runへのlink）を作成する
 
 各stepで `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.planning.*'` を実行する。
 
@@ -140,7 +140,7 @@
 
 - 依存: なし（メモ§5「#451、#453、#444は他に依存しない」）。#441（B7 baseline）はCLOSED済み。
 - 被依存: 重複の削除提案（Next）が本Issueの規則を前提にする。
-- blocker: spec Open questionsの2件のowner decision（① 代表選択の `ItemId` canonical順採用（メモ§4.5「視覚順」からの逸脱）、② 重複判定の全captured item拡張の採否（N-1の契約拡張））を実装開始前に解消することが望ましい（規則は自己完結しており、実装を技術的に blockingしない）。
+- blocker: 解消済み（2026-09-30にowner承認済み）。spec Open questionsの2件のowner decision（① 代表選択の `ItemId` canonical順採用（メモ§4.5「視覚順」からの逸脱）、② 重複判定の全captured item拡張（N-1の契約拡張））は承認済みで、tier Hも同日に確定した（`risk: layout-data` label付与）。実装開始のblockerはなし。
 
 ## Risk
 
@@ -154,4 +154,4 @@
 - 実機での警告行の見え方・読み上げの実際の体験は未検証（AC-7の実機確認で行う）。
 - 文言の最終語（ja/en）は実装PRで確定する。
 - property testは重複注入wrapper方式（Verification節の (b)。既存generator・pinned corpusは不変）で実装する。実装は未着手のため、wrapperの実形状は実装時に確認する。
-- tier判定と `risk: layout-data` label運用の最終判断はownerが実装PRで行う。
+- tier判定は2026-09-30にowner確定済み（tier H、`risk: layout-data` label付与）。実装PRでの追加のtier判断は不要（label運用と独立auditはExecution checklist step 8の確定文言に従う）。

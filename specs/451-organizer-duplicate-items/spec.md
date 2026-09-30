@@ -1,6 +1,6 @@
 ---
 issue: "#451"
-status: draft
+status: accepted
 requirements:
   - FR-021
   - NFR-014
@@ -9,7 +9,7 @@ updated: 2026-09-30
 
 # 全体整理が同じ起動先の重複アイテムを同じ新規フォルダに入れず、重複をpreviewで示す
 
-> Risk tier: H（本spec draftの提案判定。最終判定は実装時に [docs/project/github-workflow.md](../../docs/project/github-workflow.md) Risk tiers の基準で確定し、実装PR本文へも記載する）。理由: planner（純粋計画module）の出力契約を変えるspec 12 amendmentであり、適用経路・recovery契約は変えないが計画結果（適用pathが永続化するlayout data）が変わるため、spec 12不変条件（P-09/P-10）の再証明とbyte-equivalence oracleの再固定を伴う。高リスクpath一覧は `organizer/application/**` を含み `organizer/planning/**` を明示的に除外しているため、path一致による `high-risk-gate` の自動発火は想定しない。tier Hとして扱う場合は `risk: layout-data` labelの明示的付与で独立エビデンス契約を適用する。
+> Risk tier: H（2026-09-30にownerが確定。実装PR本文へも記載する）。理由: planner（純粋計画module）の出力契約を変えるspec 12 amendmentであり、適用経路・recovery契約は変えないが計画結果（適用pathが永続化するlayout data）が変わるため、spec 12不変条件（P-09/P-10）の再証明とbyte-equivalence oracleの再固定を伴う。高リスクpath一覧は `organizer/application/**` を含み `organizer/planning/**` を明示的に除外しているため、path一致による `high-risk-gate` の自動発火は想定しない。そのため、owner決定として `risk: layout-data` labelを明示的に付与し、高リスクPRの独立エビデンス契約（merge gate `final-status` の成功と `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit記録）を適用する。
 > Epic: #439（再焦点化）。出典: 再焦点化方針メモ（2026-09-24承認、Revision 5。以下「メモ§x」）§4.5（R-7 Now「#451 重複」の確定事項）、§4.9（FR-021）。
 > ベンチマークの正本: [editing-burden-benchmark](../../docs/engineering/editing-burden-benchmark.md)（#441で確定・implemented。baseline B7 = 重み付き操作コスト9、操作数5。B7の目標は本specが確定する）。
 > 本specは [spec 12](../12-deterministic-full-layout-planner-v1/spec.md)（implemented）のamendmentであり、P-03/P-04/P-07/P-08/P-10/P-12への変更を本Issueが所有する。spec 12本文の該当節の改正は実装PRで行う。
@@ -219,11 +219,11 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 | AC-8 | docs差分のreview（`editing-burden-benchmark.md` 目標表） |
 | AC-9 | PR本文への実行結果記録 |
 
-## Open questions
+## Open questions（解消済み）
 
-- **代表選択の `ItemId` canonical順採用（メモ§4.5「視覚順」からの逸脱）**: N-5に記載のとおり、視覚順はmaterialize後に安定せずP-10と両立しないため、本draftは `ItemId` canonical順を提案する。accept時にownerがこの逸脱を承認するか、P-10を維持した別の安定順（例: 視覚順をcapture時点で確定させる追加情報の導入）を指示する必要がある。実装開始前に解消することが望ましいが、本draftの規則は自己完結している（どちらの結論でもN-1〜N-4の他の規則は不変）。
-- **重複判定の全captured item拡張のowner確認（代表が非movableでもmovable側を抑止）**: N-1のとおり、重複判定をpreservation状態・既存folder membershipを問わず全captured itemへ広げているため、代表がlocked・unavailable・既存folder member等の非movable itemになった場合、movable側の同一起動先itemも `DUPLICATE_LAUNCH_TARGET` で保持され、整理されない。これはIssue本文のScope文言からの意図的な契約拡張（保守的設計。重複がどこにあっても新規フォルダへ重複流入しない保証を優先）であり、accept時にownerが採否を確認する。承認されない場合は、eligible/movable側から代表を選ぶ安定規則の再設計が必要になる。
-- （参考・blockingではない）tier判定の最終確認: Risk tier引用ブロック参照。実装PRでの `risk: layout-data` label の要否をownerが確定する。
+- **代表選択の `ItemId` canonical順採用（メモ§4.5「視覚順」からの逸脱）**: 解消済み — 2026-09-30にowner承認済み。N-5のとおり視覚順はmaterialize後に安定せずP-10と両立しないため、代表は `ItemId` canonical順で確定する。P-10を維持した別の安定順（例: 視覚順をcapture時点で確定させる追加情報の導入）の導入は不要。
+- **重複判定の全captured item拡張（N-1の契約拡張。代表が非movableでもmovable側を抑止）**: 解消済み — 2026-09-30にowner承認済み。重複判定はpreservation状態・既存folder membershipを問わず全captured itemへ広げる保守的設計（重複がどこにあっても新規フォルダへ重複流入しない保証の優先）を確定とする。eligible/movable側から代表を選ぶ安定規則の再設計は不要。
+- tier判定の最終確認: 解消済み — 2026-09-30にowner確定。Risk tier Hを確定値とし、`risk: layout-data` labelの明示的付与で高リスクPRの独立エビデンス契約を適用する（冒頭のRisk tier引用ブロック参照）。
 
 ## Change history
 
@@ -231,3 +231,4 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 - 2026-09-30: Re-entry — `origin/main` `092c44b46e7c6074f0623b146cc975d9ec862e53`（#449/#450着地後）へ再基準化。planning module・benchmark B7 baseline（9）・FR-021 status（proposed）を再確認し、本文の陳腐化なし（文書変更なし。確認範囲と詳細は [plan.md](./plan.md) の「Re-entry記録」参照）。
 - 2026-09-30: ChatGPT review対応（P1×2、P2×1）— Behavior scenarioの代表を `ItemId` canonical順（UTF-8 byte順で "10" < "2"）へ整合し、N-1に重複判定の対象（全captured item）と「Issue本文からの意図的な契約拡張」を明記、Open questionsへ契約拡張のowner確認を追加。plan側のproperty test方式の確定は [plan.md](./plan.md) のRe-entry記録参照。
 - 2026-09-30: ChatGPT re-review対応（残P2×2）— Test oracleのAC-2行を「重複注入wrapper」に一本化（生成器拡張は [plan.md](./plan.md) のVerificationで不採用確定）。plan側はDependency / blockerをOpen questionsの2件のowner decisionへ更新。
+- 2026-09-30: accepted（owner decision 2件の承認を含む。tier H確定、`risk: layout-data` label適用）。

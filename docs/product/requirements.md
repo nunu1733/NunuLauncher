@@ -31,7 +31,7 @@ Status語彙: `implemented` / `accepted/evidence pending` / `proposed` / `deferr
 | FR-018 | Now-2 | implemented（2026-09-28。[#448 spec](https://github.com/nunu1733/NunuLauncher/issues/448)受入、[PR #472](https://github.com/nunu1733/NunuLauncher/pull/472) merge。ADR-0013経路） | ユーザーが長押しで選んだアイテムに、編集アクション（ページへ移動、フォルダへ入れる、ホームから外す）を1操作で適用できる（[#448](https://github.com/nunu1733/NunuLauncher/issues/448)、D-013） |
 | FR-019 | Now-2 | implemented（2026-09-29。[#449 spec](https://github.com/nunu1733/NunuLauncher/issues/449)受入、[PR #476](https://github.com/nunu1733/NunuLauncher/pull/476) merge。organizer安全経路で一括適用。ADR-0014案B。実機でAPPLY_VERIFIED確認） | 複数のアイテムを選び、まとめてページへ移動する・既存のフォルダへ入れる・選択から新しいフォルダを作る・ホームから外すことができる視覚的編集画面を提供する（[#449](https://github.com/nunu1733/NunuLauncher/issues/449)、D-014） |
 | FR-020 | Now-2 | implemented（2026-09-29。[#450 spec](https://github.com/nunu1733/NunuLauncher/issues/450)受入、Phase 2実装merge。ADR-0013経路の逆操作+organizer復元経路） | 直前の編集（項目単位のアクション、編集画面の確定）を1操作で取り消せる（[#450](https://github.com/nunu1733/NunuLauncher/issues/450)、D-013） |
-| FR-021 | Now-3 | proposed（2026-09-24） | 全体整理は、同じ起動先のアイテムを同じ新規フォルダに入れず、重複をpreviewで示す（[#451](https://github.com/nunu1733/NunuLauncher/issues/451)） |
+| FR-021 | Now-3 | accepted（2026-09-30。[spec 451](../../specs/451-organizer-duplicate-items/spec.md)受入に伴う。旧: proposed（2026-09-24）） | 全体整理は、同じ起動先のアイテムを同じ新規フォルダに入れず、重複をpreviewで示す（[#451](https://github.com/nunu1733/NunuLauncher/issues/451)） |
 | FR-022 | Now-3 | proposed（2026-09-24） | ホーム画面から整理を開始でき、AI相談が無効の間は方法選択を経ない（[#452](https://github.com/nunu1733/NunuLauncher/issues/452)、[#443](https://github.com/nunu1733/NunuLauncher/issues/443)） |
 | FR-023 | Now-3 | proposed（2026-09-24） | 整理方針の選択肢は、区別できる意図ごとに最大3つである（[#453](https://github.com/nunu1733/NunuLauncher/issues/453)） |
 
