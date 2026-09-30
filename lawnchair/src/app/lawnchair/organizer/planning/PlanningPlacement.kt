@@ -31,6 +31,12 @@ internal object PlanningPlacement {
         // modes (full organization and the scope-composed full-run phase);
         // the incremental candidate tail keeps widgets fixed.
         val relocateWidgets = !isIncremental && strategy.widgetPolicy != null
+        // Issue #451 (spec 451 N-1): pure duplicate detection over the captured
+        // items, computed once per run so every preservation call site — the
+        // occupancy marking, both full-run movable streams, the incremental
+        // run, and the full-run executors via [FullRunContext] — observes the
+        // same surplus set.
+        val duplicateSurplus = duplicateSurplusIds(input.snapshot.items)
         val allocator = Allocator(
             input.snapshot.device,
             capturedPagesSorted,
@@ -44,7 +50,13 @@ internal object PlanningPlacement {
         }
 
         for (item in input.snapshot.items) {
-            val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions, relocateWidgets)
+            val reason = determinePreservation(
+                item,
+                rolesById[item.id],
+                input.snapshot.reservedWorkspaceRegions,
+                relocateWidgets,
+                duplicateSurplus,
+            )
             if (reason != null || isIncremental) {
                 val ws = item.placement as? CapturedPlacement.Workspace
                 if (ws != null) {
@@ -67,6 +79,17 @@ internal object PlanningPlacement {
                     listOf(DiagnosticParam.ItemParam(item.id)),
                 )
             }
+            // Issue #451 (spec 451 N-4): one warning per duplicate surplus
+            // item, regardless of run mode or strategy folder capability.
+            // Representative items are never warned. The canonicalization
+            // sorts by code ordinal first, so appending the new code last
+            // keeps every pre-#451 warning order unchanged.
+            if (item.id in duplicateSurplus) {
+                preservationWarnings += Warning(
+                    WarningCode.DUPLICATE_LAUNCH_TARGET,
+                    listOf(DiagnosticParam.ItemParam(item.id)),
+                )
+            }
         }
 
         return when (input.runMode) {
@@ -78,8 +101,9 @@ internal object PlanningPlacement {
                     rolesById = rolesById,
                     itemById = input.snapshot.items.associateBy { it.id },
                     movableItems = input.snapshot.items.filter {
-                        determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions, relocateWidgets) == null
+                        determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions, relocateWidgets, duplicateSurplus) == null
                     },
+                    duplicateSurplus = duplicateSurplus,
                     allocator = allocator,
                     pageOrderMap = pageOrderMap,
                     preservationWarnings = preservationWarnings,
@@ -96,9 +120,10 @@ internal object PlanningPlacement {
                 allocator,
                 preservationWarnings,
                 relocateWidgets,
+                duplicateSurplus,
             )
 
-            RunMode.IncrementalPlacement -> placeIncrementalRun(input, classification, pageOrderMap, allocator, preservationWarnings)
+            RunMode.IncrementalPlacement -> placeIncrementalRun(input, classification, pageOrderMap, allocator, preservationWarnings, duplicateSurplus)
         }
     }
 
@@ -127,6 +152,7 @@ internal object PlanningPlacement {
         allocator: Allocator,
         preservationWarnings: List<Warning>,
         relocateWidgets: Boolean,
+        duplicateSurplus: Set<ItemId>,
     ): PlacementOutput {
         val fullOutput = strategy.placeFullRun(
             FullRunContext(
@@ -136,8 +162,9 @@ internal object PlanningPlacement {
                 rolesById = rolesById,
                 itemById = input.snapshot.items.associateBy { it.id },
                 movableItems = input.snapshot.items.filter {
-                    determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions, relocateWidgets) == null
+                    determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions, relocateWidgets, duplicateSurplus) == null
                 },
+                duplicateSurplus = duplicateSurplus,
                 allocator = allocator,
                 pageOrderMap = pageOrderMap,
                 preservationWarnings = preservationWarnings,
@@ -172,12 +199,17 @@ internal object PlanningPlacement {
         pageOrderMap: Map<PageId, PageOrder>,
         allocator: Allocator,
         preservationWarnings: List<Warning>,
+        duplicateSurplus: Set<ItemId>,
     ): PlacementOutput {
         val items = input.snapshot.items
         val rolesById = input.targets.existing.associate { it.item to it.role }
 
         val placements = items.map { item ->
-            val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions)
+            // Issue #451 (spec 451 N-3/P-08): the incremental run preserves
+            // every captured item at its captured position as before; the
+            // duplicate surplus's reason vocabulary alone changes from
+            // ALREADY_CANONICAL to DUPLICATE_LAUNCH_TARGET.
+            val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions, duplicateSurplus = duplicateSurplus)
             val effectiveReason = reason ?: PreserveReason.ALREADY_CANONICAL
             PlannedPlacement(
                 item = item.id,
@@ -407,6 +439,7 @@ internal fun determinePreservation(
     role: ExistingRole?,
     reservations: List<ReservedWorkspaceRegion>,
     relocateWidgets: Boolean = false,
+    duplicateSurplus: Set<ItemId> = emptySet(),
 ): PreserveReason? = when {
     // Issue #185 / ADR-0010: an item whose captured placement overlaps an
     // authoritative reservation is kept exactly where it is, ahead of every
@@ -441,6 +474,12 @@ internal fun determinePreservation(
     role == ExistingRole.Preserved -> PreserveReason.NON_TARGET
 
     item.placement is CapturedPlacement.FolderMember -> PreserveReason.STRUCTURAL
+
+    // Issue #451 (spec 451 N-2/N-3): a duplicate surplus item is kept at its
+    // captured position instead of joining a new folder. Lowest-priority
+    // preservation predicate (spec 451 N-3): locked, docked, unavailable,
+    // reserved-region, and structural duplicates keep their stronger reason.
+    item.id in duplicateSurplus -> PreserveReason.DUPLICATE_LAUNCH_TARGET
 
     else -> null
 }
