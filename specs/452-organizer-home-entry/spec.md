@@ -1,6 +1,6 @@
 ---
 issue: "#452"
-status: accepted
+status: implemented
 tier: M
 requirements:
   - FR-022
@@ -180,3 +180,4 @@ Then 通常のtapと同じhandlerが動作し、run面が開く
 - 2026-09-30: Re-entry revision — baseline `c5a7840b88` から `56624406fd` へのrebaseに伴う正本再照合。①#449実装（PR #476）の反映: `edit_surface` が `DEFAULT_ORDER` の `edit_mode` 直後に存在する現状を確認し、編集系グループ内の最終並びを「`edit_mode, organize_home, edit_surface`」へ確定（Issue Scope 3の取り決めどおり。未解決事項3を解消）。②`restoreMissingPopupOptions` は #449 でもprependのままであることを確認し、位置挿入への変更と3世代（#449前・#449後・未保存）の補完結果をScenario/AC-4へ固定。③#482（External reference scan導入）の反映: Prior art欄を追加（AOSP Launcher3 `OptionsPopupView`・Lawnchair upstream `LauncherOptionsPopup.kt`）。④patch surface baseline状況の更新（`LauncherOptionsPopup.kt` は #449 により `homeedit-edit-surface` groupへcounted済み）をAC-8へ反映。⑤`LauncherPopupPreference` のロック無効化分岐に `edit_surface` が無い現状を #449 残課題として観察記録。
 - 2026-09-30: Revision 3 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5912068245): Request changes）の3指摘に対応。指摘1: label（`home_screen_organize` = "Organize home screen"／「ホームを整理」）とicon（`ic_organize_home` = 2×2 rounded-square grid + 右上4-point sparkle）をPhase 1で確定し、Scope・AC-1・Unresolved decisionsの持ち越しを撤回。指摘2: `restoreMissingPopupOptions` の書込み契約を「位置挿入結果が現orderと等しければ書かない」guardの仕様化で確定（現行の無条件writeを明示的に変える。AC-4・Test oracleへguardのoracle追加）。指摘3: plan Dependencies/blockersの残存していた#449協調記述を削除し実装済み前提へ統一。
 - 2026-09-30: **accepted** — Phase 1 review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5912289396): 3指摘の解消を確認。snapshot同期を残課題として指摘）と round 3（[判定](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5912426507): **Clear**。blocking findingなし）を経て受理。Revision 3 snapshot（[comment](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5912395484)）がcurrent headを指す。実装PRへの持ち越し（実機evidence、gate filter判断、bridge group登録）は明示済み。
+- 2026-09-30: **implemented** — Phase 2実装を [PR #486](https://github.com/nunu1733/NunuLauncher/pull/486) で提出。実装: \`organize_home\` 項目（DEFAULT_ORDER・handler・metadata・lock filter）、\`restoreMissingPopupOptions\` の位置挿入 + 書込みguard、\`filterVisiblePopupOptions\` 切り出し、popup編集画面のlock分岐、strings（EN/JA）・\`ic_organize_home\`、JVM test 8件（\`app.lawnchair.ui.popup.*\` をgate filterへ追加。#458と同じroute）、patch surface baseline再採択（\`organizer-home-entry\` bridge group新設）。検証: full unit suite 1852 tests green、emulator evidence（AC-1/2/3/5/6。3操作で確認面到達、TalkBack起動確認、ja表示確認）。AC-5の実機記録とAC-6の実機TalkBack/Switch Access確認はowner確認事項として残す。
