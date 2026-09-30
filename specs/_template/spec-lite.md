@@ -23,6 +23,12 @@ Launcher DB書込み、schema migration、recovery store、上流model/loader br
 と目標値。階層Mのfeature specは、課題と目標値がなければ受け入れない（NFR-014）。
 純粋な導線・文言修正で該当課題がない場合は、その理由を書く。
 
+## Prior art
+
+設計に影響した外部の類似実装・best practiceを、対象・URL・確認日・採用/不採用理由を
+1行1事例で記載する。該当がなければ `なし（調査済み）` と書く。正本は
+[GitHub workflowのExternal reference scan](../../docs/project/github-workflow.md#external-reference-scan設計時の外部参照調査)。
+
 ## Outcome
 
 この変更の後に可能になることを1段落で。
