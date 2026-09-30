@@ -2,14 +2,16 @@ package app.lawnchair.ui.popup
 
 import app.lawnchair.ui.popup.LauncherOptionsPopup.DEFAULT_ORDER
 import app.lawnchair.ui.popup.LauncherOptionsPopup.filterVisiblePopupOptions
+import app.lawnchair.ui.popup.LauncherOptionsPopup.getMetadataForOption
 import app.lawnchair.ui.popup.LauncherOptionsPopup.mergeMissingPopupOptions
+import com.android.launcher3.R
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
  * Issue #452: the workspace long-press popup owns a persisted option order
- * (`launcher_popup_order`). These tests pin the two pure contracts behind
- * that preference at their lowest deterministic boundary:
+ * (`launcher_popup_order`). These tests pin the pure contracts behind that
+ * preference at their lowest deterministic boundary:
  *
  * - [LauncherOptionsPopup.mergeMissingPopupOptions] restores default items a
  *   saved order lacks at their DEFAULT_ORDER-relative position (upgrades from
@@ -20,6 +22,8 @@ import org.junit.Test
  * - [LauncherOptionsPopup.filterVisiblePopupOptions] keeps disabled and
  *   carousel rows out of the popup and hides the editing/organizing entries
  *   while the home screen is locked.
+ * - [LauncherOptionsPopup.getMetadataForOption] maps `organize_home` to its
+ *   finalized label/icon resources (spec Revision 3).
  */
 class LauncherOptionsPopupOrderTest {
     private fun identifiers(items: List<LauncherOptionPopupItem>) = items.map { it.identifier }
@@ -44,6 +48,14 @@ class LauncherOptionsPopupOrderTest {
         )
         val organizeHome = DEFAULT_ORDER.first { it.identifier == "organize_home" }
         assertEquals(true, organizeHome.isEnabled)
+    }
+
+    @Test
+    fun `metadata maps organize_home to its finalized label and icon`() {
+        val metadata = getMetadataForOption("organize_home")
+
+        assertEquals(R.string.home_screen_organize, metadata.label)
+        assertEquals(R.drawable.ic_organize_home, metadata.icon)
     }
 
     @Test

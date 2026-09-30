@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Issue #452: organizer entry icon for the workspace long-press popup.
-  Glyph (spec 452 Scope, finalized): a 2x2 rounded-square grid (the sorted
-  home) with a 4-point sparkle at the top right (automatic organizing).
-  Monochrome 24dp, tinted like the other popup option icons.
+  Glyph (spec 452 Revision 3, finalized): a 2x2 rounded-square grid (the
+  sorted home) with a 4-point sparkle at the top right (automatic
+  organizing). Monochrome 24dp, tinted like the other popup option icons.
+  Cells are solid rounded squares (2dp corner radius on a 6dp cell).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -11,18 +12,18 @@
     android:tint="?android:attr/textColorPrimary"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- top-left cell -->
+    <!-- top-left rounded cell -->
     <path
         android:fillColor="#ffffff"
-        android:pathData="M4,4H10V10H4V4ZM6,6V8H8V6H6Z" />
-    <!-- bottom-left cell -->
+        android:pathData="M6,4H8A2,2 0 0 1 10,6V8A2,2 0 0 1 8,10H6A2,2 0 0 1 4,8V6A2,2 0 0 1 6,4Z" />
+    <!-- bottom-left rounded cell -->
     <path
         android:fillColor="#ffffff"
-        android:pathData="M4,13H10V19H4V13ZM6,15V17H8V15H6Z" />
-    <!-- bottom-right cell -->
+        android:pathData="M6,13H8A2,2 0 0 1 10,15V17A2,2 0 0 1 8,19H6A2,2 0 0 1 4,17V15A2,2 0 0 1 6,13Z" />
+    <!-- bottom-right rounded cell -->
     <path
         android:fillColor="#ffffff"
-        android:pathData="M13,13H19V19H13V13ZM15,15V17H17V15H15Z" />
+        android:pathData="M15,13H17A2,2 0 0 1 19,15V17A2,2 0 0 1 17,19H15A2,2 0 0 1 13,17V15A2,2 0 0 1 15,13Z" />
     <!-- top-right 4-point sparkle -->
     <path
         android:fillColor="#ffffff"
