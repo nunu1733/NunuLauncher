@@ -129,6 +129,38 @@ class OrganizationPreviewContentTest {
         assertEquals(1, warnings.rows.size)
     }
 
+    /**
+     * Issue #451: duplicate surplus rows render through the existing warning
+     * and preserve groups — the new codes resolve their wording (never blank)
+     * and the copy states the icon was kept in place, never suggesting
+     * removal (spec 451 accessibility/localization).
+     */
+    @Test
+    fun duplicateWarningAndPreservedReasonRenderThroughTheExistingGroups() {
+        val details = PlanPreviewDetails(
+            changes = listOf(
+                itemWarning("photos.2", WarningCode.DUPLICATE_LAUNCH_TARGET),
+                preserved("photos.2", "Photos", PreserveReason.DUPLICATE_LAUNCH_TARGET),
+            ),
+            counts = PreviewCounts(0, 1, 0, 0, warningCounts = mapOf(WarningCode.DUPLICATE_LAUNCH_TARGET to 1)),
+        )
+
+        val sections = OrganizationPreviewContent.sections(details, TestWording)
+
+        val warningSection = sections.single { it.heading.startsWith("Warnings") }
+        assertEquals(1, warningSection.rows.size)
+        assertEquals(
+            "“photos.2” (App) — Dock slot 3: kept in place as a duplicate of another icon",
+            warningSection.rows.single(),
+        )
+        val preserveSection = sections.single { it.heading.startsWith("Preserve") }
+        assertEquals(1, preserveSection.rows.size)
+        assertEquals(
+            "“Photos” (App) — top center, page 1: kept in place as a duplicate of another icon",
+            preserveSection.rows.single(),
+        )
+    }
+
     @Test
     fun emptyGroupsAreOmitted() {
         val details = PlanPreviewDetails(
