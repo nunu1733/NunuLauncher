@@ -1,7 +1,7 @@
 # GitHub Issue / Spec / Pull Request Workflow
 
 > Status: Accepted
-> Updated: 2026-09-30（Issue #482: External reference scan の導入）。2026-09-27（Issue #444: Risk tiers（リスク階層）の導入、階層別のplan.md要件、Issue intakeへのrisk tier。2026-09-08（Issue #247 closing-keyword rule、Issue #251 Worker/Review handoff、Issue #252 security reporting の運用反映））
+> Updated: 2026-09-30（Issue #482: External reference scan の導入、review指摘対応: 省略時の3状態記録、節をSpecification直後へ移動、採用根拠の参照精度修正）。2026-09-27（Issue #444: Risk tiers（リスク階層）の導入、階層別のplan.md要件、Issue intakeへのrisk tier。2026-09-08（Issue #247 closing-keyword rule、Issue #251 Worker/Review handoff、Issue #252 security reporting の運用反映））
 
 ## Principle
 
@@ -115,20 +115,6 @@ Issueに次が必要である。
 
 specには通常系だけでなく、permission拒否、容量不足、unsupported item、stale state、部分失敗、recoveryを含める。`status: accepted` になるまではimplementation-readyではない。
 
-### 3. Ready判定
-
-以下を満たしたIssueに `status: ready` を付ける。
-
-- specまたは明確なbug oracleが承認済み。
-- 未決定の製品判断がない。
-- dependencyが完了またはstub可能。
-- migration、privacy、data safety、upstream conflictのriskが評価済み。
-- 検証方法が実行可能。
-
-### 4. Implementation plan
-
-階層Hの変更では、同じspec directoryの `plan.md` に、現在codeの根拠、変更module、interface/seam、migration、rollback、testを記載する（[Risk tiers](#risk-tiersリスク階層)）。階層Mはplan.mdを要求しない。いずれの階層でも、Issueのtask listを複製せず、実装上の判断だけを残す。
-
 ### External reference scan（設計時の外部参照調査）
 
 Issue #482。新規seam/interface、非自明な状態管理・状態遷移、Android/platform API（LauncherApps、AppWidgetHost、Compose state等）の新規扱い、失敗・復旧契約、上流patch、test strategyの新規設計を含むfeature/research Issueでは、spec作成時にWeb上の類似実装・best practiceを短時間調査し、採否を設計根拠へ記録する。docs-only、文言修正、既存patternの横展開のみの変更、階層Lのtest/refactorは省略してよい。
@@ -142,7 +128,13 @@ Issue #482。新規seam/interface、非自明な状態管理・状態遷移、An
 
 repository内に既に同じ契約・seamがある場合は、外部例より既存architectureとの整合を優先する。
 
-**記録**: specの「Prior art」欄（テンプレート: [specs/_template/spec.md](../../specs/_template/spec.md)、[specs/_template/spec-lite.md](../../specs/_template/spec-lite.md)）へ、設計判断に影響した事例だけを「対象 / URL / 確認日 / 採用するpatternまたは不採用理由」の形式で1行1事例で記載する。有用な例がなければ「なし（調査済み）」の1行を書いて先へ進める。独立した検索ログは作らず、plan.mdへも複製しない。research Issueでは成果物（Issue、assessment）に同じ形式で記録してよい。
+**記録**: specの「Prior art」欄（テンプレート: [specs/_template/spec.md](../../specs/_template/spec.md)、[specs/_template/spec-lite.md](../../specs/_template/spec-lite.md)）へ、設計判断に影響した事例だけを「対象 / URL / 確認日 / 採用するpatternまたは不採用理由」の形式で1行1事例で記載する。欄の状態は次の3値のいずれかとする。
+
+- 事例の記載（1行1事例）: 実際に調査し、設計判断に影響した事例がある場合。
+- `なし（調査済み）`: 実際に調査したが、有用な例が見つからなかった場合のみ。未調査の省略に使わない。
+- `省略（理由: <対象の省略条件>）`: triggerに当たらないdocs-only、文言修正、既存patternの横展開、階層Lのtest/refactor等の場合。
+
+独立した検索ログは作らず、plan.mdへも複製しない。research Issueでは成果物（Issue、assessment）に同じ形式で記録してよい。
 
 **安全境界**: 外部例は設計pattern、API usage、failure handlingの参考とし、NunuLauncher固有のcontract/invariantへ適合させる。ライセンスが不明・非互換なsource codeはコピーしない。コードを取り込む場合は既存のlicense/attribution要件と、Launcher3/AOSP由来コードのbridge規約（Issue番号と理由を近傍文書に残す）に従う。blogや単一回答を無検証でbest practiceと扱わない。
 
@@ -150,7 +142,21 @@ repository内に既に同じ契約・seamがある場合は、外部例より既
 
 この節はrisk tierの厳格さを変えず、既存のspec承認・review・audit gateの代替にならない。
 
-採用根拠（いずれも確認日 2026-09-30）: 設計文書へ外部参照を折り込む形式は、Rust RFCテンプレートのPrior artセクション（https://github.com/rust-lang/rfcs/blob/master/0000-template.md）とKubernetes KEPのAlternatives Considered（https://github.com/kubernetes/enhancements/blob/master/keps/README.md）が先例である。調査結果を独立した検索ログでなく設計文書へ折り込む運用は、Googleのdesign doc慣行（https://www.industrialempathy.com/posts/design-docs-at-google/）に一致する。license/attributionの記録形式の参考は、Chromiumのthird_party追加規約（https://chromium.googlesource.com/chromium/src/+/HEAD/docs/adding_to_third_party.md）である。上流Lawnchairにこの種の規約は存在せず、本節はfork固有の整備である。
+採用根拠（いずれも確認日 2026-09-30）: 設計文書へ外部参照と代替案を折り込む形式は、Rust RFCテンプレートのPrior artセクション（https://github.com/rust-lang/rfcs/blob/master/0000-template.md）とKubernetes KEPテンプレートのAlternativesセクション（https://github.com/kubernetes/enhancements/blob/master/keps/NNNN-kep-template/README.md#alternatives）が先例である。設計判断・trade-offをdesign docへ集約する慣行の参考は、Googleのdesign doc慣行の解説（https://www.industrialempathy.com/posts/design-docs-at-google/）である。検索ログを別途作らない運用は、記録負荷を抑えるNunuLauncher側の判断であり、外部慣行への帰属ではない。license/attributionの記録形式の参考は、Chromiumのthird_party追加規約（https://chromium.googlesource.com/chromium/src/+/HEAD/docs/adding_to_third_party.md）である。上流Lawnchairにこの種の規約は存在せず、本節はfork固有の整備である。
+
+### 3. Ready判定
+
+以下を満たしたIssueに `status: ready` を付ける。
+
+- specまたは明確なbug oracleが承認済み。
+- 未決定の製品判断がない。
+- dependencyが完了またはstub可能。
+- migration、privacy、data safety、upstream conflictのriskが評価済み。
+- 検証方法が実行可能。
+
+### 4. Implementation plan
+
+階層Hの変更では、同じspec directoryの `plan.md` に、現在codeの根拠、変更module、interface/seam、migration、rollback、testを記載する（[Risk tiers](#risk-tiersリスク階層)）。階層Mはplan.mdを要求しない。いずれの階層でも、Issueのtask listを複製せず、実装上の判断だけを残す。
 
 ## Execution and approval contract
 
