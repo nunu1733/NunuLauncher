@@ -4,14 +4,14 @@ status: draft
 tier: M
 requirements:
   - FR-022
-updated: 2026-09-28
+updated: 2026-09-30
 ---
 
 # ワークスペース長押しメニューの「ホームを整理」項目（organizer runへの直接導線）
 
 > Risk tier: M — Issue本文の終了条件3（メモ§4.7）どおり、上流UIへのbridge（popupの項目追加。model、loader、DBに触れない）は階層Mである。Launcher DB書込み・schema migration・recovery store・上流model/loader bridgeを含まないため、本specは軽量spec形式（[spec-lite](../_template/spec-lite.md)）を基礎にする。同一PRで `tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` の計測結果をPR本文へreportする（[Risk tiers](../../docs/project/github-workflow.md#risk-tiersリスク階層)）。
 > Epic: [#439](https://github.com/nunu1733/NunuLauncher/issues/439)（再焦点化）。出典: 再焦点化方針メモ（2026-09-24承認、Revision 5）§4.5（R-7 Now「#452 導線」）、§4.9（FR-022）。
-> 依存の実装状況: #443（CLOSED、main反映済み `ea8d57d068`。AI相談toggle既定OFF・OFF時の方法選択面スキンプログラム済み）と #441（CLOSED。操作数の定義は [editing-burden-benchmark](../../docs/engineering/editing-burden-benchmark.md) §4 が正本）を前提とする。
+> 依存の実装状況: #443（CLOSED、main反映済み `ea8d57d068`。AI相談toggle既定OFF・OFF時の方法選択面スキンプログラム済み）、#441（CLOSED。操作数の定義は [editing-burden-benchmark](../../docs/engineering/editing-burden-benchmark.md) §4 が正本）、および #449（CLOSED、PR #476 merge済み。長押しメニューの `edit_surface` 項目がmainに存在する）を前提とする。
 
 ## Problem
 
@@ -24,6 +24,11 @@ updated: 2026-09-28
 - **目標（FR-022、メモ§4.5）**: 未配置候補がない場合、ホーム画面から確認面（整理案の確認）まで **4操作以下**。
 - 本specの導線の固定手順: 空きスペース長押し（1）→「ホームを整理」項目tap（1）→ run面の開始CTA「整理を開始」tap（1）→ （検出 → 空cutのscope凍結 → #443 OFF既定による方法選択面スキップ → planning）→ 確認面到達。**3操作**であり目標を満たす。AI相談toggleがONの間は方法選択面を経由するため+1操作（4操作）で依然として目標内。
 
+## Prior art
+
+- AOSP Launcher3 `OptionsPopupView.java`（対象: `packages/apps/Launcher3/src/com/android/launcher3/views/OptionsPopupView.java` / URL: https://cs.android.com/android/platform/superproject/main/+/main:packages/apps/Launcher3/src/com/android/launcher3/views/OptionsPopupView.java / 確認日: 2026-09-30）— workspace長押しpopupの項目は `OptionItem(labelRes, icon, event, handler)` で構成し、設定系項目（Home settings）はpopupから直接settings activityを開く。採用: 本項目も同じ `OptionItem` 構成（labelResつきconstructor）で設定Activityのrun面を直接開く、という上流と同一のpatternに乗せる。repository内に同一seamがあるため外部例より既存architectureとの整合を優先した（workflow正本の規定どおり）。
+- Lawnchair upstream `LauncherOptionsPopup.kt`（対象: upstream 15-dev branch / URL: https://github.com/LawnchairLauncher/lawnchair/blob/15-dev/lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt / 確認日: 2026-09-30）— upstreamの `restoreMissingPopupOptions` は欠落項目を先頭にprependし、organize系項目は存在しない。採用: 本specのDEFAULT_ORDER相対の位置挿入はupstream挙動からの意図的なfork分岐であると記録し、upstream同期時のconflict源としてpatch surface計測（AC-8）で追跡する。upstream側に倣う理由（prepend）は、edit_mode隣接のIssue要求（Scope 3）と衝突するため不採用。
+
 ## Outcome
 
 ワークスペースの空きスペース長押しメニュー（workspace options popup）に「ホームを整理」項目が現れ、既定で有効である。選ぶと設定Activityがorganizer run面（`HomeScreenManualOrganization` route。entry既定 `MANUAL`、trigger `MANUAL_FULL`）で直接開く。hubの中継を経ない。run開始の権限（admission、RUN lease）はrun面の開始CTAが持ち続け、本項目はrun面への到達だけを短縮する。Lawnchairのホーム画面ロック（`lockHomeScreen`）が有効な間は既存の `edit_mode`・`widgets` と同じく項目が出ない。
@@ -32,14 +37,14 @@ updated: 2026-09-28
 
 - **popup項目の追加**（`LauncherOptionsPopup.kt`）:
   - **identifier**: `organize_home`。
-  - **label**: 英語 "Organize home screen" / 日本語「ホームを整理」。`edit_home_screen`（"Edit home screen" /「ホーム画面を編集」）および #449 の視覚的編集画面入口（仮称「ホームを編集」）と区別できる語とする。日本語copyは #161（ja LQA）の運用に従う。
-  - **icon**: fork側に新設する単色vector drawable（例: `lawnchair/res/drawable/ic_organize_home.xml`）。24dp単色で他のoption icon（`ic_lock`、`ic_widget` 等）と同_style。`enter_home_gardening_icon`（edit_mode）と視覚的に区別できること。具象designは実装reviewで確定する。
+  - **label**: 英語 "Organize home screen" / 日本語「ホームを整理」。隣接する2項目 — `edit_home_screen`（"Edit home screen" /「ホーム画面を編集」）と #449 の `edit_surface_menu_open`（"Edit layout grid" /「編集画面」）— のいずれとも区別できる語とする。日本語copyは #161（ja LQA）の運用に従う。
+  - **icon**: fork側に新設する単色vector drawable（例: `lawnchair/res/drawable/ic_organize_home.xml`）。24dp単色で他のoption icon（`ic_lock`、`ic_widget` 等）と同_style。`enter_home_gardening_icon`（edit_mode）および `ic_folder`（edit_surface。#449が使用）と視覚的に区別できること。具象designは実装reviewで確定する。
   - **既定の有効/無効**: `LauncherOptionPopupItem("organize_home", true)` — 既定で有効。Issue本文のOutcome「項目が現れ」および終了条件2（未設定状態からの操作数実測）が既定ONを要求するため。利用者は既存のpopup編集画面（`LauncherPopupPreference`）でoffにできる。
   - **stats log**: 既存のfork追加項目（`lock`、`wallpaper`）と同じ `LauncherEvent.IGNORE`。
-- **DEFAULT_ORDERでの配置**: 既存 `carousel, lock, edit_mode, wallpaper, widgets, home_settings, sys_settings` のうち `edit_mode` の直後に挿入する（編集系グループとして隣接。メモ§4.3の入口方針）。#449の入口が加わる際の編集系グループ内の最終並びは #449 のspecと合わせて確定する（Unresolved decisions参照）。
+- **DEFAULT_ORDERでの配置（#449の実装を受けて確定）**: 現行mainの `DEFAULT_ORDER` は #449（PR #476）により `carousel, lock, edit_mode, edit_surface, wallpaper, widgets, home_settings, sys_settings` になっている。本Issueは `edit_mode` と `edit_surface` の間に `organize_home` を挿入し、最終形を `carousel, lock, edit_mode, organize_home, edit_surface, wallpaper, widgets, home_settings, sys_settings` とする。根拠はIssue Scope 3の取り決めそのものである: 「ホームを整理」は `edit_mode` の近くに置く（編集系の操作として隣接させる）、#449の入口は「その隣」に置き、2項目（organize_home と edit_surface）が編集系のグループを成す。この配置により、整理（全体の再配置・安全な適用）と編集画面（項目単位・複数選択）の違いはlabel・説明文でのみ区別する。#449のspec・実装は `edit_surface` の位置（`edit_mode` の直後）以外の並びを固定しておらず、本specがIssue Scope 3の取り決めに従って編集系グループ内の最終並びを確定する。
 - **run面への遷移（到達方法の確定。Issue未解決事項1の解消）**: 項目のclick handlerはfork側（`LauncherOptionsPopup`内）で定義し、`PreferenceActivity.createIntent(launcher, HomeScreenManualOrganization())`（`lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt` の `EXTRA_DESTINATION_ROUTE` 仕組み）で設定Activityをrun面から直接開く。実例は onboarding提案の導線（`OrganizationOnboardingProposal.kt` が同じrouteを同じ方法で開く）。上流 `OptionsPopupView.getOptions`（`src/com/android/launcher3/views/OptionsPopupView.java:199-209`）へのcallback引数追加は **行わない**。handlerは `OptionsPopupView` 側の内部状態に依存せず `launcher` だけで完結するため、未patchの上流fileに触れる理由がない（AGENTS.md「Launcher3/AOSP由来コードへの変更はbridgeとなる最小箇所に限定」）。`LawnchairLauncher.showDefaultOptions` の両分岐（carousel有無）は既に `OptionsPopupView.getOptions` → fork `getLauncherOptions` 経由であり、変更不要。
-- **lockHomeScreen中の非表示（メモ§4.5で確定済み）**: `getLauncherOptions` の既存フィルタ（`edit_mode`・`widgets` を隠す箇所）へ `organize_home` を追加する。popup編集画面（`LauncherPopupPreference`）のswitchも `edit_mode`・`widgets` と同じ扱い（ロック中は無効化し「ホーム画面はロックされています」の説明を表示）にする。ADR-0004のロック意味論（organizer run自体はロックを尊重）は変更しない。
-- **既存利用者への補完（`restoreMissingPopupOptions` の扱いの確定。Issue Scope 1の未確定項目）**: 現行の補完は「欠落項目を先頭にprepend」であるため、そのままでは既存利用者のpopup先頭に置かれ、edit_mode隣接の要求を満たさない。補完を **DEFAULT_ORDER相対の位置挿入** へ変更する: 欠落したdefault項目を、現在のorder内で「DEFAULT_ORDER上で自分より後に現れる最初の項目」の直前に挿入する（そのような項目がなければ末尾に追加する）。挿入される項目のenabledはDEFAULT_ORDERの値を使い、既存項目のorder・enabledは一切変更しない。この決定は将来の項目追加（#449の入口を含む）にも同じ規則を与える。
+- **lockHomeScreen中の非表示（メモ§4.5で確定済み）**: `getLauncherOptions` の既存フィルタ（`edit_mode`・`widgets`・`edit_surface`（#449追加）を隠す箇所）へ `organize_home` を追加する。popup編集画面（`LauncherPopupPreference`）のswitchも `edit_mode`・`widgets` と同じ扱い（ロック中は無効化し「ホーム画面はロックされています」の説明を表示）にする。なお現行mainの `LauncherPopupPreference` のロック無効化分岐は `edit_mode`・`widgets` のみで、`edit_surface` は無効化対象に入っていない（#449はpopup側フィルタのみを要求した）が、これは #449 の残課題であり本Issueでは `organize_home` の分岐追加のみを行う。ADR-0004のロック意味論（organizer run自体はロックを尊重）は変更しない。
+- **既存利用者への補完（`restoreMissingPopupOptions` の扱いの確定。Issue Scope 1の未確定項目）**: 現行（#449後のmainを含む）の補完は「欠落項目を先頭にprepend」である。#449もこのprependで `edit_surface` を補完したため、#449のupgrade時に保存済みorderを持つ利用者には `edit_surface` が先頭側に補完されている状態があり得る。本Issueは補完を **DEFAULT_ORDER相対の位置挿入** へ変更する: 欠落したdefault項目を、現在のorder内で「DEFAULT_ORDER上で自分より後に現れる最初の項目」の直前に挿入する（そのような項目がなければ末尾に追加する）。欠落項目が複数ある場合はDEFAULT_ORDERの順に1個ずつ挿入する。挿入される項目のenabledはDEFAULT_ORDERの値を使い、既存項目のorder・enabledは一切変更しない。#449のprependで `edit_surface` が先頭に補完済みのorderでは、本規則により `organize_home` はその `edit_surface` の直前（先頭側）に挿入される。編集系グループから離れた位置への挿入は、既存項目のorderを勝手に書き換えないこと（利用者が意図した並びの保存）より優先した結果である。この決定は将来の項目追加にも同じ規則を与える。
 
 ## Non-goals
 
@@ -69,7 +74,7 @@ When 開始CTA「整理を開始」をtapする
 Then 検出の空cutがscope凍結へ直行し、方法選択面を出ず「このまま整理」の流れ（planning）へ進み、確認面に到達する
 And ホーム画面からの手順は「長押し（1）→ 項目tap（1）→ 開始tap（1）」の3操作である（#443 ON時は方法選択の1 tapが加わり4操作。いずれも目標4以下）
 
-### Scenario: ホーム画面ロック中有効中は項目が出ない
+### Scenario: ホーム画面ロック中は項目が出ない
 
 Given `lockHomeScreen` が有効である
 When ワークスペースの空きスペースを長押しする
@@ -81,8 +86,14 @@ Then ロック解除後は項目が再び現れる（preferenceのenabled状態�
 
 Given 更新前のbuildで `launcher_popup_order` が保存済み（`organize_home` を含まない）である
 When 更新後のbuildでlauncherが起動する（`restoreMissingPopupOptions` が走る）
-Then 「ホームを整理」が、当該order内でDEFAULT_ORDER相対の位置（既定orderを維持している利用者では `edit_mode` の直後）に挿入され、有効になる
+Then 「ホームを整理」が、当該order内でDEFAULT_ORDER相対の位置に挿入され、有効になる
 And 既存項目の並び順とenabled/disabledは変化しない
+
+補完結果は保存済みorderの世代で次のとおり決定的である:
+
+- #449より前に保存されたorder（`edit_surface` も `organize_home` もない）: 両方がDEFAULT_ORDER相対で挿入され、既定order相当なら `edit_mode, organize_home, edit_surface, wallpaper, ...` となる。
+- #449以降・本Issueより前に保存されたorder（`edit_surface` あり。prepend補完で先頭にあるものを含む）: `organize_home` は現在のorder内の `edit_surface` の直前に挿入される（prepend補完で `edit_surface` が先頭にある利用者では先頭2項目が `organize_home, edit_surface` になる）。
+- 一度も保存していない利用者: default値（新しい `DEFAULT_ORDER`）がそのまま使われ、書込みは発生しない。
 
 ### Scenario: 利用者が項目をoffにした場合は現れない
 
@@ -131,19 +142,20 @@ Then 通常のtapと同じhandlerが動作し、run面が開く
 
 - #443（CLOSED・実装済み）: OFF時導線（方法選択面スキップ）が操作数目標の後半を担う。本specは実装済み挙動を前提にするのみ。
 - #441（CLOSED）: 操作数の定義（benchmark §4）を引用する。
-- 関連: #449（OPEN。長押しメニューの並びを共有する。#449のspecは未作成）、#453（OPEN。導線とは独立）、ADR-0014（accepted。#449の入口方針の文脈）。
+- #449（CLOSED・PR #476で実装済み）: 長押しメニューの `edit_surface` 項目が存在する。編集系グループ内の最終並び（`edit_mode, organize_home, edit_surface`）は本specがIssue Scope 3の取り決めに従って確定した。`LauncherPopupPreference` のロック無効化分岐に `edit_surface` が入っていない点は #449 側の残課題として観察記録のみ行う（本Issueは `organize_home` の分岐のみ追加）。
+- 関連: #453（OPEN。導線とは独立）、ADR-0014（accepted。#449の入口方針の文脈）。
 - 被依存: なし。
 
 ## Acceptance criteria
 
-- [ ] AC-1: workspace options popupに「ホームを整理」が既定で有効に現れ、`DEFAULT_ORDER` 上 `edit_mode` の直後に配置される。identifierは `organize_home`。label・iconはScopeの定義に従う。
+- [ ] AC-1: workspace options popupに「ホームを整理」が既定で有効に現れ、`DEFAULT_ORDER` 上 `edit_mode` と `edit_surface` の間に配置される（最終形: `carousel, lock, edit_mode, organize_home, edit_surface, wallpaper, widgets, home_settings, sys_settings`）。identifierは `organize_home`。label・iconはScopeの定義に従う。
 - [ ] AC-2: 項目をtapすると、設定Activityが `HomeScreenManualOrganization`（entry=MANUAL既定）のrun面で直接開く。hubを経由しない。backでlauncherへ戻る。runのadmission・開始契約に変更がない（`start()` はrun面の開始行のみ）。
 - [ ] AC-3: `lockHomeScreen` 有効中、popupに項目が出ない。popup編集画面ではswitchが無効化され、既存項目と同じロック説明が表示される。解除で再表示する。
-- [ ] AC-4: 既存利用者（保存済みorderに `organize_home` なし）の起動時補完がDEFAULT_ORDER相対の位置挿入で行われ、既存項目のorder・enabledが変化しない。既定orderの利用者では `edit_mode` 直後に挿入される。
+- [ ] AC-4: 既存利用者（保存済みorderに `organize_home` なし）の起動時補完がDEFAULT_ORDER相対の位置挿入で行われ、既存項目のorder・enabledが変化しない。#449より前のorder（`edit_surface` なし）では両項目が位置挿入され、#449以降のorder（`edit_surface` あり・prepend済みを含む）では `organize_home` が `edit_surface` の直前に挿入される（Scenarioの3世代の決定性をJVM testで固定する）。
 - [ ] AC-5: 実機（emulatorは補助証跡のみ）で、未配置候補0件・AI相談toggle OFF（既定）の状態から「長押し → 項目tap → 開始tap → 確認面到達」の3操作を録画またはスクリーンショットで記録し、4操作以下であることを示す（Issue終了条件2）。
 - [ ] AC-6: TalkBack・Switch Accessで項目に到達でき、既存options項目と同等の読み上げができる（labelResつきconstructorの使用を含む）（Issue終了条件4）。
 - [ ] AC-7: 変更diffが書込み経路を追加しないことの確認: 触れるfileはpopup項目定義・popup編集画面・string/drawable resource（およびtest）に限り、`organizer/` 配下、`src/com/android/launcher3/model/**`、DB・migrationに関わるpathを含まない。
-- [ ] AC-8: 同一PRで `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` の計測結果をPR本文へreportする。`LauncherOptionsPopup.kt`・`LauncherPopupPreference.kt` は現在fork未patchのLawnchair側fileであり、新たにcounted pathとなる場合はbridge所有の記録（Issue #452）を伴う（Issue終了条件3）。
+- [ ] AC-8: 同一PRで `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` の計測結果をPR本文へreportし、counted growthに対するIssue所有のrationaleとbaselineの再採択を同じPRで行う。現行のbaseline状況: `LauncherOptionsPopup.kt` は #449 により既に `homeedit-edit-surface` bridge groupへcounted済み（本Issueは同fileへの追記でgroupの成長。popupの入口定義fileとして #449/#452 が共用する旨をrationaleに記す）、`lawnchair/res/values/strings.xml`・`values-ja/strings.xml` は `organizer-ui-and-lock-authoring` groupへcounted済み、`LauncherPopupPreference.kt` は現時点でfork未patchであり本Issueで新たにcounted pathとなるため #452 所有のbridge group（または既存groupの責務拡張）への登録を要する（Issue終了条件3）。
 
 ## Test oracle
 
@@ -160,9 +172,9 @@ Then 通常のtapと同じhandlerが動作し、run面が開く
 
 ## Unresolved decisions
 
-- **#449の入口を含む編集系グループ内の最終並び**: 本specは「`edit_mode` の直後」に固定する。#449の入口（「ホームを編集」）が加わる時点で3項目のグループ内並びを #449 のspecと合わせて最終決定する（Issue Scope 3の取り決め）。#449の実装前に本項目だけを先に入れるか（並びの変更が利用者に2回見える）待つかは保守者の順序判断に委ねる（Issue未解決事項3）。
-- **iconの具象design と英語copyの最終語**: 制約（単色24dp・`enter_home_gardening_icon` と区別可能／`edit_home_screen` と区別可能なlabel）のみ確定し、具象は実装PRのreviewで確定する。
+- **iconの具象design と英語copyの最終語**: 制約（単色24dp・`enter_home_gardening_icon`（edit_mode）と区別可能・`ic_folder`（edit_surface）と区別可能／`edit_home_screen`・`edit_surface_menu_open` と区別可能なlabel）のみ確定し、具象は実装PRのreviewで確定する。
 
 ## Change history
 
 - 2026-09-28: Draft created for #452（Issue未解決事項1「popupからrun面への到達方法」を `PreferenceActivity.createIntent` + onboarding実例の確認により解消、`restoreMissingPopupOptions` の扱いを位置挿入へ決定、`OptionsPopupView.java` 無変更の方針を記録）。
+- 2026-09-30: Re-entry revision — baseline `c5a7840b88` から `56624406fd` へのrebaseに伴う正本再照合。①#449実装（PR #476）の反映: `edit_surface` が `DEFAULT_ORDER` の `edit_mode` 直後に存在する現状を確認し、編集系グループ内の最終並びを「`edit_mode, organize_home, edit_surface`」へ確定（Issue Scope 3の取り決めどおり。未解決事項3を解消）。②`restoreMissingPopupOptions` は #449 でもprependのままであることを確認し、位置挿入への変更と3世代（#449前・#449後・未保存）の補完結果をScenario/AC-4へ固定。③#482（External reference scan導入）の反映: Prior art欄を追加（AOSP Launcher3 `OptionsPopupView`・Lawnchair upstream `LauncherOptionsPopup.kt`）。④patch surface baseline状況の更新（`LauncherOptionsPopup.kt` は #449 により `homeedit-edit-surface` groupへcounted済み）をAC-8へ反映。⑤`LauncherPopupPreference` のロック無効化分岐に `edit_surface` が無い現状を #449 残課題として観察記録。
