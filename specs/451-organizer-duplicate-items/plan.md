@@ -4,7 +4,7 @@
 > Spec: [spec.md](./spec.md)
 > Status: draft
 > Risk tier: H（spec冒頭の提案判定に同じ。最終判定は実装PRでownerが確定する）
-> Analysis baseline: `origin/main` `c5a7840b880ed4c436b67170930ca87d4ef7f148`（2026-09-28時点のcode調査に基づく。行番号はこの時点のもの）
+> Analysis baseline: `origin/main` `092c44b46e7c6074f0623b146cc975d9ec862e53`（2026-09-30のRe-entryで再基準化。初版のcode調査は `c5a7840b880ed4c436b67170930ca87d4ef7f148`（2026-09-28）基準。行番号は再基準化時点のもの）
 
 ## Current evidence
 
@@ -20,6 +20,23 @@
 - **oracle**: `tests/unit/app/lawnchair/organizer/planning/harness/GoldenOracleCorpus.kt` が `ExampleCorpus.allExamples` + `validationFixtures` + `SyntheticFixtureGenerator`（seed `0x4E554E55L`、64 case）を `planAll()` し、digestを `tests/unit/resources/planner-golden-corpus/sha256.txt` と比較する。再固定は `-Dgolden.write=true`。現corpusには同一 `(profile, TargetKey)` の重複を含むfixtureが存在しない（generator template 1〜7と `ExampleCorpus` を確認済み。template 5の同一componentはpersonal/workのprofile違いであり重複ではない）ことを確認した。
 - **policy bundle**: `rules/PolicyModels.kt` の `POLICY_BUNDLE_VERSION = "organization-policy-v2.7"`。strategy enablementごとに1 increment上げる運用（`BuiltInOrganizerPolicyBundleSource.kt` の注記、ADR-0007 §8 / ADR-0012）。
 - **P-10再実行testのseam**: `harness/PostPlanMaterializer` + `PlannerContractHarness`（既存のidempotence testがこのseamを使う）。
+
+## Re-entry記録
+
+- **2026-09-30**: `origin/main` `092c44b46e7c6074f0623b146cc975d9ec862e53`（#449/#450着地後）へ再基準化。`origin/issue-451-spec-plan` へのmergeで実施し、planningコードは無変更。baseline以降のmain差分のうちplanning配下は `PlanningResult.kt` の `FolderNaming.FromUserCreation` 追加（#449、本planの主張に触れない）のみ。
+- **再確認した範囲**（いずれも現mainで本plan・specの記載と整合。陳腐化箇所なし）:
+  - `PlanningResult.kt`: `WarningCode` 3値（`LEGACY_SHORTCUT_REVIEW` / `FALLBACK_CATEGORY` / `UNAVAILABLE_PRESERVED`）、`PreserveReason` 語彙（`STRATEGY_PRESERVED`（spec 182）を含むが、これは `determinePreservation` のpredicate連鎖外でありspec N-3のpredicate列挙と整合）、`Disposition.Moved` / `Preserved` のみ。
+  - `PlanningPlacement.kt`: `place()` のmovable stream入口（`determinePreservation(...) == null` フィルタ。`FullOrganization` と `ScopeComposedOrganization` の両方）、`preservationWarnings` の組み立て、`determinePreservation` 優先順序（RESERVED_REGION > LOCKED > UNAVAILABLE_TARGET > DOCK > WIDGET > APP_PAIR > LEGACY_SHORTCUT > NON_TARGET > STRUCTURAL > movable）、`determinePreservation` 呼び出し site（place系3箇所、`placeIncrementalRun`、`appendPreservedPlacements`（`FullRunExecution.kt`）、executor内再呼び出し1箇所（widget stream判定））。`relocateWidgets` default引数の先例は本planの `duplicateSurplus` default引数方針と両立。
+  - `FolderFormation.kt` / `FullRunExecution.kt`: `FolderCandidate` は `TargetKey` を運ばない、`(profile, FormationKey)` group化、member順 `ItemId` 昇順。`formFolderGroups` 呼び出し側4箇所（3 executor + `appendCandidatePlacements`）。
+  - `OrganizationInput.kt`: `CapturedItem.target: TargetKey`、`TargetKey.AppKey` / `ShortcutKey` / `LegacyShortcutKey` / `WidgetKey` / `FolderKey` / `AppPairKey`、`CandidateItem.target: CandidateTarget`。`Identity.kt` の `ItemId` canonical順（`compareUtf8Bytes`、UTF-8 byte順）。
+  - capture側の `targetKey` 構成: `RowManifestCodec.kt` / `ModelProjectionCodec.kt` / `OrganizationInputComposer.kt` `mapItem` は不変。
+  - rules: `POLICY_BUNDLE_VERSION = "organization-policy-v2.7"`、runtime-supported 9 strategy、default `CANONICAL_PAGE_COMPACT_V1`。
+  - preview / 文言: `PlanPreviewProjector` の `capturedWarnings` → `ItemWarningChange` / `warningCounts`、`OrganizationPreviewContent.kt` の `warningText` / `preservedReasonText`（exhaustive `when`）、wording実装 `ResourceOrganizationPreviewWording`（`ManualOrganizationPreferences.kt`）。
+  - oracle: `tests/unit/resources/planner-golden-corpus/sha256.txt` はbaselineから不変。`GoldenOracleCorpus.kt` へのmain差分は #449 の `FolderNaming.FromUserCreation` digest token追加のみ（corpus構成・seed `0x4E554E55L`・`digestsBySource` 契約は不変）。
+  - `docs/engineering/editing-burden-benchmark.md`: B7 baseline 9（操作数5）は現mainに存在し、目標は#451のspecで確定（§6）。
+  - `docs/product/requirements.md`: FR-021 は `proposed（2026-09-24）` のまま（accept時に本planのChange setどおり更新）。NFR-014 は `accepted（2026-09-26）`。
+  - 依存: #441（B7 baseline）はCLOSED済みを再確認。
+- **本Re-entryによる文書変更**: なし（陳腐化箇所なし。本記録とAnalysis baseline行の更新のみ。planningコード・spec本文の規則は無変更）。
 
 ## Design
 

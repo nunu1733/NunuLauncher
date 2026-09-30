@@ -4,7 +4,7 @@ status: draft
 requirements:
   - FR-021
   - NFR-014
-updated: 2026-09-28
+updated: 2026-09-30
 ---
 
 # 全体整理が同じ起動先の重複アイテムを同じ新規フォルダに入れず、重複をpreviewで示す
@@ -223,3 +223,4 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 ## Change history
 
 - 2026-09-28: Draft created for #451（spec/plan準備task。`origin/main` `c5a7840b880ed4c436b67170930ca87d4ef7f148` 基準のcode調査に基づく）。
+- 2026-09-30: Re-entry — `origin/main` `092c44b46e7c6074f0623b146cc975d9ec862e53`（#449/#450着地後）へ再基準化。planning module・benchmark B7 baseline（9）・FR-021 status（proposed）を再確認し、本文の陳腐化なし（文書変更なし。確認範囲と詳細は [plan.md](./plan.md) の「Re-entry記録」参照）。
