@@ -89,6 +89,8 @@
     <string name="homeedit_undo_error_restore_failed">元に戻せませんでした。整理機能から復元できます。</string>
     <!-- Issue #449: 複数選択の視覚的編集画面 -->
     <string name="edit_surface_menu_open">編集画面</string>
+    <!-- Issue #452: ワークスペース長押しpopupの整理入口 -->
+    <string name="home_screen_organize">ホームを整理</string>
     <string name="edit_surface_title">編集画面</string>
     <string name="edit_surface_snapshot_notice">この画面を開いた時点のレイアウトを表示しています。他で行った変更は反映されません。</string>
     <string name="edit_surface_selection_count">%1$d件を選択中</string>
