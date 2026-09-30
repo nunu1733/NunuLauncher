@@ -3274,6 +3274,19 @@ class ManualOrganizationRunTest {
         var composition: OrganizationInputComposition,
     ) : ManualOrganizationApplication {
         override val diagnostics = RecordingDiagnostics()
+
+        // Issue #449: the edit-surface read seam is out of scope for the run
+        // tests; a fail-closed null keeps the fake minimal.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
+        // Issue #450: the undo receipt/recovery seams are out of scope for the
+        // run tests; the fake fails fast if ever reached.
+        override fun applyWithUndoReceipt(
+            plan: app.lawnchair.organizer.application.public.ValidatedLayoutPlan,
+            runId: RunId,
+        ): Pair<app.lawnchair.organizer.application.public.ApplyResult, app.lawnchair.organizer.planning.RevisionId?> = error("not reached in run tests")
+
+        override fun recover(request: app.lawnchair.organizer.application.public.RecoveryRequest): app.lawnchair.organizer.application.public.RecoveryResult = error("not reached in run tests")
         val events: List<RunEvent>
             get() = diagnostics.events
         var nextRunIds = listOf(RUN_ID)

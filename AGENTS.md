@@ -46,7 +46,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 ## Issue駆動・仕様駆動の手順
 
 1. Issueの問題、成果、非対象、要件ID、リスク、終了条件を確認する。
-2. 機能変更ではspecを作成または更新し、シナリオと失敗時の振る舞いを具体化する。
+2. 機能変更ではspecを作成または更新し、シナリオと失敗時の振る舞いを具体化する。External reference scanの適用対象・省略条件・記録先（spec/research成果物）は、[GitHub workflowのExternal reference scan](./docs/project/github-workflow.md#external-reference-scan設計時の外部参照調査) の正本に従う。
 3. 未決定の製品判断が残る場合は実装せず、research/decision Issueへ分離する。
 4. 階層Hの変更では、spec承認後に `plan.md` を作り、変更するmodule、seam、migration、rollback、検証を記載する。階層Mはaccepted軽量spec（[specs/_template/spec-lite.md](./specs/_template/spec-lite.md)）だけで実装開始でき、`plan.md` は要求しない。
 5. 最小の縦切りで実装し、interfaceを通したテストを先に追加する。

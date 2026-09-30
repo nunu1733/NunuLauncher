@@ -81,7 +81,7 @@ apply(ValidatedLayoutPlan) -> ApplyResult
 recover(RecoveryRequest) -> RecoveryResult
 ```
 
-このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。生成フォルダのuser-facing title解決 (`FolderTitleResolver`) はmaterializer内の単一点で行われ、production adapterはouter composition (`LawnchairApp`) が注入する。適用後検証は、相関リロード生成のモデルスナップショットをmodel-verifiable projectionで独立DB再取得と突き合わせ、DB/model収束を証明してから初めて成功結果を返す([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。読み取り専用の preview seam (recovery preview `inspectRecovery` [spec 84](./specs/84-recovery-preview-seam/spec.md)、plan preview `inspectPlan` [spec 194](./specs/194-plan-preview-seam/spec.md)) もこのmoduleが所有し、いずれも書込み・lifecycle遷移・diagnostics発行を行わない。さらに、re-opened SettingsがIdleと「never organized」を区別できるように、recovery storeのrecord/tombstoneから閉じた語彙へ導出する読み取り専用の durable status projection (`durableOrganizerStatus` [spec 271](./specs/271-organizer-durable-status-projection/spec.md)) もこのmoduleが所有する。そして [spec 376](./specs/376-durable-status-recovery-entry/spec.md)（D-15）により、hub status cardの復元CTAのために最新の検証済み1点を選択する読み取り専用の restore entry hint (`readRestorableRecoveryEntry`。閉じた `RestorableRecoveryEntry` 型: opaque pointId + 粗粒度残時間。`durableOrganizerStatus` と同一のfail-closed gate契約で読み、両readは同一の非block mutexを争うためUI側は直列化する) もこのmoduleが所有する。UIは閉じたenumだけを読み、recovery storeには触れない。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
+このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。生成フォルダのuser-facing title解決 (`FolderTitleResolver`) はmaterializer内の単一点で行われ、production adapterはouter composition (`LawnchairApp`) が注入する。適用後検証は、相関リロード生成のモデルスナップショットをmodel-verifiable projectionで独立DB再取得と突き合わせ、DB/model収束を証明してから初めて成功結果を返す([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。読み取り専用の preview seam (recovery preview `inspectRecovery` [spec 84](./specs/84-recovery-preview-seam/spec.md)、plan preview `inspectPlan` [spec 194](./specs/194-plan-preview-seam/spec.md)) もこのmoduleが所有し、いずれも書込み・lifecycle遷移・diagnostics発行を行わない。さらに、編集画面（Issue #449）のセッション開始とstale時の開き直しに使う読み取り専用 capture seam (`inspectCapture`。同契約族: 書込み・lifecycle遷移・diagnostics発行なし、未ready・mutex競合・capture失敗はfail-closedのnull) もこのmoduleが所有する。さらに、re-opened SettingsがIdleと「never organized」を区別できるように、recovery storeのrecord/tombstoneから閉じた語彙へ導出する読み取り専用の durable status projection (`durableOrganizerStatus` [spec 271](./specs/271-organizer-durable-status-projection/spec.md)) もこのmoduleが所有する。そして [spec 376](./specs/376-durable-status-recovery-entry/spec.md)（D-15）により、hub status cardの復元CTAのために最新の検証済み1点を選択する読み取り専用の restore entry hint (`readRestorableRecoveryEntry`。閉じた `RestorableRecoveryEntry` 型: opaque pointId + 粗粒度残時間。`durableOrganizerStatus` と同一のfail-closed gate契約で読み、両readは同一の非block mutexを争うためUI側は直列化する) もこのmoduleが所有する。UIは閉じたenumだけを読み、recovery storeには触れない。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
 
 #### Post-apply verification vocabulary
 
@@ -216,6 +216,21 @@ lawnchair/src/app/lawnchair/homeedit/     # Issue #448: per-item edit actions
 │                                         # (pure planning shared with #449, popup UI,
 │                                         # undo evidence; DB writes stay in ModelWriter via
 │                                         # DirectEditContract, ADR-0013 contract 4)
+│                                         # Issue #449: multi-select visual edit surface
+│                                         # (pure 4 layers: session state/projection/
+│                                         # session planner/apply-plan builder + thin access
+│                                         # window; full-screen Activity and 2 entries; the
+│                                         # one-shot apply goes through the existing organizer
+│                                         # apply path — ORGANIZER lease, one recovery point,
+│                                         # 1 transaction, correlated reload + verification.
+│                                         # ADR-0014 case B)
+│                                         # Issue #450: edit undo (undo record with a
+│                                         # generation-bound compare-and-consume slot, pure
+│                                         # undo planner + availability verifier, inverse
+│                                         # operations in ModelWriter via DirectEditContract
+│                                         # ADR-0013 contract 5; edit-session undo flows
+│                                         # through the existing organizer recovery path with
+│                                         # the apply receipt's verified post revision)
 ```
 
 package数をこの図に合わせること自体を目的にしない。interfaceを深く保ち、変更のlocalityが高まる分割だけを採用する。platform source側には最小のbridgeを置く。テスト配置は上流のconvention確認後に決める。

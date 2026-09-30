@@ -206,6 +206,10 @@ internal class LauncherLayoutAdapter(
         }
         val rows = mutableListOf<PersistentRow>()
         try {
+            // Issue #450 (review round 13 finding 1): folder children must be
+            // materialized with the launcher's own bind-time normalized grid
+            // cells — see launcherNormalizedFolderChildCells.
+            val folderChildCells = launcherNormalizedFolderChildCells(plan.intendedState)
             // Allocate every planned item before materializing rows. A folder child
             // can precede its planned folder in the canonical item order, so IDs
             // must not depend on the order in which rowFor happens to be called.
@@ -223,7 +227,7 @@ internal class LauncherLayoutAdapter(
 
                     else -> null
                 }
-                rows += rowFor(item, base, plannedIds, plannedPages)
+                rows += rowFor(item, base, plannedIds, plannedPages, folderChildCells)
             }
         } catch (_: IllegalArgumentException) {
             return WriteSetPreparation.InvalidPlan
@@ -368,6 +372,17 @@ internal class LauncherLayoutAdapter(
                         db.insertOrThrow(Favorites.TABLE_NAME, null, RowManifestCodec.values(row))
                     }
                     faults.afterLauncherWrite(index, pointId)
+                }
+                // Issue #449 (plan 結合点7): the intended manifest is a complete
+                // replacement of the captured rows, so rows of the exact-verified
+                // pre-state (A2 checked capture == plan.sourceState) that are
+                // absent from it are explicit deletions. Without this pass an
+                // intended deletion would leave the row in place and fail the A7
+                // exact verification. The recovery branch above keeps its own
+                // explicit DeleteRow actions.
+                val intendedIds = writeSet.intendedManifest.rows.map { it.rowId }.toHashSet()
+                before.manifest.rows.filter { it.rowId !in intendedIds }.forEach { row ->
+                    db.delete(Favorites.TABLE_NAME, "${Favorites._ID}=?", arrayOf(row.rowId.toString()))
                 }
             }
             when (faults.atTransactionClose(pointId)) {
@@ -545,6 +560,74 @@ internal fun canonicalOrientation(
     else -> DeviceOrientation.PORTRAIT
 }
 
+/**
+ * Issue #450 (review round 13 finding 1): the launcher's own folder binding
+ * (Folder.bind → updateItemLocationsInDatabaseBatch(true)) verifies every
+ * folder child against the FolderGridOrganizer position of its rank-ordered
+ * index and rewrites mismatches through moveItemsInDatabase, bumping the
+ * rows' `modified` timestamps. A fresh organizer derives the grid from the
+ * folder's content size with the device's folder grid maximums, so this map
+ * reproduces exactly the cells the binder would persist, keyed by child ref.
+ * Ranks are the canonical (launcher-normalized) contiguous 0..n-1 order, so
+ * the rank-ordered index equals the persisted rank and the binder's verifier
+ * finds nothing to change.
+ */
+internal fun launcherNormalizedFolderChildCells(state: LayoutState): Map<ApplicationItemRef, GridCell> {
+    val maxColumns = state.deviceCapabilities.folderMaxColumns
+    val maxRows = state.deviceCapabilities.folderMaxRows
+    require(maxColumns > 0 && maxRows > 0) {
+        "Folder grid capabilities must be positive (columns=$maxColumns, rows=$maxRows)"
+    }
+    val cells = mutableMapOf<ApplicationItemRef, GridCell>()
+    state.items.asSequence()
+        .mapNotNull { item ->
+            (item.placement as? PlacementState.FolderChild)?.let { item.ref to it }
+        }
+        .groupBy { (_, placement) -> placement.parent }
+        .forEach { (_, children) ->
+            val ordered = children.sortedBy { (_, placement) -> placement.rank }
+            val (countX, _) = folderGridCounts(ordered.size, maxColumns, maxRows)
+            val maxItemsPerPage = maxColumns * maxRows
+            ordered.forEachIndexed { index, (ref, _) ->
+                // FolderGridOrganizer.getPosForRank: page-major position of
+                // the rank-ordered index on the content-sized grid.
+                val pagePos = index % maxItemsPerPage
+                cells[ref] = GridCell(pagePos % countX, pagePos / countX)
+            }
+        }
+    return cells
+}
+
+/**
+ * Port of FolderGridOrganizer.calculateGridSize for a fresh organizer (its
+ * 0x0 starting grid) — the same grid the launcher's bind-time verifier derives
+ * for a folder content size. Kept fork-side (Issue #450) so the launcher
+ * normalization contract needs no src/ change.
+ */
+private fun folderGridCounts(count: Int, maxCountX: Int, maxCountY: Int): Pair<Int, Int> {
+    if (count >= maxCountX * maxCountY) return maxCountX to maxCountY
+    var gridCountX = 0
+    var gridCountY = 0
+    while (true) {
+        val oldCountX = gridCountX
+        val oldCountY = gridCountY
+        if (gridCountX * gridCountY < count) {
+            // Current grid is too small, expand it.
+            if ((gridCountX <= gridCountY || gridCountY == maxCountY) && gridCountX < maxCountX) {
+                gridCountX++
+            } else if (gridCountY < maxCountY) {
+                gridCountY++
+            }
+            if (gridCountY == 0) gridCountY++
+        } else if ((gridCountY - 1) * gridCountX >= count && gridCountY >= gridCountX) {
+            gridCountY = maxOf(0, gridCountY - 1)
+        } else if ((gridCountX - 1) * gridCountY >= count) {
+            gridCountX = maxOf(0, gridCountX - 1)
+        }
+        if (gridCountX == oldCountX && gridCountY == oldCountY) return gridCountX to gridCountY
+    }
+}
+
 private fun normalizeMaterializedPages(
     state: LayoutState,
     rows: List<PersistentRow>,
@@ -571,6 +654,7 @@ private fun rowFor(
     base: PersistentRow?,
     plannedIds: Map<ApplicationItemRef, Long>,
     plannedPages: Map<ApplicationPageRef.PlannedPage, Long>,
+    folderChildCells: Map<ApplicationItemRef, GridCell>,
 ): PersistentRow {
     val id = when (val ref = item.ref) {
         is ApplicationItemRef.PersistentItem -> ref.itemId.value.toLong()
@@ -618,7 +702,20 @@ private fun rowFor(
                 else -> requireNotNull(plannedIds[parent]).toInt()
             }
             screen = null
-            cell = null
+            // Issue #450 (review round 13 finding 1): the launcher's own folder
+            // binding (Folder.bind → updateItemLocationsInDatabaseBatch(true))
+            // rewrites any child whose persisted (cellX, cellY, rank) differs
+            // from the FolderGridOrganizer position of its rank-ordered index,
+            // and that rewrite bumps the row's `modified`. Writing NULL cells
+            // therefore let the bind-time normalization change the canonical
+            // revision between the apply's undo receipt and any later capture,
+            // so a legitimate create-folder undo was rejected as
+            // STALE_REVISION. Materializing the same normalized cells here
+            // makes the bind-time pass a no-op (verifier returns false → no
+            // moveItemsInDatabase → no `modified` bump) and keeps the recovery
+            // revision stable. The canonical FolderChild placement carries
+            // only (parent, rank), so this is invisible to the canonical state.
+            cell = folderChildCells[item.ref]
             span = null
             rank = placement.rank
         }

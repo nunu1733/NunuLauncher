@@ -135,6 +135,12 @@ jobs:
               - 'tests/organizer-instrumentation/com/android/launcher3/hybridhotseat/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/application/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/planning/**'
+              # Issue #449: the edit surface drives the organizer apply path
+              # (session → plan → apply). Its production tree and its
+              # instrumentation test self-trigger the lane that owns the
+              # write path.
+              - 'lawnchair/src/app/lawnchair/homeedit/**'
+              - 'tests/organizer-instrumentation/app/lawnchair/homeedit/**'
               # Issue #458: LockAuthoringInstrumentationTest joined the
               # reservation-recovery lane class list; keep test-only changes
               # self-triggering the lane that owns them.
@@ -414,7 +420,7 @@ jobs:
           # runner still owns the live emulator and returns the original
           # command status.
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/shared-writer-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.DirectEditModelWriterTest,com.android.launcher3.organizer.DirectEditWriteShapeTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.organizer.RestoreLeaseDeferredLoaderThreadAffinityTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/shared-writer-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.DirectEditModelWriterTest,com.android.launcher3.organizer.DirectEditWriteShapeTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.organizer.RestoreLeaseDeferredLoaderThreadAffinityTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest,app.lawnchair.homeedit.EditSurfaceApplyInstrumentationTest,com.android.launcher3.DirectEditUndoModelWriterTest,app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest,app.lawnchair.homeedit.HomeEditUndoAvailabilityInstrumentationTest
       - name: Upload shared-writer instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

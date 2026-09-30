@@ -1059,6 +1059,17 @@ class ExchangeFlowStateHolderTest {
     private class ExchangeRunApplication(
         private val detectionReady: Boolean = true,
     ) : app.lawnchair.organizer.ui.ManualOrganizationApplication {
+        // Issue #449: unused by the exchange holder tests; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
+        // Issue #450: unused by the exchange holder tests; fail fast if reached.
+        override fun applyWithUndoReceipt(
+            plan: app.lawnchair.organizer.application.public.ValidatedLayoutPlan,
+            runId: app.lawnchair.organizer.application.public.RunId,
+        ): Pair<app.lawnchair.organizer.application.public.ApplyResult, app.lawnchair.organizer.planning.RevisionId?> = error("not reached in exchange holder tests")
+
+        override fun recover(request: app.lawnchair.organizer.application.public.RecoveryRequest): app.lawnchair.organizer.application.public.RecoveryResult = error("not reached in exchange holder tests")
+
         var composeFullCalls = 0
         var detectionCalls = 0
         private var runIdCounter = 0

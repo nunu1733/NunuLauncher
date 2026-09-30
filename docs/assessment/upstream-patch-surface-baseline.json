@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "status": "accepted",
-  "captured_on": "2026-08-23",
+  "captured_on": "2026-09-29",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "79c1a7db6f1909c248f3bd22365ee9a240357ce1",
+  "main_commit": "3bde87122926d6afa29c79e6c3db9b3a68fac624",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -32,7 +32,10 @@
       ".md"
     ],
     "paths": [
-      ".gitignore"
+      ".gitignore",
+      ".agents/skills/ux-visual-review/agents/openai.yaml",
+      ".codex/agents/ux-critic.toml",
+      ".codex/agents/ux-observer.toml"
     ]
   },
   "pinned_content_exclusions": {
@@ -385,7 +388,12 @@
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt",
         "res/values/strings.xml",
-        "src/com/android/launcher3/model/BaseLauncherBinder.java"
+        "src/com/android/launcher3/model/BaseLauncherBinder.java",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/CustomCategoryPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerStrategyPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerUsageMaterialRows.kt",
+        "res/values-ja/strings.xml"
       ]
     },
     {
@@ -404,7 +412,10 @@
         "src/com/android/launcher3/model/LoaderTask.java",
         "src/com/android/launcher3/model/ModelDbController.java",
         "src/com/android/launcher3/model/ModelWriter.java",
-        "src/com/android/launcher3/util/MainThreadInitializedObject.java"
+        "src/com/android/launcher3/util/MainThreadInitializedObject.java",
+        "src/com/android/launcher3/model/DirectEditContract.java",
+        "src/com/android/launcher3/InvariantDeviceProfile.java",
+        "quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java"
       ]
     },
     {
@@ -430,46 +441,132 @@
         "src/com/android/launcher3/provider/LauncherDbUtils.java",
         "src/com/android/launcher3/provider/RestoreDbTask.java"
       ]
+    },
+    {
+      "id": "homeedit-edit-surface",
+      "responsibility": "Visual multi-select edit surface (Issue #449, ADR-0014 case B): pure session/planning layers, thin organizer-access window, full-screen UI, and the two entries. The one-shot apply goes through the existing organizer apply path (ORGANIZER lease, one recovery point, 1 transaction, correlated reload + verification); no direct DB writes. Includes the plan-coupled minimal extension of the apply path: the manifest-absence delete pass in LauncherLayoutAdapter (plan 結合点7) that materializes intended-row removals, and the read-only inspectCapture seam in LayoutApplicationModule.",
+      "evidence": [
+        "specs/449-multi-select-surface/spec.md",
+        "docs/adr/0014-edit-surface.md",
+        "docs/assessment/pr-476-edit-surface.md"
+      ],
+      "paths": [
+        "lawnchair/AndroidManifest.xml",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfacePlanBuilder.kt",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceProjection.kt",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceSessionPlanner.kt",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceState.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditAdapter.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditExecutor.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditModel.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditPlanner.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditSurfaceAccess.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/EditActionsShortcuts.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/EditSurfaceScreen.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt",
+        "lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt",
+        "lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt",
+        "lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt",
+        "lawnchair/src/app/lawnchair/organizer/planning/PlanningResult.kt",
+        "lawnchair/src/app/lawnchair/organizer/ui/GeneratedFolderTitles.kt",
+        "lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt"
+      ]
+    },
+    {
+      "id": "homeedit-edit-undo",
+      "responsibility": "Edit undo (Issue #450, ADR-0013 contract 5): the generation-bound process-local undo record, the pure undo planner with availability verification, the undo executor and snackbar entry, and the recovery-result text mapper. The inverse operations themselves live in ModelWriter via the DirectEditContract extension (already in the direct-edit bridge group); the edit-session undo reuses the existing organizer recovery path through the HomeEditSurfaceAccess window (receipt accessor additive to ManualOrganizationApplication). Also owns the one upstream bind-path guard created for this Issue: Folder.java suppresses the bind-time single-child cleanup for a folder carrying the direct-edit OPTIONS bit, so the cleanup cannot flatten it inside the undo snackbar's window.",
+      "evidence": [
+        "specs/450-edit-undo/spec.md",
+        "specs/450-edit-undo/plan.md",
+        "docs/adr/0013-direct-edit-write-contract.md"
+      ],
+      "paths": [
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoAvailability.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoExecutor.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoPlanner.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoRecord.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoRecoveryText.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoVerifier.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/HomeEditUndoSnackbar.kt",
+        "src/com/android/launcher3/folder/Folder.java"
+      ]
+    },
+    {
+      "id": "fork-platform-preexisting",
+      "responsibility": "Pre-existing fork platform changes that predate Issue #449 and are already in the baseline upstream..main diff (backup/restore UI, bugreport, device-profile config, build configuration). Recorded for measurement completeness; ownership review of each belongs to the issues that introduced them.",
+      "evidence": [
+        "docs/assessment/upstream-patch-surface-baseline.md",
+        "docs/engineering/building.md"
+      ],
+      "paths": [
+        "build.gradle",
+        "settings.gradle",
+        "lawnchair/res/values/config.xml",
+        "lawnchair/src/app/lawnchair/DeviceProfileOverrides.kt",
+        "lawnchair/src/app/lawnchair/backup/BackupPageSummaryReader.kt",
+        "lawnchair/src/app/lawnchair/backup/ui/RestoreBackupScreen.kt",
+        "lawnchair/src/app/lawnchair/backup/ui/RestoreBackupViewModel.kt",
+        "lawnchair/src/app/lawnchair/bugreport/LawnchairBugReporter.kt"
+      ]
     }
   ],
   "expected_measurement": {
-    "counted_files": 47,
-    "counted_additions": 3993,
-    "counted_deletions": 1017,
-    "counted_paths_sha256": "b743954a95bec97743f5f09d1dcfafe3cef0946a79274b27b7eab41c86ebdfab",
-    "project_owned_files": 91,
-    "project_owned_additions": 15898,
-    "project_owned_deletions": 0,
-    "project_owned_paths_sha256": "d12e4bf1d65f1c1646dbccd9752f5c835f9d28b69b6cda6a8079805d1c00a100",
-    "excluded_files": 309,
-    "excluded_additions": 57611,
-    "excluded_deletions": 685,
-    "excluded_paths_sha256": "af64abd7f8f3554bfe9ab163845e51420e68ec2212d18cb8a93f36d736178a02",
+    "counted_additions": 20176,
+    "counted_deletions": 1071,
+    "counted_files": 91,
+    "counted_paths_sha256": "0859546f9cfd9b021ebc0e972b4968252283d18c34f2df99aaea51c2e3ce9d52",
+    "excluded_additions": 207862,
+    "excluded_deletions": 863,
+    "excluded_files": 1196,
+    "excluded_paths_sha256": "a32da95b24643f3f35266690afb6eb7ee46490585a919515cea46e99f4e5f3c3",
     "groups": {
       "deck-retirement": {
+        "additions": 759,
+        "deletions": 862,
         "files": 20,
-        "additions": 288,
-        "deletions": 853,
         "paths_sha256": "3f68fcbdba6182596817bcec19c8327c2f23cda9ee51a69499b7d2017a89616a"
       },
+      "fork-platform-preexisting": {
+        "additions": 608,
+        "deletions": 32,
+        "files": 8,
+        "paths_sha256": "727291c82bd7181e70278f6926a041ce86c3fb2e54b8efeedcab771586d51dbd"
+      },
+      "homeedit-edit-surface": {
+        "additions": 8446,
+        "deletions": 1,
+        "files": 20,
+        "paths_sha256": "beb57d705e8e94dc3c8b5faa2320dcb8dc1eca92435a55fdbdf0b6bad7329fb8"
+      },
+      "homeedit-edit-undo": {
+        "additions": 932,
+        "deletions": 3,
+        "files": 8,
+        "paths_sha256": "4417cff12540518a6f02b6466e6c13f36e842aae41ffdbc27572f9f2252f0615"
+      },
       "layout-schema-and-recovery": {
-        "files": 11,
         "additions": 677,
         "deletions": 84,
+        "files": 11,
         "paths_sha256": "cd6606755781c3f5eac65d513e346f70b4b78f6fdddd1e851de8803836600724"
       },
       "model-reload-and-transaction-gates": {
-        "files": 8,
-        "additions": 1349,
-        "deletions": 71,
-        "paths_sha256": "7a86bf7ecb43d4b5ae47c2cba0f6302d149f401c315f74a6f661c03f96e2653c"
+        "additions": 2979,
+        "deletions": 80,
+        "files": 11,
+        "paths_sha256": "89e436108363951a16ec544251fa6b70b7be336e2febf6009d197aa61a38eedc"
       },
       "organizer-ui-and-lock-authoring": {
-        "files": 8,
-        "additions": 1679,
+        "additions": 5775,
         "deletions": 9,
-        "paths_sha256": "91bd58512c8dc412093d80f72688c32dc7339f94bb12d0b3c6d70fb678a0b7e0"
+        "files": 13,
+        "paths_sha256": "7f9dc79c4f97a2456a48e23a6fcfbc218dd0bf3c2148ebd65d194d361403004f"
       }
-    }
+    },
+    "project_owned_additions": 36692,
+    "project_owned_deletions": 0,
+    "project_owned_files": 173,
+    "project_owned_paths_sha256": "eae38efc34111329dd57daa1af2f6b3f7fb702540892d249f17ebbb6e56fad6a"
   }
 }

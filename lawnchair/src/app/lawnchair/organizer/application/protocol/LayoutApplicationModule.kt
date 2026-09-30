@@ -73,10 +73,19 @@ internal class LayoutApplicationModule<S>(
     // wiring; a plan that carries candidates fails closed when either is null.
     private val candidateApplicationResolver: CandidateApplicationResolver? = null,
     private val candidateAvailability: CandidateAvailabilityPort? = null,
+    // Issue #450: test-only injection of the run mutex (a controllable double
+    // for the receipt race oracle). Production composition never passes it —
+    // the default builds the real RunMutex.
+    runMutexOverride: RunMutexPort? = null,
 ) where S : RecoveryStorePort, S : RecoveryStoreReconciliationPort {
 
     private val mutex: RunMutex = RunMutex()
-    private val ordinaryMutex: RunMutexPort = mutex
+
+    // The ordinary operations (apply/recover/preview) serialize through the
+    // injected port when a test provides one; the reconciliation issuer keeps
+    // binding to the real mutex (reconciliation is not part of the receipt
+    // contract under test).
+    private val ordinaryMutex: RunMutexPort = runMutexOverride ?: mutex
     private val reconciliationStore: RecoveryStoreReconciliationPort = store
     private val reconciliationIssuer: RecoveryStoreReconciliationIssuer =
         requireNotNull(reconciliationStore.bindReconciliationIssuer(mutex)) {
@@ -153,6 +162,34 @@ internal class LayoutApplicationModule<S>(
         },
     ) {
         applyProtocol.apply(plan, runId)
+    }
+
+    /**
+     * Issue #450: the undo receipt — the apply result plus the verified
+     * post-apply revision for the undo record's `expectedCurrentRevision`,
+     * returned in ONE invocation. The revision is the exact operand of the
+     * apply path's post-write verification (the materialized post-state),
+     * captured invocation-locally at the `Applied` assembly point; no shared
+     * slot read after the mutex release, so a concurrent apply can never make
+     * a successful confirm lose its receipt. Public apply contract
+     * ([ApplyResult]) is unchanged; null revision for any non-Applied result.
+     */
+    internal fun applyWithUndoReceipt(
+        plan: ValidatedLayoutPlan,
+        runId: RunId,
+    ): Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?> = readinessGate.runWhenReady(
+        unavailable = { state ->
+            ApplyResult.Rejected(
+                runId,
+                if (state == ReadinessGate.State.FAILED) {
+                    PreWriteRejection.RECOVERY_STORE_UNAVAILABLE
+                } else {
+                    PreWriteRejection.WRITER_BUSY
+                },
+            ) to null
+        },
+    ) {
+        applyProtocol.applyWithUndoReceipt(plan, runId)
     }
 
     /**
@@ -253,6 +290,31 @@ internal class LayoutApplicationModule<S>(
 
     /** Internal run identity factory for the manual orchestration protocol. */
     internal fun newManualRunId(): RunId = operationIds.newRunId()
+
+    /**
+     * Issue #449: read-only capture for the visual edit surface. Same seam
+     * family as the plan preview (spec 84/194): no write, no lifecycle
+     * mutation, silent diagnostically, serialized against writers through the
+     * same non-blocking run-mutex lease as the other read-only inspections.
+     * An unready gate, mutex contention, or any capture failure maps to
+     * `null` — fail-closed; the edit surface opens or reopens only from a
+     * fresh authoritative capture.
+     */
+    internal fun inspectCapture(): CapturedSnapshot? = readinessGate.runWhenReady(
+        unavailable = { null },
+    ) {
+        val runId = operationIds.newRunId()
+        if (!ordinaryMutex.tryAcquire(runId)) return@runWhenReady null
+        try {
+            try {
+                writer.captureCurrent(CaptureId("edit-surface-inspect"))
+            } catch (_: RuntimeException) {
+                null
+            }
+        } finally {
+            ordinaryMutex.release(runId)
+        }
+    }
 
     /**
      * Read-only plan preview (Issue #194). Captures authoritative current state
