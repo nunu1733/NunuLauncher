@@ -10,7 +10,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
+import app.lawnchair.BlankActivity
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.homeedit.ui.HomeEditSurfaceActivity
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.adapter.RowManifestCodec
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
@@ -20,6 +22,7 @@ import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.ui.preferences.PreferenceActivity
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
@@ -106,8 +109,12 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         // These movable rows make page 0 the planner's preferred target. The
         // old allocator selected (0,0); a reservation-aware plan must instead
         // select a non-overlapping cell that survives the real A7 reload.
-        insertFixtureRow(db, 0, 1, "Issue155 E2E A")
-        insertFixtureRow(db, 0, 2, "Issue155 E2E B")
+        // Each row must also carry a distinct launch target: since Issue #451
+        // (spec 451 N-1) the duplicate-surplus rule preserves every captured
+        // item beyond the first that shares a launch target, which would
+        // suppress the folder formation these cases assert.
+        insertFixtureRow(db, 0, 1, "Issue155 E2E A", fixtureComponent(LawnchairLauncher::class.java.name))
+        insertFixtureRow(db, 0, 2, "Issue155 E2E B", fixtureComponent(PreferenceActivity::class.java.name))
         launcher.model.modelDbController.clearEmptyDbFlag()
         // Drive the real LauncherModel loader directly. This is the same
         // production callback/reload seam used by the existing instrumentation
@@ -312,7 +319,13 @@ class ManualOrganizationProductionE2EInstrumentationTest {
 
         // Simulate a user edit after the verified apply: one extra favorites
         // row the recovery point does not contain.
-        insertFixtureRow(launcher.model.modelDbController.db, 0, 4, "Issue230 external row")
+        insertFixtureRow(
+            launcher.model.modelDbController.db,
+            0,
+            4,
+            "Issue230 external row",
+            fixtureComponent(HomeEditSurfaceActivity::class.java.name),
+        )
         reloadAndWait()
         assertEquals(4, snapshotFavorites().size)
 
@@ -358,7 +371,13 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         // The current adapter intentionally rejects a reservation-overlapping
         // target. Insert only the legacy target row here to exercise the real
         // correlated Loader cleanup that formerly followed A6.
-        insertFixtureRow(launcher.model.modelDbController.db, 0, 0, "Issue155 legacy target")
+        insertFixtureRow(
+            launcher.model.modelDbController.db,
+            0,
+            0,
+            "Issue155 legacy target",
+            fixtureComponent(BlankActivity::class.java.name),
+        )
         val legacyIntended = RowManifestCodec.capture(
             launcher.model.modelDbController.db,
             source.layoutState.deviceCapabilities,
@@ -483,16 +502,29 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         workspace.cell.y.toLong() < reservation.cell.y.toLong() + reservation.span.height.toLong() &&
         reservation.cell.y.toLong() < workspace.cell.y.toLong() + workspace.span.height.toLong()
 
+    /**
+     * Fixture rows stay inside the Lawnchair package so the package-scoped
+     * classification evidence read resolves, but each fixture row declares a
+     * distinct component: the application TargetKey is the flattened component
+     * string, and since Issue #451 (spec 451 N-1) captured items that share a
+     * launch target are treated as duplicates whose surplus is preserved
+     * instead of moved into a new folder. Every referenced activity is
+     * declared in the merged manifest; none of these rows is ever launched.
+     */
+    private fun fixtureComponent(className: String): ComponentName =
+        ComponentName(context.packageName, className)
+
     private fun insertFixtureRow(
         db: android.database.sqlite.SQLiteDatabase,
         screen: Int,
         cellY: Int,
         title: String,
+        component: ComponentName,
     ) {
         val id = launcher.model.modelDbController.generateNewItemId()
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setComponent(ComponentName(context.packageName, LawnchairLauncher::class.java.name))
+            .setComponent(component)
         db.insertOrThrow(
             Favorites.TABLE_NAME,
             null,

@@ -1,7 +1,7 @@
 # 編集負担ベンチマーク
 
 > Status: Accepted
-> Updated: 2026-09-26
+> Updated: 2026-09-30
 > 出典: 再焦点化方針メモ（2026-09-24承認、Revision 5）§4.1（R-2）、§11（B-9）、§12（B3）。付録全文は [Issue #441](https://github.com/nunu1733/NunuLauncher/issues/441)。受理条件とfixture seeding契約は [spec 441](../../specs/441-editing-burden-benchmark/spec.md)
 > Requirements: NFR-014
 > 形式の参考にした文書: [performance-budgets](./performance-budgets.md)（測定protocol・見直し条件の構成）
@@ -152,7 +152,7 @@ identity→roleの対応（課題対象の指定に使う。正本は seeding in
 | B4 | 25 | 13 | ページ0の3個（各: 長押し2 + Remove targetへの同ページdrag 2）+ ページ1へswipe（1）+ ページ1の3個（各4） | 同上（≤12）。判定はNow-2全体 |
 | B5 | 削除: 1 / 移動: 8 | 1 / 2 | 削除はundo tap（4秒以内）。移動はundoなしで逆drag（2ページ跨ぎ: 長押し2 + drag 6。視点は移動先ページ） | 1操作。対象はforkの編集のうち利用者が画面上で行うもの（項目単位のアクション、編集画面の確定）。新規アプリの配置は対象外。上流のdrag移動の取り消しはNext、上流の削除snackbar（約4秒）はbaselineとして記録（メモ§4.1） |
 | B6 | 84 | 32 | 2ページ目に置かれた8個（各: swipe 1 + 長押し2 + 1ページ跨ぎdrag 5 = 8）+ 3ページ目に置かれた2個（各: swipe 2 + 長押し2 + 2ページ跨ぎdrag 6 = 10）。配置内訳は§3.4の走査規則から決定的（2ページ目の空き8cellを先に消費し、残り2個は3ページ目） | B1の改善に従属（10個分の合計。#446のspecで確定） |
-| B7 | 9 | 5 | ページ0のペア削除（長押し2 + 同ページdrag 2）+ ページ1へswipe（1）+ ページ1のペア削除（4）。重複の在処は§5のidentity表で既知であり、探索は数えない（§4） | #451の対象。目標は#451のspecで確定 |
+| B7 | 9 | 5 | ページ0のペア削除（長押し2 + 同ページdrag 2）+ ページ1へswipe（1）+ ページ1のペア削除（4）。重複の在処は§5のidentity表で既知であり、探索は数えない（§4） | 構造保証: 全体整理（full-run再編成）の適用後、任意の新規フォルダ内に同一起動先のmemberの重複は0組（[spec 451](../../specs/451-organizer-duplicate-items/spec.md) N-2/N-5の性質testで検証）。可視性: 重複を含むホームでの新規runのpreviewで、重複の存在が警告行で識別できる（重複超過分の行数 ≥ 1/組）。#451はB7の発生源を計画段階で排除するものであり、「発見と削除」の操作コスト（baseline 9）は直接削減しない。削除提案の操作コスト目標はNext（RF-next backlog）が所有する（#451 spec「B7目標」節） |
 
 baselineの算出は2026-09-26の本書改正で確定した。メモ §4.1の初期目標（B1=追加操作0、B2〜B4=50%削減、B5=1操作）を確定値として載せた（B2≤24、B3≤10、B4≤12。B2〜B4の合否はNow-2全体（#448+#449のうち適した方）で判定する）。起草時の概算（B2=40、B3=20、B4=24、B6=未確定、B7=8+探索分）は、drop後の視点移動と課題内のページ移動を内訳に含めていなかったため、確定時に再計算した（Change history）。確定前にNow段階の機能specは受け入れない（メモ §5、NFR-014）。NFR-014のstatus確定は `docs/product/requirements.md` への更新と同時に行う。
 
@@ -167,6 +167,8 @@ baselineの算出は2026-09-26の本書改正で確定した。メモ §4.1の�
 将来の人間実測・agent自動計測（UI Automator等）について: 本ベンチマークの会計指標では所要時間・知覚負担を扱わない。それらを測る必要が生じた場合は、課題の再定義（実アプリの使用を含む）と併せて、performance-budgets §10と同じ分離基準で別Issueとして再設計する。2026-09-26のオーナー判断におけるscenario再設計の要否判断は「本改正では行わない」である（理由: §1の指標の性質により会計に実アプリ性は不要なこと、開発フローで人手が必須になる構成を避ける方針）。
 
 ## Change history
+
+- 2026-09-30: Issue #451（[spec 451](../../specs/451-organizer-duplicate-items/spec.md)、accepted）の実装PRで、§6のB7行の目標を#451 spec「B7目標」節の確定値へ反映した（構造保証: 新規フォルダ内の同一起動先重複0組、可視性: preview警告行での重複識別。baselineと操作数の変更なし）。FR-021のstatus更新（proposed → accepted）は spec accept時に `docs/product/requirements.md` へ反映済み。
 
 - 2026-09-26: Issue #441の成果物として新設。付録草案（2026-09-24承認）を正本へ移す際に、grid表記をreference環境の実値「4列×5行」へ正規化し（草案の「5列×4行」は列/行の取り違え。`lawnchair/res/xml/device_profiles.xml` の既定phone grid `4_by_5` と performance-budgets §2.1 に一致）、QSB有効時の新規アプリ配置規則（`WorkspaceItemSpaceFinder.java:55-66` の1ページ目除外）に合わせてB1の操作経路とbaseline概算（8）を修正した。fixture identity（35種のactivity-alias、重複2組限定）と決定的配置規則、seedingの永続mode手順は [spec 441](../../specs/441-editing-burden-benchmark/spec.md) で確定した。
 - 2026-09-26: 実装検証（`docs/assessment/441-fixture-seeding-evidence.md`）で、launcher loaderが1項目フォルダを自動でiconへ展開する挙動（`LAUNCHER_FOLDER_CONVERTED_TO_ICON`）を確認したため、指定フォルダのseed内容を2個（Fixture 01・35）へ変更した。

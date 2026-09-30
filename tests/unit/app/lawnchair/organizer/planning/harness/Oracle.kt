@@ -26,6 +26,7 @@ import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.PreserveReason
 import app.lawnchair.organizer.planning.Rejected
 import app.lawnchair.organizer.planning.Warning
+import app.lawnchair.organizer.planning.duplicateSurplusIds
 
 internal data class OracleFinding(
     val check: ContractCheck,
@@ -426,6 +427,12 @@ internal object Oracle {
             rolesById[item.id] == ExistingRole.Preserved -> PreserveReason.NON_TARGET
 
             item.placement is CapturedPlacement.FolderMember -> PreserveReason.STRUCTURAL
+
+            // Issue #451 (spec 451 N-2/N-3): a duplicate surplus item is
+            // preserved at its captured position on the replan too — the same
+            // pure detection (N-1) recomputes the same surplus set, and the
+            // representative itself is stable because ItemIds never change.
+            item.id in duplicateSurplusIds(input.snapshot.items) -> PreserveReason.DUPLICATE_LAUNCH_TARGET
 
             // Spec 182/237: a movable item the selected strategy intentionally
             // keeps fixed reports STRATEGY_PRESERVED on every run, including
