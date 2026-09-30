@@ -360,3 +360,7 @@ Owner acceptance of this Spec 13 revision is the implementation gate.
   reproduction at repository `main` `b25f20ca7c31ad384fbe8f8b696e87118f8fbe8c`.
   Selected the targeted writer transition as the owner seam; retained the
   strict desktop capture boundary and separated typed preview failure to #270.
+- 2026-10-01: Fixture reconciliation for #487 (spec 487): the
+  `seedLayoutWithFolder()` rows now carry distinct launch targets, so the
+  AC-269-03 second-organize oracle keeps reaching `Applied` under spec 451
+  N-1/N-2 duplicate-surplus preservation. AC text unchanged.

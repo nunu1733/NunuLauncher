@@ -9,8 +9,10 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.lawnchair.BlankActivity
 import app.lawnchair.LawnchairApp
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.homeedit.ui.HomeEditSurfaceActivity
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.CapturedSnapshot
@@ -21,7 +23,10 @@ import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.smartspace.SmartspacePreferencesShortcut
+import app.lawnchair.ui.preferences.PreferenceActivity
 import com.android.launcher3.LauncherAppState
+import com.android.launcher3.WidgetPickerActivity
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.celllayout.CellPosMapper
@@ -621,19 +626,20 @@ class Issue265ManualEditRecoveryInstrumentationTest {
 
     /**
      * Deterministic layout: one folder with three children plus three
-     * standalone items, all pointing at the launcher itself so classification
-     * is stable. Standalone items sit away from the QSB reservation row.
+     * standalone items, each carrying a distinct launch target so
+     * classification is stable. Standalone items sit away from the QSB
+     * reservation row.
      */
     private fun seedLayoutWithFolder() {
         launcher.model.modelDbController.db.delete(Favorites.TABLE_NAME, null, null)
         val folderId = launcher.model.modelDbController.generateNewItemId()
         insertFolderRow(folderId, cellX = 0, cellY = 2)
-        insertLauncherRow("Issue265 C1", folderId, rank = 0)
-        insertLauncherRow("Issue265 C2", folderId, rank = 1)
-        insertLauncherRow("Issue265 C3", folderId, rank = 2)
-        insertLauncherRow("Issue265 S1", Favorites.CONTAINER_DESKTOP, cellX = 2, cellY = 2)
-        insertLauncherRow("Issue265 S2", Favorites.CONTAINER_DESKTOP, cellX = 3, cellY = 2)
-        insertLauncherRow("Issue265 S3", Favorites.CONTAINER_DESKTOP, cellX = 4, cellY = 2)
+        insertLauncherRow("Issue265 C1", folderId, rank = 0, component = fixtureComponent(LawnchairLauncher::class.java.name))
+        insertLauncherRow("Issue265 C2", folderId, rank = 1, component = fixtureComponent(PreferenceActivity::class.java.name))
+        insertLauncherRow("Issue265 C3", folderId, rank = 2, component = fixtureComponent(HomeEditSurfaceActivity::class.java.name))
+        insertLauncherRow("Issue265 S1", Favorites.CONTAINER_DESKTOP, cellX = 2, cellY = 2, component = fixtureComponent(BlankActivity::class.java.name))
+        insertLauncherRow("Issue265 S2", Favorites.CONTAINER_DESKTOP, cellX = 3, cellY = 2, component = fixtureComponent(SmartspacePreferencesShortcut::class.java.name))
+        insertLauncherRow("Issue265 S3", Favorites.CONTAINER_DESKTOP, cellX = 4, cellY = 2, component = fixtureComponent(WidgetPickerActivity::class.java.name))
         launcher.model.forceReload()
         awaitModelLoaded()
         dumpRawRows("SEEDED")
@@ -670,18 +676,31 @@ class Issue265ManualEditRecoveryInstrumentationTest {
         ) { "Unable to seed folder row" }
     }
 
+    /**
+     * Fixture rows stay inside the Lawnchair package so the package-scoped
+     * classification evidence read resolves, but each fixture row declares a
+     * distinct component: since Issue #451 (spec 451 N-1/N-2) captured items
+     * that share a launch target are treated as duplicate surplus preserved
+     * instead of moved into a new folder, which would suppress the folder
+     * formation the recovery oracle (Issue #487 / spec 487) asserts. Every
+     * referenced activity is declared in the merged manifest; none of these
+     * rows is ever launched.
+     */
+    private fun fixtureComponent(className: String): ComponentName =
+        ComponentName(context.packageName, className)
+
     private fun insertLauncherRow(
         title: String,
         container: Int,
         rank: Int = 0,
         cellX: Int = 0,
         cellY: Int = 0,
+        component: ComponentName,
     ) {
         val id = launcher.model.modelDbController.generateNewItemId()
-        val launcherComponent = ComponentName(context.packageName, LawnchairLauncher::class.java.name)
         val homeIntent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
-            .setComponent(launcherComponent)
+            .setComponent(component)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         val values = ContentValues().apply {
             put(Favorites._ID, id)
