@@ -76,6 +76,17 @@
     <string name="homeedit_error_profile_mismatch">仕事用プロファイルのアイコンはこのフォルダに入れられません。</string>
     <string name="homeedit_error_unsupported">このアイコンは編集アクションの対象外です。</string>
     <string name="homeedit_error_write_failed">書き込みに失敗しました。レイアウトは変更されていません。</string>
+    <!-- Issue #450: undo -->
+    <string name="homeedit_undo_label">編集を適用しました</string>
+    <string name="homeedit_undo_error_stale">元に戻せません: アイコンがその後移動されています。</string>
+    <string name="homeedit_undo_error_no_space">元に戻せません: 元の位置に空きがありません。</string>
+    <string name="homeedit_undo_error_folder_changed">元に戻せません: 作成したフォルダの状態が変わっています。</string>
+    <string name="homeedit_undo_error_item_unavailable">元に戻せません: アプリが端末にありません。</string>
+    <string name="homeedit_undo_error_write_failed">元に戻せませんでした。レイアウトは変更されていません。</string>
+    <string name="homeedit_undo_error_stale_revision">元に戻せません: 確定後にホーム画面が変更されています。</string>
+    <string name="homeedit_undo_error_not_restorable">元に戻せません: 復元点はもう利用できません。</string>
+    <string name="homeedit_undo_error_busy">現在元に戻せません: 整理処理が実行中です。</string>
+    <string name="homeedit_undo_error_restore_failed">元に戻せませんでした。整理機能から復元できます。</string>
     <!-- Issue #449: 複数選択の視覚的編集画面 -->
     <string name="edit_surface_menu_open">編集画面</string>
     <string name="edit_surface_title">編集画面</string>

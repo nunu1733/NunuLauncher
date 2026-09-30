@@ -54,6 +54,14 @@ data class HomeEditSnapshot(
     val rowCount: Int,
     val screenIds: List<Int>,
     val items: List<HomeEditItem>,
+    /**
+     * Issue #450: current hotseat capacity (numHotseatIcons). Hotseat rows
+     * use `screen` as the slot index, so an undo back to the hotseat must
+     * verify the recorded slot against the CURRENT device profile — a grid
+     * change can shrink it below the recorded slot (spec scenario: 端末の格子
+     * が変わっていれば書かずに失敗する).
+     */
+    val hotseatCount: Int = 0,
 ) {
     fun itemById(id: Int): HomeEditItem? = items.firstOrNull { it.id == id }
 }

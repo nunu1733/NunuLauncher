@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.homeedit.ui.HomeEditUndoSnackbar
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.R
@@ -34,73 +35,10 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
 
     /**
      * Builds the stage-1 snapshot from the launcher DB. Model executor only.
-     * The projection mirrors ModelWriter's stage-2 projection; the admitted
-     * stage-2 re-validation is the binding check for any divergence.
+     * Delegates to the shared projection (popup executor and undo executor
+     * must observe the identical stage-1 state, spec 448/450).
      */
-    private fun buildSnapshot(): HomeEditSnapshot {
-        val controller = LauncherAppState.getInstance(launcher).model.modelDbController
-        val db = controller.db
-        val items = ArrayList<HomeEditItem>()
-        val columns = "${Favorites._ID}, ${Favorites.CONTAINER}, ${Favorites.SCREEN}, " +
-            "${Favorites.CELLX}, ${Favorites.CELLY}, ${Favorites.SPANX}, ${Favorites.SPANY}, " +
-            "${Favorites.ITEM_TYPE}, ${Favorites.RANK}, ${Favorites.PROFILE_ID}"
-        db.rawQuery("SELECT $columns FROM ${Favorites.TABLE_NAME}", null).use { c ->
-            while (c.moveToNext()) {
-                items.add(
-                    HomeEditItem(
-                        id = c.getInt(0),
-                        container = c.getInt(1),
-                        screenId = c.getInt(2),
-                        cellX = c.getInt(3),
-                        cellY = c.getInt(4),
-                        spanX = c.getInt(5),
-                        spanY = c.getInt(6),
-                        itemType = c.getInt(7),
-                        rank = c.getInt(8),
-                        userSerial = c.getLong(9),
-                    ),
-                )
-            }
-        }
-        val screens = ArrayList<Int>()
-        db.rawQuery(
-            "SELECT DISTINCT ${Favorites.SCREEN} FROM ${Favorites.TABLE_NAME} " +
-                "WHERE ${Favorites.CONTAINER} = ? ORDER BY ${Favorites.SCREEN}",
-            arrayOf(Favorites.CONTAINER_DESKTOP.toString()),
-        ).use { c ->
-            while (c.moveToNext()) screens.add(c.getInt(0))
-        }
-        // Mirror BgDataModel.collectWorkspaceScreens: the first screen leads
-        // whenever the QSB reservation applies or no row carries a page yet.
-        val qsbEnabled = com.android.launcher3.config.FeatureFlags.topQsbOnFirstScreenEnabled(launcher)
-        if ((qsbEnabled || screens.isEmpty()) && Workspace.FIRST_SCREEN_ID !in screens) {
-            screens.add(0, Workspace.FIRST_SCREEN_ID)
-        }
-        // The QSB reservation occupies the head of the first screen; the
-        // stage-2 projection (ModelWriter) applies the identical rule.
-        if (qsbEnabled) {
-            items.add(
-                HomeEditItem(
-                    id = -1,
-                    container = HomeEditContainers.DESKTOP,
-                    screenId = Workspace.FIRST_SCREEN_ID,
-                    cellX = 0,
-                    cellY = 0,
-                    spanX = LauncherAppState.getIDP(launcher).numSearchContainerColumns,
-                    spanY = 1,
-                    itemType = HomeEditItemTypes.APPLICATION,
-                    rank = 0,
-                    userSerial = 0,
-                ),
-            )
-        }
-        return HomeEditSnapshot(
-            columnCount = LauncherAppState.getIDP(launcher).numColumns,
-            rowCount = LauncherAppState.getIDP(launcher).numRows,
-            screenIds = screens,
-            items = items,
-        )
-    }
+    private fun buildSnapshot(): HomeEditSnapshot = buildHomeEditSnapshot(launcher)
 
     fun fetchPageOptions(targetItemId: Int, callback: (List<PageOption>) -> Unit) {
         Executors.MODEL_EXECUTOR.execute {
@@ -158,6 +96,7 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                     oldRank,
                     createdFolderId,
                     createdFolder,
+                    removedRowPayload,
                 ->
                 if (!success) {
                     mainHandler.post { reportFailureKey(reason) }
@@ -165,7 +104,7 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                 }
                 recordUndoEvidence(
                     intent, plan, oldContainer, oldScreenId, oldCellX, oldCellY,
-                    oldSpanX, oldSpanY, oldRank, createdFolderId,
+                    oldSpanX, oldSpanY, oldRank, createdFolderId, removedRowPayload,
                 )
                 when (plan) {
                     is HomeEditPlan.Move -> mainHandler.post { refreshAfterMove(id, plan) }
@@ -223,7 +162,14 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
         }
         when {
             plan.container == Favorites.CONTAINER_DESKTOP && info != null -> {
-                launcher.bindItems(Collections.singletonList(info), true)
+                // Issue #450: bind WITHOUT the new-item bounce
+                // (forceAnimateIcons=false). The animated variant posts a
+                // delayed closeOpenViews (bindInflatedItems) that closed the
+                // undo snackbar ~500ms after a cross-page move — before the
+                // accessibility-aware timeout could be honored. The
+                // accessibility-path precedent binds without animation too;
+                // the destination snap below still runs.
+                launcher.bindItems(Collections.singletonList(info), false)
                 showDestinationPage(plan.screenId)
             }
 
@@ -258,24 +204,30 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
         oldSpanY: Int,
         oldRank: Int,
         createdFolderId: Int,
+        removedRowPayload: DirectEditContract.UndoRowPayload?,
     ) {
-        HomeEditUndoLog.record(
-            buildUndoEvidence(
-                intent,
-                plan,
-                oldContainer,
-                oldScreenId,
-                oldCellX,
-                oldCellY,
-                oldSpanX,
-                oldSpanY,
-                oldRank,
-                createdFolderId,
+        // Model thread (success callback). The record slot is atomic; the
+        // snackbar closes over the token observed at display time so a stale
+        // snackbar tap can never consume a newer edit (spec 450 AC-11).
+        val token = HomeEditUndoRecord.record(
+            HomeEditUndoEntry.DirectEdit(
+                evidence = buildUndoEvidence(
+                    intent,
+                    plan,
+                    oldContainer,
+                    oldScreenId,
+                    oldCellX,
+                    oldCellY,
+                    oldSpanX,
+                    oldSpanY,
+                    oldRank,
+                    createdFolderId,
+                ),
+                removedRow = removedRowPayload,
             ),
         )
-    }
-
-    private fun showDestinationPage(screenId: Int) {
+        mainHandler.post { HomeEditUndoSnackbar.show(launcher, token) }
+    } private fun showDestinationPage(screenId: Int) {
         val workspace = launcher.workspace ?: return
         val index = workspace.getPageIndexForScreenId(screenId)
         if (index >= 0) workspace.snapToPage(index)
@@ -307,4 +259,77 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
         }
         Toast.makeText(launcher, res, Toast.LENGTH_LONG).show()
     }
+}
+
+/**
+ * Shared stage-1 snapshot projection of the launcher DB (spec 448/450). The
+ * popup executor and the undo executor must observe the identical stage-1
+ * state; ModelWriter's admitted stage-2 projection remains the binding check
+ * for any divergence. Model executor only.
+ */
+internal fun buildHomeEditSnapshot(launcher: android.content.Context): HomeEditSnapshot {
+    val controller = LauncherAppState.getInstance(launcher).model.modelDbController
+    val db = controller.db
+    val items = ArrayList<HomeEditItem>()
+    val columns = "${Favorites._ID}, ${Favorites.CONTAINER}, ${Favorites.SCREEN}, " +
+        "${Favorites.CELLX}, ${Favorites.CELLY}, ${Favorites.SPANX}, ${Favorites.SPANY}, " +
+        "${Favorites.ITEM_TYPE}, ${Favorites.RANK}, ${Favorites.PROFILE_ID}"
+    db.rawQuery("SELECT $columns FROM ${Favorites.TABLE_NAME}", null).use { c ->
+        while (c.moveToNext()) {
+            items.add(
+                HomeEditItem(
+                    id = c.getInt(0),
+                    container = c.getInt(1),
+                    screenId = c.getInt(2),
+                    cellX = c.getInt(3),
+                    cellY = c.getInt(4),
+                    spanX = c.getInt(5),
+                    spanY = c.getInt(6),
+                    itemType = c.getInt(7),
+                    rank = c.getInt(8),
+                    userSerial = c.getLong(9),
+                ),
+            )
+        }
+    }
+    val screens = ArrayList<Int>()
+    db.rawQuery(
+        "SELECT DISTINCT ${Favorites.SCREEN} FROM ${Favorites.TABLE_NAME} " +
+            "WHERE ${Favorites.CONTAINER} = ? ORDER BY ${Favorites.SCREEN}",
+        arrayOf(Favorites.CONTAINER_DESKTOP.toString()),
+    ).use { c ->
+        while (c.moveToNext()) screens.add(c.getInt(0))
+    }
+    // Mirror BgDataModel.collectWorkspaceScreens: the first screen leads
+    // whenever the QSB reservation applies or no row carries a page yet.
+    val qsbEnabled = com.android.launcher3.config.FeatureFlags.topQsbOnFirstScreenEnabled(launcher)
+    if ((qsbEnabled || screens.isEmpty()) && Workspace.FIRST_SCREEN_ID !in screens) {
+        screens.add(0, Workspace.FIRST_SCREEN_ID)
+    }
+    // The QSB reservation occupies the head of the first screen; the
+    // stage-2 projection (ModelWriter) applies the identical rule.
+    if (qsbEnabled) {
+        items.add(
+            HomeEditItem(
+                id = -1,
+                container = HomeEditContainers.DESKTOP,
+                screenId = Workspace.FIRST_SCREEN_ID,
+                cellX = 0,
+                cellY = 0,
+                spanX = LauncherAppState.getIDP(launcher).numSearchContainerColumns,
+                spanY = 1,
+                itemType = HomeEditItemTypes.APPLICATION,
+                rank = 0,
+                userSerial = 0,
+            ),
+        )
+    }
+    return HomeEditSnapshot(
+        columnCount = LauncherAppState.getIDP(launcher).numColumns,
+        rowCount = LauncherAppState.getIDP(launcher).numRows,
+        screenIds = screens,
+        items = items,
+        hotseatCount = LauncherAppState.getIDP(launcher)
+            .getDeviceProfile(launcher).numShownHotseatIcons,
+    )
 }

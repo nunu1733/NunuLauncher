@@ -73,10 +73,19 @@ internal class LayoutApplicationModule<S>(
     // wiring; a plan that carries candidates fails closed when either is null.
     private val candidateApplicationResolver: CandidateApplicationResolver? = null,
     private val candidateAvailability: CandidateAvailabilityPort? = null,
+    // Issue #450: test-only injection of the run mutex (a controllable double
+    // for the receipt race oracle). Production composition never passes it —
+    // the default builds the real RunMutex.
+    runMutexOverride: RunMutexPort? = null,
 ) where S : RecoveryStorePort, S : RecoveryStoreReconciliationPort {
 
     private val mutex: RunMutex = RunMutex()
-    private val ordinaryMutex: RunMutexPort = mutex
+
+    // The ordinary operations (apply/recover/preview) serialize through the
+    // injected port when a test provides one; the reconciliation issuer keeps
+    // binding to the real mutex (reconciliation is not part of the receipt
+    // contract under test).
+    private val ordinaryMutex: RunMutexPort = runMutexOverride ?: mutex
     private val reconciliationStore: RecoveryStoreReconciliationPort = store
     private val reconciliationIssuer: RecoveryStoreReconciliationIssuer =
         requireNotNull(reconciliationStore.bindReconciliationIssuer(mutex)) {
@@ -153,6 +162,34 @@ internal class LayoutApplicationModule<S>(
         },
     ) {
         applyProtocol.apply(plan, runId)
+    }
+
+    /**
+     * Issue #450: the undo receipt — the apply result plus the verified
+     * post-apply revision for the undo record's `expectedCurrentRevision`,
+     * returned in ONE invocation. The revision is the exact operand of the
+     * apply path's post-write verification (the materialized post-state),
+     * captured invocation-locally at the `Applied` assembly point; no shared
+     * slot read after the mutex release, so a concurrent apply can never make
+     * a successful confirm lose its receipt. Public apply contract
+     * ([ApplyResult]) is unchanged; null revision for any non-Applied result.
+     */
+    internal fun applyWithUndoReceipt(
+        plan: ValidatedLayoutPlan,
+        runId: RunId,
+    ): Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?> = readinessGate.runWhenReady(
+        unavailable = { state ->
+            ApplyResult.Rejected(
+                runId,
+                if (state == ReadinessGate.State.FAILED) {
+                    PreWriteRejection.RECOVERY_STORE_UNAVAILABLE
+                } else {
+                    PreWriteRejection.WRITER_BUSY
+                },
+            ) to null
+        },
+    ) {
+        applyProtocol.applyWithUndoReceipt(plan, runId)
     }
 
     /**

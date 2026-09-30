@@ -222,7 +222,7 @@ public class DirectEditModelWriterTest {
                     seen.set(d);
                     return d;
                 },
-                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created) -> {
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created, removedRow) -> {
                     assertTrue(success);
                     assertEquals(0, folderId);
                     done.countDown();
@@ -255,7 +255,7 @@ public class DirectEditModelWriterTest {
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<Integer> createdId = new AtomicReference<>();
         mWriter.createFolderAndMoveForDirectEdit(501, 1, 0, 0, proceed(),
-                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created) -> {
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created, removedRow) -> {
                     assertTrue(success);
                     createdId.set(folderId);
                     done.countDown();
@@ -284,7 +284,7 @@ public class DirectEditModelWriterTest {
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<String> failure = new AtomicReference<>();
         mWriter.createFolderAndMoveForDirectEdit(501, 1, 0, 0, proceed(),
-                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created) -> {
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created, removedRow) -> {
                     assertFalse(success);
                     failure.set(reason);
                     done.countDown();
@@ -339,7 +339,7 @@ public class DirectEditModelWriterTest {
                     }
                     return DirectEditContract.Decision.proceed();
                 },
-                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created) -> {
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created, removedRow) -> {
                     assertFalse(success);
                     failure.set(reason);
                     done.countDown();
@@ -378,7 +378,7 @@ public class DirectEditModelWriterTest {
 
         CountDownLatch done = new CountDownLatch(1);
         mWriter.removeItemForDirectEdit(501, proceed(),
-                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created) -> {
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created, removedRow) -> {
                     assertTrue(success);
                     done.countDown();
                 });
@@ -419,7 +419,7 @@ public class DirectEditModelWriterTest {
                     validatorRan.set(true);
                     return DirectEditContract.Decision.proceed();
                 },
-                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created) ->
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created, removedRow) ->
                         done.countDown());
 
         assertFalse("task must stay deferred while the organizer lease is held",
