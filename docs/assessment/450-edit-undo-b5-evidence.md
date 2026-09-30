@@ -23,11 +23,12 @@
 
 ## tooling実行状態
 
-evidence tooling `HomeEditUndoEvidenceToolingTest`（CI lane外のon-demand tooling。#376 cold-process evidenceと同一扱い）を本HEADで1回実行し、**8 tests / 全green**。上表の実UI系列に加え、次の回帰oracleを含む:
+evidence tooling `HomeEditUndoEvidenceToolingTest`（CI lane外のon-demand tooling。#376 cold-process evidenceと同一扱い）を本HEADで1回実行し、**9 tests / 全green**（round 14のlifecycle oracle込み）。上表の実UI系列に加え、次の回帰oracleを含む:
 
 | oracle | 内容 |
 |---|---|
 | reload生存 | `directEditCreatedFolderSurvivesReload` — snackbarを期限切れにした後のreloadでも、persisted OPTIONS bitによりpopup作成の1子フォルダがflattenされない |
+| open/close/remove lifecycle | `directEditCreatedFolderSurvivesOpenAndClose` — 実icon clickで開き実BACKで閉じても、さらにopen中に実remove経路で1子化した後のcloseでも、marked folderの行と残子が存続する（round 14: 全自動cleanupが`shouldAutoCollapseToIcon()`に集約されたことのoracle） |
 | 抑止スコープ回帰 | `singleChildFolderCleanupStillFlattensNonDirectEditFolders` — direct-edit由来でない1子フォルダは従来どおりlauncher自身によりflattenされる（cleanup無効化していないことの回帰oracle） |
 
 書込み面の回帰oracleは `DirectEditUndoModelWriterTest`（11 tests。`DirectEditModelWriterTest` 6 testsと合算で17）: `createFolderPersistsTheDirectEditCreatedOptionsBit` が作成行のOPTIONS bit永続化を、`moveAndRemoveDirectEditsDoNotSetTheCreatedFolderOptionsBit` が移動・外す経路でのbit不在をassertする。
