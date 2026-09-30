@@ -53,8 +53,9 @@ public final class DirectEditContract {
     /**
      * Issue #450: favorites OPTIONS bit marking a folder that a direct-edit
      * action (the #448 popup "new folder") intentionally created. Such a
-     * folder legitimately starts with a single child, so the bind-time
-     * single-child cleanup (Folder) must not flatten it. Persisted in the
+     * folder legitimately starts with a single child, so the automatic
+     * single-child cleanups (Folder bind/close/remove) must not flatten it.
+     * Persisted in the
      * existing OPTIONS column so the marker survives reloads — the cleanup
      * keeps respecting the user's just-created folder after the undo window
      * and across process restarts. No clearing is needed: the folder row is

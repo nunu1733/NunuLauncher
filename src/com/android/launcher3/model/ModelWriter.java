@@ -869,9 +869,10 @@ public class ModelWriter {
             folderInfo.spanY = 1;
             // Issue #450: the freshly created folder legitimately starts
             // with this single child; mark it (persisted OPTIONS bit) so the
-            // bind-time single-child cleanup (Folder) does not flatten it.
-            // The bit survives reloads and is removed with the folder row
-            // (undo or user delete), so it never needs clearing.
+            // automatic single-child cleanups (Folder bind/close/remove) do
+            // not flatten it. The bit survives reloads and is removed with
+            // the folder row (undo or user delete), so it never needs
+            // clearing.
             folderInfo.options |= DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER;
             folderInfo.user = item.user;
 

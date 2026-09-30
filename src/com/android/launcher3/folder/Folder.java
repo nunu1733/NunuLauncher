@@ -594,14 +594,11 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         }
         // In case any children didn't come across during loading, clean up the folder accordingly
         mFolderIcon.post(() -> {
-            // Issue #450 (bridge): a folder a direct-edit action created
-            // (persisted OPTIONS bit, DirectEditContract) legitimately starts
-            // with a single child; flattening it here would undo the user's
-            // edit. The bit survives reloads — the suppression holds after
-            // any reload — and is removed with the folder row (undo or user
-            // delete), so it never needs clearing.
-            if (getItemCount() <= 1 && !isInAppDrawer()
-                    && !mInfo.hasOption(DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER)) {
+            // Issue #450 (bridge): the shared auto-collapse decision keeps a
+            // direct-edit created folder (persisted OPTIONS bit) alive here,
+            // on close, and on item removal; an empty folder is still
+            // collected.
+            if (shouldAutoCollapseToIcon() && !isInAppDrawer()) {
                 replaceFolderWithFinalItem();
             }
         });
@@ -988,7 +985,10 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
             rearrangeChildren();
             mRearrangeOnClose = false;
         }
-        if (getItemCount() <= 1) {
+        // Issue #450 (bridge): the shared auto-collapse decision keeps a
+        // direct-edit created folder (persisted OPTIONS bit) alive on close;
+        // it then unbinds like any surviving multi-child folder.
+        if (shouldAutoCollapseToIcon()) {
             if (!mIsDragInProgress && !mSuppressFolderDeletion && !isInAppDrawer()) {
                 replaceFolderWithFinalItem();
             } else if (mIsDragInProgress) {
@@ -1347,6 +1347,18 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         return mInfo.getContents().size();
     }
 
+    // Issue #450 (bridge): a folder created by a user edit (persisted
+    // OPTIONS_DIRECT_EDIT_CREATED_FOLDER bit on the row, DirectEditContract) is a
+    // deliberate single-child folder. The AUTOMATIC single-child cleanups (bind,
+    // closeComplete, onRemove) must not collapse it; an EMPTY folder is still
+    // collected regardless of the marker. Explicit user drags keep upstream
+    // semantics (onDropCompleted is unchanged).
+    private boolean shouldAutoCollapseToIcon() {
+        int count = getItemCount();
+        return count == 0 || (count == 1 && !mInfo.hasOption(
+                DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER));
+    }
+
     void replaceFolderWithFinalItem() {
         mDestroyed = mLauncherDelegate.replaceFolderWithFinalItem(this);
     }
@@ -1544,7 +1556,10 @@ public class Folder extends AbstractFloatingView implements ClipPathView, DragSo
         } else {
             rearrangeChildren();
         }
-        if (getItemCount() <= 1) {
+        // Issue #450 (bridge): the shared auto-collapse decision keeps a
+        // direct-edit created folder (persisted OPTIONS bit) alive when items
+        // are removed; an empty folder is still collected.
+        if (shouldAutoCollapseToIcon()) {
             if (mIsOpen) {
                 close(true);
             } else {

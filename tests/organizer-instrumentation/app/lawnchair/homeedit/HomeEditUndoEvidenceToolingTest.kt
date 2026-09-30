@@ -44,6 +44,7 @@ import androidx.test.uiautomator.Until
 import app.lawnchair.LawnchairLauncher
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
+import com.android.launcher3.folder.Folder
 import com.android.launcher3.model.BgDataModel
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -244,6 +245,99 @@ class HomeEditUndoEvidenceToolingTest {
         Thread.sleep(2_000)
         awaitUndoState("the single-child folder survived the reload's bind") {
             folderRowCount() == 1
+        }
+    }
+
+    /**
+     * Review round 14 lifecycle oracle: the persisted OPTIONS bit must be
+     * respected by EVERY automatic single-child cleanup, not only bind —
+     * closeComplete()'s 1-child flatten and onRemove()'s flatten must also
+     * keep the direct-edit created folder alive.
+     *
+     * Sequence (all production paths): create folder via confirm() → the
+     * snackbar expires → a second child is added via confirm() (the AOSP
+     * 1-child open guard, Folder#shouldAnimateOpen, blocks animateOpen for
+     * <= 1 items, so the marked folder is grown to 2 children through a real
+     * direct-edit add to make the production click path able to open it; the
+     * marker lives on the folder row and the add only moves the child row) →
+     * OPENED through the real click handler
+     * (ItemClickHandler.onClickFolderIcon → animateOpen; Folder.getOpen
+     * becoming non-null proves the open ran past the platform guard) →
+     * CLOSED via a real BACK press (AbstractFloatingView.onBackInvoked →
+     * close → closeComplete) → the folder row and both children must
+     * survive → reopened, then one child is removed via confirm() while the
+     * folder is open: removeItemsByMatcher → FolderInfo.removeAll →
+     * Folder.onRemove (2 → 1 children, open) and the folder's own
+     * close(false) → closeComplete() at exactly 1 child — pre-fix both
+     * automatic cleanups flattened the marked folder. The row and the
+     * remaining child must survive.
+     */
+    @Test
+    fun directEditCreatedFolderSurvivesOpenAndClose() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val launcher = currentLauncher()
+        val item = desktopItem(launcher, screenId = 0)
+
+        // Create the marked single-child folder and let the undo window end:
+        // the folder must survive on the persisted marker alone.
+        confirmDirectEditAndAwaitUndoAction(launcher, item.id, HomeEditIntent.CreateFolderAndAdd(item, 0))
+        device.wait(Until.gone(By.text(undoActionText())), 15_000)
+        waitForModelSettled()
+        // A correlated load that read the favorites rows before the write's
+        // commit leaves the live model (and the bound FolderInfo) stale; the
+        // reload below rebuilds every FolderInfo from the committed DB.
+        appState.model.forceReload()
+        waitForModelSettled()
+        assertEquals("the created folder exists before the open", 1, folderRowCount())
+        val folderId = awaitFolderRowId(launcher)
+
+        // Grow to 2 children through the production add path so the platform
+        // 1-child open guard does not block the real click open below.
+        val second = desktopItem(launcher, screenId = 0, excludeIds = listOf(item.id))
+        confirmDirectEditAndAwaitUndoAction(launcher, second.id, HomeEditIntent.AddToFolder(second, folderId))
+        device.wait(Until.gone(By.text(undoActionText())), 15_000)
+        waitForModelSettled()
+        appState.model.forceReload()
+        waitForModelSettled()
+
+        awaitFolderContentsBound(launcher, folderId, 2)
+        Thread.sleep(2_000)
+        // OPEN through the production click path.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            launcher.workspace?.getHomescreenIconByItemId(folderId)?.performClick()
+        }
+        awaitFolderOpen(launcher)
+        Thread.sleep(1_500)
+        // CLOSE through the real close path: BACK routes to the open folder
+        // (AbstractFloatingView.onBackInvoked → close → closeComplete).
+        device.pressBack()
+        awaitFolderClosed(launcher)
+        awaitUndoState("the folder row and both children survived the open + close lifecycle") {
+            val snapshot = buildHomeEditSnapshot(context)
+            snapshot.items.count {
+                it.id == folderId && it.itemType == HomeEditItemTypes.FOLDER
+            } == 1 && snapshot.items.count { it.container == folderId } == 2
+        }
+
+        // Reopen and shrink to 1 child WHILE open through the production
+        // remove path: removeItemsByMatcher → FolderInfo.removeAll →
+        // Folder.onRemove, then the folder's own close(false) →
+        // closeComplete() at exactly 1 child with the marker.
+        awaitFolderContentsBound(launcher, folderId, 2)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            launcher.workspace?.getHomescreenIconByItemId(folderId)?.performClick()
+        }
+        awaitFolderOpen(launcher)
+        Thread.sleep(1_500)
+        val child = buildHomeEditSnapshot(context).items.first { it.container == folderId }
+        confirmDirectEditAndAwaitUndoAction(launcher, child.id, HomeEditIntent.Remove(child))
+        awaitFolderClosed(launcher)
+        device.wait(Until.gone(By.text(undoActionText())), 15_000)
+        awaitUndoState("the folder row and the remaining child survived the remove-while-open close") {
+            val snapshot = buildHomeEditSnapshot(context)
+            snapshot.items.count {
+                it.id == folderId && it.itemType == HomeEditItemTypes.FOLDER
+            } == 1 && snapshot.items.count { it.container == folderId } == 1
         }
     }
 
@@ -567,6 +661,72 @@ class HomeEditUndoEvidenceToolingTest {
 
     private fun awaitSnackbarDismissed() {
         device.wait(Until.gone(By.text(undoActionText())), 10_000)
+    }
+
+    /**
+     * Waits until the workspace-bound FolderInfo for [folderId] reports
+     * [expected] children on the UI thread. A direct-edit write and its
+     * correlated reload's workspace rebind can lag the model settle; clicking
+     * the icon before the rebind lands hits the stale bound FolderInfo and
+     * the platform 1-item open guard silently swallows the open.
+     */
+    private fun awaitFolderContentsBound(launcher: LawnchairLauncher, folderId: Int, expected: Int) {
+        val deadline = System.currentTimeMillis() + 20_000
+        while (System.currentTimeMillis() < deadline) {
+            var size = -1
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                val icon = launcher.workspace?.getHomescreenIconByItemId(folderId)
+                val info = icon?.tag as? com.android.launcher3.model.data.FolderInfo
+                size = info?.getContents()?.size ?: -1
+            }
+            if (size == expected) return
+            Thread.sleep(250)
+        }
+        var diag = "no icon"
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val icon = launcher.workspace?.getHomescreenIconByItemId(folderId)
+            val info = icon?.tag as? com.android.launcher3.model.data.FolderInfo
+            diag = "icon=" + (icon != null) + " tag=" + (info?.id ?: -1) +
+                " contents=" + (info?.getContents()?.size ?: -1) +
+                " options=" + (info?.options ?: -1)
+        }
+        error("the bound folder did not report $expected children within 20s: $diag")
+    }
+
+    /**
+     * Waits until a folder view is open (Folder.getOpen on the main thread).
+     * animateOpen sets mIsOpen only after the platform 1-item guard, so a
+     * non-null open folder proves the production open actually ran.
+     */
+    private fun awaitFolderOpen(launcher: LawnchairLauncher) {
+        val deadline = System.currentTimeMillis() + 15_000
+        while (System.currentTimeMillis() < deadline) {
+            var open = false
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                open = Folder.getOpen(launcher) != null
+            }
+            if (open) return
+            Thread.sleep(250)
+        }
+        error("the folder did not open through the production click path")
+    }
+
+    /**
+     * Waits until no folder view is open anymore. The detached view leaves
+     * the drag layer in closeComplete, so a null Folder.getOpen means the
+     * real close path (closeComplete) has run.
+     */
+    private fun awaitFolderClosed(launcher: LawnchairLauncher) {
+        val deadline = System.currentTimeMillis() + 15_000
+        while (System.currentTimeMillis() < deadline) {
+            var open = false
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                open = Folder.getOpen(launcher) != null
+            }
+            if (!open) return
+            Thread.sleep(250)
+        }
+        error("the folder did not close through the real close path")
     }
 
     private fun awaitUndoState(what: String, predicate: () -> Boolean) {
