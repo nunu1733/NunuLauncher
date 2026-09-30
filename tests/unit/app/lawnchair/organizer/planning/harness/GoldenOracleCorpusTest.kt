@@ -70,7 +70,9 @@ class GoldenOracleCorpusTest {
      * change (commit `c1ba1d1caa`) before the duplicate fixtures were added.
      * Any change to a pre-#451 fixture's plan output breaks this pin.
      */
-    private val PRE451_SOURCE_DIGEST_AGGREGATE = "a8e55b89f638e13869f2dec02ea3c6b85549a2a655bc0234cb68c6604d9c9a20"
+    private companion object {
+        const val PRE451_SOURCE_DIGEST_AGGREGATE = "a8e55b89f638e13869f2dec02ea3c6b85549a2a655bc0234cb68c6604d9c9a20"
+    }
 
     private fun goldenFile(): File {
         var dir: File? = File(System.getProperty("user.dir"))

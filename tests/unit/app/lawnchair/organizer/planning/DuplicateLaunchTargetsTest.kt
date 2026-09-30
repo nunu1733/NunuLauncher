@@ -1,7 +1,7 @@
 package app.lawnchair.organizer.planning
 
-import app.lawnchair.organizer.planning.harness.PostPlanMaterializer
 import app.lawnchair.organizer.planning.harness.MaterializationResult
+import app.lawnchair.organizer.planning.harness.PostPlanMaterializer
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -129,8 +129,7 @@ class DuplicateLaunchTargetsTest {
         return result.outcome as Planned
     }
 
-    private fun placement(planned: Planned, id: String): PlannedPlacement =
-        planned.placements.single { it.item == ItemId(id) }
+    private fun placement(planned: Planned, id: String): PlannedPlacement = planned.placements.single { it.item == ItemId(id) }
 
     private fun preservedReason(planned: Planned, id: String): PreserveReason {
         val disposition = placement(planned, id).disposition
@@ -138,14 +137,13 @@ class DuplicateLaunchTargetsTest {
         return (disposition as Disposition.Preserved).reason
     }
 
-    private fun duplicateWarnings(planned: Planned): List<ItemId> =
-        planned.warnings
-            .filter { it.code == WarningCode.DUPLICATE_LAUNCH_TARGET }
-            .map { warning ->
-                val params = warning.params.filterIsInstance<DiagnosticParam.ItemParam>()
-                assertEquals("DUPLICATE_LAUNCH_TARGET warning must carry exactly one ItemParam", 1, params.size)
-                params.single().item
-            }
+    private fun duplicateWarnings(planned: Planned): List<ItemId> = planned.warnings
+        .filter { it.code == WarningCode.DUPLICATE_LAUNCH_TARGET }
+        .map { warning ->
+            val params = warning.params.filterIsInstance<DiagnosticParam.ItemParam>()
+            assertEquals("DUPLICATE_LAUNCH_TARGET warning must carry exactly one ItemParam", 1, params.size)
+            params.single().item
+        }
 
     /** AC-1: within every planned new folder, member launch targets are unique. */
     private fun assertNewFolderTargetsUnique(input: OrganizationInput, planned: Planned) {
@@ -564,11 +562,13 @@ class DuplicateLaunchTargetsTest {
         val pool = Executors.newFixedThreadPool(2)
         val ready = CountDownLatch(2)
         val futures = (0 until 2).map {
-            pool.submit(java.util.concurrent.Callable<PlanningResult> {
-                ready.countDown()
-                ready.await(5, TimeUnit.SECONDS)
-                planner.plan(input)
-            })
+            pool.submit(
+                java.util.concurrent.Callable<PlanningResult> {
+                    ready.countDown()
+                    ready.await(5, TimeUnit.SECONDS)
+                    planner.plan(input)
+                },
+            )
         }
         val results = futures.map { it.get(30, TimeUnit.SECONDS) }
         pool.shutdown()

@@ -21,9 +21,9 @@ import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.PageRef
+import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlannedPlacement
-import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.PreserveReason
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId

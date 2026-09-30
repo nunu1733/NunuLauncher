@@ -10,7 +10,6 @@ import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.FolderRef
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
-import app.lawnchair.organizer.planning.duplicateSurplusIds
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.ItemKind
 import app.lawnchair.organizer.planning.NewFolderOrdinal
@@ -27,6 +26,7 @@ import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.PreserveReason
 import app.lawnchair.organizer.planning.Rejected
 import app.lawnchair.organizer.planning.Warning
+import app.lawnchair.organizer.planning.duplicateSurplusIds
 
 internal data class OracleFinding(
     val check: ContractCheck,
