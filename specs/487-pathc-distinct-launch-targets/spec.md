@@ -1,6 +1,6 @@
 ---
 issue: "#487"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-10-01
 ---
@@ -86,3 +86,4 @@ Then 重複超過分の保持により正当に `NoChanges` となり、`DUPLICA
 
 - 2026-10-01: Draft created for #487.
 - 2026-10-01: Round-1 review（ChatGPT, Issue comment 5915616105）対応。fixture行6行分の相互異なるmerged manifest componentを明示し、scenario/ACの文言を修正。
+- 2026-10-01: Round-2 review でClear。specをacceptedへ更新（Issue comment 5915836541）。
