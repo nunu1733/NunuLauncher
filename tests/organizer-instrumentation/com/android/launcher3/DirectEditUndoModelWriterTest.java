@@ -436,6 +436,83 @@ public class DirectEditUndoModelWriterTest {
         assertEquals(0, countRows(501));
     }
 
+    // --- (g) Issue #450 round 13: the direct-edit create-folder write
+    // persists the OPTIONS_DIRECT_EDIT_CREATED_FOLDER bit in the favorites
+    // OPTIONS column (the bind-time single-child cleanup keeps respecting
+    // the folder after any reload; the bit leaves with the folder row), and
+    // the direct-edit move/remove paths never set it ---
+
+    @Test
+    public void createFolderPersistsTheDirectEditCreatedOptionsBit() throws Exception {
+        seedAppItem(501, Favorites.CONTAINER_HOTSEAT, 0, 3, 0, 2);
+
+        awaitCallback(latch -> mWriter.createFolderAndMoveForDirectEdit(501, 0, 0, 0,
+                proceed(), done(latch, true, null)));
+        int folderId = queryInt(501, Favorites.CONTAINER);
+        assertTrue(folderId > 0);
+        assertEquals(Favorites.ITEM_TYPE_FOLDER, queryInt(folderId, Favorites.ITEM_TYPE));
+        // The persisted OPTIONS column carries the bit: a reload rebuilds the
+        // FolderInfo with it (the loader reads the OPTIONS column into
+        // FolderInfo.options), so the suppression holds after any reload. The
+        // bit is removed with the folder row (undo or user delete) — no
+        // clearing path exists.
+        assertTrue("created folder row must persist OPTIONS_DIRECT_EDIT_CREATED_FOLDER",
+                (queryInt(folderId, Favorites.OPTIONS)
+                        & DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER) != 0);
+        // The live model FolderInfo carries the bit too (the owner-side bind
+        // reads it before the next reload).
+        synchronized (mBgDataModel) {
+            FolderInfo folder =
+                    mBgDataModel.collections.get(folderId) instanceof FolderInfo f ? f : null;
+            assertNotNull("created folder must be in the live model", folder);
+            assertTrue(folder.hasOption(DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER));
+        }
+    }
+
+    @Test
+    public void moveAndRemoveDirectEditsDoNotSetTheCreatedFolderOptionsBit() throws Exception {
+        seedAppItem(501, Favorites.CONTAINER_DESKTOP, 0, 1, 2, 0);
+
+        // Direct-edit move: the moved row's OPTIONS stays bitless.
+        awaitCallback(latch -> mWriter.moveItemForDirectEdit(501, Favorites.CONTAINER_DESKTOP,
+                1, 0, 0, 0, proceed(), done(latch, true, null)));
+        assertTrue("direct-edit move must not set OPTIONS_DIRECT_EDIT_CREATED_FOLDER",
+                (queryInt(501, Favorites.OPTIONS)
+                        & DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER) == 0);
+
+        // Direct-edit remove: neither the captured payload nor the re-inserted
+        // row carries the bit — it marks folder creation only.
+        AtomicReference<DirectEditContract.UndoRowPayload> captured = new AtomicReference<>();
+        CountDownLatch removed = new CountDownLatch(1);
+        mWriter.removeItemForDirectEdit(501, proceed(),
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created,
+                        removedRow) -> {
+                    assertTrue(success);
+                    captured.set(removedRow);
+                    removed.countDown();
+                });
+        assertTrue(removed.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+        assertEquals(0, countRows(501));
+        assertNotNull(captured.get());
+        assertTrue("remove payload must not carry OPTIONS_DIRECT_EDIT_CREATED_FOLDER",
+                (captured.get().options
+                        & DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER) == 0);
+
+        int[] newId = new int[1];
+        CountDownLatch restored = new CountDownLatch(1);
+        mWriter.restoreRemovedItemForDirectEdit(captured.get(), proceed(),
+                (id, success, reason, oc, os, ox, oy, osx, osy, orank, folderId, created,
+                        removedRow) -> {
+                    assertTrue(success);
+                    newId[0] = id;
+                    restored.countDown();
+                });
+        assertTrue(restored.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+        assertTrue("restored row must not carry OPTIONS_DIRECT_EDIT_CREATED_FOLDER",
+                (queryInt(newId[0], Favorites.OPTIONS)
+                        & DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER) == 0);
+    }
+
     // --- helpers ---
 
     private interface Callback1 {

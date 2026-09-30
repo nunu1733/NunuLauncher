@@ -101,17 +101,6 @@ public class FolderInfo extends CollectionInfo {
     public FolderNameInfos suggestedFolderNames;
 
     /**
-     * Issue #450 (bridge): set by the direct-edit create-folder task (#448
-     * popup "new folder") for the folder it just created. Such a folder
-     * legitimately starts with a single child; without this flag the
-     * bind-time single-child cleanup (Folder) treats it as a loading
-     * artifact and flattens it within the undo snackbar's window. Transient:
-     * not persisted — a reload rebuilds the FolderInfo without it, so the
-     * suppression is naturally bounded to the creating session.
-     */
-    public transient boolean createdByDirectEdit;
-
-    /**
      * The apps and shortcuts
      */
     private final ArrayList<ItemInfo> contents = new ArrayList<>();

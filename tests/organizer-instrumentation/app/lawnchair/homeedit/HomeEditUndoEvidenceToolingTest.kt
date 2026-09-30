@@ -133,14 +133,19 @@ class HomeEditUndoEvidenceToolingTest {
         val second = desktopItem(launcher, screenId = 0, excludeIds = listOf(first.id))
         val third = desktopItem(launcher, screenId = 0, excludeIds = listOf(first.id, second.id))
 
-        // The target folder is SEEDED with two children: a popup-created
-        // folder starts as a single-child folder, which the launcher
-        // flattens back to an icon within ~1-2s (a DB write: the child out,
-        // the folder row deleted) — a popup-created folder never survives to
-        // the evidence edit. The seeded shape mirrors what the create task
-        // writes for folder children (cell -1/-1, rank ordered). The
-        // evidence edit adds `third` through the real production path; its
-        // undo is the evidence.
+        // The target folder is SEEDED with two children so a stable
+        // pre-existing folder exists for the evidence edit: seeded rows carry
+        // no direct-edit OPTIONS bit, so a single-child seed folder is
+        // flattened back to an icon by the launcher's bind-time cleanup
+        // (~1-2s, a DB write: the child out, the folder row deleted). A
+        // popup-created single-child folder is NOT flattened anymore — the
+        // persisted OPTIONS_DIRECT_EDIT_CREATED_FOLDER bit keeps it alive
+        // (see createFolderUndoByTappingTheRealSnackbarAction and
+        // directEditCreatedFolderSurvivesReload) — so the seeding is not a
+        // popup-path workaround. The seeded child shape mirrors what the
+        // create task writes (cell -1/-1, rank ordered). The evidence edit
+        // adds `third` through the real production path; its undo is the
+        // evidence.
         seedFolderWithTwoChildren(folderId = 910, screen = 0, cellX = 0, cellY = 2)
         waitForModelSettled()
         Thread.sleep(2_000)
@@ -204,6 +209,41 @@ class HomeEditUndoEvidenceToolingTest {
         Thread.sleep(2_000)
         awaitUndoState("the non-direct-edit single-child folder flattened by the launcher") {
             folderRowCount() == 0
+        }
+    }
+
+    /**
+     * Review round 13 reload-lifecycle oracle: the direct-edit create-folder
+     * write marks the row in the PERSISTED favorites OPTIONS column
+     * (DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER), so the
+     * bind-time single-child cleanup keeps respecting the folder after a
+     * reload — the round 12 marker was transient and any reload re-armed the
+     * flattening. The snackbar is left to expire untouched: the folder must
+     * survive on its own persisted marker, not inside the undo window.
+     *
+     * Tooling status: this class is deliberately NOT part of any CI lane
+     * class list (see the class KDoc) — on-demand emulator evidence.
+     */
+    @Test
+    fun directEditCreatedFolderSurvivesReload() {
+        seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
+        val launcher = currentLauncher()
+        val item = desktopItem(launcher, screenId = 0)
+
+        confirmDirectEditAndAwaitUndoAction(launcher, item.id, HomeEditIntent.CreateFolderAndAdd(item, 0))
+        assertEquals("the created folder exists before the reload", 1, folderRowCount())
+        // No tap: let the undo snackbar expire so the reload lands outside
+        // the undo window entirely.
+        device.wait(Until.gone(By.text(undoActionText())), 15_000)
+        // The reload rebuilds every FolderInfo from the favorites rows; the
+        // persisted OPTIONS bit must ride along (loader:
+        // collection.options = c.options) and keep the bind-time single-child
+        // cleanup off this folder.
+        appState.model.forceReload()
+        waitForModelSettled()
+        Thread.sleep(2_000)
+        awaitUndoState("the single-child folder survived the reload's bind") {
+            folderRowCount() == 1
         }
     }
 
@@ -740,8 +780,11 @@ class HomeEditUndoEvidenceToolingTest {
 
     /**
      * Seeds a folder row with two children in the stable on-DB shape (cell
-     * -1/-1, rank ordered — what the create task writes), because a
-     * single-child folder is flattened back to an icon by the launcher.
+     * -1/-1, rank ordered — what the create task writes). Seeded rows carry
+     * no direct-edit OPTIONS bit, so a single-child seed folder is flattened
+     * back to an icon by the launcher's bind-time cleanup; two children keep
+     * it a stable target. (A popup-created single-child folder is exempt via
+     * the persisted OPTIONS bit — see directEditCreatedFolderSurvivesReload.)
      */
     private fun seedFolderWithTwoChildren(folderId: Int, screen: Int, cellX: Int, cellY: Int) {
         val db = appState.model.modelDbController.db

@@ -51,6 +51,19 @@ public final class DirectEditContract {
     public static final String FAIL_WRITE_FAILED = "WRITE_FAILED";
 
     /**
+     * Issue #450: favorites OPTIONS bit marking a folder that a direct-edit
+     * action (the #448 popup "new folder") intentionally created. Such a
+     * folder legitimately starts with a single child, so the bind-time
+     * single-child cleanup (Folder) must not flatten it. Persisted in the
+     * existing OPTIONS column so the marker survives reloads — the cleanup
+     * keeps respecting the user's just-created folder after the undo window
+     * and across process restarts. No clearing is needed: the folder row is
+     * deleted by the undo or by the user, which removes the bit with it.
+     * 0x1..0x8 are taken by FolderInfo's FLAG_* constants.
+     */
+    public static final int OPTIONS_DIRECT_EDIT_CREATED_FOLDER = 0x00000010;
+
+    /**
      * Issue #450: typed failure keys for the direct-edit inverse operations
      * (undo). Spec 450 "Failure and rejection vocabulary"; the UI maps each
      * key to a localized string, never a raw exception or internal id.

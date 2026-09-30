@@ -848,14 +848,6 @@ class EditSurfaceUndoInstrumentationTest {
     }
 
     /**
-     * Issue #450 (round 6 finding 2): the new-folder confirm normal case
-     * through the REAL production confirm() flow — the planned-folder
-     * resolution case where plan.intendedState differs from the materialized
-     * post-state. The undo must be `Restored` (back at the pre-apply
-     * revision), which also pins the receipt revision == post-apply capture
-     * revision inside the production flow.
-     */
-    /**
      * Isolates the new-folder A7 failure: the same new-folder plan applied
      * through the PRODUCTION module (the instance the activity's confirm()
      * uses). If this passes while the confirm-flow oracle fails, the cause is
@@ -918,18 +910,24 @@ class EditSurfaceUndoInstrumentationTest {
 
     /**
      * Issue #450 (review round 11 finding 1): the new-folder production
-     * confirm oracle runs in the default lane. The former environment finding
-     * (the undo's recovery revision check diverging into STALE_REVISION) was
-     * caused by the launcher-self seed component: the post-apply workspace
-     * loading fired LAUNCHER_FOLDER_CONVERTED_TO_ICON and mutated the DB
-     * between the apply and the undo's exact-state check. The Chrome fixture
+     * confirm oracle runs in the default lane. The Chrome fixture
      * (desktopRowValues, asserted present in setUp) keeps the DB stable
      * across the confirm→undo window, and the launcher is pre-launched and
      * settled BEFORE the confirm flow so startup reloads cannot race the
      * undo.
+     *
+     * Issue #450 (review round 13 finding 1): the launcher's own folder
+     * binding normalizes folder-internal cells at bind time and used to bump
+     * the rows' `modified` right after the apply, staling the receipt
+     * revision (a legitimate create-folder undo was rejected as
+     * STALE_REVISION). The organizer adapter now materializes the same
+     * launcher-normalized cells (LauncherLayoutAdapter.rowFor), so the
+     * bind-time pass finds nothing to rewrite and this AC-5 normal-case
+     * oracle holds end to end: the receipt revision equals a fresh post-apply
+     * capture revision and the undo restores the pre-apply state.
      */
     @Test
-    fun productionConfirmFlowWithNewFolderUndoIsStaledByFolderNormalization() {
+    fun productionConfirmFlowWithNewFolderUndoRestoresToThePreApplyState() {
         androidx.test.core.app.ActivityScenario.launch(app.lawnchair.LawnchairLauncher::class.java)
         val launcherDeadline = System.currentTimeMillis() + 30_000
         while (System.currentTimeMillis() < launcherDeadline) {
@@ -942,7 +940,6 @@ class EditSurfaceUndoInstrumentationTest {
         seedDesktopApps(Triple(0, 2, 1), Triple(0, 0, 1), Triple(1, 0, 0))
         // Pre-apply state: the undo must return exactly here (no folder row).
         val preCapture = adapter.captureCurrent(CaptureId("edit-surface-undo-newfolder-pre"))
-        val preRevision = RevisionCalculator.revisionOf(preCapture.layoutState)
 
         val tokenCapture =
             java.util.concurrent.atomic.AtomicReference<HomeEditUndoToken?>(null)
@@ -968,35 +965,24 @@ class EditSurfaceUndoInstrumentationTest {
         )
         val token = tokenCapture.get() ?: error("no token captured from the confirm flow")
 
-        // AC-5 oracle for the folder case, content-level: the receipt's
-        // recorded revision is the materialized post-state AT APPLY TIME.
-        // (The revision-hash form of this oracle is deterministic only on
-        // the direct-module path — receiptRevisionEqualsPostApplyCapture
-        // ForANewFolderConfirm; on the confirm-flow path the launcher's own
-        // folder binding normalizes the folder-internal cells right after
-        // the apply, so a later fresh capture legitimately differs from the
-        // receipt in those non-placement details. The materialized content
-        // is what the undo contract needs here.)
+        // AC-5 revision-equality oracle: the receipt's recorded revision
+        // equals a fresh post-apply capture revision — for the new-folder
+        // case where plan.intendedState differs from the materialized
+        // post-state (planned folder resolution + page normalization). With
+        // the adapter materializing the launcher-normalized folder grid
+        // cells, the folder binding's bind-time normalization finds nothing
+        // to rewrite, so no post-apply write bumps `modified` and the
+        // receipt stays authoritative here.
         val postApplyCapture = adapter.captureCurrent(CaptureId("edit-surface-undo-newfolder-post"))
         assertNotNull("the receipt carried a verified post revision", verifiedRef.get())
-        val folders = postApplyCapture.layoutState.items.filter {
-            it.kind == app.lawnchair.organizer.application.public.CanonicalItemKind.Folder
-        }
-        assertEquals("one folder row after the confirm", 1, folders.size)
-        val folderId = folders.single().ref.toString()
-        val children = postApplyCapture.layoutState.items.filter {
-            it.placement.toString().contains("FolderChild")
-        }
-        assertEquals("both selected items live inside the folder", 2, children.size)
-        assertTrue(
-            "the folder children reference the created folder",
-            children.all { it.placement.toString().contains(folderId) || folderId.contains(
-                it.placement.toString().substringAfter("parent=", "").substringBefore(","),
-            ) },
+        assertEquals(
+            RevisionCalculator.revisionOf(postApplyCapture.layoutState).value,
+            verifiedRef.get()!!.value,
         )
 
-        // Undo through the production recovery path: Restored, back at the
-        // pre-apply revision with the created folder row gone.
+        // Undo through the production recovery path: Restored — the receipt
+        // revision still describes the current state (no launcher write
+        // between the apply and the undo), so the recovery is admitted.
         val rawResult = java.util.concurrent.atomic.AtomicReference<RecoveryResult?>(null)
         val latch = java.util.concurrent.CountDownLatch(1)
         val undoLauncher = app.lawnchair.LawnchairLauncher.instance
@@ -1011,20 +997,9 @@ class EditSurfaceUndoInstrumentationTest {
         )
         executor.start(token)
         assertTrue("undo did not complete", latch.await(90, java.util.concurrent.TimeUnit.SECONDS))
-        // EXECUTED FINDING (owner triage; #449 surface): the launcher's
-        // folder binding normalizes the folder-internal cells right after
-        // the apply (a legitimate launcher write), so the recovery's
-        // recorded revision no longer describes the current state and the
-        // undo is rejected as STALE_REVISION — typed, zero-write. The
-        // recovery revision semantics for folder edits need a design
-        // decision (e.g. normalizing the canonical projection of
-        // folder-internal cells) before a successful edit-surface
-        // create-folder undo can be oracle-pinned end to end.
         assertTrue(
-            "expected the typed STALE_REVISION rejection, got ${rawResult.get()}",
-            rawResult.get() is RecoveryResult.NotRestorable &&
-                (rawResult.get() as RecoveryResult.NotRestorable).reason ==
-                RecoveryRejection.STALE_REVISION,
+            "expected Restored, got ${rawResult.get()}",
+            rawResult.get() is RecoveryResult.Restored,
         )
         appState.model.forceReload()
         waitForModelLoaded()
@@ -1038,29 +1013,17 @@ class EditSurfaceUndoInstrumentationTest {
         val prePlacements = preCapture.layoutState.items
             .filter { it.kind != app.lawnchair.organizer.application.public.CanonicalItemKind.Folder }
             .associate { it.ref.toString() to it.placement.toString() }
-        // The folder membership the apply materialized (the zero-write proof
-        // baseline for the rejected undo — captured POST-apply).
-        val applyFolderMembership = postApplyCapture.layoutState.items
-            .filter { it.placement.toString().contains("FolderChild") }
-            .associate { it.ref.toString() to it.placement.toString() }
         val postPlacements = postUndoCapture.layoutState.items
             .filter { it.kind != app.lawnchair.organizer.application.public.CanonicalItemKind.Folder }
             .associate { it.ref.toString() to it.placement.toString() }
-        // Zero-write proof for the rejected undo: both selected items are
-        // still folder children of the created folder (the normalized
-        // folder-internal cells are the launcher's own write, not the
-        // undo's).
         assertEquals(
-            "the rejected undo must not change the folder membership",
-            applyFolderMembership,
-            postUndoCapture.layoutState.items
-                .filter { it.placement.toString().contains("FolderChild") }
-                .associate { it.ref.toString() to it.placement.toString() },
+            "every pre-apply item back at its pre-apply placement",
+            prePlacements,
+            postPlacements,
         )
-        assertTrue("sanity: folder children exist", postPlacements.isNotEmpty())
         assertEquals(
-            "the folder must survive the rejected undo (zero-write)",
-            1,
+            "the created folder row is gone",
+            0,
             postUndoCapture.layoutState.items.count {
                 it.kind == app.lawnchair.organizer.application.public.CanonicalItemKind.Folder
             },

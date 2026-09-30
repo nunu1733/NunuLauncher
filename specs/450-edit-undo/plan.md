@@ -254,7 +254,7 @@ undo tap（UI thread）
 | AC-6（寿命） | JVM: UndoRecord置換・消費 + instrumentation process-death smokeの慣行 | 上記lane |
 | AC-7（純粋関数） | JVM: UndoPlanner fixture/境界/決定性 | organizer-unit-tests gate（ci.yml:360） |
 | AC-10（文書） | `validate_repo_contract.py` + diff確認 | `python3 tools/repo-contract/validate_repo_contract.py` |
-| 全体 | lint/format/build | `./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebug`、`measure_upstream_patch_surface.py --target HEAD --enforce-baseline`（src/ deltaはModelWriter.java拡張とDirectEditContract.java拡張のみの見込み。NFR-010としてPR本文へ記録） |
+| 全体 | lint/format/build | `./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebug`、`measure_upstream_patch_surface.py --target HEAD --enforce-baseline`（src/ deltaの実績はModelWriter.java拡張、DirectEditContract.java拡張（persisted `OPTIONS_DIRECT_EDIT_CREATED_FOLDER` bit）、Folder.java bind-guard（review round 13で登録。FolderInfo.javaのtransientフラグはこのbit化によりrevert済み）。NFR-010としてPR本文へ記録） |
 
 ## Incremental implementation order
 

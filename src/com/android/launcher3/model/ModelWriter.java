@@ -868,10 +868,11 @@ public class ModelWriter {
             folderInfo.spanX = 1;
             folderInfo.spanY = 1;
             // Issue #450: the freshly created folder legitimately starts
-            // with this single child; mark it so the bind-time single-child
-            // cleanup (Folder) does not flatten it inside the undo
-            // snackbar's window.
-            folderInfo.createdByDirectEdit = true;
+            // with this single child; mark it (persisted OPTIONS bit) so the
+            // bind-time single-child cleanup (Folder) does not flatten it.
+            // The bit survives reloads and is removed with the folder row
+            // (undo or user delete), so it never needs clearing.
+            folderInfo.options |= DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER;
             folderInfo.user = item.user;
 
             try (SQLiteTransaction t = mModel.getModelDbController().newTransaction()) {

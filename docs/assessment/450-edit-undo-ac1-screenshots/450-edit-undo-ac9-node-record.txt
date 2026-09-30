@@ -1,5 +1,5 @@
 Issue #450 AC-9 evidence: real undo snackbar under TalkBack (emulator nunu_qpr2_api36_1)
-recorded: 2026-09-29T22:52:18.642330Z
+recorded: 2026-09-30T01:11:16.846505Z
 
 label node (expected contains "Edit applied"):
   viewId: app.lawnchair.debug:id/label
