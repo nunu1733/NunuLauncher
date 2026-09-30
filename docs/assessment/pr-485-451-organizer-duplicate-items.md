@@ -10,9 +10,9 @@
 - CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36707859774 （pull_request event、CI workflow、head `828401fbadbfad5d7950891515906121036b43fd`、2026-09-30。**conclusion = success、`final-status` job = success**。job内訳は「Executed test surface」節）
 - 監査対象commit上で本記録が未存在だったため、run [36707859748](https://github.com/nunu1733/NunuLauncher/actions/runs/36707859748) の `high-risk-evidence` はfailure（`FAIL: no docs/assessment/pr-485-<slug>.md audit record for this PR`）。本recordのpush後のrunで再評価される。
 - Criteria: [spec 451](../../specs/451-organizer-duplicate-items/spec.md)（accepted）の AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9 および規則 N-1, N-2, N-3, N-4, N-5, N-6, N-7 / FR-021 / NFR-014
-- Criteria: [ADR-0007](../../docs/adr/0007-authoritative-organization-policy-sources.md)（accepted）の §8「Upgrade, migration, downgrade, backup, and rollback」（bundle semantic version 1 increment手順）
-- Criteria: [ADR-0012](../../docs/adr/0012-versioned-layout-strategy-catalog.md)（accepted。`StrategyId` / catalog不変の確認）
-- Criteria: [spec 12](../../specs/12-deterministic-full-layout-planner-v1/spec.md)（implemented）の P-03, P-04, P-05, P-07, P-08, P-10, P-12 amendment（本PR diff内で2026-09-30付 amendment blockとして適用済みであることを確認）
+- Criteria: [policy bundle ADR](../../docs/adr/0007-authoritative-organization-policy-sources.md)（accepted）の ADR-0007 §8「Upgrade, migration, downgrade, backup, and rollback」（bundle semantic version 1 increment手順）
+- Criteria: [strategy catalog ADR](../../docs/adr/0012-versioned-layout-strategy-catalog.md)（accepted）の ADR-0012（「A behavior change is a new ID」。`StrategyId` / catalog不変の確認）
+- Criteria: [spec 12](../../specs/12-deterministic-full-layout-planner-v1/spec.md)（implemented）の AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7（planner contract regressionの再検証対象。規則P-03/P-04/P-05/P-07/P-08/P-10/P-12のamendmentは本PR diff内で2026-09-30付 amendment blockとして適用済みであることを確認）
 
 ## Scope
 
