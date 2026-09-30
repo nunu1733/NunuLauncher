@@ -58,14 +58,16 @@ updated: 2026-09-30
 
 - **起動先 (launch target)**: captured itemの `TargetKey` のうち `AppKey`（`component: ComponentKey` + `profile: ProfileId`）と `ShortcutKey`（`packageName` + `shortcutId` + `profile`）の2種のみ。等価はdata classの値等価（profileを含むため、同一componentのpersonal/workは重複ではない）。
 - **重複集合 (duplicate set)**: 同一起動先を持つcaptured itemの集合。サイズ1の集合は重複ではない。
-- **代表 (representative)**: 重複集合を `ItemId` のcanonical順（UTF-8 byte順。spec 12 / `Identity.kt` の既定の比較）で並べた最初の1個。代表は通常どおり計画される（特別扱いしない）。
+- **代表 (representative)**: 重複集合を `ItemId` のcanonical順（UTF-8 byte順。spec 12 / `Identity.kt` の既定の比較。文字列比較であり数値順ではないため、例えば "10" は "2" より先に来る）で並べた最初の1個。代表は通常どおり計画される（特別扱いしない）。
 - **重複超過分 (duplicate surplus)**: 重複集合から代表を除いた全アイテム。
 
 ## Normative rules（spec 12 amendment）
 
 ### N-1: 重複の検出（純粋関数）
 
-plannerは `Planned` を返す全run modeで、captured item集合（`LayoutSnapshot.items`）から重複集合を計算する。種別は `APPLICATION` と `DEEP_SHORTCUT` のみ（`TargetKey.AppKey` / `ShortcutKey`）。その他のkindは重複判定に参加しない。代表は `ItemId` canonical順で最初の1個。この計算は入力のみから決まり、strategy選択・分類結果・偏好（intent preferences）に依存しない。
+plannerは `Planned` を返す全run modeで、captured item集合（`LayoutSnapshot.items`）から重複集合を計算する。種別は `APPLICATION` と `DEEP_SHORTCUT` のみ（`TargetKey.AppKey` / `ShortcutKey`）。その他のkindは重複判定に参加しない。重複判定はpreservation状態（locked・unavailable等）と既存folder membershipを問わず、全captured APPLICATION/DEEP_SHORTCUT itemを対象に行う。代表は `ItemId` canonical順で最初の1個。この計算は入力のみから決まり、strategy選択・分類結果・偏好（intent preferences）に依存しない。
+
+**Issue本文からの意図的な契約拡張**: Issue本文のScopeは「2個目以降を新規フォルダ候補から外す」ことを中心とするが、本specは重複判定を全captured itemへ広げる。その結果、代表がlocked・unavailable・既存folder member等の非movable itemになる場合でも、movable側の同一起動先itemは重複超過分として `DUPLICATE_LAUNCH_TARGET` で保持され、整理されない（既存folder memberが代表になった場合、top-levelの同一起動先itemは移動抑止される）。これは「重複がどこに配置されていても新規フォルダへ重複が流入しない」保証を優先する保守的設計であり、Issue本文のScope文言からの意図的な契約拡張である。採否はOpen questionsのowner確認事項とする。
 
 ### N-2: 新規フォルダ形成からの除外（P-04/P-05 amendment）
 
@@ -108,10 +110,10 @@ P-04の規則文は「eligible members are top-level, available, unlocked `APPLI
 
 Given ページ1にPhotos（`ItemId` "10"、PHOTOGRAPHY）、ページ2にPhotos（`ItemId` "2"、PHOTOGRAPHY）があり、両方ともtop-level・available・unlocked・Movableである,
 When 全体整理を実行する,
-Then 代表は `ItemId` canonical順で "2" の方であり、新規PHOTOGRAPHYフォルダのmemberになる（`Moved(FOLDER_MEMBER)`）
-And "10" は `Preserved(DUPLICATE_LAUNCH_TARGET)` でcaptured位置（ページ1）に留まる
-And 出力に `Warning(DUPLICATE_LAUNCH_TARGET, [ItemParam("10")])` が1件含まれる
-And 代表 "2" には警告がない。
+Then 代表は `ItemId` canonical順（UTF-8 byte順）で "10" の方であり、新規PHOTOGRAPHYフォルダのmemberになる（`Moved(FOLDER_MEMBER)`）
+And "2" は `Preserved(DUPLICATE_LAUNCH_TARGET)` でcaptured位置（ページ2）に留まる
+And 出力に `Warning(DUPLICATE_LAUNCH_TARGET, [ItemParam("2")])` が1件含まれる
+And 代表 "10" には警告がない。
 
 ### Scenario: 重複の一方が既に保全predicateに掛かる
 
@@ -120,6 +122,8 @@ When 全体整理を実行,
 Then locked側は `Preserved(LOCKED)` のまま（N-3の優先度）
 And もう一方（重複超過分）は `Preserved(DUPLICATE_LAUNCH_TARGET)` でcaptured位置に留まり、警告1件が出る
 And どちらも新規フォルダに入らない。
+
+このscenarioはN-1の契約拡張の意図を示す例である。重複集合の決定（N-1）はpreservation状態より先に行われるため、locked側が代表となり、movable側も重複超過分として整理対象から外れる。代表が既存folder memberになる場合も同様に、top-levelの同一起動先itemは移動抑止される（重複がどこにあっても新規フォルダへの重複流入を防ぐため）。
 
 ### Scenario: 除外でgroupが最小サイズを下回る
 
@@ -135,10 +139,10 @@ And 重複超過分は `Preserved(DUPLICATE_LAUNCH_TARGET)`。
 
 ### Scenario: materialize後の再実行（P-10）
 
-Given 重複（ Photos "2" と "10"）を含む入力で全体整理のplanが適用され、"2" が新規フォルダ内、"10" がcaptured位置に残っている,
+Given 重複（Photos "10" と "2"）を含む入力で全体整理のplanが適用され、"10" が新規フォルダ内、"2" がcaptured位置に残っている,
 When 同じ状態でもう一度全体整理を実行する,
 Then 全てのtargetは不変であり、`Moved`・`newPages`・`newFolders` は空である
-And "10" は前回と同じ `DUPLICATE_LAUNCH_TARGET` reasonで保持される（代表は引き続き "2"。folder memberは `STRUCTURAL`）。
+And "2" は前回と同じ `DUPLICATE_LAUNCH_TARGET` reasonで保持される（代表は引き続き "10"。folder memberは `STRUCTURAL`）。
 
 ### Scenario: previewでの識別
 
@@ -218,9 +222,11 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 ## Open questions
 
 - **代表選択の `ItemId` canonical順採用（メモ§4.5「視覚順」からの逸脱）**: N-5に記載のとおり、視覚順はmaterialize後に安定せずP-10と両立しないため、本draftは `ItemId` canonical順を提案する。accept時にownerがこの逸脱を承認するか、P-10を維持した別の安定順（例: 視覚順をcapture時点で確定させる追加情報の導入）を指示する必要がある。実装開始前に解消することが望ましいが、本draftの規則は自己完結している（どちらの結論でもN-1〜N-4の他の規則は不変）。
+- **重複判定の全captured item拡張のowner確認（代表が非movableでもmovable側を抑止）**: N-1のとおり、重複判定をpreservation状態・既存folder membershipを問わず全captured itemへ広げているため、代表がlocked・unavailable・既存folder member等の非movable itemになった場合、movable側の同一起動先itemも `DUPLICATE_LAUNCH_TARGET` で保持され、整理されない。これはIssue本文のScope文言からの意図的な契約拡張（保守的設計。重複がどこにあっても新規フォルダへ重複流入しない保証を優先）であり、accept時にownerが採否を確認する。承認されない場合は、eligible/movable側から代表を選ぶ安定規則の再設計が必要になる。
 - （参考・blockingではない）tier判定の最終確認: Risk tier引用ブロック参照。実装PRでの `risk: layout-data` label の要否をownerが確定する。
 
 ## Change history
 
 - 2026-09-28: Draft created for #451（spec/plan準備task。`origin/main` `c5a7840b880ed4c436b67170930ca87d4ef7f148` 基準のcode調査に基づく）。
 - 2026-09-30: Re-entry — `origin/main` `092c44b46e7c6074f0623b146cc975d9ec862e53`（#449/#450着地後）へ再基準化。planning module・benchmark B7 baseline（9）・FR-021 status（proposed）を再確認し、本文の陳腐化なし（文書変更なし。確認範囲と詳細は [plan.md](./plan.md) の「Re-entry記録」参照）。
+- 2026-09-30: ChatGPT review対応（P1×2、P2×1）— Behavior scenarioの代表を `ItemId` canonical順（UTF-8 byte順で "10" < "2"）へ整合し、N-1に重複判定の対象（全captured item）と「Issue本文からの意図的な契約拡張」を明記、Open questionsへ契約拡張のowner確認を追加。plan側のproperty test方式の確定は [plan.md](./plan.md) のRe-entry記録参照。

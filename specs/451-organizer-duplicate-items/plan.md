@@ -37,6 +37,7 @@
   - `docs/product/requirements.md`: FR-021 は `proposed（2026-09-24）` のまま（accept時に本planのChange setどおり更新）。NFR-014 は `accepted（2026-09-26）`。
   - 依存: #441（B7 baseline）はCLOSED済みを再確認。
 - **本Re-entryによる文書変更**: なし（陳腐化箇所なし。本記録とAnalysis baseline行の更新のみ。planningコード・spec本文の規則は無変更）。
+- **2026-09-30（ChatGPT review対応。P1×2、P2×1）**: Verification節のproperty test実装方式を重複注入wrapper (b) に確定し、`SyntheticFixtureGenerator` へのtemplate追加を不採用とした（`template = index % 8` の固定64 caseが変わり、spec N-7 / AC-5の既存fixture個別digest不変と衝突するため）。Explicitly unverified areasの当該行を更新。spec側の修正（scenario代表の `ItemId` canonical順への整合、N-1の契約拡張明記、Open questions追加）は [spec.md](./spec.md) のChange history参照。planning codeへの記載は無変更（generatorの現行挙動は現mainで再確認済み）。
 
 ## Design
 
@@ -109,7 +110,7 @@
 | AC-8 | docs差分review | PR |
 | AC-9 | `./gradlew spotlessCheck`、`./gradlew assembleLawnWithQuickstepGithubDebug`、`git diff --check` | CI（organizer-unit-tests gateを含む `final-status`） |
 
-追加のproperty観点（AGENTSテスト規約の計画module要件）: 「任意の生成入力へ重複注入 → 全新規フォルダ内で起動先が一意」「surplus itemのtargetは常にcaptured targetと一致（conservationの部分命題）」「同入力2回のplanが値等価」。実装方法は2案あり、実装時に選ぶ: (a) `SyntheticFixtureGenerator` へ重複templateを追加（この場合corpusが変わりdigest再固定に含める。再固定理由へ明記）、(b) 生成fixtureへの重複注入wrapperで独立class化（pinned corpus不変）。(a)を推奨する（oracleの保護範囲が広がる。spec N-7の「既存fixture個別digest不変」証明と併存する）。
+追加のproperty観点（AGENTSテスト規約の計画module要件）: 「任意の生成入力へ重複注入 → 全新規フォルダ内で起動先が一意」「surplus itemのtargetは常にcaptured targetと一致（conservationの部分命題）」「同入力2回のplanが値等価」。実装方法は (b) 生成fixtureへの重複注入wrapper（独立class化。既存generatorとpinned corpusは不変）を採用する。`SyntheticFixtureGenerator` への重複template追加（旧案 (a)）は不採用とする: 現行generatorは `template = index % 8` で固定64 caseを生成するため、template集合・割当の変更は既存 `generated:<id>` caseの内容を変え、spec N-7 / AC-5が要求する既存fixtureの個別digest不変（`digestsBySource`）と衝突する。
 
 ## Documentation updates
 
@@ -151,5 +152,5 @@
 - 実装は未着手（本planは文書整備のみ）。行番号はbaseline `c5a7840b` 時点のものであり、実装時に再確認する。
 - 実機での警告行の見え方・読み上げの実際の体験は未検証（AC-7の実機確認で行う）。
 - 文言の最終語（ja/en）は実装PRで確定する。
-- property testの実装方法（generator拡張 (a) vs 注入wrapper (b)）は実装時に選ぶ（推奨は (a)）。
+- property testは重複注入wrapper方式（Verification節の (b)。既存generator・pinned corpusは不変）で実装する。実装は未着手のため、wrapperの実形状は実装時に確認する。
 - tier判定と `risk: layout-data` label運用の最終判断はownerが実装PRで行う。
