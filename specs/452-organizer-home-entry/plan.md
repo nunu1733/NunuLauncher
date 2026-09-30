@@ -64,12 +64,12 @@
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt` | ① `DEFAULT_ORDER` へ `LauncherOptionPopupItem("organize_home", true)` を `edit_mode` と `edit_surface` の間に追加。② `getLauncherOptions` の `optionsList` へ `"organize_home" to OptionItem(launcher, R.string.home_screen_organize, R.drawable.ic_organize_home, LauncherEvent.IGNORE, handler)` を追加。handlerは同file内で `PreferenceActivity.createIntent(launcher, HomeScreenManualOrganization())` を `startActivity` し true を返す（#449 の `edit_surface` handlerと同じfile内lambda形式）。③ lockフィルタへ `organize_home` を追加。④ `getMetadataForOption` へ分岐追加。⑤ `restoreMissingPopupOptions` をDEFAULT_ORDER相対の位置挿入へ変更（純粋関数として切り出す） | 項目定義の正本。#449がpatch済みのfileへの最小追加 |
+| `lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt` | ① `DEFAULT_ORDER` へ `LauncherOptionPopupItem("organize_home", true)` を `edit_mode` と `edit_surface` の間に追加。② `getLauncherOptions` の `optionsList` へ `"organize_home" to OptionItem(launcher, R.string.home_screen_organize, R.drawable.ic_organize_home, LauncherEvent.IGNORE, handler)` を追加。handlerは同file内で `PreferenceActivity.createIntent(launcher, HomeScreenManualOrganization())` を `startActivity` し true を返す（#449 の `edit_surface` handlerと同じfile内lambda形式）。③ lockフィルタへ `organize_home` を追加。④ `getMetadataForOption` へ分岐追加。⑤ `restoreMissingPopupOptions` をDEFAULT_ORDER相対の位置挿入へ変更（純粋関数として切り出す）。⑥ **書込みguard**: 位置挿入結果が現在のorderと等しければ `setBlocking` を呼ばない（現行はmissingなしでも無条件write。spec Data and stateの契約） | 項目定義の正本。#449がpatch済みのfileへの最小追加 |
 | `lawnchair/src/app/lawnchair/ui/preferences/destinations/LauncherPopupPreference.kt` | `enabled` のwhen分岐へ `organize_home` を追加（`edit_mode`/`widgets` と同じロック中無効化） | 編集画面のロック表示整合 |
-| `lawnchair/res/values/strings.xml` | `home_screen_organize` = "Organize home screen" を追加 | label正本 |
-| `lawnchair/res/values-ja/strings.xml` | `home_screen_organize` = 「ホームを整理」を追加 | ja copy（#161 LQA運用） |
-| `lawnchair/res/drawable/ic_organize_home.xml`（新規） | 単色24dp vector drawable | icon（`enter_home_gardening_icon`（edit_mode）・`ic_folder`（edit_surface）と区別可能。具象はreviewで確定） |
-| `tests/unit/app/lawnchair/ui/popup/LauncherOptionsPopupOrderTest.kt`（新規・仮称。package `app.lawnchair.ui.popup`） | 位置挿入の決定性・既存項目不変性・3世代（#449前後・未保存）の補完結果・lockフィルタのJVM test | AC-1/AC-3/AC-4の自動oracle |
+| `lawnchair/res/values/strings.xml` | `home_screen_organize` = "Organize home screen" を追加（確定copy。Phase 1 review round 1で確定） | label正本 |
+| `lawnchair/res/values-ja/strings.xml` | `home_screen_organize` = 「ホームを整理」を追加（確定copy） | ja copy（#161 LQA運用） |
+| `lawnchair/res/drawable/ic_organize_home.xml`（新規） | 単色24dp vector drawable。glyph確定: 2×2 rounded-square grid + 右上4-point sparkle。`ic_folder` と同style（viewport 24、`?android:attr/textColorPrimary` tint） | icon（spec Scopeでglyph・意味・resource名を確定済み。path dataの作成のみPhase 2） |
+| `tests/unit/app/lawnchair/ui/popup/LauncherOptionsPopupOrderTest.kt`（新規・仮称。package `app.lawnchair.ui.popup`） | 位置挿入の決定性・既存項目不変性・3世代（#449前後・未保存）の補完結果・no-missing caseでmerge結果が現orderと等価（＝書込みguard条件）・lockフィルタのJVM test | AC-1/AC-3/AC-4の自動oracle。guardのwiring（等価比較→setBlocking skip）自体はJVM testの対象外（`Launcher`/DataStore依存のためcode reviewで確認。spec Test oracleに明記） |
 
 実装時に `app.lawnchair.ui.popup` packageのJVM testが恒久gate（`organizer-unit-tests` の `--tests` filter）に含まれない点に注意（filterは `app.lawnchair.organizer.*`、`app.lawnchair.homeedit.*`、`app.lawnchair.ui.preferences.navigation.*` 等。quality-strategy.md §Organizer unit-test CI gate）。実装PRでgate filterへ追加する場合はci.yml・quality-strategy.md mirror・portfolio監査表の同じPR更新を要する（§新規test審査ルール）。追加しない場合はfull unit test実行とreviewで担保する旨をPRへ記録する。
 
@@ -82,7 +82,7 @@
 ## Migration and recovery
 
 - schema/rule migration: なし。
-- preference補完: 起動時の `restoreMissingPopupOptions` が既存の呼び出し箇所（`LawnchairLauncher.kt:262`）で走る。書込みはDataStoreの既存経路、1回のみ、冪等（2回目はmissingなし）。
+- preference補完: 起動時の `restoreMissingPopupOptions` が既存の呼び出し箇所（`LawnchairLauncher.kt:262`）で走る。書込みはDataStoreの既存経路。**書込みguard**: 位置挿入結果が現在のorderと等しければ書かない（現行の「missingなしでも無条件write」を廃止。spec Revision 3）。これにより書込みは補完が実際に発生するupgrade時のみ1回となり、以降の起動では書かない。guardの等価判定はmerge純粋関数の戻り値比較として実装し、no-missing caseの等価戻り値をJVM testで固定する。guardのwiring（比較結果による `setBlocking` skip）はJVM testの対象外（`Launcher`/DataStore依存）のためcode reviewで確認する。
 - failure中のrollback: 書込みがpreference stringのみのため、適用中途の状態は存在しない。handlerの失敗は `startActivity` 例外のみで、同一app内Activityのため発生経路がない（onboarding実例と同じ構造）。
 - release rollback/downgrade: 旧buildではpopup描画は安全（`mapNotNull` で未知idを落とす）だがpopup編集画面が `getMetadataForOption` でcrashする既知制限（spec「Compatibility and rollback」参照）。一般解は本Issueの対象外。
 - backup/restore: preference stringが既存経路でround-tripするのみ。
@@ -94,7 +94,7 @@
 | AC-1 | JVM unit test（DEFAULT_ORDER構成・metadata分岐）+ 実機スクリーンショット | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.ui.popup.*'`（filter追加の判断は上記記載どおり） |
 | AC-2 | 実機録画/スクリーンショット（run面が直接開く、backでlauncherへ戻る）。instrumentation testは `tests/organizer-instrumentation/app/lawnchair/ui/preferences/**` へ追加可能（surface_organizer_uiで発火する既存lane） | organizer-instrumentation（manual-organization-ui lane） |
 | AC-3 | JVM unit test（lockフィルタ）+ 実機スクリーンショット | 同上 + 実機 |
-| AC-4 | JVM unit test（位置挿入: #449前のorder（両方欠落）・#449後のorder（prepend済みedit_surface含む）・並べ替え済みorder・一部無効orderでの決定性と既存項目の不変性） | 同AC-1 |
+| AC-4 | JVM unit test（位置挿入: #449前のorder（両方欠落）・#449後のorder（prepend済みedit_surface含む）・並べ替え済みorder・一部無効orderでの決定性と既存項目の不変性、no-missing caseのmerge等価＝guard条件）+ guard wiringのcode review | 同AC-1 |
 | AC-5 | 実機の録画またはスクリーンショット（3操作の勘定を明記） | 実機（emulatorは補助） |
 | AC-6 | 実機のTalkBack/Switch Access確認。labelResつきconstructorはcode review | 実機 |
 | AC-7 | PR diffのpath列挙 | `git diff --name-only <base>..<head>` |
@@ -123,14 +123,14 @@
 
 ## Incremental implementation order
 
-1. `restoreMissingPopupOptions` の位置挿入を純粋関数として切り出し + JVM test（既存挙動を変える唯一の共有部分を先に固定する）。
+1. `restoreMissingPopupOptions` の位置挿入を純粋関数として切り出し + 書込みguard（merge結果 == current なら書かない）+ JVM test（既存挙動を変える唯一の共有部分を先に固定する）。
 2. popup項目本体（DEFAULT_ORDER・optionsList handler・metadata・lockフィルタ）+ strings/drawable。
 3. popup編集画面のlock分岐。
 4. 実機evidenceとpatch surface計測。
 
 ## Dependencies / blockers
 
-- #443（実装済み）・#441（確定済み）に新規blockerなし。#449のspecとは並びの最終決定で協調するが、実装の先行/待機は保守者判断（spec Unresolved decisions参照）。
+- #443（実装済み）・#441（確定済み）・#449（実装済み。PR #476）はすべて前提成立済み。新規blockerなし。編集系グループの最終並び（`edit_mode, organize_home, edit_surface`）は本spec Revision 2で確定済みであり、#449側との追加協調事項は残っていない。
 
 ## Risk
 
@@ -141,7 +141,6 @@
 
 ## Explicitly unverified areas
 
-- iconの具象designと英語copyの最終語（実装reviewで確定。spec Unresolved decisions）。
 - JVM testの恒久gate filter取り込みの要否（実装PRで判断。CI/portfolio文書の同じPR更新を要する）。
-- 実機でのpopup描画・TalkBack挙動（本taskは文書整備のみのため未実施。実装PRのevidenceで埋める）。
+- 実機でのpopup描画・TalkBack挙動・iconの視覚的な見え方（本taskは文書整備のみのため未実施。実装PRのevidenceで埋める。glyph・resource名はspecで確定済み）。
 - `LauncherPopupPreference.kt` を新規bridge groupへ登録するか既存groupの責務拡張にするか（実装PRのpatch surface計測時に確定）。
