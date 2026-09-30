@@ -24,7 +24,7 @@ CI lane `organizer-instrumentation-reservation-recovery-tests` がmain上で再�
 ## Scope
 
 - `tests/organizer-instrumentation/app/lawnchair/organizer/application/Issue265ManualEditRecoveryInstrumentationTest.kt` へのfixtureのみの変更。各seeded行に別々の起動先を与える。
-- 手段はrepo内のprecedent commit `828401fbad`（E2E fixtureへの同一修正）と同じ機構とする。行はmerged manifestで宣言された別々のactivity — `LawnchairLauncher`、`PreferenceActivity`、`HomeEditSurfaceActivity`、`BlankActivity` — を参照する。componentは `context.packageName` を使い続けるため、package-scopedな分類evidenceは引き続き解決する。行はlaunchされない。
+- 手段はrepo内のprecedent commit `828401fbad`（E2E fixtureへの同一修正）と同じ機構とする。6行すべてに、GitHub debug variantのmerged manifestで宣言済みの相互に異なる6componentを割り当てる — `app.lawnchair.LawnchairLauncher`、`app.lawnchair.ui.preferences.PreferenceActivity`、`app.lawnchair.homeedit.ui.HomeEditSurfaceActivity`、`app.lawnchair.BlankActivity`、`app.lawnchair.smartspace.SmartspacePreferencesShortcut`、`com.android.launcher3.WidgetPickerActivity`（いずれも `context.packageName` を維持し、行はlaunchされない。`SecondaryDisplayLauncher` は `tools:node="remove"` のため対象外）。precedent `828401fbad` は同じ機構を使ったが5行のE2E fixtureで4componentで足りた。本fixtureは6行のため6componentを要する。
 - 実装PRで `specs/269-folder-workspace-representability/spec.md` への変更履歴noteを追加する。
 
 ## Non-goals
@@ -49,7 +49,7 @@ CI lane `organizer-instrumentation-reservation-recovery-tests` がmain上で再�
 
 Given 各行が別々の起動先を持つfixtureでseedした状態
 When 1回目のorganizeを実行して `Applied` に到達し、`ModelWriter.moveItemInDatabase` でfolder childの1個を手動移動し、2回目のorganizeを実行する
-Then 2回目のorganizeは `Applied` に到達する（全desktop itemがmovableであるためfolder formationが再度起こる）
+Then 2回目のorganizeは `Applied` に到達する（duplicate filteringによってfolder formationに必要なmovable集合が欠落しないため、folder formationが再度成立する）
 And 適用後のcaptureはcanonicalであり、NULL spanがない
 And 2回目と同一のmanifest行に対するrepeat organizeは `Applied || NoChanges` を返す。
 
@@ -61,17 +61,17 @@ Then 重複超過分の保持により正当に `NoChanges` となり、`DUPLICA
 
 ## Acceptance criteria
 
-- [ ] AC-487-1: 更新したfixtureで `pathC_manualEditThenSecondOrganize` が決定的にpassし、CI lane `organizer-instrumentation-reservation-recovery-tests` がPR上およびmerge後のmainで2連続以上のrunにおいてgreenであること。
+- [ ] AC-487-1: 更新したfixtureで `pathC_manualEditThenSecondOrganize` が決定的にpassし、CI lane `organizer-instrumentation-reservation-recovery-tests` がPR上およびmerge後のmainで2連続以上のrunにおいてgreenであること。`seedLayoutWithFolder()` はpathC以外（pathA/pathB、legacy span系、app-pair source系）とも共有されるため、oracleには当該lane全体のgreenを含める。
 - [ ] AC-487-2: pathCのassertionが弱体化していないこと。2回目のorganizeは引き続き `Applied` に到達し、canonical capture、no NULL span、2回目vs repeatのmanifest一致assertionは変更しないこと。
 - [ ] AC-487-3: 実装diffが指定のinstrumentation test fileとspec文書のみに触れること（`lawnchair/src` のproduction codeなし）。
-- [ ] AC-487-4: すべてのfixture行が他のすべての行と異なる起動先を持ち、各componentが `context.packageName` を使いmerged manifestで宣言されていること。testのplanned categories / folder-formation期待値はそれ以外は不変であること。
+- [ ] AC-487-4: すべてのfixture行（6行）が相互に異なる起動先を持ち、その6componentがmerged manifestで宣言されていること（上記Scopeの6種）。各componentは `context.packageName` を使い、package-scopedな分類evidenceとpackage+profile単位のcategory overrideは不変であること。testのplanned categories / folder-formation期待値はそれ以外は不変であること。
 - [ ] AC-487-5: `specs/269-folder-workspace-representability/spec.md` のchange historyがfixture reconciliationを記録すること（実装PRで行う）。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| AC-487-1 | PR上のlaneのCI run URL + merge後のmain run 2連続 |
+| AC-487-1 | PR上のlaneのCI run URL + merge後のmain run 2連続。`seedLayoutWithFolder()` はpathC以外（pathA/pathB、legacy span系、app-pair source系）とも共有されるため、evidenceはpathC単体でなく当該lane全体のgreenとする |
 | AC-487-2 | instrumentation test fileのdiff review（assertion不変の確認） |
 | AC-487-3 | 実装PRのdiff（変更file一覧） |
 | AC-487-4 | fixture diffのreview（component宣言とmanifest） |
@@ -85,3 +85,4 @@ Then 重複超過分の保持により正当に `NoChanges` となり、`DUPLICA
 ## Change history
 
 - 2026-10-01: Draft created for #487.
+- 2026-10-01: Round-1 review（ChatGPT, Issue comment 5915616105）対応。fixture行6行分の相互異なるmerged manifest componentを明示し、scenario/ACの文言を修正。
