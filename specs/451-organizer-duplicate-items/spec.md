@@ -211,7 +211,7 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 | AC | Evidence |
 |---|---|
 | AC-1, AC-2, AC-4 | `tests/unit/app/lawnchair/organizer/planning/` の新規fixture test（重複を含むexample corpus追加を含む）と `harness/PostPlanMaterializer` を使ったP-10再実行test |
-| AC-2 | 既存の `PlannerGeneratedPropertyTest` / determinism testと同じseamでの重複入り入力の決定性test（生成器拡張または重複注入wrapper） |
+| AC-2 | 既存の `PlannerGeneratedPropertyTest` / determinism testと同じseamでの重複入り入力の決定性test（重複注入wrapper） |
 | AC-3 | planner出力の警告列の直接検証 + 既存corpusでの警告順序不変（AC-5と同test面） |
 | AC-5 | `GoldenOracleCorpusTest`（digest再固定）と個別digest安定test |
 | AC-6 | rules moduleのbundle test（version文字列とcatalog内容） |
@@ -230,3 +230,4 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 - 2026-09-28: Draft created for #451（spec/plan準備task。`origin/main` `c5a7840b880ed4c436b67170930ca87d4ef7f148` 基準のcode調査に基づく）。
 - 2026-09-30: Re-entry — `origin/main` `092c44b46e7c6074f0623b146cc975d9ec862e53`（#449/#450着地後）へ再基準化。planning module・benchmark B7 baseline（9）・FR-021 status（proposed）を再確認し、本文の陳腐化なし（文書変更なし。確認範囲と詳細は [plan.md](./plan.md) の「Re-entry記録」参照）。
 - 2026-09-30: ChatGPT review対応（P1×2、P2×1）— Behavior scenarioの代表を `ItemId` canonical順（UTF-8 byte順で "10" < "2"）へ整合し、N-1に重複判定の対象（全captured item）と「Issue本文からの意図的な契約拡張」を明記、Open questionsへ契約拡張のowner確認を追加。plan側のproperty test方式の確定は [plan.md](./plan.md) のRe-entry記録参照。
+- 2026-09-30: ChatGPT re-review対応（残P2×2）— Test oracleのAC-2行を「重複注入wrapper」に一本化（生成器拡張は [plan.md](./plan.md) のVerificationで不採用確定）。plan側はDependency / blockerをOpen questionsの2件のowner decisionへ更新。

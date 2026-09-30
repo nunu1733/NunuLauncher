@@ -38,6 +38,7 @@
   - 依存: #441（B7 baseline）はCLOSED済みを再確認。
 - **本Re-entryによる文書変更**: なし（陳腐化箇所なし。本記録とAnalysis baseline行の更新のみ。planningコード・spec本文の規則は無変更）。
 - **2026-09-30（ChatGPT review対応。P1×2、P2×1）**: Verification節のproperty test実装方式を重複注入wrapper (b) に確定し、`SyntheticFixtureGenerator` へのtemplate追加を不採用とした（`template = index % 8` の固定64 caseが変わり、spec N-7 / AC-5の既存fixture個別digest不変と衝突するため）。Explicitly unverified areasの当該行を更新。spec側の修正（scenario代表の `ItemId` canonical順への整合、N-1の契約拡張明記、Open questions追加）は [spec.md](./spec.md) のChange history参照。planning codeへの記載は無変更（generatorの現行挙動は現mainで再確認済み）。
+- **2026-09-30（ChatGPT re-review対応。残P2×2）**: Dependency / blockerをspec Open questionsの2件のowner decision（代表選択の `ItemId` canonical順採用、重複判定の全captured item拡張の採否）へ更新。spec側はTest oracleのAC-2行を「重複注入wrapper」へ一本化（[spec.md](./spec.md) のChange history参照）。
 
 ## Design
 
@@ -139,7 +140,7 @@
 
 - 依存: なし（メモ§5「#451、#453、#444は他に依存しない」）。#441（B7 baseline）はCLOSED済み。
 - 被依存: 重複の削除提案（Next）が本Issueの規則を前提にする。
-- blocker: spec Open questionsの代表選択基準（owner確認）を実装開始前に解消することが望ましい（規則は自己完結しており、実装を技術的に blockingしない）。
+- blocker: spec Open questionsの2件のowner decision（① 代表選択の `ItemId` canonical順採用（メモ§4.5「視覚順」からの逸脱）、② 重複判定の全captured item拡張の採否（N-1の契約拡張））を実装開始前に解消することが望ましい（規則は自己完結しており、実装を技術的に blockingしない）。
 
 ## Risk
 
