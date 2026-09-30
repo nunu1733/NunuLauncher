@@ -3,7 +3,7 @@
   "status": "accepted",
   "captured_on": "2026-09-29",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "9c5a41de716c5cf019832e4fa40a1cdf9d3c303e",
+  "main_commit": "99dfff015e9fdc8b52f3a672e8a5dfbf8e647657",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -475,7 +475,7 @@
     },
     {
       "id": "homeedit-edit-undo",
-      "responsibility": "Edit undo (Issue #450, ADR-0013 contract 5): the generation-bound process-local undo record, the pure undo planner with availability verification, the undo executor and snackbar entry, and the recovery-result text mapper. The inverse operations themselves live in ModelWriter via the DirectEditContract extension (already in the direct-edit bridge group); the edit-session undo reuses the existing organizer recovery path through the HomeEditSurfaceAccess window (receipt accessor additive to ManualOrganizationApplication).",
+      "responsibility": "Edit undo (Issue #450, ADR-0013 contract 5): the generation-bound process-local undo record, the pure undo planner with availability verification, the undo executor and snackbar entry, and the recovery-result text mapper. The inverse operations themselves live in ModelWriter via the DirectEditContract extension (already in the direct-edit bridge group); the edit-session undo reuses the existing organizer recovery path through the HomeEditSurfaceAccess window (receipt accessor additive to ManualOrganizationApplication). Also owns the one upstream bind-path guard created for this Issue: Folder.java suppresses the bind-time single-child cleanup for a folder carrying the direct-edit OPTIONS bit, so the cleanup cannot flatten it inside the undo snackbar's window.",
       "evidence": [
         "specs/450-edit-undo/spec.md",
         "specs/450-edit-undo/plan.md",
@@ -488,7 +488,8 @@
         "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoRecord.kt",
         "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoRecoveryText.kt",
         "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoVerifier.kt",
-        "lawnchair/src/app/lawnchair/homeedit/ui/HomeEditUndoSnackbar.kt"
+        "lawnchair/src/app/lawnchair/homeedit/ui/HomeEditUndoSnackbar.kt",
+        "src/com/android/launcher3/folder/Folder.java"
       ]
     },
     {
@@ -511,14 +512,14 @@
     }
   ],
   "expected_measurement": {
-    "counted_additions": 20030,
-    "counted_deletions": 1068,
-    "counted_files": 90,
-    "counted_paths_sha256": "23246c1776a959b8ee55a94fec45056d9852bb7ba6967a0faa33d0da2ebcdf8d",
-    "excluded_additions": 206447,
+    "counted_additions": 20157,
+    "counted_deletions": 1069,
+    "counted_files": 91,
+    "counted_paths_sha256": "0859546f9cfd9b021ebc0e972b4968252283d18c34f2df99aaea51c2e3ce9d52",
+    "excluded_additions": 207700,
     "excluded_deletions": 863,
-    "excluded_files": 1179,
-    "excluded_paths_sha256": "e0e5c7f075d0144f575a9a92d10ce53ecd094be1fde406361a4c1c38ac73e574",
+    "excluded_files": 1196,
+    "excluded_paths_sha256": "a32da95b24643f3f35266690afb6eb7ee46490585a919515cea46e99f4e5f3c3",
     "groups": {
       "deck-retirement": {
         "additions": 759,
@@ -527,22 +528,22 @@
         "paths_sha256": "3f68fcbdba6182596817bcec19c8327c2f23cda9ee51a69499b7d2017a89616a"
       },
       "fork-platform-preexisting": {
-        "additions": 606,
+        "additions": 608,
         "deletions": 32,
         "files": 8,
         "paths_sha256": "727291c82bd7181e70278f6926a041ce86c3fb2e54b8efeedcab771586d51dbd"
       },
       "homeedit-edit-surface": {
-        "additions": 8353,
+        "additions": 8446,
         "deletions": 1,
         "files": 20,
         "paths_sha256": "beb57d705e8e94dc3c8b5faa2320dcb8dc1eca92435a55fdbdf0b6bad7329fb8"
       },
       "homeedit-edit-undo": {
-        "additions": 902,
-        "deletions": 0,
-        "files": 7,
-        "paths_sha256": "d14801b9705087db0f29ba4536116cd685151e9494de55b654d329046022187f"
+        "additions": 915,
+        "deletions": 1,
+        "files": 8,
+        "paths_sha256": "4417cff12540518a6f02b6466e6c13f36e842aae41ffdbc27572f9f2252f0615"
       },
       "layout-schema-and-recovery": {
         "additions": 677,
@@ -551,7 +552,7 @@
         "paths_sha256": "cd6606755781c3f5eac65d513e346f70b4b78f6fdddd1e851de8803836600724"
       },
       "model-reload-and-transaction-gates": {
-        "additions": 2958,
+        "additions": 2977,
         "deletions": 80,
         "files": 11,
         "paths_sha256": "89e436108363951a16ec544251fa6b70b7be336e2febf6009d197aa61a38eedc"
