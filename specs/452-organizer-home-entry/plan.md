@@ -2,7 +2,7 @@
 
 > Issue: #452
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted（specは2026-09-30にPhase 1 review round 3 Clearで受理）
 > Risk tier: M（spec冒頭のとおり。階層Mはplan.mdを要求しないが、Issue未解決事項の解消根拠と実装順序を残すために作成する）
 
 ## Current evidence
