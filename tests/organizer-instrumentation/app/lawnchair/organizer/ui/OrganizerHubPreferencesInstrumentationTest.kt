@@ -507,6 +507,10 @@ class OrganizerHubPreferencesInstrumentationTest {
             return nodes.size to nodes.firstOrNull()?.boundsInRoot
         }
         var swipes = 0
+        // #300 input-environment gate: real drags (like real key events) need
+        // the compose host window focused, or the injection family fails
+        // wholesale (keys, drags) while semantics actions keep working.
+        ensureWindowFocusedForComposeHost()
         val device = androidx.test.uiautomator.UiDevice.getInstance(
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation(),
         )
