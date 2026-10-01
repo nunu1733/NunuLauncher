@@ -354,6 +354,30 @@ public class GridMigrationFailureTest {
     }
 
     @Test
+    public void
+    restorePendingJournalWithValidHeaderCorruptBodyFailsClosedAndPreservesCorruptSource() {
+        DeviceGridState destination = new DeviceGridState(
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+        GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
+                sourceState, destination, GridMigrationJournal.Phase.RESTORE_PENDING);
+        byte[] corruptSource = GridMigrationTestSupport
+                .corruptDatabaseBodyPreservingValidHeader(context, SOURCE_DB);
+        Fixture fresh = freshFixture(destination, false);
+
+        try {
+            fresh.controller.tryMigrateDB(null);
+            fail("A durable-recovery source with a corrupt body must fail closed");
+        } catch (RuntimeException expected) {
+            assertNull(fresh.controller.publishedHelper());
+        }
+
+        GridMigrationTestSupport.assertRawBytesIdentical(
+                corruptSource, context.getDatabasePath(SOURCE_DB));
+        GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
+                GridMigrationJournal.Phase.RESTORE_PENDING, TARGET_DB, SOURCE_DB, sourceState);
+    }
+
+    @Test
     public void restoreFailedPreferenceFailureAfterSourcePublicationFailsClosed() {
         try (DatabaseHelper source = GridMigrationTestSupport.open(context, SOURCE_DB)) {
             GridMigrationTestSupport.seedSource(source.getWritableDatabase());

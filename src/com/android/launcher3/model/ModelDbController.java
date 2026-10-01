@@ -39,8 +39,11 @@ import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.content.res.Resources;
 import android.database.Cursor;
+import android.database.DatabaseErrorHandler;
 import android.database.SQLException;
 import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteDatabaseCorruptException;
+import android.database.sqlite.SQLiteException;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
@@ -816,7 +819,9 @@ public class ModelDbController {
 
     // Issue #59: recovery must never construct or publish an empty source database, so the
     // journal source is identity/path/existence validated before any writable helper opens it.
-    // Issue #461: the SQLite magic header also gates readability, preserving corrupt evidence.
+    // Issue #461: a matching magic header alone cannot detect a corrupt body, so readability
+    // additionally requires a read-only open under a non-deleting error handler with a
+    // passing non-destructive PRAGMA quick_check, preserving the corrupt file as evidence.
     private File validatedJournalSourceFile(GridMigrationJournal.Entry journal,
             DatabaseHelper targetHelper) {
         String sourceDatabaseName = journal.sourceDatabaseName();
@@ -848,9 +853,63 @@ public class ModelDbController {
             if (read < actualHeader.length || !Arrays.equals(actualHeader, sqliteMagicHeader)) {
                 throw new IllegalStateException("Grid migration source is unreadable");
             }
+            // Issue #461: fail closed on a valid header with a corrupt body before any
+            // writable helper can open the source and let the default error handler recreate
+            // it as an empty database.
+            probeJournalSourceIntegrity(sourceFile);
             return sourceFile;
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to validate grid migration source", exception);
+        }
+    }
+
+    // Issue #461: PRAGMA quick_check is the non-destructive completeness check that a header
+    // signature cannot provide (valid header + corrupt body detection). The probe opens
+    // OPEN_READONLY (never CREATE_IF_NECESSARY), always closes the database, and leaves no
+    // -journal/-wal/-shm sidecar behind (the favorites database runs the default
+    // rollback-journal mode). Any SQLiteException (SQLiteDatabaseCorruptException included)
+    // during the open or the check, and any non-ok result, is a validation failure.
+    private static void probeJournalSourceIntegrity(File sourceFile) {
+        SQLiteDatabase probe = null;
+        RuntimeException validationFailure = null;
+        try {
+            probe = SQLiteDatabase.openDatabase(sourceFile.getPath(), null,
+                    SQLiteDatabase.OPEN_READONLY, new NonDeletingErrorHandler());
+            try (Cursor cursor = probe.rawQuery("PRAGMA quick_check", null)) {
+                if (!cursor.moveToFirst() || !"ok".equals(cursor.getString(0))) {
+                    validationFailure = new IllegalStateException(
+                            "Grid migration source is unreadable");
+                }
+            }
+        } catch (SQLiteException exception) {
+            validationFailure = new IllegalStateException(
+                    "Grid migration source is unreadable", exception);
+        } finally {
+            if (probe != null) {
+                try {
+                    probe.close();
+                } catch (RuntimeException closeFailure) {
+                    // A close failure is not a validation failure; keep it suppressed when a
+                    // validation failure already exists.
+                    if (validationFailure != null) {
+                        validationFailure.addSuppressed(closeFailure);
+                    }
+                }
+            }
+        }
+        if (validationFailure != null) {
+            throw validationFailure;
+        }
+    }
+
+    // Issue #461: probe-only error handler that preserves a corrupt journal source as
+    // evidence; the default handler would delete and recreate the file as an empty database.
+    // Surfaces the corruption as an exception for the validation gate to fail closed.
+    private static final class NonDeletingErrorHandler implements DatabaseErrorHandler {
+        @Override
+        public void onCorruption(SQLiteDatabase database) {
+            throw new SQLiteDatabaseCorruptException(
+                    "Grid migration source is corrupt; preserving the file as evidence");
         }
     }
 
