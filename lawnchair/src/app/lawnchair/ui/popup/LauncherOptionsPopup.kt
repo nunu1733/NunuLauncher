@@ -4,6 +4,8 @@ import android.view.View
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import app.lawnchair.preferences2.PreferenceManager2.Companion.getInstance
+import app.lawnchair.ui.preferences.PreferenceActivity
+import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import com.android.launcher3.Launcher
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
@@ -17,12 +19,17 @@ object LauncherOptionsPopup {
         LauncherOptionPopupItem("carousel", true),
         LauncherOptionPopupItem("lock", false),
         LauncherOptionPopupItem("edit_mode", false),
+        LauncherOptionPopupItem("organize_home", true),
         LauncherOptionPopupItem("edit_surface", true),
         LauncherOptionPopupItem("wallpaper", true),
         LauncherOptionPopupItem("widgets", true),
         LauncherOptionPopupItem("home_settings", true),
         LauncherOptionPopupItem("sys_settings", false),
     )
+
+    // Issue #452: while the home screen is locked, the editing/organizing
+    // entries stay out of the popup (the lock's own toggle remains).
+    private val hiddenWhileLocked = setOf("edit_mode", "organize_home", "edit_surface", "widgets")
 
     fun restoreMissingPopupOptions(
         launcher: Launcher,
@@ -31,16 +38,52 @@ object LauncherOptionsPopup {
 
         val currentOrder = prefs2.launcherPopupOrder.firstBlocking()
         val currentOptions = currentOrder.toLauncherOptions()
+        val mergedOptions = mergeMissingPopupOptions(currentOptions)
 
-        // check for missing items in current options; if so, add them
-        val missingItems = DEFAULT_ORDER.filter { defaultItem ->
-            defaultItem.identifier !in currentOptions.map { it.identifier }
-        }
+        // Issue #452: skip the preference write when the merge changed nothing
+        // (fresh installs and already-restored orders), instead of rewriting
+        // the same value on every launch.
+        if (mergedOptions == currentOptions) return
 
-        prefs2.launcherPopupOrder.setBlocking(
-            (missingItems + currentOptions).toOptionOrderString(),
-        )
+        prefs2.launcherPopupOrder.setBlocking(mergedOptions.toOptionOrderString())
     }
+
+    /**
+     * Returns [current] with the [DEFAULT_ORDER] entries it lacks inserted at
+     * their DEFAULT_ORDER-relative position: before the first entry of
+     * [current] that follows them in [DEFAULT_ORDER], or at the end when no
+     * such entry exists. Missing entries insert in DEFAULT_ORDER sequence with
+     * their default enabled state; existing entries keep their position and
+     * enabled state exactly as saved (Issue #452).
+     */
+    fun mergeMissingPopupOptions(current: List<LauncherOptionPopupItem>): List<LauncherOptionPopupItem> {
+        val present = current.map { it.identifier }.toSet()
+        val missing = DEFAULT_ORDER.filter { it.identifier !in present }
+        if (missing.isEmpty()) return current
+
+        var merged = current.toList()
+        for (item in missing) {
+            val followers = DEFAULT_ORDER
+                .subList(DEFAULT_ORDER.indexOf(item) + 1, DEFAULT_ORDER.size)
+                .map { it.identifier }
+                .toSet()
+            val insertAt = merged.indexOfFirst { it.identifier in followers }
+                .let { if (it == -1) merged.size else it }
+            merged = merged.subList(0, insertAt) + item + merged.subList(insertAt, merged.size)
+        }
+        return merged
+    }
+
+    /**
+     * Returns the option order entries that may show in the popup: enabled,
+     * non-carousel, and not hidden while the home screen is locked.
+     */
+    fun filterVisiblePopupOptions(
+        optionOrder: List<LauncherOptionPopupItem>,
+        lockHomeScreen: Boolean,
+    ): List<LauncherOptionPopupItem> = optionOrder
+        .filter { it.isEnabled && it.identifier != "carousel" }
+        .filter { !lockHomeScreen || it.identifier !in hiddenWhileLocked }
 
     /**
      * Returns the list of supported actions
@@ -100,6 +143,26 @@ object LauncherOptionsPopup {
                     true
                 },
             ),
+            // Issue #452: direct organizer-run entry. The handler only opens
+            // the settings activity at the manual-organization run route (the
+            // same mechanism the onboarding proposal uses); run admission
+            // stays exclusive to the run surface's start row. Hidden while the
+            // home screen is locked together with edit_mode/edit_surface.
+            "organize_home" to OptionItem(
+                launcher,
+                R.string.home_screen_organize,
+                R.drawable.ic_organize_home,
+                LauncherEvent.IGNORE,
+                { view ->
+                    view.context.startActivity(
+                        PreferenceActivity.createIntent(
+                            view.context,
+                            HomeScreenManualOrganization(),
+                        ),
+                    )
+                    true
+                },
+            ),
             "wallpaper" to OptionItem(
                 launcher,
                 wallpaperResString,
@@ -124,18 +187,7 @@ object LauncherOptionsPopup {
         )
 
         val options = ArrayList<OptionItem>()
-        optionOrder
-            .filter {
-                (it.isEnabled && it.identifier != "carousel")
-            }
-            .filter {
-                if (lockHomeScreen) {
-                    it.identifier != "edit_mode" && it.identifier != "widgets" &&
-                        it.identifier != "edit_surface"
-                } else {
-                    true
-                }
-            }
+        filterVisiblePopupOptions(optionOrder, lockHomeScreen)
             .mapNotNull { optionsList[it.identifier] }
             .forEach { options.add(it) }
 
@@ -168,6 +220,11 @@ object LauncherOptionsPopup {
             "edit_surface" -> LauncherOptionMetadata(
                 label = R.string.edit_surface_menu_open,
                 icon = R.drawable.ic_folder,
+            )
+
+            "organize_home" -> LauncherOptionMetadata(
+                label = R.string.home_screen_organize,
+                icon = R.drawable.ic_organize_home,
             )
 
             "wallpaper" -> LauncherOptionMetadata(

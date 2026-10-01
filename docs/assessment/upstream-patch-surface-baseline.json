@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "status": "accepted",
-  "captured_on": "2026-09-29",
+  "captured_on": "2026-10-01",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "3bde87122926d6afa29c79e6c3db9b3a68fac624",
+  "main_commit": "2163020d8dfc96ddf4845b90dc42e0d7a127fa12",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -444,7 +444,7 @@
     },
     {
       "id": "homeedit-edit-surface",
-      "responsibility": "Visual multi-select edit surface (Issue #449, ADR-0014 case B): pure session/planning layers, thin organizer-access window, full-screen UI, and the two entries. The one-shot apply goes through the existing organizer apply path (ORGANIZER lease, one recovery point, 1 transaction, correlated reload + verification); no direct DB writes. Includes the plan-coupled minimal extension of the apply path: the manifest-absence delete pass in LauncherLayoutAdapter (plan 結合点7) that materializes intended-row removals, and the read-only inspectCapture seam in LayoutApplicationModule.",
+      "responsibility": "Visual multi-select edit surface (Issue #449, ADR-0014 case B): pure session/planning layers, thin organizer-access window, full-screen UI, and the two entries. Since Issue #452 this file also hosts the fork's added popup entries generally (organize_home for #452, alongside edit_surface for #449) plus the DEFAULT_ORDER-relative order restoration and the no-op write guard; #452's share of this file's growth is adopted with #452 rationale. The one-shot apply goes through the existing organizer apply path (ORGANIZER lease, one recovery point, 1 transaction, correlated reload + verification); no direct DB writes. Includes the plan-coupled minimal extension of the apply path: the manifest-absence delete pass in LauncherLayoutAdapter (plan 結合点7) that materializes intended-row removals, and the read-only inspectCapture seam in LayoutApplicationModule.",
       "evidence": [
         "specs/449-multi-select-surface/spec.md",
         "docs/adr/0014-edit-surface.md",
@@ -493,6 +493,18 @@
       ]
     },
     {
+      "id": "organizer-home-entry",
+      "responsibility": "Organizer run entry from the workspace long-press popup (Issue #452): the popup edit screen's locked-state branch, the entry's monochrome icon, and the order-restoration contract are owned here. The organize_home OptionItem/DEFAULT_ORDER entry itself lives in the fork's shared options-popup entries file (LauncherOptionsPopup.kt, counted under homeedit-edit-surface because #449 first patched that file); its growth is adopted with #452 rationale. No model, loader, or DB path: the handler only opens PreferenceActivity at the HomeScreenManualOrganization route.",
+      "evidence": [
+        "specs/452-organizer-home-entry/spec.md",
+        "specs/452-organizer-home-entry/plan.md"
+      ],
+      "paths": [
+        "lawnchair/res/drawable/ic_organize_home.xml",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/LauncherPopupPreference.kt"
+      ]
+    },
+    {
       "id": "fork-platform-preexisting",
       "responsibility": "Pre-existing fork platform changes that predate Issue #449 and are already in the baseline upstream..main diff (backup/restore UI, bugreport, device-profile config, build configuration). Recorded for measurement completeness; ownership review of each belongs to the issues that introduced them.",
       "evidence": [
@@ -512,14 +524,14 @@
     }
   ],
   "expected_measurement": {
-    "counted_additions": 20176,
-    "counted_deletions": 1071,
-    "counted_files": 91,
-    "counted_paths_sha256": "0859546f9cfd9b021ebc0e972b4968252283d18c34f2df99aaea51c2e3ce9d52",
-    "excluded_additions": 207862,
+    "counted_additions": 20327,
+    "counted_deletions": 1089,
+    "counted_files": 93,
+    "counted_paths_sha256": "fdffc8d961be514b981ea964cf4beac97185e90113fb9e3d042e2a0cc31f7c86",
+    "excluded_additions": 210739,
     "excluded_deletions": 863,
-    "excluded_files": 1196,
-    "excluded_paths_sha256": "a32da95b24643f3f35266690afb6eb7ee46490585a919515cea46e99f4e5f3c3",
+    "excluded_files": 1207,
+    "excluded_paths_sha256": "66e0b2d8033aa56e316a6c0d814277d146704f258b2979816b7dad93c72ebae1",
     "groups": {
       "deck-retirement": {
         "additions": 759,
@@ -534,8 +546,8 @@
         "paths_sha256": "727291c82bd7181e70278f6926a041ce86c3fb2e54b8efeedcab771586d51dbd"
       },
       "homeedit-edit-surface": {
-        "additions": 8446,
-        "deletions": 1,
+        "additions": 8538,
+        "deletions": 18,
         "files": 20,
         "paths_sha256": "beb57d705e8e94dc3c8b5faa2320dcb8dc1eca92435a55fdbdf0b6bad7329fb8"
       },
@@ -557,16 +569,22 @@
         "files": 11,
         "paths_sha256": "89e436108363951a16ec544251fa6b70b7be336e2febf6009d197aa61a38eedc"
       },
+      "organizer-home-entry": {
+        "additions": 32,
+        "deletions": 1,
+        "files": 2,
+        "paths_sha256": "6482bd763964e08a8ba115731819355cae35ec183124ed363bc6ec10e3e299f0"
+      },
       "organizer-ui-and-lock-authoring": {
-        "additions": 5775,
+        "additions": 5802,
         "deletions": 9,
         "files": 13,
         "paths_sha256": "7f9dc79c4f97a2456a48e23a6fcfbc218dd0bf3c2148ebd65d194d361403004f"
       }
     },
-    "project_owned_additions": 36692,
+    "project_owned_additions": 36790,
     "project_owned_deletions": 0,
-    "project_owned_files": 173,
-    "project_owned_paths_sha256": "eae38efc34111329dd57daa1af2f6b3f7fb702540892d249f17ebbb6e56fad6a"
+    "project_owned_files": 174,
+    "project_owned_paths_sha256": "8eaafb934fd87ba5ada06e978931dd35e8b0e94d65683f37e44da86b7fb6c655"
   }
 }
