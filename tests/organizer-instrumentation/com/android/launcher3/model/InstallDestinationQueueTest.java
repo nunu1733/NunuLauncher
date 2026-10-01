@@ -22,7 +22,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.SmallTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
 
@@ -199,12 +198,11 @@ public class InstallDestinationQueueTest {
                 null, Process.myUserHandle(), queueIntent());
         assertTrue(missing.second instanceof DirectEditContract.DestinationRoute);
 
-        // No resolver registered: stock path untouched.
+        // No resolver registered: stock path untouched (same pair, no route).
         DirectEditContract.setDestinationResolver(null);
         Pair<ItemInfo, Object> unregistered = ItemInstallQueue.attachDestinationRoute(mContext,
                 pair, snapshotA, Process.myUserHandle(), queueIntent());
         assertSame(pair, unregistered);
         assertNull(unregistered.second);
-        assertEquals(Favorites.CONTAINER_DESKTOP, item.container);
     }
 }

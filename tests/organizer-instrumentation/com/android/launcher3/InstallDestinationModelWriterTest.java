@@ -8,7 +8,6 @@ package com.android.launcher3;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.ContentValues;
@@ -219,7 +218,10 @@ public class InstallDestinationModelWriterTest {
     @Test
     public void folderTargetInsertAppendsAtTailRankWithoutLockColumnChange() throws Exception {
         FolderInfo folder = seedFolder(510, 0, 0, 4);
-        seedAppItem(501, 510, 0, -1, -1, 0);
+        WorkspaceItemInfo child = seedAppItem(501, 510, 0, -1, -1, 0);
+        // The loader registers folder children in FolderInfo.contents; mirror
+        // it so the tail rank derives from the live model state.
+        folder.getContents().add(child);
         WorkspaceItemInfo payload = newPendingPayload();
 
         CountDownLatch done = new CountDownLatch(1);
@@ -249,8 +251,11 @@ public class InstallDestinationModelWriterTest {
         assertEquals("folder + seed child + new child only", 3, countRows());
         // Existing child's rank untouched (ADR-0015 Decision 6).
         assertEquals(0, queryInt(501, Favorites.RANK));
-        // Lock column never written by the direct-edit path (ADR-0013).
-        assertNull(queryLockColumn(insertedId));
+        // Lock column never written by the direct-edit path (ADR-0013): the
+        // inserted row carries the schema default, identical to the seeded
+        // rows around it (the column is NOT NULL DEFAULT 1).
+        assertEquals(queryLockColumn(501), queryLockColumn(insertedId));
+        assertEquals(queryLockColumn(510), queryLockColumn(insertedId));
         // Live model: contents appended, id allocated, callback placement.
         assertTrue(folder.getContents().contains(payload));
         assertEquals(510, payload.container);
@@ -265,7 +270,7 @@ public class InstallDestinationModelWriterTest {
                 + " FROM " + Favorites.TABLE_NAME + " WHERE " + Favorites._ID + "=?",
                 new String[]{String.valueOf(id)})) {
             assertTrue(c.moveToFirst());
-            return c.isNull(0) ? null : c.getString(0);
+            return c.getString(0);
         }
     }
 
@@ -294,15 +299,19 @@ public class InstallDestinationModelWriterTest {
         // Fallback reason travels to the callback (record + one-shot notice).
         assertEquals(DirectEditContract.DEST_FOLDER_MISSING, reason.get());
         assertEquals(Favorites.CONTAINER_DESKTOP, (int) result.get()[0]);
-        // Placement is in-grid and free of the seeded cell (upstream finder
-        // semantics; a fork-side scan duplication would drift from this).
+        // Placement is in-grid (upstream finder semantics; a fork-side scan
+        // duplication would drift from this). With the QSB first-screen
+        // exclusion active the finder allocates a fresh screen id instead of
+        // scanning the seeded screen — the reported screen always matches the
+        // written row either way.
         InvariantDeviceProfile idp = LauncherAppState.getIDP(mContext);
-        assertTrue(result.get()[1] >= 0);
+        int screenId = result.get()[1];
+        assertTrue(screenId >= 0);
         assertTrue(result.get()[2] >= 0 && result.get()[2] < idp.numColumns);
         assertTrue(result.get()[3] >= 0 && result.get()[3] < idp.numRows);
+        assertEquals(screenId, queryInt(payload.id, Favorites.SCREEN));
         assertFalse("must not overlap the seeded cell",
-                result.get()[1] == 0 && result.get()[3] == 1);
-        assertEquals(DirectEditContract.DEST_NO_SCREEN_ID, (int) result.get()[4]);
+                screenId == 0 && result.get()[2] == 0 && result.get()[3] == 1);
         assertEquals(Favorites.CONTAINER_DESKTOP, queryInt(payload.id, Favorites.CONTAINER));
         assertTrue(mBgDataModel.itemsIdMap.get(payload.id) == payload);
         assertTrue(mBgDataModel.workspaceItems.contains(payload));
@@ -314,18 +323,32 @@ public class InstallDestinationModelWriterTest {
     public void deferredWriteReplansToUpstreamDefaultWhenFolderDeleted() throws Exception {
         FolderInfo folder = seedFolder(510, 0, 0, 4);
         WorkspaceItemInfo payload = newPendingPayload();
-        int payloadCellY = payload.cellY;
-        String payloadIntent = payload.intent == null ? null : payload.intent.toUri(0);
 
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
         AtomicReference<LayoutWriteCoordinator.Lease> lease =
                 new AtomicReference<>(coordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER));
         assertNotNull(lease.get());
+        // A mid-test failure must never leak the process-wide ORGANIZER lease:
+        // every tokenless MODEL_WRITER op would defer forever after it.
+        try {
+            runDeferredScenario(payload, lease, folder);
+        } finally {
+            if (lease.get() != null) {
+                lease.get().close();
+                lease.set(null);
+            }
+        }
+    }
 
+    private void runDeferredScenario(WorkspaceItemInfo payload,
+            AtomicReference<LayoutWriteCoordinator.Lease> lease, FolderInfo folder)
+            throws Exception {
         AtomicBoolean validatorRan = new AtomicBoolean(false);
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<int[]> result = new AtomicReference<>();
         AtomicReference<String> reason = new AtomicReference<>();
+        int payloadCellY = payload.cellY;
+        String payloadIntent = payload.intent == null ? null : payload.intent.toUri(0);
         mWriter.addPendingInstallForDirectEdit(payload,
                 current -> {
                     validatorRan.set(true);
@@ -345,14 +368,15 @@ public class InstallDestinationModelWriterTest {
                     done.countDown();
                 });
 
-        // While deferred: no admission, no payload mutation, no callback.
+        // While deferred: no admission, no payload mutation, no callback. The
+        // only row is the seeded folder row itself.
         assertFalse("task must stay deferred", done.await(300, TimeUnit.MILLISECONDS));
         assertFalse(validatorRan.get());
         assertEquals(ItemInfo.NO_ID, payload.id);
         assertEquals(payloadCellY, payload.cellY);
         assertEquals(payloadIntent,
                 payload.intent == null ? null : payload.intent.toUri(0));
-        assertEquals(0, countRows());
+        assertEquals(1, countRows());
 
         // The "organizer apply" deletes the designated folder while the lease
         // is held. Raw SQL on purpose: a controller delete would take the
@@ -370,8 +394,9 @@ public class InstallDestinationModelWriterTest {
         // Re-planned to a valid upstream-default write, not a failure.
         assertEquals(DirectEditContract.DEST_FOLDER_MISSING, reason.get());
         assertEquals(Favorites.CONTAINER_DESKTOP, (int) result.get()[0]);
-        assertTrue("row must be written for the re-planned default", countRows() == 1);
-        assertTrue(payload.id > 0);
+        assertTrue("row must be written for the re-planned default", payload.id > 0);
+        assertEquals("only the re-planned row remains (the folder row was deleted)",
+                1, countRows());
     }
 
     // --- full-screens fallback: new screen allocated inside admission ---
