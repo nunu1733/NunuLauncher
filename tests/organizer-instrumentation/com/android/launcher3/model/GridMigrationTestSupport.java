@@ -16,12 +16,14 @@ import android.database.sqlite.SQLiteDatabase;
 import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.provider.LauncherDbUtils;
+import com.android.launcher3.util.IOUtils;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.List;
@@ -90,6 +92,71 @@ public final class GridMigrationTestSupport {
         try (FileOutputStream output = new FileOutputStream(
                 context.getDatabasePath(databaseName))) {
             output.write("issue 59 corrupt database".getBytes(StandardCharsets.UTF_8));
+        } catch (IOException exception) {
+            throw new RuntimeException(exception);
+        }
+    }
+
+    // Issue #461: builds a real favorites database, then overwrites every byte after the
+    // first page, so the 16-byte SQLite magic header (and the rest of page 1) stays valid
+    // while every favorites b-tree page is destroyed. Large rows spread the table across
+    // multiple live data pages, and the favorites table always owns a root page beyond
+    // page 1 (page 1 is sqlite_master), so PRAGMA quick_check always reports a non-ok
+    // result — unlike damage confined to unused space. Returns the corrupt on-disk bytes
+    // captured before the recovery attempt for byte-identical preservation asserts.
+    static byte[] corruptDatabaseBodyPreservingValidHeader(Context context, String databaseName) {
+        deleteDatabase(context, databaseName);
+        try (DatabaseHelper helper = open(context, databaseName)) {
+            SQLiteDatabase database = helper.getWritableDatabase();
+            for (int id = 1; id <= 6; id++) {
+                insertLargeFavorite(database, id);
+            }
+        }
+        byte[] original = readRawBytes(context.getDatabasePath(databaseName));
+        int pageSize = ((original[16] & 0xFF) << 8) | (original[17] & 0xFF);
+        if (pageSize == 1) {
+            pageSize = 65536;
+        }
+        byte[] corrupted = original.clone();
+        Arrays.fill(corrupted, pageSize, corrupted.length, (byte) 0x5A);
+        writeRawBytes(context.getDatabasePath(databaseName), corrupted);
+        return corrupted;
+    }
+
+    static byte[] readRawBytes(File file) {
+        try {
+            return IOUtils.toByteArray(file);
+        } catch (IOException exception) {
+            throw new RuntimeException(exception);
+        }
+    }
+
+    static void assertRawBytesIdentical(byte[] expected, File file) {
+        assertArrayEquals(expected, readRawBytes(file));
+    }
+
+    private static void insertLargeFavorite(SQLiteDatabase database, int id) {
+        char[] title = new char[2048];
+        Arrays.fill(title, 'x');
+        ContentValues values = new ContentValues();
+        values.put(Favorites._ID, id);
+        values.put(Favorites.TITLE, "Issue 461 " + id + " " + new String(title));
+        values.put(Favorites.INTENT, "#Intent;end");
+        values.put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP);
+        values.put(Favorites.SCREEN, 0);
+        values.put(Favorites.CELLX, id - 1);
+        values.put(Favorites.CELLY, 0);
+        values.put(Favorites.SPANX, 1);
+        values.put(Favorites.SPANY, 1);
+        values.put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPLICATION);
+        values.put(Favorites.PROFILE_ID, 0);
+        values.put(Favorites.ORGANIZER_LOCK_STATE, 2);
+        database.insertOrThrow(Favorites.TABLE_NAME, null, values);
+    }
+
+    private static void writeRawBytes(File file, byte[] bytes) {
+        try (FileOutputStream output = new FileOutputStream(file)) {
+            output.write(bytes);
         } catch (IOException exception) {
             throw new RuntimeException(exception);
         }

@@ -33,6 +33,9 @@ lanes:
     surfaces:
       - surface_layout_write
   organizer-instrumentation-db-migration-tests:
+    # Issue #461: GridMigrationFailureTest was appended to this lane's runner
+    # class list (fail-closed on a corrupt durable recovery source). Edges are
+    # unchanged; the lane already owned surface_db_schema.
     surfaces:
       - surface_db_schema
   organizer-instrumentation-restore-capture-tests:
