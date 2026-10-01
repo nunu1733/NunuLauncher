@@ -21,6 +21,8 @@ import android.app.Instrumentation.ActivityResult
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
+import android.view.ViewGroup
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultRegistry
@@ -30,8 +32,11 @@ import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.AbstractComposeView
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
@@ -741,18 +746,21 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onNodeWithText(openLabel).performClick()
             if (awaitRunSurfaceOrStillOnHub(navController, explainer)) return
             if (attempt >= REQUEST_ROW_CLICK_ATTEMPTS - 1) {
+                val issue479Diagnostics = issue479ComposeRootDiagnostics(navController)
                 captureArrivalFailureScreenshot()
                 error(
                     "request row touch click never opened the run surface " +
-                        "(attempts=$REQUEST_ROW_CLICK_ATTEMPTS): ${arrivalDiagnosis(navController)}",
+                        "(attempts=$REQUEST_ROW_CLICK_ATTEMPTS): ${arrivalDiagnosis(navController)} " +
+                        issue479Diagnostics,
                 )
             }
             check(!isOnDestination(navController, HomeScreenManualOrganization())) {
                 // Navigation verifiably dispatched but the surface never
                 // composed — re-injecting would double-push the entry.
+                val issue479Diagnostics = issue479ComposeRootDiagnostics(navController)
                 captureArrivalFailureScreenshot()
                 "request row touch click navigated but the run surface never composed: " +
-                    arrivalDiagnosis(navController)
+                    arrivalDiagnosis(navController) + " " + issue479Diagnostics
             }
         }
     }
@@ -764,6 +772,114 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             onRoute = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
         }
         return onRoute
+    }
+
+    /**
+     * #479 investigation (failure-instant, before the classified failure is
+     * raised): census of every compose view and compose root in the activity
+     * window with the [ViewRootForTest.semanticsOwner] identity of each
+     * root, the full semantics tree per owner, owner attribution of the ghost
+     * request-row node (fetched exactly like the oracle does — merged tree,
+     * `onAllNodesWithTag`) versus a visibly present hub row, and the nav
+     * back stack. Full dump goes to logcat (tag `Issue479Diag`) and the app
+     * external files dir; `dumpsys activity top` and a uiautomator dump are
+     * written to `/sdcard/Download` from the shell identity at the same
+     * instant. Returns a compact summary for the failure message.
+     */
+    private fun issue479ComposeRootDiagnostics(navController: NavHostController): String {
+        val lines = mutableListOf<String>()
+        composeRule.runOnIdle {
+            fun walk(view: android.view.View) {
+                val className = view.javaClass.simpleName
+                if (view is AbstractComposeView) {
+                    val location = IntArray(2).also { view.getLocationOnScreen(it) }
+                    lines.add(
+                        "COMPOSE_VIEW cls=$className viewId=${System.identityHashCode(view)} " +
+                            "shown=${view.isShown} size=${view.width}x${view.height} " +
+                            "screen=(${location[0]},${location[1]})",
+                    )
+                }
+                if (view is ViewRootForTest) {
+                    val location = IntArray(2).also { view.getLocationOnScreen(it) }
+                    val owner = view.semanticsOwner
+                    val ownerId = System.identityHashCode(owner)
+                    lines.add(
+                        "COMPOSE_ROOT cls=$className viewId=${System.identityHashCode(view)} " +
+                            "ownerId=$ownerId shown=${view.isShown} " +
+                            "size=${view.width}x${view.height} screen=(${location[0]},${location[1]})",
+                    )
+                    lines.add("OWNER_TREE ownerId=$ownerId")
+                    appendIssue479SemanticsTree(owner.rootSemanticsNode, lines, "  ", depth = 0)
+                }
+                (view as? ViewGroup)?.let { group ->
+                    for (index in 0 until group.childCount) walk(group.getChildAt(index))
+                }
+            }
+            walk(composeRule.activity.window.decorView)
+            val entries = navController.currentBackStack.value
+            lines.add(
+                "BACK_STACK current=${navController.currentDestination?.route} " +
+                    "entries=${entries.joinToString(" -> ") { it.destination.route ?: "?" }}",
+            )
+        }
+
+        // Owner attribution through the test engine (merged tree, matching
+        // the oracle's own fetch): the ghost row node and a row that is
+        // visibly present on the failing screen.
+        val openLabel = context.getString(R.string.organizer_hub_request_open)
+        val startLabel = context.getString(R.string.manual_organization_start)
+        runCatching {
+            val ghostNodes = composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes()
+            lines.add(
+                "GHOST_ROWS tag=organizer-hub-request count=${ghostNodes.size} " +
+                    "ownerIds=${ghostNodes.map { System.identityHashCode(it.root?.semanticsOwner) }} " +
+                    "boundsInRoot=${ghostNodes.map { it.boundsInRoot }}",
+            )
+        }.onFailure { lines.add("GHOST_ROWS fetch failed: $it") }
+        runCatching {
+            val startNodes = composeRule.onAllNodesWithText(startLabel).fetchSemanticsNodes()
+            lines.add(
+                "VISIBLE_ROWS text=$startLabel count=${startNodes.size} " +
+                    "ownerIds=${startNodes.map { System.identityHashCode(it.root?.semanticsOwner) }} " +
+                    "boundsInRoot=${startNodes.map { it.boundsInRoot }}",
+            )
+        }.onFailure { lines.add("VISIBLE_ROWS fetch failed: $it") }
+
+        lines.forEach { Log.e(ISSUE479_DIAG_TAG, it) }
+        runCatching {
+            val dir = context.getExternalFilesDir(null) ?: context.filesDir
+            File(dir, "issue479-diag-${System.currentTimeMillis()}.txt").writeText(lines.joinToString("\n"))
+        }
+        // Cross-check dumps from the shell identity at the same failure instant.
+        runCatching { shell("dumpsys activity top > /sdcard/Download/issue479-dumpsys-top.txt 2>&1") }
+        runCatching { shell("uiautomator dump /sdcard/Download/issue479-uiautomator.xml") }
+
+        return lines.filter {
+            it.startsWith("COMPOSE_ROOT") ||
+                it.startsWith("GHOST_ROWS") ||
+                it.startsWith("VISIBLE_ROWS") ||
+                it.startsWith("BACK_STACK")
+        }.joinToString(prefix = "issue479Census[", separator = " | ", postfix = "]")
+    }
+
+    /** Recursively appends a semantics subtree (tags, text, bounds) for #479 diagnostics. */
+    private fun appendIssue479SemanticsTree(
+        node: SemanticsNode,
+        lines: MutableList<String>,
+        indent: String,
+        depth: Int,
+    ) {
+        if (depth > 30) {
+            lines.add("${indent}…")
+            return
+        }
+        val tag = node.config.getOrNull(SemanticsProperties.TestTag)
+        val text = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("|")
+        lines.add(
+            "${indent}node=#${node.id} tag=$tag text=$text " +
+                "boundsInRoot=${node.boundsInRoot} boundsInWindow=${node.boundsInWindow}",
+        )
+        node.children.forEach { appendIssue479SemanticsTree(it, lines, "$indent  ", depth + 1) }
     }
 
     /**
@@ -1182,6 +1298,9 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
          * diagnostic runs omit it so the touch oracle stays observable.
          */
         const val QUARANTINE_RUNNER_ARGUMENT = "nunuQuarantineIssue479TouchOracle"
+
+        /** #479: logcat tag for the failure-instant compose-root census dump. */
+        const val ISSUE479_DIAG_TAG = "Issue479Diag"
 
         fun planningResult() = PlanningResult(
             revision = RevisionId(REVISION),
