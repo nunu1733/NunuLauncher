@@ -1,9 +1,9 @@
 ---
 issue: "#444"
-status: accepted
+status: implemented
 tier: L
 requirements: []
-updated: 2026-09-27
+updated: 2026-10-01
 ---
 
 # リスク階層に応じた進め方の選択が正本文書上で機能する
@@ -219,13 +219,13 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
   `python3 tools/repo-contract/test_validate_repo_contract.py`、
   `./gradlew spotlessCheck` が成功する（高リスクpath一覧の整合検証、
   Markdown内部link検証、docs gateを壊していない）。（Issue完了条件5）
-- [ ] AC-6: 階層Mの初回適用の確認項目（軽量spec作成 → 実装PR本文に Risk tier: M
+- [x] AC-6: 階層Mの初回適用の確認項目（軽量spec作成 → 実装PR本文に Risk tier: M
   を明示 → 実機のスクリーンショット/録画によるowner確認 → review往復≤2 round →
   上流UI bridgeの場合は
   `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`
   の計測結果をPR本文へreport）とpatch-surface oracleが
   本specに定義されている。（Issue完了条件4の整備部分。本PRで達成）
-- [ ] AC-7: 最初の階層M変更が軽量手順で実証される（例:
+- [x] AC-7: 最初の階層M変更が軽量手順で実証される（例:
   [Issue #452](https://github.com/nunu1733/NunuLauncher/issues/452)）。このACは
   本PRでは **未達のまま残す**。実証後に[Issue #444](https://github.com/nunu1733/NunuLauncher/issues/444)
   へ記録し、その後で本specのstatusを `implemented` へ遷移する。最終PRは
@@ -322,3 +322,11 @@ Phase 1 review（ChatGPT、round 1）で指摘された項目の解決記録で�
   各specのDomain language前書きを「移動対象語の個別宣言＋非対象語は引き続き
   `CONTEXT.md` が正本」へ修正（Finding 2）、Change historyのclear permalinkを
   正しいcomment IDへ修正（Finding 3）。
+- 2026-10-01: AC-7達成 — Risk tiers導入（PR #468）後の最初の階層M変更が
+  PR #486（Issue #452、2026-10-01 merge）で実証された。軽量spec（spec-lite形式・
+  `tier: M`）、実機owner確認（Pixel 9a device evidence）、review往復≤2 round
+  （Phase 1は2往復+Clear、実装は1往復+Clear）、patch-surface計測report
+  （PR本文AC-8。growth detected → 同一commitでbaseline再採択 → `--verify` PASS）を
+  確認。tier宣言がPR本文の直接記載ではなく参照spec冒頭に留まった旨を逸脱として
+  [Issue #444のAC-7記録](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5933818698)
+  へ明記。statusを `implemented` へ遷移し、Issue #444をcloseする。

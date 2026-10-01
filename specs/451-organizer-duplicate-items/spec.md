@@ -1,10 +1,10 @@
 ---
 issue: "#451"
-status: accepted
+status: implemented
 requirements:
   - FR-021
   - NFR-014
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 
 # 全体整理が同じ起動先の重複アイテムを同じ新規フォルダに入れず、重複をpreviewで示す
@@ -232,3 +232,4 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 - 2026-09-30: ChatGPT review対応（P1×2、P2×1）— Behavior scenarioの代表を `ItemId` canonical順（UTF-8 byte順で "10" < "2"）へ整合し、N-1に重複判定の対象（全captured item）と「Issue本文からの意図的な契約拡張」を明記、Open questionsへ契約拡張のowner確認を追加。plan側のproperty test方式の確定は [plan.md](./plan.md) のRe-entry記録参照。
 - 2026-09-30: ChatGPT re-review対応（残P2×2）— Test oracleのAC-2行を「重複注入wrapper」に一本化（生成器拡張は [plan.md](./plan.md) のVerificationで不採用確定）。plan側はDependency / blockerをOpen questionsの2件のowner decisionへ更新。
 - 2026-09-30: accepted（owner decision 2件の承認を含む。tier H確定、`risk: layout-data` label適用）。
+- 2026-10-01: statusを `implemented` へ遷移（遡及記録）。実装は [PR #485](https://github.com/nunu1733/NunuLauncher/pull/485)（2026-09-30 merge）。独立audit GO（`docs/assessment/pr-485-451-organizer-duplicate-items.md`）とCI merge gate（`final-status` 成功、run 36711825048）を根拠にAC-1〜AC-9全達成でIssue #451はclose済みだったが、本specのstatus遷移のみ漏れていたため本PRで揃えた。
