@@ -17,6 +17,7 @@
 package app.lawnchair.ui.preferences.destinations
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
@@ -36,10 +37,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -258,26 +255,20 @@ fun OrganizerHubPreferences(
     // an exchange row with the anchor below the top is always that churn
     // artifact, so re-anchor to the list top (index 0 — it also keeps the
     // durable status rows above the exchange rows visible). A user drag
-    // permanently disables the correction. The drag fact is observed through
-    // a nested-scroll connection because only user-driven scrolls dispatch
-    // nested scroll: programmatic scrolls (`scrollToItem`, bring-into-view)
-    // bypass it, so the guard cannot be armed by the correction itself.
+    // permanently disables the correction; programmatic scrolls emit no
+    // DragInteraction, so only real touches arm it. The effect observes the
+    // tuple (first-visible index / exchange-row presence / scroll-in-
+    // progress), so the scroll-idle transition re-evaluates a correction
+    // that was skipped mid-scroll.
     val hubListState = rememberLazyListState()
     // rememberSaveable aligns the guard's lifecycle with the saveable list
     // state: a restored position after recreation no longer loses the drag
     // guard.
     val userDragged = rememberSaveable { mutableStateOf(false) }
-    val hubDragObserver = remember {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                if (source == NestedScrollSource.UserInput && consumed.y != 0f) {
-                    userDragged.value = true
-                }
-                return Offset.Zero
+    LaunchedEffect(hubListState) {
+        hubListState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                userDragged.value = true
             }
         }
     }
@@ -304,11 +295,7 @@ fun OrganizerHubPreferences(
         modifier = modifier,
         isExpandedScreen = LocalIsExpandedScreen.current,
     ) { paddingValues ->
-        PreferenceLazyColumn(
-            contentPadding = paddingValues,
-            state = hubListState,
-            modifier = Modifier.nestedScroll(hubDragObserver),
-        ) {
+        PreferenceLazyColumn(contentPadding = paddingValues, state = hubListState) {
             // Status card, phase 1 (TO-BE D-02): durable status rows → start
             // CTA → diagnostics. TalkBack order follows the composed order:
             // state first, then actions (TO-BE §13-5). Issue #374 inserts the
