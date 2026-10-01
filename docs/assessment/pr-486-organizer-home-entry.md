@@ -88,3 +88,11 @@
 2. `final-status` の扱い: #487がmain由来であることのowner判断（例外承認または#487解消後のgreen run）。green runが存在しない限り、現行の高リスク独立エビデンス要件を機械的に満たす状態にはならない（本PRは機械gate上low-risk判定のため即座には阻害しないが、owner判断の記録を要する）。
 
 コード変更を伴う対応（実機証跡の再取得を除く）が発生した場合は再auditを要する。
+
+## Addendum（2026-10-01: rebase後の再確認）
+
+- **HOLD条件2の解消**: #487が修正merge済み（PR #489、main `5936936759`。fixture行のlaunch target重複解消。 Issue状態CLOSED）。main単体runもgreen（[36754587458](https://github.com/nunu1733/NunuLauncher/actions/runs/36754587458)、`59369367` success）。
+- **Rebase**: 本branchを `origin/main` `5936936759` へrebase（旧head `0337d77079` → 新head系列）。content検証: 実装commit間で `lawnchair/`・`tests/unit/`・`ci.yml` の差分 **ゼロ**（`git diff 3f6bd67a6f 2163020d8d -- lawnchair/ tests/unit/ .github/workflows/ci.yml` 空）。実装内容・emulator証跡（build `3f6bd67` = rebased `2163020d8d` と同一tree）は有効のまま。
+- **patch surface baselineの再anchor**: rebaseにより旧anchor SHA `3f6bd67a6f` が到達不能となりCIの `--verify` が失敗。anchorを `2163020d8d` へ更新し、#487由来のexcluded変化（+112 additions, +1 file）を含むexpected measurement全体を再採択（commit `849aefe40b`）。counted 数値は不変（**93 files, +20327/-1089**、growth なし）。
+- **CI全green**: head `849aefe40b` のCI run [36796217597](https://github.com/nunu1733/NunuLauncher/actions/runs/36796217597) で **17/17 job pass**（reservation-recovery lane含む。`final-status` pass）。HOLD条件2は解消。
+- **残るHOLD条件**: 条件1（AC-5/AC-6の実機記録）のみ。解消後、owner判断でmerge可能。
