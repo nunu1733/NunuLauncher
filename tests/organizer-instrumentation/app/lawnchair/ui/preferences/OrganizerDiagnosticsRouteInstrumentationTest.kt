@@ -472,12 +472,12 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 recordIssue479TimelineSample("S_pre")
                 clickRequestRowAndAwaitRunSurface(navController)
                 // …with the T-15 pre-display for the active request.
-                composeRule.waitUntil(10_000) {
+                awaitIssue372SurfaceWith479Evidence(navController, "the T-15 request title") {
                     composeRule.onAllNodesWithText(
                         context.getString(R.string.exchange_request_title),
                     ).fetchSemanticsNodes().isNotEmpty()
                 }
-                composeRule.waitUntil(10_000) {
+                awaitIssue372SurfaceWith479Evidence(navController, "the T-15 pre-display tag [$activeAwaitTag]") {
                     composeRule.onAllNodesWithTag(activeAwaitTag).fetchSemanticsNodes().isNotEmpty()
                 }
             }
@@ -494,20 +494,26 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             // Back: T-15 closes zero-write to the entry face, then the entry
             // face returns to the hub.
             pressBack()
+            recordIssue479TimelineSample("B1")
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isEmpty()
             }
+            recordIssue479TimelineSample("B1W")
             pressBack()
+            recordIssue479TimelineSample("B2")
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithText(
                     context.getString(R.string.organizer_strategy_title),
                 ).fetchSemanticsNodes().isNotEmpty()
             }
+            recordIssue479TimelineSample("B2W")
 
             // The hub materials 「Organization strategy」 row opens T-05; one
             // real strategy write commits (AUTHORING token, no rejection).
+            recordIssue479TimelineSample("SC0")
             composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).performClick()
-            awaitCurrentDestination(navController, HomeScreenOrganizerStrategy)
+            recordIssue479TimelineSample("SC1")
+            awaitStrategySurfaceWith479Evidence(navController)
             val tidy = context.getString(R.string.organization_strategy_tidy_name)
             composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
             composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
@@ -928,11 +934,13 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
      * #479 bounds-timeline: one compact sample line — elapsed ms since the
      * timeline start plus the semantics node COUNT and boundsInRoot of the
      * request row's "View request" text, the visibly-present control "Start
-     * organizing", and the hub app-bar title text (`organizer_hub_label`;
-     * `organizer_hub_title` is the ENTRY-face row and renders the same
-     * word, so the count is reported for every fetch). All fetches are
-     * runCatching-wrapped: a vanished node reports `gone` (itself signal),
-     * a failed fetch reports `ERR`, and this helper never throws.
+     * organizing", the hub materials "Organization strategy" row text (the
+     * #479 swallow-2 tap target), and the hub app-bar title text
+     * (`organizer_hub_label`; `organizer_hub_title` is the ENTRY-face row
+     * and renders the same word, so the count is reported for every fetch).
+     * All fetches are runCatching-wrapped: a vanished node reports `gone`
+     * (itself signal), a failed fetch reports `ERR`, and this helper never
+     * throws.
      */
     private fun sampleIssue479RowBounds(): String {
         val elapsed =
@@ -943,8 +951,12 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             }
         val request = issue479TextNodeBounds(context.getString(R.string.organizer_hub_request_open))
         val start = issue479TextNodeBounds(context.getString(R.string.manual_organization_start))
+        // #479 swallow-2: the hub materials 「Organization strategy」 row is
+        // the second tap target whose bounds were invisible on failure; every
+        // sample now carries its geometry (`gone` off-hub).
+        val strategy = issue479TextNodeBounds(context.getString(R.string.organizer_strategy_title))
         val hubTitle = issue479TextNodeBounds(context.getString(R.string.organizer_hub_label))
-        return "+${elapsed}ms req[$request] start[$start] hubLabel[$hubTitle]"
+        return "+${elapsed}ms req[$request] start[$start] strategy[$strategy] hubLabel[$hubTitle]"
     }
 
     /** #479 bounds-timeline: count + boundsInRoot of every text node, or `gone`. */
@@ -993,12 +1005,14 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
      * the only visual record of the tap-swallow state (#477 root-cause
      * evidence). Best-effort: never masks the classified failure.
      */
-    private fun captureArrivalFailureScreenshot() {
+    private fun captureArrivalFailureScreenshot(
+        name: String = "issue477-request-row-arrival-failure.png",
+    ) {
         runCatching {
             composeRule.waitForIdle()
             val screenshot = instrumentation.uiAutomation.takeScreenshot()
             val values = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "issue477-request-row-arrival-failure.png")
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
                 put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
                 put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Issue52-ui-evidence")
                 put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
@@ -1044,6 +1058,82 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         awaitCurrentDestination(navController, HomeScreenManualOrganization())
         return true
     }
+
+    /**
+     * #479 swallow-2 instrumented await (issue372 strategy row → T-05): same
+     * condition shape and 10 s budget as [awaitCurrentDestination] for
+     * HomeScreenOrganizerStrategy, plus the throttled bounds-timeline poll,
+     * and on timeout a classified failure carrying the same failure-instant
+     * evidence as the request-row path — compose-root census (full semantics
+     * trees to logcat), the always-uploaded screenshot, the strategy-row and
+     * request-row geometry, and the bounds timeline. Diagnostics only: the
+     * pass/fail semantics and timeout are unchanged.
+     */
+    private fun awaitStrategySurfaceWith479Evidence(navController: NavHostController) {
+        val arrived = runCatching {
+            composeRule.waitUntil(10_000) {
+                issue479ThrottledPollSample()
+                var matches = false
+                composeRule.runOnIdle {
+                    matches = navController.currentBackStackEntry?.destination
+                        ?.hasRoute(HomeScreenOrganizerStrategy::class) == true
+                }
+                matches
+            }
+        }.isSuccess
+        if (!arrived) {
+            error(
+                "strategy row touch click never opened the strategy surface: " +
+                    "${arrivalDiagnosis(navController)} ${issue479ArrivalEvidenceBlock(navController)}",
+            )
+        }
+    }
+
+    /**
+     * #479 instrumented T-15 arrival wait (issue372 run surface): same 10 s
+     * budget and polling condition as the plain waitUntil it replaces, plus
+     * the throttled bounds-timeline poll and, on timeout, a classified
+     * failure with the request-row path's failure-instant evidence.
+     * Diagnostics only: the pass/fail semantics and timeout are unchanged.
+     */
+    private fun awaitIssue372SurfaceWith479Evidence(
+        navController: NavHostController,
+        what: String,
+        condition: () -> Boolean,
+    ) {
+        val arrived = runCatching {
+            composeRule.waitUntil(10_000) {
+                issue479ThrottledPollSample()
+                condition()
+            }
+        }.isSuccess
+        if (!arrived) {
+            error(
+                "$what never showed after the request-row click: " +
+                    "${arrivalDiagnosis(navController)} ${issue479ArrivalEvidenceBlock(navController)}",
+            )
+        }
+    }
+
+    /**
+     * #479 swallow-2 evidence: captures the failure-instant census (full
+     * dump to logcat tag `Issue479Diag` and the app files dir) and the
+     * failure screenshot, then returns the evidence block for the classified
+     * failure message — census summary, strategy-row/request-row geometry,
+     * and the bounds timeline. Best-effort: never throws into the caller's
+     * failure path.
+     */
+    private fun issue479ArrivalEvidenceBlock(navController: NavHostController): String {
+        val census = runCatching { issue479ComposeRootDiagnostics(navController) }
+            .getOrElse { "issue479 census failed: $it" }
+        runCatching { captureArrivalFailureScreenshot("issue479-arrival-failure.png") }
+        return "$census\n${issue479StrategyRowBoundsLine()}\n${issue479TimelineBlock()}"
+    }
+
+    /** #479 swallow-2: one line with the strategy row and request row geometry. */
+    private fun issue479StrategyRowBoundsLine(): String =
+        "strategy[${issue479TextNodeBounds(context.getString(R.string.organizer_strategy_title))}] " +
+            "req[${issue479TextNodeBounds(context.getString(R.string.organizer_hub_request_open))}]"
 
     /** Non-blocking screen snapshot for arrival-failure classification (#477). */
     private fun arrivalDiagnosis(navController: NavHostController): String {
