@@ -17,9 +17,11 @@
 package app.lawnchair.ui.preferences.destinations
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +31,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -244,12 +247,44 @@ fun OrganizerHubPreferences(
         navController.navigate(HomeScreenManualOrganization(durableRecovery = true))
     }
 
+    // Issue #479: key anchoring can keep the pre-insertion anchor item at
+    // content top and lay a just-inserted exchange row into the app bar's
+    // contentPadding gap (semantics bounds stay on-screen, real touch is
+    // unreachable). While no user drag has happened on this list instance,
+    // an exchange row with the anchor below the top is always that churn
+    // artifact, so re-anchor to the list top (index 0 — it also keeps the
+    // durable status rows above the exchange rows visible). A user drag
+    // permanently disables the correction; programmatic scrolls emit no
+    // DragInteraction, so only real touches arm it.
+    val hubListState = rememberLazyListState()
+    val userDragged = remember { mutableStateOf(false) }
+    LaunchedEffect(hubListState) {
+        hubListState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                userDragged.value = true
+            }
+        }
+    }
+    LaunchedEffect(hubListState) {
+        snapshotFlow {
+            hubListState.firstVisibleItemIndex to (hubRequestRow != null || hubProposalRow != null)
+        }.collect { (firstVisibleItemIndex, exchangeRowPresent) ->
+            if (exchangeRowPresent &&
+                !userDragged.value &&
+                !hubListState.isScrollInProgress &&
+                firstVisibleItemIndex > 0
+            ) {
+                hubListState.scrollToItem(0)
+            }
+        }
+    }
+
     PreferenceScaffold(
         label = stringResource(R.string.organizer_hub_label),
         modifier = modifier,
         isExpandedScreen = LocalIsExpandedScreen.current,
     ) { paddingValues ->
-        PreferenceLazyColumn(paddingValues) {
+        PreferenceLazyColumn(contentPadding = paddingValues, state = hubListState) {
             // Status card, phase 1 (TO-BE D-02): durable status rows → start
             // CTA → diagnostics. TalkBack order follows the composed order:
             // state first, then actions (TO-BE §13-5). Issue #374 inserts the
