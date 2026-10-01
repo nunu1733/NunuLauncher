@@ -461,9 +461,15 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             }
 
             fun openRequestRowAndAwaitT15(activeAwaitTag: String) {
+                // #479 bounds-timeline: re-anchor the sample timeline at this
+                // hub entry; every sample's elapsed ms is relative to here.
+                resetIssue479Timeline()
                 composeRule.waitUntil(5_000) {
                     composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
                 }
+                // S_pre: the state right after hub entry, BEFORE any scroll
+                // attempt (key sample — did the row ever sit at ~676?).
+                recordIssue479TimelineSample("S_pre")
                 clickRequestRowAndAwaitRunSurface(navController)
                 // …with the T-15 pre-display for the active request.
                 composeRule.waitUntil(10_000) {
@@ -735,6 +741,11 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         repeat(REQUEST_ROW_CLICK_ATTEMPTS) { attempt ->
             composeRule.waitForIdle()
             InjectedInputEnvironment.ensureWindowFocused(composeRule.activity)
+            // #479 bounds-timeline: S0 is sampled right before the scroll,
+            // S1 right after it (before assertIsDisplayed), S2 right after
+            // the click; polls S3… run inside the arrival wait below.
+            val attemptLabel = if (attempt == 0) "" else "a${attempt + 1}-"
+            recordIssue479TimelineSample("${attemptLabel}S0")
             // Standard #366/#369 visibility discipline before the click. It
             // passes here while the tap is still swallowed — the failure
             // screenshot shows the visible hub WITHOUT the row while its
@@ -742,8 +753,10 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             // follow-up's evidence that this is a Compose-level
             // composition/semantics anomaly, not a harness wait defect.
             composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(openLabel))
+            recordIssue479TimelineSample("${attemptLabel}S1")
             composeRule.onNodeWithText(openLabel).assertIsDisplayed()
             composeRule.onNodeWithText(openLabel).performClick()
+            recordIssue479TimelineSample("${attemptLabel}S2")
             if (awaitRunSurfaceOrStillOnHub(navController, explainer)) return
             if (attempt >= REQUEST_ROW_CLICK_ATTEMPTS - 1) {
                 val issue479Diagnostics = issue479ComposeRootDiagnostics(navController)
@@ -751,7 +764,8 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 error(
                     "request row touch click never opened the run surface " +
                         "(attempts=$REQUEST_ROW_CLICK_ATTEMPTS): ${arrivalDiagnosis(navController)} " +
-                        issue479Diagnostics,
+                        issue479Diagnostics +
+                        "\n" + issue479TimelineBlock(),
                 )
             }
             check(!isOnDestination(navController, HomeScreenManualOrganization())) {
@@ -760,7 +774,8 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 val issue479Diagnostics = issue479ComposeRootDiagnostics(navController)
                 captureArrivalFailureScreenshot()
                 "request row touch click navigated but the run surface never composed: " +
-                    arrivalDiagnosis(navController) + " " + issue479Diagnostics
+                    arrivalDiagnosis(navController) + " " + issue479Diagnostics +
+                    "\n" + issue479TimelineBlock()
             }
         }
     }
@@ -882,6 +897,95 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         node.children.forEach { appendIssue479SemanticsTree(it, lines, "$indent  ", depth + 1) }
     }
 
+    // ----- #479 bounds-timeline diagnostics ---------------------------------
+
+    /** #479: labelled sample lines recorded since the last hub entry. */
+    private val issue479Timeline = mutableListOf<String>()
+
+    /** #479: epoch every timeline sample's elapsed ms is relative to (hub entry). */
+    private var issue479TimelineStartMs = 0L
+
+    /** #479: next S-label for the arrival-window poll samples (S3, S4, …). */
+    private var issue479NextPollLabel = 3
+
+    /** #479: wall clock of the last throttled poll sample. */
+    private var issue479LastPollSampleMs = 0L
+
+    /**
+     * #479 bounds-timeline: clears the sample list and re-anchors the
+     * timeline at a hub entry ([openRequestRowAndAwaitT15]). S0 inside
+     * [clickRequestRowAndAwaitRunSurface] marks the first scroll attempt of
+     * a click attempt; a second attempt labels its samples `a2-…`.
+     */
+    private fun resetIssue479Timeline() {
+        issue479Timeline.clear()
+        issue479NextPollLabel = 3
+        issue479LastPollSampleMs = 0L
+        issue479TimelineStartMs = System.currentTimeMillis()
+    }
+
+    /**
+     * #479 bounds-timeline: one compact sample line — elapsed ms since the
+     * timeline start plus the semantics node COUNT and boundsInRoot of the
+     * request row's "View request" text, the visibly-present control "Start
+     * organizing", and the hub app-bar title text (`organizer_hub_label`;
+     * `organizer_hub_title` is the ENTRY-face row and renders the same
+     * word, so the count is reported for every fetch). All fetches are
+     * runCatching-wrapped: a vanished node reports `gone` (itself signal),
+     * a failed fetch reports `ERR`, and this helper never throws.
+     */
+    private fun sampleIssue479RowBounds(): String {
+        val elapsed =
+            if (issue479TimelineStartMs == 0L) {
+                0L
+            } else {
+                System.currentTimeMillis() - issue479TimelineStartMs
+            }
+        val request = issue479TextNodeBounds(context.getString(R.string.organizer_hub_request_open))
+        val start = issue479TextNodeBounds(context.getString(R.string.manual_organization_start))
+        val hubTitle = issue479TextNodeBounds(context.getString(R.string.organizer_hub_label))
+        return "+${elapsed}ms req[$request] start[$start] hubLabel[$hubTitle]"
+    }
+
+    /** #479 bounds-timeline: count + boundsInRoot of every text node, or `gone`. */
+    private fun issue479TextNodeBounds(text: String): String = runCatching {
+        val nodes = composeRule.onAllNodesWithText(text).fetchSemanticsNodes()
+        if (nodes.isEmpty()) {
+            "n=0 gone"
+        } else {
+            "n=${nodes.size} " + nodes.joinToString(separator = "~") { node ->
+                val bounds = node.boundsInRoot
+                "(${bounds.left},${bounds.top})-(${bounds.right},${bounds.bottom})"
+            }
+        }
+    }.getOrElse { "ERR:${it.javaClass.simpleName}" }
+
+    /** #479 bounds-timeline: records one labelled sample and logs it (same tag as the census). */
+    private fun recordIssue479TimelineSample(label: String) {
+        runCatching {
+            val line = "$label ${sampleIssue479RowBounds()}"
+            issue479Timeline.add(line)
+            Log.i(ISSUE479_DIAG_TAG, line)
+        }
+    }
+
+    /**
+     * #479 bounds-timeline: throttled poll sample (S3, S4, …) from inside the
+     * arrival waitUntil condition — at most one sample per
+     * [ISSUE479_TIMELINE_POLL_INTERVAL_MS], pure diagnostics, never throws
+     * into the wait.
+     */
+    private fun issue479ThrottledPollSample() {
+        val now = System.currentTimeMillis()
+        if (now - issue479LastPollSampleMs < ISSUE479_TIMELINE_POLL_INTERVAL_MS) return
+        issue479LastPollSampleMs = now
+        runCatching { recordIssue479TimelineSample("S${issue479NextPollLabel++}") }
+    }
+
+    /** Formats the #479 timeline for the classified failure message (one line per sample). */
+    private fun issue479TimelineBlock(): String =
+        issue479Timeline.joinToString(separator = "\n") { "ISSUE479_TIMELINE[$it]" }
+
     /**
      * Saves the failure-instant screen to the lane's ALWAYS-uploaded UI
      * evidence directory (the #300 review-screenshot pattern). The
@@ -929,6 +1033,10 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
     private fun awaitRunSurfaceOrStillOnHub(navController: NavHostController, explainer: String): Boolean {
         val arrived = runCatching {
             composeRule.waitUntil(REQUEST_ROW_ARRIVAL_TIMEOUT_MS) {
+                // #479 bounds-timeline: throttled poll samples alongside the
+                // wait — diagnostics only, the wait semantics and timeout
+                // are unchanged and sampling never throws into the condition.
+                issue479ThrottledPollSample()
                 composeRule.onAllNodesWithText(explainer).fetchSemanticsNodes().isNotEmpty()
             }
         }.isSuccess
@@ -1301,6 +1409,9 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
         /** #479: logcat tag for the failure-instant compose-root census dump. */
         const val ISSUE479_DIAG_TAG = "Issue479Diag"
+
+        /** #479: minimum ms between arrival-window bounds-timeline poll samples. */
+        const val ISSUE479_TIMELINE_POLL_INTERVAL_MS = 250L
 
         fun planningResult() = PlanningResult(
             revision = RevisionId(REVISION),
