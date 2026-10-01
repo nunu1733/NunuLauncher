@@ -1,6 +1,6 @@
 ---
 issue: "#453"
-status: draft
+status: accepted
 tier: M
 requirements: [FR-023]
 updated: 2026-10-01
@@ -203,11 +203,11 @@ Then どの行も選択中と表示せず、既定を選択中ともせず、追
 - **読み経路無変更の証明**（終了条件3）: 差分が
   `organizer/rules`・`organizer/integration`・`organizer/application`・上流 `src/` に
   触れないことをdiffで示す。保存済み非表示strategyでrunが計画することは、既存の
-  composer seam test（`OrganizationInputComposerTest.twoValidSelectionsComposeEndToEnd-
-  WithDistinctRulesIdentities`: `STABLE_PAGE_TIDY_V1` 保存で
-  `input.rules.organizationStrategy == STABLE_PAGE_TIDY_V1` を検証）が既に所有しており、
-  organizer unit gate（`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests
-  'app.lawnchair.organizer.*' ...`）の再実行で確認する。fail-closed読み
+  composer seam test（`OrganizationInputComposerTest` の
+  `twoValidSelectionsComposeEndToEndWithDistinctRulesIdentities`: `STABLE_PAGE_TIDY_V1`
+  保存で `input.rules.organizationStrategy == STABLE_PAGE_TIDY_V1` を検証）が既に所有
+  しており、organizer unit gate（`./gradlew testLawnWithQuickstepGithubDebugUnitTest
+  --tests 'app.lawnchair.organizer.*' ...`）の再実行で確認する。fail-closed読み
   （`selectionOutsideRuntimeSupportedSetFailsClosedWithoutPlannerFallback`）も既存testが
   所有するため、重複する新規unit testは追加しない。
 - **書込み経路無追加の確認**: 変更fileは
@@ -238,5 +238,10 @@ Then どの行も選択中と表示せず、既定を選択中ともせず、追
   同期対象へ追加し、a11y節のfocus対象の記述を「1 row = 1 logical option」契約へ修正
   （指摘2）。実機evidenceへ選択維持の観測手順（再入場で同一行が唯一selected）を追加、
   instrumentation oracleへ未知IDの回帰契約を追加（指摘3）。
+- 2026-10-01: Accepted。Re-review Approve（blockingなし、head
+  `55a33cc60f9c02073257a83bf5d76420ba5592bb`
+  [#issuecomment-5929785395](https://github.com/nunu1733/NunuLauncher/pull/492#issuecomment-5929785395)）。
+  非blocking指摘の既存test名の表記修正（余分なハイフン除去）のみ本文へ反映
+  （同commentの判断により再review対象外）。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/453
