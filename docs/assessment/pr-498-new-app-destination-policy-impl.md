@@ -5,13 +5,13 @@
 
 - Auditor: 独立audit session（実装sessionとは別作業。solo保守のため独立sessionによる再実行・再確認）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/498
-- Head SHA: 72689feb85a06bac49344e1cce938bab5c9ceac0
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36931656649
+- Head SHA: 663a08ed666782bb478addfb862fe9ebd6d32912
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36936763106
 - Criteria: specs/497-new-app-destination-policy-impl/spec.md FR-008, NFR-014, AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9, AC-10, AC-11; docs/adr/0015-new-app-destination-policy.md NFR-010; docs/adr/0013-direct-edit-write-contract.md NFR-013; docs/adr/0016-layout-application-test-surface.md AC-7
 
 ## Scope
 
-- 対象diff: `git diff origin/main...HEAD`（base/main → head `72689feb85a06bac49344e1cce938bab5c9ceac0`）。主な変更path:
+- 対象diff: `git diff origin/main...HEAD`（base/main → head `663a08ed666782bb478addfb862fe9ebd6d32912`）。主な変更path:
   - `src/com/android/launcher3/model/ModelWriter.java`（高リスクpath。新op `addPendingInstallForDirectEdit` + `DirectEditAddPendingInstallTask`）
   - `src/com/android/launcher3/model/AddWorkspaceItemsTask.java`（1分岐のbridge + post-admission bind）
   - `src/com/android/launcher3/model/ItemInstallQueue.java`（enqueue時snapshot capture、flush時route付与）
@@ -37,7 +37,23 @@
 - **再確認（deltaで壊れ得るもの）**: `attachDestinationRoute` のroute付与条件（`usePolicyWrite`時のみ）、capture点が自動追加overload `queueItem(String,UserHandle)` のみであること（`ItemInstallQueue.java:247`。manual `queueItem(ShortcutInfo)` / widget overloadはcaptureしない — 変更なしをdiffの非含有で確認）、`AddWorkspaceItemsTask` / `ModelWriter.java` / `PersistedItemArray.java` / `InstallDestinationModelWriterTest.java` がdelta diffに含まれない（0行差分）ため初回検証結果をそのまま適用。
 - **再確認（新head上で直接読み直し）**: `ModelWriter.addPendingInstallForDirectEdit` と `DirectEditAddPendingInstallTask` がADR-0013契約4どおり（admission内でvalidate → 採番 → INSERT → model sync、新opは既存 `addItemToDatabase` を踏まない）であること、`AddWorkspaceItemsTask` のpolicy routeが `addedItemsFinal` 事前追加を使わず書込み成功callback経由で `bindAppsAdded` を1回だけ行うこと（`AddWorkspaceItemsTask.java:213-264`）。
 - **再実行**: JVM test（下記Executed test surface）、`validate_writer_inventory.py`（PASS）。
-- **carry-over（再導出していない）**: `AddWorkspaceItemsTask` 内の挙動詳細、`PersistedItemArray` attribute hookの互換性、planner/classifierの個別test内容、schema/migration非変更、初回auditのCI run 36919528350でのinstrumentation成功（新headではCI run 36931656649で同等laneがsuccess）。
+- **carry-over（再導出していない）**: `AddWorkspaceItemsTask` 内の挙動詳細、`PersistedItemArray` attribute hookの互換性、planner/classifierの個別test内容、schema/migration非変更、初回auditのCI run 36919528350でのinstrumentation成功（新headではCI run 36936763106で同等laneがsuccess）。
+
+## Re-audit note（2026-10-02、head `663a08ed666782bb478addfb862fe9ebd6d32912`）
+
+前回再audit（head `72689feb85`、CI run 36931656649）の後、Phase 2 review round 2の修正（commit `663a08ed66`、delta `git diff 72689feb85..663a08ed66`: 6 files, +112/-19。assessment自身の更新を除く実質delta）が入ったため、deltaに絞った再auditを行った。
+
+### Delta検証（2件の指摘対応が実在しscopeどおりであることをdiff全文で確認）
+
+1. **指摘1（中、AC-11）: dialog/summary resource keyの契約集合とJVM oracle完成** — 新設の `AppDestinationPolicyTextKeys`（`lawnchair/src/app/lawnchair/homeedit/AppDestinationSettingsText.kt:72`。dialog title / 3 choice / folder picker title / folder stop / other profile の7 key）をUI wiringとJVM oracleの双方が読む構造。`AppDestinationPreference.kt` のdialog系文言はすべてこのobject経由とし、dialog集合の直接 `R.string.destination_policy_*` literalを排除（grepで残留0。row title `destination_policy_label` とsummary/notice系mapperはdialog契約の対象外で、既存どおり）。oracle側は `AppDestinationSettingsTextTest` に (a) key契約test（7 keyが正しいresource idと一致・重複なし）と (b) source-contract test（`values` / `values-ja` の `lawnchair/res/*/strings.xml` を直接読み、全17個の `destination_policy_*` entryの存在と非空を両localeで検証。`ExchangeRequestFlowContractTest` と同一の `user.dir` 規約）を追加。TalkBack runtime確認はowner-pendingのまま（AC-11参照）。
+2. **指摘2（低）: upstream snapshot identity不一致の軸分離** — JVM wire test（`AppDestinationPlannerTest` の `isValidUpstreamSnapshot` 境界test）をuser軸のみ不一致（`upstream|0|99|com.test.app`）とpackage軸のみ不一致（`upstream|0|10|com.other.app`）の独立assertionに分離。production bridge routing test（`InstallDestinationQueueTest`）も同一の2軸を独立に検証するよう修正。1軸checkの削除がそれぞれ自軸のassertion failureになる構造。
+3. **docs**: spec Revision 7変更履歴entry追加（`specs/497-new-app-destination-policy-impl/spec.md`）。
+
+### 再確認した既存構造（spot-check。前回再auditからcarry-overした部分を明記）
+
+- **再確認（deltaで壊れ得るもの）**: `git diff 72689feb85..663a08ed66 --stat` でproduction write-path 5 file（`ModelWriter.java`、`ItemInstallQueue.java`、`AddWorkspaceItemsTask.java`、`PersistedItemArray.java`、`DirectEditContract.java`）が0行差分であることを確認。前回までの検証結果をそのまま適用。
+- **再実行**: high-risk evidence gate validator（PASS、下記参照）。
+- **carry-over（再導出していない）**: `validate_writer_inventory.py` の再実行、JVM testの `--rerun-tasks` 独立再実行、planner/bridge構造の直接読み直し、schema/migration非変更。新head上の同等test表面はCI run 36936763106（success）で担保。
 
 ## Criteria check
 
@@ -50,7 +66,7 @@
 
 - **AC-2: 指定フォルダへの追加操作0配置 — PARTIALLY VERIFIED**
 
-- 書込み経路harness `tests/organizer-instrumentation/com/android/launcher3/InstallDestinationModelWriterTest.java` の `folderTargetInsertAppendsAtTailRankWithoutLockColumnChange`（AndroidJUnit4 + test DB）がINSERT 1行・末尾rank・既存子rank不変・lock列不変を検証。CI run 36931656649 の `organizer-instrumentation-shared-writer-tests` で成功。
+- 書込み経路harness `tests/organizer-instrumentation/com/android/launcher3/InstallDestinationModelWriterTest.java` の `folderTargetInsertAppendsAtTailRankWithoutLockColumnChange`（AndroidJUnit4 + test DB）がINSERT 1行・末尾rank・既存子rank不変・lock列不変を検証。CI run 36936763106 の `organizer-instrumentation-shared-writer-tests` で成功。
 - ModelWriter側は末尾rank = `folderChildCount(folderId)`、単一INSERT。
 - 未確認（owner-pending）: 実機でのB1挙動確認と会計（追加操作0）のPR記録。
 
@@ -75,7 +91,7 @@
 - (c) upstream defaultの座標はadmission内で `WorkspaceItemSpaceFinder.findSpaceForItem` を上流そのままの意味論で実行（fork側の走査複製なし。QSB時1ページ目除外・満杯時新規screen割当はfinder内）。新規screen idは `workspaceScreens` のlocal list差分からadmission内で取得し、`addedScreens` listもadmission内localで、admission成立前に漏れない。
 - (d) Rejectは真のinvariant failureのみ（`REJECT`時は無変更・typed理由のみでreturn）。
 - (e) post-success bind: `AddWorkspaceItemsTask` のpolicy routeは `addedItemsFinal` への事前追加を使わず、書込み成功callbackが最終配置 + 新規screen idを運び、`bindAppsAdded` を1回だけ `scheduleCallbackTask` で行う（新規screenを先に追加）。defer中はbind・folder refreshが発生しない（callbackはwriter報告後のみ発火）。既定routeのstock経路は変更なし。単一行INSERTでatomic。失敗時はtyped `FAIL_WRITE_FAILED` で握りつぶしなし。
-- canonical test: `InstallDestinationModelWriterTest` — `deferredWriteReplansToUpstreamDefaultWhenFolderDeleted`（ADR-0015要求テスト表1行目: defer→replan oracle）、`upstreamDefaultWritesAtUpstreamPlacementInsideAdmission`、`fullScreensFallbackAllocatesNewScreenInsideAdmission`、`rejectWritesNothingAndReportsTypedFailure`。shared-writer laneでCI run 36931656649上でsuccess。
+- canonical test: `InstallDestinationModelWriterTest` — `deferredWriteReplansToUpstreamDefaultWhenFolderDeleted`（ADR-0015要求テスト表1行目: defer→replan oracle）、`upstreamDefaultWritesAtUpstreamPlacementInsideAdmission`、`fullScreensFallbackAllocatesNewScreenInsideAdmission`、`rejectWritesNothingAndReportsTypedFailure`。shared-writer laneでCI run 36936763106上でsuccess。
 
 - **AC-6: bridgeの限定 — VERIFIED**
 
@@ -84,7 +100,7 @@
 
 - **AC-7: テスト構成（ADR-0016 canonical surface） — VERIFIED**
 
-- canonical owner: `tests/organizer-instrumentation/` の `InstallDestinationModelWriterTest.java`（5 test、AndroidJUnit4 + test DB）、`model/InstallDestinationQueueTest.java`（3 test。round 1修正でproduction route testを追加）、`app/lawnchair/homeedit/AppDestinationNoticeTest.kt`。いずれもorganizer shared-writer lane（ADR-0016が正本とするsurface）に属し、`.github/workflows/ci.yml` のclass listに含まれる（確認済み）。CI run 36931656649 で `organizer-instrumentation-shared-writer-tests` success。
+- canonical owner: `tests/organizer-instrumentation/` の `InstallDestinationModelWriterTest.java`（5 test、AndroidJUnit4 + test DB）、`model/InstallDestinationQueueTest.java`（3 test。round 1修正でproduction route testを追加）、`app/lawnchair/homeedit/AppDestinationNoticeTest.kt`。いずれもorganizer shared-writer lane（ADR-0016が正本とするsurface）に属し、`.github/workflows/ci.yml` のclass listに含まれる（確認済み）。CI run 36936763106 で `organizer-instrumentation-shared-writer-tests` success。
 - 補助JVM test: `tests/unit/app/lawnchair/homeedit/AppDestinationPlannerTest.kt`（17 @Test。planner / 分類 / wire format往復 / stage-2決定意味論）+ round 1修正で追加の `AppDestinationSettingsTextTest.kt`（6 @Test。AC-1状態遷移 / AC-11 resource mapping、unknown key fail-closed）。audit sessionで `--rerun-tasks` による独立再実行でgreen（下記参照）。新規CI laneなし（既存homeedit unit test gate内）。
 - 新規CI laneなし（既存shared-writer laneへのclass追加のみ）。重複scenarioなし。coordinator排他・process死は既存shared-writer seam / process-death smokeの慣行のまま（変更なし）。
 
@@ -102,24 +118,25 @@
 
 - `docs/product/requirements.md`: FR-008 → `implemented`（初回auditでdiff確認。deltaで非変更）。
 - ベンチマーク§6のB6目標セル更新済み。ADR-0016新設（`docs/adr/0016-layout-application-test-surface.md`、status: accepted）+ ADR-0013/ADR-0015のChange historyへ関連リンク（初回auditで確認。deltaで非変更）。
-- round 1修正でspec Revision 6（Phase 2 review round 1対応記録）を追加済み。`DESIGN.md` / `CONTEXT.md` 更新済み。`validate-repo-contract` jobがCI run 36931656649でsuccess。
+- round 1修正でspec Revision 6（Phase 2 review round 1対応記録）を追加済み。`DESIGN.md` / `CONTEXT.md` 更新済み。`validate-repo-contract` jobがCI run 36936763106でsuccess。round 2修正でspec Revision 7（Phase 2 review round 2対応記録）を追加済み。
 
-- **AC-11: アクセシビリティ — PARTIALLY VERIFIED**
+- **AC-11: アクセシビリティ — PARTIALLY VERIFIED（JVM oracle部分は完了。TalkBack/実機runtime確認がowner-pending）**
 
 - ポリシー行・dialog・通知文言はすべてstring resource由来。round 1修正で純粋mapper `destinationSummaryText` / `destinationNoticeText`（`AppDestinationSettingsText.kt`）がresource idのみを返し（unknown理由キーはfail-closedでsnapshot notice）、空文字列・内部idがUIへ出ないことを `AppDestinationSettingsTextTest` が検証。新resource `destination_policy_summary_folder_missing` もvalues / values-ja両方に追加済み。
+- round 2修正でAC-11のJVM oracle（resource由来・非空・locale充備）を完成: dialog系7 keyの契約集合 `AppDestinationPolicyTextKeys` をUI wiringとoracleの双方が読み、source-contract testがvalues / values-jaの全 `destination_policy_*` entryの存在と非空を両localeで検証（`AppDestinationSettingsTextTest`。CI run 36936763106のhomeedit unit test gateでsuccess）。UIがdialog文言をliteralへ戻した場合はkey契約testが検出する。
 - 未確認（owner-pending）: エミュレータTalkBack読み上げ確認と実機確認。
 
 ## Executed test surface
 
 - `gh repo view -R nunu1733/NunuLauncher --json nameWithOwner,defaultBranchRef` → `nunu1733/NunuLauncher` / `main` 確認（GitHub操作前の規約確認）。
-- `git rev-parse 72689feb85a06bac49344e1cce938bab5c9ceac0` → 一致。`gh pr view 498 -R nunu1733/NunuLauncher --json headRefOid` → `72689feb85a06bac49344e1cce938bab5c9ceac0`（audit対象headと一致）。
-- `gh run view 36931656649 -R nunu1733/NunuLauncher` → conclusion `success`、head = audit対象head、event `pull_request`。job: `final-status` を含む全16 job success。`organizer-instrumentation-shared-writer-tests` success。
-- `git diff 7bf27ae184..72689feb85 --stat` → 12 files changed, 457 insertions(+), 70 deletions(-)。deltaの全文diffを確認（`ItemInstallQueue.java`、`DirectEditContract.java`、`AppDestinationAdapter.kt`、`AppDestinationSettingsText.kt`（新規）、`AppDestinationPreference.kt`、strings、`spec.md` Revision 6、test 3件）。`AddWorkspaceItemsTask.java` / `ModelWriter.java` / `PersistedItemArray.java` は0行差分。
-- `grep -rn "isUpstreamSnapshot"` → 削除済みpredicateの残留呼出しなし（`isValidUpstreamSnapshot` への全置換を確認）。
-- `python3 tools/repo-contract/validate_writer_inventory.py` → `PASS: 19 writer files verified against allowlist (1555 source files scanned, 0 errors, 0 warnings)`。
-- `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*' --rerun-tasks` → BUILD SUCCESSFUL（macOS arm64、JDK 21。再audit sessionでの独立再実行）。`AppDestinationPlannerTest` 12 test / `AppDestinationStage2ValidatorTest` 5 test / `AppDestinationSettingsTextTest` 6 test すべて 0 failures / 0 errors（JUnit XMLから集計。planner testの@Test数は17で、XMLのクラス集計方法の違いによる。全testがgreen）。`AppDestinationNoticeTest` はinstrumentation testであり、CI run 36931656649 の `organizer-instrumentation-shared-writer-tests`（audit対象head上、success）を証跡とする。
-- `python3 tools/repo-contract/validate_high_risk_evidence.py --repo nunu1733/NunuLauncher --pr-number 498 --head-sha 72689feb85a06bac49344e1cce938bab5c9ceac0` → PASS。
-- instrumentation canonical test群（`InstallDestinationModelWriterTest` 等）は本audit sessionではローカル実行せず、CI run 36931656649 の `organizer-instrumentation-shared-writer-tests`（audit対象head上、success）を証跡とする。
+- `git rev-parse 663a08ed666782bb478addfb862fe9ebd6d32912` → 一致。`gh pr view 498 -R nunu1733/NunuLauncher --json headRefOid` → `663a08ed666782bb478addfb862fe9ebd6d32912`（audit対象headと一致）。
+- `gh run view 36936763106 -R nunu1733/NunuLauncher` → conclusion `success`、head = audit対象head、status `completed`。
+- `git diff 72689feb85..663a08ed66 --stat` → 6 files changed（assessment自身の更新を除く。test 3件 + `AppDestinationSettingsText.kt` + `AppDestinationPreference.kt` + `spec.md` Revision 7）、+112/-19。deltaの全文diffを確認。production write-path 5 file（`ModelWriter.java`、`ItemInstallQueue.java`、`AddWorkspaceItemsTask.java`、`PersistedItemArray.java`、`DirectEditContract.java`）は0行差分。
+- `grep -n "R.string.destination_policy" lawnchair/src/app/lawnchair/homeedit/ui/AppDestinationPreference.kt` → dialog集合のdirect literal残留なし（row title `destination_policy_label` の1件のみ。dialog契約の対象外）。dialog文言は全て `AppDestinationPolicyTextKeys` 経由（同file内7箇所）。
+- `python3 tools/repo-contract/validate_writer_inventory.py` → 前回再auditでPASS（head `72689feb85`）。本deltaでwriter fileに変更なし（上記0行差分確認）のため結果をそのまま適用。
+- JVM test（planner / stage-2 validator / settings text）は前回再audit sessionで `--rerun-tasks` 独立再実行しgreen（head `72689feb85`）。本deltaで追加された `AppDestinationSettingsTextTest` のdialog key契約test・source-contract testおよび軸分離testの変更は、CI run 36936763106（audit対象head `663a08ed66` 上、success）のhomeedit unit test gate / shared-writer laneでsuccessを確認。本再auditではJVM testのローカル再実行を行っていない（deltaはtest追加・分離のみでproduction codeの意味論変更なし）。
+- `python3 tools/repo-contract/validate_high_risk_evidence.py --repo nunu1733/NunuLauncher --pr-number 498 --head-sha 663a08ed666782bb478addfb862fe9ebd6d32912` → PASS（本assessment fileがworking treeにある状態で実施）。
+- instrumentation canonical test群（`InstallDestinationModelWriterTest` 等）は本audit sessionではローカル実行せず、CI run 36936763106 の `organizer-instrumentation-shared-writer-tests`（audit対象head上、success）を証跡とする。
 
 ## Findings
 
@@ -132,4 +149,4 @@
   - TalkBack読み上げ確認（エミュレータ）と実機での表示・操作確認（AC-1、AC-11）。
   - エミュレータスクリーンショットによる設定構造確認（AC-1）。
   - `measure_upstream_patch_surface.py` 出力のPR本文記録（AC-9。PR本文は本auditの機械検証対象外）。
-- JVM test（planner / stage-2 validator / settings text）はaudit sessionで `--rerun-tasks` 独立再実行しgreen。instrumentation canonical test群はCI run 36931656649（audit対象head `72689feb85` 上）で成功を確認した。
+- JVM test（planner / stage-2 validator / settings text）は前回再audit sessionで `--rerun-tasks` 独立再実行しgreen。round 2修正で追加されたdialog key契約test / source-contract testと軸分離testはCI run 36936763106（audit対象head `663a08ed66` 上）で成功を確認した。
