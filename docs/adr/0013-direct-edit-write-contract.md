@@ -84,11 +84,11 @@ status: accepted
 
 ## 要求するテスト（AGENTS.mdの例外要件への対応）
 
-テストの層は `docs/engineering/quality-strategy.md` の区分に従う。新規CI laneは作らず、既存の `organizer-unit-tests` gate（`docs/engineering/quality-strategy.md` Organizer unit-test CI gate節）と既存のinstrumentation lane（`docs/engineering/ci-test-portfolio.md`、`tools/repo-contract/ci_portfolio_map.yml`）に載せる。lane追加の判断はAGENTS.mdテスト規約の審査対象であるため、追加が必要になった時点で別途審査する。実装は #446/#448/#450 が行い、本表はその実装PRが満たすべき要求である。
+テストの層は `docs/engineering/quality-strategy.md` の区分に従う。新規CI laneは作らず、既存の `organizer-unit-tests` gate（`docs/engineering/quality-strategy.md` Organizer unit-test CI gate節）と既存のinstrumentation lane（`docs/engineering/ci-test-portfolio.md`、`tools/repo-contract/ci_portfolio_map.yml`）に載せる。lane追加の判断はAGENTS.mdテスト規約の審査対象であるため、追加が必要になった時点で別途審査する。実装は #446/#448/#450 が行い、本表はその実装PRが満たすべき要求である。「Layout Application interface相当のJVM test（test DB使用）」の実現surfaceは、`AndroidJUnit4`で実行しproduction DB adapterの代替としてtest DBを用いる書込み経路harness（`DirectEditModelWriterTest`等と同じorganizer shared-writer lane）である。#448/#450が本表の該当行をこのsurfaceで満たした実績がある（spec 448 AC-7。2026-10-02の明確化。Change history参照）。
 
 | 要求 | 層 | 内容 |
 |---|---|---|
-| 途中失敗の注入 | Layout Application interface相当のJVM test（test DB使用） | 複数rowアクション（フォルダ作成＋移動等）のN番目のwrite失敗で全rollbackし、model/DBが一致したままであること。単一rowアクションは1行書込みのため、失敗時のpartial stateが構造上存在しないことを示す。 |
+| 途中失敗の注入 | Layout Application interface相当の書込み経路test（test DB使用。`AndroidJUnit4` + test DBの書込み経路harness。organizer shared-writer lane） | 複数rowアクション（フォルダ作成＋移動等）のN番目のwrite失敗で全rollbackし、model/DBが一致したままであること。単一rowアクションは1行書込みのため、失敗時のpartial stateが構造上存在しないことを示す。 |
 | transaction rollback | 同上 | `newTransaction()` での複数row書込みが、close/失敗で全件元に戻ること。`UpdateItemsRunnable` の既存の失敗握りつぶし（`src/com/android/launcher3/model/ModelWriter.java:499-501`）を新規経路が真似しないこと。 |
 | admission後の再検証（defer後のstale検証） | 同上 | ORGANIZER lease保持中に直接編集のintentを投入 → organizer適用が対象row/配置先を変更 → lease解放後、直接編集は契約2の二段階目の検証でtypedに失敗して書かないこと。lease解放前にmodel/DBのいずれへの変更も発生しないこと（契約4の順序）。 |
 | Undoのfail-closed | 同上（契約5の検証） | 逆操作の直前に状態がずれた場合（対象rowが他経路で変えられた、作ったフォルダが既に消えた等）に、書かずにtypedな失敗を返すこと。正常な逆操作で元に戻ること。 |
@@ -131,3 +131,4 @@ Rejected。安全規約の適用範囲の線引きは `AGENTS.md`（正本）の
 ## Change history
 
 - 2026-09-27: Accepted。#445 の決定Issueで起草・受入（出典: #445 付録の承認済み草案2026-09-24）。Phase 1 review（#445 のreviewコメント）で確定した契約2の二段階検証、契約4の書込み順序の明示、要求テストへのadmission後の再検証行、ロックの限定解釈の根拠を含む。
+- 2026-10-02: 要求テスト表の層の記述を明確化した（#497 Phase 1 review round 3で確定）。「Layout Application interface相当のJVM test（test DB使用）」の実現surfaceを、#448/#450が本表の該当行を満たすために実装した既存の書込み経路harness（`AndroidJUnit4` + test DB。production DB adapterの代替。organizer shared-writer lane。spec 448 AC-7実績）と明記した。検証内容・行の対応の変更なし。

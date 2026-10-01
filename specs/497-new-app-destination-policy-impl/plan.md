@@ -8,6 +8,7 @@
 > Revision 1: 2026-10-02 — 初版。Phase 1 reviewへ提出。
 > Revision 2: 2026-10-02 — Phase 1 review round 1（[PR #498 comment](https://github.com/nunu1733/NunuLauncher/pull/498#issuecomment-5935261988)）の指摘1〜4に対応。指摘1（高）: 既定配置を`HomeEditPlanner.firstFreeCell`系で再計画する設計を撤回し、上流`WorkspaceItemSpaceFinder`の意味論をadmission内で用いる形へ修正（Current evidenceへ`WorkspaceItemSpaceFinder.java:69-71,77-86`の実測を追加。新規screen id採番・`workspaceScreens`/`addedWorkspaceScreensFinal`変更のadmission前漏出禁止を明記）。指摘2（中）: snapshot重複captureをfirst enqueue winsへ修正（`addToQueue`の重複排除は追加も書込みもスキップするため、last-winsの記述は現コードと不合だった）。指摘3（中）: 基底entry decode不能時の`Reject`を観測不能として契約から外し、`Reject(SNAPSHOT_INVALID)`をsnapshot部分のidentity不一致に限定、downgrade記述の「unknown attributeでentry skip」表現を修正。指摘4（中）: テスト所有を「決定意味論=JVM canonical、実接続=instrumentation（理由1行付き）」へ再割付け（Designへテスト所有節を新設）。
 > Revision 3: 2026-10-02 — Phase 1 review round 2（[PR #498 comment](https://github.com/nunu1733/NunuLauncher/pull/498#issuecomment-5935544221)）の指摘1〜3に対応。指摘1（高）: admission内の既定配置結果のUI反映契約を追加（新op routeの`bindAppsAdded`相当と新規screen伝播は、書込み成功callbackが運ぶ最終配置・新規screen idに基づき`AddWorkspaceItemsTask`側で1回だけ行う。既存`addedItemsFinal`への事前追加は新op routeでは使わない。Current evidenceへ`AddWorkspaceItemsTask.java:88-89,200,207-228`のbind経路の実測を追加）。指摘2（中）: ADR-0015要求テスト表3行のcanonical ownerを、ADR-0013該当行の実績surface（AndroidJUnit4 + test DBの書込み経路harness。organizer shared-writer lane。spec 448 AC-7実績）へ戻し、純粋JVM testを補助へ修正（テスト所有節を全面更新）。指摘3（低）: PR本文packetのhead/revision/CI evidence同期。
+> Revision 4: 2026-10-02 — Phase 1 review round 3（[PR #498 comment](https://github.com/nunu1733/NunuLauncher/pull/498#issuecomment-5935777218)）の指摘1（中）に対応。ADR本文の「Layout Application interface相当のJVM test（test DB使用）」とAndroidJUnit4 instrumentationを同一surface扱いしないため、ADR-0015/ADR-0013の要求テスト表の層の記述を実績surface（`AndroidJUnit4` + test DBの書込み経路harness。organizer shared-writer lane。spec 448 AC-7実績）へ先に明確化した（変更対象表へ`docs/adr/0015` / `docs/adr/0013`を追加。ADR Change historyに記録。検証内容・行の対応の変更なし）。spec/planのcanonical owner表記をADRの層割付けと一意化し、`DirectEditModelWriterTest`を「JVM」と呼ぶ表現を排除（テスト所有節/変更対象のtest行/Execution checklist）。
 
 ## Current evidence
 
@@ -87,6 +88,8 @@
 | `tests/unit/app/lawnchair/homeedit/` | 新設 | planner（closed result・境界・決定性・冪等性）、通知state、設定整合のJVM test |
 | `tests/organizer-instrumentation/` | 新設 | 書込みshape（INSERT 1行・rank/lock不変）、fallback経路、snapshot再flush一貫性（process死込み）、欠損・破損、defer後の再計画のinstrumentation test |
 | `docs/product/requirements.md`、`docs/engineering/editing-burden-benchmark.md`、`DESIGN.md`、`CONTEXT.md`、`tools/repo-contract/ci_portfolio_map.yml` | 変更 | spec AC-8/AC-9/AC-10どおり。ci_portfolio_mapはinstrumentation class list追加の監査表同期 |
+| `docs/adr/0015-new-app-destination-policy.md` | 変更（Phase 1で実施済み） | 要求テスト表の層の記述を実績surface（`AndroidJUnit4` + test DBの書込み経路harness。organizer shared-writer lane）へ明確化。Change historyへ1行追加。検証内容・行の対応の変更なし（Phase 1 review round 3指摘1） |
+| `docs/adr/0013-direct-edit-write-contract.md` | 変更（Phase 1で実施済み） | 同上（要求テスト表の層の記述の明確化。Change historyへ1行追加） |
 
 ### 契約と依存方向
 
@@ -96,7 +99,7 @@
 
 ### テスト所有（ADR-0015要求テスト表とADR-0013要求テスト表の割付け。Phase 1 review round 1指摘4、round 2指摘2で確定）
 
-ADR-0015要求テスト表の3行のcanonical ownerは、**ADR-0013要求テスト表の該当行を#448/#450が満たした実績のある既存surface**（AndroidJUnit4 + test DB（production DB adapterの代替）による書込み経路harness。`DirectEditModelWriterTest`等と同じorganizer shared-writer lane。spec 448 AC-7の実績と同じ）である。実装specでADRの割付けを上書きしない。純粋JVM test（planner、snapshot分類、通知state、設定整合）は補助として残す。coordinator排他・process死はADR-0013が元へ割り付けているinstrumentation（shared-writer seam、process-death smoke慣行）で満たす。新規lane・重複scenarioは増やさない。
+ADR-0015要求テスト表の3行のcanonical ownerは、**ADRの層割付けと同一のsurface**である。ADR本文の「Layout Application interface相当のJVM test（test DB使用）」の実現surfaceは、`AndroidJUnit4`で実行しproduction DB adapterの代替としてtest DBを用いる書込み経路harness（`DirectEditModelWriterTest`等と同じorganizer shared-writer lane）であり、#448/#450がADR-0013の同じ要求行をこのsurfaceで満たした実績がある（spec 448 AC-7）。この層の記述の明確化を本PRでADR-0015/ADR-0013の要求テスト表へ先に行った（Phase 1 review round 3指摘1。実装specでADRの割付けを読み替えない。検証内容の変更なし）。純粋JVM test（planner、snapshot分類、通知state、設定整合）は補助として残す。coordinator排他・process死はADR-0013が元へ割り付けているsurface（shared-writer instrumentation seam、process-death smoke慣行）で満たす。新規CI lane・重複scenarioは増やさない。
 
 | 要求（ADR-0015要求テスト表） | canonical surface（書込み経路harness。AndroidJUnit4 + test DB） | 補助・周辺 |
 |---|---|---|
@@ -159,7 +162,7 @@ ADR-0015要求テスト表の3行のcanonical ownerは、**ADR-0013要求テス�
 - [ ] Phase 2: 純粋planner + 契約型 + bridge + 新op + 設定UI + 通知の実装（最小の縦切り。interface経由のtestを先に追加）
 - [ ] Phase 2: instrumentation test群（defer後の再計画、snapshot再flush一貫性、欠損・破損、書込みshape、排他）
 - [ ] Verification完了とPR本文への記録（patch surface、writer inventory、CI run URL、エミュレータ記録）
-- [ ] 文書更新（FR-008、ベンチマーク§6、DESIGN.md、CONTEXT.md、ci_portfolio_map.yml）
+- [ ] 文書更新（FR-008、ベンチマーク§6、ADR-0015/ADR-0013要求テスト表の層記述はPhase 1で実施済みのためPhase 2では不変確認、DESIGN.md、CONTEXT.md、ci_portfolio_map.yml）
 - [ ] Phase 2 review → clear
 - [ ] main断面再確認・rebase、独立audit（別session）、merge operator check、merge
 
@@ -169,7 +172,7 @@ ADR-0015要求テスト表の3行のcanonical ownerは、**ADR-0013要求テス�
 - Scope type: feature（階層H実装）
 - Accepted spec + commit: specs/497-new-app-destination-policy-impl/spec.md（本PR内でaccepted化を図る。commit SHAはPR本文へ記録）
 - Bug oracle: N/A with reason（新機能実装であり、bug oracleは存在しない。ADR-0015要求テスト表とspec Test oracleが検証の正である）
-- Plan + revision: specs/497-new-app-destination-policy-impl/plan.md（本書、Revision 3。Phase 1 review round 1・round 2対応）
+- Plan + revision: specs/497-new-app-destination-policy-impl/plan.md（本書、Revision 4。Phase 1 review round 1〜3対応）
 - Base SHA: 3d8f4dcca5452fd609a1c1e2f279231ca8edc0e4
 - Head SHA: PR本文へ記録
 - Executed evidence: Current evidenceの`path:line`検証（2026-10-02）+ `validate_writer_inventory.py` PASS確認

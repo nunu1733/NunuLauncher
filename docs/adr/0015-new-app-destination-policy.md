@@ -63,11 +63,11 @@ status: accepted
 
 ## 要求するテスト（将来の実装PRが満たすべき要求）
 
-テストの層は `docs/engineering/quality-strategy.md` の区分に従い、ADR-0013の要求テスト表と同じ既存surfaceへ割り付ける。新規CI laneは作らない。実装は配置先ポリシーの実装Issueが行い、本表はその実装PRが満たすべき要求である。
+テストの層は `docs/engineering/quality-strategy.md` の区分に従い、ADR-0013の要求テスト表と同じ既存surfaceへ割り付ける。新規CI laneは作らない。実装は配置先ポリシーの実装Issueが行い、本表はその実装PRが満たすべき要求である。「Layout Application interface相当」の実現surfaceは、`AndroidJUnit4`で実行しproduction DB adapterの代替としてtest DBを用いる書込み経路harness（`DirectEditModelWriterTest`等と同じorganizer shared-writer lane）である。#448/#450がADR-0013の同じ要求行をこのsurfaceで満たした実績がある（spec 448 AC-7）。2026-10-02の明確化（Change history参照）は層の記述を具体化したものであり、検証内容・行の対応を変えない。
 
 | 要求 | 層 | 内容 |
 |---|---|---|
-| admission後の再計画（defer後のstale検証） | Layout Application interface相当のJVM test（test DB使用。ADR-0013の要求テスト表「admission後の再検証（defer後のstale検証）」行と同じsurface） | ORGANIZER lease保持中にinstall queueがflushされる → organizer適用が指定フォルダを削除/変更する → lease解放後、追加書込みは同一の純粋計画関数を現状態へ再実行し、指定folderがstaleなら`UpstreamDefault(reason)`へ再計画してdefault配置を同じadmission内で検証・書込みする。lease保持中にmodel/DBへの先行変更（`ItemInfo`変更・ID採番・bindItems callbackを含む）が発生しない。 |
+| admission後の再計画（defer後のstale検証） | Layout Application interface相当の書込み経路test（test DB使用。`AndroidJUnit4` + test DBの書込み経路harness。organizer shared-writer lane。ADR-0013の要求テスト表「admission後の再検証（defer後のstale検証）」行と同じsurface） | ORGANIZER lease保持中にinstall queueがflushされる → organizer適用が指定フォルダを削除/変更する → lease解放後、追加書込みは同一の純粋計画関数を現状態へ再実行し、指定folderがstaleなら`UpstreamDefault(reason)`へ再計画してdefault配置を同じadmission内で検証・書込みする。lease保持中にmodel/DBへの先行変更（`ItemInfo`変更・ID採番・bindItems callbackを含む）が発生しない。 |
 | policy snapshotの再flush一貫性 | 同上 | policy snapshot=Aでqueue投入 → policy設定をBへ変更 → process restart → 永続化されたqueueをflush → snapshot Aを使用する（current policy Bを再読しない）。 |
 | snapshot欠損・破損時のclosed result | 同上 | snapshot欠損・破損時もcurrent policyを再読しない。identityが読める範囲なら`UpstreamDefault(SNAPSHOT_INVALID)`へ明示fallbackし、default配置を検証して書く。identity自体が信頼できない場合だけ`Reject(SNAPSHOT_INVALID)`として無変更・typed failureにする。 |
 
@@ -114,3 +114,4 @@ Rejected（Phase 1 reviewで確定）。process死の間にpolicy/folder指定�
 ## Change history
 
 - 2026-09-27: Accepted。#446の決定Issueで起草・受入（出典: #446 付録の承認済み草案2026-09-24）。Phase 1 review（#446 のreviewコメント）で確定した書込み構造（Decision 7）、closed result意味論（Decision 8）、policy snapshotのcapture/read境界とsnapshot欠損・破損時の一意化（Decision 10）、「満杯」のfallback条件からの除外（Decision 4）を含む。
+- 2026-10-02: 要求テスト表の層の記述を明確化した（#497 Phase 1 review round 3で確定）。「Layout Application interface相当のJVM test（test DB使用）」の実現surfaceを、#448/#450がADR-0013の同じ要求行を満たすために実装した既存の書込み経路harness（`AndroidJUnit4` + test DB。production DB adapterの代替。organizer shared-writer lane。spec 448 AC-7実績）と明記した。検証内容・行の対応の変更なし。
