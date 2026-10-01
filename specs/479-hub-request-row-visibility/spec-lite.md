@@ -131,9 +131,13 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
 - [x] AC-2: このリストinstanceでのユーザードラッグ後、位置が再調整されないこと
       （drag後の `scrollToItem` 呼び出しがないこと）。drag guardは
       `rememberSaveable` でリストのsaveable state（`rememberLazyListState`）と
-      ライフサイクルを揃える。実drag後の位置保全をtestで検証する
+      ライフサイクルを揃える。実drag後の位置保全 + saveable state復元後の保全を
+      testで検証する
       （`OrganizerHubPreferencesInstrumentationTest.hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent`。
-      recreation後のsaveable復元半分はharness上限につきコードreviewで担保 — Change history参照）。
+      実dragはuiautomatorのsystem-level drag、saveable復元は
+      `StateRestorationTester.emulateSavedInstanceStateRestore()`。pre-fixの
+      `remember` guardでは復元後にre-anchorが発火して本テストが失敗することを
+      実証済み）。
 - [x] AC-3: sessionなし・anchorが既に正しいhub entryで可視geometryが不変（no-op）であり、
       いかなるscenarioでもLauncher DB書込みが発生しないこと。
 - [x] AC-4: strategy行clickが `performScrollToNode` + `assertIsDisplayed` disciplineを
@@ -186,10 +190,10 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
   `DragInteraction` が配信されない環境差（recreation後の組合せで観測）を確認したため、
   guard発火をnested scroll観測（`NestedScrollSource.UserInput` の実消費delta）へ変更。
   programmatic scrollはguardを発火させない仕様は不変。
-- 2026-10-01: AC-2回帰テストをrecreate版から確定版へ改定。`scenario.recreate()` +
-  `setContent` ではinstrumentation harnessが `rememberSaveable` を全く復元せず
-  （probeで確認）、remember/rememberSaveable非対称を再現できないため、oracleは
-  「実drag後の再anchor発火で位置が巻き戻らないこと」（guard発火の黒箱検証、
-  `hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent`）へ変更。saveable
-  復元半分はharness上限として記録し、`rememberSaveable` 単一宣言によるライフサイクル
-  整合はコードreviewで担保（残余リスク、harness更新がfollow-up path）。
+- 2026-10-01: AC-2回帰テストを確定版へ改定。review round 3の指摘に従い、
+  `StateRestorationTester.emulateSavedInstanceStateRestore()` によるsaveable state復元oracleを
+  導入（`scenario.recreate()`+`setContent` はharnessがsaveable stateを復元しないため不採用 —
+  probeで実証）。実dragの注入はuiautomatorのsystem-level drag（compose-testのtouch relayが
+  負荷下でdragsを落とす非確定性を回避）。guard破綻（armされない/programmatic scroll誤arm）と
+  remember/rememberSaveable非対称の双方を検出することを確認: pre-fix（`remember` guard）では
+  復元後にre-anchorが発火してテストが失敗する。

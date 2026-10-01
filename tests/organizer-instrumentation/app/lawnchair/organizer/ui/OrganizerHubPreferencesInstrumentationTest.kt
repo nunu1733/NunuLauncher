@@ -24,6 +24,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -456,22 +457,21 @@ class OrganizerHubPreferencesInstrumentationTest {
      * present) re-evaluates right after the drag, but the position must NOT
      * be yanked back to the top. With a broken guard (never armed, or armed
      * by programmatic scrolls) the re-anchor effect fires `scrollToItem(0)`
-     * on that same evaluation and pulls the request row back to the
-     * first-visible position, failing this oracle. Programmatic scroll-into-
-     * view dispatches no UserInput nested scroll, so the arming above is the
-     * only fact that keeps the position. No quarantine, no failure
-     * diagnostics: the oracle is the request row's (non-)return alone.
+     * and pulls the request row back to the first-visible position, failing
+     * this oracle. Programmatic scroll-into-view dispatches no UserInput
+     * nested scroll, so the arming above is the only fact that keeps the
+     * position. No quarantine, no failure diagnostics: the oracle is the
+     * request row's (non-)return alone.
      *
-     * Harness limitation (recorded for review round 2): the saveable half of
-     * AC-2 — the drag guard surviving an Activity recreation alongside the
-     * saveable list state — cannot be exercised here: a probe confirmed
-     * `scenario.recreate()` + `setContent` does NOT restore `rememberSaveable`
-     * state in the compose instrumentation harness (both the guard and the
-     * list position reset together, which cannot discriminate the
-     * remember/rememberSaveable asymmetry). The alignment is enforced by the
-     * single `rememberSaveable` declaration reviewed in code; a harness
-     * upgrade (a real configuration change or a saveable-aware test seam) is
-     * the follow-up path if that half ever needs an executable oracle.
+     * The saveable half of AC-2 — the drag guard surviving a state
+     * restoration alongside the saveable list state — is exercised with
+     * [StateRestorationTester.emulateSavedInstanceStateRestore]: the saved
+     * instance state restores the scrolled `LazyListState`, and only a
+     * `rememberSaveable` drag guard restores with it, so the re-anchor never
+     * fires. A plain `remember` guard resets to "not dragged" while the list
+     * position restores scrolled, the correction snaps to index 0, and the
+     * request row returns — failing the post-restore assertion (the exact
+     * remember/rememberSaveable asymmetry review round 1 flagged).
      */
     @Test
     fun hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent() {
@@ -484,9 +484,10 @@ class OrganizerHubPreferencesInstrumentationTest {
         val session = seedActiveSession()
         seedPendingRecord(session)
         // 200% font scale makes the exchange rows dominate the viewport so the
-        // scroll-into-view below deterministically moves the anchor past the
-        // first item (the same reachability fixture as HUB-AC-07).
-        setHubContent(runner, fontScale = 2f)
+        // swipe below deterministically moves the anchor past the first item
+        // (the same reachability fixture as HUB-AC-07).
+        val restorationTester = StateRestorationTester(composeRule)
+        restorationTester.setContent { HubHost(runner = runner, fontScale = 2f) }
 
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
@@ -495,16 +496,59 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         // Arm the #479 guard with a REAL touch drag: user drags are the only
         // scrolls that dispatch nested scroll with UserInput, so the
-        // production nested-scroll observer arms the guard on the consumed
-        // delta. The exitUntilCollapsed app bar may consume part of the
-        // swipe; as long as the list itself moved, the guard is armed.
-        composeRule.onNode(hasScrollAction()).performTouchInput { swipeUp() }
-        composeRule.waitForIdle()
+        // production nested-scroll observer arms the guard on the delta the
+        // list itself consumed. Repeat the swipe until the list visibly
+        // moved: at fontScale 2f the collapsible app bar is tall and
+        // consumes the first swipes (those leave the list unmoved, so they
+        // arm nothing — the loop ends on a swipe the list consumed, which is
+        // exactly the fact that arms the guard).
+        fun requestRowSnapshot(): Pair<Int, androidx.compose.ui.geometry.Rect?> {
+            val nodes = composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes()
+            return nodes.size to nodes.firstOrNull()?.boundsInRoot
+        }
+        var swipes = 0
+        val device = androidx.test.uiautomator.UiDevice.getInstance(
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation(),
+        )
+        val displayWidth = device.displayWidth
+        val displayHeight = device.displayHeight
+        while (swipes < 8) {
+            // A system-level drag (uiautomator) — the same injection path as a
+            // real finger, independent of the compose-test touch relay.
+            device.swipe(
+                displayWidth / 2,
+                displayHeight * 3 / 4,
+                displayWidth / 2,
+                displayHeight / 4,
+                24,
+            )
+            composeRule.waitForIdle()
+            swipes++
+            val (count, bounds) = requestRowSnapshot()
+            if (count == 0 || bounds!!.top < 400) break
+        }
+        // The swipes must have scrolled the list: the request row left its
+        // entry position (fully out of composition, or visibly moved up).
+        // This pins the arming fact to the user input — anything that keeps
+        // this condition true must have come from the drags above.
+        val (countAfterSwipe, boundsAfterSwipe) = requestRowSnapshot()
+        check(countAfterSwipe == 0 || boundsAfterSwipe!!.top < 400) {
+            "the real drags never scrolled the hub list (row=$countAfterSwipe at $boundsAfterSwipe after $swipes swipes); " +
+                "the AC-2 arming premise is broken"
+        }
 
-        // Move the anchor past index 0 deterministically through the list's
-        // own scroll-into-view path (#366/#369 discipline): a programmatic
-        // scroll dispatches no UserInput nested scroll, so the guard armed
-        // by the drag above stays armed.
+        // A broken guard would snap the dragged position back to the top on
+        // the post-drag correction evaluation — the row would reappear from
+        // "gone" or move back down. The position must be stable BEFORE any
+        // programmatic scroll happens, so this settling step cannot be masked
+        // by a later scroll-into-view.
+        composeRule.waitForIdle()
+        assertEquals(countAfterSwipe, requestRowSnapshot().first)
+
+        // Move the anchor further past index 0 deterministically through the
+        // list's own scroll-into-view path (#366/#369 discipline): a
+        // programmatic scroll dispatches no UserInput nested scroll, so the
+        // guard armed by the drag above stays armed.
         scrollTextIntoView(context.getString(R.string.organizer_strategy_title))
         composeRule.waitForIdle()
         // Scrolled past item 0: the request row sits fully outside the
@@ -513,13 +557,25 @@ class OrganizerHubPreferencesInstrumentationTest {
             composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isEmpty()
         }
 
-        // Settle the recomposition frames in which a broken guard would have
-        // snapped the position back to the top (the correction condition
-        // re-evaluates on every observed tuple emission).
+        // Saved-instance-state restore: the saveable list state restores the
+        // scrolled position, and the drag guard must restore with it
+        // (`rememberSaveable`) or the re-anchor correction snaps the restored
+        // position back to index 0.
+        restorationTester.emulateSavedInstanceStateRestore()
+
+        // The hub recomposed from the restored state (the scaffold label is
+        // independent of the list scroll position), and the first frames —
+        // where a lost guard would have snapped to index 0 — have settled.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_hub_label))
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }
+        composeRule.waitForIdle()
         repeat(3) { composeRule.waitForIdle() }
 
-        // AC-2: the user-dragged position is retained — the request row did
-        // NOT return to the first-visible position.
+        // AC-2: the user-dragged position is retained across the restoration
+        // — the request row did NOT return to the first-visible position.
         composeRule.onAllNodesWithTag("organizer-hub-request").assertCountEquals(0)
     }
 
