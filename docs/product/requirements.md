@@ -103,5 +103,5 @@ Status語彙: `implemented` / `accepted/evidence pending` / `proposed` / `deferr
 ## 未解決事項
 
 - ~~**FR-008と旧[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)決定（Option B）の整合**~~: 解決済み（2026-09-27）。fail-closed維持と再定義の関係は、[ADR-0015](../adr/0015-new-app-destination-policy.md) Decision 2で明文化された（prior absenceの証明は配置先決定には不要。ADR-0005の適用範囲は「既存アイテムを動かす増分整理提案」へ狭められ、fail-closed結論は維持される）。
-- ~~**D-013〜016のADR link**~~: 解決済み（2026-10-01時点の確認）。D-013/014/015はいずれもaccepted ADRのfile linkで参照されており（D-015は2026-09-27に、D-014は2026-09-29に更新記録あり。D-013のlink自体は[PR #463](https://github.com/nunu1733/NunuLauncher/pull/463)で導入済み）、本件の更新は完了している。D-016はADR fileを持たず（凍結判断の正本は[#443](https://github.com/nunu1733/NunuLauncher/issues/443)の草案・記録）、引き続きIssue参照のままとする。
+- ~~**D-013〜016のADR link**~~: 解決済み（2026-10-01時点の確認）。D-013/014/015はいずれもaccepted ADRのfile linkで参照されている（D-015は2026-09-27に先行更新。D-013/D-014のMarkdown link化は[PR #480](https://github.com/nunu1733/NunuLauncher/pull/480)（2026-09-29）で実施。[PR #463](https://github.com/nunu1733/NunuLauncher/pull/463)は平文での導入）。D-016はADR fileを持たず（凍結判断の正本は[#443](https://github.com/nunu1733/NunuLauncher/issues/443)の草案・記録）、引き続きIssue参照のままとする。
 - **FR-022の#443との分担**: FR-022のowning Issueは[#452](https://github.com/nunu1733/NunuLauncher/issues/452)、「AI相談が無効の間は方法選択を経ない」部分の実装は[#443](https://github.com/nunu1733/NunuLauncher/issues/443)が担当する（両Issue本文が参照する）。

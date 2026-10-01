@@ -227,17 +227,17 @@ Then 上流の4秒snackbar（遅延commit取消）が従来どおり動作し、
 
 ## Acceptance criteria
 
-- [ ] AC-1: 2種の編集それぞれについて、直後のsnackbar Undo tap 1操作で元に戻ることが実機のスクリーンショットまたは録画で確認できる（項目単位は4アクションすべて。移動は元の位置・rank、新規フォルダはフォルダ消去込み、外すは行の再追加）。
-- [ ] AC-2: 逆操作が実行前に現在状態との照合を通り、ずれ（対象の移動・消滅、復帰先の占有、作成フォルダの変化、grid範囲外、**「外す」のundoでのpackage消滅・deep shortcut消滅・availability照合不能**）で書かずにtypedな失敗を示すことを、失敗注入を含むテストで確認する（ADR-0013要求テスト表「Undoのfail-closed」行）。
-- [ ] AC-3: 逆操作が1 DB transactionで成功するか変更前へ戻ることを、test DBでのテストで確認する（「新しいフォルダ」の逆操作=子の逆UPDATE+フォルダ行DELETEの組を含む。AGENTS.mdテスト規約）。
-- [ ] AC-4: 逆操作が `LayoutWriteCoordinator` のMODEL_WRITER admissionを経由し、ORGANIZER lease中はdefer、lease解放後にadmission内再検証を通ることをテストで確認する（undoがorganizer runをまたがない）。
-- [ ] AC-5: 編集画面確定のundoが、確定完了時にapply経路から受け取った `pointId + verified post revision`（materialized post-stateのrevision）でorganizer復元経路を呼び、`Restored` で確定前の状態へ戻ることを確認する。**新規フォルダの作成を含む確定でも、他の書込みがなければ正常系のundoが `Restored` になること**、記録されたrevisionがapply直後の新規captureのrevisionと一致すること（等価の固定。正本はapply内部値）、確定後に他の書込みがあった場合は `NotRestorable(STALE_REVISION)`・零書込みであること、復元点のevict・復元済み・writer busyをtypedに表示することを実装済みの#449適用完了flow（`HomeEditSurfaceActivity`）と接続した結合テストで確認する。
-- [ ] AC-6: 取り消し記録の寿命がspecどおり動作する: 次のfork編集の成功で置換、undo試行終了で消費、process死で消失（再起動後にundo入口なし）。
-- [ ] AC-7: 照合関数がinterface経由でテストされている（fixture、境界値、typed拒否理由、決定性。AGENTS.mdテスト規約。計画module層）。
-- [ ] AC-8: ベンチマークB5: fork編集（項目単位、編集画面確定）の直後がundo 1操作であることをベンチマーク§7の手順で実測記録する。snackbar方式の時間窓（accessibility設定準拠の実時間）の有無を記録に含める。
-- [ ] AC-9: アクセシビリティ: snackbar label/actionがTalkBackで読めること、表示時間がaccessibility設定に従うこと、undo失敗の理由が文字列リソース由来であることを確認する。
-- [ ] AC-10: 文書: 本specが受入・実装を経て `implemented` となるとき、`CONTEXT.md`（domain language）、`DESIGN.md`（必要があればhomeedit moduleのundo構成の追記）、`docs/product/requirements.md`（FR-020のstatus更新）が更新される。
-- [ ] AC-11: 世代紐付け: 取り消し記録が別の編集に置換済みのとき、置換前のrecordの世代識別子による消費要求は零書込みの無操作であり、現行recordを消費せず、現行編集が引き続きundo可能であることを、置換後のsnackbar表示前の窓を含む競合oracleのテストで確認する。
+- [x] AC-1: 2種の編集それぞれについて、直後のsnackbar Undo tap 1操作で元に戻ることが実機のスクリーンショットまたは録画で確認できる（項目単位は4アクションすべて。移動は元の位置・rank、新規フォルダはフォルダ消去込み、外すは行の再追加）。
+- [x] AC-2: 逆操作が実行前に現在状態との照合を通り、ずれ（対象の移動・消滅、復帰先の占有、作成フォルダの変化、grid範囲外、**「外す」のundoでのpackage消滅・deep shortcut消滅・availability照合不能**）で書かずにtypedな失敗を示すことを、失敗注入を含むテストで確認する（ADR-0013要求テスト表「Undoのfail-closed」行）。
+- [x] AC-3: 逆操作が1 DB transactionで成功するか変更前へ戻ることを、test DBでのテストで確認する（「新しいフォルダ」の逆操作=子の逆UPDATE+フォルダ行DELETEの組を含む。AGENTS.mdテスト規約）。
+- [x] AC-4: 逆操作が `LayoutWriteCoordinator` のMODEL_WRITER admissionを経由し、ORGANIZER lease中はdefer、lease解放後にadmission内再検証を通ることをテストで確認する（undoがorganizer runをまたがない）。
+- [x] AC-5: 編集画面確定のundoが、確定完了時にapply経路から受け取った `pointId + verified post revision`（materialized post-stateのrevision）でorganizer復元経路を呼び、`Restored` で確定前の状態へ戻ることを確認する。**新規フォルダの作成を含む確定でも、他の書込みがなければ正常系のundoが `Restored` になること**、記録されたrevisionがapply直後の新規captureのrevisionと一致すること（等価の固定。正本はapply内部値）、確定後に他の書込みがあった場合は `NotRestorable(STALE_REVISION)`・零書込みであること、復元点のevict・復元済み・writer busyをtypedに表示することを実装済みの#449適用完了flow（`HomeEditSurfaceActivity`）と接続した結合テストで確認する。
+- [x] AC-6: 取り消し記録の寿命がspecどおり動作する: 次のfork編集の成功で置換、undo試行終了で消費、process死で消失（再起動後にundo入口なし）。
+- [x] AC-7: 照合関数がinterface経由でテストされている（fixture、境界値、typed拒否理由、決定性。AGENTS.mdテスト規約。計画module層）。
+- [x] AC-8: ベンチマークB5: fork編集（項目単位、編集画面確定）の直後がundo 1操作であることをベンチマーク§7の手順で実測記録する。snackbar方式の時間窓（accessibility設定準拠の実時間）の有無を記録に含める。
+- [x] AC-9: アクセシビリティ: snackbar label/actionがTalkBackで読めること、表示時間がaccessibility設定に従うこと、undo失敗の理由が文字列リソース由来であることを確認する。
+- [x] AC-10: 文書: 本specが受入・実装を経て `implemented` となるとき、`CONTEXT.md`（domain language）、`DESIGN.md`（必要があればhomeedit moduleのundo構成の追記）、`docs/product/requirements.md`（FR-020のstatus更新）が更新される。
+- [x] AC-11: 世代紐付け: 取り消し記録が別の編集に置換済みのとき、置換前のrecordの世代識別子による消費要求は零書込みの無操作であり、現行recordを消費せず、現行編集が引き続きundo可能であることを、置換後のsnackbar表示前の窓を含む競合oracleのテストで確認する。
 
 ## Test oracle
 
@@ -268,3 +268,4 @@ Then 上流の4秒snackbar（遅延commit取消）が従来どおり動作し、
 - 2026-09-29: Revision 3 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/450#issuecomment-5882646790): Request changes。round 1指摘1・3は解消認定）の残存2指摘に対応。指摘1（高）: `expectedCurrentRevision` の正本を **apply経路が適用後検証に使ったmaterialized post-state（`MaterializedWriteSet.intendedState`）のrevision** へ修正（Revision 2の「plan.intendedStateから決定」は、新規フォルダのplanned ref→persistent ref解決（`LauncherLayoutAdapter.kt:215,231`）とpage正規化（`:239`）により正常系でも一致しないため撤回）。apply内部（`Applied` 組み立て点・lease保持中）で計算し、internalなapply receiptでpointIdと同時に運ぶ（post-hoc captureは引き続き禁止）。public契約は不変。新規フォルダ作成込みの正常系undo `Restored` と記録revision≡post-apply capture revisionの結合oracleをAC-5へ追加。指摘2（中）: 削除前行payloadのplatform→fork運搬seamを `DirectEditContract.ResultCallback` の明示的拡張（削除成功時のみ非nullのpayload引数）として固定し、admission内capture→成功callback→record格納の経路とoracleをScope/AC-2/planへ記載。
 - 2026-09-29: `accepted` 化。Phase 1 re-review round 3（[判定](https://github.com/nunu1733/NunuLauncher/issues/450#issuecomment-5882787921): **Clear**）により、Revision 3の2指摘がいずれも現行実装のseamに沿った実装可能な契約とtest oracleまで含めて解消と認定された。round 3の非blocking指摘（plan Change set表の `ApplyProtocol.kt` path誤記）は本受入commitで修正。
 - 2026-10-01: statusを `implemented` へ遷移（遡及記録）。実装は [PR #481](https://github.com/nunu1733/NunuLauncher/pull/481)（2026-09-30 merge、Phase 2 re-review round 15 Clear）。独立audit（`docs/assessment/pr-481-edit-undo.md`）とIssue #450の終了条件確認、`docs/product/requirements.md` のFR-020 `implemented` 更新済みを根拠とする。本specのstatus遷移のみ漏れていたため本PRで揃えた。
+- 2026-10-02: AC checklistを受入証跡へ同期（遡及記録。PR #496 review指摘への対応）。AC-1〜AC-11の全項目はPR #481実装と独立audit GO（`docs/assessment/pr-481-edit-undo.md` のCriteria check。AC-8の実測記録は `docs/assessment/450-edit-undo-b5-evidence.md`）で確認済みのため `[x]` へ更新した。status遷移（上の2026-10-01記録）と同一根拠。なおAC-1/AC-9の実機（Pixel 9a）owner確認は同evidence記録どおりowner decision itemとして残置されており（emulatorでの実UI操作oracleとTalkBack構造確認で代替。#448/#449と同じ扱い）、ownerはIssue #450 close時にこれを受入れている。

@@ -182,7 +182,7 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
 
 ## Acceptance criteria
 
-- [ ] AC-1: `docs/project/github-workflow.md` にRisk tiers節が追加されている。
+- [x] AC-1: `docs/project/github-workflow.md` にRisk tiers節が追加されている。
   階層H/M/Lの定義、判定方法（高リスクpath一覧とvalidatorを参照し複製しない）、
   判定の優先順位（H条件はM/Lに常に優先、LはH条件に該当しない文書・テスト・
   refactorに限る）、格上げ・下げの規則、階層Mのreview往復上限と1 roundの定義を含む。
@@ -194,12 +194,12 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
   （`plan.md` への言及は階層条件付きであること）。既存の「高リスクPRへの独立
   エビデンス要求」節と「Fork label vocabulary」節は実質変更されていない。
   （Issue完了条件1の前半）
-- [ ] AC-2: `AGENTS.md` の「Issue駆動・仕様駆動の手順」の手順4が階層別に改訂され
+- [x] AC-2: `AGENTS.md` の「Issue駆動・仕様駆動の手順」の手順4が階層別に改訂され
   （`plan.md` 作成は階層Hの要件）、節末尾にリスク階層の参照（workflow文書の
   Risk tiers節へのlink、階層H/M/Lの手順の要約、階層M specには改善するベンチマーク
   課題と目標（編集負担ベンチマーク、NFR-014）を含める旨）が追記されている。
   「高リスクPRの独立エビデンス」節は実質変更されていない。（Issue完了条件1の後半）
-- [ ] AC-3: `specs/_template/spec-lite.md` が存在し、階層M用の軽量spec構造
+- [x] AC-3: `specs/_template/spec-lite.md` が存在し、階層M用の軽量spec構造
   （frontmatterの `tier: M`、Problem、Benchmark（改善する課題と目標値。正本は
   `docs/engineering/editing-burden-benchmark.md` / NFR-014）、Outcome、
   Scope / Non-goals、Behavior scenarios（2〜4個。失敗時のzero-writeを1つ含む）、
@@ -210,11 +210,11 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
   によるcandidate HEADの計測結果をPR本文へreportすること（baselineの
   `.md`/`.json` 更新は新しいbaselineを採用する場合だけ）、を含む。
   既存 `specs/_template/spec.md` / `plan.md` は変更されていない。（Issue完了条件2）
-- [ ] AC-4: `CONTEXT.md` から上記12語の定義本文が移動先正本へ移されている。
+- [x] AC-4: `CONTEXT.md` から上記12語の定義本文が移動先正本へ移されている。
   `CONTEXT.md` 側には同一見出しの参照（正本へのlink）が残り、既存spec/Issueからの
   参照が切れない。境界語3種は残置され、その理由が本specに記録されている。
   （Issue完了条件3）
-- [ ] AC-5: `python3 tools/repo-contract/test_validate_high_risk_evidence.py`、
+- [x] AC-5: `python3 tools/repo-contract/test_validate_high_risk_evidence.py`、
   `python3 tools/repo-contract/validate_repo_contract.py`、
   `python3 tools/repo-contract/test_validate_repo_contract.py`、
   `./gradlew spotlessCheck` が成功する（高リスクpath一覧の整合検証、
@@ -225,11 +225,14 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
   `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`
   の計測結果をPR本文へreport）とpatch-surface oracleが
   本specに定義されている。（Issue完了条件4の整備部分。本PRで達成）
-- [x] AC-7: 最初の階層M変更が軽量手順で実証される（例:
-  [Issue #452](https://github.com/nunu1733/NunuLauncher/issues/452)）。このACは
-  本PRでは **未達のまま残す**。実証後に[Issue #444](https://github.com/nunu1733/NunuLauncher/issues/444)
-  へ記録し、その後で本specのstatusを `implemented` へ遷移する。最終PRは
-  `Refs #444` でmergeし、Issueをopenのまま引き渡す。（Issue完了条件4の実証部分）
+- [x] AC-7: 最初の階層M変更が軽量手順で実証される。実証:
+  PR #486（[Issue #452](https://github.com/nunu1733/NunuLauncher/issues/452)、
+  2026-10-01 merge）。実証記録:
+  [Issue #444のAC-7記録](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5933818698)。
+  実証PR本文への `Risk tier: M` 直接記載がなくtier宣言が参照spec冒頭に留まった逸脱は、
+  [owner判断](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5934222863)
+  によりこの1件に限り受理（waiver。次回以降の階層M PRではPR本文への直接記載が必須）。
+  実証後に本specのstatusを `implemented` へ遷移する。（Issue完了条件4の実証部分）
 
 ## Test oracle
 
@@ -241,7 +244,7 @@ set-equality検証（DocConsistencyTests）が引き続き成功する
 | AC-4 | diff review（12語の移動、参照の残置、境界語3種の残置）+ `validate_repo_contract.py` の内部link検証 |
 | AC-5 | 実行commandと結果をPR本文へ記録 |
 | AC-6 | 本specの確認項目とoracle定義の存在（本PR） |
-| AC-7 | merge後の最初の階層M PRと、その結果のIssue #444への記録（本PRでは未達と明示） |
+| AC-7 | PR #486（Issue #452）と[Issue #444のAC-7記録](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5933818698)。tier宣言位置の逸脱は[owner判断](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5934222863)で受理 |
 
 ## Open questions
 
@@ -299,6 +302,10 @@ Phase 1 review（ChatGPT、round 1）で指摘された項目の解決記録で�
   （#443は既に現行手順でmerge済み — PR #467）。最終PRは `Refs #444` でmergeし
   Issueをopenのまま引き渡し、AC-7の実証時にIssue #444へ記録する。ownerが早期closeを
   望む場合は当該判断をIssue #444へ記録する。
+  → 解決済み（2026-10-02）: AC-7はPR #486で実証され、
+  [AC-7記録](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5933818698)と
+  tier宣言逸脱の[owner判断](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5934222863)が
+  Issue #444へ記録済み。
 
 ## Change history
 
@@ -330,3 +337,12 @@ Phase 1 review（ChatGPT、round 1）で指摘された項目の解決記録で�
   確認。tier宣言がPR本文の直接記載ではなく参照spec冒頭に留まった旨を逸脱として
   [Issue #444のAC-7記録](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5933818698)
   へ明記。statusを `implemented` へ遷移し、Issue #444をcloseする。
+- 2026-10-02: PR #496 review round 1（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/496#issuecomment-5934072817):
+  Changes requested、3件）への対応。
+  Finding 1（高）: AC-6手順の「実装PR本文への `Risk tier: M` 直接明示」に対する
+  PR #486の逸脱を[owner判断](https://github.com/nunu1733/NunuLauncher/issues/444#issuecomment-5934222863)
+  でこの1件に限り受理（waiver）し、AC-7本文・Test oracleへ反映。
+  Finding 2（中）: AC-1〜AC-7のチェック状態を証跡（AC-1〜5はPR #468、AC-6は本PR、
+  AC-7はPR #486+owner判断）へ同期し、Open questionsの条件4項目を受入後の状態へ更新。
+  Finding 3（低）: `docs/product/requirements.md` のD-013/D-014 link provenanceを
+  PR #480へ修正（本PRで同時実施）。
