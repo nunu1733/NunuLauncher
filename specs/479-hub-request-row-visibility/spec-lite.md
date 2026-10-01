@@ -133,7 +133,7 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
       `rememberSaveable` でリストのsaveable state（`rememberLazyListState`）と
       ライフサイクルを揃える。実drag後の位置保全 + saveable state復元後の保全を
       testで検証する
-      （`OrganizerHubPreferencesInstrumentationTest.hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent`。
+      （`OrganizerHubDragGuardInstrumentationTest.hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent`。
       実dragはinstrumentationのUiAutomationへの生の
       `injectInputEvent` drag（`UiDevice`は同一プロセスの後続keyboardテストの
       key/focus配信を乱すため不使用 — CI 3実行で再現した汚染の実証済み）、
