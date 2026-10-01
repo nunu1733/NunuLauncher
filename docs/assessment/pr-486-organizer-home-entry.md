@@ -1,6 +1,6 @@
 # Audit: PR #486 「ホームを整理」workspace popup項目（#452 Phase 2）
 
-> Status: **HOLD（条件付きGO）。内容面の実装・test・patch surface・CI attributionはspec Revision 3と整合し、本auditで新たなblocking findingは確認していない。ただし (1) `final-status` が赤（main由来の既存失敗 #487。本PR diffへの帰因なし）、(2) accepted specのAC-5（実機操作数記録）とAC-6（実機TalkBack/Switch Access）が未完了、の2点が解消するまでmerge不可。前者はowner判断事項（既存flake/障害のgate扱い）、後者はownerの物理デバイスでの確認事項である。**
+> Status: **GO（2026-10-01 update。初期判定HOLD、2つのaddendumで条件解消 — 末尾参照）。内容面の実装・test・patch surface・CI attributionはspec Revision 3と整合し、本auditで新たなblocking findingは確認していない。ただし (1) `final-status` が赤（main由来の既存失敗 #487。本PR diffへの帰因なし）、(2) accepted specのAC-5（実機操作数記録）とAC-6（実機TalkBack/Switch Access）が未完了、の2点は addendum 1/2 で解消（#487修正merge+main green / 実機evidence+Revision 4 oracle確定）。**
 > Audit date: 2026-09-30
 
 - Auditor: 独立session（general-purpose subagent）。実装sessionではなく、本PRのdiff作成・Phase 1/2 review・検証実行に関与していない。実装sessionの主張は無検証では採用せず、repo/PR/CI evidenceから独立に再確認した。
@@ -96,3 +96,9 @@
 - **patch surface baselineの再anchor**: rebaseにより旧anchor SHA `3f6bd67a6f` が到達不能となりCIの `--verify` が失敗。anchorを `2163020d8d` へ更新し、#487由来のexcluded変化（+112 additions, +1 file）を含むexpected measurement全体を再採択（commit `849aefe40b`）。counted 数値は不変（**93 files, +20327/-1089**、growth なし）。
 - **CI全green**: head `849aefe40b` のCI run [36796217597](https://github.com/nunu1733/NunuLauncher/actions/runs/36796217597) で **17/17 job pass**（reservation-recovery lane含む。`final-status` pass）。HOLD条件2は解消。
 - **残るHOLD条件**: 条件1（AC-5/AC-6の実機記録）のみ。解消後、owner判断でmerge可能。
+
+## Addendum 2（2026-10-01: 実機evidence・Revision 4・受入確定後の再確認）
+
+- **実機evidence**: Pixel 9a（ja-JP、#449検証と同一端末、最終head相当build `2a4e1e2`）でAC-5/AC-6を採取（[`452-organizer-home-entry-device-evidence.md`](./452-organizer-home-entry-device-evidence.md)）。AC-5は実条件で4操作≤4（選択面の介在を勘定に含める）、AC-6はTalkBack到達・起動。端末の既存a11y設定は完全復元、home（Nova）は変更せず、runは破棄（適用ゼロ）。
+- **受入oracleの確定（spec Revision 4）**: round 4（[判定](https://github.com/nunu1733/NunuLauncher/pull/486#issuecomment-5923335874)）が従来AC-5/AC-6 oracleのliteral読みでRequest changesとしたため、owner判断2件（[AC-6 Switch Access省略](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5923486520) / [AC-5の0件前提supersede](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5923580963)）をIssueへ記録し、spec Revision 4としてoracleを明確化（bar自体は≤4操作から不変）。Revision 4再レビュー（[Request changes: 正本間同期3指摘](https://github.com/nunu1733/NunuLauncher/pull/486#issuecomment-5923520815)）→ 同期commit `ca0662e417` → **Clear**（[判定](https://github.com/nunu1733/NunuLauncher/pull/486#issuecomment-5923694469)。既存の実機4操作evidence・3操作cross-check・TalkBack起動/node tree evidenceがRevision 4 oracleに対応すると確認）。specは `implemented`（commit `04f8b7728f`）。
+- **本監査の判断更新**: HOLD条件1（実機記録）はRevision 4 oracleの下で解消。条件2は先行addendumどおり解消済み。**判定を GO へ更新する**。merge可否の最終確認は最終head（`04f8b7728f`）でのCI結果（docs-onlyの追commitのため実装treeは17/17 green run `36796217597` とbyte同等。ただし #490 のcategory-override/onboarding laneのflakeにより再実行が必要な場合がある）。
