@@ -74,18 +74,22 @@ T-05のpickerは、区別できる意図ごとの3選択肢（既定「標準コ
 
 3. **非表示strategy選択済み時の表示**（メモ§4.5で確定済みの「変更するまで選択中と
    して表示する」の実現方法の決定）:
-   - 読み取りが `Ready` で、保存済み選択が表示3つに含まれない場合、表示3行の**後に**
-     そのstrategyの行（既存の行と同じradio行。localized name＋description）を1行追加し、
-     その行を選択中とする。表示3行は選択中にしない。
+   - 読み取りが `Ready` で、保存済み選択が **catalogの `runtimeSupported` に含まれ、
+   かつ表示3つに含まれない** 場合、表示3行の**後に**そのstrategyの行（既存の行と
+   同じradio行。localized name＋description）を1行追加し、その行を選択中とする。
+   表示3行は選択中にしない。#453が保つべきは「active catalogには残っているが
+   curated 3択から隠した既存strategy」の選択維持であり、追加行の対象をこの範囲に
+   限定する。
    - 追加行は同じ `selectableGroup` の member であり、TalkBackは「4 of 4」のように
      グループ内の選択中行として読み上げる。既存の「picker内の選択中ノードは常に
      ちょうど1つ」の不変条件を保つ。
    - 利用者が表示3行のいずれかを選ぶと、validated write commandで置換され、追加行は
      消える。追加行のtapはradio semanticsのno-op（既存の再選択no-opと同一）。
-   - 保存済み選択がcatalog外（未知・将来schema）でも同じ1行追加で表示する
-     （`organization_strategy_unknown_name` へのfallbackは既存の
-     `strategyDisplayName` が担う）。runはcomposition層でfail-closedのまま。
-   - 読み取り失敗（`Unreadable` / `UnsupportedSchema`）は既存どおり何も選択表示せず、
+   - 保存済み選択が `runtimeSupported` 外（未知・将来binary由来のremoved ID）の場合
+     は追加行を出さず、既存のfail-closed表示（どの行も選択中としない）を維持する。
+     plannerが受け付けない値を有効な選択肢と同じ視覚・semanticsで見せる新しい
+     failure UXは作らない。invalid-stateの回復導線は本Issueの対象外とする。
+   - 読み取り失敗（`Unreadable` / `UnsupportedSchema`）も既存どおり何も選択表示せず、
      追加行も出さない（fail-closed表示。既定の発明をしない）。
 
 4. **文言（ラベル・説明文）の確定**（Issue未解決事項への決定。en（`values`）とja
@@ -120,9 +124,15 @@ T-05のpickerは、区別できる意図ごとの3選択肢（既定「標準コ
      `StrategyWriteArbiter` 経由のまま。表示を絞っても書込み検証はcatalog全体に対して
      行われるため、非表示strategyの保存済み選択は引き続き有効（spec 182 AC-3b/AC-7不変）。
    - 保存済み選択のmigration・置換はしない（fail-closed読み契約は不変）。
-   - 実装PRで、spec 182の「only strategies in the active bundle's runtime-supported set
-     are offered」箇所とspec 368へ、本件による表示契約の改訂（意図curated subsetを
-     表示）を #368 と同じ形式のamendment注記＋change historyへ記録する。
+   - 実装PRで、次の3つのaccepted specへ、本件による表示契約の改訂（意図curated
+     subsetを表示）を #368 と同じ形式のamendment注記＋change historyへ記録する:
+     - **spec 182**: 「only strategies in the active bundle's runtime-supported set are
+       offered」箇所の表示側の読み替え（書込み検証・fail-closed契約は不変）。
+     - **spec 283**: Non-goalsの「picker の候補集合・順序・section 表題の変更」を
+       本Issueに限って解除し、selected affordance契約（selected 1行の視覚判別）を
+       curated 3+1行構成へ読み替える。
+     - **spec 368**: T-05が受けるpickerの説明（runtime-supported catalogのradio
+       group）をcurated表示へ同期する。
 
 ## Non-goals
 
@@ -153,7 +163,8 @@ And 書込み検証は表示リストではなくcatalog全体に対して行わ
 
 ### Scenario: 非表示strategy選択済みなら、変更するまでその行を選択中として表示する
 
-Given 選択storeに表示3つに含まれないstrategy（例: `STABLE_PAGE_TIDY_V1`）が保存済みである
+Given 選択storeに、catalogのruntime-supportedに含まれながら表示3つには含まれない
+strategy（例: `STABLE_PAGE_TIDY_V1`）が保存済みである
 When 利用者がT-05を開く
 Then pickerは表示3行に加えて、そのstrategyの行（localized name＋description）を
 最後に1行composeし、その行が唯一の選択中行である
@@ -161,12 +172,13 @@ When 利用者が表示3行のいずれかを選ぶ
 Then 新しい選択がcommitされ、追加行は表示されなくなる
 And 変更するまで、整理runは保存済みのそのstrategyで計画する（composition契約不変）
 
-### Scenario: 読み取り失敗は従来どおりfail-closed表示（zero-write）
+### Scenario: runtime-supported外・読み取り失敗は従来どおりfail-closed表示（zero-write）
 
-Given 選択storeが破損等の理由で読み取りが `Ready` を返さない
+Given 選択storeの保存値がruntime-supported外の未知IDであるか、または破損等の理由で
+読み取りが `Ready` を返さない
 When 利用者がT-05を開く
 Then どの行も選択中と表示せず、既定を選択中ともせず、追加行も出さず、いかなる書込みも
-行わない
+行わない（既存のfail-closed表示を維持する）
 
 ## Verification
 
@@ -174,10 +186,17 @@ Then どの行も選択中と表示せず、既定を選択中ともせず、追
   - 初回状態でpickerが3行のみであること（終了条件2）。
   - 非表示strategy（例: `STABLE_PAGE_TIDY_V1`）選択済み状態で4行目として選択中表示
     されること、表示3行を選ぶと3行に戻ること（終了条件2）。
+  - 選択の維持: 表示3行の1つを選択 → T-05を離れる → 再度T-05を開く → 同じ行が
+    唯一の選択中のまま表示されること（終了条件2の「選択の書込み・維持」の観測。
+    process restartまでは要求しない。store形式・読み経路は非変更のため、画面再入場
+    でのpersistence観測でtier Mとして十分）。
 - **instrumentation test**（`tests/organizer-instrumentation/`。picker表面の既存所有
   laneを更新。新規laneは追加しない）:
   - 表示3行の構成・順序・localized名。非表示strategyの行がcomposeされないこと。
-  - 非表示strategy選択済み時の4行目追加・唯一の選択中行・選択後の消失。
+  - 非表示strategy選択済み時（`STABLE_PAGE_TIDY_V1` などruntime-supported内）の
+    4行目追加・唯一の選択中行・選択後の消失。
+  - runtime-supported外の未知IDが保存済みの場合は通常のselected radio行を追加せず、
+    選択中表示も出ないこと（既存fail-closed表示の回帰契約）。
   - radio semantics（selectableGroup、親row選択契約、200% font scale）の既存契約を
     3+1行構成へ更新。
   - fail-closed読み取りの既存test（選択表示なし）の維持。
@@ -199,8 +218,10 @@ Then どの行も選択中と表示せず、既定を選択中ともせず、追
 
 - 1つの `selectableGroup` 内のradio行というIssue #218 a11y契約を維持する。追加行も
   group memberであり、TalkBackは行名・選択状態・説明を1nodeとして読み上げる。
-- 追加行は選択中の実態を示すためだけにあり、単独では新たなfocus対象を増やさない
-  （親row選択契約の既存testを3+1行へ更新して検証）。
+- 追加行は1つの新しいfocus/selectable target（1つの論理的な選択肢）として増える。
+  維持する契約はspec 283と同じ「1 row = 1 logical option」であり、行内のvisual-onlyな
+  child `RadioButton(onClick = null)` が独立したfocus対象を増やさないことである
+  （既存の親row選択契約testを3+1行構成へ更新して検証）。
 - 200% font scaleで行が折り返し、幅を超えないこと（既存のvisual evidence testを
   3+1行構成へ更新）。
 - 対象localeはen/jaのみ（他localeはorganizer strategy stringsを持たない）。ja文言は
@@ -210,5 +231,12 @@ Then どの行も選択中と表示せず、既定を選択中ともせず、追
 ## Change history
 
 - 2026-10-01: Draft created for #453.
+- 2026-10-01: Review revision 1 (PR #492, ChatGPT review
+  [#issuecomment-5929627257](https://github.com/nunu1733/NunuLauncher/pull/492#issuecomment-5929627257)):
+  追加行の対象をruntime-supported内の非表示strategyへ限定し、未知ID・
+  `UnsupportedSchema`/`Unreadable` のfail-closed表示契約を一意化（指摘1）。spec 283を
+  同期対象へ追加し、a11y節のfocus対象の記述を「1 row = 1 logical option」契約へ修正
+  （指摘2）。実機evidenceへ選択維持の観測手順（再入場で同一行が唯一selected）を追加、
+  instrumentation oracleへ未知IDの回帰契約を追加（指摘3）。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/453
