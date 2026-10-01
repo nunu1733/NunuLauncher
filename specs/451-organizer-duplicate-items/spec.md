@@ -1,10 +1,10 @@
 ---
 issue: "#451"
-status: accepted
+status: implemented
 requirements:
   - FR-021
   - NFR-014
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 
 # 全体整理が同じ起動先の重複アイテムを同じ新規フォルダに入れず、重複をpreviewで示す
@@ -196,15 +196,15 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 
 ## Acceptance criteria
 
-- [ ] AC-1: planner interface（`OrganizationPlanner.plan`）経由のtestで、同一 `TargetKey.AppKey` / `ShortcutKey` の重複超過分が同じ新規フォルダのmemberにならないこと（重複を含むfixtureで、各新規フォルダ内の起動先が一意であること）を検証する。
-- [ ] AC-2: 代表選択が `ItemId` canonical順で決定的であること（同入力→同出力、permutation・locale・threadで値等価。P-09）、およびmaterialize後の再実行で全target不変・`Moved`/`newPages`/`newFolders`なし・同一preservation reason（`DUPLICATE_LAUNCH_TARGET` 含む。P-10）を検証する。
-- [ ] AC-3: 重複超過分1個につき `Warning(DUPLICATE_LAUNCH_TARGET, [ItemParam])` が1件、代表に0件であること、警告が `createsFolders` の値によらず発生すること、および `WarningCode` の追加が既存警告のcanonical順序を変えないことを検証する。
-- [ ] AC-4: 除外がP-03の優先度（より高い保全predicateが勝つ）とP-05の分割（除外後のmembersでサイズ判定）に正しく反映されること、`IncrementalPlacement` では配置が不変でreason語彙のみ付け替わることを検証する。
-- [ ] AC-5: 既存corpusの個別digest（`digestsBySource`）が全て不変であること、および重複fixture追加後の再固定digestが理由付きでcommitされていることを検証する。
-- [ ] AC-6: policy bundleのsemantic versionが `v2.8` に上がり、strategy catalog（runtime-supported集合、default）と `StrategyId` が不変であることを検証する。
-- [ ] AC-7: previewの変更一覧で重複超過分が警告groupの項目警告行として表示され、件数truth（spec 195 D2）と保持行の理由表示が一致することを、単体test（`PlanPreviewProjector` 経由）と実機確認で検証する。ja / en両localeで文言が解決する。
-- [ ] AC-8: B7との関係（本specのB7目標節）が実装PRで `docs/engineering/editing-burden-benchmark.md` の目標表へ反映され、#441のbaseline（B7 = 9）と矛盾しない。
-- [ ] AC-9: 対象ACの検証コマンド（unit/contract test、spotless、debug assembly、`git diff --check`）が成功し、結果がPRに記録される。
+- [x] AC-1: planner interface（`OrganizationPlanner.plan`）経由のtestで、同一 `TargetKey.AppKey` / `ShortcutKey` の重複超過分が同じ新規フォルダのmemberにならないこと（重複を含むfixtureで、各新規フォルダ内の起動先が一意であること）を検証する。
+- [x] AC-2: 代表選択が `ItemId` canonical順で決定的であること（同入力→同出力、permutation・locale・threadで値等価。P-09）、およびmaterialize後の再実行で全target不変・`Moved`/`newPages`/`newFolders`なし・同一preservation reason（`DUPLICATE_LAUNCH_TARGET` 含む。P-10）を検証する。
+- [x] AC-3: 重複超過分1個につき `Warning(DUPLICATE_LAUNCH_TARGET, [ItemParam])` が1件、代表に0件であること、警告が `createsFolders` の値によらず発生すること、および `WarningCode` の追加が既存警告のcanonical順序を変えないことを検証する。
+- [x] AC-4: 除外がP-03の優先度（より高い保全predicateが勝つ）とP-05の分割（除外後のmembersでサイズ判定）に正しく反映されること、`IncrementalPlacement` では配置が不変でreason語彙のみ付け替わることを検証する。
+- [x] AC-5: 既存corpusの個別digest（`digestsBySource`）が全て不変であること、および重複fixture追加後の再固定digestが理由付きでcommitされていることを検証する。
+- [x] AC-6: policy bundleのsemantic versionが `v2.8` に上がり、strategy catalog（runtime-supported集合、default）と `StrategyId` が不変であることを検証する。
+- [x] AC-7: previewの変更一覧で重複超過分が警告groupの項目警告行として表示され、件数truth（spec 195 D2）と保持行の理由表示が一致することを、単体test（`PlanPreviewProjector` 経由）と実機確認で検証する。ja / en両localeで文言が解決する。
+- [x] AC-8: B7との関係（本specのB7目標節）が実装PRで `docs/engineering/editing-burden-benchmark.md` の目標表へ反映され、#441のbaseline（B7 = 9）と矛盾しない。
+- [x] AC-9: 対象ACの検証コマンド（unit/contract test、spotless、debug assembly、`git diff --check`）が成功し、結果がPRに記録される。
 
 ## Test oracle
 
@@ -232,3 +232,5 @@ None。追加permission・外部送信・sensitive dataなし。警告は `ItemP
 - 2026-09-30: ChatGPT review対応（P1×2、P2×1）— Behavior scenarioの代表を `ItemId` canonical順（UTF-8 byte順で "10" < "2"）へ整合し、N-1に重複判定の対象（全captured item）と「Issue本文からの意図的な契約拡張」を明記、Open questionsへ契約拡張のowner確認を追加。plan側のproperty test方式の確定は [plan.md](./plan.md) のRe-entry記録参照。
 - 2026-09-30: ChatGPT re-review対応（残P2×2）— Test oracleのAC-2行を「重複注入wrapper」に一本化（生成器拡張は [plan.md](./plan.md) のVerificationで不採用確定）。plan側はDependency / blockerをOpen questionsの2件のowner decisionへ更新。
 - 2026-09-30: accepted（owner decision 2件の承認を含む。tier H確定、`risk: layout-data` label適用）。
+- 2026-10-01: statusを `implemented` へ遷移（遡及記録）。実装は [PR #485](https://github.com/nunu1733/NunuLauncher/pull/485)（2026-09-30 merge）。独立audit GO（`docs/assessment/pr-485-451-organizer-duplicate-items.md`）とCI merge gate（`final-status` 成功、run 36711825048）を根拠にAC-1〜AC-9全達成でIssue #451はclose済みだったが、本specのstatus遷移のみ漏れていたため本PRで揃えた。
+- 2026-10-02: AC checklistを受入証跡へ同期（遡及記録。PR #496 review指摘への対応）。AC-1〜AC-9の全項目はPR #485実装と独立audit GO（`docs/assessment/pr-485-451-organizer-duplicate-items.md`）とCI merge gate（run 36711825048）で確認済みのため `[x]` へ更新した。status遷移（上の2026-10-01記録）と同一根拠。
