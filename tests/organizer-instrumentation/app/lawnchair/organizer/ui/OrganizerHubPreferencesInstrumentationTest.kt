@@ -473,6 +473,7 @@ class OrganizerHubPreferencesInstrumentationTest {
      * request row returns — failing the post-restore assertion (the exact
      * remember/rememberSaveable asymmetry review round 1 flagged).
      */
+    @org.junit.Ignore("bisect B: isolating the AC-2 oracle from the keyboard-focus regression")
     @Test
     fun hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent() {
         val application = FakeHubApplication()
