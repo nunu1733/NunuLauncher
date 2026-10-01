@@ -319,10 +319,21 @@ public final class DirectEditContract {
         return parts;
     }
 
-    /** True when the persisted snapshot explicitly selects the upstream default. */
-    public static boolean isUpstreamSnapshot(@Nullable String raw) {
-        return raw != null && raw.startsWith(DEST_SNAPSHOT_KIND_UPSTREAM
-                + DEST_SNAPSHOT_SEPARATOR);
+    /**
+     * True when the snapshot decodes completely into a valid UPSTREAM
+     * selection. The stock-path bypass must use this, not the
+     * {@code startsWith} prefix alone: a corrupt or identity-mismatched
+     * upstream snapshot has to reach the stage-2 classifier for the typed
+     * {@code SNAPSHOT_INVALID} handling (Issue #497 Phase 2 review).
+     */
+    public static boolean isValidUpstreamSnapshot(@Nullable String raw,
+            long baseUserSerial, @NonNull String basePackageName) {
+        String[] parts = parseDestinationSnapshot(raw);
+        if (parts == null || !DEST_SNAPSHOT_KIND_UPSTREAM.equals(parts[0])) {
+            return false;
+        }
+        return Long.parseLong(parts[2]) == baseUserSerial
+                && basePackageName.equals(parts[3]);
     }
 
     /** Closed result (ADR-0015 Decision 8) decided by {@link DestinationValidator}. */

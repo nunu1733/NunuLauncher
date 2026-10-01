@@ -27,7 +27,11 @@ import androidx.compose.ui.unit.dp
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.homeedit.AppDestinationNotice
 import app.lawnchair.homeedit.AppDestinationPolicyPrefs
+import app.lawnchair.homeedit.AppDestinationSummaryState
+import app.lawnchair.homeedit.DestinationSummaryKind
 import app.lawnchair.homeedit.HomeEditExecutor
+import app.lawnchair.homeedit.destinationNoticeText
+import app.lawnchair.homeedit.destinationSummaryText
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.preferenceManager
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
@@ -63,24 +67,34 @@ fun DestinationPolicyPreference(enabled: Boolean, modifier: Modifier = Modifier)
         if (showFolderPicker) executor?.fetchAllFolderOptions { fetched -> folderOptions = fetched }
     }
 
-    val folderSummary = selectedFolderId
-        ?.let { folderTitle(launcher, it) }
-        ?.takeIf { it.isNotEmpty() }
+    // The folder's existence and its title are distinct (spec AC-3): a
+    // designated id that no longer resolves shows the "choose again" state
+    // instead of a default-labelled folder.
+    val folderIcon = selectedFolderId?.let { folderIcon(launcher, it) }
+    val folderExists = folderIcon != null
+    val folderDisplayTitle = (folderIcon?.mInfo?.title as? String)?.takeIf { it.isNotEmpty() }
         ?: stringResource(R.string.homeedit_folder_default_label)
+    val summaryKind = AppDestinationSummaryState.resolve(
+        addIconOn = addIconOn,
+        designatedFolderId = selectedFolderId,
+        folderExists = folderExists,
+        folderTitle = folderIcon?.mInfo?.title?.toString(),
+    )
     val summary = buildString {
         append(
-            when {
-                !addIconOn -> stringResource(R.string.destination_policy_summary_dont_add)
+            when (summaryKind) {
+                DestinationSummaryKind.FOLDER_NAMED ->
+                    stringResource(destinationSummaryText(summaryKind), folderDisplayTitle)
 
-                selectedFolderId != null ->
-                    stringResource(R.string.destination_policy_summary_folder, folderSummary)
+                DestinationSummaryKind.FOLDER_UNTITLED ->
+                    stringResource(destinationSummaryText(summaryKind), folderDisplayTitle)
 
-                else -> stringResource(R.string.destination_policy_summary_upstream)
+                else -> stringResource(destinationSummaryText(summaryKind))
             },
         )
         if (pendingNotice != null) {
             append("\n")
-            append(noticeText(pendingNotice))
+            append(stringResource(destinationNoticeText(pendingNotice)))
         }
     }
 
@@ -169,11 +183,12 @@ private fun DestinationFolderPickerDialog(
                     Text(stringResource(R.string.all_apps_loading_message))
                 } else {
                     loaded.forEach { option ->
+                        val title = folderIcon(launcher, option.folderId)?.mInfo?.title
+                            ?.toString()?.takeIf { it.isNotEmpty() }
+                            ?: stringResource(R.string.homeedit_folder_default_label)
                         val label = stringResource(
                             R.string.homeedit_folder_entry,
-                            folderTitle(launcher, option.folderId).ifEmpty {
-                                stringResource(R.string.homeedit_folder_default_label)
-                            },
+                            title,
                             option.itemCount,
                         ) + if (multipleProfiles && option.userSerial != mainSerial) {
                             " " + stringResource(R.string.destination_policy_other_profile)
@@ -203,18 +218,4 @@ private fun DestinationFolderPickerDialog(
     )
 }
 
-private fun folderTitle(launcher: LawnchairLauncher?, folderId: Int): CharSequence {
-    val icon = launcher?.workspace?.getHomescreenIconByItemId(folderId)
-    val info = (icon as? FolderIcon)?.mInfo
-    return info?.title?.takeIf { it.isNotEmpty() } ?: ""
-}
-
-/** Maps a typed fallback reason to the localized one-shot notice text. */
-@Composable
-private fun noticeText(reasonKey: String): String = when (reasonKey) {
-    "DEST_FOLDER_MISSING" -> stringResource(R.string.destination_policy_notice_missing)
-    "DEST_PROFILE_MISMATCH" -> stringResource(R.string.destination_policy_notice_profile)
-    "DEST_DOCK_FOLDER" -> stringResource(R.string.destination_policy_notice_dock)
-    "DEST_CONSTRAINT_VIOLATION" -> stringResource(R.string.destination_policy_notice_constraint)
-    else -> stringResource(R.string.destination_policy_notice_snapshot)
-}
+private fun folderIcon(launcher: LawnchairLauncher?, folderId: Int): FolderIcon? = launcher?.workspace?.getHomescreenIconByItemId(folderId) as? FolderIcon

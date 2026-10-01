@@ -80,6 +80,7 @@
     <string name="destination_policy_label">新しいアプリの配置先</string>
     <string name="destination_policy_summary_upstream">上流の既定（最初の空きセル）</string>
     <string name="destination_policy_summary_folder">指定フォルダ: %1$s</string>
+    <string name="destination_policy_summary_folder_missing">指定フォルダが見つかりません。選び直してください</string>
     <string name="destination_policy_summary_dont_add">新しいアプリを追加しない</string>
     <string name="destination_policy_dialog_title">新しいアプリの配置先</string>
     <string name="destination_policy_choice_upstream">上流の既定</string>

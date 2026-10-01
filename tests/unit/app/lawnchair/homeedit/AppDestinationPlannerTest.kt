@@ -100,8 +100,20 @@ class AppDestinationPlannerTest {
         assertEquals("10", parts[2])
         assertEquals("com.test.app", parts[3])
 
-        assertTrue(DirectEditContract.isUpstreamSnapshot("upstream|0|10|com.test.app"))
-        assertTrue(!DirectEditContract.isUpstreamSnapshot(raw))
+        // The stock bypass requires a fully decoded, identity-matching
+        // UPSTREAM snapshot (Phase 2 review round 1): prefix matches alone are
+        // not sufficient.
+        assertTrue(
+            DirectEditContract.isValidUpstreamSnapshot("upstream|0|10|com.test.app", 10L, "com.test.app"),
+        )
+        assertTrue(!DirectEditContract.isValidUpstreamSnapshot(raw, 10L, "com.test.app"))
+        assertTrue(
+            !DirectEditContract.isValidUpstreamSnapshot("upstream|x|10|com.test.app", 10L, "com.test.app"),
+        )
+        assertTrue(
+            !DirectEditContract.isValidUpstreamSnapshot("upstream|0|99|com.other.app", 10L, "com.test.app"),
+        )
+        assertTrue(!DirectEditContract.isValidUpstreamSnapshot(null, 10L, "com.test.app"))
         assertNull(DirectEditContract.parseDestinationSnapshot(null))
         assertNull(DirectEditContract.parseDestinationSnapshot(""))
         assertNull(DirectEditContract.parseDestinationSnapshot("folder|x|10|com.test.app"))

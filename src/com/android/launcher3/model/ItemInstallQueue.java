@@ -159,7 +159,7 @@ public class ItemInstallQueue implements SafeCloseable {
 
         List<Pair<ItemInfo, Object>> installQueue = mItems.stream()
                 .map(info -> attachDestinationRoute(mContext, info.getItemInfo(mContext),
-                        info.mDestinationSnapshot, info.user, info.intent))
+                        info.mDestinationSnapshot, info.user, info.intent, info.itemType))
                 .collect(Collectors.toList());
 
         // Add the items and clear queue
@@ -174,18 +174,26 @@ public class ItemInstallQueue implements SafeCloseable {
     /**
      * Issue #497: attaches the flush-time destination route read from the
      * persisted snapshot (read-only decode; the current policy is never
-     * re-read at flush, ADR-0015 Decision 10). A plain upstream snapshot —
-     * or an unregistered resolver — keeps the stock path. Package-visible
-     * static so the instrumentation harness can drive it directly: the real
-     * flush needs a launcher activity, which the harness does not have.
+     * re-read at flush, ADR-0015 Decision 10). Only application entries from
+     * the automatic-add path are policy candidates: the manual-placement
+     * overloads queue deep shortcuts and widgets, which keep the stock path
+     * even if a snapshot attribute were present (spec AC-6). A missing
+     * snapshot on an application entry is the old-format case and still
+     * routes, so the validator can apply the typed SNAPSHOT_INVALID fallback.
+     * Package-visible static so the instrumentation harness can drive it
+     * directly: the real flush needs a launcher activity, which the harness
+     * does not have.
      */
     @WorkerThread
     static Pair<ItemInfo, Object> attachDestinationRoute(Context context,
             Pair<ItemInfo, Object> pair, @Nullable String snapshot, UserHandle user,
-            Intent intent) {
+            Intent intent, int itemType) {
+        if (pair == null || itemType != Favorites.ITEM_TYPE_APPLICATION) {
+            return pair;
+        }
         DirectEditContract.DestinationResolver resolver =
                 DirectEditContract.getDestinationResolver();
-        if (pair == null || resolver == null) {
+        if (resolver == null) {
             return pair;
         }
         DirectEditContract.DestinationRoute route = resolver.route(snapshot,

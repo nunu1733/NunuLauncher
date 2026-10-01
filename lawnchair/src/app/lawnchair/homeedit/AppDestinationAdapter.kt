@@ -151,16 +151,18 @@ object AppDestinationBridge {
 
         /**
          * flush時のrouting。persisted snapshotを読むだけ（current policyは
-         * 再読しない）。upstream選択のsnapshotは既定経路（stock）のまま。
-         * 欠損・破損・folder選択は新op経路へ流し、stage-2のclosed resultに
-         * 任せる。
+         * 再読しない）。既定経路（stock）に戻すのは「snapshotが完全にdecode
+         * でき、かつ基底entryのidentityと一致する有効なUPSTREAM選択」のとき
+         * だけ（Phase 2 review round 1。prefix照合では破損・identity不一致を
+         * 見逃す）。それ以外はpolicy routeへ流し、stage-2のclassifierと
+         * validatorにtypedな判断を委ねる。
          */
         override fun route(
             raw: String?,
             userSerial: Long,
             packageName: String,
         ): DirectEditContract.DestinationRoute? {
-            if (DirectEditContract.isUpstreamSnapshot(raw)) {
+            if (DirectEditContract.isValidUpstreamSnapshot(raw, userSerial, packageName)) {
                 return null
             }
             return DirectEditContract.DestinationRoute(

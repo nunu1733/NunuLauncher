@@ -609,6 +609,7 @@
     <string name="destination_policy_label">Where to place new apps</string>
     <string name="destination_policy_summary_upstream">Upstream default (first free cell)</string>
     <string name="destination_policy_summary_folder">Designated folder: %1$s</string>
+    <string name="destination_policy_summary_folder_missing">Designated folder is gone — choose again</string>
     <string name="destination_policy_summary_dont_add">Don\u2019t add new apps</string>
     <string name="destination_policy_dialog_title">Where to place new apps</string>
     <string name="destination_policy_choice_upstream">Upstream default</string>
