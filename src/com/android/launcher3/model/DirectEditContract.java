@@ -16,6 +16,10 @@
 
 package com.android.launcher3.model;
 
+import android.content.Context;
+import android.os.UserHandle;
+
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.android.launcher3.model.data.FolderInfo;
@@ -243,5 +247,196 @@ public final class DirectEditContract {
                 int oldSpanX, int oldSpanY, int oldRank, int createdFolderId,
                 @Nullable FolderInfo createdFolder,
                 @Nullable UndoRowPayload removedRowPayload);
+    }
+
+    // ===== Issue #497: destination policy for auto-added installs =====
+    // ADR-0013 target (b) / ADR-0015 Decision 7-10: the placement decision
+    // for an automatically added install icon is the closed result of one
+    // pure planning function re-run inside MODEL_WRITER admission. Like the
+    // #448 types above these are plain-data platform contract types only:
+    // src/ must not depend on the lawnchair module.
+
+    /** Typed fallback reasons (ADR-0015 Decision 4/8/10). */
+    public static final String DEST_FOLDER_MISSING = "DEST_FOLDER_MISSING";
+    public static final String DEST_PROFILE_MISMATCH = "DEST_PROFILE_MISMATCH";
+    public static final String DEST_DOCK_FOLDER = "DEST_DOCK_FOLDER";
+    public static final String DEST_CONSTRAINT_VIOLATION = "DEST_CONSTRAINT_VIOLATION";
+    public static final String DEST_SNAPSHOT_INVALID = "DEST_SNAPSHOT_INVALID";
+
+    /** Action codes of {@link DestinationDecision}. */
+    public static final int DEST_ACTION_FOLDER = 1;
+    public static final int DEST_ACTION_DEFAULT = 2;
+    public static final int DEST_ACTION_REJECT = 3;
+
+    /** Sentinel result screen id when the finder allocated no new screen. */
+    public static final int DEST_NO_SCREEN_ID = -1;
+
+    /** Snapshot wire-format kind tokens (see {@link #serializeDestinationSnapshot}). */
+    public static final String DEST_SNAPSHOT_KIND_UPSTREAM = "upstream";
+    public static final String DEST_SNAPSHOT_KIND_FOLDER = "folder";
+
+    private static final char DEST_SNAPSHOT_SEPARATOR = '|';
+
+    /**
+     * Serializes the policy snapshot captured at enqueue time (ADR-0015
+     * Decision 10: policy kind, designated folder id, user serial and
+     * package). The pipe-separated encoding is contract; package names never
+     * contain a pipe character.
+     */
+    @NonNull
+    public static String serializeDestinationSnapshot(@NonNull String kind, int folderId,
+            long userSerial, @NonNull String packageName) {
+        StringBuilder sb = new StringBuilder(kind)
+                .append(DEST_SNAPSHOT_SEPARATOR).append(folderId)
+                .append(DEST_SNAPSHOT_SEPARATOR).append(userSerial)
+                .append(DEST_SNAPSHOT_SEPARATOR).append(packageName);
+        return sb.toString();
+    }
+
+    /**
+     * Parses a persisted snapshot into {@code [kind, folderId, userSerial,
+     * packageName]} or null when the snapshot part is missing/corrupt. The
+     * caller decides the typed meaning of null ({@code SNAPSHOT_INVALID})
+     * against the base entry identity.
+     */
+    @Nullable
+    public static String[] parseDestinationSnapshot(@Nullable String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String[] parts = raw.split("\\|", -1);
+        if (parts.length != 4
+                || (!DEST_SNAPSHOT_KIND_UPSTREAM.equals(parts[0])
+                    && !DEST_SNAPSHOT_KIND_FOLDER.equals(parts[0]))) {
+            return null;
+        }
+        try {
+            Integer.parseInt(parts[1]);
+            Long.parseLong(parts[2]);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return parts;
+    }
+
+    /** True when the persisted snapshot explicitly selects the upstream default. */
+    public static boolean isUpstreamSnapshot(@Nullable String raw) {
+        return raw != null && raw.startsWith(DEST_SNAPSHOT_KIND_UPSTREAM
+                + DEST_SNAPSHOT_SEPARATOR);
+    }
+
+    /** Closed result (ADR-0015 Decision 8) decided by {@link DestinationValidator}. */
+    public static final class DestinationDecision {
+        public final int action;
+
+        /** Designated folder id when {@link #action} is {@code DEST_ACTION_FOLDER}. */
+        public final int folderId;
+
+        /**
+         * Fallback reason ({@code DEST_*} key) when the action is
+         * {@code DEST_ACTION_DEFAULT}; typed failure key when the action is
+         * {@code DEST_ACTION_REJECT}; null for {@code DEST_ACTION_FOLDER}.
+         */
+        @Nullable
+        public final String reason;
+
+        private DestinationDecision(int action, int folderId, @Nullable String reason) {
+            this.action = action;
+            this.folderId = folderId;
+            this.reason = reason;
+        }
+
+        public static DestinationDecision folder(int folderId) {
+            return new DestinationDecision(DEST_ACTION_FOLDER, folderId, null);
+        }
+
+        public static DestinationDecision upstreamDefault(@NonNull String reason) {
+            return new DestinationDecision(DEST_ACTION_DEFAULT, 0, reason);
+        }
+
+        public static DestinationDecision reject(@NonNull String reason) {
+            return new DestinationDecision(DEST_ACTION_REJECT, 0, reason);
+        }
+    }
+
+    /**
+     * Stage-2 validator for the destination write. Runs inside MODEL_WRITER
+     * admission on the model thread and returns the closed result for the
+     * persisted policy snapshot against the current state; a stale folder
+     * re-plans to {@code upstreamDefault(reason)} instead of failing.
+     */
+    public interface DestinationValidator {
+        DestinationDecision validate(Snapshot current);
+    }
+
+    /**
+     * Result callback for the destination write, invoked on the model thread
+     * after the admitted insert (or the typed rejection without any write).
+     * {@code newScreenId} is the screen allocated by
+     * {@code WorkspaceItemSpaceFinder} inside admission for an
+     * upstream-default write, or {@link #DEST_NO_SCREEN_ID}; the caller uses
+     * it for the single post-success bind so a newly created page is visible
+     * without a reload. {@code reason} carries the fallback reason of a
+     * re-planned upstream-default write.
+     */
+    public interface DestinationResultCallback {
+        void onResult(boolean success, int container, int screenId, int cellX, int cellY,
+                int rank, int newScreenId, @Nullable String reason);
+    }
+
+    /**
+     * Flush-time routing value carried alongside the queue item (read-only
+     * decode of the persisted snapshot). {@code usePolicyWrite} routes the
+     * item to the admission-bounded destination write; the stock upstream
+     * path stays untouched for the plain upstream-default snapshot.
+     */
+    public static final class DestinationRoute {
+        public final boolean usePolicyWrite;
+
+        @Nullable
+        public final DestinationValidator validator;
+
+        @Nullable
+        public final DestinationResultCallback callback;
+
+        public DestinationRoute(boolean usePolicyWrite,
+                @Nullable DestinationValidator validator,
+                @Nullable DestinationResultCallback callback) {
+            this.usePolicyWrite = usePolicyWrite;
+            this.validator = validator;
+            this.callback = callback;
+        }
+    }
+
+    /**
+     * Injection port for the fork-side destination policy (ADR-0015 Decision
+     * 12: owned by the direct-edit-side module). The platform side only sees
+     * contract types; the fork registers an implementation at process start.
+     * {@code captureDestination} returns the snapshot to persist at enqueue
+     * time (never null for automatic adds); {@code route} maps the persisted
+     * snapshot to a flush-time routing value, or null to leave the stock
+     * upstream path untouched.
+     */
+    public interface DestinationResolver {
+        @Nullable
+        String captureDestination(@NonNull Context context, @NonNull String packageName,
+                @NonNull UserHandle user);
+
+        @Nullable
+        DestinationRoute route(@Nullable String snapshot, long userSerial,
+                @NonNull String packageName);
+    }
+
+    @Nullable
+    private static volatile DestinationResolver sDestinationResolver;
+
+    /** Registers the fork-side resolver; null restores the stock behavior. */
+    public static void setDestinationResolver(@Nullable DestinationResolver resolver) {
+        sDestinationResolver = resolver;
+    }
+
+    @Nullable
+    public static DestinationResolver getDestinationResolver() {
+        return sDestinationResolver;
     }
 }

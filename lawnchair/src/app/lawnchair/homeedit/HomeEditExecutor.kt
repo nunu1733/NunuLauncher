@@ -67,6 +67,31 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
     }
 
     /**
+     * Issue #497: all workspace folders across profiles for the destination
+     * picker. Dock folders are excluded — a Dock folder is not selectable as
+     * the designated folder (ADR-0015 Decision 4) — and the caller annotates
+     * the profile per entry.
+     */
+    fun fetchAllFolderOptions(callback: (List<FolderOption>) -> Unit) {
+        Executors.MODEL_EXECUTOR.execute {
+            val snapshot = buildSnapshot()
+            val options = snapshot.items
+                .filter {
+                    it.itemType == HomeEditItemTypes.FOLDER &&
+                        it.container == HomeEditContainers.DESKTOP
+                }
+                .map { folder ->
+                    FolderOption(
+                        folderId = folder.id,
+                        itemCount = snapshot.items.count { it.container == folder.id },
+                        userSerial = folder.userSerial,
+                    )
+                }
+            mainHandler.post { callback(options) }
+        }
+    }
+
+    /**
      * Stage-1 planning at confirm time, then submission of the validated
      * plan. Rejects without any write, reporting a localized reason.
      */

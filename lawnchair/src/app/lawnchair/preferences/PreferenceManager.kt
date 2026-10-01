@@ -49,6 +49,11 @@ class PreferenceManager private constructor(private val context: Context) :
     val transparentIconBackground = BoolPref("prefs_transparentIconBackground", false, recreate)
     val shadowBGIcons = BoolPref("pref_shadowBGIcons", true, recreate)
     val addIconToHome = BoolPref("pref_add_icon_to_home", true)
+
+    // Issue #497: new-app destination policy selection ("upstream" or
+    // "folder:<id>"). "Don't add" is the addIconToHome off state itself and
+    // has no value here (ADR-0015 Decision 15).
+    val newAppDestination = StringPref("pref_new_app_destination", "upstream")
     val hotseatColumns = IntPref("pref_hotseatColumns", 4, reloadGrid)
     val workspaceColumns = IntPref("pref_workspaceColumns", 4)
     val workspaceRows = IntPref("pref_workspaceRows", 5)

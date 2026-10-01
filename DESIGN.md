@@ -231,6 +231,14 @@ lawnchair/src/app/lawnchair/homeedit/     # Issue #448: per-item edit actions
 │                                         # ADR-0013 contract 5; edit-session undo flows
 │                                         # through the existing organizer recovery path with
 │                                         # the apply receipt's verified post revision)
+│                                         # Issue #497: new-app destination policy (pure
+│                                         # planner with the ADR-0015 closed result, snapshot
+│                                         # classifier, settings row + folder picker; the
+│                                         # resolver/bridge reads the current policy only at
+│                                         # enqueue time and the persisted snapshot only at
+│                                         # flush time; the admitted write is the minimal
+│                                         # ModelWriter op with the upstream finder semantics
+│                                         # inside admission, ADR-0013 contract 4)
 ```
 
 package数をこの図に合わせること自体を目的にしない。interfaceを深く保ち、変更のlocalityが高まる分割だけを採用する。platform source側には最小のbridgeを置く。テスト配置は上流のconvention確認後に決める。
@@ -260,7 +268,7 @@ package数をこの図に合わせること自体を目的にしない。interfa
 | 4. grid非依存の配置policy v1 | [spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md) (元提案: [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [layout-strategy-v1](./docs/product/layout-strategy-v1.md)) |
 | 5. category taxonomyと分類source | planner側のtaxonomy契約、signal source、category resolution: [spec 10](./specs/10-pure-organization-planning/spec.md)、[spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。ユーザー定義カテゴリのfirst-class identityとactive category catalog: [spec 336](./specs/336-user-defined-categories/spec.md)。adapter側の分類source提案: [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [category-taxonomy-v1](./docs/product/category-taxonomy-v1.md) |
 | 6. 整理ルールのfile formatとversioning | 正本なし (D-009)。未起票proposalは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を参照 |
-| 7. 新規アプリの配置先ポリシー | 上流が追加を決めたアイコンの配置先（上流の既定/指定フォルダ/追加しない）とfallback条件、書込み構造（ADR-0013契約4のadmission内完結）、policy snapshotのcapture/read境界: [ADR-0015](./docs/adr/0015-new-app-destination-policy.md) / [Issue #446](https://github.com/nunu1733/NunuLauncher/issues/446)。書込みの安全条件は [ADR-0013](./docs/adr/0013-direct-edit-write-contract.md)（gate 2系統の直接編集契約）に委譲 |
+| 7. 新規アプリの配置先ポリシー | 上流が追加を決めたアイコンの配置先（上流の既定/指定フォルダ/追加しない）とfallback条件、書込み構造（ADR-0013契約4のadmission内完結）、policy snapshotのcapture/read境界: [ADR-0015](./docs/adr/0015-new-app-destination-policy.md) / [Issue #446](https://github.com/nunu1733/NunuLauncher/issues/446)。実現surface（Layout Application interface相当の要求テスト行のcanonical owner）: [ADR-0016](./docs/adr/0016-layout-application-test-surface.md)。最初の実装: [spec 497](./specs/497-new-app-destination-policy-impl/spec.md) / [Issue #497](https://github.com/nunu1733/NunuLauncher/issues/497)。書込みの安全条件は [ADR-0013](./docs/adr/0013-direct-edit-write-contract.md)（gate 2系統の直接編集契約）に委譲 |
 | 8. 直接編集（項目単位の編集アクション） | 書込み契約（二段階検証、1アクション=1 transaction、MODEL_WRITER admission内完結、Undo fail-closed）とAGENTS.md安全規約のcarve-out: [ADR-0013](./docs/adr/0013-direct-edit-write-contract.md) / [Issue #445](https://github.com/nunu1733/NunuLauncher/issues/445)。操作面と純粋計画module（#449と共有）の最初の実装: [spec 448](./specs/448-edit-actions-per-item/spec.md) / [Issue #448](https://github.com/nunu1733/NunuLauncher/issues/448)。Undo本体・寿命: #450。第2段の視覚的編集画面: [ADR-0014](./docs/adr/0014-edit-surface.md) / #449 |
 
 正本が存在しない、または正本が提案どまりの判断を実装で固定しない。gateの変更は、正本となるADR/spec/Issue側から行う。

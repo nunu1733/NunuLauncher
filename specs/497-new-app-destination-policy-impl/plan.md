@@ -2,7 +2,7 @@
 
 > Issue: #497
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: implemented（Phase 2。Phase 2 review待ち）
 > Risk tier: H — `favorites`行の追加を伴う新しい書込み経路（ADR-0013契約4どおりの`ModelWriter`操作追加）と、上流のmodel経路（`ItemInstallQueue` / `AddWorkspaceItemsTask`）へのbridgeを作るため。`ModelWriter.java`が高リスクpath一覧（`tools/repo-contract/validate_high_risk_evidence.py` の `HIGH_RISK_PATH_FILES`）に含まれるため、実装PRは `risk: layout-data` 対象であり、独立auditと`final-status`を要求する。ADR-0015は`accepted`であり（`_ACCEPTED_STATUSES`に対象）、実装PRの `Criteria: ADR-0015` 参照は有効である。
 > Base SHA: 3d8f4dcca5452fd609a1c1e2f279231ca8edc0e4（main、2026-10-02時点。Phase 2のPR作成前にmain断面を再確認し、更新があればrebaseする）
 > Revision 1: 2026-10-02 — 初版。Phase 1 reviewへ提出。
@@ -158,13 +158,13 @@ ADR-0015要求テスト表の3行のcanonical ownerは、**[ADR-0016](../../docs
 
 ## Execution checklist
 
-- [ ] Current behavior verified（上記Current evidence。2026-10-02実施済み、PRで再掲）
-- [ ] テスト新設前のtest-audit適用（protected contract・credible regression・impact surface・CI分類の確定をPRへ記録）
-- [ ] Phase 1: spec/plan review → clear
-- [ ] Phase 2: 純粋planner + 契約型 + bridge + 新op + 設定UI + 通知の実装（最小の縦切り。interface経由のtestを先に追加）
-- [ ] Phase 2: instrumentation test群（defer後の再計画、snapshot再flush一貫性、欠損・破損、書込みshape、排他）
-- [ ] Verification完了とPR本文への記録（patch surface、writer inventory、CI run URL、エミュレータ記録）
-- [ ] 文書更新（FR-008、ベンチマーク§6、ADR-0016（Phase 1で新設済み。Phase 2では不変確認）、DESIGN.md、CONTEXT.md、ci_portfolio_map.yml）
+- [x] Current behavior verified（上記Current evidence。2026-10-02実施済み、PRで再掲）
+- [x] テスト新設前のtest-audit適用（protected contract・credible regression・impact surface・CI分類の確定をPRへ記録）
+- [x] Phase 1: spec/plan review → clear（round 5、[comment 5936234654](https://github.com/nunu1733/NunuLauncher/pull/498#issuecomment-5936234654)。blocking なし）
+- [x] Phase 2: 純粋planner + 契約型 + bridge + 新op + 設定UI + 通知の実装（最小の縦切り。JVM testを先に追加しgreen）
+- [x] Phase 2: test群（homeedit JVM gate: planner/分類/wire format/validator。書込み経路harness: `InstallDestinationModelWriterTest`（defer後の再計画、既定配置、新規screen、reject、書込みshape、lock列不変）、`InstallDestinationQueueTest`（capture永続化・first-wins・route読み出し）、`AppDestinationNoticeTest`（one-shot）。ci.yml class list + path filter更新。edgesは不変のためci_portfolio_map.ymlの変更なし）
+- [x] Verification（spotlessCheck、compile、JVM test 17件green、`validate_writer_inventory.py` PASS、`measure_upstream_patch_surface.py`（+106/-1、NFR-010記録）、`validate_ci_portfolio.py` OK）。CI run URLとエミュレータ実行はPR本文へ記録
+- [x] 文書更新（FR-008 implemented化、ベンチマーク§6 B6目標確定、ADR-0016（Phase 1で新設済み）、DESIGN.md、CONTEXT.md。ci_portfolio_map.ymlはedges不変のため変更なし）
 - [ ] Phase 2 review → clear
 - [ ] main断面再確認・rebase、独立audit（別session）、merge operator check、merge
 
@@ -174,7 +174,7 @@ ADR-0015要求テスト表の3行のcanonical ownerは、**[ADR-0016](../../docs
 - Scope type: feature（階層H実装）
 - Accepted spec + commit: specs/497-new-app-destination-policy-impl/spec.md（本PR内でaccepted化を図る。commit SHAはPR本文へ記録）
 - Bug oracle: N/A with reason（新機能実装であり、bug oracleは存在しない。ADR-0015要求テスト表とspec Test oracleが検証の正である）
-- Plan + revision: specs/497-new-app-destination-policy-impl/plan.md（本書、Revision 5。Phase 1 review round 1〜4対応）
+- Plan + revision: specs/497-new-app-destination-policy-impl/plan.md（本書、Revision 5。Phase 2 checklist更新）
 - Base SHA: 3d8f4dcca5452fd609a1c1e2f279231ca8edc0e4
 - Head SHA: PR本文へ記録
 - Executed evidence: Current evidenceの`path:line`検証（2026-10-02）+ `validate_writer_inventory.py` PASS確認

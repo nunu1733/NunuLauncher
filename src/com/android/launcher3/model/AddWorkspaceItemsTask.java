@@ -45,6 +45,7 @@ import com.android.launcher3.util.IntArray;
 import com.android.launcher3.util.PackageManagerHelper;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -92,7 +93,7 @@ public class AddWorkspaceItemsTask implements ModelUpdateTask {
         synchronized (dataModel) {
             IntArray workspaceScreens = dataModel.collectWorkspaceScreens();
 
-            List<ItemInfo> filteredItems = new ArrayList<>();
+            List<Pair<ItemInfo, Object>> filteredItems = new ArrayList<>();
             for (Pair<ItemInfo, Object> entry : mItemList) {
                 ItemInfo item = entry.first;
                 if (item.itemType == LauncherSettings.Favorites.ITEM_TYPE_APPLICATION) {
@@ -113,18 +114,31 @@ public class AddWorkspaceItemsTask implements ModelUpdateTask {
                     }
                 }
                 if (item != null) {
-                    filteredItems.add(item);
+                    // Issue #497: carry the flush-time destination route (if
+                    // any) alongside the filtered item.
+                    filteredItems.add(Pair.create(item, entry.second));
                 }
             }
 
             InstallSessionHelper packageInstaller = InstallSessionHelper.INSTANCE.get(context);
             LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
 
-            for (ItemInfo item : filteredItems) {
-                // Find appropriate space for the item.
-                int[] coords = mItemSpaceFinder.findSpaceForItem(taskController.getApp(), dataModel,
-                        workspaceScreens, addedWorkspaceScreensFinal, item.spanX, item.spanY);
-                int screenId = coords[0];
+            for (Pair<ItemInfo, Object> filteredEntry : filteredItems) {
+                ItemInfo item = filteredEntry.first;
+                Object carried = filteredEntry.second;
+                DirectEditContract.DestinationRoute destinationRoute =
+                        carried instanceof DirectEditContract.DestinationRoute
+                                ? (DirectEditContract.DestinationRoute) carried : null;
+                boolean policyRoute = destinationRoute != null && destinationRoute.usePolicyWrite;
+                // Issue #497: policy-routed items skip the flush-time space
+                // scan — the placement (folder target or upstream default) is
+                // decided inside MODEL_WRITER admission, so a new screen id is
+                // never allocated before admission (contract 4).
+                int[] coords = policyRoute ? null
+                        : mItemSpaceFinder.findSpaceForItem(taskController.getApp(), dataModel,
+                                workspaceScreens, addedWorkspaceScreensFinal,
+                                item.spanX, item.spanY);
+                int screenId = coords == null ? 0 : coords[0];
 
                 ItemInfo itemInfo;
                 if (item instanceof WorkspaceItemInfo || item instanceof CollectionInfo
@@ -189,6 +203,49 @@ public class AddWorkspaceItemsTask implements ModelUpdateTask {
                         cache.getTitleAndIcon(wii,
                                 ((WorkspaceItemInfo) itemInfo).usingLowResIcon());
                     }
+                }
+
+                if (policyRoute) {
+                    // Issue #497: destination-policy route (ADR-0013 target
+                    // (b), ADR-0015 Decisions 7-9). The closed result and the
+                    // first model/DB change complete inside MODEL_WRITER
+                    // admission; the bind happens exactly once after the
+                    // writer reports success — never from addedItemsFinal,
+                    // which would bind before admission when deferred.
+                    final ItemInfo payload = itemInfo;
+                    final DirectEditContract.DestinationRoute route = destinationRoute;
+                    DirectEditContract.DestinationResultCallback callback =
+                            new DirectEditContract.DestinationResultCallback() {
+                                @Override
+                                public void onResult(boolean success, int resultContainer,
+                                        int resultScreenId, int resultCellX, int resultCellY,
+                                        int resultRank, int newScreenId, String reason) {
+                                    if (route.callback != null) {
+                                        route.callback.onResult(success, resultContainer,
+                                                resultScreenId, resultCellX, resultCellY,
+                                                resultRank, newScreenId, reason);
+                                    }
+                                    if (success
+                                            && resultContainer == LauncherSettings.Favorites.CONTAINER_DESKTOP) {
+                                        // Single post-admission bind: the newly
+                                        // allocated screen (if any) comes first
+                                        // so the page exists before the icon.
+                                        IntArray newScreens = new IntArray();
+                                        if (newScreenId != DirectEditContract.DEST_NO_SCREEN_ID) {
+                                            newScreens.add(newScreenId);
+                                        }
+                                        final ItemInfo boundItem = payload;
+                                        taskController.scheduleCallbackTask(callbacks ->
+                                                callbacks.bindAppsAdded(newScreens,
+                                                        new ArrayList<>(),
+                                                        new ArrayList<>(Collections.singletonList(boundItem))));
+                                    }
+                                }
+                            };
+                    taskController.getModelWriter().addPendingInstallForDirectEdit(
+                            payload, route.validator, callback);
+                    FileLog.d(LOG, "Adding item info via destination policy: " + itemInfo);
+                    continue;
                 }
 
                 // Add the shortcut to the db

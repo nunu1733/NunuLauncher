@@ -18,7 +18,7 @@ Status語彙: `implemented` / `accepted/evidence pending` / `proposed` / `deferr
 | FR-005 | Foundation | implemented | staleでない検証済みplanだけを原子的に適用し、適用後に再検証する |
 | FR-006 | MVP | implemented | 明示的なユーザー操作から全体整理を開始し、差分・警告・未配置itemを確認できる。ユーザー可視の入口はOrganizer hub経由へ改訂される（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-01/D-03。hub導入は後続実装Issueが行う） |
 | FR-007 | MVP | implemented | onboardingで整理を提案できるが、既存layoutの無確認な全体変更を行わない |
-| FR-008 | Now-1 | proposed（再定義 2026-09-24。旧: deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)） | 上流がホームへ追加する新規アプリのアイコンを、ユーザーが選んだ配置先ポリシーに従って置ける。追加するかどうかの判定は上流のまま変えず、どこへ置くかだけを決める（ADR-0015）。書込みの安全条件はADR-0013に従い、本書では重複して定義しない |
+| FR-008 | Now-1 | implemented（2026-10-02。実装: [#497](https://github.com/nunu1733/NunuLauncher/issues/497) / PR [#498](https://github.com/nunu1733/NunuLauncher/pull/498)。再定義 2026-09-24。旧: deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)） | 上流がホームへ追加する新規アプリのアイコンを、ユーザーが選んだ配置先ポリシーに従って置ける。追加するかどうかの判定は上流のまま変えず、どこへ置くかだけを決める（ADR-0015）。書込みの安全条件はADR-0013に従い、本書では重複して定義しない |
 | FR-009 | Later | deferred by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) | 増分配置と全体整理の収束。FR-008の再定義後も、既存アイテムを動かす増分整理提案はLaterのままとする（ADR-0005は「既存アイテムを動かす増分整理提案についての判断」として維持する） |
 | FR-010 | MVP | implemented | ユーザーがカテゴリ割当をoverrideでき、推定より優先される。割当先は組み込みtaxonomyに加えユーザー定義カテゴリ（stable local identity、[spec 336](../../specs/336-user-defined-categories/spec.md)）も選択できる |
 | FR-011 | MVP | implemented | Android application category等のlocal signalとdeterministic fallbackで分類できる |

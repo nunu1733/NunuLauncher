@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.lawnchair.LawnchairApp
 import app.lawnchair.data.iconoverride.IconOverrideRepository
+import app.lawnchair.homeedit.ui.DestinationPolicyPreference
 import app.lawnchair.nexuslauncher.OverlayCallbackImpl
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.preferenceManager
@@ -79,6 +80,11 @@ fun HomeScreenPreferences(
                 description = if (lockHomeScreenAdapter.state.value) stringResource(id = R.string.home_screen_locked) else null,
                 enabled = lockHomeScreenAdapter.state.value.not(),
             )
+            // Issue #497: destination policy (ADR-0015 Decision 15) — three
+            // choices (upstream default / designated folder / don't add)
+            // right below the add-icon toggle. "Don't add" is the toggle's
+            // off state itself; no independent toggle exists.
+            DestinationPolicyPreference(enabled = lockHomeScreenAdapter.state.value.not())
             GestureHandlerPreference(
                 adapter = prefs2.doubleTapGestureHandler.getAdapter(),
                 label = stringResource(id = R.string.gesture_double_tap),

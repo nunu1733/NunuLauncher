@@ -605,6 +605,24 @@
 
     <string name="auto_add_shortcuts_label">Add new apps to home screen</string>
 
+    <!-- Issue #497: new-app destination policy (ADR-0015) -->
+    <string name="destination_policy_label">Where to place new apps</string>
+    <string name="destination_policy_summary_upstream">Upstream default (first free cell)</string>
+    <string name="destination_policy_summary_folder">Designated folder: %1$s</string>
+    <string name="destination_policy_summary_dont_add">Don\u2019t add new apps</string>
+    <string name="destination_policy_dialog_title">Where to place new apps</string>
+    <string name="destination_policy_choice_upstream">Upstream default</string>
+    <string name="destination_policy_choice_folder">Designated folder\u2026</string>
+    <string name="destination_policy_choice_dont_add">Don\u2019t add new apps</string>
+    <string name="destination_policy_folder_picker_title">Choose a folder</string>
+    <string name="destination_policy_folder_stop">Stop designating (upstream default)</string>
+    <string name="destination_policy_other_profile">(another profile)</string>
+    <string name="destination_policy_notice_missing">The designated folder is gone; new apps were placed in the default spot</string>
+    <string name="destination_policy_notice_profile">The designated folder is in another profile; new apps were placed in the default spot</string>
+    <string name="destination_policy_notice_dock">The designated folder was moved to the dock; new apps were placed in the default spot</string>
+    <string name="destination_policy_notice_constraint">The designated folder violated a placement constraint; new apps were placed in the default spot</string>
+    <string name="destination_policy_notice_snapshot">The placement destination could not be confirmed; new apps were placed in the default spot</string>
+
     <string name="minus_one_enable">Show feed</string>
     <string name="minus_one_unavailable">No feed apps installed</string>
     <string name="minus_one">Feed</string>
