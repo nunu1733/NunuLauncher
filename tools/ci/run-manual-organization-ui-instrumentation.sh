@@ -6,13 +6,12 @@
 
 set -euo pipefail
 
-# Issue #477/#479 quarantine: the issue372 touch oracle skips in CI while
-# #479 owns the Compose-level ghost-row anomaly it hits (the failure keeps a
-# classified message and a failure-instant screenshot; local and diagnostic
-# runs omit this argument and keep the oracle observable). Remove this line
-# when #479 resolves.
-quarantine_args=(-Pandroid.testInstrumentationRunnerArguments.nunuQuarantineIssue479TouchOracle=true)
-
-./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest "${quarantine_args[@]}" -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest,app.lawnchair.organizer.ui.OrganizerHubPreferencesInstrumentationTest,app.lawnchair.organizer.ui.StrategyPickerInstrumentationTest,app.lawnchair.organizer.ui.MissingAppSelectionInstrumentationTest,app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest,app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessInstrumentationTest,app.lawnchair.ui.preferences.destinations.StrategyPickerFreezeInstrumentationTest,app.lawnchair.ui.preferences.OrganizerDiagnosticsRouteInstrumentationTest,app.lawnchair.organizer.ui.EditingBurdenBenchmarkFixtureSeedingInstrumentationTest,app.lawnchair.organizer.diagnostics.export.OrganizerDiagnosticsExportTimestampInstrumentationTest
+# The drag-guard oracle runs in its OWN instrumentation invocation: its
+# real system-level drag injection disturbs the key/focus delivery of the
+# tests that follow within the same instrumentation process (reproduced 3/3
+# CI runs; bisected against the #493 baseline and an oracle-ignored variant
+# of this lane — Issue #479 review round 3).
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationProductionE2EInstrumentationTest,app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest,app.lawnchair.organizer.ui.OrganizerHubPreferencesInstrumentationTest,app.lawnchair.organizer.ui.StrategyPickerInstrumentationTest,app.lawnchair.organizer.ui.MissingAppSelectionInstrumentationTest,app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest,app.lawnchair.organizer.ui.exchange.ExchangeImportSuccessInstrumentationTest,app.lawnchair.ui.preferences.destinations.StrategyPickerFreezeInstrumentationTest,app.lawnchair.ui.preferences.OrganizerDiagnosticsRouteInstrumentationTest,app.lawnchair.organizer.ui.EditingBurdenBenchmarkFixtureSeedingInstrumentationTest,app.lawnchair.organizer.diagnostics.export.OrganizerDiagnosticsExportTimestampInstrumentationTest
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OrganizerHubDragGuardInstrumentationTest
 mkdir -p build/manual-organization-ui-evidence
 adb pull /sdcard/Pictures/Issue52-ui-evidence build/manual-organization-ui-evidence

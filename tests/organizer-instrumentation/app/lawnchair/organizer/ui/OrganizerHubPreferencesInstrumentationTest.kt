@@ -2,10 +2,13 @@ package app.lawnchair.organizer.ui
 
 import android.app.Activity
 import android.content.Context
+import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -20,14 +23,17 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -35,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -159,37 +166,55 @@ class OrganizerHubPreferencesInstrumentationTest {
         exchangeHolderOverride: ExchangeFlowStateHolder? = null,
     ) {
         composeRule.setContent {
-            if (captureDispatcher != null) {
-                captureDispatcher(LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher)
-            }
-            CompositionLocalProvider(
-                LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
-            ) {
-                val navController: NavHostController = rememberNavController()
-                if (captureNav != null) captureNav(navController)
-                CompositionLocalProvider(LocalNavController provides navController) {
-                    LawnchairTheme {
-                        NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
-                            composable<HomeScreenOrganizer> {
-                                OrganizerHubPreferences(run = runner)
-                            }
-                            composable<HomeScreenManualOrganization> { backStackEntry ->
-                                val route = backStackEntry.toRoute<HomeScreenManualOrganization>()
-                                ManualOrganizationPreferences(
-                                    run = runner,
-                                    trigger = route.trigger,
-                                    durableRecovery = route.durableRecovery,
-                                    onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
-                                    exchangeOpen = route.exchangeOpen,
-                                    exchangeHolderOverride = exchangeHolderOverride,
-                                )
-                            }
-                            composable<HomeScreenOrganizerDiagnostics> {
-                                Text(text = DIAGNOSTICS_STUB_TEXT)
-                            }
-                            composable<HomeScreenOrganizerStrategy> {
-                                OrganizerStrategyPreferences(run = runner)
-                            }
+            HubHost(runner, fontScale, captureDispatcher, captureNav, exchangeHolderOverride)
+        }
+    }
+
+    /**
+     * The hub host composition, shared by `composeRule.setContent` and the
+     * post-recreation `Activity.setContent` (the rule's setContent is a
+     * once-per-test contract). The two compositions must be structurally
+     * identical so the saveable state — the list position and the #479 drag
+     * guard — restores into the recreated activity's composition.
+     */
+    @Composable
+    private fun HubHost(
+        runner: ManualOrganizationRun,
+        fontScale: Float = 1f,
+        captureDispatcher: ((OnBackPressedDispatcher?) -> Unit)? = null,
+        captureNav: ((NavHostController) -> Unit)? = null,
+        exchangeHolderOverride: ExchangeFlowStateHolder? = null,
+    ) {
+        if (captureDispatcher != null) {
+            captureDispatcher(LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher)
+        }
+        CompositionLocalProvider(
+            LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
+        ) {
+            val navController: NavHostController = rememberNavController()
+            if (captureNav != null) captureNav(navController)
+            CompositionLocalProvider(LocalNavController provides navController) {
+                LawnchairTheme {
+                    NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
+                        composable<HomeScreenOrganizer> {
+                            OrganizerHubPreferences(run = runner)
+                        }
+                        composable<HomeScreenManualOrganization> { backStackEntry ->
+                            val route = backStackEntry.toRoute<HomeScreenManualOrganization>()
+                            ManualOrganizationPreferences(
+                                run = runner,
+                                trigger = route.trigger,
+                                durableRecovery = route.durableRecovery,
+                                onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
+                                exchangeOpen = route.exchangeOpen,
+                                exchangeHolderOverride = exchangeHolderOverride,
+                            )
+                        }
+                        composable<HomeScreenOrganizerDiagnostics> {
+                            Text(text = DIAGNOSTICS_STUB_TEXT)
+                        }
+                        composable<HomeScreenOrganizerStrategy> {
+                            OrganizerStrategyPreferences(run = runner)
                         }
                     }
                 }
