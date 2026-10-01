@@ -5,8 +5,8 @@
 
 - Auditor: 独立audit session（実装sessionとは別作業。solo保守のため独立sessionによる再実行・再確認）
 - PR: https://github.com/nunu1733/NunuLauncher/pull/498
-- Head SHA: 663a08ed666782bb478addfb862fe9ebd6d32912
-- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36936763106
+- Head SHA: 3a74430b0a8eb290f4a3038b2830608cd22b6f0f
+- CI run: https://github.com/nunu1733/NunuLauncher/actions/runs/36940797214
 - Criteria: specs/497-new-app-destination-policy-impl/spec.md FR-008, NFR-014, AC-1, AC-2, AC-3, AC-4, AC-5, AC-6, AC-7, AC-8, AC-9, AC-10, AC-11; docs/adr/0015-new-app-destination-policy.md NFR-010; docs/adr/0013-direct-edit-write-contract.md NFR-013; docs/adr/0016-layout-application-test-surface.md AC-7
 
 ## Scope
@@ -54,6 +54,26 @@
 - **再確認（deltaで壊れ得るもの）**: `git diff 72689feb85..663a08ed66 --stat` でproduction write-path 5 file（`ModelWriter.java`、`ItemInstallQueue.java`、`AddWorkspaceItemsTask.java`、`PersistedItemArray.java`、`DirectEditContract.java`）が0行差分であることを確認。前回までの検証結果をそのまま適用。
 - **再実行**: high-risk evidence gate validator（PASS、下記参照）。
 - **carry-over（再導出していない）**: `validate_writer_inventory.py` の再実行、JVM testの `--rerun-tasks` 独立再実行、planner/bridge構造の直接読み直し、schema/migration非変更。新head上の同等test表面はCI run 36936763106（success）で担保。
+
+## Re-audit note（2026-10-02、head `3a74430b0a8eb290f4a3038b2830608cd22b6f0f`、rebase後scope限定再audit）
+
+前回再audit（head `663a08ed66`、CI run 36936763106）の後、2つのイベントがあったため、scope限定の再auditを行った。
+
+### 対象イベント
+
+1. **rebase onto main `8b8b5e3abb773e7608fcd58c00aafaf5f74ac90e`（PR #494: hub-request-row-visibility）** — PR #494の変更fileは `docs/engineering/ci-test-portfolio.md`、`lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt`、`specs/479-hub-request-row-visibility/spec-lite.md`、instrumentation test 3件（`OrganizerHubDragGuardInstrumentationTest.kt`、`OrganizerHubPreferencesInstrumentationTest.kt`、`OrganizerDiagnosticsRouteInstrumentationTest.kt`）、`tools/repo-contract/run-manual-organization-ui-instrumentation.sh` の7 file。destination-policy write path（`src/com/android/launcher3/model/`、`lawnchair/src/app/lawnchair/homeedit/`、canonical test群 `tests/organizer-instrumentation/com/android/launcher3/` と `tests/unit/`）とは交差しないことを`git show 8b8b5e3abb --stat`とfile内容のspot-checkで確認（`OrganizerHubPreferences.kt`は OrganizerHub 手動整理UIのみで、destination policyのplanner/adapter/writer/contractへは触れない）。
+2. **Phase 2 review round 3のLOW docs-wording修正（commit `3a74430b0a`）** — `AppDestinationPolicyTextKeys` のdoc commentと本assessmentのAC-11文言を、oracleの実際の保証範囲（key契約 + strings.xmlの両localeでの存在・非空。UI wiringが契約object経由であることはreview/auditでの確認事項）に整合。test件数表記を8へ同期。production code・testの意味論変更なし。
+
+### Delta検証
+
+- `git diff 593920d029 3a74430b0a -- src/com/android/launcher3/model/ lawnchair/src/app/lawnchair/homeedit/ tests/ docs/assessment/pr-498-new-app-destination-policy-impl.md specs/497-new-app-destination-policy-impl/` のうちaudited pathで差分が出たのは `tests/organizer-instrumentation/` の3件（`OrganizerHubDragGuardInstrumentationTest.kt`、`OrganizerHubPreferencesInstrumentationTest.kt`、`OrganizerDiagnosticsRouteInstrumentationTest.kt`）のみで、いずれもmain側PR #494由来のfile（`git log main -- <file>` で確認）。`src/com/android/launcher3/model/`、`lawnchair/src/app/lawnchair/homeedit/`、`docs/assessment/`、`specs/497-*` は **0行差分**。
+- `git diff 663a08ed66..3a74430b0a -- src/` → **空**（前回auditで検証したcontract-4 op `ModelWriter.addPendingInstallForDirectEdit`、capture overload filter、post-success bindは0行差分でunchanged）。
+- CI run 36940797214（head `3a74430b0a` 一致を `gh run view` で確認、event: pull_request、conclusion: `success`）で全lane success。`organizer-instrumentation-shared-writer-tests` にdestination class群が含まれる構成はCI workflow定義上unchangedで、本runでもsuccess。
+
+### 再確認 / carry-over
+
+- **再確認**: 上記delta検証3点、`gh pr view 498 --json headRefOid` がaudit対象headと一致、rebaseがconflictなし。
+- **carry-over**: 前回までの全AC判定（AC-1〜AC-11。owner-pending項目含む）はproduction code・testが0行差分のためそのまま適用。JVM test / instrumentation testのローカル再実行は行わず、新head上のCI run 36940797214（success）で担保。
 
 ## Criteria check
 
