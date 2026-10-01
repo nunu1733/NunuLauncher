@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "accepted",
-  "captured_on": "2026-09-30",
+  "captured_on": "2026-10-01",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
   "main_commit": "2163020d8dfc96ddf4845b90dc42e0d7a127fa12",
   "metric": {
@@ -528,10 +528,10 @@
     "counted_deletions": 1089,
     "counted_files": 93,
     "counted_paths_sha256": "fdffc8d961be514b981ea964cf4beac97185e90113fb9e3d042e2a0cc31f7c86",
-    "excluded_additions": 210627,
+    "excluded_additions": 210739,
     "excluded_deletions": 863,
-    "excluded_files": 1206,
-    "excluded_paths_sha256": "ab4edd09b90bb12d778cb5bf2268d25f6d72a370031b9e99e365793ac4db1ed0",
+    "excluded_files": 1207,
+    "excluded_paths_sha256": "66e0b2d8033aa56e316a6c0d814277d146704f258b2979816b7dad93c72ebae1",
     "groups": {
       "deck-retirement": {
         "additions": 759,
