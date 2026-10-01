@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.homeedit.AppDestinationNotice
 import app.lawnchair.homeedit.AppDestinationPolicyPrefs
+import app.lawnchair.homeedit.AppDestinationPolicyTextKeys
 import app.lawnchair.homeedit.AppDestinationSummaryState
 import app.lawnchair.homeedit.DestinationSummaryKind
 import app.lawnchair.homeedit.HomeEditExecutor
@@ -108,7 +109,7 @@ fun DestinationPolicyPreference(enabled: Boolean, modifier: Modifier = Modifier)
     if (showChoiceDialog) {
         AlertDialog(
             onDismissRequest = { showChoiceDialog = false },
-            title = { Text(stringResource(R.string.destination_policy_dialog_title)) },
+            title = { Text(stringResource(AppDestinationPolicyTextKeys.dialogTitle)) },
             text = {
                 Column {
                     TextButton(
@@ -117,19 +118,19 @@ fun DestinationPolicyPreference(enabled: Boolean, modifier: Modifier = Modifier)
                             AppDestinationPolicyPrefs.setUpstream(context)
                             if (!addIconOn) addIconToHomeAdapter.onChange(true)
                         },
-                    ) { Text(stringResource(R.string.destination_policy_choice_upstream)) }
+                    ) { Text(stringResource(AppDestinationPolicyTextKeys.choiceUpstream)) }
                     TextButton(
                         onClick = {
                             showChoiceDialog = false
                             showFolderPicker = true
                         },
-                    ) { Text(stringResource(R.string.destination_policy_choice_folder)) }
+                    ) { Text(stringResource(AppDestinationPolicyTextKeys.choiceFolder)) }
                     TextButton(
                         onClick = {
                             showChoiceDialog = false
                             addIconToHomeAdapter.onChange(false)
                         },
-                    ) { Text(stringResource(R.string.destination_policy_choice_dont_add)) }
+                    ) { Text(stringResource(AppDestinationPolicyTextKeys.choiceDontAdd)) }
                 }
             },
             confirmButton = {},
@@ -175,7 +176,7 @@ private fun DestinationFolderPickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.destination_policy_folder_picker_title)) },
+        title = { Text(stringResource(AppDestinationPolicyTextKeys.folderPickerTitle)) },
         text = {
             Column {
                 val loaded = options
@@ -191,7 +192,7 @@ private fun DestinationFolderPickerDialog(
                             title,
                             option.itemCount,
                         ) + if (multipleProfiles && option.userSerial != mainSerial) {
-                            " " + stringResource(R.string.destination_policy_other_profile)
+                            " " + stringResource(AppDestinationPolicyTextKeys.otherProfile)
                         } else {
                             ""
                         }
@@ -203,7 +204,7 @@ private fun DestinationFolderPickerDialog(
                         )
                     }
                     Text(
-                        text = stringResource(R.string.destination_policy_folder_stop),
+                        text = stringResource(AppDestinationPolicyTextKeys.folderStop),
                         modifier = Modifier
                             .clickable { onClear() }
                             .padding(vertical = 12.dp),

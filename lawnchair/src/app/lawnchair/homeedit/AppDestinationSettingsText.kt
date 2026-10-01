@@ -62,3 +62,22 @@ fun destinationNoticeText(reasonKey: String): Int = when (reasonKey) {
     DirectEditContract.DEST_CONSTRAINT_VIOLATION -> R.string.destination_policy_notice_constraint
     else -> R.string.destination_policy_notice_snapshot
 }
+
+/**
+ * dialog/summary行で使うdestination policy resource keyの契約集合。UIの
+ * wiringとJVM oracle（AC-11: resource由来・空でない・locale充備）の双方が
+ * このobjectを読む。UI側が直接R.string literalへ置き換えた場合、oracleが
+ * 検出する。
+ */
+object AppDestinationPolicyTextKeys {
+    val dialogTitle: Int = R.string.destination_policy_dialog_title
+    val choiceUpstream: Int = R.string.destination_policy_choice_upstream
+    val choiceFolder: Int = R.string.destination_policy_choice_folder
+    val choiceDontAdd: Int = R.string.destination_policy_choice_dont_add
+    val folderPickerTitle: Int = R.string.destination_policy_folder_picker_title
+    val folderStop: Int = R.string.destination_policy_folder_stop
+    val otherProfile: Int = R.string.destination_policy_other_profile
+
+    val all: List<Int> =
+        listOf(dialogTitle, choiceUpstream, choiceFolder, choiceDontAdd, folderPickerTitle, folderStop, otherProfile)
+}

@@ -110,8 +110,13 @@ class AppDestinationPlannerTest {
         assertTrue(
             !DirectEditContract.isValidUpstreamSnapshot("upstream|x|10|com.test.app", 10L, "com.test.app"),
         )
+        // Identity axes are independent: user-only and package-only
+        // mismatches must each fail the bypass on their own axis.
         assertTrue(
-            !DirectEditContract.isValidUpstreamSnapshot("upstream|0|99|com.other.app", 10L, "com.test.app"),
+            !DirectEditContract.isValidUpstreamSnapshot("upstream|0|99|com.test.app", 10L, "com.test.app"),
+        )
+        assertTrue(
+            !DirectEditContract.isValidUpstreamSnapshot("upstream|0|10|com.other.app", 10L, "com.test.app"),
         )
         assertTrue(!DirectEditContract.isValidUpstreamSnapshot(null, 10L, "com.test.app"))
         assertNull(DirectEditContract.parseDestinationSnapshot(null))

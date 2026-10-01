@@ -249,17 +249,21 @@ public class InstallDestinationQueueTest {
         assertEquals(DirectEditContract.DEST_ACTION_DEFAULT, corruptDecision.action);
         assertEquals(DirectEditContract.DEST_SNAPSHOT_INVALID, corruptDecision.reason);
 
-        // Identity-mismatched upstream snapshot: routed, stage-2 rejects
-        // without a write.
-        DirectEditContract.DestinationRoute mismatch = resolver.route(
+        // Identity mismatch routes and rejects on EACH axis independently —
+        // removing one axis check must fail its own assertion.
+        for (String mismatched : new String[]{
                 DirectEditContract.serializeDestinationSnapshot(
-                        DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM, 0, 99L, "com.other.app"),
-                serial, TEST_PACKAGE);
-        assertNotNull(mismatch);
-        DirectEditContract.DestinationDecision mismatchDecision = mismatch.validator.validate(
-                new DirectEditContract.Snapshot(4, 5, new int[0],
-                        new DirectEditContract.Row[0], 4));
-        assertEquals(DirectEditContract.DEST_ACTION_REJECT, mismatchDecision.action);
-        assertEquals(DirectEditContract.DEST_SNAPSHOT_INVALID, mismatchDecision.reason);
+                        DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM, 0, 99L, TEST_PACKAGE),
+                DirectEditContract.serializeDestinationSnapshot(
+                        DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM, 0, serial, "com.other.app"),}) {
+            DirectEditContract.DestinationRoute mismatch = resolver.route(
+                    mismatched, serial, TEST_PACKAGE);
+            assertNotNull("mismatched upstream must not bypass stock: " + mismatched, mismatch);
+            DirectEditContract.DestinationDecision mismatchDecision = mismatch.validator.validate(
+                    new DirectEditContract.Snapshot(4, 5, new int[0],
+                            new DirectEditContract.Row[0], 4));
+            assertEquals(DirectEditContract.DEST_ACTION_REJECT, mismatchDecision.action);
+            assertEquals(DirectEditContract.DEST_SNAPSHOT_INVALID, mismatchDecision.reason);
+        }
     }
 }
