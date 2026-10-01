@@ -134,9 +134,9 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
       ライフサイクルを揃える。実drag後の位置保全 + saveable state復元後の保全を
       testで検証する
       （`OrganizerHubDragGuardInstrumentationTest.hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent`。
-      実dragはinstrumentationのUiAutomationへの生の
-      `injectInputEvent` drag（`UiDevice`は同一プロセスの後続keyboardテストの
-      key/focus配信を乱すため不使用 — CI 3実行で再現した汚染の実証済み）、
+      実dragは `UiDevice` system drag（oracleは専用クラスの独立
+      instrumentation invocationで実行されるため、同一プロセス汚染は構造的に
+      隔離 — CI 3実行での再現とoracle-ignored variantとのbisectで確定）、
       saveable復元は
       `StateRestorationTester.emulateSavedInstanceStateRestore()`。pre-fixの
       `remember` guardでは復元後にre-anchorが発火して本テストが失敗することを
@@ -163,9 +163,12 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
 - `./gradlew spotlessCheck`。
 - `python3 tools/repo-contract/validate_ci_portfolio.py`。
 - PR上でCI lane `organizer-instrumentation-manual-organization-ui-tests` がgreen。
-- 書込み経路を追加しないことの確認: diffは上記Scopeの4ファイル、AC-2 focused testを追加した
-  `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OrganizerHubPreferencesInstrumentationTest.kt`、
-  本specの計6ファイルのみで、DB/preference書込みコード・migrationを含まない。
+- 書込み経路を追加しないことの確認: diffは上記Scopeの4ファイル、AC-2 focused testの
+  `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OrganizerHubDragGuardInstrumentationTest.kt`
+  （新規）と diagnostics 強化の
+  `tests/organizer-instrumentation/app/lawnchair/ui/preferences/OrganizerDiagnosticsRouteInstrumentationTest.kt`、
+  lane script、本spec、portfolio文書の計8ファイルのみで、DB/preference書込みコード・
+  migrationを含まない。
 - 本修正はLauncher3/AOSP由来コードのbridgeに触れない（`app.lawnchair` 自前のCompose UIのみ）ため、
   `measure_upstream_patch_surface.py` の計測reportは対象外。
 - quarantine解除はCI test routingの変更に当たるため、実装PRでtest-audit skillを適用し
@@ -196,8 +199,8 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
 - 2026-10-01: AC-2回帰テストを確定版へ改定。review round 3の指摘に従い、
   `StateRestorationTester.emulateSavedInstanceStateRestore()` によるsaveable state復元oracleを
   導入（`scenario.recreate()`+`setContent` はharnessがsaveable stateを復元しないため不採用 —
-  probeで実証）。実dragの注入はinstrumentation UiAutomationへの生の `injectInputEvent`
-  drag（compose-testのtouch relayは負荷下でdragsを落とし、`UiDevice`は
-  同一プロセスの後続keyboardテストを汚染するため）。guard破綻（armされない/programmatic scroll誤arm）と
+  probeで実証）。実dragの注入は `UiDevice` system drag（compose-testのtouch relayは負荷下で
+  dragsを落とし、system-level dragは同一プロセスの後続keyboardテストを汚染する
+  ため、oracleは専用クラスの独立instrumentation invocationで実行）。guard破綻（armされない/programmatic scroll誤arm）と
   remember/rememberSaveable非対称の双方を検出することを確認: pre-fix（`remember` guard）では
   復元後にre-anchorが発火してテストが失敗する。
