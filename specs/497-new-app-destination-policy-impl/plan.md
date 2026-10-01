@@ -5,6 +5,8 @@
 > Status: draft
 > Risk tier: H — `favorites`行の追加を伴う新しい書込み経路（ADR-0013契約4どおりの`ModelWriter`操作追加）と、上流のmodel経路（`ItemInstallQueue` / `AddWorkspaceItemsTask`）へのbridgeを作るため。`ModelWriter.java`が高リスクpath一覧（`tools/repo-contract/validate_high_risk_evidence.py` の `HIGH_RISK_PATH_FILES`）に含まれるため、実装PRは `risk: layout-data` 対象であり、独立auditと`final-status`を要求する。ADR-0015は`accepted`であり（`_ACCEPTED_STATUSES`に対象）、実装PRの `Criteria: ADR-0015` 参照は有効である。
 > Base SHA: 3d8f4dcca5452fd609a1c1e2f279231ca8edc0e4（main、2026-10-02時点。Phase 2のPR作成前にmain断面を再確認し、更新があればrebaseする）
+> Revision 1: 2026-10-02 — 初版。Phase 1 reviewへ提出。
+> Revision 2: 2026-10-02 — Phase 1 review round 1（[PR #498 comment](https://github.com/nunu1733/NunuLauncher/pull/498#issuecomment-5935261988)）の指摘1〜4に対応。指摘1（高）: 既定配置を`HomeEditPlanner.firstFreeCell`系で再計画する設計を撤回し、上流`WorkspaceItemSpaceFinder`の意味論をadmission内で用いる形へ修正（Current evidenceへ`WorkspaceItemSpaceFinder.java:69-71,77-86`の実測を追加。新規screen id採番・`workspaceScreens`/`addedWorkspaceScreensFinal`変更のadmission前漏出禁止を明記）。指摘2（中）: snapshot重複captureをfirst enqueue winsへ修正（`addToQueue`の重複排除は追加も書込みもスキップするため、last-winsの記述は現コードと不合だった）。指摘3（中）: 基底entry decode不能時の`Reject`を観測不能として契約から外し、`Reject(SNAPSHOT_INVALID)`をsnapshot部分のidentity不一致に限定、downgrade記述の「unknown attributeでentry skip」表現を修正。指摘4（中）: テスト所有を「決定意味論=JVM canonical、実接続=instrumentation（理由1行付き）」へ再割付け（Designへテスト所有節を新設）。
 
 ## Current evidence
 
@@ -19,7 +21,8 @@
 - `src/com/android/launcher3/model/DirectEditContract.java` — platform契約型（`FAIL_*` キー、`Snapshot`/`Row`、`Validator`、`ResultCallback`）。fork所有の契約fileであり、本実装のdestination型をここへ追加する（src/側が契約型のみを参照する依存方向を保つ）。
 - `src/com/android/launcher3/model/ModelWriter.java:683-702` — `buildDirectEditSnapshot()`（admission内の現状態投影。全`itemsIdMap`行 + QSB予約行 + 格子寸法 + hotseat数。フォルダ行・フォルダ子行（`container=folder id`、`rank`）・userSerialを含むため、指定フォルダの検証入力として再利用できる）。
 - `lawnchair/src/app/lawnchair/homeedit/HomeEditSnapshotMapper.kt:15-34` — `DirectEditContract.Snapshot` → 純粋型 `HomeEditSnapshot` の投影。`HomeEditModel.kt:35-67` — `HomeEditItem`（id、container、screen、cell、span、type、rank、userSerialを含む）と `HomeEditSnapshot`。**配置先ポリシーの純粋計画はこの既存の純粋snapshot型とmapperを再利用する**（新しい投影型を作らない）。
-- `lawnchair/src/app/lawnchair/homeedit/HomeEditPlanner.kt:67` — フォルダ追加rankの先例 `rank = snapshot.items.count { it.container == intent.folderId }`（末尾rank。既存子のrankを変えない）。`:198-220` — 純粋な空きセル探索 `firstFreeCell`（QSB予約を含む決定的走査。stage-2で既定配置を計画する場合に使う）。
+- `lawnchair/src/app/lawnchair/homeedit/HomeEditPlanner.kt:67` — フォルダ追加rankの先例 `rank = snapshot.items.count { it.container == intent.folderId }`（末尾rank。既存子のrankを変えない。本実装のフォルダtargetでも同じ規約を使う）。`:198-220` — 純粋な空きセル探索 `firstFreeCell`（#448のページ移動用。**本実装の`UpstreamDefault`の既定配置には使わない**。Phase 1 review指摘1: 上流`WorkspaceItemSpaceFinder`と意味論が異なるため）。
+- `src/com/android/launcher3/model/WorkspaceItemSpaceFinder.java:44-98` — 上流の既定配置の正。top QSB有効時に`FIRST_SCREEN_ID`を探索対象から除外し（`:69-71`）、既存screenに空きが無い場合は`getNewScreenId()`で新規screenを割り当ててそこへ置く（`:77-86`。**呼出し側の`workspaceScreens` / `addedWorkspaceScreensFinal`を変更し、`getNewScreenId`はDB controller経由の採番である**）。既定配置の座標計算をfork側の純粋走査で複製しない。新opがこの意味論をadmission内で使う場合、localなlistを渡し、採番・list変更をadmission内に限る（ADR-0013契約4のadmission前無変更）。
 
 **自動追加経路とbridge候補（spec 446 planの調査の再確認）**
 
@@ -54,9 +57,9 @@
 
 | 段 | 場所 | 責務 |
 |---|---|---|
-| capture | `ItemInstallQueue.queueItem(String, UserHandle)`（自動追加overloadのみ） | resolver経由でpolicy選択+指定folder id+user+packageをcaptureし、`PendingInstallShortcutInfo`に載せてqueue XMLへ永続化（ADR-0015 Decision 10）。current policyの再読はこの時点だけ |
-| route | `ItemInstallQueue.flushQueueInBackground` | 永続化済みsnapshotを**読むだけ**。snapshotのkindに応じroutingを決め`Pair`のsecondへ載せる: `upstream` → 既定経路（stock。baselineと同じ）、`folder` / snapshot欠損（identity読める）→ 新op経路（stage-2が`FolderTarget`/`UpstreamDefault(reason)`/`Reject`を決める）、identity不信頼 → 新op経路（stage-2が`Reject(SNAPSHOT_INVALID)`で無変更にする） |
-| 決定と書込み | 新`ModelWriter` op（admission内） | 同一純粋計画関数を現状態投影（`buildDirectEditSnapshot()`再利用）へ実行し、closed resultどおりにID採番→INSERT→model同期→`ModelVerifier`。記録と通知はadmitted結果のcallbackで行う |
+| capture | `ItemInstallQueue.queueItem(String, UserHandle)`（自動追加overloadのみ） | resolver経由でpolicy選択+指定folder id+user+packageをcaptureし、`PendingInstallShortcutInfo`に載せてqueue XMLへ永続化（ADR-0015 Decision 10）。current policyの再読はこの時点だけ。**重複enqueue時は`addToQueue`の重複排除が動き追加も書込みもスキップされるため、最初に永続化したsnapshotが保持される（first enqueue wins。`ItemInstallQueue.java:113-120`。重複排除の意味論は変更しない）** |
+| route | `ItemInstallQueue.flushQueueInBackground` | 永続化済みsnapshotを**読むだけ**。分類は純粋なsnapshot分類関数（JVM test可能）で行い、routingを決めて`Pair`のsecondへ載せる: `upstream` → 既定経路（stock。baselineと同じ）、`folder` → 新op経路（stage-2がclosed resultを決める）、欠損・decode不能（基底identityが読める）→ 新op経路（stage-2が`UpstreamDefault(SNAPSHOT_INVALID)`を返す）、snapshot部分のidentity不一致 → 新op経路（stage-2が`Reject(SNAPSHOT_INVALID)`を返し無変更）、基底entry自体がdecode不能 → 上流の既存の読み飛ばし（本契約の対象外） |
+| 決定と書込み | 新`ModelWriter` op（admission内） | 同一純粋計画関数を現状態投影（`buildDirectEditSnapshot()`再利用）へ実行し、closed resultどおりにID採番→INSERT→model同期→`ModelVerifier`。**`UpstreamDefault`の既定配置は上流`WorkspaceItemSpaceFinder`をadmission内で呼び出して決める**（localなlistを渡し、新規screen id採番・list変更をadmission内に限る。fork側の走査複製を作らない）。記録と通知はadmitted結果のcallbackで行う |
 
 この分離により、(i) `AddWorkspaceItemsTask`の変更は1分岐、(ii) snapshotのcapture（enqueue時）とread（flush時）がqueue層内で完結し、process死後の再flush一貫性が構造的に満たされ、(iii) `PackageUpdatedTask`への分岐追加が構造的に起こらない。
 
@@ -64,7 +67,7 @@
 
 | File | 変更 | 内容 |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/homeedit/AppDestinationPlanner.kt` | 新設 | 純粋計画関数。入力は既存の純粋型`HomeEditSnapshot` + typedなpolicy snapshot + 対象identity。出力はclosed result（`FolderTarget(folderId, rank)` / `UpstreamDefault(reason, placement)` / `Reject(reason)`）。`HomeEditPlanner`の`firstFreeCell`と同一の走査規約で既定配置を決める |
+| `lawnchair/src/app/lawnchair/homeedit/AppDestinationPlanner.kt` | 新設 | 純粋計画関数。入力は既存の純粋型`HomeEditSnapshot` + typedなpolicy snapshot + 対象identity。出力はclosed result（`FolderTarget(folderId, rank)` / `UpstreamDefault(reason)` / `Reject(reason)`。**座標を含まない**）。snapshot部分の欠損/破損/不一致をtypedに分類する純粋分類関数もここに置く（JVM test可能）。既定配置の座標計算は対象外 |
 | `lawnchair/src/app/lawnchair/homeedit/AppDestinationAdapter.kt` | 新設 | stage-2 validator adapter（`DirectEditContract`のdestination validatorを実装。`HomeEditSnapshotMapper`で投影しplannerを呼ぶ）。resolver/結果callbackのKotlin側実装（`FileLog`記録、one-shot通知stateへの反映、folder iconのUI refresh）を含むbridge class |
 | `lawnchair/src/app/lawnchair/homeedit/AppDestinationNotice.kt` | 新設 | one-shot通知state（prefs-backed。読み出し時に消費するstate machine。JVM test可能） |
 | `lawnchair/src/app/lawnchair/homeedit/ui/` | 新設 | 設定用フォルダ選択dialog（Dock上のフォルダを除外し、profile注記を表示） |
@@ -74,9 +77,9 @@
 | `lawnchair/res/values/strings.xml` + `values-ja/strings.xml` | 変更 | ポリシー行・dialog・通知の新規文字列 |
 | `src/com/android/launcher3/model/DirectEditContract.java` | 変更 | destination型の追加（`DestinationValidator` / `DestinationDecision` / 理由コード定数）。Issue番号#497と理由を近傍に注記（AGENTS.md上流patch規約） |
 | `src/com/android/launcher3/model/ItemInstallQueue.java` | 変更 | capture（自動追加overloadのみ）、queue XMLへのsnapshot永続化、flush時の読み出しとrouting（`Pair.second`経由の運搬）。Issue番号注記 |
-| `src/com/android/launcher3/util/PersistedItemArray.java` | 変更 | entry attributeの任意拡張hook（既定動作は不変。旧format読み込み互換）。Issue番号注記 |
+| `src/com/android/launcher3/util/PersistedItemArray.java` | 変更 | entry attributeの任意拡張hook（既定動作は不変。旧format読み込み互換。既存parserは未知attributeを無視するため、旧版での読み込みでもentry skipは起こらない）。Issue番号注記 |
 | `src/com/android/launcher3/model/AddWorkspaceItemsTask.java` | 変更 | 運搬された決定による1分岐（新op呼出し or 既定経路）。`shortcutExists`・promise検証の順序は不変。Issue番号注記 |
-| `src/com/android/launcher3/model/ModelWriter.java` | 変更 | 新opの追加（admission内で検証→ID採番→INSERT→model同期→verifier→callback）。既存`addItemToDatabase`の構造は踏まない |
+| `src/com/android/launcher3/model/ModelWriter.java` | 変更 | 新opの追加（admission内で検証→ID採番→INSERT→model同期→verifier→callback）。`UpstreamDefault`時は上流`WorkspaceItemSpaceFinder`をadmission内で呼び出し（local list渡し。新規screen id採番・list変更はadmission内に限る）。既存`addItemToDatabase`の構造は踏まない |
 | `tests/unit/app/lawnchair/homeedit/` | 新設 | planner（closed result・境界・決定性・冪等性）、通知state、設定整合のJVM test |
 | `tests/organizer-instrumentation/` | 新設 | 書込みshape（INSERT 1行・rank/lock不変）、fallback経路、snapshot再flush一貫性（process死込み）、欠損・破損、defer後の再計画のinstrumentation test |
 | `docs/product/requirements.md`、`docs/engineering/editing-burden-benchmark.md`、`DESIGN.md`、`CONTEXT.md`、`tools/repo-contract/ci_portfolio_map.yml` | 変更 | spec AC-8/AC-9/AC-10どおり。ci_portfolio_mapはinstrumentation class list追加の監査表同期 |
@@ -87,19 +90,35 @@
 - 純粋計画関数は`HomeEditSnapshot`（既存の純粋型）を使い、Android framework型をimportしない（AGENTS.md設計規約: platform型を計画moduleのinterfaceへ漏らさない）。
 - organizerのplanner/application/locks/recovery protocolには依存しない（ADR-0015 Decision 12。spec Open question 6どおり、末尾rank追加によりlock状態の読み取りも不要）。
 
+### テスト所有（ADR-0015要求テスト表とADR-0013要求テスト表の割付け。Phase 1 review指摘4）
+
+決定意味論はJVM test（純粋関数。test DBを要しない）をcanonical ownerとし、process・lease・永続化の実境界を含む接続だけをinstrumentation（test DB使用）に割り付ける。instrumentationに割り付けるtestには「下位層では観測できないrisk」を1行で明記する。新規laneは作らず、既存のhomeedit JVM gate（`app.lawnchair.homeedit.*`）とorganizer shared-writer instrumentation laneに載せる。
+
+| 要求（ADR-0015要求テスト表） | canonical surface | 内容 |
+|---|---|---|
+| admission後の再計画（defer後のstale検証） | JVM: stage-2 validator（現状態再実行でstale → `UpstreamDefault(reason)`へ再計画する決定意味論。`HomeEditStage2ValidatorTest`と同型）+ instrumentation shared-writer lane（ORGANIZER lease保持中のdefer→解放→再計画→既定書込みの実接続。**lease境界と実際の書込み経路は下位層で観測できないため**） | ADR-0013要求テスト表の「admission後の再検証」行と同じ責務分割。admission前無変更（`ItemInfo`変更・ID採番・bindItems callback・DB書込み・新規screen id採番なし）をinstrumentationで検証 |
+| policy snapshotの再flush一貫性 | JVM: snapshot分類関数とdecode契約（first-wins、欠損→default route、不一致→Reject）+ instrumentation（queue永続化fileを含むpersist→再構築→flushの実接続。**実際のpersist/restart結合は下位層で観測できないため**） | snapshot=A → policy B → restart → flush → A。current policy再読なし |
+| snapshot欠損・破損時のclosed result | JVM: 分類関数（欠損・decode不能→`UpstreamDefault(SNAPSHOT_INVALID)`、identity不一致→`Reject(SNAPSHOT_INVALID)`、基底entry decode不能→上流の既存drop）+ instrumentation（queue file実体を用いた破損注入の接続。**file I/O境界は下位層で観測できないため**） | current policyを再読しない単一のclosed result |
+| 既定配置の上流意味論との等価性（Phase 1 review指摘1） | instrumentation（ModelWriter実経路で新opの`UpstreamDefault`書込み位置が`WorkspaceItemSpaceFinder`の走査（QSB時1ページ目除外・満杯時新規screen）と一致すること。**finder意味論はmodel状態とDB controllerに依存するためJVMで再現しない**） | 既定配置をfork側で複製しないことの固定 |
+| coordinator排他・書込みshape（INSERT 1行・rank/lock不変） | instrumentation shared-writer lane（test DB使用） | ADR-0013要求テスト表の該当行 |
+| process死 | instrumentation（既存のprocess-death smokeの慣行。**実process境界のため**） | 1 INSERTのatomic性（前か後のどちらか） |
+| 純粋計画関数・通知state・設定整合 | JVM（`tests/unit/app/lawnchair/homeedit/`。fixture・境界・typed理由・決定性・冪等性） | AGENTS.mdテスト規約どおり |
+
+テスト新設前に[test-audit skill](../../.agents/skills/test-audit/SKILL.md)を適用し、protected contract・credible regression・primary owner boundary・既存coverageとの重複・impact surface・CI分類を確定してPRへ記録する。新規instrumentation classは`.github/workflows/ci.yml`のclass listへ追加し、`tools/repo-contract/ci_portfolio_map.yml`の監査表を同じPRで更新する。
+
 ### spec 446 planからの引き継ぎ事項の決定
 
 - bridge位置: 候補1（`ItemInstallQueue`のflush層でのrouting + `AddWorkspaceItemsTask`の1分岐 + 新op）で確定（本plan「bridge位置の確定」節）。
-- policy snapshotの保持方法: queue XML entryへの追加attribute（`PersistedItemArray`の任意拡張hook）で確定。旧format読み込み時は`SNAPSHOT_INVALID`扱い（spec AC-4）。
-- `addToQueue`の重複排除（`PendingInstallShortcutInfo.equals`: user+itemType+intent）は不変であり、snapshotは`equals`の対象にしない（同一installの再captureで上書きされ、queue内の重複排除の意味論を変えない）。
-- stage-1（flush時）はroutingのみで配置を決めない。すべての配置決定はstage-2（admission内）のclosed resultである。これによりADR-0015 Decision 8の「admission後に同じ関数を現状態へ再実行」が自然に成立する（stage-2が最初かつ唯一の配置決定である）。
+- policy snapshotの保持方法: queue XML entryへの追加attribute（`PersistedItemArray`の任意拡張hook）で確定。旧format読み込み時は`SNAPSHOT_INVALID`扱い（spec AC-4）。既存parserは未知attributeを無視するため、旧版downgrade時もentry skipは起こらない。
+- `addToQueue`の重複排除（`PendingInstallShortcutInfo.equals`: user+itemType+intent）は不変であり、snapshotは`equals`の対象にしない。**重複enqueue時は最初に永続化したsnapshotが保持される（first enqueue wins。`mItems.contains`がtrueの場合、追加も`mStorage.write`も行われないため、last-winsは現行コードでは成立しない。Phase 1 review指摘2）**。last-winsが必要な場合はqueue意味論の変更となるため、本Issueでは採用しない。
+- stage-1（flush時）はroutingのみで配置を決めない。snapshotの分類（`upstream` / `folder` / 欠損・decode不能 / identity不一致）は純粋関数とする。すべての配置決定はstage-2（admission内）のclosed resultであり、**既定配置の座標計算は純粋計画関数の対象外**である（上流`WorkspaceItemSpaceFinder`の意味論をadmission内で用いる。Phase 1 review指摘1）。これによりADR-0015 Decision 8の「admission後に同じ関数を現状態へ再実行」が自然に成立する（stage-2が最初かつ唯一の配置決定である）。
 
 ## Migration and recovery
 
 - schema/rule migration: なし（書く行は上流と同じ標準構造。新列・新tableなし）。
 - queue XML format拡張: 旧format（snapshot attributeなし）の読み込みは`SNAPSHOT_INVALID`フォールバックで動作する（spec AC-4）。
 - failure中のrollback: 単一行INSERTでatomic。新opの失敗は無変更でtypedに通知する（握りつぶしなし）。
-- release rollback/downgrade: 旧版に戻すとqueue XMLの追加attributeは未知のattributeとして無視されるか、entryごとskipされる（既存の`PersistedItemArray.read`の振る舞い）。fallback先は上流既定であるためlayout損失はない。
+- release rollback/downgrade: 旧版に戻すとqueue XMLの追加attributeは既存parserにより無視される（entry skipは起こらない）。fallback先は上流既定であるためlayout損失はない。
 - backup/restore compatibility: 契約変更なし。
 
 ## Verification
@@ -147,7 +166,7 @@
 - Scope type: feature（階層H実装）
 - Accepted spec + commit: specs/497-new-app-destination-policy-impl/spec.md（本PR内でaccepted化を図る。commit SHAはPR本文へ記録）
 - Bug oracle: N/A with reason（新機能実装であり、bug oracleは存在しない。ADR-0015要求テスト表とspec Test oracleが検証の正である）
-- Plan + revision: specs/497-new-app-destination-policy-impl/plan.md（本書、Revision 1）
+- Plan + revision: specs/497-new-app-destination-policy-impl/plan.md（本書、Revision 2。Phase 1 review round 1対応）
 - Base SHA: 3d8f4dcca5452fd609a1c1e2f279231ca8edc0e4
 - Head SHA: PR本文へ記録
 - Executed evidence: Current evidenceの`path:line`検証（2026-10-02）+ `validate_writer_inventory.py` PASS確認

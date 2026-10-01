@@ -27,11 +27,11 @@ ADR-0015（accepted、#446 / PR #470）で「上流の既定 / 指定した1つ�
 ## Scope
 
 - **配置先ポリシーmodule（`app.lawnchair.homeedit`配下。ADR-0015 Decision 12どおりorganizerとは別の直接編集と同じ側のmodule。本Issueが新設）**:
-  - **純粋計画関数**: 入力は「現状態の投影（snapshot。フォルダの存在・profile・container（Dock判定）・子の件数、格子寸法とscreen順）」「対象アイテムのidentity（user、package/intent）」「ポリシースナップショット（queue投入時にcaptureしたpolicy選択、指定folder id、user、package。ADR-0015 Decision 10）」。出力はclosed result（`FolderTarget(folderId)` / `UpstreamDefault(reason)` / `Reject(reason)`。ADR-0015 Decision 8どおり）。保存・profile分離・container参照・配置制約を検証する。UI・DB・model状態に触れない。
+  - **純粋計画関数**: 入力は「現状態の投影（snapshot。フォルダの存在・profile・container（Dock判定）・子の件数、格子寸法とscreen順）」「対象アイテムのidentity（user、package/intent）」「ポリシースナップショット（queue投入時にcaptureしたpolicy選択、指定folder id、user、package。ADR-0015 Decision 10）」。出力はclosed result（`FolderTarget(folderId, rank)` / `UpstreamDefault(reason)` / `Reject(reason)`。ADR-0015 Decision 8どおり）。指定フォルダの存在・profile分離・Dock・配置制約と末尾rankを検証する。**既定配置の座標計算は純粋計画関数の対象外**であり、上流の`WorkspaceItemSpaceFinder`の意味論をadmission内で用いる（書込み構造の項参照）。UI・DB・model状態に触れない。
   - **ポリシースナップショットのcapture・永続化・読み出し**: captureは自動追加のqueue投入（enqueue）時に1回、queue永続化とともに保持し、flush時は読むだけ（current policyから再生成しない）。保持方法（queue fileへの追加attribute、別の永続file等）はplanが決める。
   - **fallback理由の記録と通知**: fallback時にtypedな理由をFileLogへ記録する（package名は出力に含めない。organizer-diagnostics §7のNever分類準拠）。設定の行で一度だけ表示する通知state（表示後に消費される）を持つ。記録方法は446 spec Open question 5の委譲を受け、本specでFileLog + one-shot通知stateへ確定する。
 - **bridge（追加経路の1箇所。ADR-0015 Decision 9）**: 自動追加経路（`SessionCommitReceiver` → `ItemInstallQueue`の`queueItem(packageName, user)` overload、およびpromise iconの`InstallSessionHelper`経路）への接続。enqueue時のsnapshot capture、flush時の読み出し、決定の運搬、書込み分岐。`PackageUpdatedTask.java`（AOSP由来）には分岐を追加しない。手動配置（`AddItemActivity`経由の`queueItem(ShortcutInfo)` / widget overload）は対象外とし、captureも行わない。
-- **新規の最小`ModelWriter`操作（ADR-0013契約4。同経路に追加する）**: 指定フォルダへの新規行INSERTを、admissionの内側で「stage-2再検証（同一純粋計画関数の現状態再実行）→ ID採番 → model/DB変更」が完結する構造で行う。既存の`addItemToDatabase`がadmission前に`updateItemInfoProps`・ID採番・bindItems callbackを実行する構造（ADR-0015 Decision 7が踏まないと定めた`ModelWriter.java`の構造）は使わない。stage-2で`UpstreamDefault(reason)`へ再計画した場合は、既定配置のbounds/containerを同じadmission内で検証してから書く。`organizerLockState`列は書かない。
+- **新規の最小`ModelWriter`操作（ADR-0013契約4。同経路に追加する）**: 指定フォルダへの新規行INSERTを、admissionの内側で「stage-2再検証（同一純粋計画関数の現状態再実行）→ ID採番 → model/DB変更」が完結する構造で行う。既存の`addItemToDatabase`がadmission前に`updateItemInfoProps`・ID採番・bindItems callbackを実行する構造（ADR-0015 Decision 7が踏まないと定めた`ModelWriter.java`の構造）は使わない。stage-2で`UpstreamDefault(reason)`へ再計画した場合、**既定配置の計算は上流の`WorkspaceItemSpaceFinder`の意味論をそのままadmission内で用いる**（top QSB有効時の1ページ目除外、既存screenが全て満杯の場合の新規screen割当を含む。`WorkspaceItemSpaceFinder.java:69-86`の走査）であり、fork側で既定配置の走査を複製しない。新規screen idの採番（`getNewScreenId`）とscreen集合（`workspaceScreens` / `addedWorkspaceScreensFinal`相当）への反映もadmission内に限り、admission成立前に漏らさない。既定配置のbounds/containerを同じadmission内で検証してから書く。`organizerLockState`列は書かない。
 - **設定UI**: 既存の「ホームにアイコンを追加」設定（`HomeScreenPreferences`）の近傍に、3択のポリシー行を追加する。独立したtoggleは新設しない（ADR-0015 Decision 15）。フォルダ選択はdialog（既存のAlertDialog慣行。#448のフォルダ選択dialogと同型）で行う。
 - **テスト**: ADR-0015要求テスト表の3行（admission後の再計画、policy snapshotの再flush一貫性、snapshot欠損・破損時のclosed result）とADR-0013要求テスト表の該当行を既存surface（instrumentation shared-writer lane + homeedit JVM gate）で満たす。新規CI laneは作らない。テスト新設は[test-audit skill](../../.agents/skills/test-audit/SKILL.md)を適用して審査する。
 - **ベンチマーク**: B6の目標を本specで確定（下記のとおり追加操作0）。B1/B6の実装後の再計測（決定的会計の再算出と目標照合。#449 AC-12と同じ方式）を記録する。
@@ -109,18 +109,26 @@ And process死の間にポリシーやフォルダ指定が変わっても、同
 
 ### Scenario: ポリシースナップショットの欠損・破損
 
-Given 永続化されたqueueにポリシースナップショットが無い、または読み取れない（旧format・破損。queue自身のidentity（user、package/intent）は読める）
+Given 永続化されたqueue entryの基底identity（itemType、user、intent）はdecodeできるが、ポリシースナップショット部分が欠損またはdecode不能である（旧format・破損）
 When flushがqueueを消化する
 Then current policyを再読せず、`UpstreamDefault(SNAPSHOT_INVALID)`で上流の既定へ置き、記録と設定の行での一度だけの通知が行われる
-And queue自身のidentityすら信頼できない場合（対象の同定ができない破損）は、無変更で`Reject(SNAPSHOT_INVALID)`としてtypedに記録される
+And ポリシースナップショット部分がdecodeできても、そのidentity（user、package）が基底entryと一致しない（ペアリング破損）場合は、無変更で`Reject(SNAPSHOT_INVALID)`としてtypedに記録される
+And 基底entry自体がdecode不能な場合の挙動は上流の既存のまま（entryの読み飛ばし）であり、本契約の対象外である
+
+### Scenario: 同一installの重複enqueue
+
+Given 同一package・同一userの自動追加が既にqueueへ投入され、snapshotが永続化されている
+When flushの前に同じpackage・userの自動追加が再投入される
+Then queueの重複排除は既存のまま動き（2entryにはならず）、**最初に永続化したsnapshotが保持される**（first enqueue wins。再captureで置き換わらない）
+And flush時の結果は最初のsnapshotに対して決定的である
 
 ### Scenario: admission内での再計画（defer後のstale）
 
 Given ORGANIZER lease（organizer run適用中）が保持されている間に新規アプリAのflushが行われた
 When 書込みがMODEL_WRITER admissionでFIFOへdeferされ、lease解放後にadmissionが成立する
 Then admissionの内側で同一の純粋計画関数が現状態へ再実行される
-And 指定フォルダがlease中に削除・移動・別profile化されていた場合、`UpstreamDefault(reason)`という有効planへ再計画され、既定配置のbounds/containerを同じadmission内で検証してから1 transactionで書かれる
-And admission成立より前に`ItemInfo`の変更・ID採番・bindItems callback・DB書込みのいずれも発生しない
+And 指定フォルダがlease中に削除・移動・別profile化されていた場合、`UpstreamDefault(reason)`という有効planへ再計画され、既定配置は上流と同じ走査（top QSB時の1ページ目除外・既存全満杯時の新規screen割当）で同じadmission内に決定・検証され、1 transactionで書かれる
+And admission成立より前に`ItemInfo`の変更・ID採番・bindItems callback・DB書込み・新規screen id採番のいずれも発生しない
 
 ### Scenario: 「追加しない」を選ぶ
 
@@ -157,7 +165,7 @@ Then 追加は行われ、既存の子のcaptured container/rankは不変であ�
 
 - 読むdata: `favorites`の現状態（admission内の`BgDataModel`投影。フォルダの存在・profile・container・子の件数、格子寸法、screen順。新規の権威を作らない）、device profileの格子、配置先ポリシーのpref、（通知表示時の）one-shot通知state。
 - 書くdata: `favorites`行のINSERT 1行（新規アプリ。container=指定folder id + 末尾rank、または`CONTAINER_DESKTOP` + screen/cell。上流と同じ標準構造）。schema変更・migrationなし。`organizerLockState`列は書かない。既存行は書き換えない。
-- 永続化するdata: (1) 配置先ポリシーのpref（policy選択 + 指定folder id。既定は「上流の既定」）、(2) ポリシースナップショット（queue永続化とともに。retentionはqueueと同じで、flushでqueueが消化されるとともに消える。保持方法はplanが決める）、(3) one-shot通知state（prefs。表示後に消費）、(4) FileLogのfallback記録（log。package名なし）。
+- 永続化するdata: (1) 配置先ポリシーのpref（policy選択 + 指定folder id。既定は「上流の既定」）、(2) ポリシースナップショット（queue永続化とともに。retentionはqueueと同じで、flushでqueueが消化されるとともに消える。同一installの重複enqueueでは最初に永続化したsnapshotが保持される（first enqueue wins）。保持方法はplanが決める）、(3) one-shot通知state（prefs。表示後に消費）、(4) FileLogのfallback記録（log。package名なし）。
 - migration、backup/restore、rollbackへの影響: schema/migrationなし。queue file formatの拡張（採用時）は旧formatの読み込み互換を保ち、snapshot無しのentryは`UpstreamDefault(SNAPSHOT_INVALID)`へフォールバックする。backup契約への変更なし。rollbackはPR revert。
 - layoutを扱う場合の対象集合: 書くのは自動追加の新規アプリ1アイテムのみ。既存アイテム・widget・フォルダ行は書き換えない。対象のitem typeは自動追加が生成する`ITEM_TYPE_APPLICATION`（promise iconを含む）。`AddItemActivity`経由の手動配置は対象外。
 
@@ -176,10 +184,10 @@ None。新規permission、外部送信、sensitive dataの追加はない。書�
 - [ ] AC-1: 設定の「ホームにアイコンを追加」の近傍に3択のポリシー行が存在し、「上流の既定 / 指定フォルダ / 追加しない」が動作する。「追加しない」は既存の`pref_add_icon_to_home`のOFFと同じ結果であり、独立した抑制経路・二重判定を新設しない。3択と既存スイッチの表示は常に整合し、ホーム画面ロック中はポリシー行も無効である。フォルダ選択dialogで、Dockにない既存フォルダ（profile注記つき）から1つ選べる。エミュレータのスクリーンショットで構造を確認し、実機での表示・操作をownerが確認する。
 - [ ] AC-2: 指定フォルダ選択時、自動追加の新規アプリ（promise icon段階を含む）が追加操作0で指定フォルダ内の末尾rankに置かれる。既存子のrankと`organizerLockState`列は不変、書込みは1回のINSERTである。実機でB1の挙動を確認し、会計（追加操作0）をPRに記録する。
 - [ ] AC-3: フォールバック（削除・別profile・Dock・配置制約違反）で上流の既定へ戻り、typedな理由がFileLogへ記録され（package名なし）、設定の行に一度だけ表示される。同名フォルダ再作成で指定は復活しない。既定ポリシー時は記録・通知・新規書込み経路が発生しない。
-- [ ] AC-4: 再flush決定性: snapshot=Aでqueue投入 → policy変更 → process再起動 → flush → snapshot Aが使用される（current policyを再読しない）。snapshot欠損・破損時もcurrent policyを再読しない（identityが読める範囲なら`UpstreamDefault(SNAPSHOT_INVALID)`、identity自体が信頼できない場合だけ`Reject(SNAPSHOT_INVALID)`の無変更・typed failure）。
-- [ ] AC-5: 書込み構造がADR-0013契約4どおりである。(a) admission成立より前に`ItemInfo`の変更・ID採番・bindItems callback・DB書込みが発生しない、(b) admission後に同一の純粋計画関数を現状態へ再実行する、(c) 指定folderがstaleなら`UpstreamDefault(reason)`という有効planへ再計画し、既定配置のbounds/containerを同じadmission内で検証してから1 transactionで書く、(d) default側も成立しない真のinvariant failureだけが`Reject`（無変更・typed failure）である。ORGANIZER lease中のdeferでも同様であり、単一行INSERTでatomicである（失敗の握りつぶしなし）。
+- [ ] AC-4: 再flush決定性: snapshot=Aでqueue投入 → policy変更 → process再起動 → flush → snapshot Aが使用される（current policyを再読しない）。同一installの重複enqueue後も、最初に永続化したsnapshotが保持される（first enqueue wins。queueの重複排除の意味論は変更しない）。snapshot部分の欠損・decode不能時（基底entryのidentityが読める場合）もcurrent policyを再読しない（`UpstreamDefault(SNAPSHOT_INVALID)`で既定配置）。snapshot部分がdecodeできても基底entryとidentity（user、package）が一致しない場合は無変更で`Reject(SNAPSHOT_INVALID)`のtyped failure。基底entry自体のdecode不能は上流の既存挙動（読み飛ばし）のまま本契約の対象外である。
+- [ ] AC-5: 書込み構造がADR-0013契約4どおりである。(a) admission成立より前に`ItemInfo`の変更・ID採番・bindItems callback・DB書込み・新規screen id採番が発生しない、(b) admission後に同一の純粋計画関数を現状態へ再実行する、(c) 指定folderがstaleなら`UpstreamDefault(reason)`という有効planへ再計画され、既定配置は上流`WorkspaceItemSpaceFinder`と同じ意味論（top QSB時の1ページ目除外・既存全満杯時の新規screen割当。fork側の走査複製を作らない）で同じadmission内に決定・検証されてから1 transactionで書く。新規screen id採番・screen集合への反映もadmission前に漏らさない、(d) default側も成立しない真のinvariant failureだけが`Reject`（無変更・typed failure）である。ORGANIZER lease中のdeferでも同様であり、単一行INSERTでatomicである（失敗の握りつぶしなし）。
 - [ ] AC-6: bridgeが自動追加経路の1箇所に限定され、`PackageUpdatedTask.java`への分岐追加がない。手動配置（`AddItemActivity`経由）は対象外であり、snapshotのcaptureも行われない。
-- [ ] AC-7: 純粋計画関数がinterface経由でテストされている（fixture、境界値、typed拒否理由、決定性、冪等性。AGENTS.mdテスト規約）。ADR-0015要求テスト表の3行とADR-0013要求テスト表の該当行（admission後の再検証・organizer runとの排他・process死）が既存surfaceで成功する。新規CI laneは作らない。テスト新設時のtest-audit適用を記録する。
+- [ ] AC-7: 純粋計画関数がinterface経由でテストされている（fixture、境界値、typed拒否理由、決定性、冪等性。AGENTS.mdテスト規約）。ADR-0015要求テスト表の3行とADR-0013要求テスト表の該当行を、**決定意味論はJVM testをcanonical owner**（純粋planner、stage-2 validatorの現状態再実行と再計画、snapshot分類（欠損/破損/不一致/first-wins））で、**書込みの実接続はinstrumentation（test DB使用）**で満たす。ORGANIZER leaseとのdefer接続とprocess死をinstrumentationに割り付ける理由（process・lease境界は下位層で観測できない）を各testに1行で明記する。既定配置の上流意味論との等価性（QSB時の1ページ目除外、満杯時の新規screen割当）をtestで固定する。新規CI laneは作らない。テスト新設時のtest-audit適用を記録する。
 - [ ] AC-8: ベンチマーク: **B6の目標を「配置先を設定した後の追加操作0（10個の合計。重み付きコスト0）」と確定する**（B1の改善の10個分の合計。§6の重み表で算出）。B1/B6の実装後の会計を決定的再算出で記録し（baseline B1=8操作/3操作数、B6=84/32 からの改善）、ベンチマーク§7準拠のエミュレータ実行記録（fixture seeding + install実証）をPRに残す。実機確認はowner確認に含める。
 - [ ] AC-9: patch surface: PR上で `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` を実行し、結果をPR本文に記録する。src/側の増分（bridge。`ItemInstallQueue`、`AddWorkspaceItemsTask`、`ModelWriter`、契約型等）をNFR-010として理由つきで記録する。`validate_writer_inventory.py` がPASSすること（新規のDB書込みfileを作らない場合、allowlist変更は不要であることを確認する）。
 - [ ] AC-10: 文書: `docs/product/requirements.md` のFR-008を`implemented`へ更新する（本実装mergeを根拠。実績はAC-2〜AC-5のevidence）。ベンチマーク§6のB6目標セルを本specの確定値へ更新する（Change historyに1行追加）。`DESIGN.md`のmodule構成へ配置先ポリシーmoduleを追加し、§11 gate 7行に本specへのlinkを補う。`CONTEXT.md`へdomain language 3語を反映する。
@@ -190,12 +198,12 @@ None。新規permission、外部送信、sensitive dataの追加はない。書�
 | AC | Evidence |
 |---|---|
 | AC-1 | エミュレータスクリーンショット（ポリシー行・dialog・整合表示）+ owner実機確認。設定構築のJVM test（3択の状態遷移と整合） |
-| AC-2 | instrumentation書込みtest（INSERT 1行・既存子rank不変・lock列不変）+ エミュレータ実行記録 + owner実機確認（B1会計） |
-| AC-3 | 純粋計画関数のJVM test（typed理由）+ FileLog記録とone-shot通知stateのJVM test + instrumentation（fallback経路の無変更でない既定書込み） |
-| AC-4 | instrumentation: snapshot再flush一貫性（process死込み）+ snapshot欠損・破損のclosed result test（ADR-0015要求テスト表どおり） |
-| AC-5 | instrumentation（shared-writer lane）: defer後の再計画（ADR-0015要求テスト表1行目）、admission前無変更、coordinator排他。homeedit JVM test（stage-1/stage-2の同一関数性） |
+| AC-2 | instrumentation書込みtest（INSERT 1行・既存子rank不変・lock列不変。test DB使用）+ エミュレータ実行記録 + owner実機確認（B1会計） |
+| AC-3 | 純粋計画関数のJVM test（typed理由）+ FileLog記録とone-shot通知stateのJVM test + instrumentation（fallback経路の既定書込み。test DB使用） |
+| AC-4 | snapshot分類（欠損/破損/不一致）とfirst-winsのJVM test（純粋な分類関数）+ instrumentation（queue永続化を含む再flush一貫性の実接続。persist/restart結合は下位層で観測できないためinstrumentationに割付け） |
+| AC-5 | JVM test（stage-2 validatorの現状態再実行と再計画の決定意味論）+ instrumentation shared-writer lane（lease defer接続・admission前無変更・既定配置の上流意味論等価性の実経路。lease/process境界は下位層で観測できないためinstrumentationに割付け。test DB使用） |
 | AC-6 | PR diffのreview（bridge範囲の確認）+ JVM/instrumentation test（手動配置経路がcaptureしないこと） |
-| AC-7 | `tests/unit/app/lawnchair/homeedit/` のJVM test群（`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'`）+ instrumentation test群。test-audit適用の記録（PR本文） |
+| AC-7 | `tests/unit/app/lawnchair/homeedit/` のJVM test群（`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.homeedit.*'`）+ instrumentation test群（test DB使用）。test-audit適用の記録（PR本文） |
 | AC-8 | ベンチマーク§7のagent手順によるエミュレータ実行記録（fixture seeding + install実証。B1/B6会計。PR本文） |
 | AC-9 | `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` の出力（PR本文、NFR-010記録）+ `validate_writer_inventory.py` PASS |
 | AC-10 | `validate_repo_contract.py` 成功 + diff確認（requirements.md / ベンチマーク§6 / DESIGN.md / CONTEXT.md） |
@@ -212,7 +220,11 @@ None。新規permission、外部送信、sensitive dataの追加はない。書�
 5. **fallback理由の記録方法**（446 spec Open question 5の委譲を受け本specで確定）: FileLogへのtyped理由コードの記録（package名なし。organizer-diagnostics §7 Never準拠）+ 設定行のone-shot通知state（prefsにpendingを保持し、表示時に消費）。organizer-diagnosticsのrun journal（`RunEvent`のclosed集合）は使わない（scopeがorganization run / recovery操作に限定されるため）。
 6. **ロック状態の検証入力**（446 planの調査事項への回答）: 追加は末尾rankであり既存子のcaptured rankを変えないため、ロック状態を読み取り検証の入力にする必要がない（ADR-0015 Decision 6の制約は書込み形状で満たす）。`organizerLockState`列は書かない。organizerのlock capture経路への依存も発生しない（ADR-0015 Decision 12のmodule独立を維持）。
 7. **B6の目標値**（本Issueのspecで確定すべき項）: 「配置先を設定した後の追加操作0」。10個の新規アプリすべてが追加操作0で指定フォルダ内に置かれるため、重み付きコスト・操作数ともに0である（B1の改善の10個分の合計。baseline B6=84/操作数32との差分で改善を記録する）。
+8. **snapshot重複captureの扱い**（Phase 1 review round 1で確定）: first enqueue wins。`addToQueue`の重複排除（`mItems.contains`がtrueなら追加も`mStorage.write`もスキップ。`ItemInstallQueue.java:113-120`）の意味論を変更せず、最初に永続化したsnapshotが保持される。last-winsは重複排除の意味論変更を伴うため採用しない。
+9. **`Reject(SNAPSHOT_INVALID)`の観測可能な条件**（Phase 1 review round 1で確定）: 基底entry自体がdecode不能な場合は上流の既存の読み飛ばしのまま対象外とする（`PersistedItemArray.read`はentry単位のcatchで読み飛ばす。raw-entry transportの新設はbridge過大）。`Reject(SNAPSHOT_INVALID)`は「snapshot部分はdecodeできるが、そのidentity（user、package）が基底entryと一致しない（ペアリング破損）」の場合に限る。欠損・decode不能（基底identity読める）は`UpstreamDefault(SNAPSHOT_INVALID)`へ明示fallbackする。
+10. **既定配置の計算の所有**（Phase 1 review round 1で確定）: 純粋計画関数のclosed resultは`UpstreamDefault(reason)`まで（座標を含まない）。既定配置の座標計算は上流`WorkspaceItemSpaceFinder`の意味論（`WorkspaceItemSpaceFinder.java:69-71`のQSB時1ページ目除外、`:77-86`の満杯時新規screen割当）をadmission内で用い、fork側の走査複製を作らない。新規screen id採番・screen集合への反映はadmission内に限る（ADR-0013契約4のadmission前無変更）。
 
 ## Change history
 
 - 2026-10-02: Draft created for #497（Phase 1）。出典: Issue #497本文、ADR-0015（accepted、#446 / PR #470）、ADR-0013（accepted、#445）、spec 446 planのbridge実装位置調査、editing-burden-benchmark §6（#441確定）。
+- 2026-10-02: Revision 2 — Phase 1 review round 1（[PR #498 comment](https://github.com/nunu1733/NunuLauncher/pull/498#issuecomment-5935261988)）の指摘1〜4に対応。指摘1（高）: 既定配置の座標計算を純粋計画関数の対象外とし、上流`WorkspaceItemSpaceFinder`の意味論（QSB時1ページ目除外・満杯時新規screen割当）をadmission内で用いる形へ修正。新規screen id採番・screen集合反映のadmission前漏出禁止を明記（Scope/Scenario/AC-5/Open questions 10）。指摘2（中）: snapshot重複captureをfirst enqueue winsへ一意化し、`addToQueue`の重複排除の意味論変更をしないことを明記（Scenario/AC-4/Data and state/Open questions 8）。指摘3（中）: `Reject(SNAPSHOT_INVALID)`の条件を「snapshot部分のidentity不一致」に限定し、基底entry自体のdecode不能は上流の既存の読み飛ばしのまま対象外とする（Scenario/AC-4/Open questions 9）。指摘4（中）: テスト所有を「決定意味論=JVM canonical、実接続（lease defer・persist/restart・process死）=instrumentation（理由1行付き）」へ再割付け（AC-7/Test oracle）。
