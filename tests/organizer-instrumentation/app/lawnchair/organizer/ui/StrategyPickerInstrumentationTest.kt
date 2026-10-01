@@ -115,8 +115,7 @@ class StrategyPickerInstrumentationTest {
             .assertIsDisplayed()
         // Spec #453 (FR-023): the picker offers the three intent-level choices
         // in display order — canonical (default), tidy V2, bottom region. The
-        // rows fit without scrolling; scroll is kept as a harmless no-op guard
-        // for small-window layouts.
+        // row ORDER is asserted from the semantics tree, not just presence.
         for (name in listOf(
             R.string.organization_strategy_canonical_name,
             R.string.organization_strategy_tidy_v2_name,
@@ -126,6 +125,11 @@ class StrategyPickerInstrumentationTest {
                 .performScrollToNode(hasText(context().getString(name)))
             composeRule.onNodeWithText(context().getString(name)).assertIsDisplayed()
         }
+        assertPickerRowLabels(
+            context().getString(R.string.organization_strategy_canonical_name),
+            context().getString(R.string.organization_strategy_tidy_v2_name),
+            context().getString(R.string.organization_strategy_bottom_region_name),
+        )
         // Hidden runtime-supported strategies are no longer composed as rows.
         for (name in listOf(
             R.string.organization_strategy_tidy_name,
@@ -312,11 +316,18 @@ class StrategyPickerInstrumentationTest {
 
         val canonical = context().getString(R.string.organization_strategy_canonical_name)
         val hiddenName = context().getString(R.string.organization_strategy_tidy_name)
-        // Three offered rows plus the appended selected row.
+        // Three offered rows plus the appended selected row — the appended row
+        // is the fourth (after the offered three), asserted from row order.
         assertEquals(
             4,
             composeRule.onAllNodes(inStrategyPicker(hasClickAction()), useUnmergedTree = true)
                 .fetchSemanticsNodes().size,
+        )
+        assertPickerRowLabels(
+            context().getString(R.string.organization_strategy_canonical_name),
+            context().getString(R.string.organization_strategy_tidy_v2_name),
+            context().getString(R.string.organization_strategy_bottom_region_name),
+            hiddenName,
         )
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(hiddenName))
         composeRule.onNodeWithText(hiddenName).assertIsDisplayed().assertIsSelected()
@@ -400,6 +411,43 @@ class StrategyPickerInstrumentationTest {
     }
 
     @Test
+    fun pickerWithHiddenSelectionRemainsReadableAtTwoHundredPercentFontScale() {
+        // Spec #453: the 3+1-row composition (offered three plus the appended
+        // hidden-selected row with its longer label) must stay reachable and
+        // unclipped at 200% font scale.
+        clearSelectionStore()
+        val committed = LayoutStrategySelectionModule.store(context())
+            .select(StrategyId("STABLE_PAGE_TIDY_V1"))
+        assertTrue(committed is LayoutStrategySelectionWriteResult.Committed)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 2f)) {
+                LawnchairTheme { OrganizerStrategyPreferences(run = previewlessRunner()) }
+            }
+        }
+
+        val context = context()
+        val windowWidth = context.resources.displayMetrics.widthPixels
+        for (name in listOf(
+            R.string.organization_strategy_canonical_name,
+            R.string.organization_strategy_tidy_v2_name,
+            R.string.organization_strategy_bottom_region_name,
+            R.string.organization_strategy_tidy_name,
+        )) {
+            val label = context.getString(name)
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(label))
+            composeRule.onNodeWithText(label).assertIsDisplayed()
+            // Reachable by scrolling and rendered within the window width
+            // (no clipping) at 200% font scale.
+            composeRule.onAllNodes(hasText(label)).fetchSemanticsNodes().forEach { semNode ->
+                assertTrue(
+                    "row must not exceed the window width at 200% font scale",
+                    semNode.boundsInRoot.right <= windowWidth,
+                )
+            }
+        }
+    }
+
+    @Test
     fun canonicalStrategyDescriptionOmitsHistoricalWording() {
         val description = context().getString(R.string.organization_strategy_canonical_description)
 
@@ -442,6 +490,28 @@ class StrategyPickerInstrumentationTest {
 
     private fun inStrategyPicker(matcher: SemanticsMatcher): SemanticsMatcher =
         hasAnyAncestor(hasTestTag(STRATEGY_PICKER_TAG)) and matcher
+
+    /**
+     * Spec #453: asserts the picker's selectable rows (merged tree — each row
+     * announces name + state + description as one node) carry exactly these
+     * strategy names, in this row order.
+     */
+    private fun assertPickerRowLabels(vararg orderedNames: String) {
+        val labels = composeRule.onAllNodes(inStrategyPicker(isSelectable()))
+            .fetchSemanticsNodes()
+            .map { node ->
+                node.config.getOrNull(SemanticsProperties.Text)
+                    ?.joinToString("") { it.text }
+                    .orEmpty()
+            }
+        assertEquals(orderedNames.size, labels.size)
+        orderedNames.forEachIndexed { index, name ->
+            assertTrue(
+                "picker row $index must show \"$name\" but was \"${labels[index]}\"",
+                labels[index].contains(name),
+            )
+        }
+    }
 
     private class NotReadyManualOrganizationApplication : ManualOrganizationApplication {
         // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.

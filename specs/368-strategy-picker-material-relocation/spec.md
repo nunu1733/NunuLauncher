@@ -540,10 +540,10 @@ high-risk evidence gateの対象外）。
   §3.9/§3.14境界更新）。merge後のdocs PRで`implemented`へ遷移する。
 - 2026-09-20: Merged（PR #384、merge commit `b84d277f81`）。statusを`implemented`へ更新。
 - 2026-09-19: Accepted（owner指示: reviewクリア後に実装へ進行。
-- 2026-10-01: Amended by #453 — T-05 が受ける picker の表示が意図ごとの curated 3択＋非表示選択済み strategy の追加1行へ絞られた（FR-023）。T-05 への移設、`StrategyWriteArbiter`、AUTHORING admission、書込み契約は不変。正本: [spec 453](../453-strategy-choice-reduction/spec.md)。
   re-review [Approve相当](https://github.com/nunu1733/NunuLauncher/issues/368#issuecomment-5742960028)
   @ head `5d5b61ee4e`。statusを`accepted`へ更新。Contract notes 1〜3を受入）。
   実装PRでstatusを`implemented`へ更新する。
+- 2026-10-01: Amended by #453 — T-05 が受ける picker の表示が意図ごとの curated 3択＋非表示選択済み strategy の追加1行へ絞られた（FR-023）。T-05 への移設、`StrategyWriteArbiter`、AUTHORING admission、書込み契約は不変。正本: [spec 453](../453-strategy-choice-reduction/spec.md)。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/368
 [2]: https://github.com/nunu1733/NunuLauncher/issues/366
