@@ -422,22 +422,14 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
      * system Back, and the request row never admits a run (the coordinator
      * stays `Idle`).
      *
-     * #477/#479 quarantine (ci-test-portfolio.md): CI passes the
-     * [QUARANTINE_RUNNER_ARGUMENT] runner argument so this touch oracle
-     * skips while #479 owns the Compose-level ghost-row anomaly it hits;
-     * local and diagnostic runs omit the argument and the oracle stays
-     * observable (classified failure + failure-instant screenshot).
+     * #479 resolution: the ghost-row root cause (the hub exchange row laid
+     * into the app-bar contentPadding gap by a LazyListState anchor race) is
+     * fixed in OrganizerHubPreferences and the quarantine is lifted — the
+     * oracle runs unconditionally again (classified failure + failure-instant
+     * screenshot diagnostics stay for regression evidence).
      */
     @Test
     fun issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute() {
-        val quarantineArgument = androidx.test.platform.app.InstrumentationRegistry
-            .getArguments()
-            .getString(QUARANTINE_RUNNER_ARGUMENT)
-        org.junit.Assume.assumeTrue(
-            "issue372 touch oracle quarantined for #479 in CI (see ci-test-portfolio.md); " +
-                "omit $QUARANTINE_RUNNER_ARGUMENT to run it locally",
-            quarantineArgument == null,
-        )
         val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
         installProcessLocalRunner(fixture)
         // The consultation session is seeded through the REAL durable store
@@ -483,6 +475,14 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             }
 
             // Hub → 進行中のAI依頼 row → T-15 pre-display.
+            // Issue #479 (swallow-2): the same scroll-into-view +
+            // assertIsDisplayed discipline the request row uses — a clipped
+            // row's tap center can sit inside the system gesture-nav inset,
+            // where SystemUI consumes the tap.
+            composeRule.onNode(hasScrollAction()).performScrollToNode(
+                hasText(context.getString(R.string.organizer_hub_title)),
+            )
+            composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).assertIsDisplayed()
             composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithText(
@@ -511,6 +511,14 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             // The hub materials 「Organization strategy」 row opens T-05; one
             // real strategy write commits (AUTHORING token, no rejection).
             recordIssue479TimelineSample("SC0")
+            // Issue #479 (swallow-2): the strategy row can be bottom-clipped
+            // with its center inside the system gesture-nav inset — the same
+            // scroll-into-view + assertIsDisplayed discipline as the request
+            // row before the tap.
+            composeRule.onNode(hasScrollAction()).performScrollToNode(
+                hasText(context.getString(R.string.organizer_strategy_title)),
+            )
+            composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).assertIsDisplayed()
             composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).performClick()
             recordIssue479TimelineSample("SC1")
             awaitStrategySurfaceWith479Evidence(navController)
@@ -1489,13 +1497,6 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
         /** #477: arrival budget for the run surface after a request-row click. */
         const val REQUEST_ROW_ARRIVAL_TIMEOUT_MS = 10_000L
-
-        /**
-         * #477/#479 quarantine runner argument: present only in the CI lane
-         * invocation while #479 owns the ghost-row anomaly; local and
-         * diagnostic runs omit it so the touch oracle stays observable.
-         */
-        const val QUARANTINE_RUNNER_ARGUMENT = "nunuQuarantineIssue479TouchOracle"
 
         /** #479: logcat tag for the failure-instant compose-root census dump. */
         const val ISSUE479_DIAG_TAG = "Issue479Diag"
