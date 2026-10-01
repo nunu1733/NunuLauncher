@@ -1114,10 +1114,10 @@
     <string name="organizer_strategy_retry_when_busy">Another organizer change is in progress. Try again after it finishes.</string>
     <string name="organization_strategy_canonical_name">Standard compaction</string>
     <string name="organization_strategy_canonical_description">Fills each screen from the top-left.</string>
-    <string name="organization_strategy_tidy_name">Tidy each screen</string>
+    <string name="organization_strategy_tidy_name">Tidy each screen (widgets stay in place)</string>
     <string name="organization_strategy_tidy_description">Closes gaps on each screen without moving apps to other screens. Widgets stay in place.</string>
-    <string name="organization_strategy_tidy_v2_name">Tidy each screen, widgets included</string>
-    <string name="organization_strategy_tidy_v2_description">Closes gaps between apps and gathers widgets into the rows they already occupy on each screen.</string>
+    <string name="organization_strategy_tidy_v2_name">Tidy each screen</string>
+    <string name="organization_strategy_tidy_v2_description">Closes gaps on each screen without moving apps to other screens. Widgets are tidied within their screen as well.</string>
     <string name="organization_strategy_bottom_first_name">Bottom-first fill</string>
     <string name="organization_strategy_bottom_first_description">Places apps row by row from the bottom of each screen. Widgets stay in place.</string>
     <string name="organization_strategy_bottom_first_v2_name">Bottom-first fill, widgets included</string>

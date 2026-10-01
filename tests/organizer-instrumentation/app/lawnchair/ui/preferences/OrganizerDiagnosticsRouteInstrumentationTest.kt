@@ -522,7 +522,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).performClick()
             recordIssue479TimelineSample("SC1")
             awaitStrategySurfaceWith479Evidence(navController)
-            val tidy = context.getString(R.string.organization_strategy_tidy_name)
+            val tidy = context.getString(R.string.organization_strategy_tidy_v2_name)
             composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
             composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
             composeRule.waitForIdle()
