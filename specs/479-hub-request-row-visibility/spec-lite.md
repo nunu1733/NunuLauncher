@@ -1,6 +1,6 @@
 ---
 issue: "#479"
-status: draft
+status: implemented
 tier: M
 requirements: []
 updated: 2026-10-01
@@ -57,9 +57,14 @@ manual-organization-ui laneを恒常greenに戻す。
 
 - `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt`（hubスコープ限定）:
   exchange行（`organizer-hub-request` / `organizer-hub-proposal`）が存在し、かつこのリストinstanceで
-  ユーザーのdragが未発生（`LazyListState.interactionSource` の `DragInteraction` で追跡）、
+  ユーザーのdragが未発生（`LazyListState.interactionSource` の `DragInteraction` で追跡。
+  drag guardは `rememberSaveable` でリストのsaveable stateとライフサイクルを揃え、
+  recreation後の位置復元でもguardを失わない）、
   かつscroll中でなく、かつ `firstVisibleItemIndex > 0` である場合に限り、
   `scrollToItem(0)` でリスト先頭（index 0）へ再anchorし、行がapp barの下にrenderされるようにする。
+  再anchor effectは観測tuple（first-visible index / exchange行の存在 / scroll中フラグ）を
+  `snapshotFlow` で監視し、scroll終了（idle遷移）でも再評価する
+  （scroll中にskipされた補正がidle遷移で失われない）。
   再anchor先をexchange行のindexではなくindex 0とする根拠: hubリストはentryごとに新規composeされ、
   まだユーザーdragが発生していない。したがってexchange行が存在しdragが未発生の状態で
   anchorが0より後ろにずれているとき、そのずれは常にchecking行除去を契機とするchurn artifactであり、
@@ -116,9 +121,13 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
 - [ ] AC-1: exchange sessionありのhub entryで、request/proposal行がapp barの下に見える位置に
       決定的に表示される。oracle = quarantine解除済みtouch test
       （`issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute`）の
-      連続pass（local emulator複数回 + PR上のCI lane green）。
+      連続pass（local emulator複数回 + PR上のCI lane green）。oracleのtouch clickは
+      単一の実touch（`REQUEST_ROW_CLICK_ATTEMPTS = 1`、test側retryなし）であり、
+      「最初のユーザーtouchが失われないこと」がassert対象の契約である。
 - [ ] AC-2: このリストinstanceでのユーザードラッグ後、位置が再調整されないこと
-      （drag後の `scrollToItem` 呼び出しがないこと）。testで検証する。
+      （drag後の `scrollToItem` 呼び出しがないこと）。drag guardのライフサイクルは
+      リストのsaveable state（`rememberSaveable`）と揃え、recreation後の位置復元でも
+      guardを保持する。testで検証する。
 - [ ] AC-3: sessionなし・anchorが既に正しいhub entryで可視geometryが不変（no-op）であり、
       いかなるscenarioでもLauncher DB書込みが発生しないこと。
 - [ ] AC-4: strategy行clickが `performScrollToNode` + `assertIsDisplayed` disciplineを
@@ -155,3 +164,7 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
 
 - 2026-10-01: Draft created for #479（root cause調査の証跡はbranch `issue-479-compose-ghost-node`、
   emulator runs 2026-10-01）。
+- 2026-10-01: Review round 1 (ChatGPT, PR #494) の指摘 [中]×3（flow観測漏れ /
+  userDraggedのsaveable非対称 / 2-attempt oracle）を修正。Tier M の実機owner確認は
+  エミュレータ連続検証（oracle ×6、lane ×2、CI lane green）とownerのmerge/close指示を
+  もって代替するowner決定を記録。
