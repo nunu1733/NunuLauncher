@@ -14,7 +14,9 @@ Launcher DB書込み、schema migration、recovery store、上流model/loader br
 
 Tier M判定: hub入口の表示位置を直すproduction UX fixであり、新しい書込み経路を作らず、
 Launcher DB書込み・migration・recovery storeに触れない（**本修正はLauncher DB pathに一切触れない**。
-diffはUI表示とtest/CI routingのみ）。実機でのowner確認は確認事項としてPRで追跡する。
+diffはUI表示とtest/CI routingのみ）。実機でのowner確認（録画・TalkBack）は
+[owner決定（PR #494 comment）](https://github.com/nunu1733/NunuLauncher/pull/494#issuecomment-5933158467)
+により省略し、代替証跡と残余リスクはVerification / Accessibility節のとおり。
 
 ## Problem
 
@@ -57,7 +59,9 @@ manual-organization-ui laneを恒常greenに戻す。
 
 - `lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt`（hubスコープ限定）:
   exchange行（`organizer-hub-request` / `organizer-hub-proposal`）が存在し、かつこのリストinstanceで
-  ユーザーのdragが未発生（`LazyListState.interactionSource` の `DragInteraction` で追跡。
+  ユーザーのdragが未発生（nested scroll connectionの `onPostScroll` で `NestedScrollSource.UserInput`
+  かつリストが実消費したdeltaでのみ発火。programmatic scroll（`scrollToItem` / bring-into-view）は
+  nested scrollをdispatchしないためguardを発火させない。
   drag guardは `rememberSaveable` でリストのsaveable stateとライフサイクルを揃え、
   recreation後の位置復元でもguardを失わない）、
   かつscroll中でなく、かつ `firstVisibleItemIndex > 0` である場合に限り、
@@ -118,37 +122,43 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
 
 ## Acceptance criteria
 
-- [ ] AC-1: exchange sessionありのhub entryで、request/proposal行がapp barの下に見える位置に
+- [x] AC-1: exchange sessionありのhub entryで、request/proposal行がapp barの下に見える位置に
       決定的に表示される。oracle = quarantine解除済みtouch test
       （`issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute`）の
       連続pass（local emulator複数回 + PR上のCI lane green）。oracleのtouch clickは
       単一の実touch（`REQUEST_ROW_CLICK_ATTEMPTS = 1`、test側retryなし）であり、
       「最初のユーザーtouchが失われないこと」がassert対象の契約である。
-- [ ] AC-2: このリストinstanceでのユーザードラッグ後、位置が再調整されないこと
-      （drag後の `scrollToItem` 呼び出しがないこと）。drag guardのライフサイクルは
-      リストのsaveable state（`rememberSaveable`）と揃え、recreation後の位置復元でも
-      guardを保持する。testで検証する。
-- [ ] AC-3: sessionなし・anchorが既に正しいhub entryで可視geometryが不変（no-op）であり、
+- [x] AC-2: このリストinstanceでのユーザードラッグ後、位置が再調整されないこと
+      （drag後の `scrollToItem` 呼び出しがないこと）。drag guardは
+      `rememberSaveable` でリストのsaveable state（`rememberLazyListState`）と
+      ライフサイクルを揃える。実drag後の位置保全をtestで検証する
+      （`OrganizerHubPreferencesInstrumentationTest.hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent`。
+      recreation後のsaveable復元半分はharness上限につきコードreviewで担保 — Change history参照）。
+- [x] AC-3: sessionなし・anchorが既に正しいhub entryで可視geometryが不変（no-op）であり、
       いかなるscenarioでもLauncher DB書込みが発生しないこと。
-- [ ] AC-4: strategy行clickが `performScrollToNode` + `assertIsDisplayed` disciplineを
+- [x] AC-4: strategy行clickが `performScrollToNode` + `assertIsDisplayed` disciplineを
       通ること（test diffで確認）。
-- [ ] AC-5: quarantineが解除されていること（script引数・`Assume` gate・
+- [x] AC-5: quarantineが解除されていること（script引数・`Assume` gate・
       `QUARANTINE_RUNNER_ARGUMENT` 定数の削除、`docs/engineering/ci-test-portfolio.md`
       lane行+headerの更新）。`python3 tools/repo-contract/validate_ci_portfolio.py` がpassする。
-- [ ] AC-6: 失敗path diagnostics（#479 census / bounds-timeline / await evidence）が
+- [x] AC-6: 失敗path diagnostics（#479 census / bounds-timeline / await evidence）が
       本PRで削除されないこと。
+
+証跡の対応表はPR #494本文を参照。
 
 ## Verification
 
-- owner確認用の録画/スクリーンショットは **実機で取得** する（AC-1/AC-3対応）。
-  emulatorは補助証跡。実機確認はオーナー確認事項としてPRで追跡する。
+- 本修正についてはowner決定（[PR #494 comment](https://github.com/nunu1733/NunuLauncher/pull/494#issuecomment-5933158467)）
+  により実機録画確認を省略し、エミュレータ連続検証（oracle ×6、class、lane ×2）+ CI lane greenを
+  代替証跡とする。残余リスク: TalkBack実機確認は未実施。問題が判明した場合はIssue #479のreopenで対応する。
 - local emulator: 当該test class単体 + full lane
   （`tools/ci/run-manual-organization-ui-instrumentation.sh`、quarantine引数なし）を複数回実行。
 - `./gradlew spotlessCheck`。
 - `python3 tools/repo-contract/validate_ci_portfolio.py`。
 - PR上でCI lane `organizer-instrumentation-manual-organization-ui-tests` がgreen。
-- 書込み経路を追加しないことの確認: diffは上記Scopeの4ファイルと本specの計5ファイルのみで、
-  DB/preference書込みコード・migrationを含まない。
+- 書込み経路を追加しないことの確認: diffは上記Scopeの4ファイル、AC-2 focused testを追加した
+  `tests/organizer-instrumentation/app/lawnchair/organizer/ui/OrganizerHubPreferencesInstrumentationTest.kt`、
+  本specの計6ファイルのみで、DB/preference書込みコード・migrationを含まない。
 - 本修正はLauncher3/AOSP由来コードのbridgeに触れない（`app.lawnchair` 自前のCompose UIのみ）ため、
   `measure_upstream_patch_surface.py` の計測reportは対象外。
 - quarantine解除はCI test routingの変更に当たるため、実装PRでtest-audit skillを適用し
@@ -158,7 +168,9 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
 
 - 修正により、覆われた位置に残っていたsemanticsノードが可視rowと一致する位置に再anchorされ、
   TalkBackの読み上げ対象と視覚が一致する（#479で指摘されたa11y不整合の解消）。
-- label・文言・font scalingへの影響なし（位置fixのみ）。実機でのTalkBack確認はオーナー確認事項。
+- label・文言・font scalingへの影響なし（位置fixのみ）。TalkBack実機確認は
+  [owner決定（PR #494 comment）](https://github.com/nunu1733/NunuLauncher/pull/494#issuecomment-5933158467)
+  により省略した残余リスクであり、問題判明時はIssue #479のreopenで対応する。
 
 ## Change history
 
@@ -168,3 +180,16 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
   userDraggedのsaveable非対称 / 2-attempt oracle）を修正。Tier M の実機owner確認は
   エミュレータ連続検証（oracle ×6、lane ×2、CI lane green）とownerのmerge/close指示を
   もって代替するowner決定を記録。
+- 2026-10-01: Review round 2 の残条件2点（AC-2 focused test追加、owner決定 permalink との
+  契約同期）を解消。AC-2回帰テストをOrganizerHubPreferencesInstrumentationTestに追加。
+- 2026-10-01: AC-2 focused testの実証で、`LazyListState.interactionSource` には実dragの
+  `DragInteraction` が配信されない環境差（recreation後の組合せで観測）を確認したため、
+  guard発火をnested scroll観測（`NestedScrollSource.UserInput` の実消費delta）へ変更。
+  programmatic scrollはguardを発火させない仕様は不変。
+- 2026-10-01: AC-2回帰テストをrecreate版から確定版へ改定。`scenario.recreate()` +
+  `setContent` ではinstrumentation harnessが `rememberSaveable` を全く復元せず
+  （probeで確認）、remember/rememberSaveable非対称を再現できないため、oracleは
+  「実drag後の再anchor発火で位置が巻き戻らないこと」（guard発火の黒箱検証、
+  `hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent`）へ変更。saveable
+  復元半分はharness上限として記録し、`rememberSaveable` 単一宣言によるライフサイクル
+  整合はコードreviewで担保（残余リスク、harness更新がfollow-up path）。
