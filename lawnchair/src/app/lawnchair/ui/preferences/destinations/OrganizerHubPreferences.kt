@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -255,9 +256,15 @@ fun OrganizerHubPreferences(
     // artifact, so re-anchor to the list top (index 0 — it also keeps the
     // durable status rows above the exchange rows visible). A user drag
     // permanently disables the correction; programmatic scrolls emit no
-    // DragInteraction, so only real touches arm it.
+    // DragInteraction, so only real touches arm it. The effect observes the
+    // tuple (first-visible index / exchange-row presence / scroll-in-
+    // progress), so the scroll-idle transition re-evaluates a correction
+    // that was skipped mid-scroll.
     val hubListState = rememberLazyListState()
-    val userDragged = remember { mutableStateOf(false) }
+    // rememberSaveable aligns the guard's lifecycle with the saveable list
+    // state: a restored position after recreation no longer loses the drag
+    // guard.
+    val userDragged = rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(hubListState) {
         hubListState.interactionSource.interactions.collect { interaction ->
             if (interaction is DragInteraction.Start) {
@@ -267,11 +274,15 @@ fun OrganizerHubPreferences(
     }
     LaunchedEffect(hubListState) {
         snapshotFlow {
-            hubListState.firstVisibleItemIndex to (hubRequestRow != null || hubProposalRow != null)
-        }.collect { (firstVisibleItemIndex, exchangeRowPresent) ->
+            Triple(
+                hubListState.firstVisibleItemIndex,
+                hubRequestRow != null || hubProposalRow != null,
+                hubListState.isScrollInProgress,
+            )
+        }.collect { (firstVisibleItemIndex, exchangeRowPresent, scrolling) ->
             if (exchangeRowPresent &&
                 !userDragged.value &&
-                !hubListState.isScrollInProgress &&
+                !scrolling &&
                 firstVisibleItemIndex > 0
             ) {
                 hubListState.scrollToItem(0)
