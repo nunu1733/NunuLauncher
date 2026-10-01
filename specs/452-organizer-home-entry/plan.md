@@ -95,8 +95,8 @@
 | AC-2 | 実機録画/スクリーンショット（run面が直接開く、backでlauncherへ戻る）。instrumentation testは `tests/organizer-instrumentation/app/lawnchair/ui/preferences/**` へ追加可能（surface_organizer_uiで発火する既存lane） | organizer-instrumentation（manual-organization-ui lane） |
 | AC-3 | JVM unit test（lockフィルタ）+ 実機スクリーンショット | 同上 + 実機 |
 | AC-4 | JVM unit test（位置挿入: #449前のorder（両方欠落）・#449後のorder（prepend済みedit_surface含む）・並べ替え済みorder・一部無効orderでの決定性と既存項目の不変性、no-missing caseのmerge等価＝guard条件）+ guard wiringのcode review | 同AC-1 |
-| AC-5 | 実機の録画またはスクリーンショット（3操作の勘定を明記） | 実機（emulatorは補助） |
-| AC-6 | 実機のTalkBack/Switch Access確認。labelResつきconstructorはcode review | 実機 |
+| AC-5 | 実機の録画またはスクリーンショット（**Revision 4**: 実条件で≤4操作。選択面の介在を勘定に含める）+ 正規パス3操作のcross-check記録（候補0件の環境。emulator可） | 実機（emulatorは補助・cross-check可） |
+| AC-6 | **Revision 4**: 実機TalkBackでの到達・起動の記録 + labelRes/node tree機構の同一性確認（uiautomator dump等）。Switch Access手動確認はowner判断で省略可（Issue #452に判断記録） | 実機 |
 | AC-7 | PR diffのpath列挙 | `git diff --name-only <base>..<head>` |
 | AC-8 | patch surface計測 | `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` |
 

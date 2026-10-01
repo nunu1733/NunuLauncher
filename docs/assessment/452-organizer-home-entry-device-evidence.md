@@ -24,12 +24,12 @@
 
 ## AC-6: TalkBackでの到達・起動（実機）
 
-TalkBack（`com.google.android.marvin.talkback`、端末にインストール済み）を既存service群に追加して有効化し、popupから項目へ到達できることを確認:
+TalkBack（`com.google.android.marvin.talkback`、端末にインストール済み）を既存service群に追加して有効化し、popupから項目へ到達できることを確認（spec Revision 4のoracle: 実機TalkBackでの到達・起動 + node tree機構の同一性確認。TTS録音は要求しない）:
 
 - `d07-talkback-popup.png`: TalkBack有効下でpopupを開いた状態。「ホームを整理」が先頭に存在。
 - `d09-talkback-activated-run-surface.png`: TalkBack下で「ホームを整理」をtapすると **起動し、run面（整理を開始CTA）が開く** ことを確認（`topResumedActivity=PreferenceActivity`）。既存項目と同一の単tap操作で到達・起動できる。
 - 読み上げの等価性の構造的根拠: 項目は既存optionと同じ `OptionItem`（labelResつきconstructor）で構成され、`AccessibilityActionsView` が同じlabelResをaction id・読み上げlabelとして使用する（emulatorのTalkBack focus証跡 `v2-15-talkback-focus-organize.png` も併参照）。
-- 制限の正直な記録: adb injection下ではTalkBackの連続focus traversal（focus矩形の連続撮影）が安定して撮れなかった（injected swipeがTalkBack gestureとして解釈されpopupが閉じる場合がある。試行の記録は内部的に保持）。 **Switch Accessは実機で未実施**（switch割当のセットアップが端末の日常設定に介入するため）。Switch AccessはTalkBackと同じaccessibility node tree（uiautomator dumpで「ホームを整理」がclickable node + textとして公開されることを確認）を走査するため、到達機構は同一だが、端末でのSwitch Access確認はownerが日常操作で行うことを推奨する記録とする。
+- 制限の正直な記録: adb injection下ではTalkBackの連続focus traversal（focus矩形の連続撮影）が安定して撮れなかった（injected swipeがTalkBack gestureとして解釈されpopupが閉じる場合がある。試行の記録は内部的に保持）。 **Switch Accessは実機で未実施** — spec Revision 4のAC-6により、同一node treeの構造確認をもって到達機構の同一性確認とし、端末での手動確認はowner判断で省略した（判断記録: [Issue #452 comment](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5923486520)。日常端末でのSwitch Accessセットアップがaccessibility設定へ介入するため）。
 
 ## 各AC対応まとめ（spec Revision 4 のoracleに対する対応）
 
