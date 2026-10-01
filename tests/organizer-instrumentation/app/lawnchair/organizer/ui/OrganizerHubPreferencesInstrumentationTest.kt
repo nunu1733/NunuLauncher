@@ -2,10 +2,13 @@ package app.lawnchair.organizer.ui
 
 import android.app.Activity
 import android.content.Context
+import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -20,14 +23,17 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -35,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -159,37 +166,55 @@ class OrganizerHubPreferencesInstrumentationTest {
         exchangeHolderOverride: ExchangeFlowStateHolder? = null,
     ) {
         composeRule.setContent {
-            if (captureDispatcher != null) {
-                captureDispatcher(LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher)
-            }
-            CompositionLocalProvider(
-                LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
-            ) {
-                val navController: NavHostController = rememberNavController()
-                if (captureNav != null) captureNav(navController)
-                CompositionLocalProvider(LocalNavController provides navController) {
-                    LawnchairTheme {
-                        NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
-                            composable<HomeScreenOrganizer> {
-                                OrganizerHubPreferences(run = runner)
-                            }
-                            composable<HomeScreenManualOrganization> { backStackEntry ->
-                                val route = backStackEntry.toRoute<HomeScreenManualOrganization>()
-                                ManualOrganizationPreferences(
-                                    run = runner,
-                                    trigger = route.trigger,
-                                    durableRecovery = route.durableRecovery,
-                                    onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
-                                    exchangeOpen = route.exchangeOpen,
-                                    exchangeHolderOverride = exchangeHolderOverride,
-                                )
-                            }
-                            composable<HomeScreenOrganizerDiagnostics> {
-                                Text(text = DIAGNOSTICS_STUB_TEXT)
-                            }
-                            composable<HomeScreenOrganizerStrategy> {
-                                OrganizerStrategyPreferences(run = runner)
-                            }
+            HubHost(runner, fontScale, captureDispatcher, captureNav, exchangeHolderOverride)
+        }
+    }
+
+    /**
+     * The hub host composition, shared by `composeRule.setContent` and the
+     * post-recreation `Activity.setContent` (the rule's setContent is a
+     * once-per-test contract). The two compositions must be structurally
+     * identical so the saveable state — the list position and the #479 drag
+     * guard — restores into the recreated activity's composition.
+     */
+    @Composable
+    private fun HubHost(
+        runner: ManualOrganizationRun,
+        fontScale: Float = 1f,
+        captureDispatcher: ((OnBackPressedDispatcher?) -> Unit)? = null,
+        captureNav: ((NavHostController) -> Unit)? = null,
+        exchangeHolderOverride: ExchangeFlowStateHolder? = null,
+    ) {
+        if (captureDispatcher != null) {
+            captureDispatcher(LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher)
+        }
+        CompositionLocalProvider(
+            LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
+        ) {
+            val navController: NavHostController = rememberNavController()
+            if (captureNav != null) captureNav(navController)
+            CompositionLocalProvider(LocalNavController provides navController) {
+                LawnchairTheme {
+                    NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
+                        composable<HomeScreenOrganizer> {
+                            OrganizerHubPreferences(run = runner)
+                        }
+                        composable<HomeScreenManualOrganization> { backStackEntry ->
+                            val route = backStackEntry.toRoute<HomeScreenManualOrganization>()
+                            ManualOrganizationPreferences(
+                                run = runner,
+                                trigger = route.trigger,
+                                durableRecovery = route.durableRecovery,
+                                onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
+                                exchangeOpen = route.exchangeOpen,
+                                exchangeHolderOverride = exchangeHolderOverride,
+                            )
+                        }
+                        composable<HomeScreenOrganizerDiagnostics> {
+                            Text(text = DIAGNOSTICS_STUB_TEXT)
+                        }
+                        composable<HomeScreenOrganizerStrategy> {
+                            OrganizerStrategyPreferences(run = runner)
                         }
                     }
                 }
@@ -422,6 +447,80 @@ class OrganizerHubPreferencesInstrumentationTest {
         scrollTextIntoView(context.getString(R.string.exchange_request_title))
         composeRule.onNodeWithText(context.getString(R.string.exchange_request_title)).assertIsDisplayed()
         assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+    }
+
+    /**
+     * Issue #479 (AC-2, focused): a real drag on the hub list arms the
+     * re-anchor guard, and the armed guard keeps the user's scroll position —
+     * the correction condition (anchor past the top while exchange rows are
+     * present) re-evaluates right after the drag, but the position must NOT
+     * be yanked back to the top. With a broken guard (never armed, or armed
+     * by programmatic scrolls) the re-anchor effect fires `scrollToItem(0)`
+     * on that same evaluation and pulls the request row back to the
+     * first-visible position, failing this oracle. Programmatic scroll-into-
+     * view dispatches no UserInput nested scroll, so the arming above is the
+     * only fact that keeps the position. No quarantine, no failure
+     * diagnostics: the oracle is the request row's (non-)return alone.
+     *
+     * Harness limitation (recorded for review round 2): the saveable half of
+     * AC-2 — the drag guard surviving an Activity recreation alongside the
+     * saveable list state — cannot be exercised here: a probe confirmed
+     * `scenario.recreate()` + `setContent` does NOT restore `rememberSaveable`
+     * state in the compose instrumentation harness (both the guard and the
+     * list position reset together, which cannot discriminate the
+     * remember/rememberSaveable asymmetry). The alignment is enforced by the
+     * single `rememberSaveable` declaration reviewed in code; a harness
+     * upgrade (a real configuration change or a saveable-aware test seam) is
+     * the follow-up path if that half ever needs an executable oracle.
+     */
+    @Test
+    fun hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent() {
+        val application = FakeHubApplication()
+        val runner = hubRunner(application)
+        // The seeded active request — plus its pending proposal record, so the
+        // list carries BOTH exchange rows (#374) — makes the list tall enough
+        // that the first item can be scrolled fully out of composition at
+        // fontScale 2f.
+        val session = seedActiveSession()
+        seedPendingRecord(session)
+        // 200% font scale makes the exchange rows dominate the viewport so the
+        // scroll-into-view below deterministically moves the anchor past the
+        // first item (the same reachability fixture as HUB-AC-07).
+        setHubContent(runner, fontScale = 2f)
+
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("organizer-hub-request").assertIsDisplayed()
+
+        // Arm the #479 guard with a REAL touch drag: user drags are the only
+        // scrolls that dispatch nested scroll with UserInput, so the
+        // production nested-scroll observer arms the guard on the consumed
+        // delta. The exitUntilCollapsed app bar may consume part of the
+        // swipe; as long as the list itself moved, the guard is armed.
+        composeRule.onNode(hasScrollAction()).performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+
+        // Move the anchor past index 0 deterministically through the list's
+        // own scroll-into-view path (#366/#369 discipline): a programmatic
+        // scroll dispatches no UserInput nested scroll, so the guard armed
+        // by the drag above stays armed.
+        scrollTextIntoView(context.getString(R.string.organizer_strategy_title))
+        composeRule.waitForIdle()
+        // Scrolled past item 0: the request row sits fully outside the
+        // viewport (first visible index > 0) and is therefore not composed.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isEmpty()
+        }
+
+        // Settle the recomposition frames in which a broken guard would have
+        // snapped the position back to the top (the correction condition
+        // re-evaluates on every observed tuple emission).
+        repeat(3) { composeRule.waitForIdle() }
+
+        // AC-2: the user-dragged position is retained — the request row did
+        // NOT return to the first-visible position.
+        composeRule.onAllNodesWithTag("organizer-hub-request").assertCountEquals(0)
     }
 
     @Test
