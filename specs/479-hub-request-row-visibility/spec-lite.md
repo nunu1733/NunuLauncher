@@ -134,7 +134,10 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
       ライフサイクルを揃える。実drag後の位置保全 + saveable state復元後の保全を
       testで検証する
       （`OrganizerHubPreferencesInstrumentationTest.hubUserDragPositionIsNotReanchoredWhileExchangeRowsPresent`。
-      実dragはuiautomatorのsystem-level drag、saveable復元は
+      実dragはinstrumentationのUiAutomationへの生の
+      `injectInputEvent` drag（`UiDevice`は同一プロセスの後続keyboardテストの
+      key/focus配信を乱すため不使用 — CI 3実行で再現した汚染の実証済み）、
+      saveable復元は
       `StateRestorationTester.emulateSavedInstanceStateRestore()`。pre-fixの
       `remember` guardでは復元後にre-anchorが発火して本テストが失敗することを
       実証済み）。
@@ -193,7 +196,8 @@ Then oracleはpassする。失敗時はcensus / bounds-timeline / await evidence
 - 2026-10-01: AC-2回帰テストを確定版へ改定。review round 3の指摘に従い、
   `StateRestorationTester.emulateSavedInstanceStateRestore()` によるsaveable state復元oracleを
   導入（`scenario.recreate()`+`setContent` はharnessがsaveable stateを復元しないため不採用 —
-  probeで実証）。実dragの注入はuiautomatorのsystem-level drag（compose-testのtouch relayが
-  負荷下でdragsを落とす非確定性を回避）。guard破綻（armされない/programmatic scroll誤arm）と
+  probeで実証）。実dragの注入はinstrumentation UiAutomationへの生の `injectInputEvent`
+  drag（compose-testのtouch relayは負荷下でdragsを落とし、`UiDevice`は
+  同一プロセスの後続keyboardテストを汚染するため）。guard破綻（armされない/programmatic scroll誤arm）と
   remember/rememberSaveable非対称の双方を検出することを確認: pre-fix（`remember` guard）では
   復元後にre-anchorが発火してテストが失敗する。

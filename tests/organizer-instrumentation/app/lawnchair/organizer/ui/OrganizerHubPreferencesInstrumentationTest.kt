@@ -511,21 +511,42 @@ class OrganizerHubPreferencesInstrumentationTest {
         // the compose host window focused, or the injection family fails
         // wholesale (keys, drags) while semantics actions keep working.
         ensureWindowFocusedForComposeHost()
-        val device = androidx.test.uiautomator.UiDevice.getInstance(
-            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation(),
-        )
-        val displayWidth = device.displayWidth
-        val displayHeight = device.displayHeight
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        // A system-level drag injected through the instrumentation's own
+        // UiAutomation — the same injection kernel uiautomator uses, without
+        // UiDevice's process-wide accessibility service registration (which
+        // disturbs the key/focus delivery of the tests that follow in the
+        // same instrumentation process). x/y are display coordinates.
+        val metrics = instrumentation.targetContext.resources.displayMetrics
+        val dragX = metrics.widthPixels / 2
+        val dragFromY = metrics.heightPixels * 3 / 4
+        val dragToY = metrics.heightPixels / 4
+        fun systemDrag() {
+            val downTime = android.os.SystemClock.uptimeMillis()
+            fun event(action: Int, x: Float, y: Float, at: Long): android.view.MotionEvent =
+                android.view.MotionEvent.obtain(downTime, at, action, x, y, 0)
+            check(instrumentation.uiAutomation.injectInputEvent(event(android.view.MotionEvent.ACTION_DOWN, dragX.toFloat(), dragFromY.toFloat(), downTime), true)) { "drag DOWN was not injected" }
+            val steps = 24
+            for (step in 1..steps) {
+                val at = downTime + step * 16L
+                val y = (dragFromY + (dragToY - dragFromY) * step / steps).toFloat()
+                check(
+                    instrumentation.uiAutomation.injectInputEvent(
+                        event(android.view.MotionEvent.ACTION_MOVE, dragX.toFloat(), y, at),
+                        true,
+                    ),
+                ) { "drag MOVE $step was not injected" }
+                Thread.sleep(16)
+            }
+            check(
+                instrumentation.uiAutomation.injectInputEvent(
+                    event(android.view.MotionEvent.ACTION_UP, dragX.toFloat(), dragToY.toFloat(), downTime + (steps + 1) * 16L),
+                    true,
+                ),
+            ) { "drag UP was not injected" }
+        }
         while (swipes < 8) {
-            // A system-level drag (uiautomator) — the same injection path as a
-            // real finger, independent of the compose-test touch relay.
-            device.swipe(
-                displayWidth / 2,
-                displayHeight * 3 / 4,
-                displayWidth / 2,
-                displayHeight / 4,
-                24,
-            )
+            systemDrag()
             composeRule.waitForIdle()
             swipes++
             val (count, bounds) = requestRowSnapshot()
