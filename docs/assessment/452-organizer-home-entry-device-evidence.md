@@ -31,11 +31,11 @@ TalkBack（`com.google.android.marvin.talkback`、端末にインストール済
 - 読み上げの等価性の構造的根拠: 項目は既存optionと同じ `OptionItem`（labelResつきconstructor）で構成され、`AccessibilityActionsView` が同じlabelResをaction id・読み上げlabelとして使用する（emulatorのTalkBack focus証跡 `v2-15-talkback-focus-organize.png` も併参照）。
 - 制限の正直な記録: adb injection下ではTalkBackの連続focus traversal（focus矩形の連続撮影）が安定して撮れなかった（injected swipeがTalkBack gestureとして解釈されpopupが閉じる場合がある。試行の記録は内部的に保持）。 **Switch Accessは実機で未実施**（switch割当のセットアップが端末の日常設定に介入するため）。Switch AccessはTalkBackと同じaccessibility node tree（uiautomator dumpで「ホームを整理」がclickable node + textとして公開されることを確認）を走査するため、到達機構は同一だが、端末でのSwitch Access確認はownerが日常操作で行うことを推奨する記録とする。
 
-## 各AC対応まとめ
+## 各AC対応まとめ（spec Revision 4 のoracleに対する対応）
 
 | AC | 実機evidence |
 |---|---|
-| AC-5 | 上表の4操作（≤4目標内）。0件前提の3操作はemulator `v2-05/06/07` で実証済み |
-| AC-6 | `d07` / `d09`（TalkBack到達・起動）。Switch Accessは同一node treeの構造確認のみ（未実施の旨を明記） |
+| AC-5（Revision 4: 実条件で≤4操作 + 正規パス3操作のcross-check） | 上表の4操作（実条件・≤4目標内。選択面の介在を勘定に含めた合計）+ 正規パス3操作はemulator `v2-05/06/07` でcross-check済み |
+| AC-6（Revision 4: TalkBack実機到達・起動 + node tree等価。Switch Accessはowner判断で省略可） | `d07` / `d09`（TalkBack到達・起動）+ node tree等価の構造確認。Switch Access手動確認はowner判断で省略（判断記録はIssue #452へ投稿） |
 | AC-2（補強） | `d03b`（直接run面起動）/ `d06`（BACK 1回でlauncher復帰） |
 | ja copy（補強） | `d02`（ホームを整理・編集画面・壁紙とスタイル…の並びと区別可能なlabel） |

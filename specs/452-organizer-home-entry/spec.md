@@ -1,6 +1,6 @@
 ---
 issue: "#452"
-status: implemented
+status: accepted
 tier: M
 requirements:
   - FR-022
@@ -152,8 +152,8 @@ Then 通常のtapと同じhandlerが動作し、run面が開く
 - [ ] AC-2: 項目をtapすると、設定Activityが `HomeScreenManualOrganization`（entry=MANUAL既定）のrun面で直接開く。hubを経由しない。backでlauncherへ戻る。runのadmission・開始契約に変更がない（`start()` はrun面の開始行のみ）。
 - [ ] AC-3: `lockHomeScreen` 有効中、popupに項目が出ない。popup編集画面ではswitchが無効化され、既存項目と同じロック説明が表示される。解除で再表示する。
 - [ ] AC-4: 既存利用者（保存済みorderに `organize_home` なし）の起動時補完がDEFAULT_ORDER相対の位置挿入で行われ、既存項目のorder・enabledが変化しない。#449より前のorder（`edit_surface` なし）では両項目が位置挿入され、#449以降のorder（`edit_surface` あり・prepend済みを含む）では `organize_home` が `edit_surface` の直前に挿入される（Scenarioの3世代の決定性をJVM testで固定する）。位置挿入の結果が現在のorderと等しい場合（欠落なし・未保存default）は `launcher_popup_order` への書込みが発生しない（書込みguard。merge純粋関数の等価戻り値をJVM testで、guardのwiringをcode reviewで確認する）。
-- [ ] AC-5: 実機（emulatorは補助証跡のみ）で、未配置候補0件・AI相談toggle OFF（既定）の状態から「長押し → 項目tap → 開始tap → 確認面到達」の3操作を録画またはスクリーンショットで記録し、4操作以下であることを示す（Issue終了条件2）。
-- [ ] AC-6: TalkBack・Switch Accessで項目に到達でき、既存options項目と同等の読み上げができる（labelResつきconstructorの使用を含む）（Issue終了条件4）。
+- [ ] AC-5: 実機（物理端末。emulatorは補助証跡）で、**利用者が置かれた実条件のまま**（未配置候補の有無を問わない。AI相談toggleはOFF既定）ホーム画面長押し →「ホームを整理」→（run開始）→ 確認面までの操作数（手順の数。tapも長押しも1）を録画またはスクリーンショットで記録し、**4操作以下**であることを示す（Issue終了条件2の文言どおり）。あわせて、**未配置候補0件・AI相談OFFの正規パス3操作**（「長押し → 項目tap → 開始tap → 確認面到達」）を別の記録でcross-checkする（環境は物理端末を優先するが、候補0件の端末がない場合はemulator録画/スクリーンショットでよい）。実機で選択面が介在する場合、その1操作を勘定に含めて4操作以下であることを記録する。
+- [ ] AC-6: TalkBackで項目に到達でき、既存options項目と同等の読み上げ・選択ができること（labelResつきconstructorの使用を含む）。到達は実機でのfocus/起動の記録による。Switch AccessはTalkBackと同一のaccessibility node tree（clickable node + labelRes由来のaction id）を走査するため、その構造確認をもって到達機構の同一性確認とし、端末でのSwitch Accessの手動確認は **owner判断で省略できる**（省略する場合はその判断をIssueへ記録する。#449のTalkBack読み上げ省略判断の先例と同じ運用）（Issue終了条件4）。
 - [ ] AC-7: 変更diffが書込み経路を追加しないことの確認: 触れるfileはpopup項目定義・popup編集画面・string/drawable resource（およびtest）に限り、`organizer/` 配下、`src/com/android/launcher3/model/**`、DB・migrationに関わるpathを含まない。
 - [ ] AC-8: 同一PRで `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline` の計測結果をPR本文へreportし、counted growthに対するIssue所有のrationaleとbaselineの再採択を同じPRで行う。現行のbaseline状況: `LauncherOptionsPopup.kt` は #449 により既に `homeedit-edit-surface` bridge groupへcounted済み（本Issueは同fileへの追記でgroupの成長。popupの入口定義fileとして #449/#452 が共用する旨をrationaleに記す）、`lawnchair/res/values/strings.xml`・`values-ja/strings.xml` は `organizer-ui-and-lock-authoring` groupへcounted済み、`LauncherPopupPreference.kt` は現時点でfork未patchであり本Issueで新たにcounted pathとなるため #452 所有のbridge group（または既存groupの責務拡張）への登録を要する（Issue終了条件3）。
 
@@ -165,8 +165,8 @@ Then 通常のtapと同じhandlerが動作し、run面が開く
 | AC-2 | instrumentation test（項目tapで `HomeScreenManualOrganization` のdestinationが開く。run面のface描画）または実機録画（AC-5と同一evidenceで代用可） |
 | AC-3 | JVM unit test（`getLauncherOptions` のlockフィルタ）+ 実機スクリーンショット（ロック中のpopup・編集画面） |
 | AC-4 | JVM unit test（`restoreMissingPopupOptions` の位置挿入: 既定order・並べ替え済みorder・一部無効orderでの決定性と既存項目の不変性、merge結果が現orderと等価になるno-missing case＝書込みguard条件）+ guard wiringのcode review |
-| AC-5 | 実機の録画またはスクリーンショット（操作数の勘定を明記） |
-| AC-6 | 実機確認（TalkBack/Switch Access）。labelResつきconstructorの使用はcode reviewで確認 |
+| AC-5 | 実機の録画またはスクリーンショット（実条件での操作数の勘定を明記。選択面が介在する場合はその旨と含めた合計を記録）+ 正規パス3操作のcross-check記録（候補0件の環境。録画またはスクリーンショット） |
+| AC-6 | 実機TalkBackでの到達・起動の記録（focus/起動のスクリーンショット）+ node tree等価の構造確認（uiautomator dump等）。Switch Access手動確認の省略はowner判断のIssue記録による |
 | AC-7 | PR diffのpath列挙 |
 | AC-8 | 計測commandの出力（PR本文） |
 
@@ -182,3 +182,5 @@ Then 通常のtapと同じhandlerが動作し、run面が開く
 - 2026-09-30: **accepted** — Phase 1 review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5912289396): 3指摘の解消を確認。snapshot同期を残課題として指摘）と round 3（[判定](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5912426507): **Clear**。blocking findingなし）を経て受理。Revision 3 snapshot（[comment](https://github.com/nunu1733/NunuLauncher/issues/452#issuecomment-5912395484)）がcurrent headを指す。実装PRへの持ち越し（実機evidence、gate filter判断、bridge group登録）は明示済み。
 - 2026-09-30: **implemented（実装完了。ただし受入はAC-5/AC-6の実機確認待ち）** — Phase 2実装を [PR #486](https://github.com/nunu1733/NunuLauncher/pull/486) で提出。実装: \`organize_home\` 項目（DEFAULT_ORDER・handler・metadata・lock filter）、\`restoreMissingPopupOptions\` の位置挿入 + 書込みguard、\`filterVisiblePopupOptions\` 切り出し、popup編集画面のlock分岐、strings（EN/JA）・\`ic_organize_home\`（review round 1でrounded-squareへ修正）、JVM test 9件（\`app.lawnchair.ui.popup.*\` をgate filterへ追加。#458と同じroute）、patch surface baseline再採択（\`organizer-home-entry\` bridge group新設。93 counted files, +20327/-1089）。検証: full unit suite 1852 tests green、emulator証跡（[\`docs/assessment/452-organizer-home-entry-evidence\`](../../docs/assessment/452-organizer-home-entry-evidence.md)。AC-1/2/3/5/6、3操作で確認面到達、TalkBack起動確認、ja表示確認）。**AC-5の実機記録とAC-6の実機TalkBack/Switch Access確認は未完了（ownerの物理デバイスでの実施が必要）であり、それらが揃うまで本specの受入（Exit criteria充足）は完了しない。**Phase 2 review round 2（[判定](https://github.com/nunu1733/NunuLauncher/pull/486)参照）の指摘に従い、frontmatterのstatusは実機確認完了まで \`accepted\` を維持する。
 - 2026-10-01: **実機evidence採取により受入条件が充足 → \`implemented\` 化** — Pixel 9a（ja-JP、#449検証と同一端末）でAC-5/AC-6を実機記録（[\`docs/assessment/452-organizer-home-entry-device-evidence.md\`](../../docs/assessment/452-organizer-home-entry-device-evidence.md)）。AC-5: 実機は未配置候補ありのため4操作（長押し→項目tap→開始tap→続行tap）で確認面到達 **≤4目標内**（0件前提の3操作はemulator `v2-05/06/07` で実証済み。選択面の介入とusage JIT promptの初回出現を正直に記録）。AC-6: TalkBack有効下で「ホームを整理」への到達・起動を実機確認（既存service設定は完全復元。Switch Accessは端末の日常設定に介入するため未実施と正直に記録し、同一node treeの構造根拠を明記）。実装treeは17/17 green run（`36796217597`）とbyte同等のため証跡の再取得は不要。Phase 2 review round 3（[判定](https://github.com/nunu1733/NunuLauncher/pull/486#issuecomment-5922501799):「evidence追加だけならcode再reviewは不要」）の残件を解消。
+- 2026-09-30〜10-01: 上記の \`implemented\` 化はPhase 2 review round 4（[判定](https://github.com/nunu1733/NunuLauncher/pull/486#issuecomment-5923335874): Request changes）により時期尚早と判定され、statusを \`accepted\` へ戻した。指摘は (a) AC-5の「未配置候補0件・実機3操作」というoracleの読み（実機では候補0件の状態を作れない — 利用者のappをuninstallするのは非受入）と、(b) AC-6のSwitch Access実機確認・TalkBack連続focus/読み上げ記録の不足である。
+- 2026-10-01: **Revision 4** — round 4指摘を_owner承認のもと受入oracleの明確化として処理（[判断記録](https://github.com/nunu1733/NunuLauncher/issues/452)）。①AC-5: 受入barをIssue終了条件2の文言どおり「**実機で4操作以下**」（実条件のまま。選択面の介在は勘定に含める）と明確化し、「未配置候補0件・AI相談OFFの正規パス3操作」は別記録によるcross-check（環境不問）へ位置づけ直した。bar自体の引き下げはしない（当初から4操作以下がbar）。②AC-6: TalkBack実機での到達・起動をoracleとし、Switch Accessは同一node treeの構造確認で代替、端末での手動確認省略をowner判断事項として明記（#449の省略判断の先例どおり）。受入条件の実質変更にあたるため、本revisionをspec再レビューに付し、Clear後に \`implemented\` 化する。
