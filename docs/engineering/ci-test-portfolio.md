@@ -53,7 +53,7 @@ instrumentation_enabled = !smoke
 | Lane（job ID） | 起動する surface | 守る contract（概要） |
 |---|---|---|
 | organizer-instrumentation-shared-writer-tests | surface_layout_write | coordinator / transaction / reload / restore-lease seam（#113/#117/#119/#120/#156）+ direct-edit write shape（#448: folder作成2行transaction rollback・admission内stage-2検証の順序）+ direct-edit production seam（#448: `DirectEditModelWriterTest`。実`ModelWriter` direct-edit操作のadmission・stage-2検証・DB+model+`FolderInfo.contents`同期・失敗注入rollback・ORGANIZER lease defer）+ edit surface適用統合（#449: `EditSurfaceApplyInstrumentationTest`。セッション→plan→実adapter適用の1 transaction、manifest欠落行の物理DELETE（削除pass）、無題フォルダINSERT+子UPDATE、失敗注入rollback、stale零書込み）+ direct-edit undo逆操作（#450: `DirectEditUndoModelWriterTest`。逆操作3種のadmission内stage-2検証・削除前行payload capture忠実度・availability fail-closed零書込み・1 transaction rollback・stale零書込み）+ undo契約oracle（#450: `EditSurfaceUndoInstrumentationTest`/`HomeEditUndoAvailabilityInstrumentationTest`。実confirm→record→executor→recoveryの契約oracle、availability零書込み）。UI操作の証跡（AC-1/AC-9）は `HomeEditUndoEvidenceToolingTest`（CI lane外のon-demand evidence tooling。#376 cold-process evidenceと同一扱い）が生成する |
-| organizer-instrumentation-db-migration-tests | surface_db_schema | schema upgrade/downgrade transaction ownership（#118/#115/#14、rollback32）。#458 で grid-migration success path（#458 R-2a）、commit-aware preferences primitive（#59）、Deck retirement startup migration 冪等性（#57）、restore profile remap の lock 保持（#58）を追加（GridMigrationFailureTest は #461 所有） |
+| organizer-instrumentation-db-migration-tests | surface_db_schema | schema upgrade/downgrade transaction ownership（#118/#115/#14、rollback32）。#458 で grid-migration success path（#458 R-2a）、commit-aware preferences primitive（#59）、Deck retirement startup migration 冪等性（#57）、restore profile remap の lock 保持（#58）を追加。#461 で corrupt durable-recovery source の fail-closed 契約（`GridMigrationFailureTest`、test 本体は変更なし）を routing |
 | organizer-instrumentation-restore-capture-tests | surface_backup_restore | Nova restore → capture 契約（#299、cross-process 2 stage）。#458 で cleanUpDatabases restore lease guard（#168）を独立 connected invocation として追加 |
 | organizer-instrumentation-production-input-tests | surface_production_input, surface_layout_write | production input composer / 実 adapter 互換（#83、API 35）+ nested transaction の API 版依存回帰 |
 | organizer-instrumentation-manual-organization-ui-tests | surface_organizer_ui | manual organization E2E / hub / strategy picker / exchange import success / diagnostics route（#52 系の広い UI sweep）。#458 で diagnostics export timestamp + recreation 契約（#288）を co-occupant 追加。#441 で editing-burden benchmark fixture seeding 契約（同一入力→同一fixture・hotseat/予約領域保持・identity構成）を co-occupant 追加 |
@@ -135,7 +135,7 @@ Issue に deferred）。Issue #458 が全 32 candidate を semantic 監査し、
 - **Routing 分離（1 class）**: `GridMigrationFailureTest` — focused validation で corrupt
   durable-recovery source に対する fail-closed 契約違反（category 6 調査）を初検出。
   production 調査・修正と routing は [#461](https://github.com/nunu1733/NunuLauncher/issues/461)
-  が所有する。
+  が所有し、#461 で db-migration lane class list へ routing 完了（test 本体は変更なし）。
 - **前提修復（3 class、test のみ・契約 assertion 構造は不変）**: #417 scope-first flow への
   整合 + #371 granted fast path 前提（#265GateFailedRoute）、#155 first screen 契約への
   期待値整合（PageCapture）、active DB 生成前提の追加（DeckRetirementMigration）。
@@ -144,9 +144,8 @@ Issue に deferred）。Issue #458 が全 32 candidate を semantic 監査し、
   `Issue265WriterBusyObservationTest`（CI 非routing・diagnostic）へ分離した。
 
 `tests/organizer-instrumentation/com/android/launcher3/model/**` の `surface_db_schema`
-mapping は、#458 で `GridMigrationSuccessTest` が db-migration lane class list に加わった
-ため over-trigger のみの mapping ではなくなった（`GridMigrationFailureTest` は #461 で
-routing されるまで実行対象外）。
+mapping は、#458 で `GridMigrationSuccessTest`、#461 で `GridMigrationFailureTest` が
+db-migration lane class list に加わったため over-trigger のみの mapping ではなくなった。
 
 ## intermittent failure の分類と evidence・retry 方針
 

@@ -86,9 +86,12 @@ import com.android.launcher3.widget.LauncherWidgetHolder;
 import org.xmlpull.v1.XmlPullParser;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 import app.lawnchair.LawnchairApp;
 import app.lawnchair.LawnchairAppKt;
@@ -813,6 +816,7 @@ public class ModelDbController {
 
     // Issue #59: recovery must never construct or publish an empty source database, so the
     // journal source is identity/path/existence validated before any writable helper opens it.
+    // Issue #461: the SQLite magic header also gates readability, preserving corrupt evidence.
     private File validatedJournalSourceFile(GridMigrationJournal.Entry journal,
             DatabaseHelper targetHelper) {
         String sourceDatabaseName = journal.sourceDatabaseName();
@@ -828,6 +832,21 @@ public class ModelDbController {
             if (!sourceFile.getParentFile().equals(targetFile.getParentFile())
                     || sourceFile.equals(targetFile) || !sourceFile.isFile()) {
                 throw new IllegalStateException("Grid migration source is invalid");
+            }
+            byte[] sqliteMagicHeader = "SQLite format 3\0".getBytes(StandardCharsets.UTF_8);
+            byte[] actualHeader = new byte[sqliteMagicHeader.length];
+            int read = 0;
+            try (InputStream sourceStream = new FileInputStream(sourceFile)) {
+                while (read < actualHeader.length) {
+                    int count = sourceStream.read(actualHeader, read, actualHeader.length - read);
+                    if (count < 0) {
+                        break;
+                    }
+                    read += count;
+                }
+            }
+            if (read < actualHeader.length || !Arrays.equals(actualHeader, sqliteMagicHeader)) {
+                throw new IllegalStateException("Grid migration source is unreadable");
             }
             return sourceFile;
         } catch (IOException exception) {
