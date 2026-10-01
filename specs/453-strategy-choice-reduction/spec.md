@@ -1,6 +1,6 @@
 ---
 issue: "#453"
-status: accepted
+status: implemented
 tier: M
 requirements: [FR-023]
 updated: 2026-10-01
@@ -243,5 +243,11 @@ Then どの行も選択中と表示せず、既定を選択中ともせず、追
   [#issuecomment-5929785395](https://github.com/nunu1733/NunuLauncher/pull/492#issuecomment-5929785395)）。
   非blocking指摘の既存test名の表記修正（余分なハイフン除去）のみ本文へ反映
   （同commentの判断により再review対象外）。
+- 2026-10-01: Implemented（実装PR
+  [#493](https://github.com/nunu1733/NunuLauncher/pull/493) merge `5755236d68`..`b49d84d7f7`。
+  最終確認review
+  [Approve](https://github.com/nunu1733/NunuLauncher/pull/493#issuecomment-5933056684)。
+  実機（Pixel 9a / Android 17 / ja-JP）証跡:
+  [docs/assessment/assets-453-strategy-choice-reduction/](../../docs/assessment/assets-453-strategy-choice-reduction/)。Issue #453 closed。）
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/453
