@@ -743,11 +743,14 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
      * with the only success path (#477 review round 1: a semantics fallback
      * would let the anomaly go green; the a11y activation path is owned by
      * [requestRowSemanticsActivationOpensTheRunSurface]). Synchronization is
-     * the observable standard: settle, #300 environment gate, the
-     * #366/#369 scroll-into-view discipline, one re-attempt, then a
-     * classified failure whose message carries the back-stack route, row
-     * geometry, device environment, and screen state, with the failure
-     * instant screenshotted into the lane's always-uploaded UI evidence.
+     * the observable standard: settle, #300 environment gate, and the
+     * #366/#369 scroll-into-view discipline, then a classified failure whose
+     * message carries the back-stack route, row geometry, device environment,
+     * and screen state, with the failure instant screenshotted into the
+     * lane's always-uploaded UI evidence. #479 review round 1: the oracle is
+     * a SINGLE real touch (REQUEST_ROW_CLICK_ATTEMPTS = 1, no test-side
+     * retry) — a retry would mask a "first user touch lost" regression,
+     * which is exactly the #479 anomaly.
      */
     private fun clickRequestRowAndAwaitRunSurface(navController: NavHostController) {
         val openLabel = context.getString(R.string.organizer_hub_request_open)
@@ -1492,8 +1495,15 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         const val REVISION = "revision"
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-        /** #477: the bounded request-row click-repair budget (1 retry). */
-        const val REQUEST_ROW_CLICK_ATTEMPTS = 2
+        /**
+         * #479 review round 1: the touch oracle is a SINGLE real touch — no
+         * test-side retry, because a retry would mask a "first user touch
+         * lost" regression, which is exactly the #479 anomaly. The #300
+         * window-focus/idle gates and the #366/#369 scroll-into-view
+         * discipline remain the synchronization standard; failure
+         * diagnostics (census/timeline/screenshot) are unchanged.
+         */
+        const val REQUEST_ROW_CLICK_ATTEMPTS = 1
 
         /** #477: arrival budget for the run surface after a request-row click. */
         const val REQUEST_ROW_ARRIVAL_TIMEOUT_MS = 10_000L
