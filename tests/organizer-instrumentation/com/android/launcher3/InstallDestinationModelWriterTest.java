@@ -383,8 +383,12 @@ public class InstallDestinationModelWriterTest {
         int rows = idp.numRows;
         // Fill BOTH seeded screens completely so the upstream finder must
         // allocate a new screen regardless of the QSB first-screen exclusion.
+        // The seeded screen ids sit far away from what the process's real
+        // launcher DB (which the finder consults for the new screen id) can
+        // return on a fresh emulator, so the allocated id cannot collide with
+        // a seeded screen's occupied cells.
         int nextId = 500;
-        for (int screen : new int[]{0, 1}) {
+        for (int screen : new int[]{100, 101}) {
             for (int y = 0; y < rows; y++) {
                 for (int x = 0; x < cols; x++) {
                     seedAppItem(nextId++, Favorites.CONTAINER_DESKTOP, screen, x, y, 0);
@@ -410,7 +414,8 @@ public class InstallDestinationModelWriterTest {
         int newScreen = result.get()[4];
         assertTrue("a new screen must be allocated when all screens are full",
                 newScreen != DirectEditContract.DEST_NO_SCREEN_ID);
-        assertTrue(newScreen != 0 && newScreen != 1);
+        assertTrue("the allocated screen must be a fresh one",
+                newScreen != 100 && newScreen != 101);
         assertEquals(Favorites.CONTAINER_DESKTOP, (int) result.get()[0]);
         assertEquals(newScreen, queryInt(payload.id, Favorites.SCREEN));
     }
