@@ -120,7 +120,7 @@ class StrategyT05VisualEvidenceTest {
         setT05(darkTheme = false)
         // Scroll so a selected row and unselected rows are on screen at once.
         composeRule.onNode(hasScrollAction()).performScrollToNode(
-            hasText(context.getString(R.string.organization_strategy_tidy_name)),
+            hasText(context.getString(R.string.organization_strategy_tidy_v2_name)),
         )
         capture("t05-light-selected-unselected")
     }
@@ -129,7 +129,7 @@ class StrategyT05VisualEvidenceTest {
     fun captureDarkAffordance() {
         setT05(darkTheme = true)
         composeRule.onNode(hasScrollAction()).performScrollToNode(
-            hasText(context.getString(R.string.organization_strategy_tidy_name)),
+            hasText(context.getString(R.string.organization_strategy_tidy_v2_name)),
         )
         capture("t05-dark-selected-unselected")
     }
@@ -141,7 +141,8 @@ class StrategyT05VisualEvidenceTest {
         // within the window width (no clipping) at 200% font scale.
         for (name in listOf(
             R.string.organization_strategy_canonical_name,
-            R.string.organization_strategy_category_contiguous_name,
+            R.string.organization_strategy_tidy_v2_name,
+            R.string.organization_strategy_bottom_region_name,
         )) {
             composeRule.onNode(hasScrollAction()).performScrollToNode(
                 hasText(context.getString(name)),

@@ -497,7 +497,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             // real strategy write commits (AUTHORING token, no rejection).
             composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).performClick()
             awaitCurrentDestination(navController, HomeScreenOrganizerStrategy)
-            val tidy = context.getString(R.string.organization_strategy_tidy_name)
+            val tidy = context.getString(R.string.organization_strategy_tidy_v2_name)
             composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
             composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
             composeRule.waitForIdle()
