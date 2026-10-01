@@ -66,8 +66,9 @@ fun destinationNoticeText(reasonKey: String): Int = when (reasonKey) {
 /**
  * dialog/summary行で使うdestination policy resource keyの契約集合。UIの
  * wiringとJVM oracle（AC-11: resource由来・空でない・locale充備）の双方が
- * このobjectを読む。UI側が直接R.string literalへ置き換えた場合、oracleが
- * 検出する。
+ * このobjectを読む。oracleが固定するのはこのkey contractとstrings.xmlの
+ * 存在・非空（default/ja）であり、UI wiringがこのobjectを参照し続けている
+ * ことはreview/auditでの確認事項である（Phase 2 review round 3）。
  */
 object AppDestinationPolicyTextKeys {
     val dialogTitle: Int = R.string.destination_policy_dialog_title

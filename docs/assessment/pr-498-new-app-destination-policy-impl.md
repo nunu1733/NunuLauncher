@@ -30,7 +30,7 @@
 1. **指摘1（高、AC-6）: flush時のroute付与対象のapplication限定** — `ItemInstallQueue.attachDestinationRoute` は新引数 `itemType` を受け、`itemType != Favorites.ITEM_TYPE_APPLICATION` のときresolver呼出し前にstock pathへ返す（`src/com/android/launcher3/model/ItemInstallQueue.java:191`）。filterは**item type**をキーにしておりsnapshot有無ではない。手動配置overload（deep shortcut / widget）はsnapshot attributeを持たない構造だが、仮にstray attributeが付いてもtype判定で排除される。旧formatの自動アプリentry（snapshot=null）はtype=APPLICATIONのためrouteされ、AC-4どおりstage-2のtyped `SNAPSHOT_INVALID`フォールバックへ流れる。regression oracle: `InstallDestinationQueueTest.attachRouteReadsOnlyApplicationEntriesAndTheirSnapshot` がdeep shortcut / widget + snapshotAの組合せで `routedSnapshot.get()` がnull（resolver不呼出し）まで検証。
 2. **指摘2（中）: stock bypassの完全decode + identity一致要求** — prefix照合の `DirectEditContract.isUpstreamSnapshot` は削除され（全ソースのgrepで残留0）、`isValidUpstreamSnapshot(raw, baseUserSerial, basePackageName)`（`DirectEditContract.java:329`）が `parseDestinationSnapshot` による完全decode → kind=UPSTREAM → user serial一致 → package一致を要求する。production resolverのstock bypass（`AppDestinationAdapter.kt:165`）とproduction bridgeのflush（`ItemInstallQueue.attachDestinationRoute`経由）の両方がこのpredicateを使う。corrupt upstream → routeされstage-2が `SNAPSHOT_INVALID` → `DEST_ACTION_DEFAULT` 再計画、identity不一致 → routeされtyped reject（無変更）。oracle: `InstallDestinationQueueTest.productionRouteBypassesStockOnlyForValidUpstreamSnapshots`（production bridge `AppDestinationBridge.install` 経由でresolver実体を検証）。既知の破綻型（`Long.parseLong` の非数値input）は `parseDestinationSnapshot` 内でcatchされtyped扱いになることをtestが固定。
 3. **指摘3（中、AC-3）: フォルダ実在とtitleの区別** — 新純粋mapper `AppDestinationSummaryState.resolve(addIconOn, designatedFolderId, folderExists, folderTitle)` が `FOLDER_MISSING`（id非実在 → 「選び直し」summary）を返し、`AppDestinationPreference.kt` は実在判定を `folderIcon(launcher, it) != null`（id解決）に寄せた。titleは存在する場合のみ `FOLDER_NAMED` に使われ、同名再作成でもid基準のため誤復活表示しない。新resource `destination_policy_summary_folder_missing` をvalues / values-jaへ追加。
-4. **指摘4（中、AC-1/AC-11）: JVM oracle新設** — `lawnchair/src/app/lawnchair/homeedit/AppDestinationSettingsText.kt`（pure mapper）+ `tests/unit/app/lawnchair/homeedit/AppDestinationSettingsTextTest.kt`（6 test）。AC-1の3択↔toggle整合状態遷移（toggle OFFはいかなるstored policyでもDONT_ADD、指定はON時のみ表示）とAC-11のresource mapping（summary 5状態→resource、notice理由キー→resource、unknown keyはfail-closedでsnapshot notice）を検証。`AppDestinationPreference.kt` は分岐をこのmapperへ委譲（local `noticeText` when句は削除）。新規CI lane・重複instrumentationなし。
+4. **指摘4（中、AC-1/AC-11）: JVM oracle新設** — `lawnchair/src/app/lawnchair/homeedit/AppDestinationSettingsText.kt`（pure mapper）+ `tests/unit/app/lawnchair/homeedit/AppDestinationSettingsTextTest.kt`（8 test。round 2でdialog resource contract / 両locale非空の2 testを追加）。AC-1の3択↔toggle整合状態遷移（toggle OFFはいかなるstored policyでもDONT_ADD、指定はON時のみ表示）とAC-11のresource mapping（summary 5状態→resource、notice理由キー→resource、unknown keyはfail-closedでsnapshot notice）を検証。`AppDestinationPreference.kt` は分岐をこのmapperへ委譲（local `noticeText` when句は削除）。新規CI lane・重複instrumentationなし。
 
 ### 再確認した既存構造（spot-check。初回auditからcarry-overした部分を明記）
 
@@ -60,7 +60,7 @@
 - **AC-1: 設定の3択ポリシー行 — VERIFIED（code/test level）**
 
 - `HomeScreenPreferences.kt` で「ホームにアイコンを追加」スイッチ（`pref_add_icon_to_home`）と同じ画面に `DestinationPolicyPreference(enabled = lockHomeScreenAdapter.state.value.not())` を配置。ロック中は無効。独立した「追加しない」toggleは存在しない（「追加しない」選択は `addIconToHomeAdapter.onChange(false)` のみ。`AppDestinationPreference.kt` のchoice dialog。抑制分岐の新設なし）。
-- 3択とスイッチの表示整合は、round 1の修正で純粋mapper `AppDestinationSummaryState.resolve`（`AppDestinationSettingsText.kt`）に寄せられ、JVM oracle `AppDestinationSettingsTextTest`（6 test、toggle OFF全patternでDONT_ADD等）がstate遷移を固定。`AppDestinationPreference.kt` のsummary構築はこのmapper経由のみ。
+- 3択とスイッチの表示整合は、round 1の修正で純粋mapper `AppDestinationSummaryState.resolve`（`AppDestinationSettingsText.kt`）に寄せられ、JVM oracle `AppDestinationSettingsTextTest`（8 test、toggle OFF全patternでDONT_ADD等。round 2で+2）がstate遷移を固定。`AppDestinationPreference.kt` のsummary構築はこのmapper経由のみ。
 - フォルダ選択dialogはDockフォルダを除外し、profile注記（`destination_policy_other_profile`）と「指定をやめる」付き。文言はすべてstring resource由来（`values` + `values-ja`）。
 - 未確認（owner-pending）: エミュレータスクリーンショット・実機での表示・操作確認。
 
@@ -101,7 +101,7 @@
 - **AC-7: テスト構成（ADR-0016 canonical surface） — VERIFIED**
 
 - canonical owner: `tests/organizer-instrumentation/` の `InstallDestinationModelWriterTest.java`（5 test、AndroidJUnit4 + test DB）、`model/InstallDestinationQueueTest.java`（3 test。round 1修正でproduction route testを追加）、`app/lawnchair/homeedit/AppDestinationNoticeTest.kt`。いずれもorganizer shared-writer lane（ADR-0016が正本とするsurface）に属し、`.github/workflows/ci.yml` のclass listに含まれる（確認済み）。CI run 36936763106 で `organizer-instrumentation-shared-writer-tests` success。
-- 補助JVM test: `tests/unit/app/lawnchair/homeedit/AppDestinationPlannerTest.kt`（17 @Test。planner / 分類 / wire format往復 / stage-2決定意味論）+ round 1修正で追加の `AppDestinationSettingsTextTest.kt`（6 @Test。AC-1状態遷移 / AC-11 resource mapping、unknown key fail-closed）。audit sessionで `--rerun-tasks` による独立再実行でgreen（下記参照）。新規CI laneなし（既存homeedit unit test gate内）。
+- 補助JVM test: `tests/unit/app/lawnchair/homeedit/AppDestinationPlannerTest.kt`（17 @Test。planner / 分類 / wire format往復 / stage-2決定意味論）+ round 1修正で追加の `AppDestinationSettingsTextTest.kt`（8 @Test。AC-1状態遷移 / AC-11 resource mapping・dialog key contract・両locale非空、unknown key fail-closed）。audit sessionで `--rerun-tasks` による独立再実行でgreen（下記参照）。新規CI laneなし（既存homeedit unit test gate内）。
 - 新規CI laneなし（既存shared-writer laneへのclass追加のみ）。重複scenarioなし。coordinator排他・process死は既存shared-writer seam / process-death smokeの慣行のまま（変更なし）。
 
 - **AC-8: ベンチマーク — PARTIALLY VERIFIED**
@@ -123,7 +123,7 @@
 - **AC-11: アクセシビリティ — PARTIALLY VERIFIED（JVM oracle部分は完了。TalkBack/実機runtime確認がowner-pending）**
 
 - ポリシー行・dialog・通知文言はすべてstring resource由来。round 1修正で純粋mapper `destinationSummaryText` / `destinationNoticeText`（`AppDestinationSettingsText.kt`）がresource idのみを返し（unknown理由キーはfail-closedでsnapshot notice）、空文字列・内部idがUIへ出ないことを `AppDestinationSettingsTextTest` が検証。新resource `destination_policy_summary_folder_missing` もvalues / values-ja両方に追加済み。
-- round 2修正でAC-11のJVM oracle（resource由来・非空・locale充備）を完成: dialog系7 keyの契約集合 `AppDestinationPolicyTextKeys` をUI wiringとoracleの双方が読み、source-contract testがvalues / values-jaの全 `destination_policy_*` entryの存在と非空を両localeで検証（`AppDestinationSettingsTextTest`。CI run 36936763106のhomeedit unit test gateでsuccess）。UIがdialog文言をliteralへ戻した場合はkey契約testが検出する。
+- round 2修正でAC-11のJVM oracle（resource由来・非空・locale充備）を完成: dialog系7 keyの契約集合 `AppDestinationPolicyTextKeys` をUI wiringとoracleの双方が読み、source-contract testがvalues / values-jaの全 `destination_policy_*` entryの存在と非空を両localeで検証（`AppDestinationSettingsTextTest`。CI run 36936763106のhomeedit unit test gateでsuccess）。oracleが固定するのはkey contractとstrings.xmlの存在・非空（両locale）であり、UI wiringが契約objectを参照し続けていることはreview/auditでの確認事項（current headで7箇所とも契約経由を確認済み。Phase 2 review round 3の保証範囲整合）。
 - 未確認（owner-pending）: エミュレータTalkBack読み上げ確認と実機確認。
 
 ## Executed test surface
