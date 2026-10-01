@@ -63,7 +63,7 @@ status: accepted
 
 ## 要求するテスト（将来の実装PRが満たすべき要求）
 
-テストの層は `docs/engineering/quality-strategy.md` の区分に従い、ADR-0013の要求テスト表と同じ既存surfaceへ割り付ける。新規CI laneは作らない。実装は配置先ポリシーの実装Issueが行い、本表はその実装PRが満たすべき要求である。なお「Layout Application interface相当のJVM test（test DB使用）」の実現surfaceの判断は [ADR-0016](./0016-layout-application-test-surface.md) が引き継ぐ（本表の本文は変更しない）。
+テストの層は `docs/engineering/quality-strategy.md` の区分に従い、ADR-0013の要求テスト表と同じ既存surfaceへ割り付ける。新規CI laneは作らない。実装は配置先ポリシーの実装Issueが行い、本表はその実装PRが満たすべき要求である。
 
 | 要求 | 層 | 内容 |
 |---|---|---|

@@ -84,7 +84,7 @@ status: accepted
 
 ## 要求するテスト（AGENTS.mdの例外要件への対応）
 
-テストの層は `docs/engineering/quality-strategy.md` の区分に従う。新規CI laneは作らず、既存の `organizer-unit-tests` gate（`docs/engineering/quality-strategy.md` Organizer unit-test CI gate節）と既存のinstrumentation lane（`docs/engineering/ci-test-portfolio.md`、`tools/repo-contract/ci_portfolio_map.yml`）に載せる。lane追加の判断はAGENTS.mdテスト規約の審査対象であるため、追加が必要になった時点で別途審査する。実装は #446/#448/#450 が行い、本表はその実装PRが満たすべき要求である。なお「Layout Application interface相当のJVM test（test DB使用）」の実現surfaceの判断は [ADR-0016](./0016-layout-application-test-surface.md) が引き継ぐ（本表の本文は変更しない）。
+テストの層は `docs/engineering/quality-strategy.md` の区分に従う。新規CI laneは作らず、既存の `organizer-unit-tests` gate（`docs/engineering/quality-strategy.md` Organizer unit-test CI gate節）と既存のinstrumentation lane（`docs/engineering/ci-test-portfolio.md`、`tools/repo-contract/ci_portfolio_map.yml`）に載せる。lane追加の判断はAGENTS.mdテスト規約の審査対象であるため、追加が必要になった時点で別途審査する。実装は #446/#448/#450 が行い、本表はその実装PRが満たすべき要求である。
 
 | 要求 | 層 | 内容 |
 |---|---|---|
