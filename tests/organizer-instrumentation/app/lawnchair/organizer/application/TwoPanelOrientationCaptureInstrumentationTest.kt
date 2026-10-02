@@ -114,12 +114,23 @@ private fun retryableWhenPreRevision(
 }
 
 /**
+ * The A2 stale rejection: the capture/revision comparison rejected the plan
+ * before any write-path state was created — the exact contract point of the
+ * orientation stale scenario (spec #130, #435).
+ */
+private fun staleAtCaptureComparison(terminalStage: ApplyStage?): Boolean =
+    terminalStage == ApplyStage.A2
+
+/**
  * Stage-aware retry decision for the stale-rejection oracle (spec #435
  * TOR-AC-03/04/07). Only `WRITER_BUSY` at stage A0 and
  * `RECOVERY_STORE_UNAVAILABLE` at stage A2 — the rejections evaluated before
  * the revision comparison — plus gate-level rejections (no terminal
- * diagnostics event) are retryable; everything else is a hard failure. The
- * budget only bounds retries: an observed stale rejection stays a success.
+ * diagnostics event) are retryable; everything else is a hard failure.
+ * `STALE_REVISION` is only a success at A2: the same reason also returns from
+ * the A5 in-transaction reread (`classifyApplyOutcome`), which runs after the
+ * checkpoint was created and would let an A2 regression hide behind a later
+ * stale hit. The budget only bounds retries.
  */
 internal fun decideStaleOracleOutcome(
     result: ApplyResult,
@@ -129,7 +140,12 @@ internal fun decideStaleOracleOutcome(
 ): StaleOracleDecision {
     val classified = when (result) {
         is ApplyResult.Rejected -> when (result.reason) {
-            PreWriteRejection.STALE_REVISION -> StaleOracleDecision.SUCCESS
+            PreWriteRejection.STALE_REVISION ->
+                if (staleAtCaptureComparison(terminalStage)) {
+                    StaleOracleDecision.SUCCESS
+                } else {
+                    StaleOracleDecision.HARD_FAIL
+                }
             PreWriteRejection.WRITER_BUSY ->
                 retryableWhenPreRevision(ApplyStage.A0, terminalStage, gateState)
             PreWriteRejection.RECOVERY_STORE_UNAVAILABLE ->
@@ -500,12 +516,32 @@ class TwoPanelOrientationCaptureInstrumentationTest {
                 budgetLeft = true,
             ),
         )
-        // (d) The expected stale rejection.
+        // (d) The expected stale rejection at the A2 capture/revision compare.
         assertEquals(
             StaleOracleDecision.SUCCESS,
             decideStaleOracleOutcome(
                 ApplyResult.Rejected(runId, PreWriteRejection.STALE_REVISION),
                 ApplyStage.A2,
+                ReadinessGate.State.READY,
+                budgetLeft = true,
+            ),
+        )
+        // The same reason from the A5 in-transaction reread (or without a
+        // terminal event) does not prove the A2 contract and must not succeed.
+        assertEquals(
+            StaleOracleDecision.HARD_FAIL,
+            decideStaleOracleOutcome(
+                ApplyResult.Rejected(runId, PreWriteRejection.STALE_REVISION),
+                ApplyStage.A5,
+                ReadinessGate.State.READY,
+                budgetLeft = true,
+            ),
+        )
+        assertEquals(
+            StaleOracleDecision.HARD_FAIL,
+            decideStaleOracleOutcome(
+                ApplyResult.Rejected(runId, PreWriteRejection.STALE_REVISION),
+                null,
                 ReadinessGate.State.READY,
                 budgetLeft = true,
             ),

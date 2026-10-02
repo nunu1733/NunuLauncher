@@ -209,7 +209,9 @@ RecoveryStore側の記録生成を伴いうる）。初版当時のtestはこれ
            対応付けは「最後のevent」でなくrunId一致 + terminal phase（1 runに
            checkpoint等の複数eventが流れうるため）。gate段階の拒否ではterminal
            eventが存在しない → 代わりにrejection直後のreadinessGate.stateを記録。
-         - Rejected(STALE_REVISION) → loop終了、成功へ
+         - Rejected(STALE_REVISION) @ A2 → loop終了、成功へ
+           （A5のtransaction内再読・stage不明のSTALE_REVISIONは確定失敗。
+             implementation review round 1で指摘）
          - Rejected(WRITER_BUSY) @ A0 / Rejected(RECOVERY_STORE_UNAVAILABLE) @ A2
            → no-write検証（marker title不在・plan行不変）をその場で実施し、
              観測記録（理由・terminal stage・attempt番号・時刻）に追加して 1. へ戻る
@@ -232,6 +234,12 @@ RecoveryStore側の記録生成を伴いうる）。初版当時のtestはこれ
   失敗、`ApplyProtocol.kt:271-273`）でも返るため、reason文字列だけでretryすると、
   stale判定を通過したplanに対する後段拒否（契約違反の可能性）を後続attemptの
   `STALE_REVISION` が隠蔽しうる（review round 1指摘。初版のreason-only案は却下）。
+- **成功側もstage限定する**。`STALE_REVISION` はA2のcapture/revision比較だけでなく、
+  `LauncherLayoutAdapter.applyWriteSet` のtransaction内再読
+  （`ApplyTxOutcome.PreconditionFailed`）を `classifyApplyOutcome` がA5として投影した
+  形でも返る。A5はcheckpoint作成後の経路なので、A5の `STALE_REVISION` を成功扱いすると
+  A2の契約回帰を別の後段staleが隠蔽する（implementation review round 1で指摘）。
+  成功はterminal stage A2のときのみ。
 - **stage取得に新規production surfaceを作らない**。terminal stageは既存の
   `DiagnosticsPort`（test moduleの既存constructor parameter。本testは現行NOOPのため
   capture実装を注入する）へ流れるterminal `RunEvent` の `applyStage` から取得し、
@@ -258,8 +266,9 @@ attempt/予算 → 成功 / retry前置条件 / 確定失敗）を、Android fra
 副作用のない関数として同fileに置く。同じclassに表駆動のtest methodを追加し、
 少なくとも次の行を決定的に検証する: (a) A0 WRITER_BUSY → retry、
 (b) A2 RECOVERY_STORE_UNAVAILABLE → retry、(c) A4/A5 RECOVERY_STORE_UNAVAILABLE →
-確定失敗、(d) STALE_REVISION → 成功、(e) Applied / NoChanges /
-EXACT_PRECONDITION_FAILED 等 → 確定失敗、(f) 予算超過 → 明示的失敗。
+確定失敗、(d) A2 STALE_REVISION → 成功（A5 STALE_REVISION・stage不明 → 確定失敗）、
+(e) Applied / NoChanges / EXACT_PRECONDITION_FAILED 等 → 確定失敗、
+(f) 予算超過 → 明示的失敗。
 test-audit規約の確定: ownerは既存の本class（production-input surface）のまま。
 新規lane・別laneへの複製・production hookは作らない。決定的な判定logicを最も低い
 決定的境界（純粋関数）で検証するものであり、既存coverageとの重複はない。

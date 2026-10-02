@@ -193,6 +193,12 @@ retry対象の拒否が観測された場合は、それが書込み前の正当
   checkpoint `StoreUnavailable`、A5: `markApplying` 失敗）は、stale判定を通過した
   planに対する後段拒否であり、これをretry対象にすると契約違反を後続attemptの
   STALE_REVISIONが隠蔽しうる（review round 1で指摘）ため、即座に確定失敗とする。
+  同様に `Rejected(STALE_REVISION)` もterminal stage A2のcapture/revision比較のときのみ
+  成功根拠となる。同じreasonはtransaction内再読
+  （`ApplyTxOutcome.PreconditionFailed` → `classifyApplyOutcome`）でも返り、その場合は
+  terminal stage A5として投影される。A5はcheckpoint作成後の経路であり、A2の
+  orientation-stale契約が成立した証拠にならないため、A5等のA2以外のstage・stage不明の
+  `STALE_REVISION` は確定失敗とする（implementation review round 1で指摘）。
   ほかに `Applied`、`NoChanges`、`Rejected(INVALID_PLAN)`、
   `Rejected(EXACT_PRECONDITION_FAILED)`、`RolledBack`、`Recovered`、`Unresolved`、
   `RecoveryFailed`、`ConcurrentRun`、および例外。
@@ -201,7 +207,8 @@ retry対象の拒否が観測された場合は、それが書込み前の正当
 
 Given 回転前capture由来のplanがあり、landscape回転後に前置条件 (a)〜(d) が確立された。
 When testが `apply(plan)` を1回呼ぶ。
-Then 結果は `Rejected(STALE_REVISION)` であり、marker title（`orientation-stale`）を
+Then 結果は `Rejected(STALE_REVISION)`（terminal stage A2。A5のtransaction内再読による
+拒否は成功根拠にならない。TOR-AC-04）であり、marker title（`orientation-stale`）を
 持つ行は存在せず、plan行（`_id == plannedRowId`）のbefore/after完全一致が成立する
 （#292の行同一性規律は維持）。
 
@@ -232,8 +239,9 @@ stageの全列挙付き）。
 Given `apply` がretry可能な中間拒否でもgate段階の拒否でもない結果を返した。
 When いかなretry予算内でも。
 Then testは即座に失敗する（retryしない）。とくに `Applied` / `NoChanges` /
-`EXACT_PRECONDITION_FAILED`、およびrevision比較を通過した後の段階で返る
-`Rejected(RECOVERY_STORE_UNAVAILABLE)`（terminal stage A4/A5）はstale契約違反の
+`EXACT_PRECONDITION_FAILED`、revision比較を通過した後の段階で返る
+`Rejected(RECOVERY_STORE_UNAVAILABLE)`（terminal stage A4/A5）、およびA2以外のstage・
+stage不明で返る `Rejected(STALE_REVISION)`（A5のtransaction内再読を含む）は契約違反の
 直接証拠であり、無視・retryで隠蔽しない。
 
 ### 分類観測（TOR-AC-05）
@@ -265,7 +273,8 @@ When 同一class・同一lane（production-input surface）で、判定helperの
 表テストを実行する。
 Then 少なくとも次の行が決定的に検証される。(a) A0 `WRITER_BUSY` → retry、
 (b) A2 `RECOVERY_STORE_UNAVAILABLE` → retry、(c) A4/A5 `RECOVERY_STORE_UNAVAILABLE` →
-確定失敗、(d) `STALE_REVISION` → 成功、(e) `Applied` / `NoChanges` /
+確定失敗、(d) A2 `STALE_REVISION` → 成功（A5 `STALE_REVISION`・stage不明の
+`STALE_REVISION` → 確定失敗）、(e) `Applied` / `NoChanges` /
 `EXACT_PRECONDITION_FAILED` 等 → 確定失敗、(f) 予算超過 → 明示的失敗。
 判定対象のscenarioを別laneへ複製しない。
 
@@ -303,7 +312,8 @@ Issue #435の終了条件（連続CI green・改訂方針の記録）に対応�
   no-write検証付きのbounded retry（後者は前置条件再確立）として扱われ、予算超過時は
   観測理由とstage列挙付きの明示的失敗になる。
 - [ ] TOR-AC-04: retry可能な中間拒否・gate段階の拒否以外の結果（revision比較通過後の
-  A4/A5 `RECOVERY_STORE_UNAVAILABLE` を含む）は即座に確定失敗となる。
+  A4/A5 `RECOVERY_STORE_UNAVAILABLE`、A2以外のstage・stage不明の `STALE_REVISION` を
+  含む）は即座に確定失敗となる。
 - [ ] TOR-AC-05: 中間拒否・確定失敗の観測記録が拒否理由とterminal stage（gate段階では
   gate state）を含み、`RECOVERY_STORE_UNAVAILABLE` の経路判別（gate FAILED / A2 probe /
   A4・A5後段）が決定的に行える。
