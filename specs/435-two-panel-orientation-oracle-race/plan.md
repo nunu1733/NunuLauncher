@@ -408,20 +408,25 @@ DB-integration/UI testの追加は対象外。追加する新規testは、判定
 
 ## Documentation updates
 
-- [ ] spec.md（同directory）— acceptance後に `accepted`、実装merge後に
-      `implemented`（本taskはdraftのまま）。
-- [ ] spec #130（`specs/130-two-panel-orientation-capture/spec.md`）— product契約は
-      変わらないため改訂不要。実装時に同specが本testのoracle言及を持つかだけ確認
-      する（持つ場合は本specへの参照追加を検討。重複記述はしない）。
-- [ ] CONTEXT.md / DESIGN.md / ADR / AGENTS.md — 変更なし（domain用語・構造・
+- [x] spec.md（同directory）— 実装merge後の最終PRで `implemented` へ更新
+      （AC checklistに証跡付きで記録）。
+- [x] spec #130（`specs/130-two-panel-orientation-capture/spec.md`）— 確認済み:
+      同specのTest oracle節はproduct側の検証戦略を記述し、本testのoracle内部規律
+      （retry契約）への言及はない。product契約は変わらないため改訂不要。
+      重複記述は追加しない。
+- [x] CONTEXT.md / DESIGN.md / ADR / AGENTS.md — 変更なし（domain用語・構造・
       verified commandの変化なし）。
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced（CI失敗記録4件＋可能ならローカル再現）。
-- [ ] Investigation step 1-3 実施と結果記録。
-- [ ] Minimal implementation completed（test 1ファイル）。
-- [ ] Migration/recovery verified（対象外。testのみ）。
-- [ ] Full relevant verification completed（ローカルclass実行・spotlessCheck・
-      CI連続green 3回）。
-- [ ] PR evidence and remaining risks recorded（規律の記載・未確認範囲の明示）。
+- [x] Current behavior reproduced（CI失敗記録4件。ローカル再現は試行したが単発実行では
+      不成立 — planどおり必須でなく、PR #502本文へ記録済み）。
+- [x] Investigation step 1-3 実施と結果記録。（step 1: 判別不可（2026-10-02分類コメント）。
+      step 2: 観測記録を実装済み、次回CI観測時にself-classify。step 3: 再現せず）
+- [x] Minimal implementation completed（test 1ファイル。PR #502）。
+- [x] Migration/recovery verified（対象外。testのみ）。
+- [x] Full relevant verification completed（ローカルclass実行 API 35: 4 tests /
+      0 failures ×2回・spotlessCheck・CI連続green 3回: runs 37057383359 /
+      37059283180 / 37061400421）。
+- [x] PR evidence and remaining risks recorded（規律の記載・未確認範囲の明示。
+      PR #502本文と独立監査 `docs/assessment/pr-502-435-stale-oracle-time-independent.md`）。

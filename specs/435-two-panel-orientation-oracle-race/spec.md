@@ -1,6 +1,6 @@
 ---
 issue: "#435"
-status: draft
+status: implemented
 requirements:
   - TOR-AC-01
   - TOR-AC-02
@@ -303,29 +303,39 @@ Then 少なくとも次の行が決定的に検証される。(a) A0 `WRITER_BUS
 ## Acceptance criteria（受入条件）
 
 Issue #435の終了条件（連続CI green・改訂方針の記録）に対応させる。
+実装・検証の証跡は[PR #502](https://github.com/nunu1733/NunuLauncher/pull/502)と
+独立監査（`docs/assessment/pr-502-435-stale-oracle-time-independent.md`）。
 
-- [ ] TOR-AC-01: 前置条件確立後の単発 `apply` が `Rejected(STALE_REVISION)` であり、
+- [x] TOR-AC-01: 前置条件確立後の単発 `apply` が `Rejected(STALE_REVISION)` であり、
   no-write検証（marker title不在・plan行before/after一致）が成立する。
-- [ ] TOR-AC-02: 前置条件が期限内に確立できない場合、どの条件が失敗したかを列挙した
-  明示的失敗になる。
-- [ ] TOR-AC-03: retry可能な中間拒否（A0/A2のstage限定）とgate段階の拒否は、
+  （API 35 emulatorでclass実行green: `tests="4" failures="0"` ×2回。監査も同一判定）
+- [x] TOR-AC-02: 前置条件が期限内に確立できない場合、どの条件が失敗したかを列挙した
+  明示的失敗になる。（観測列挙つきbudget超過の実装 + 表テスト(f)行）
+- [x] TOR-AC-03: retry可能な中間拒否（A0/A2のstage限定）とgate段階の拒否は、
   no-write検証付きのbounded retry（後者は前置条件再確立）として扱われ、予算超過時は
-  観測理由とstage列挙付きの明示的失敗になる。
-- [ ] TOR-AC-04: retry可能な中間拒否・gate段階の拒否以外の結果（revision比較通過後の
+  観測理由とstage列挙付きの明示的失敗になる。（`decideStaleOracleOutcome` + 表テスト
+  (a)(b)・gate行。retry前にno-write検証を実施）
+- [x] TOR-AC-04: retry可能な中間拒否・gate段階の拒否以外の結果（revision比較通過後の
   A4/A5 `RECOVERY_STORE_UNAVAILABLE`、A2以外のstage・stage不明の `STALE_REVISION` を
-  含む）は即座に確定失敗となる。
-- [ ] TOR-AC-05: 中間拒否・確定失敗の観測記録が拒否理由とterminal stage（gate段階では
+  含む）は即座に確定失敗となる。（表テスト(c)(e)・A5/stage不明 `STALE_REVISION` 行。
+  A5写像は `ApplyProtocol.classifyApplyOutcome` で確認済み）
+- [x] TOR-AC-05: 中間拒否・確定失敗の観測記録が拒否理由とterminal stage（gate段階では
   gate state）を含み、`RECOVERY_STORE_UNAVAILABLE` の経路判別（gate FAILED / A2 probe /
-  A4・A5後段）が決定的に行える。
-- [ ] TOR-AC-06: retry規律が#292の行同一性規律と両立し、testがleaseを保持したまま
-  `apply` を呼ぶ経路がない。
-- [ ] TOR-AC-07: retry判定helperの決定的表テストが、(a)〜(f) の各行を同一class・
-  同一laneで検証する。
-- [ ] 修正headでCIの当該lane（`organizer-instrumentation-production-input-tests` を
+  A4・A5後段）が決定的に行える。（`RecordingDiagnosticsPort.terminalApplyStage` は
+  `runId` + terminal phase対応。次回CI観測時にself-classify）
+- [x] TOR-AC-06: retry規律が#292の行同一性規律と両立し、testがleaseを保持したまま
+  `apply` を呼ぶ経路がない。（#292 helper無変更。lease取得はapply内部のみ）
+- [x] TOR-AC-07: retry判定helperの決定的表テストが、(a)〜(f) の各行を同一class・
+  同一laneで検証する。（`staleOracleRetryDecisionTableIsContractual`、lane追加なし。
+  laneはclass明示実行のため自動routing）
+- [x] 修正headでCIの当該lane（`organizer-instrumentation-production-input-tests` を
   起動するrun）が連続3回以上green（Issue終了条件1）。
-- [ ] oracle改訂方針（前置条件・retry契約・no-write不変条件・分類観測）が実装PR本文に
-  記録される（Issue終了条件2）。本specはdraftであり、実装PRはこの時点の正本と
-  矛盾しない限り参照する。
+  （main `6916fd0ded` 上で[run 37057383359](https://github.com/nunu1733/NunuLauncher/actions/runs/37057383359)、
+  [run 37059283180](https://github.com/nunu1733/NunuLauncher/actions/runs/37059283180)、
+  [run 37061400421](https://github.com/nunu1733/NunuLauncher/actions/runs/37061400421)
+  — いずれもproduction-input lane success、rerunなし）
+- [x] oracle改訂方針（前置条件・retry契約・no-write不変条件・分類観測）が実装PR本文に
+  記録される（Issue終了条件2）。（[PR #502本文](https://github.com/nunu1733/NunuLauncher/pull/502)）
 
 ## Unresolved decisions（未決定事項）
 
@@ -345,9 +355,14 @@ Issue #435の終了条件（連続CI green・改訂方針の記録）に対応�
 
 ## Status
 
-draft（2026-09-28起草。2026-10-03にre-entry ruleに従い再突合・改訂し、同日にreview
-round 1（ChatGPT。
+implemented（2026-09-28起草。2026-10-03にre-entry ruleに従い再突合・改訂し、同日に
+review round 1（ChatGPT。
 [レビューコメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5957956148)）
-の指摘へ対応してstage-aware retry契約（TOR-AC-03/04/05/07）へ改訂。acceptanceは
-行っていない。実装着手前に再度、最新の `origin/main` とIssue #435の全コメントと
-照合し、必要なら改訂すること）。
+の指摘へ対応してstage-aware retry契約（TOR-AC-03/04/05/07）へ改訂。実装は
+[PR #502](https://github.com/nunu1733/NunuLauncher/pull/502)（head `e2218350b8`、
+独立監査 [docs/assessment/pr-502-435-stale-oracle-time-independent.md](../../docs/assessment/pr-502-435-stale-oracle-time-independent.md)
+approve、実装review round 1の高指摘（STALE_REVISIONのA2限定）を `e2218350b8` で対応し
+[round 2でblocking指摘なし](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5959755455)）でmerge。
+受入条件は本specのAC checklistに証跡付きで記録。Issue #435終了条件1はmerge後main
+`6916fd0ded` 上の連続3回green（runs 37057383359 / 37059283180 / 37061400421、
+いずれも `organizer-instrumentation-production-input-tests` success）で充足）。
