@@ -9,7 +9,7 @@ requirements:
   - TOR-AC-05
   - TOR-AC-06
 risk: []
-updated: 2026-09-28
+updated: 2026-10-03
 ---
 
 # TwoPanelOrientationCaptureInstrumentationTest の stale-rejection oracle を時間依存でなくす
@@ -36,13 +36,18 @@ CIではこれまでに2種類の「別の拒否理由」が負荷下で観測�
 1. `expected:<STALE_REVISION> but was:<WRITER_BUSY>` — PR #432（Issue #417）のCI実行中
    に1回（API-35 emulator）。同一headのrerunはgreen（Issue #435本文）。
 2. `expected:<STALE_REVISION> but was:<RECOVERY_STORE_UNAVAILABLE>` — 2026-09-25以降
-   に3回。main run [36108678234](https://github.com/nunu1733/NunuLauncher/actions/runs/36108678234)
+   に4回。main run [36108678234](https://github.com/nunu1733/NunuLauncher/actions/runs/36108678234)
    （2026-09-25、head `7508bbf0d5`）、PR #467 run
    [36245553636](https://github.com/nunu1733/NunuLauncher/actions/runs/36245553636)
    （2026-09-26、production-input lane job 108414015160。26/26完走・1 skippedで、失敗は
    本testのみ）、`issue-449-multi-select-surface` run
    [36404446036](https://github.com/nunu1733/NunuLauncher/actions/runs/36404446036)
-   （2026-09-28、head `d1c7386b`）。#422由のCI portfolio再編成後、本testは
+   （2026-09-28、head `d1c7386b`）、main run
+   [36922593372](https://github.com/nunu1733/NunuLauncher/actions/runs/36922593372)
+   （2026-10-01、head `8b8b5e3ab`、test L193。#422 category 6分類済みで、当該runの
+   JUnit XML・per-test logcat・live captureからは2候補経路の判別不可。
+   [分類コメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879)）。
+   #422由のCI portfolio再編成後、本testは
    `organizer-instrumentation-production-input-tests` laneで実行されている。
 
 原因はproductionの適用経路そのものではない。`LayoutApplicationModule.apply` は
@@ -130,6 +135,12 @@ capture.revision != plan.sourceRevision -> STALE_REVISION (A2)
   TestProtocol経由の新規操作。
 - `RECOVERY_STORE_UNAVAILABLE` の根本（同process内のproduction reconciliationとの
   並行access）をproduction側で排除する対応。観測・分類のみ本Issueで行う。
+
+## Prior art
+
+省略（理由: 階層Lのtest/refactorのみの変更。#292/#297で確定済みの行同一性規律と
+既存待機helperの横展開であり、新規seam・非自明な状態管理・platform APIの新規扱いを
+含まない）
 
 ## Observable behavior（observable contract of the test oracle）
 
@@ -254,9 +265,11 @@ Issue #435の終了条件（連続CI green・改訂方針の記録）に対応�
 ## Unresolved decisions（未決定事項）
 
 1. **RECOVERY_STORE_UNAVAILABLEの経路確定**: gate FAILED経路とA2 availability probe
-   経路のどちらがCIの3観測を説明するかは未確定（両方の可能性が残る）。plan.mdの
-   調査ステップで確定を試み、確定できなかった場合はTOR-AC-05の観測記録で次回CI観測時
-   self-classifyを待つ。修正architectureはいずれの経路でも同一（前置条件 (c)/(d) で
+   経路のどちらがCIの4観測を説明するかは未確定（両方の可能性が残る）。2026-10-02に
+   最新観測（run 36922593372）のJUnit XML・per-test logcat・live captureを確認したが
+   判別できなかった（[分類コメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879)）。
+   plan.mdの調査ステップの残り（TOR-AC-05の観測記録によるself-classify）で次回CI観測時
+   に判別する。修正architectureはいずれの経路でも同一（前置条件 (c)/(d) で
    両方を確立する）ため、確定は実装のblockerではない。
 2. **retry予算の具体的な値**: 待機・再試行の期限・回数の実装値（既存helperの
    timeout（20秒）に揃えるか等）はplan.mdで提案し、実装PRのreviewで確定する。
@@ -266,5 +279,7 @@ Issue #435の終了条件（連続CI green・改訂方針の記録）に対応�
 
 ## Status
 
-draft（2026-09-28時点。本specを準備したtaskはacceptanceを行わない。実装着手前に
+draft（2026-09-28起草。2026-10-03にre-entry ruleに従い再突合し改訂: 対象test fileと
+適用経路の拒否順序・意味論は `origin/main` = `87a2eb3bb4` 時点で不変であることを確認
+（詳細はplan.mdのRe-entry record）。acceptanceは行っていない。実装着手前に再度、
 最新の `origin/main` とIssue #435の全コメントと照合し、必要なら改訂すること）。

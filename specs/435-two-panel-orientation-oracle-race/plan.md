@@ -2,12 +2,39 @@
 
 > Issue: #435
 > Spec: [spec.md](./spec.md)
-> Status: draft（2026-09-28時点の調査に基づく。実装着手前に再突合すること）
+> Status: draft（2026-09-28起草、2026-10-03にre-entry ruleに従い再突合・改訂。実装着手前に再度再突合すること）
 > Risk tier: L（テストのみ。高リスクpath一覧には `tests/` は含まれない）
 
-分析baseline: `origin/main` = `c5a7840b880ed4c436b67170930ca87d4ef7f148`（2026-09-28 fetch）。
-Issue作成（2026-09-24）以降、対象test fileと `ApplyProtocol` /
-`LayoutApplicationModule` に変更はないことを `git log --since=2026-09-24` で確認済み。
+分析baseline: `origin/main` = `87a2eb3bb41c70694974ad6acf30ae6a586630c2`（2026-10-03 fetch）。
+
+## Re-entry record（2026-10-03）
+
+前版の分析baseline `c5a7840b88`（2026-09-28）から現行main `87a2eb3bb4` まで160 commitを
+再突合した。結果:
+
+- **対象test fileは無変更**（`git diff c5a7840b88..87a2eb3bb4 -- '*TwoPanelOrientation*'`
+  空。前版の行引用 L154/L161-172/L173/L175-179/L181-188/L189/L190/L192-206 は現行も有効）。
+- **適用経路の拒否順序・意味論は不変**。`ReadinessGate` / `RecoveryStore` /
+  `RecoveryDbVersionGate` / `LayoutWriteCoordinator` / `LawnchairApp` は無変更。
+  `LayoutApplicationModule.applyWithRunId` のgate写像（FAILED → RECOVERY_STORE_UNAVAILABLE、
+  それ以外 → WRITER_BUSY）と `ApplyProtocol.applyWithRunMutex` の順序
+  （validatePlan → availability → fault → lease → capture/revision比較）は同値のまま。
+  baseline以降の当該3 fileの差分は次の通りで、いずれも本oracle経路へ影響しない:
+  - Issue #450 `applyWithUndoReceipt`（undo receipt用の新規wrapper。`apply` の
+    公開契約・拒否写像は変更なし）。
+  - Issue #449 `inspectCapture`（編集画面用の読み取り専用capture。moduleのrun mutexを
+    短時間保持する新規使用者だが、testは本test固有のmodule instanceを構成し、編集画面は
+    本test中に開かれないため本testの窓では発火しない。`ConcurrentRun` はspecの
+    確定失敗集合のまま）。
+  - Issue #497 由来の `LauncherLayoutAdapter` 変更（新規app配置先policy）。
+    `tryAcquireLease`（L79）と拒否経路への変更はなし。
+- **新規ADRは本Issueに関係しない**: ADR-0015（新規app配置先policy）、ADR-0016
+  （ADR-0013/0015要求テスト表の実現surface具体化。本testは実writer・実DBの
+  production-input laneであり、test DB書込み経路harnessを対象としない）。
+- **文書・process**: External reference scan（Issue #482、2026-09-30導入）によりspecへ
+  `Prior art` 欄（省略記録）を追加。lane名・surfaceは不変（`ci.yml:583` に移動）。
+- **観測の追加分**: 2026-10-01の4件目（main run 36922593372）。その証跡調査
+  （2026-10-02分類コメント）で経路判別は不確定 — Investigation step 1の結果に反映済み。
 
 ## Current evidence
 
@@ -21,9 +48,10 @@ Issue作成（2026-09-24）以降、対象test fileと `ApplyProtocol` /
 | 2026-09-25 | main [36108678234](https://github.com/nunu1733/NunuLauncher/actions/runs/36108678234)（head `7508bbf0d5`） | `... but was:<RECOVERY_STORE_UNAVAILABLE>` | #170 triage comment |
 | 2026-09-26 | PR #467 [36245553636](https://github.com/nunu1733/NunuLauncher/actions/runs/36245553636) job 108414015160 | 同上 | 26/26完走・1 skipped、失敗は本testのみ。#435 comment |
 | 2026-09-28 | `issue-449-multi-select-surface` [36404446036](https://github.com/nunu1733/NunuLauncher/actions/runs/36404446036)（head `d1c7386b`） | 同上 | #170 triage comment |
+| 2026-10-01 | main [36922593372](https://github.com/nunu1733/NunuLauncher/actions/runs/36922593372)（head `8b8b5e3ab`、PR #494 merge） | 同上（test L193） | 26/26完走・1 skipped、失敗は本testのみ。#422 category 6。[分類コメント（2026-10-02、証跡artifacts取得済み・経路判別不可）](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879) |
 
 いずれも `organizer-instrumentation-production-input-tests` lane
-（`.github/workflows/ci.yml:571`、surface `production_input` + `layout_write`）。
+（`.github/workflows/ci.yml:583`、surface `production_input` + `layout_write`）。
 
 **testの現行構造**
 （`tests/organizer-instrumentation/app/lawnchair/organizer/application/TwoPanelOrientationCaptureInstrumentationTest.kt`）:
@@ -41,15 +69,15 @@ Issue作成（2026-09-24）以降、対象test fileと `ApplyProtocol` /
 **apply経路の拒否順序**（`lawnchair/src/app/lawnchair/organizer/application/protocol/`）:
 
 1. `LayoutApplicationModule.applyWithRunId`
-   （`LayoutApplicationModule.kt:136-156`）: `readinessGate.runWhenReady` —
+   （`LayoutApplicationModule.kt:145-165`）: `readinessGate.runWhenReady` —
    gate `FAILED` → `Rejected(RECOVERY_STORE_UNAVAILABLE)`、
    `IDLE`/`RECONCILING` → `Rejected(WRITER_BUSY)`。
-2. `ApplyProtocol.applyWithRunMutex`（`ApplyProtocol.kt:73-97`）:
+2. `ApplyProtocol.applyWithRunMutex`（`ApplyProtocol.kt:114-139`）:
    `validatePlan`（INVALID_PLAN）→ `store.availability()`（非READY →
    `RECOVERY_STORE_UNAVAILABLE`、A2）→ `faults.serializationContention()`
    （本testはNOOPなので常にfalse）→ `writer.tryAcquireLease(ORGANIZER)`
    （null → `WRITER_BUSY`、A0）。
-3. `applyWithOuterLease`（`ApplyProtocol.kt:100-127`）: `captureCurrent` 後に
+3. `applyWithOuterLease`（`ApplyProtocol.kt:141-281`）: `captureCurrent` 後に
    lockState（LOCK_STATE_UNAVAILABLE）→ **revision比較（STALE_REVISION）** →
    exact precondition（EXACT_PRECONDITION_FAILED）→ NoChanges。
 
@@ -78,7 +106,7 @@ Issue作成（2026-09-24）以降、対象test fileと `ApplyProtocol` /
   （`LawnchairApp.kt:128-172`）を実行する。testの `bringLauncherToForeground()` は
   このtriggerを引く。同じrecovery DB fileへの並行accessが同process内で可能。
 - readiness gate: `LayoutApplicationModule.reconcileAtStart`
-  （`LayoutApplicationModule.kt:482-505`）はmutex・reconciliation lease・session openの
+  （`LayoutApplicationModule.kt:544-567`）はmutex・reconciliation lease・session openの
   各失敗で早期returnし（この場合はgateが `IDLE` のまま → 次のapplyは
   `WRITER_BUSY`）、`readinessGate.reconcile` 内で `reconcileAll` が失敗すると
   gate `FAILED`（→ 次のapplyは `RECOVERY_STORE_UNAVAILABLE`）。
@@ -98,7 +126,7 @@ Issue作成（2026-09-24）以降、対象test fileと `ApplyProtocol` /
 - **WRITER_BUSY観測（PR #432）の直接原因が回転relayoutのMODEL_WRITER lease**である
   こと。順序とlease意味論から高い確度で言えるが、当該runのlogcat証拠はなく、
   「時々applyと重なる」ことの直接的実証はない。
-- **RECOVERY_STORE_UNAVAILABLE観測（3回）の経路**は次の2候補のいずれか（または両方）:
+- **RECOVERY_STORE_UNAVAILABLE観測（4回）の経路**は次の2候補のいずれか（または両方）:
   1. test moduleの `reconcileAtStart` が失敗してgate `FAILED`（空storeでの
      `reconcileAll` は通常cleanであるため、これが起こったならstore access自体が
      負荷で失敗したことを意味する）、
@@ -198,16 +226,18 @@ Issue作成（2026-09-24）以降、対象test fileと `ApplyProtocol` /
 
 実装と同じPRで行う。blockerではない（architectureは経路非依存）。
 
-1. **CI側の既存証拠の再確認**: 上記3 runのartifact（#315のfailure evidence capture）
-   が残っていればlogcatを確認する（7日expireのため失効済みの可能性が高い。その
-   場合は諦めて次項へ）。
+1. **CI側の既存証拠の再確認**（2026-10-02実施済み — [分類コメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879)）:
+   最新観測（run 36922593372）のJUnit XML・当該methodのper-test logcat・live capture
+   artifactを取得・確認したが、2候補経路（gate FAILED / availability probe失敗）の
+   判別はできなかった。それ以前の3 runのartifactは7日expireで失効済み。
+   → 本ステップの結果は「判別不可」。経路確定の残りの手段は次項のself-classify。
 2. **観測記録によるself-classify**: 上記の観測記録（拒否理由 + 直後の
    availability値 + reconcileAtStart要約）をtestに恒久的に持たせる。次回CIで
    中間拒否または期限切れが観測された時点で、失敗メッセージ/成功ログから経路が
    判別できる。判別結果はIssue #435へ記録する（#422 policyの分類記録）。
 3. **（ opportunistic ）ローカル再現**: api35 emulatorで当該classを反復実行し、
    CPU負荷をかけた状態での再現を試みる。再現すれば観測記録とlogcatで経路を確定
-   する。低頻度（数週間で3回）のため再現しなくてもよく、その旨をPRに記載する。
+   する。低頻度（約1週間で4回）のため再現しなくてもよく、その旨をPRに記載する。
 
 確定結果の反映先: 本specのUnresolved decisions 1を解消し、推測節を事実/却下へ
 更新する。production側の対応が必要という結論になった場合は、本Issueとは別の
@@ -246,14 +276,14 @@ Issue #435の終了条件（連続CI green 3回以上・改訂方針のPR記録�
 
 unit/property/DB-integration/UI testの追加は対象外（instrumentation test単独の
 修正のため）。失敗を再現する新規testの追加も行わない（修正対象がtest自身であり、
-「失敗を再現するテスト」に相当するものは修正前のCI失敗記録3件と、可能なら
+「失敗を再現するテスト」に相当するものは修正前のCI失敗記録4件と、可能なら
 ローカル再現が担う）。
 
 ## Incremental implementation order
 
 1. 本planの再突合（再entry rule: 最新 `origin/main`・Issue #435全コメント・対象
-   fileの変更確認）。
-2. Investigation step 1（既存CI artifact確認）。
+   fileの変更確認）— 2026-10-03実施済み（本plan冒頭のRe-entry record）。
+2. Investigation step 1（既存CI artifact確認）— 2026-10-02実施済み（結果: 判別不可）。
 3. test 3 のoracle書き換え（前置条件helper → retry loop → 結果分類 → 観測記録 →
    明示的失敗）。#292 helperは変更しない。
 4. ローカル検証（上記command + `spotlessCheck`）。
@@ -280,8 +310,10 @@ unit/property/DB-integration/UI testの追加は対象外（instrumentation test
 
 ## Explicitly unverified areas（このplan作成時点で未確認のこと）
 
-- 3件のCI失敗runについて、拒否がどの経路（gate FAILED / availability probe /
-  writer lease）を通ったかの直接証拠（logcat・journal）。現地再現・観測記録待ち。
+- 4件のCI失敗runについて、拒否がどの経路（gate FAILED / availability probe /
+  writer lease）を通ったかの直接証拠。2026-10-02に最新run（36922593372）の
+  artifact（JUnit XML・per-test logcat・live capture）を確認したが判別不可。
+  残りの手段は観測記録（TOR-AC-05）によるself-classifyと、可能ならローカル再現。
 - 回転relayoutのMODEL_WRITER lease保持がapply窓と重なる頻度の実測。
 - production reconciliation thread（`organizer-startup-reconciliation`）がtestの
   apply窓と重なる頻度の実測。
@@ -302,7 +334,7 @@ unit/property/DB-integration/UI testの追加は対象外（instrumentation test
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced（CI失敗記録3件＋可能ならローカル再現）。
+- [ ] Current behavior reproduced（CI失敗記録4件＋可能ならローカル再現）。
 - [ ] Investigation step 1-3 実施と結果記録。
 - [ ] Minimal implementation completed（test 1ファイル）。
 - [ ] Migration/recovery verified（対象外。testのみ）。
