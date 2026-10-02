@@ -8,6 +8,7 @@ requirements:
   - TOR-AC-04
   - TOR-AC-05
   - TOR-AC-06
+  - TOR-AC-07
 risk: []
 updated: 2026-10-03
 ---
@@ -80,9 +81,10 @@ capture.revision != plan.sourceRevision -> STALE_REVISION (A2)
   `LayoutWriteCoordinator.runModelWriterWithCallTimeReservation` 経由で取得する。
   testはhost configurationのlandscape反映（`awaitOrientation`）しか待たず、この書込み
   のdrainを待たない。`tryAcquire` は他のあらゆる種類のlease保持中にnullを返す。
-- **recovery store可用性（RECOVERY_STORE_UNAVAILABLE）**: 2つの候補経路があり、
-  どちらがCIで発生したかはまだ証拠確定していない（本Issueの調査ステップで確定させる。
-  修正architectureはいずれでも同一）。
+- **recovery store可用性（RECOVERY_STORE_UNAVAILABLE）**: 同じreasonが3系統の経路で
+  返りうる（review round 1で後段経路を追記）。どちらがCIで発生したかはまだ証拠確定して
+  いない（TOR-AC-05のstage記録で次回観測時に判別する。修正architectureはgate/probe系
+  であれば同一）。
   1. test moduleの `reconcileAtStart()` が失敗し readiness gate が `FAILED` になる
      経路（`LayoutApplicationModule.reconcileAtStart` → `readinessGate.reconcile`）。
   2. `ApplyProtocol` A2の `store.availability()` probeが失敗する経路。
@@ -94,6 +96,10 @@ capture.revision != plan.sourceRevision -> STALE_REVISION (A2)
      model load完了待ち→production `reconcileAtStart()`）を起動する。testの
      `bringLauncherToForeground()` はこのtriggerを引くため、同じrecovery DB fileへの
      並行accessが同process内で起こりうる。
+  3. （理論上の第3経路）revision比較を通過した後のA4（checkpoint
+     `StoreUnavailable`）/A5（`markApplying` 失敗）。captureがrotation前のrevisionを
+     観測し続けた場合に到達しうる。この系統は書込み前ではない段階での拒否であるため、
+     retry対象に含めない（TOR-AC-03/04）。
 
 なお、これらの拒否自体はproduction契約として正しいfail-closed挙動である
 （書込み前の拒否であり、DBは変わらない）。本Issueの対象は、stale契約を検証するtestが
@@ -104,19 +110,26 @@ capture.revision != plan.sourceRevision -> STALE_REVISION (A2)
 本testのoracleが時間依存でなくなる。testは、stale-rejection契約の検証に到達できる
 前置条件（readiness gate READY・recovery store可用・writer lease空き）を明示的な
 待機規律で確立した上で `apply` を呼び、結果が `Rejected(STALE_REVISION)` であることを
-厳密に検証する。直列化段階の拒否（WRITER_BUSY / RECOVERY_STORE_UNAVAILABLE）が
-観測された場合は、それが書込み前の正当な拒否であること（no-write不変条件）を検証した
-上で、明示的なbounded retry規律で前置条件確立からやり直す。いかなる場合も
-「retryして期待値が出るまで回す」だけのflaky maskingとは区別され、retry可能な
-中間結果の集合・回数・期限・retry時にも成立すべき不変条件が契約として明示される。
+厳密に検証する。直列化段階の拒否のうちretryしてよいものは、拒否理由（reason）に加えて
+拒否されたprotocol段階（terminal apply stage。既存 `DiagnosticsPort` の `RunEvent` を
+`runId` で対応付けて取得）まで含めて限定する。reason文字列だけでのretry判定は行わない
+（同一reasonがrevision比較通過後の後段でも返りうるため。review round 1で修正）。
+retry対象の拒否が観測された場合は、それが書込み前の正当な拒否であること（no-write不変
+条件）を検証した上で、明示的なbounded retry規律で前置条件確立からやり直す。いかなる
+場合も「retryして期待値が出るまで回す」だけのflaky maskingとは区別され、retry可能な
+中間結果の集合（reason × stage）・回数・期限・retry時にも成立すべき不変条件が契約と
+して明示される。
 
 ## Scope
 
 - `tests/organizer-instrumentation/app/lawnchair/organizer/application/TwoPanelOrientationCaptureInstrumentationTest.kt`
   の `orientationChangeRejectsPreChangePlanAsStaleWithoutDbWrite` のoracleと、それを
-  支える同file内のhelper（前置条件待機・retry規律・観測記録）。
-- 失敗分類（#422 policyの分類記録）のため、CIで次回観測された際にどちらの候補経路
-  （gate FAILED / availability probe失敗）かをself-classifyできる観測記録をtestに持たせる。
+  支える同file内のhelper（前置条件待機・retry判定・観測記録）。
+- retry判定を集約するtest内の判定helper（結果 × terminal stage × gate state →
+  成功/retry/確定失敗の純粋な表駆動関数）と、その決定的表テスト（TOR-AC-07。
+  同class内の追加test methodであり、lane追加・別laneへの複製はしない）。
+- 失敗分類（#422 policyの分類記録）のため、CIで次回観測された際にどの経路（gate FAILED /
+  A2 availability probe / A4・A5後段）かをstage情報から判別できる観測記録をtestに持たせる。
 - Issue本文の終了条件（連続CI実行3回以上green、oracle改訂方針のPR記録）に対応する
   検証計画（plan.md参照）。
 
@@ -150,18 +163,35 @@ capture.revision != plan.sourceRevision -> STALE_REVISION (A2)
   (a) host configurationがlandscape、(b) `launcher.model.isModelLoaded == true`
   （回転によってloader taskが走る場合はその完了を含む。すでにload済みなら即座に
   満たされる）、(c) test moduleのreadiness gateがREADY（`reconcileAtStart()` の
-  要約がunresolved failuresなし。失敗した場合はTOR-AC-03のretry規律の対象）、
+  要約がunresolved failuresなし、かつapply直前に `module.readinessGate.state ==
+  READY` を確認。失敗した場合はTOR-AC-03のretry規律の対象）、
   (d) `RecoveryStore.availability()` がREADY。
-- 「retry可能な中間拒否（retryable pre-write rejection）」:
-  `Rejected(WRITER_BUSY)` と `Rejected(RECOVERY_STORE_UNAVAILABLE)` のみ。
-  この2つは書込み前に返る拒否であり、retryは書込み前の段階からやり直す。
+- 「terminal stage」: `apply` が返した `runId` と一致するterminal（apply結果を投影した）
+  `RunEvent` が持つ `applyStage`。test moduleへ注入した既存 `DiagnosticsPort` の記録から
+  引く。対応付けは「最後のevent」ではなく `runId` 一致とterminal phaseで行う（1 runに
+  checkpoint等の複数eventが流れうるため）。gate段階（`runWhenReady` のunavailable path）
+  で拒否された場合はprotocolに到達していないためterminal eventは存在せず、代わりに
+  rejection直後の `module.readinessGate.state` で分類する。
+- 「retry可能な中間拒否（retryable pre-write rejection）」: stageまで含めて次に限る。
+  - `Rejected(WRITER_BUSY)` かつ terminal stage A0（protocolの `tryAcquireLease` 拒否）
+  - `Rejected(RECOVERY_STORE_UNAVAILABLE)` かつ terminal stage A2
+    （`store.availability()` probe拒否）
+  この2つはrevision比較より前に必ず評価される書込み前拒否であり、retryは書込み前の
+  段階からやり直す。gate段階の拒否（terminal eventなし）は前置条件 (c) がapply時点で
+  実際には成立していなかったことを意味するため、reason文字列でretry可否を判定せず、
+  rejection直後の `readinessGate.state` を記録した上で前置条件未確立として
+  TOR-AC-03の前置条件再確立で扱う。
   writer leaseの空きは外部から決して観測できない（probe→applyの間に他writerが
   入るTOCTOUが残る）ため、lease空きの確立はapply自身のatomicな
   `tryAcquireLease` の再実行、すなわちWRITER_BUSYに対するbounded retryで行う。
-- 「確定失敗（hard failure）」: 上記以外のすべての結果
-  （`Applied`、`NoChanges`、`Rejected(INVALID_PLAN)`、
+- 「確定失敗（hard failure）」: 上記以外のすべての結果。とくに、revision比較を
+  通過した後の段階で返る `Rejected(RECOVERY_STORE_UNAVAILABLE)`（terminal stage A4:
+  checkpoint `StoreUnavailable`、A5: `markApplying` 失敗）は、stale判定を通過した
+  planに対する後段拒否であり、これをretry対象にすると契約違反を後続attemptの
+  STALE_REVISIONが隠蔽しうる（review round 1で指摘）ため、即座に確定失敗とする。
+  ほかに `Applied`、`NoChanges`、`Rejected(INVALID_PLAN)`、
   `Rejected(EXACT_PRECONDITION_FAILED)`、`RolledBack`、`Recovered`、`Unresolved`、
-  `RecoveryFailed`、`ConcurrentRun`、および例外）。
+  `RecoveryFailed`、`ConcurrentRun`、および例外。
 
 ### Normal path（TOR-AC-01）
 
@@ -180,34 +210,38 @@ Then testは「どの前置条件が・何回・どの観測値で確立でき�
 明示的メッセージで失敗する。時間依存の無言の失敗シグネチャ（oracle mismatch）は
 発生しない。
 
-### Retry可能な中間拒否が観測された場合（TOR-AC-03）
+### Retry可能な中間拒否・前置条件未確立が観測された場合（TOR-AC-03）
 
-Given 前置条件確立後に `apply` が `Rejected(WRITER_BUSY)` または
-`Rejected(RECOVERY_STORE_UNAVAILABLE)` を返した（両者とも書込み前拒否でありDBは
-変わらない）。
+Given 前置条件確立後に `apply` がretry可能な中間拒否（A0 `WRITER_BUSY` / A2
+`RECOVERY_STORE_UNAVAILABLE`）またはgate段階の拒否（terminal eventなし）を返した
+（いずれも書込み前でありDBは変わらない）。
 When retry予算内である。
 Then testは (1) その時点でno-write不変条件（marker title不在・plan行不変）が
-成立していることを検証し、(2) 拒否理由と観測時の補助観測値（直後の
-`RecoveryStore.availability()` の値等）を記録し、(3) 前置条件確立からやり直して
-`apply` を呼び直す。
-And retry予算を超えた場合はTOR-AC-02と同じ明示的失敗になる（観測された拒否理由の
-全列挙付き）。
+成立していることを検証し、(2) 拒否理由・terminal stage（`runId` 対応のterminal
+event。ない場合はrejection直後の `readinessGate.state`）・attempt番号を観測記録に
+追加し、(3) 前置条件確立からやり直して `apply` を呼び直す。
+And retry予算を超えた場合はTOR-AC-02と同じ明示的失敗になる（観測された拒否理由と
+stageの全列挙付き）。
 
 ### 確定失敗結果（TOR-AC-04）
 
-Given `apply` がretry可能な中間拒否以外の結果を返した。
+Given `apply` がretry可能な中間拒否でもgate段階の拒否でもない結果を返した。
 When いかなretry予算内でも。
 Then testは即座に失敗する（retryしない）。とくに `Applied` / `NoChanges` /
-`EXACT_PRECONDITION_FAILED` はstale契約違反の直接証拠であり、無視・retryで隠蔽
-しない。
+`EXACT_PRECONDITION_FAILED`、およびrevision比較を通過した後の段階で返る
+`Rejected(RECOVERY_STORE_UNAVAILABLE)`（terminal stage A4/A5）はstale契約違反の
+直接証拠であり、無視・retryで隠蔽しない。
 
 ### 分類観測（TOR-AC-05）
 
-Given CIでRECOVERY_STORE_UNAVAILABLE系の中間拒否が再観測された。
-When testの失敗メッセージまたは成功時の観測記録が読まれる。
-Then gate FAILED経路とavailability probe失敗経路のどちら（または両方）が関与したかを
-判別できる補助観測（直後のavailability値・`reconcileAtStart()` 要約など、実装時に
-plan.mdの調査ステップで確定する最小集合）が含まれる。
+Given CIで中間拒否または確定失敗が観測された。
+When testの失敗メッセージが読まれる。
+Then 各attemptについて拒否理由とterminal stage（`runId` で対応付けたterminal
+`RunEvent` の `applyStage`。gate段階の拒否ではrejection直後の `readinessGate.state`）
+が列挙されており、`RECOVERY_STORE_UNAVAILABLE` がgate FAILED・A2 availability probe・
+A4/A5後段のどれで返ったかを判別できる。post-hocな `availability()` 再probeや
+`reconcileAtStart()` 再実行を分類のために行わない（一過性競合後にREADYへ戻りうる
+非決定性と、gate/state側効果があるため。review round 1で修正）。
 
 ### 並行性・stale state（TOR-AC-06）
 
@@ -218,6 +252,18 @@ plan.mdの調査ステップで確定する最小集合）が含まれる。
   WRITER_BUSYの原因になる）。またlease空きを事前probeするためだけに
   `LayoutWriteCoordinator` のleaseを取得しない（TOCTOUが残るため、規律は
   TOR-AC-03のretryで置き換える）。
+
+### retry判定の決定的検証（TOR-AC-07）
+
+Given retry判定（結果 × terminal stage × gate state → 成功/retry/確定失敗）が、
+test内の判定helper（副作用のない表駆動関数）に集約されている。
+When 同一class・同一lane（production-input surface）で、判定helperの決定的な
+表テストを実行する。
+Then 少なくとも次の行が決定的に検証される。(a) A0 `WRITER_BUSY` → retry、
+(b) A2 `RECOVERY_STORE_UNAVAILABLE` → retry、(c) A4/A5 `RECOVERY_STORE_UNAVAILABLE` →
+確定失敗、(d) `STALE_REVISION` → 成功、(e) `Applied` / `NoChanges` /
+`EXACT_PRECONDITION_FAILED` 等 → 確定失敗、(f) 予算超過 → 明示的失敗。
+判定対象のscenarioを別laneへ複製しない。
 
 ## Unsupported case（非対象）
 
@@ -249,13 +295,18 @@ Issue #435の終了条件（連続CI green・改訂方針の記録）に対応�
   no-write検証（marker title不在・plan行before/after一致）が成立する。
 - [ ] TOR-AC-02: 前置条件が期限内に確立できない場合、どの条件が失敗したかを列挙した
   明示的失敗になる。
-- [ ] TOR-AC-03: retry可能な中間拒否はno-write検証付きのbounded retryとして扱われ、
-  予算超過時は観測理由列挙付きの明示的失敗になる。
-- [ ] TOR-AC-04: retry可能な中間拒否以外の結果は即座に確定失敗となる。
-- [ ] TOR-AC-05: 中間拒否の観測記録が、RECOVERY_STORE_UNAVAILABLEの経路判別に
-  十分な補助観測を含む。
+- [ ] TOR-AC-03: retry可能な中間拒否（A0/A2のstage限定）とgate段階の拒否は、
+  no-write検証付きのbounded retry（後者は前置条件再確立）として扱われ、予算超過時は
+  観測理由とstage列挙付きの明示的失敗になる。
+- [ ] TOR-AC-04: retry可能な中間拒否・gate段階の拒否以外の結果（revision比較通過後の
+  A4/A5 `RECOVERY_STORE_UNAVAILABLE` を含む）は即座に確定失敗となる。
+- [ ] TOR-AC-05: 中間拒否・確定失敗の観測記録が拒否理由とterminal stage（gate段階では
+  gate state）を含み、`RECOVERY_STORE_UNAVAILABLE` の経路判別（gate FAILED / A2 probe /
+  A4・A5後段）が決定的に行える。
 - [ ] TOR-AC-06: retry規律が#292の行同一性規律と両立し、testがleaseを保持したまま
   `apply` を呼ぶ経路がない。
+- [ ] TOR-AC-07: retry判定helperの決定的表テストが、(a)〜(f) の各行を同一class・
+  同一laneで検証する。
 - [ ] 修正headでCIの当該lane（`organizer-instrumentation-production-input-tests` を
   起動するrun）が連続3回以上green（Issue終了条件1）。
 - [ ] oracle改訂方針（前置条件・retry契約・no-write不変条件・分類観測）が実装PR本文に
@@ -264,22 +315,25 @@ Issue #435の終了条件（連続CI green・改訂方針の記録）に対応�
 
 ## Unresolved decisions（未決定事項）
 
-1. **RECOVERY_STORE_UNAVAILABLEの経路確定**: gate FAILED経路とA2 availability probe
-   経路のどちらがCIの4観測を説明するかは未確定（両方の可能性が残る）。2026-10-02に
-   最新観測（run 36922593372）のJUnit XML・per-test logcat・live captureを確認したが
-   判別できなかった（[分類コメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879)）。
-   plan.mdの調査ステップの残り（TOR-AC-05の観測記録によるself-classify）で次回CI観測時
-   に判別する。修正architectureはいずれの経路でも同一（前置条件 (c)/(d) で
-   両方を確立する）ため、確定は実装のblockerではない。
+1. **RECOVERY_STORE_UNAVAILABLEの経路確定（過去4観測）**: gate FAILED経路とA2
+   availability probe経路のどちらがCIの4観測を説明するかは過去分としては未確定
+   （2026-10-02に最新観測run 36922593372のJUnit XML・per-test logcat・live captureを
+   確認したが判別できなかった。
+   [分類コメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879)）。
+   本specのTOR-AC-05（terminal stageの記録）により、次回以降の観測は決定的に判別できる。
+   修正architectureはいずれの経路でも同一（前置条件 (c)/(d) で両方を確立する）ため、
+   過去分の確定は実装のblockerではない。
 2. **retry予算の具体的な値**: 待機・再試行の期限・回数の実装値（既存helperの
    timeout（20秒）に揃えるか等）はplan.mdで提案し、実装PRのreviewで確定する。
-3. **観測記録の恒久化範囲**: TOR-AC-05の補助観測を成功時も常に取るか、中間拒否
-   観測時のみ取るか。常時取得は分類価値を上げるが、testの複雑度が増える。実装PRで
-   確定する。
+3. ~~**観測記録の恒久化範囲**~~（review round 1で解消）: 観測記録は中間拒否・gate段階
+   拒否・確定失敗の各attemptで必ず取り、成功時に恒久記録は取らない。TOR-AC-05の
+   stage記録が分類の正本であり、post-hocな再probe・再実行は行わない。
 
 ## Status
 
-draft（2026-09-28起草。2026-10-03にre-entry ruleに従い再突合し改訂: 対象test fileと
-適用経路の拒否順序・意味論は `origin/main` = `87a2eb3bb4` 時点で不変であることを確認
-（詳細はplan.mdのRe-entry record）。acceptanceは行っていない。実装着手前に再度、
-最新の `origin/main` とIssue #435の全コメントと照合し、必要なら改訂すること）。
+draft（2026-09-28起草。2026-10-03にre-entry ruleに従い再突合・改訂し、同日にreview
+round 1（ChatGPT。
+[レビューコメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5957956148)）
+の指摘へ対応してstage-aware retry契約（TOR-AC-03/04/05/07）へ改訂。acceptanceは
+行っていない。実装着手前に再度、最新の `origin/main` とIssue #435の全コメントと
+照合し、必要なら改訂すること）。
