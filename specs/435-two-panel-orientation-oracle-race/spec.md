@@ -101,8 +101,12 @@ capture.revision != plan.sourceRevision -> STALE_REVISION (A2)
      観測し続けた場合に到達しうる。この系統は書込み前ではない段階での拒否であるため、
      retry対象に含めない（TOR-AC-03/04）。
 
-なお、これらの拒否自体はproduction契約として正しいfail-closed挙動である
-（書込み前の拒否であり、DBは変わらない）。本Issueの対象は、stale契約を検証するtestが
+なお、これらの拒否のうちgate / A0 / A2経路はproduction契約として正しいfail-closedな
+書込み前拒否であり、Launcher `favorites` は変わらない。A4/A5経路（revision比較
+通過後）は少なくともA5がcheckpoint作成後であり、RecoveryStore側の記録生成を
+伴いうる点で書込み前とは言えない。本testのno-write不変条件の対象はLauncher
+`favorites` のplan行・marker titleである（RecoveryStore側の副作用の有無とは
+区別する。review round 2で文言整理）。本Issueの対象は、stale契約を検証するtestが
 これらの拒否と排他に排されているかのように単発assertionで書かれていることにある。
 
 ### Outcome（成果）
@@ -315,14 +319,14 @@ Issue #435の終了条件（連続CI green・改訂方針の記録）に対応�
 
 ## Unresolved decisions（未決定事項）
 
-1. **RECOVERY_STORE_UNAVAILABLEの経路確定（過去4観測）**: gate FAILED経路とA2
-   availability probe経路のどちらがCIの4観測を説明するかは過去分としては未確定
-   （2026-10-02に最新観測run 36922593372のJUnit XML・per-test logcat・live captureを
-   確認したが判別できなかった。
-   [分類コメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879)）。
+1. **RECOVERY_STORE_UNAVAILABLEの経路確定（過去4観測）**: 過去4観測がどの経路
+   （gate FAILED / A2 availability probe / A4・A5後段）かは判別できない（当時はstage
+   記録がなく、A4/A5後段経路を候補外とする根拠もない）。2026-10-02に最新観測
+   （run 36922593372）のJUnit XML・per-test logcat・live captureを確認したが判別でき
+   なかった（[分類コメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879)）。
    本specのTOR-AC-05（terminal stageの記録）により、次回以降の観測は決定的に判別できる。
-   修正architectureはいずれの経路でも同一（前置条件 (c)/(d) で両方を確立する）ため、
-   過去分の確定は実装のblockerではない。
+   修正architectureはgate/probe系のいずれでも同一（前置条件 (c)/(d) で両方を確立する）
+   ため、過去分の確定は実装のblockerではない。
 2. **retry予算の具体的な値**: 待機・再試行の期限・回数の実装値（既存helperの
    timeout（20秒）に揃えるか等）はplan.mdで提案し、実装PRのreviewで確定する。
 3. ~~**観測記録の恒久化範囲**~~（review round 1で解消）: 観測記録は中間拒否・gate段階

@@ -103,8 +103,11 @@ ChatGPT review（[レビューコメント](https://github.com/nunu1733/NunuLaun
    lockState（LOCK_STATE_UNAVAILABLE）→ **revision比較（STALE_REVISION）** →
    exact precondition（EXACT_PRECONDITION_FAILED）→ NoChanges。
 
-つまり `WRITER_BUSY` と `RECOVERY_STORE_UNAVAILABLE` はrevision比較より前に必ず
-評価され、testはこれらの段階の通過可能性を一切確立していない。
+つまりretry対象となる `WRITER_BUSY`（A0）と `RECOVERY_STORE_UNAVAILABLE`（A2）の
+経路はrevision比較より前に評価される。ただし同じreasonはrevision比較通過後の
+A4/A5でも返りうる（review round 1で確認。少なくともA5はcheckpoint作成後で
+RecoveryStore側の記録生成を伴いうる）。初版当時のtestはこれらの段階の通過可能性を
+一切確立しておらず、またstage記録もないため、過去4観測がどの経路かは判別できない。
 
 **各段階を正当に発生させる同process内の並行activity（code確認済み）**:
 
@@ -291,8 +294,10 @@ test-audit規約の確定: ownerは既存の本class（production-input surface�
 
 1. **CI側の既存証拠の再確認**（2026-10-02実施済み — [分類コメント](https://github.com/nunu1733/NunuLauncher/issues/435#issuecomment-5945597879)）:
    最新観測（run 36922593372）のJUnit XML・当該methodのper-test logcat・live capture
-   artifactを取得・確認したが、2候補経路（gate FAILED / availability probe失敗）の
-   判別はできなかった。それ以前の3 runのartifactは7日expireで失効済み。
+   artifactを取得・確認したが、当時候補に挙げていた2経路（gate FAILED / availability
+   probe失敗）の判別はできなかった。それ以前の3 runのartifactは7日expireで失効済み。
+   A4/A5後段経路はreview round 1で新たに認識された候補であり、過去4観測については
+   gate / A2 / A4 / A5を通して判別不能と扱う。
    → 本ステップの結果は「判別不可」。経路確定の残りの手段は次項のself-classify。
 2. **観測記録によるself-classify**: 観測記録（拒否理由 + terminal stage（`runId`
    対応のterminal `RunEvent.applyStage`。gate段階の拒否ではrejection直後の
