@@ -49,6 +49,7 @@ import com.android.launcher3.logging.FileLog;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.LauncherAppWidgetInfo;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
+import com.android.launcher3.pm.UserCache;
 import com.android.launcher3.shortcuts.ShortcutKey;
 import com.android.launcher3.shortcuts.ShortcutRequest;
 import com.android.launcher3.util.MainThreadInitializedObject;
@@ -57,6 +58,10 @@ import com.android.launcher3.util.Preconditions;
 import com.android.launcher3.util.SafeCloseable;
 import com.android.launcher3.widget.LauncherAppWidgetProviderInfo;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlSerializer;
+
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -78,6 +83,10 @@ public class ItemInstallQueue implements SafeCloseable {
     // The set of shortcuts that are pending install
     private static final String APPS_PENDING_INSTALL = "apps_to_install";
 
+    // Issue #497: queue XML attribute carrying the destination-policy
+    // snapshot captured at enqueue time (ADR-0015 Decision 10).
+    private static final String ATTR_DESTINATION_POLICY = "destination_policy";
+
     public static final int NEW_SHORTCUT_BOUNCE_DURATION = 450;
     public static final int NEW_SHORTCUT_STAGGER_DELAY = 85;
 
@@ -85,7 +94,24 @@ public class ItemInstallQueue implements SafeCloseable {
             new MainThreadInitializedObject<>(ItemInstallQueue::new);
 
     private final PersistedItemArray<PendingInstallShortcutInfo> mStorage =
-            new PersistedItemArray<>(APPS_PENDING_INSTALL);
+            new PersistedItemArray<>(APPS_PENDING_INSTALL,
+                    new PersistedItemArray.EntryExtension<PendingInstallShortcutInfo>() {
+                        @Override
+                        public void writeAttributes(XmlSerializer out,
+                                PendingInstallShortcutInfo item) throws IOException {
+                            if (item.mDestinationSnapshot != null) {
+                                out.attribute(null, ATTR_DESTINATION_POLICY,
+                                        item.mDestinationSnapshot);
+                            }
+                        }
+
+                        @Override
+                        public void readAttributes(PendingInstallShortcutInfo item,
+                                XmlPullParser parser) {
+                            item.mDestinationSnapshot =
+                                    parser.getAttributeValue(null, ATTR_DESTINATION_POLICY);
+                        }
+                    });
     private final Context mContext;
 
     // Determines whether to defer installing shortcuts immediately until
@@ -132,7 +158,8 @@ public class ItemInstallQueue implements SafeCloseable {
         }
 
         List<Pair<ItemInfo, Object>> installQueue = mItems.stream()
-                .map(info -> info.getItemInfo(mContext))
+                .map(info -> attachDestinationRoute(mContext, info.getItemInfo(mContext),
+                        info.mDestinationSnapshot, info.user, info.intent, info.itemType))
                 .collect(Collectors.toList());
 
         // Add the items and clear queue
@@ -142,6 +169,37 @@ public class ItemInstallQueue implements SafeCloseable {
         }
         mItems.clear();
         mStorage.getFile(mContext).delete();
+    }
+
+    /**
+     * Issue #497: attaches the flush-time destination route read from the
+     * persisted snapshot (read-only decode; the current policy is never
+     * re-read at flush, ADR-0015 Decision 10). Only application entries from
+     * the automatic-add path are policy candidates: the manual-placement
+     * overloads queue deep shortcuts and widgets, which keep the stock path
+     * even if a snapshot attribute were present (spec AC-6). A missing
+     * snapshot on an application entry is the old-format case and still
+     * routes, so the validator can apply the typed SNAPSHOT_INVALID fallback.
+     * Package-visible static so the instrumentation harness can drive it
+     * directly: the real flush needs a launcher activity, which the harness
+     * does not have.
+     */
+    @WorkerThread
+    static Pair<ItemInfo, Object> attachDestinationRoute(Context context,
+            Pair<ItemInfo, Object> pair, @Nullable String snapshot, UserHandle user,
+            Intent intent, int itemType) {
+        if (pair == null || itemType != Favorites.ITEM_TYPE_APPLICATION) {
+            return pair;
+        }
+        DirectEditContract.DestinationResolver resolver =
+                DirectEditContract.getDestinationResolver();
+        if (resolver == null) {
+            return pair;
+        }
+        DirectEditContract.DestinationRoute route = resolver.route(snapshot,
+                UserCache.getInstance(context).getSerialNumberForUser(user),
+                getIntentPackage(intent));
+        return route != null && route.usePolicyWrite ? Pair.create(pair.first, route) : pair;
     }
 
     /**
@@ -177,7 +235,19 @@ public class ItemInstallQueue implements SafeCloseable {
      * Adds an item to the install queue
      */
     public void queueItem(String packageName, UserHandle userHandle) {
-        queuePendingShortcutInfo(new PendingInstallShortcutInfo(packageName, userHandle));
+        PendingInstallShortcutInfo info = new PendingInstallShortcutInfo(packageName, userHandle);
+        // Issue #497: capture the destination-policy snapshot at enqueue time
+        // (ADR-0015 Decision 10). Only this automatic-add overload captures —
+        // the manual-placement overloads above keep AddItemActivity outside
+        // the policy scope. Duplicate enqueues keep the first persisted
+        // snapshot (addToQueue skips re-writes: first enqueue wins).
+        DirectEditContract.DestinationResolver resolver =
+                DirectEditContract.getDestinationResolver();
+        if (resolver != null) {
+            info.mDestinationSnapshot =
+                    resolver.captureDestination(mContext, packageName, userHandle);
+        }
+        queuePendingShortcutInfo(info);
     }
 
     /**
@@ -242,6 +312,14 @@ public class ItemInstallQueue implements SafeCloseable {
 
         @Nullable ShortcutInfo shortcutInfo;
         @Nullable AppWidgetProviderInfo providerInfo;
+
+        /**
+         * Issue #497: destination-policy snapshot captured at enqueue time
+         * (ADR-0015 Decision 10) and persisted as an extra queue XML
+         * attribute. Null for entries persisted before this feature or by
+         * the manual-placement overloads; decoded read-only at flush time.
+         */
+        @Nullable String mDestinationSnapshot;
 
         /**
          * Initializes a PendingInstallShortcutInfo to represent a pending launcher target.

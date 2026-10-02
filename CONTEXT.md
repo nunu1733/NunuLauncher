@@ -20,6 +20,18 @@ _Avoid_: Position（座標だけを意味する場合）
 上流が既にホームへ追加するアイコン（`pref_add_icon_to_home`が有効で上流の追加条件を満たすもの）について、どこへ置くかを決めるユーザー選択の規則（ADR-0015）。追加するかどうかの判定は含まない。
 _Avoid_: 増分配置 (Incremental Placement)（既存アイテムを動かす整理runを指す既存語との混同）、自動配置（ユーザー選択の規則であることの不明瞭化）
 
+**ポリシースナップショット (Policy Snapshot)**:
+自動追加1件のqueue投入時にcaptureされ、queueとともに永続化される、配置先決定の不変入力（policy選択、指定folder id、user、package）。flush時は読むだけであり、current policyから再生成しない。欠損・破損時もcurrent policyを再読しない（ADR-0015 Decision 10）。
+_Avoid_: layout snapshot（organizer runの入力。別の粒度）、編集snapshot（単一編集操作の投影。別の経路）
+
+**指定フォルダ (Designated Folder)**:
+配置先ポリシーで利用者が選んだ1つのフォルダ。アイテムidで保持し、名前では保持しない（ADR-0015 Decision 5）。
+_Avoid_: 分類フォルダ（カテゴリ一致の自動分類は別の将来機能）、整理先フォルダ（organizerのplan artifactが作るフォルダ）
+
+**フォールバック (Fallback)**:
+指定フォルダが観測可能な制約違反により使えず、上流の既定（空きセル）へ戻ること。typedな理由を持ち、記録と設定行での一度だけの通知の対象になる。
+_Avoid_: 拒否（Reject。書込み経路のinvariant failureであり配置の例外ではない）、満杯（fallback条件としない。ADR-0015 Decision 4）
+
 **対象集合 (Target Set)**:
 1回の整理で移動、保持、または新規配置を検討する配置アイテムの明示的な集合。
 _Avoid_: 全アプリ（対象範囲が曖昧な場合）

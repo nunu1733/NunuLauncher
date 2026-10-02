@@ -131,3 +131,4 @@ Rejected。安全規約の適用範囲の線引きは `AGENTS.md`（正本）の
 ## Change history
 
 - 2026-09-27: Accepted。#445 の決定Issueで起草・受入（出典: #445 付録の承認済み草案2026-09-24）。Phase 1 review（#445 のreviewコメント）で確定した契約2の二段階検証、契約4の書込み順序の明示、要求テストへのadmission後の再検証行、ロックの限定解釈の根拠を含む。
+- 2026-10-02: 要求テスト表の「Layout Application interface相当のJVM test（test DB使用）」の実現surfaceについて、[ADR-0016](./0016-layout-application-test-surface.md) が本表の割付けを引き継ぐ判断を記録した（#497 Phase 1 review round 3/4で確定）。本ADRの本文は変更しない（`docs/adr/README.md` の更新規約どおり、判断の変更はsuccessor ADRが置換関係を示す）。

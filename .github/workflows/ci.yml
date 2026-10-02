@@ -132,6 +132,12 @@ jobs:
               # its package-private constructor); keep them owned and
               # self-triggering for the shared-writer lane.
               - 'tests/organizer-instrumentation/com/android/launcher3/DirectEditModelWriterTest.java'
+              # Issue #497: destination-policy write-path test shares the
+              # package-private LauncherModel constructor; the install-queue
+              # harness tests live under the model package for the
+              # package-private route helper. They self-trigger this lane.
+              - 'tests/organizer-instrumentation/com/android/launcher3/InstallDestinationModelWriterTest.java'
+              - 'tests/organizer-instrumentation/com/android/launcher3/model/**'
               - 'tests/organizer-instrumentation/com/android/launcher3/hybridhotseat/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/application/**'
               - 'tests/organizer-instrumentation/app/lawnchair/organizer/planning/**'
@@ -420,7 +426,7 @@ jobs:
           # runner still owns the live emulator and returns the original
           # command status.
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/shared-writer-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.DirectEditModelWriterTest,com.android.launcher3.organizer.DirectEditWriteShapeTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.organizer.RestoreLeaseDeferredLoaderThreadAffinityTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest,app.lawnchair.homeedit.EditSurfaceApplyInstrumentationTest,com.android.launcher3.DirectEditUndoModelWriterTest,app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest,app.lawnchair.homeedit.HomeEditUndoAvailabilityInstrumentationTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/shared-writer-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.DirectEditModelWriterTest,com.android.launcher3.InstallDestinationModelWriterTest,com.android.launcher3.model.InstallDestinationQueueTest,com.android.launcher3.organizer.DirectEditWriteShapeTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.organizer.RestoreLeaseDeferredLoaderThreadAffinityTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest,app.lawnchair.homeedit.EditSurfaceApplyInstrumentationTest,com.android.launcher3.DirectEditUndoModelWriterTest,app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest,app.lawnchair.homeedit.HomeEditUndoAvailabilityInstrumentationTest,app.lawnchair.homeedit.AppDestinationNoticeTest
       - name: Upload shared-writer instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
