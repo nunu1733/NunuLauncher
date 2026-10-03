@@ -54,6 +54,29 @@ class DirectRunPublicationThread : RunPublicationThread {
 }
 
 /**
+ * Issue #418 (Phase2 review round 2): the shared uninterruptible latch join
+ * behind BOTH [RunPublicationThread] implementations. Once a publication task
+ * is queued, its caller — possibly holding the run lock and the exchange
+ * mutation gate (spec 375) — must not unwind before the publication
+ * completes; a late publication would invert the gate-release linearization.
+ * Returns whether the wait observed an interrupt so the caller can re-assert
+ * the interrupt status after completion. The JVM join oracle exercises THIS
+ * primitive through [DedicatedThreadPublication], so production and test
+ * cannot drift apart on this contract.
+ */
+internal fun CountDownLatch.awaitPublicationCompletion(): Boolean {
+    var interrupted = false
+    while (true) {
+        try {
+            await()
+            return interrupted
+        } catch (_: InterruptedException) {
+            interrupted = true
+        }
+    }
+}
+
+/**
  * Production implementation: the Android main thread via [Handler]. FIFO,
  * block-join semantics; [assertNotPublicationThread] rejects main-thread
  * execution of the run state machine.
@@ -73,21 +96,7 @@ class HandlerRunPublicationThread(
             latch.countDown()
         }
         check(posted) { "organizer run publication task could not be posted to the main looper" }
-        // Once the task is queued, this caller must not unwind before the
-        // publication completes: the caller may hold the run lock and the
-        // exchange mutation gate (spec 375), and a late publication after the
-        // caller moved on would invert the gate-release linearization. The
-        // join is therefore uninterruptible — interruption is remembered and
-        // re-asserted on the caller after completion.
-        var interrupted = false
-        while (true) {
-            try {
-                latch.await()
-                break
-            } catch (_: InterruptedException) {
-                interrupted = true
-            }
-        }
+        val interrupted = latch.awaitPublicationCompletion()
         if (interrupted) Thread.currentThread().interrupt()
         return outcome.get()!!.getOrThrow()
     }
@@ -134,18 +143,7 @@ class DedicatedThreadPublication(
             outcome.set(runCatching(block))
             latch.countDown()
         }
-        // Mirrors [HandlerRunPublicationThread.run]: uninterruptible join once
-        // the task is queued (see the production implementation for the
-        // linearization rationale).
-        var interrupted = false
-        while (true) {
-            try {
-                latch.await()
-                break
-            } catch (_: InterruptedException) {
-                interrupted = true
-            }
-        }
+        val interrupted = latch.awaitPublicationCompletion()
         if (interrupted) Thread.currentThread().interrupt()
         return outcome.get()!!.getOrThrow()
     }

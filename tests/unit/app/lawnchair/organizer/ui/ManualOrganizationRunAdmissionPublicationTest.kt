@@ -76,7 +76,7 @@ class ManualOrganizationRunAdmissionPublicationTest {
                 admissionAnchor = ManualOrganizationRun.StartAdmissionAnchor { complete ->
                     gateStillHeld.set(true)
                     gateHeld.countDown()
-                    assertTrue(releaseGate.await(15_000, TimeUnit.SECONDS))
+                    assertTrue(releaseGate.await(15_000, TimeUnit.MILLISECONDS))
                     complete()
                     // Still inside the simulated gate hold: the admission's
                     // first publication must already be visible.
@@ -88,7 +88,7 @@ class ManualOrganizationRunAdmissionPublicationTest {
             assertTrue(outcome is ManualOrganizationRun.StartOutcome.Started)
         }
         worker.start()
-        assertTrue("anchor never reached the gate hold", gateHeld.await(15_000, TimeUnit.SECONDS))
+        assertTrue("anchor never reached the gate hold", gateHeld.await(15_000, TimeUnit.MILLISECONDS))
         releaseGate.countDown()
         worker.join(15_000)
         assertFalse(worker.isAlive)
@@ -148,14 +148,14 @@ class ManualOrganizationRunAdmissionPublicationTest {
                 intent = null,
                 admissionAnchor = ManualOrganizationRun.StartAdmissionAnchor { complete ->
                     gateHeld.countDown()
-                    assertTrue(releaseGate.await(15_000, TimeUnit.SECONDS))
+                    assertTrue(releaseGate.await(15_000, TimeUnit.MILLISECONDS))
                     complete()
                     true
                 },
             )
         }
         started.start()
-        assertTrue(gateHeld.await(15_000, TimeUnit.SECONDS))
+        assertTrue(gateHeld.await(15_000, TimeUnit.MILLISECONDS))
 
         // The cancel thread blocks on the run lock the admission worker holds;
         // the lock ordering (not timing) decides that it runs after admission.

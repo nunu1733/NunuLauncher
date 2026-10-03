@@ -136,7 +136,10 @@ class ManualOrganizationRunPublicationConfinementTest {
         // Spec 375 amendment blocker (Phase2 review): a caller that may hold
         // the run lock + exchange gate must never unwind before its queued
         // publication completes — a late publication would invert the
-        // gate-release linearization. The join is therefore uninterruptible.
+        // gate-release linearization. Both RunPublicationThread implementations
+        // share ONE uninterruptible join primitive
+        // (CountDownLatch.awaitPublicationCompletion), so this oracle pins the
+        // exact primitive production uses, not a test-side copy.
         val publication = DedicatedThreadPublication("join-pub")
         val publicationStarted = CountDownLatch(1)
         val releasePublication = CountDownLatch(1)
@@ -155,7 +158,7 @@ class ManualOrganizationRunPublicationConfinementTest {
             )
         }
         worker.start()
-        assertTrue(publicationStarted.await(15_000, TimeUnit.SECONDS))
+        assertTrue(publicationStarted.await(15_000, TimeUnit.MILLISECONDS))
 
         // The worker is blocked in the join; the publication is held back.
         // Interrupting must neither unwind the caller nor cancel the queued
