@@ -1,26 +1,25 @@
 # Issue #509 — カテゴリ別新規アプリ配置のfeasibility調査（Phase A）
 
-> Status: Complete（判定: **前へ進める** — 既存destination-policy seam上・upstream patch増分0で実装可能。ただしspec受入前に解決すべきowner判断事項を§9に記録）
-> Date: 2026-10-04
-> 対象commit: `main` @ `8508c14182412c2a9cf6f6240eadfe30b5322047`（2026-10-04時点。本調査の全てのpath:line実測とエミュレータ実証はこのcommitで実施した）
-> 再確認: #508（PR #515/#517）merge後の`main` @ `aac74df8e2cf3503af2f729934cc77d40f57e51b`で引用した全ファイルの`git log`と代表行を実再確認し、差異なし（引用ファイルの最終変更はいずれも2026-10-02以前）。
-> Environment: reference系emulator `nunu_smoke_api35`（API 35、google_apis、arm64）＋ `nunu_qpr2_api36_1`（API 36.1）。Build: `Lawnchair.15.Dev.(8508c14).github.debug.apk`（対象commitから`assembleLawnWithQuickstepGithubDebug`）。fixture install対象は既存の`tests/benchmark-install-targets/`（Issue #441の固定対象APK）
-> 出典Issue: [#509](https://github.com/nunu1733/NunuLauncher/issues/509)。判定依存先: #516（Lawnchair 16 rebase Epic。本判定は「前へ進める」のため延期しない）
+> Status: Complete（判定: **`rebase後へ延期`** — Revision 2で判定を訂正。Revision 1の「前へ進める」はplatform事実の誤認に基づいていたため撤回する）
+> Date: 2026-10-04（Revision 2同日）
+> 対象commit: `main` @ `8508c14182412c2a9cf6f6240eadfe30b5322047`（2026-10-04時点。本調査のfork側path:line実測とエミュレータ実証はこのcommitで実施）
+> 再確認: #508（PR #515/#517）merge後の`main` @ `aac74df8e2cf3503af2f729934cc77d40f57e51b`で引用したfork側ファイルの`git log`と代表行を実再確認し、差異なし（引用ファイルの最終変更はいずれも2026-10-02以前）
+> Environment: reference系emulator `nunu_smoke_api35`（API 35、google_apis、arm64）＋ `nunu_qpr2_api36_1`（API 36.1）。Build: `Lawnchair.15.Dev.(8508c14).github.debug.apk`（対象commitから`assembleLawnWithQuickstepGithubDebug`）。fixture install対象は既存の`tests/benchmark-install-targets/`。追加の検証用probe app（§3.2。`QUERY_ALL_PACKAGES`のみを宣言する最小Activity。調査用の一時artifactでありrepositoryへはcommitしない）
+> 出典Issue: [#509](https://github.com/nunu1733/NunuLauncher/issues/509)。延期依存先: #516（Lawnchair 16 rebase Epic。実在番号）
+> Review: Phase 1 review round 1（ChatGPT、[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973424478)）の指摘1（高）でRevision 1のplatform因果説明の誤りを指摘され、probe実験とAOSP行レベル再確認（§3.1〜§3.3）により判定を訂正した
 
-## 1. 結論（Phase A判定）
+## 1. 結論（Phase A判定: Revision 2）
 
-**`前へ進める`**。Issue本文の「前に進める条件」を満たす証拠を得た:
+**`rebase後へ延期`**。Revision 1では「promise icon経路は現代のAndroidで第三者launcherに到達しない」ことを根拠に「前へ進める」と判定したが、この因果説明は誤りであった（review round 1指摘1。訂正の経緯と証拠は§3）。訂正後の事実:
 
-1. 変更surfaceはfork-owned module（`app.lawnchair.homeedit`＋設定UI＋resources）だけである。capture時の分類とカテゴリ→folderId解決を既存capture hook（`AppDestinationBridge`のresolver）の中で完結させ、既存の`FOLDER` snapshot（4field wire、kind 2種）として永続化すれば、以後は#497のstage-2検証・admission内write・typed fallback・UI bindをそのまま使える。§2のとおり、`ItemInstallQueue` / `AddWorkspaceItemsTask` / `DirectEditContract` / `ModelWriter` / `PersistedItemArray`の5つのplatform fileの差分は**0行**である。
-2. capture時点の分類は、現行platform上の全ての自動追加経路で**読み可能な時点**に行われる。調査で新たに確認したplatform事実（§3）により、promise icon経路（install完了前のenqueue）は現代のAndroid（API 35/36で実証、AOSPソースで機構確認）ではサードパーティlauncherに到達せず、自動追加は常に`SessionCommitReceiver`（install完了後）でenqueueされる。したがってcapture時点で対象packageは既にinstall済み・可視であり、既存のS2/S5 platform evidence（`LauncherApps.getApplicationInfo`）とS1 overrideが読める。
-3. promise icon経路が将来の環境変化等で到達した場合でも、captureは分類不可をtypedに既定選択へ落とし（UPSTREAM snapshotをcapture）、#497の再flush決定性契約（first enqueue wins、flush読み出しのみ、stage-2再検証）がそのまま成立する。§3.4のとおり、この経路は契約上の予防的fallbackであり、通常経路の品質主張に使わない。
-4. カテゴリと既存フォルダの対応identityは、#497の指定フォルダと同じid-based class（`CategoryIdentity + profile → favorites行id`）で保持でき、rename・削除・同名再作成・profile・backup/restoreの扱いが#497の受入済み意味論と同一である（§4）。
+1. **capture時分類を既存seamで接続する技術は成立する**。変更surfaceはfork-owned moduleのみで、5つのplatform file（`ItemInstallQueue` / `AddWorkspaceItemsTask` / `DirectEditContract` / `ModelWriter` / `PersistedItemArray`）の差分は0行のままである（§2）。
+2. しかし**実機の主要install経路（trusted installer＝Play経由の新規install）では、captureがinstall完了前に発生し、その時点で分類signalが読めない**。Session callbackはQUERY_ALL_PACKAGESを持つ第三者launcherへ届き（§3.1〜§3.3でplatform機構を実証）、badging付きsessionではpromise icon経路が発火する。capture→UPSTREAM snapshot→上流既定配置となり、完了後の再captureは`alreadyAddedPromiseIcon`で抑止されるため、**カテゴリ解決は二度と起こらない**（§3.4）。
+3. よって本機能がカテゴリ振り分けを成功させる対象は「promise経路を通らないcapture（信頼できないinstaller経由のinstall等）」に限られる。これはIssue本文が要求する「上流が追加を決めた新規アプリを追加操作なしで該当フォルダへ置く」の中核経路を外れるものであり、**成功対象の縮小を利用者にどう説明するかという製品判断がowner判断として未成立である**。Issue本文の停止規則「分類品質/対応identityの製品判断が未成立でも実装を停止する」を適用し、実装へは進めない。
+4. 「後へ回す条件」の技術的動機（追加のupstream bridge、model/loader bridge拡張、queue wire format/`DirectEditContract`拡張の必要性）には**該当しない**（bridge増分は0のまま）。延期の理由はplatform由来のcapture時点制約と、それに伴う製品判断の未成立である。したがって再開条件は、Issue本文の定義（「#516完了と受入ADRの成立→新baselineでseam再調査→owner再判断」）に加え、**「ownerがpromise経路を成功対象外とする縮小scopeを受容するか」の判断**が先決である（§9）。rebase完了だけでは制約は解消しない。
 
-「後へ回す条件」（追加のupstream bridge、model/loader bridge拡張、queue wire format/`DirectEditContract`拡張の必要性）には**該当しない**。したがって#516（rebase Epic）への延期はしない。
+判定の記録に合わせ、Revision 1で作成した進行側の成果物（`specs/509-category-new-app-destination/spec.md`、`docs/adr/0017-category-new-app-destination.md`の草案）は本revisionでbranchから取り下げた。設計草案は履歴（commit `59aa164a62`）に残っており、owner判断で縮小scopeを受容して再開する場合の下書きとして参照できる。
 
-一方で、分類品質の Coverage は本質的に狭い（§3.3。S2はmanifestで`appCategory`を宣言するアプリのみ、S5は`com.google.*`新規アプリのみ、S1は新規アプリに存在しない）。これは機能のOutcome「対応や分類が使えなければ上流既定へ落とす」と矛盾しないが、**機能価値の範囲（どのアプリが振り分け対象になるか）の製品受容、対応catalogの範囲、設定UXの具体形は、spec（Phase 1 Re-Entry）の受入時にownerが確定すべき判断事項である**（§9）。
-
-## 2. 調査項目1: 既存seamだけの最短経路（変更候補pathとcall flow）
+## 2. 調査項目1: 既存seamだけの最短経路（変更候補pathとcall flow）— 技術判定としては成立
 
 ### 2.1 自動追加のcall flow（現行、`8508c14182`実測）
 
@@ -45,96 +44,78 @@
       - stock route → WorkspaceItemSpaceFinder→addItemToDatabase（既定のまま）
 ```
 
-promise icon経路（`InstallSessionHelper.tryQueuePromiseAppIcon`、`InstallSessionHelper.java:224-242`）も同じ`queueItem(String, UserHandle)` overloadへ流れるため、capture点は同一である（§3で到達条件を論じる）。
+promise icon経路（`InstallSessionHelper.tryQueuePromiseAppIcon`、`InstallSessionHelper.java:224-242`）も同じ`queueItem(String, UserHandle)` overloadへ流れるため、capture点は同一である。
 
-### 2.2 変更候補path（全てfork側。platform file差分0）
+### 2.2 変更候補path（全てfork側。platform file差分0 — 訂正後も変わらず）
 
-| File | 変更種別 | 内容 |
-|---|---|---|
-| `lawnchair/src/app/lawnchair/homeedit/AppDestinationAdapter.kt`（`Resolver.captureDestination`: 121-150） | **変更** | カテゴリモード選択時、capture時にS1→S2→S5でカテゴリsignalを解決し、対応mappingでfolderIdへ変換して既存`FOLDER` snapshotを返す。解決不能（分類不可・対応未設定・対応先カテゴリ消失）は既存`UPSTREAM` snapshotを返す（分類fallbackのtyped記録はFileLog＋既存one-shot通知stateで可能。wire拡張不要） |
-| `lawnchair/src/app/lawnchair/homeedit/AppDestinationPolicyPrefs.kt`（実体はAppDestinationAdapter.kt:229-247） | **変更** | policy値にカテゴリモードを追加し、mapping行（`CategoryIdentity.canonicalValue + userSerial → folderId`）の永続化・読み出しを追加 |
-| `lawnchair/src/app/lawnchair/homeedit/ui/AppDestinationPreference.kt`（:109-160の3択dialog） | **変更** | 選択肢にカテゴリモードを追加し、mapping管理（カテゴリ→フォルダ選択）のUIを追加 |
-| `lawnchair/res/values/strings.xml` + `values-ja/strings.xml` | **追加** | カテゴリモード・mapping UI・分類fallback通知の文字列（`destination_policy_*`契約の延長。`AppDestinationSettingsTextTest`と同じsource-contract testの対象） |
-| `docs/adr/0017-*`（新設。仮番号は起票時に確定） | **新設** | ADR-0015 Decision 3（選択肢3つ）/Decision 15（3択設定）の拡張。successor ADRとして置換範囲を明示し、Decision 1/4/5/6/7/8/9/10/11/14は不変であることを示す |
-| `specs/509-category-new-app-destination/spec.md` | **新設** | Phase B実装spec（Issue本文どおり） |
+カテゴリモードを実装する場合の変更は全てfork側に限られる:
 
-**差分0のplatform file（既存hook・wire・書込みprotocolをそのまま使う根拠）**:
+- `AppDestinationAdapter.kt`（`Resolver.captureDestination`: 121-150）: capture時にS1→S2→S5で分類signalを解決し、mappingでfolderIdへ変換して既存`FOLDER` snapshotを返す。解決不能は既存`UPSTREAM` snapshot。
+- `AppDestinationPolicyPrefs`（実体はAppDestinationAdapter.kt:229-247）: policy値とmapping行の永続化。
+- `homeedit/ui/AppDestinationPreference.kt`（:109-160）: 選択肢とmapping管理UI。
+- `strings.xml` + `values-ja`: 新規文字列。
+- ADR-0015 Decision 3/15の拡張はsuccessor ADRで行う（本文上書きなし）。
 
-- `src/com/android/launcher3/model/ItemInstallQueue.java`: capture hook（:244-249）はresolverに委譲しており、resolverの内部解決変更はこのfileに触れない。queue XML attributeのEntryExtension（:96-114）は任意stringを運ぶのみ。flush routing（:187-203）はsnapshot文字列をdecodeするだけで、kind追加に非依存。
-- `src/com/android/launcher3/model/DirectEditContract.java`: `serializeDestinationSnapshot`/`parseDestinationSnapshot`（:287-320）は`upstream`/`folder`の2kind・4field（`kind|folderId|userSerial|packageName`）で固定。**新しいCATEGORY kind/属性は追加しない**（Issue本文の初期案禁止どおり、分類→folderId解決をfork側captureで終え既存`FOLDER`としてserializeする）。`isValidUpstreamSnapshot`（:329-337）もそのまま使える。
-- `src/com/android/launcher3/model/AddWorkspaceItemsTask.java`: policy routeの1分岐（:129-132、:245）はsnapshotが`FOLDER`を運ぶかどうかに依存しない（DestinationRouteで運搬されるため）。
-- `src/com/android/launcher3/model/ModelWriter.java`: `addPendingInstallForDirectEdit`（:657）は固定folderIdのadmission内検証・INSERTで、folderIdの由来（設定指定か分類解決か）に非依存。
-- `src/com/android/launcher3/util/PersistedItemArray.java`: attribute hook（#497で追加済み）はそのまま。
+**差分0のplatform file（既存hook・wire・書込みprotocolをそのまま使える根拠）**: `ItemInstallQueue.java`（capture hook :244-249はresolverに委譲、queue XML attribute :96-114、flush routing :187-203はkind追加に非依存）、`DirectEditContract.java`（4field・2kind :275-320、`isValidUpstreamSnapshot` :329-337、`DestinationResolver` :431-439）、`AddWorkspaceItemsTask.java`（route分岐 :129-132/:245）、`ModelWriter.java`（:657。folderIdの由来に非依存）、`PersistedItemArray.java`（attribute hook）。
 
 ### 2.3 分類seamの再利用（organizer run全体は起動しない）
 
-既存の分類sourceは、organizer run/snapshot/recoveryと独立した単体adapterとして存在し、capture点から直接再利用できる（AGENTS.md設計規約「並行する分類機構を作らない」に従う）:
+- **S1 override**: `CategoryOverrideStoreModule.source(appContext)`（`rules/CategoryOverrideStore.kt:489-496`。production配線実績は`ProductionOrganizationInputComposer.kt:22`）。
+- **S2/S5**: `AndroidClassificationSignalSnapshotSource(appContext).read(requests, policy)`（`integration/AndroidClassificationSignalSnapshotSource.kt:27-64`）。`getApplicationInfo`がnull（未install・不可視）なら`Unreadable`でfail-closed（:38-39）。profile分離はuser引数で既存実装どおり（:34-38）。`ClassificationPolicy`は`BuiltInOrganizerPolicyBundleSource`（`rules/BuiltInOrganizerPolicyBundleSource.kt:19-36`。Android category 0..7→組み込みtaxonomy、`googleCategory=TOOLS`、`systemCategory=OTHER`）。
+- **優先順位**: `OrganizationInputComposer.materializeSignals`（`integration/OrganizationInputComposer.kt:527-531`）と同一のS1→S2→S5。
+- **profile identity**: `canonicalProfileId(userCache, user)`＝userSerial文字列（`application/adapter/CanonicalProfileId.kt:12-16`、`planning/Identity.kt:23-27`）。resolverは既に同一のuserSerialをcaptureしている（`AppDestinationAdapter.kt:133`）。
 
-- **S1 override**: `CategoryOverrideStoreModule.source(appContext)`（`lawnchair/src/app/lawnchair/organizer/rules/CategoryOverrideStore.kt:489-496`。production配線実績は`ProductionOrganizationInputComposer.kt:22`）。`CategoryOverrideSnapshot.assignments[CategoryOverrideKey(PackageName, ProfileId)]`（`rules/CategoryOverrideSnapshot.kt:10-31`）でpackage+profile単位のoverrideを読める。
-- **S2/S5 platform evidence**: `AndroidClassificationSignalSnapshotSource(appContext).read(requests, policy)`（`lawnchair/src/app/lawnchair/organizer/integration/AndroidClassificationSignalSnapshotSource.kt:27-64`）。単一packageの`ClassificationEvidenceRequest`を渡せばよく、`getApplicationInfo`がnull（未install・不可視）のときは`PlatformEvidenceReadResult.Unreadable`でfail-closedする（:38-39）。profileの分離は既存実装どおり`LauncherApps.getApplicationInfo(pkg, 0, user)`のuser引数で保たれる（:34-38。#129の実績）。`ClassificationPolicy`は`BuiltInOrganizerPolicyBundleSource.readActive()`から取得する（`rules/BuiltInOrganizerPolicyBundleSource.kt:18-36`。`androidCategoryMapping`はAndroid category 0..7→組み込みtaxonomy、`googleCategory=TOOLS`、`systemCategory=OTHER`）。
-- **優先順位**: `OrganizationInputComposer.materializeSignals`（`integration/OrganizationInputComposer.kt:527-531`）の既存優先順位 S1 override → S2 Android category → S5 system/Google をcaptureでも踏襲する。
-- **profile identity**: `canonicalProfileId(userCache, user)`＝userSerial文字列（`application/adapter/CanonicalProfileId.kt:12-16`、`planning/Identity.kt:23-27`）。resolverは既に同一のuserSerialをsnapshotへ書いており（`AppDestinationAdapter.kt:133`）、S1/mappingのkeyと一致する。
+## 3. 調査項目2: 分類の時点と品質（Revision 2で全面訂正）
 
-## 3. 調査項目2: 分類の時点と品質
+### 3.1 Session callbackは第三者launcherへ届く（Revision 1の誤りを訂正）
 
-### 3.1 自動追加の経路は「install完了後」が現行platformの全て（新規所見）
+Revision 1は「現代のAndroidではinstall-session callbackが第三者launcherへ配信されない」と記載した。これは誤りである。review round 1指摘1を受け、AOSPソースを行レベルで再確認し、さらにprobe実験（§3.2）で実証した:
 
-Issue本文が想定した「promise iconをenqueueする時点」は、**現代のAndroidでは第三者launcherへ到達しない**ことを確認した。これは本調査の主要な新規所見であり、capture時点の分類可否を根本から決める。
+**platform機構（android15-release / android16-release / mainの3revisionで行単位確認。2026-10-04）**:
 
-**コード上の到達条件**（`8508c14182`実測）:
+- 登録: `LauncherApps.registerPackageInstallerSessionCallback`（SDK）→ `LauncherAppsService.registerPackageInstallerCallback`（android15: `services/core/java/com/android/server/pm/LauncherAppsService.java:356-368`）。権限要求なし。`PackageInstallerService.registerCallback`へprofile filterのみ付して登録（`InstallSessionTracker.java:174-181`のlauncher側登録に対応）。
+- 配信: `PackageInstallerService.Callbacks.handleMessage`（android15: `PackageInstallerService.java:2037-2052`）が各eventに`shouldFilterSession(snapshot, cookie.callingUid, sessionId)`を適用する。実体は同:1849-1857（android16: :1892-1897）:
+  `uid != session.getInstallerUid() && !snapshot.canQueryPackage(uid, session.getPackageName())`
+- **`ComputerEngine.canQueryPackage`（android15: :5436-5485。android16: :5471-）は未install対象に明示的な「new installing case」を持つ**（android15 :5453-5458）: targetが未install（`targetAppId == INVALID_UID`）でも、caller packageの`AndroidPackage`で`mAppsFilter.canQueryPackage(pkg, targetPackageName)`を判定する。
+- `AppsFilterBase.canQueryPackage`（android15: :683-。main: :683-695）は`requestsQueryAllPackages(querying)`ならtrue（:694）。**`QUERY_ALL_PACKAGES`を宣言するlauncherは、targetが未installでもsession eventを受け取れる**。launcherは`AndroidManifest-common.xml:43`で`QUERY_ALL_PACKAGES`を宣言し、実機上grantedであることを`dumpsys package`で確認済み。
 
-- promise経路の唯一のtriggerは`InstallSessionTracker`の`onCreated`/`onBadgingChanged`（`pm/InstallSessionTracker.java:82,145`→`tryQueuePromiseAppIcon`）。登録は`LauncherApps.registerPackageInstallerSessionCallback`（同:174-181。Q以降）である。
-- `verifySessionInfo`は`!PackageManagerHelper.isAppInstalled(...)`を要求する（`InstallSessionHelper.java:257-258`）。つまりpromise enqueueは定義上「未install時点」である。
-- `isTrustedPackage`は`DEBUG(false)`／launcher自身のpackage名／installerの`FLAG_SYSTEM`のいずれか（`InstallSessionHelper.java:69,174-184`）。
+**probe実験（2026-10-04、API 35 `nunu_smoke_api35`）**: `QUERY_ALL_PACKAGES`のみを宣言する最小Activity（`LauncherApps.registerPackageInstallerSessionCallback`を登録するだけのprobe app。repository外の一時artifact）をinstallし、`pm install-create -i com.android.vending --install-reason 4`でsessionを作成・writeした:
 
-**platform側の配信条件**（AOSP `aosp-mirror/platform_frameworks_base` main、確認日2026-10-04）:
+```text
+10-04 06:08:45.116 SessionProbe: registered
+10-04 06:08:46.326 SessionProbe: onCreated 1755274628
+10-04 06:08:46.357 SessionProbe: onActiveChanged 1755274628 true
+10-04 06:08:46.359〜.379 SessionProbe: onProgressChanged 1755274628（複数回）
+```
 
-- `PackageInstallerService.Callbacks.handleMessage`は各eventに`shouldFilterSession(snapshot, callingUid, sessionId)`を適用する:
-  `return uid != session.getInstallerUid() && !snapshot.canQueryPackage(uid, session.getPackageName());`
-  （https://github.com/aosp-mirror/platform_frameworks_base/blob/main/services/core/java/com/android/server/pm/PackageInstallerService.java）
-- streaming中のsession target packageは未installのためpackage managerのpackage集合に存在せず、`canQueryPackage`が真にならない。session作成者（installer）でない第三者launcherにはeventが届かない。`LauncherAppsService.registerPackageInstallerCallback`はこの`PackageInstallerService.registerCallback`へprofile filterのみ付して登録する（同`LauncherAppsService.java`）。
+第三者data appでもsession eventが配信されることを直接実証した。Revision 1の「配信されない」因果説明は撤回する。
 
-**エミュレータ実証**（2026-10-04。手順と出力は§3.5）:
+### 3.2 launcher実験でpromise経路が発火しなかった真因: shell sessionのbadging欠損
 
-| 実験 | 条件 | 結果 |
-|---|---|---|
-| E1（API 35、`nunu_smoke_api35`） | `-i com.android.vending`（このimageで`flags=[ SYSTEM ... ]`を確認）＋`--install-reason 4`（USER）でsession作成・write中 | launcher logcatに`ItemInstallQueue`/`SessionCommitReceiver`/`InstallSessionHelper`の出力**ゼロ**。`pm path`失敗（未install）。→ promise enqueue不発 |
-| E1-commit | 同sessionを`pm install-commit` | packageがinstallされ、直後に`SessionCommitReceiver: Adding package name to install queue`＋`ItemInstallQueue: queueItem at SessionCommitReceiver.java:95`のスタックが出力（03:39:22.971）。→ **captureはinstall完了後に発生** |
-| E2（API 35） | `--install-reason 3`（USER以外。commitのみ） | `SessionCommitReceiver: Removing PromiseIcon ... install reason: 3`でenqueueされない（:76のUSER gateの実機確認。benchmark §7 change historyの記録と一致） |
-| E3（API 35） | `-i app.lawnchair.debug`（`isTrustedPackage`のlauncher自身節でtrusted）＋reason 4、write中 | 出力ゼロ・未install。→ installer信頼性ではなくplatform配信条件で落ちていることを切り分け |
-| 参考（API 36、`nunu_qpr2_api36_1`） | 同型のsession作成・write | 同様にpromise不発。commit後のcompletion enqueueを確認 |
+Revision 1のlauncher実験（§3.5のE1〜E3）でpromise enqueueのログが一切出なかった原因は、platform配信ではなく**`verifySessionInfo`のicon/label要件**である:
 
-API 36側のエミュレータは並行作業（#508）で使用されたため、正式transcriptはAPI 35側を正とする。
+- `verifySessionInfo`は`sessionInfo.getAppIcon() != null && !TextUtils.isEmpty(sessionInfo.getAppLabel())`を要求する（`InstallSessionHelper.java:255-256`）。
+- `pm install-create`/`install-write`で作ったshell streaming sessionにはapp icon/labelが付かない。自分のE1ログ自身がこれを記録している:
+  `SessionCommitReceiver: Adding package name to install queue. Package name: app.lawnchair.benchmark.target01, has app icon: false, has app label: false`（API 35、03:39:22.944）
+- probe実験でも`onBadgingChanged`は一度も記録されなかった（badging metadataがsessionへ反映されないことの裏付け）。
+- よってlauncherはeventを受けても`verifySessionInfo`で静かに落ち、promise enqueueは行われない。**実運用のtrusted installer（Play等）のsessionはbadging（icon/label）を運ぶ**ため（ADR-0015 Context §2がpromise icon機能の前提として記述）、この欠損はshell実験固有である。
 
-**含意**:
+### 3.3 capture時点ごとの分類可否（訂正版）
 
-1. 現行platformで自動追加が起こる経路は`SessionCommitReceiver`（install完了後）に単一化される。したがって**capture時点で対象packageはinstall済み・可視**（QUERY_ALL_PACKAGESは`AndroidManifest-common.xml:43`で宣言済み）であり、既存S2/S5 evidenceの`getApplicationInfo`は成功する。分類→folderId解決をcapture時に行う構成は、主要経路で成立する。
-2. promise icon（`FLAG_AUTOINSTALL_ICON`の空きセル配置）自体が第三者launcherでは発生しないため、ADR-0015 Decision 11（promise段階から同じ配置先）は「コード上の契約は維持、runtime到達は環境依存」という位置づけになる。#497の実装（capture hook・wire・stage-2）はpromise経路でも正しく動く予防的契約としてそのまま維持する。
-3. 「install完了後にもう一度振り分ける」を採用しない（Issue本文どおり）方針は変わらない。完了後captureの単一経路化により、二段階配置の問題は現行platform上では構造的に発生しない。
+| 経路 | capture時点 | アプリのinstall状態 | S1 | S2/S5 | カテゴリ解決 |
+|---|---|---|---|---|---|
+| **trusted installer（Play等）＋badging付きsession**（実機の主要経路） | promise icon enqueue（install完了前。§3.1の機構＋badging成立で発火） | 未install | store読めるが新規アプリにoverrideなし | **読めない**（`getApplicationInfo`=null→`Unreadable`） | **不可** |
+| 同（完了後） | `alreadyAddedPromiseIcon=true`で`SessionCommitReceiver`がreturn（:74-87） | — | — | — | **再captureは起こらない** |
+| 信頼できないinstaller経由のinstall（install reason USER） | `SessionCommitReceiver`（install完了後） | install済み・可視 | 同上 | **読める** | 可（signalがあれば） |
+| shell stream（badging無し）・adb（reason不明で自動追加自体が不発。benchmark §7実績） | 完了後（queueに入る場合のみ） | install済み | 同上 | 読める | 可（signalがあれば） |
 
-### 3.2 capture時点のS1/S2/S5可用性の纏め
+結論: **実機の主要経路（Play経由）ではcapture時分類が成立せず、カテゴリ別配置は効かない**。効くのは非promise captureに限られ、さらにS2のcoverageは「manifestで`appCategory`を宣言するアプリ」、S5は「新規の`com.google.*`アプリ」に限られる（S1は再install時のoverrideのみ）。ADR-0015 Alternatives/#446メモの「分類品質が不十分（8種＋OTHER）」の記録に、capture時点制約が重なる。
 
-| Signal | install完了後capture（現行の全自動追加） | promise capture（到達時は予防的契約） |
-|---|---|---|
-| S1 override | 読める（store参照）。ただし新規packageには行が存在しない → signal無し | 同左 |
-| S2 Android category | 読める（`getApplicationInfo`成功。`info.category`が0..7のときのみmapping一致） | **読めない**（未install→`getApplicationInfo`=null→`Unreadable` fail-closed） |
-| S5 system/Google | 読める（新規ユーザーinstallは`FLAG_SYSTEM`なし。`com.google.*`のみ一致） | 同上、読めない |
+### 3.4 fallback設計の位置づけ（訂正後）
 
-S2/S5が未取得のときのcapture結果は既存`UPSTREAM` snapshot（＝上流既定への静かな配置）であり、#497のsnapshot契約（欠損・破損とは異なり、**正当な「upstream選択」としてcapture**する。`AppDestinationAdapter.kt:133-149`の現行upstream選択と同じ形）で処理する。分類fallbackの記録が必要な場合はFileLogへのtyped記録＋既存one-shot通知state（`AppDestinationNotice`）で足り、queue wire拡張は不要（調査項目5への回答）。
+promise段階でのcapture（分類不可→`UPSTREAM` snapshot→上流既定配置）は、#497の契約（first enqueue wins・flush読み出しのみ・stage-2再検証）の中で決定的かつ安全に動く。しかしIssue本文の要件「利用者が明示したカテゴリと既存フォルダの対応により、上流が追加を決めた新規アプリを追加操作なしで該当フォルダへ置く」に対し、主要経路が常にfallbackになる設計は、成功対象（非promise captureのみ）を利用者に明示し、その価値をownerが受容することが前提になる。この製品判断が未成立のまま実装へ進むこと禁止している（Issue本文・停止規則）。「install完了後にもう一度振り分ける」を採用しない方針（Issue本文どおり）は、訂正後も変わらない。
 
-### 3.3 分類品質（Coverage）の限度
-
-- S2は`ApplicationInfo.category`（manifest `android:appCategory`）が0..7（GAME..PRODUCTIVITY）のときのみsignalになる。`CATEGORY_UNDEFINED`の一般アプリにはsignalがない。ADR-0015 Alternativesと#446メモが「Android category 8種＋OTHERのみで分類品質が不十分」と記録した同じ制約である。
-- S5は`com.google.*`新規アプリ→TOOLS、システムアプリ→OTHER。ユーザーが新規installする通常アプリは`FLAG_SYSTEM`を持たないため、S5が効くのはGoogle系アプリに限られる。
-- S1はorganizerの分類materials（配置済みアプリへのoverride）であり、新規install時点では存在しない。
-- よって分類が成功する対象は「`appCategory`を宣言してinstallされるアプリ」と「新規の`com.google.*`アプリ」に限られる。**これは機能価値の範囲の問題であり、誤配置の問題ではない**（解決不能はすべて上流既定へ落ちるため）。spec受入時にこの範囲を明示してowner判断を得る（§9）。
-
-### 3.4 promise段階の失敗をfallbackとする場合の説明（Issue調査項目2への回答）
-
-- 成功対象: 「install完了後captureで分類が解決したアプリ」。promise段階（到達時のみ）は分類不可のため既定配置となり、これは**fallbackのtyped記録の対象**として説明する。通常追加だけの成功で一般的なpromise対応を主張しない（Issue本文どおり）。現行platformではpromise段階自体が到達しないため（§3.1）、この契約は予防的性質を持つ。
-- 利用者への説明: 設定行のカテゴリモード説明に「分類できないアプリは上流既定へ置かれる」ことを明記し、分類fallbackのone-shot通知（既存`AppDestinationNotice`の契約延長）で一度だけ知らせる。文言の具体化はspecで確定する。
-
-### 3.5 再現手順（E1〜E3の正確なcommand。API 35 `nunu_smoke_api35`、emulator-5574）
+### 3.5 再現手順（E1〜E3＋probe。API 35 `nunu_smoke_api35`、emulator-5574）
 
 ```bash
 # 前提: 対象commitのdebug APKをinstall済・既定HOME・前面
@@ -149,106 +130,69 @@ SID=$(adb shell pm install-create -i com.android.vending --install-reason 4 -r -
 cat "$APK" | adb shell pm install-write -S $(stat -f%z "$APK") $SID base
 adb shell pm path app.lawnchair.benchmark.target01        # → 空（未install）
 adb logcat -d | grep -E "ItemInstallQueue|SessionCommitReceiver|InstallSessionHelper"
-#   → 出力なし（promise enqueue不発）
+#   → write中の出力なし。※Revision 1はこれを「配信されない」証拠としたが誤り。
+#     真因はshell sessionのbadging欠損（verifySessionInfoのicon/label要件。§3.2）
 adb shell pm install-commit $SID
 sleep 3
-adb shell pm path app.lawnchair.benchmark.target01        # → /data/app/...base.apk（install済み）
 adb logcat -d | grep -E "SessionCommitReceiver|ItemInstallQueue" | grep -v "  at "
-#   → "Adding package name to install queue..." と queueItem のスタック
-#     （SessionCommitReceiver.java:95 → ItemInstallQueue.java:250）
+#   → "Adding package name to install queue. ... has app icon: false, has app label: false"
+#     と queueItem のスタック（SessionCommitReceiver.java:95 → ItemInstallQueue.java:250）
 
-# E2: reason 3（USER以外）
-SID=$(adb shell pm install-create -i com.android.vending --install-reason 3 -r ... )
-#   commit後: "Removing PromiseIcon ... install reason: 3, alreadyAddedPromiseIcon: false"
+# E2: reason 3（USER以外）→ "Removing PromiseIcon ... install reason: 3" でenqueueされない
+# E3: installerにlauncher自身を指定（isTrustedPackageのlauncher節）→ 同様にwrite中は無出力
 
-# E3: installerにlauncher自身を指定（isTrustedPackageのlauncher節）
-SID=$(adb shell pm install-create -i app.lawnchair.debug --install-reason 4 -r ... )
-#   write中: 出力なし・未install（E1と同様にpromise不発）
+# probe: QUERY_ALL_PACKAGESのみの最小ActivityがregisterPackageInstallerSessionCallbackを
+#   登録し、同じsessionでonCreated/onActiveChanged/onProgressChangedを受信（§3.1）。
+#   → 配信は起こる。launcher実験の不発はbadging欠損によるverifySessionInfo失敗。
 ```
 
-install reason定数の実測値: API 35/36とも`--install-reason 4`が`INSTALL_REASON_USER`として受入れられた（E1/E3でenqueue、E2の3は拒否）。`docs/engineering/editing-burden-benchmark.md` §7の`--install-reason 4`＝USERの記録と一致する。
+install reason定数の実測値: API 35/36とも`--install-reason 4`が`INSTALL_REASON_USER`として受入れられた（E1/E3でcompletion enqueue、E2の3は拒否）。`docs/engineering/editing-burden-benchmark.md` §7の記録と一致。
 
-## 4. 調査項目3: folderとcategoryの対応identity
+## 4. 調査項目3: folderとcategoryの対応identity（参考。実装へは進めない）
 
-第一候補（Issue本文どおり）: **利用者が明示設定する`CategoryIdentity + profile → persistent folderId`のfork-owned対応**（新規pref。既存`newAppDestination`の`folder:<id>`値の一般化ではない——既存値の形式は変えず、別prefにmapping行を持つ）。
+第一候補はfork-ownedな`CategoryIdentity + profile → persistent folderId`の明示mappingである。#497の指定フォルダと同じid-based classであり、rename不変・削除→`FOLDER_MISSING` typed fallback・同名再作成で復活しない・別profile→`PROFILE_MISMATCH`・Dock→`DOCK_FOLDER`・backup/restore exposure同一・user-defined category削除→capture時解決失敗（fail-closed）の性質は、#497の受入済み意味論と同一である。folderタイトル一致・子の多数決・暗黙のfolder成長・organizer provenance転用は、ADR-0015 Decision 13(b)とIssue本文の禁止どおり採用しない。この節はowner判断で縮小scopeを受容して再開する場合の設計基盤として残す。
 
-確認した性質（#497の指定フォルダと同一class）:
+## 5. 調査項目4: 再flushの決定性（技術的には継承される）
 
-| 事象 | 挙動 | 根拠 |
-|---|---|---|
-| folder rename | 対応はfolderIdで不変 | id保持（ADR-0015 Decision 5と同型） |
-| folder削除 | stage-2が`FOLDER_MISSING`でtyped fallback（上流既定へ）。対応行は残るが無効 | `AppDestinationPlanner.plan`（`AppDestinationPlanner.kt:127-129`） |
-| 同名再作成 | 復活しない（id基準） | 同上 |
-| 別profile folder | `PROFILE_MISMATCH`でtyped fallback | `AppDestinationPlanner.kt:131-135`（profile比較はuserSerial） |
-| Dock移動 | `DOCK_FOLDER` | `AppDestinationPlanner.kt:137-141` |
-| backup/restore | favorites行idの保存・復元に依存する exposure は#497の指定フォルダと同じ受入済みclass。復元後にidが変わればfallback（上流既定）へ落ち、layout損失はない | #497 AC-3の受入済み挙動と同一 |
-| カテゴリ削除（user-defined） | 対応行が指すidentityがcatalogから消える → capture時の解決が失敗 → UPSTREAM snapshot（上流既定）。誤配送は起こらない | 解決をcapture時のみに限定する設計（§5） |
-| カテゴリrename | `CategoryIdentity`はid基準でrename不変（`CategoryIdentity.kt:35-66`） | #336のidentity契約 |
+分類・対応mapping・カタログはenqueue時（captureDestination内）だけ読み、capture後は4field snapshotが不変である。first enqueue wins（`ItemInstallQueue.java:140-146`）、flush読み出しのみ、stage-2による固定folderIdの再検証（`AppDestinationAdapter.kt:61-102`、`AppDestinationPlanner.kt:83-159`）は#497構造のまま保たれる。ただし主要経路ではcapture自体が分類不能時点で起こるため（§3.3）、この決定性契約はfallback配置の決定性として機能する。
 
-不採用とする案（Issue本文が自動採用を禁止しているもの。比較記録として残す）:
+## 6. 調査項目5: 設定とfailure（参考。実装へは進めない）
 
-- **folderタイトル一致**: Deckの失敗の再現（ADR-0015 Decision 13( b)）。採用しない。
-- **子の多数決・分類結果からの暗黇のfolder成長**: 意図しないfolder成長を生む。採用しない。
-- **既存provenance（organizerのplan provenance/naming semantic）の転用**: Organizerの生成planにnaming semanticがあることは任意のfolder行に永続的なcategory対応がある証明にならない（Issue本文の照合どおり）。採用しない。
+opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不可の上流既定fallback、対応先folder消失等の既存typed fallback、FileLogへのtyped記録（package名なし、wire拡張不要、通知なし）はいずれも既存seamの延長で設計可能である（§2.2）。network・新権限は不要である。
 
-対応catalogの範囲（spec受入時のowner判断事項）: S1は新規アプリに存在しないため、capture時に実際に到達するカテゴリはS2（8種）とS5（`com.google.*`→TOOLS）に限られる。mapping UIが全built-in taxonomy＋user-definedを露出すると「到達不能な対応」を作るため、**到達可能なカテゴリへmapping対象を限定する**ことをspecで確定すべきである（初期案: S2の8種＋TOOLS。user-definedはS1依存のため対象外）。
+## 7. Phase A exit条件の照合（Revision 2）
 
-## 5. 調査項目4: 再flushの決定性
-
-分類・対応mapping・カタログは**enqueue時（captureDestination内）だけ**読む。capture後は4fieldの`FOLDER` snapshotが永続化され、flush・process restart・再flushはpersist済みfolderIdを読むだけである。したがって:
-
-- capture後にoverride/catalog/設定/mappingが変わっても、同じinstallの永続化されたfolderIdは置き換わらない（first enqueue wins。`ItemInstallQueue.java:140-146`の重複排除と`mStorage.write`のスキップ）。
-- stage-2は固定folderIdの現在の存在/profile/Dock/制約だけを再検証し、**別のカテゴリfolderへの再選択は行わない**（`AppDestinationStage2Validator`はsnapshotを読むだけでcurrent policyを再読しない。`AppDestinationAdapter.kt:61-102`）。
-- snapshot欠損・破損・identity不一致の扱いは#497の契約そのまま（`UpstreamDefault(SNAPSHOT_INVALID)` / `Reject(SNAPSHOT_INVALID)`。`AppDestinationPlanner.kt:83-105`）。
-
-この性質は#497の構造から外に新しく作るものがなく、カテゴリ化はcapture時の解決方法が増えるだけであるため、契約の維持は構造的に保証される。
-
-## 6. 調査項目5: 設定とfailure
-
-- **opt-in UX**: 既存のポリシー行（`AppDestinationPreference.kt:109-160`）の選択肢にカテゴリモードを追加する形が最小である（ADR-0015 Decision 15の3択を4択へ拡張するためsuccessor ADRを要求する。§9）。「追加しない」⇔`pref_add_icon_to_home` OFFの整合、ホームロック中の無効化は既存実装がそのまま保持する。
-- **排他・整合**: カテゴリモードと固定フォルダモードは同一のpolicy選択の排他選択肢である（同時に効かせない）。mappingはカテゴリモード選択中のみ意味を持つ。
-- **曖昧・未設定・分類不可**: すべてcapture時にUPSTREAM snapshotへ落ちる（上流既定）。エラーではない。
-- **対応先folderの消失・別profile・Dock化**: stage-2の既存typed fallback（`FOLDER_MISSING`/`PROFILE_MISMATCH`/`DOCK_FOLDER`）が処理する。通知は既存one-shot通知state経由。
-- **分類fallbackの記録**: FileLogのtyped記録＋one-shot通知で足り、**queue wireの拡張は不要**（調査項目5の問いへの回答）。package/component名は出力しない（organizer-diagnostics §7 Never準拠。既存`AppDestinationBridge`の実装慣行どおり）。
-- **権限・network**: 追加なし。分類readは既存の`LauncherApps`＋app-private storeであり、新権限・外部通信は発生しない。
-
-## 7. Phase A exit条件の照合
-
-- [x] 調査成果物に確認日・対象commit・根拠path/行・再現手順と結果、変更候補path、未確認範囲を記録した（本書。成果物path: `docs/assessment/issue-509-category-destination-feasibility.md`）。
-- [x] profile内classification、明示対応identity、promise不足時の扱い、enqueue固定/reflush/stage-2の境界を調査として確定し、owner判断事項を§9に列挙した。ADR-0015を変える部分（Decision 3/15の選択肢拡張）はsuccessor ADRで置換範囲を示す方針である（元ADRは上書きしない）。
-- [x] **前に進める条件**: fork-owned moduleの変更だけで、既存hook・既存4field snapshot・既存書込み/queue protocolをそのまま使い、必要なprofile/promise/fallback契約が成立する証拠を示した（§2〜§6）。新しいschema/migrationや別の適用経路を前提にしない。
-- [x] **後へ回す条件**: 該当しない（追加のupstream bridge、model/loader bridge拡張、queue wire format/`DirectEditContract`拡張は不要と判明した）。
-- [ ] 判定を本Issueに`前へ進める`として記録する（本調査のPR後にworkerが記録する）。
+- [x] 調査成果物に確認日・対象commit・根拠path/行・再現手順と結果、変更候補path、未確認範囲を記録した（本書。`docs/assessment/issue-509-category-destination-feasibility.md`）。
+- [x] profile内classification、明示対応identity、promise不足時の扱い、enqueue固定/reflush/stage-2の境界を確定した（§2〜§6）。ADR-0015を変える部分はsuccessor ADRを要するが、実装停止のため起草しない（Revision 1草案は履歴`59aa164a62`に残す）。
+- [x] **前に進める条件は満たさない**: fork-owned moduleのみの変更・既存hook・既存4field snapshot・既存書込み/queue protocolの使用は証明できたが、「必要なprofile/**promise**/fallback契約が成立する証拠」において、promise経路（主要install経路）のcapture時に分類が成立しないことが確定し、成功対象の縮小という製品判断が未成立である（§3.3/§3.4）。
+- [x] **後へ回す条件の技術的動機には非該当**だが、Issue本文の停止規則（製品判断未成立でも実装を停止）により`rebase後へ延期`として記録する（§9）。
+- [x] 判定を本Issueに`rebase後へ延期`として記録した（worker comment。Phase 1 review round 1の指摘対応と合わせる）。
 
 ## 8. 未確認範囲
 
-1. **実機GMS端末＋リリース配布形でのsession event不達の直接確認**: エミュレータ（google_apis、API 35/36）とAOSPソースでの確認を代用した。リリースlauncherも本調査と同じdata app構成（`READ_INSTALL_SESSIONS`未宣言・`QUERY_ALL_PACKAGES`宣言）であり差はない判断だが、Phase Bのowner実機確認（install→振り分けの実測）で二重化する。
-2. **`canQueryPackage`の未install packageに対するframework実装の行レベル確認**: 挙動はエミュレータで実証した（E1/E3）。AOSP引用は`shouldFilterSession`の式までとした。
-3. **実ワールドの`appCategory`宣言率**: 測定していない。ADR-0015/#446メモの「8種のみ・品質不十分」の記録と、本調査のsignal構造の分析（§3.3）を根拠に、coverageの製品受容をowner判断へ出す。
-4. **work profileでのcapture分類**: 構造分析のみ（各profileのlauncher processが自profileのbroadcastを受けるため同一経路。分類readも自profileのuserで行われる）。実証はspec 509の検証（AC）で行う。
+1. **実機GMS端末＋Play経由installでのpromise capture発火の直接確認**: platform機構はprobe実験（配信実証）＋badging要件のコード根拠＋ADR-0015 Contextのpromise icon前提から強く推定するが、実機でPlay install→promise icon表示→capture時点の分類不可を直接記録していない。rebase後の再調査（owner再判断時）の最初の確認項目とする。
+2. **shell sessionのbadging欠損の挙動差**: `pm install-write`のストリーミングでicon/labelが付かないのはエミュレータ2台（API 35/36）で確認。Play等の実installer sessionでは付くことの直接確認は未実施（同上）。
+3. **非promise captureの実際の頻度**（信頼できないinstaller経由installの割合、`INSTALL_REASON_USER`成立率）: 測定していない。縮小scopeの価値評価に必要なdataであり、owner判断の材料とする。
+4. work profileでのcapture経路: 構造分析のみ（各profileのlauncher processが自profileのbroadcast/callbackを受け、promise経路の制約は同一）。
 
-## 9. 正本への影響とspec受入前に確定すべきowner判断事項
+## 9. 延期の記録と再開条件
 
-**正本への影響**:
+- 本Issueをopenのまま`phase: later`へ変更する。依存linkは#516（Lawnchair 16 rebase Epic、実在番号）。
+- 延期理由は「追加bridgeの必要性」ではなく「**capture時点のplatform制約により主要install経路で分類が成立しない**こと」と、それに伴う「**成功対象の縮小（非promise captureのみ＋appCategory等のsignal coverage制約）の製品受容がowner判断として未成立**」である。bridge増分0の技術成果（§2）はrevision 1から変更なく成立している。
+- 再開条件（Issue本文の定義＋訂正後の実態を明記）: ①ownerが「promise経路を成功対象外とする縮小scope」を受容するかを判断する（これが先決。受容しない場合、本機能は capture時分類の限界により実装困難であり、FR-009等の別の解決（install後の明示的移動支援）へ分流する）。②受容する場合、#516完了と受入rebase ADRの成立後に新baselineでseam再調査（§3のplatform事実の実機確認を含む）→owner再判断。③rebase完了だけでは制約は解消しない。
+- 本調査の他の成果物: Revision 1で起草したspec/ADR草案は履歴`59aa164a62`に残す（縮小scopeを受容する場合の下書き）。正本（`CONTEXT.md`/`DESIGN.md`/requirements/ベンチマーク）への反映は実装へ進む場合のみ行う。
 
-- ADR-0015: Decision 3（選択肢3つ）/Decision 15（3択設定）の拡張をsuccessor ADRで行う（Decision 1/4/5/6/7/8/9/10/11/14は不変）。Decision 11（promise iconの段階から同じ配置先）は契約として維持するが、§3.1のplatform事実（promise経路のruntime到達性）をsuccessor ADRのContextへ記録する。ADR本文のin-place書き換えは行わない（`docs/adr/README.md`規約）。
-- spec 497: 実装は正しく、変更不要。promise icon経路のScenario（「promise iconの段階から同じ配置先」）は予防的契約としての意味が明確になるのみである。
-- `CONTEXT.md`: Phase B実装時に「分類フォルダ」語（指定フォルダのAvoid欄で「将来機能」とされていた）を更新する。
+## 10. External reference scan（研究記録）
 
-**spec受入前にownerが確定すべき判断**:
-
-1. **Coverageの製品受容**: 分類成功対象が「`appCategory`宣言アプリ＋新規`com.google.*`アプリ」に限ることを機能価値として受容するか（§3.3）。
-2. **対応catalogの範囲**: mapping対象をS2到達可能カテゴリ（＋TOOLS）へ限定する初期案の承認（§4）。
-3. **設定UXの具体形**: カテゴリモードの選択面とmapping管理UIの形（4択拡張か、別面か）。
-4. **promise段階fallbackの説明**: §3.4の説明方針（予防的契約・typed記録・一度だけの通知）の承認。
-
-## 10. External reference scan（研究記録。workflow「External reference scan」の形式）
-
-- AOSP PackageInstallerService（session callbackの可視性filter。本判定の根幹）: https://github.com/aosp-mirror/platform_frameworks_base/blob/main/services/core/java/com/android/server/pm/PackageInstallerService.java （確認日 2026-10-04。`shouldFilterSession`＝`uid != installerUid && !canQueryPackage(uid, targetPackage)`を採用事実として記録。採用patternというよりplatform制約の確認）
-- Android SDK `LauncherApps.getApplicationInfo(String, int, UserHandle)`: https://developer.android.com/reference/android/content/pm/LauncherApps#getApplicationInfo(java.lang.String,%20int,%20android.os.UserHandle) （確認日 2026-10-04。未install・不可視でnullを返す契約。`AndroidClassificationSignalSnapshotSource`のfail-closedと一致）
-- Smart Launcher Smart Folders（カテゴリ自動追加の先例）: https://docs.smartlauncher.net/products/faq/changelog/5.4 （確認日 2026-10-02。spec 497 Prior artに既記録。本機能は自動分類ではなく明示mapping＋既定fallbackである点で不採用のまま参照）
-- Nova Launcher等の第三者launcherでpromise iconが表示されない既知のplatform制約は、本調査では出典確認できた公式文書を持たないため根拠として使わず、AOSPソースとエミュレータ実証を正とした。
+- AOSP PackageInstallerService（session callbackの配信filter。判定の根幹。android15-release: shouldFilterSession `:1303-1308`/`:1849-1857`、dispatch `:2037-2052`。android16-release: `:1892-1897`）: https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/pm/PackageInstallerService.java （確認日 2026-10-04）
+- AOSP LauncherAppsService（`registerPackageInstallerCallback`。権限要求なし。android15-release `:356-368`）: https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/pm/LauncherAppsService.java （確認日 2026-10-04）
+- AOSP ComputerEngine（`canQueryPackage`の"new installing case"。android15-release `:5436-5485`（installing case `:5453-5458`）、android16-release `:5471-`（`:5499-`）、main `:5436-`（`:5461-`））: https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/pm/ComputerEngine.java （確認日 2026-10-04。review round 1指摘1で指摘された分岐を行レベルで確認し、probe実験で動作を実証）
+- AOSP AppsFilterBase（`requestsQueryAllPackages` fast path。android15-release `:683-`（`:694`）、main `:683-695`）: https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android15-release/services/core/java/com/android/server/pm/AppsFilterBase.java （確認日 2026-10-04）
+- Android SDK `LauncherApps.getApplicationInfo(String, int, UserHandle)`: https://developer.android.com/reference/android/content/pm/LauncherApps#getApplicationInfo(java.lang.String,%20int,%20android.os.UserHandle) （確認日 2026-10-04。未install・不可視でnull。`AndroidClassificationSignalSnapshotSource`のfail-closedと一致）
+- Smart Launcher Smart Folders: https://docs.smartlauncher.net/products/faq/changelog/5.4 （確認日 2026-10-02。自動分類による全自動追加。本機能は明示mapping＋fallbackだが、capture時点制約により採用判断に至らず）
+- Nova Launcher等の第三者launcherのpromise icon表示可否についてのcommunity記録は出典を確認できなかったため根拠に使わず、probe実験とAOSPソースを正とした。
 
 ## Change history
 
-- 2026-10-04: Complete。対象commit `8508c14182`で調査・実証。判定「前へ進める」。
+- 2026-10-04: Revision 2 — Phase 1 review round 1（[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973424478)）指摘1（高）に対応。Revision 1の「session callbackは第三者launcherに届かない」因果説明を撤回し、AOSP行レベル再確認（installing case＋QUERY_ALL_PACKAGES fast path。android15/16/main）とprobe実験で配信を実証。launcher実験の不発の真因をshell sessionのbadging欠損（`verifySessionInfo`のicon/label要件。E1ログ`has app icon: false`が証拠）へ訂正。訂正後は実機主要経路（Play）でpromise captureが発火し分類不能のため、判定を`前へ進める`から`rebase後へ延期`へ訂正。spec/ADR草案を取り下げ（履歴`59aa164a62`に残存）。
+- 2026-10-04: Revision 1 — 初版。対象commit `8508c14182`で調査・実証（fork側path:line実測、E1〜E3）。判定「前へ進める」（後にRevision 2で訂正）。
