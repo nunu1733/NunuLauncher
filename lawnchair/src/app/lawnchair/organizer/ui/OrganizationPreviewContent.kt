@@ -17,6 +17,7 @@ import app.lawnchair.organizer.application.public.PreviewPosition
 import app.lawnchair.organizer.application.public.RowBand
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.ProposalExclusionKey
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.WarningCode
 import java.util.Locale
@@ -145,11 +146,18 @@ interface OrganizationPreviewWording {
  * One grouped change list section: a heading with the [PreviewCounts]-derived
  * total (rows and header always agree, even while truncated) and the
  * deterministic row texts for that group.
+ *
+ * Issue #508: [rowKeys] is parallel to [rows] — the exclusion key of each row
+ * when the row's item is on this proposal's exclusion surface, null otherwise
+ * (folder/page rows, warnings, and non-excludable preserves have no action).
+ * The UI truncates rows for display but indexes [rowKeys] with the same
+ * visible-row positions.
  */
 data class OrganizationPreviewSection(
     val heading: String,
     val totalCount: Int,
     val rows: List<String>,
+    val rowKeys: List<ProposalExclusionKey?> = emptyList(),
 )
 
 /**
@@ -169,13 +177,26 @@ object OrganizationPreviewContent {
         val changes = details.changes
         val counts = details.counts
         val supplements = descriptorSupplements(changes, wording)
+        // Issue #508: item id -> exclusion key for the rows that carry an
+        // action. Warnings and folder/page rows never map to a key.
+        val keyByItem = details.excludableItems.associate { entry ->
+            when (val key = entry.key) {
+                is ProposalExclusionKey.Existing -> key.item to key
+                is ProposalExclusionKey.Candidate -> key.item to key
+            }
+        }
+        fun rowKey(item: app.lawnchair.organizer.planning.ItemId?): ProposalExclusionKey? = item?.let { keyByItem[it] }
         val sections = mutableListOf<OrganizationPreviewSection>()
-        val moves = changes.filterIsInstance<MoveChange>().map { moveRowText(it, wording, supplements[it]) }
-        if (moves.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupMoved, counts.movedCount), counts.movedCount, moves)
+        val moveChanges = changes.filterIsInstance<MoveChange>()
+        val moves = moveChanges.map { moveRowText(it, wording, supplements[it]) }
+        val moveKeys = moveChanges.map { rowKey(it.item) }
+        if (moves.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupMoved, counts.movedCount), counts.movedCount, moves, moveKeys)
         // Issue #228 (spec AC-5): one Add row per selected candidate, directly
         // after the move group — both are placement changes the user reviews.
-        val adds = changes.filterIsInstance<AddChange>().map { addRowText(it, wording) }
-        if (adds.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupAdded, counts.addedCount), counts.addedCount, adds)
+        val addChanges = changes.filterIsInstance<AddChange>()
+        val adds = addChanges.map { addRowText(it, wording) }
+        val addKeys = addChanges.map { rowKey(it.item) }
+        if (adds.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupAdded, counts.addedCount), counts.addedCount, adds, addKeys)
         val folders = changes.filterIsInstance<NewFolderChange>().map { newFolderRowText(it, wording) }
         if (folders.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupNewFolders, counts.newFolderCount), counts.newFolderCount, folders)
         val pages = changes.filterIsInstance<NewPageChange>().map { newPageRowText(it, wording) }
@@ -454,7 +475,7 @@ object OrganizationPreviewContent {
         WarningCode.DUPLICATE_LAUNCH_TARGET -> wording.warningDuplicateLaunchTarget
     }
 
-    private fun kindText(kind: CanonicalItemKind, wording: OrganizationPreviewWording): String = when (kind) {
+    fun kindText(kind: CanonicalItemKind, wording: OrganizationPreviewWording): String = when (kind) {
         CanonicalItemKind.Application -> wording.kindApplication
         CanonicalItemKind.DeepShortcut -> wording.kindDeepShortcut
         CanonicalItemKind.ShortcutLegacy -> wording.kindShortcutLegacy

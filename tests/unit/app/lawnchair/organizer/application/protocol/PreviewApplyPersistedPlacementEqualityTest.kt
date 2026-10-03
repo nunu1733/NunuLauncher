@@ -99,7 +99,7 @@ class PreviewApplyPersistedPlacementEqualityTest {
 
         // Preview destination: derived from the plan's intended placement.
         val preview = PlanPreviewProjector.project(plan, fixture.planned) as PlanPreviewProjector.Result.Ready
-        val destinations = preview.details.changes
+        val destinations = preview.changes
             .filterIsInstance<MoveChange>()
             .associate { it.item.value to it.destination as PreviewPosition.Workspace }
         // Same coarse band, same page, identical row ordinal — Issue #234

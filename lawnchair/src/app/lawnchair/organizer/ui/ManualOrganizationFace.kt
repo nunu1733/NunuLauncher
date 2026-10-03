@@ -95,6 +95,10 @@ internal fun manualOrganizationFace(state: ManualOrganizationRun.State): ManualO
 
     is ManualOrganizationRun.State.Preview,
     is ManualOrganizationRun.State.PreviewUnavailable,
+    // Issue #508: an exclusion replan is a confirmation-face variant — the
+    // last stable proposal stays visible while the replan computes (never a
+    // new user-visible face).
+    is ManualOrganizationRun.State.Replanning,
     -> ManualOrganizationFace.CONFIRMATION
 
     ManualOrganizationRun.State.Applying -> ManualOrganizationFace.APPLYING

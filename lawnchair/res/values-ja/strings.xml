@@ -509,6 +509,20 @@
     <string name="manual_organization_preview_kind_unknown">アイテム</string>
     <string name="manual_organization_preview_new_folder_row">"新規フォルダ「%1$s」を%2$sに作成（メンバー: %3$s）"</string>
     <string name="manual_organization_preview_new_page_row">%1$dページ目に新規ページを追加</string>
+    <!-- Issue #508: 変更前後の図・項目単位の除外・再計画の進行（確認面。零書込みの表示state）。 -->
+    <string name="manual_organization_diagram_before">変更前</string>
+    <string name="manual_organization_diagram_after">変更後</string>
+    <string name="manual_organization_diagram_page">ページ%1$d</string>
+    <string name="manual_organization_diagram_new_page">新しいページ</string>
+    <string name="manual_organization_diagram_dock">ドック</string>
+    <string name="manual_organization_diagram_widget">ウィジェット</string>
+    <string name="manual_organization_diagram_item_a11y">"%1$s、%2$s、%3$s"</string>
+    <string name="manual_organization_exclude_action">提案から外す</string>
+    <string name="manual_organization_include_action">提案に戻す</string>
+    <string name="manual_organization_excluded_heading">"提案から外した項目: %1$d件"</string>
+    <string name="manual_organization_excluded_unknown_item">"項目"</string>
+    <string name="manual_organization_replanning">提案を再計算中</string>
+    <string name="manual_organization_replanning_summary">"除外した項目を反映した新しい提案を準備しています。下の図と一覧は直前の提案のものです。"</string>
     <!-- Issue #201: safe generic title for generated folders whose semantic name cannot be resolved. -->
     <string name="organizer_generated_folder_fallback_name">"フォルダ"</string>
     <!-- Issue #53: non-blocking onboarding proposal. -->

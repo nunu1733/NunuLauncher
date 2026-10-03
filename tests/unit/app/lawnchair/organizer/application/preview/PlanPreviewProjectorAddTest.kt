@@ -102,7 +102,7 @@ class PlanPreviewProjectorAddTest {
 
         val result = PlanPreviewProjector.project(plan, planned) as PlanPreviewProjector.Result.Ready
 
-        val adds = result.details.changes.filterIsInstance<AddChange>()
+        val adds = result.changes.filterIsInstance<AddChange>()
         assertEquals(2, adds.size)
         val topRow = adds.single { it.item == ItemId("c-top") }
         val folderRow = adds.single { it.item == ItemId("c-folder") }
@@ -116,11 +116,11 @@ class PlanPreviewProjectorAddTest {
             PreviewPosition.InFolder(PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("Games")), 1),
             folderRow.destination,
         )
-        assertEquals(2, result.details.counts.addedCount)
+        assertEquals(2, result.counts.addedCount)
 
         // The generated folder keeps its structural row; its member label
         // resolves through the candidate's own intended state.
-        val folderChange = result.details.changes.filterIsInstance<NewFolderChange>().single()
+        val folderChange = result.changes.filterIsInstance<NewFolderChange>().single()
         assertEquals(listOf(PreviewLabel.Named("Folder App")), folderChange.memberLabels)
     }
 
@@ -147,9 +147,9 @@ class PlanPreviewProjectorAddTest {
         val result = PlanPreviewProjector.project(plan, planned) as PlanPreviewProjector.Result.Ready
 
         // Only the captured item's warning survives in counts and rows.
-        assertEquals(mapOf(WarningCode.FALLBACK_CATEGORY to 1), result.details.counts.warningCounts)
-        assertEquals(1, result.details.changes.filterIsInstance<ItemWarningChange>().size)
-        assertEquals(ItemId("a"), result.details.changes.filterIsInstance<ItemWarningChange>().single().item)
+        assertEquals(mapOf(WarningCode.FALLBACK_CATEGORY to 1), result.counts.warningCounts)
+        assertEquals(1, result.changes.filterIsInstance<ItemWarningChange>().size)
+        assertEquals(ItemId("a"), result.changes.filterIsInstance<ItemWarningChange>().single().item)
     }
 
     @Test
@@ -162,8 +162,8 @@ class PlanPreviewProjectorAddTest {
 
         val result = PlanPreviewProjector.project(plan, planned(placement("a", Disposition.Preserved(PreserveReason.NON_TARGET)))) as PlanPreviewProjector.Result.Ready
 
-        assertTrue(result.details.changes.filterIsInstance<AddChange>().isEmpty())
-        assertEquals(0, result.details.counts.addedCount)
+        assertTrue(result.changes.filterIsInstance<AddChange>().isEmpty())
+        assertEquals(0, result.counts.addedCount)
     }
 
     private fun page(order: Int) = ApplicationPageRef.PersistentPage(PageId("p$order"))

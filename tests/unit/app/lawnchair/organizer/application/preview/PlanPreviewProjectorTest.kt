@@ -90,7 +90,7 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(moved("a"), moved("b"))) as PlanPreviewProjector.Result.Ready
 
-        val moves = result.details.changes.filterIsInstance<MoveChange>()
+        val moves = result.changes.filterIsInstance<MoveChange>()
         assertEquals(2, moves.size)
         assertEquals(
             PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 1),
@@ -106,7 +106,7 @@ class PlanPreviewProjectorTest {
             moves.first { it.item.value == "b" }.destination,
         )
         assertFalse(moves.any { it.sameBandAdjustment })
-        assertEquals(2, result.details.counts.movedCount)
+        assertEquals(2, result.counts.movedCount)
     }
 
     @Test
@@ -120,7 +120,7 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(moved("a"))) as PlanPreviewProjector.Result.Ready
 
-        val move = result.details.changes.single() as MoveChange
+        val move = result.changes.single() as MoveChange
         assertTrue(move.sameBandAdjustment)
         assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 1), move.source)
         assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 2, 2), move.destination)
@@ -155,9 +155,9 @@ class PlanPreviewProjectorTest {
             ),
         ) as PlanPreviewProjector.Result.Ready
 
-        assertEquals(2, result.details.counts.movedCount)
-        assertEquals(1, result.details.counts.crossPageMovedCount)
-        assertEquals(1, result.details.counts.preservedByStrategyCount)
+        assertEquals(2, result.counts.movedCount)
+        assertEquals(1, result.counts.crossPageMovedCount)
+        assertEquals(1, result.counts.preservedByStrategyCount)
     }
 
     @Test
@@ -181,12 +181,12 @@ class PlanPreviewProjectorTest {
         )
         val result = PlanPreviewProjector.project(plan, planned(moved("a"), widgetMove)) as PlanPreviewProjector.Result.Ready
 
-        val widgetRow = result.details.changes.filterIsInstance<MoveChange>().single { it.item.value == "widget.1" }
+        val widgetRow = result.changes.filterIsInstance<MoveChange>().single { it.item.value == "widget.1" }
         assertEquals(PlacementCode.WIDGET_UNIT, widgetRow.rationale)
         assertEquals(CanonicalItemKind.AppWidget, widgetRow.kind)
-        assertEquals(2, result.details.counts.movedCount)
-        assertEquals(1, result.details.counts.widgetMovedCount)
-        assertEquals(0, result.details.counts.crossPageMovedCount)
+        assertEquals(2, result.counts.movedCount)
+        assertEquals(1, result.counts.widgetMovedCount)
+        assertEquals(0, result.counts.crossPageMovedCount)
     }
 
     @Test
@@ -199,7 +199,7 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(preserved("widget.1", PreserveReason.WIDGET))) as PlanPreviewProjector.Result.Ready
 
-        val row = result.details.changes.single() as PreservedChange
+        val row = result.changes.single() as PreservedChange
         assertEquals(ItemId("widget.1"), row.item)
         assertEquals(PreviewLabel.KindFallback(CanonicalItemKind.AppWidget), row.label)
         assertEquals(PreserveReason.WIDGET, row.reason)
@@ -208,7 +208,7 @@ class PlanPreviewProjectorTest {
         assertEquals(PreviewPlacementIdentity.Workspace(1, false, 0, 0), row.identity)
         assertEquals(CanonicalItemKind.AppWidget, row.kind)
         assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 1), row.current)
-        assertEquals(1, result.details.counts.preservedCount)
+        assertEquals(1, result.counts.preservedCount)
     }
 
     @Test
@@ -222,8 +222,8 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(moved("a"))) as PlanPreviewProjector.Result.Ready
 
-        assertTrue(result.details.changes.isEmpty())
-        assertEquals(0, result.details.counts.movedCount)
+        assertTrue(result.changes.isEmpty())
+        assertEquals(0, result.counts.movedCount)
     }
 
     @Test
@@ -252,12 +252,12 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned()) as PlanPreviewProjector.Result.Ready
 
-        val row = result.details.changes.single() as NewFolderChange
+        val row = result.changes.single() as NewFolderChange
         assertEquals(NewFolderOrdinal(0), row.ordinal)
         assertEquals(PreviewLabel.Named("Folder"), row.name)
         assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.CENTER, 1, 3), row.placement)
         assertEquals(listOf(PreviewLabel.Named("Ta"), PreviewLabel.Named("Tb")), row.memberLabels)
-        assertEquals(1, result.details.counts.newFolderCount)
+        assertEquals(1, result.counts.newFolderCount)
     }
 
     @Test
@@ -289,7 +289,7 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned()) as PlanPreviewProjector.Result.Ready
 
-        assertEquals(PreviewLabel.Named("通信"), (result.details.changes.single() as NewFolderChange).name)
+        assertEquals(PreviewLabel.Named("通信"), (result.changes.single() as NewFolderChange).name)
     }
 
     @Test
@@ -363,12 +363,12 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(moved("a"))) as PlanPreviewProjector.Result.Ready
 
-        val pageRow = result.details.changes.filterIsInstance<NewPageChange>().single()
+        val pageRow = result.changes.filterIsInstance<NewPageChange>().single()
         assertEquals(NewPageOrdinal(0), pageRow.ordinal)
         assertEquals(3, pageRow.displayPosition)
-        val move = result.details.changes.filterIsInstance<MoveChange>().single()
+        val move = result.changes.filterIsInstance<MoveChange>().single()
         assertEquals(PreviewPosition.Workspace(3, true, RowBand.TOP, ColumnBand.LEFT, 1, 1), move.destination)
-        assertEquals(1, result.details.counts.newPageCount)
+        assertEquals(1, result.counts.newPageCount)
     }
 
     @Test
@@ -392,11 +392,11 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(moved("a"), moved("b"))) as PlanPreviewProjector.Result.Ready
 
-        val move = result.details.changes.filterIsInstance<MoveChange>().first { it.item.value == "a" }
+        val move = result.changes.filterIsInstance<MoveChange>().first { it.item.value == "a" }
         assertEquals(PreviewPosition.Workspace(2, true, RowBand.TOP, ColumnBand.LEFT, 1, 1), move.destination)
-        val persistedMove = result.details.changes.filterIsInstance<MoveChange>().first { it.item.value == "b" }
+        val persistedMove = result.changes.filterIsInstance<MoveChange>().first { it.item.value == "b" }
         assertEquals(PreviewPosition.Workspace(3, false, RowBand.TOP, ColumnBand.LEFT, 1, 2), persistedMove.destination)
-        val pageRow = result.details.changes.filterIsInstance<NewPageChange>().single()
+        val pageRow = result.changes.filterIsInstance<NewPageChange>().single()
         assertEquals(2, pageRow.displayPosition)
     }
 
@@ -426,7 +426,7 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned) as PlanPreviewProjector.Result.Ready
 
-        val warningRows = result.details.changes.filterIsInstance<ItemWarningChange>()
+        val warningRows = result.changes.filterIsInstance<ItemWarningChange>()
         assertEquals(1, warningRows.size)
         assertEquals(ItemId("a"), warningRows.single().item)
         assertEquals(WarningCode.LEGACY_SHORTCUT_REVIEW, warningRows.single().code)
@@ -441,7 +441,7 @@ class PlanPreviewProjectorTest {
                 WarningCode.FALLBACK_CATEGORY to 1,
                 WarningCode.UNAVAILABLE_PRESERVED to 1,
             ),
-            result.details.counts.warningCounts,
+            result.counts.warningCounts,
         )
     }
 
@@ -493,7 +493,7 @@ class PlanPreviewProjectorTest {
             ),
         ) as PlanPreviewProjector.Result.Ready
 
-        val move = result.details.changes.filterIsInstance<MoveChange>().single()
+        val move = result.changes.filterIsInstance<MoveChange>().single()
         assertEquals(
             PreviewPosition.InFolder(
                 PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("ソーシャル")),
@@ -501,7 +501,7 @@ class PlanPreviewProjectorTest {
             ),
             move.destination,
         )
-        val folderRow = result.details.changes.filterIsInstance<NewFolderChange>().single()
+        val folderRow = result.changes.filterIsInstance<NewFolderChange>().single()
         assertEquals(PreviewLabel.Named("ソーシャル"), folderRow.name)
     }
 
@@ -527,7 +527,7 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(moved("a"), moved("dock.1"))) as PlanPreviewProjector.Result.Ready
 
-        val moves = result.details.changes.filterIsInstance<MoveChange>()
+        val moves = result.changes.filterIsInstance<MoveChange>()
         assertEquals(2, moves.size)
         assertEquals(
             PreviewPosition.InFolder(PreviewFolderRef.Existing(PreviewLabel.Named("Work")), 1),
@@ -560,14 +560,14 @@ class PlanPreviewProjectorTest {
 
         assertEquals(
             planned.placements.count { it.disposition is Disposition.Moved },
-            result.details.counts.movedCount,
+            result.counts.movedCount,
         )
         assertEquals(
             planned.placements.count { it.disposition is Disposition.Preserved },
-            result.details.counts.preservedCount,
+            result.counts.preservedCount,
         )
-        assertEquals(0, result.details.counts.newFolderCount)
-        assertEquals(1, result.details.counts.newPageCount)
+        assertEquals(0, result.counts.newFolderCount)
+        assertEquals(1, result.counts.newPageCount)
     }
 
     @Test
@@ -633,7 +633,7 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, planned(moved("span"))) as PlanPreviewProjector.Result.Ready
 
-        val move = result.details.changes.single() as MoveChange
+        val move = result.changes.single() as MoveChange
         assertEquals(PreviewPosition.Workspace(1, false, RowBand.CENTER, ColumnBand.LEFT, 3, 2), move.source)
         assertEquals(PreviewPosition.Workspace(2, false, RowBand.BOTTOM, ColumnBand.RIGHT, 5, 5), move.destination)
     }
@@ -659,7 +659,7 @@ class PlanPreviewProjectorTest {
             planned(preserved("gmail.a", PreserveReason.NON_TARGET), preserved("gmail.b", PreserveReason.NON_TARGET)),
         ) as PlanPreviewProjector.Result.Ready
 
-        val identities = result.details.changes.filterIsInstance<PreservedChange>().map { it.identity }
+        val identities = result.changes.filterIsInstance<PreservedChange>().map { it.identity }
         assertEquals(
             listOf(
                 PreviewPlacementIdentity.Workspace(1, false, 0, 0),
@@ -689,7 +689,7 @@ class PlanPreviewProjectorTest {
             planned(preserved("gmail.a", PreserveReason.NON_TARGET), preserved("gmail.b", PreserveReason.NON_TARGET)),
         ) as PlanPreviewProjector.Result.Ready
 
-        val rows = result.details.changes.filterIsInstance<PreservedChange>()
+        val rows = result.changes.filterIsInstance<PreservedChange>()
         // Distinct anchors, and — since Issue #234 — the projection itself
         // keeps them apart (row AND column ordinals); the rendered coarse
         // text still collides, so the descriptor supplement is what separates
@@ -732,7 +732,7 @@ class PlanPreviewProjectorTest {
             planned(preserved("gmail.a", PreserveReason.NON_TARGET), preserved("gmail.b", PreserveReason.NON_TARGET)),
         ) as PlanPreviewProjector.Result.Ready
 
-        val rows = result.details.changes.filterIsInstance<PreservedChange>()
+        val rows = result.changes.filterIsInstance<PreservedChange>()
         assertEquals(
             listOf(
                 PreviewPlacementIdentity.FolderChild(PreviewPlacementIdentity.Workspace(1, false, 0, 0), 0),
@@ -769,8 +769,8 @@ class PlanPreviewProjectorTest {
             planned(moved("photos"), preserved("photos.b", PreserveReason.NON_TARGET)),
         ) as PlanPreviewProjector.Result.Ready
 
-        val moveIdentities = result.details.changes.filterIsInstance<MoveChange>().map { it.identity }
-        val preservedIdentities = result.details.changes.filterIsInstance<PreservedChange>().map { it.identity }
+        val moveIdentities = result.changes.filterIsInstance<MoveChange>().map { it.identity }
+        val preservedIdentities = result.changes.filterIsInstance<PreservedChange>().map { it.identity }
         assertTrue(moveIdentities.toSet().intersect(preservedIdentities.toSet()).isEmpty())
     }
 
@@ -801,8 +801,8 @@ class PlanPreviewProjectorTest {
 
         val result = PlanPreviewProjector.project(plan, plannedWithWarning) as PlanPreviewProjector.Result.Ready
 
-        val preservedRow = result.details.changes.filterIsInstance<PreservedChange>().single()
-        val warningRow = result.details.changes.filterIsInstance<ItemWarningChange>().single()
+        val preservedRow = result.changes.filterIsInstance<PreservedChange>().single()
+        val warningRow = result.changes.filterIsInstance<ItemWarningChange>().single()
         assertEquals(PreviewPlacementIdentity.Unidentified(ContainerCode(7), 1), preservedRow.identity)
         assertEquals(preservedRow.identity, warningRow.identity)
         assertEquals(PreviewPosition.Unidentified(1), preservedRow.current)
@@ -833,7 +833,7 @@ class PlanPreviewProjectorTest {
                 PreviewPlacementIdentity.Unidentified(ContainerCode(7), 1),
                 PreviewPlacementIdentity.Unidentified(ContainerCode(7), 2),
             ),
-            result.details.changes.filterIsInstance<PreservedChange>().map { it.identity },
+            result.changes.filterIsInstance<PreservedChange>().map { it.identity },
         )
     }
 

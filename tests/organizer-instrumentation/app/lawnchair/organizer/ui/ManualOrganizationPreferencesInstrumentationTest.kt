@@ -1109,7 +1109,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = listOf(
                             move("game", sourceRowOrdinal = 2, destinationRowOrdinal = 1),
                             widgetMove,
@@ -1329,7 +1329,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = listOf(
                             move(
                                 "game",
@@ -1392,7 +1392,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = listOf(
                             // icon (home): moves as a single placement.
                             MoveChange(
@@ -1563,7 +1563,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = listOf(
                             move("game", 1, 1),
                             move("maps", 2, 1),
@@ -1616,7 +1616,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = (1..6).map { index -> crossBandMove("app$index") },
                         counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
@@ -1668,7 +1668,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = (1..6).map { index -> crossBandMove("app$index") },
                         counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
@@ -1873,7 +1873,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = (1..6).map { index -> crossBandMove("app$index") },
                         counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
@@ -3257,7 +3257,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
      * inside the same row band, a move into the Dock, a preserved item, a new
      * folder with two members, and a new page.
      */
-    private fun concreteChangeListDetails() = PlanPreviewDetails(
+    private fun concreteChangeListDetails() = planPreviewDetailsWithDiagrams(
         changes = listOf(
             move("game", sourceRowOrdinal = 2, destinationRowOrdinal = 1, destination = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1)),
             move("maps", sourceRowOrdinal = 1, destinationRowOrdinal = 1, destination = PreviewPosition.DockRank(1)),
@@ -3803,3 +3803,34 @@ class ManualOrganizationPreferencesInstrumentationTest {
         fun policyIdentity(source: PolicySourceKind) = PolicyInputIdentity(source, "v1", SHA_256)
     }
 }
+
+/**
+ * Issue #508 fixture: `PlanPreviewDetails` requires the before/after diagrams
+ * (a details value is only ever built complete). These UI tests exercise the
+ * change list and faces, not the diagram projection (which has its own unit
+ * tests), so a minimal empty diagram pair is supplied here.
+ */
+private fun testDiagrams(): app.lawnchair.organizer.application.public.PlanPreviewDiagrams {
+    fun empty() = app.lawnchair.organizer.application.public.PreviewDiagram(
+        columns = 4,
+        rows = 5,
+        pages = listOf(
+            app.lawnchair.organizer.application.public.PreviewDiagramPage(
+                app.lawnchair.organizer.application.public.PreviewDiagramPageRef.Persistent(app.lawnchair.organizer.planning.PageId("1")),
+                emptyList(),
+            ),
+        ),
+        dockItems = emptyList(),
+        reservedRegions = emptyList(),
+    )
+    return app.lawnchair.organizer.application.public.PlanPreviewDiagrams(before = empty(), after = empty())
+}
+
+private fun planPreviewDetailsWithDiagrams(
+    changes: List<app.lawnchair.organizer.application.public.PreviewChange>,
+    counts: PreviewCounts,
+): PlanPreviewDetails = PlanPreviewDetails(
+    changes = changes,
+    counts = counts,
+    diagrams = testDiagrams(),
+)

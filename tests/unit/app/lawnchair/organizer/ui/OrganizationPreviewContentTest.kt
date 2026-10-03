@@ -36,7 +36,7 @@ class OrganizationPreviewContentTest {
 
     @Test
     fun sectionsGroupChangesInProjectionOrderWithCountsTruth() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 move("game", source(1, RowBand.TOP, ColumnBand.CENTER, 2), destination(1, RowBand.BOTTOM, ColumnBand.RIGHT, 5)),
                 move("maps", source(2, RowBand.TOP, ColumnBand.LEFT, 1), dock(1)),
@@ -69,7 +69,7 @@ class OrganizationPreviewContentTest {
         // Issue #228 (spec AC-5): one Add row per selected candidate — the
         // top-level one names its resolved anchor; the generated-folder one
         // names the resolved folder title, never an ordinal.
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 move("game", source(1, RowBand.TOP, ColumnBand.CENTER, 2), destination(1, RowBand.BOTTOM, ColumnBand.RIGHT, 5)),
                 AddChange(
@@ -115,7 +115,7 @@ class OrganizationPreviewContentTest {
 
     @Test
     fun warningGroupCountsConcreteRowsWhileHeaderKeepsAllWarnings() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(itemWarning("notes", WarningCode.FALLBACK_CATEGORY)),
             // Spec §D2 exception: warningCounts carries all warnings (1 item + 2
             // global here), while the group speaks only for its concrete rows.
@@ -137,7 +137,7 @@ class OrganizationPreviewContentTest {
      */
     @Test
     fun duplicateWarningAndPreservedReasonRenderThroughTheExistingGroups() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 itemWarning("photos.2", WarningCode.DUPLICATE_LAUNCH_TARGET),
                 preserved("photos.2", "Photos", PreserveReason.DUPLICATE_LAUNCH_TARGET),
@@ -163,7 +163,7 @@ class OrganizationPreviewContentTest {
 
     @Test
     fun emptyGroupsAreOmitted() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(move("game", source(1, RowBand.TOP, ColumnBand.LEFT, 1), destination(1, RowBand.TOP, ColumnBand.RIGHT, 1))),
             counts = PreviewCounts(1, 0, 0, 0, emptyMap()),
         )
@@ -252,7 +252,7 @@ class OrganizationPreviewContentTest {
      */
     @Test
     fun sameBandAdjustmentsOnDifferentPagesRenderDistinctDestinationText() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 labeledMove(
                     PreviewLabel.Named("Photos"),
@@ -289,7 +289,7 @@ class OrganizationPreviewContentTest {
      */
     @Test
     fun nonWorkspaceDestinationsKeepExistingWording() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 move("maps", source(1, RowBand.TOP, ColumnBand.LEFT, 1), dock(1)),
                 labeledMove(
@@ -328,7 +328,7 @@ class OrganizationPreviewContentTest {
      */
     @Test
     fun sameNamedSameBandAdjustmentsGetDistinctDescriptors() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 labeledMove(
                     PreviewLabel.Named("Photos"),
@@ -395,7 +395,7 @@ class OrganizationPreviewContentTest {
         assertEquals(
             "Create new folder \u201cCommunication\u201d at middle left, page 2 (members: game, maps)",
             OrganizationPreviewContent.sections(
-                PlanPreviewDetails(listOf(change), PreviewCounts(0, 0, 1, 0, emptyMap())),
+                planPreviewDetails(listOf(change), PreviewCounts(0, 0, 1, 0, emptyMap())),
                 TestWording,
             ).single().rows.single(),
         )
@@ -403,7 +403,7 @@ class OrganizationPreviewContentTest {
 
     @Test
     fun preservedAndWarningRowsSpeakNameKindPositionThenFate() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 preserved("clock", "clock", PreserveReason.LOCKED),
                 itemWarning("notes", WarningCode.LEGACY_SHORTCUT_REVIEW),
@@ -437,7 +437,7 @@ class OrganizationPreviewContentTest {
      */
     @Test
     fun sameNamedSameBandAnchorsGetDistinctDescriptorsViaCellSupplement() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 preserved("gmail.a", "Gmail", PreserveReason.NON_TARGET, cell = Grid(0, 0)),
                 preserved("gmail.b", "Gmail", PreserveReason.NON_TARGET, cell = Grid(1, 0)),
@@ -464,7 +464,7 @@ class OrganizationPreviewContentTest {
      */
     @Test
     fun sameNamedFolderParentsGetDistinctChildDescriptorsViaParentCellSupplement() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 preservedInFolder("gmail.a", "Gmail", folderTitle = "Google", folderCell = Grid(0, 0), rank = 1),
                 preservedInFolder("gmail.b", "Gmail", folderTitle = "Google", folderCell = Grid(0, 3), rank = 1),
@@ -492,7 +492,7 @@ class OrganizationPreviewContentTest {
      */
     @Test
     fun sameNamedMoveAndPreserveDescriptorsDifferWithoutSupplement() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 move("Photos", source(2, RowBand.BOTTOM, ColumnBand.LEFT, 5), destination(2, RowBand.TOP, ColumnBand.LEFT, 1)),
                 preservedInFolder("photos.b", "Photos", folderTitle = "Utilities", folderCell = Grid(3, 3), rank = 0),
@@ -516,7 +516,7 @@ class OrganizationPreviewContentTest {
      *  differentiate their rows; colliding split-pair children get stage words. */
     @Test
     fun sameNamedSplitPairChildrenGetStageSupplement() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 preservedInAppPair("maps.a", "Maps", pairTitle = "Pair", stage = SplitStage.TOP_OR_LEFT),
                 preservedInAppPair("maps.b", "Maps", pairTitle = "Pair", stage = SplitStage.BOTTOM_OR_RIGHT),
@@ -539,7 +539,7 @@ class OrganizationPreviewContentTest {
      *  descriptor must not duplicate it. */
     @Test
     fun kindFallbackRowsDoNotDuplicateTheKindWord() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(preservedFallback(CanonicalItemKind.AppWidget, PreserveReason.WIDGET)),
             counts = PreviewCounts(0, 1, 0, 0, emptyMap()),
         )
@@ -557,7 +557,7 @@ class OrganizationPreviewContentTest {
      */
     @Test
     fun sameNamedFoldersOnDifferentPagesGetDistinctChildDescriptors() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 PreservedChange(
                     item = ItemId("gmail.a"),
@@ -601,7 +601,7 @@ class OrganizationPreviewContentTest {
      *  with same-stage children are distinguished by the parent locator. */
     @Test
     fun sameNamedAppPairsOnDifferentParentsGetDistinctChildDescriptors() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 preservedInAppPair("maps.a", "Maps", pairTitle = "Pair", stage = SplitStage.TOP_OR_LEFT, parentPage = 1),
                 preservedInAppPair("maps.b", "Maps", pairTitle = "Pair", stage = SplitStage.TOP_OR_LEFT, parentPage = 2),
@@ -623,7 +623,7 @@ class OrganizationPreviewContentTest {
 
     @Test
     fun sectionsAreDeterministicForIdenticalDetails() {
-        val details = PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = listOf(
                 move("game", source(1, RowBand.TOP, ColumnBand.CENTER, 2), destination(1, RowBand.TOP, ColumnBand.LEFT, 1)),
                 preserved("clock", "clock", PreserveReason.ALREADY_CANONICAL),
