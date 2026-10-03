@@ -292,6 +292,99 @@ class EditSurfaceDuplicateGroupsTest {
         assertEquals(1, groups.indexOf(dockGroup))
     }
 
+    @Test
+    fun folderChildAndWorkspaceMembersShareThePageAxis() {
+        // Folder child under a page-0 folder at (0,0) must come BEFORE a
+        // workspace member on page 1 (review round 2: folder children were
+        // sorted after every desktop item regardless of page).
+        val parent = canonicalSurfaceItem(
+            160,
+            CanonicalItemKind.Folder,
+            onSurfaceWorkspace(0, 0, 0),
+            structure = StructureState.Plain,
+        )
+        val child = folderChild(161, folderId = 160, rank = 0, component = "com.example/.mixdup")
+        val workspace = appItem(id = 162, title = "W", component = "com.example/.mixdup", page = 1)
+        val groups = groupsOf(parent, child, workspace)
+        assertEquals(1, groups.size)
+        assertEquals(listOf(161, 162), groups.single().members.map { it.id })
+    }
+
+    @Test
+    fun samePageWorkspacePositionBeatsFolderChildAtLaterParentCell() {
+        // Workspace item at (0,0) comes before a folder child whose parent
+        // sits at (0,1) on the same page.
+        val parent = canonicalSurfaceItem(
+            170,
+            CanonicalItemKind.Folder,
+            onSurfaceWorkspace(0, 0, 1),
+            structure = StructureState.Plain,
+        )
+        val child = folderChild(171, folderId = 170, rank = 0, component = "com.example/.pagedup")
+        val workspace = appItem(id = 172, title = "W", component = "com.example/.pagedup")
+        val groups = groupsOf(parent, child, workspace)
+        assertEquals(1, groups.size)
+        assertEquals(listOf(172, 171), groups.single().members.map { it.id })
+    }
+
+    // --- AC-4 dispatch-boundary oracle: pre-selected full group. ---
+
+    @Test
+    fun dispatchGuardRejectsPreSelectedThreeMemberGroupAndAllowsAfterDeselect() {
+        val layout = editSurfaceLayout(
+            listOf(
+                appItem(id = 180, title = "T", component = "com.example/.t1"),
+                appItem(id = 181, title = "T", component = "com.example/.t1", page = 1),
+                appItem(id = 182, title = "T", component = "com.example/.t1", page = 2),
+            ),
+        )
+        val capture = EditSurfaceProjection.homeEditSnapshot(layout)
+        val working = EditSurfaceProjection.workingSnapshot(capture, EditSurfaceSession.EMPTY)
+        val diagram = EditSurfaceProjection.diagram(layout, working)
+        val groups = EditSurfaceDuplicateGroups.groups(diagram)
+        val lockStates = mapOf(
+            180 to OrganizerLockState.UNLOCKED,
+            181 to OrganizerLockState.UNLOCKED,
+            182 to OrganizerLockState.UNLOCKED,
+        )
+
+        // Pre-selected full group (the round-1 bypass: select everything on
+        // the diagram, then dispatch Remove from the dialog). The
+        // dispatch-boundary guard fires, so the dialog keeps the zero-write
+        // session unchanged.
+        val fullSelection = listOf(180, 181, 182)
+        val guarded = EditSurfaceDuplicateGroups.fullySelectedGroup(groups, fullSelection)
+        assertEquals(setOf(180, 181, 182), guarded?.members?.map { it.id }?.toSet())
+        assertEquals(0, EditSurfaceSession.EMPTY.changes.size)
+        // Without the guard the planner WOULD plan all three removals — the
+        // guard is the only thing standing between the dialog and the
+        // last-one deletion (this pins why the dispatch check is required).
+        val unguarded = EditSurfaceSessionPlanner.plan(
+            capture,
+            lockStates,
+            EditSurfaceSession.EMPTY,
+            fullSelection,
+            PendingSessionAction.RemoveFromHome,
+        )
+        assertTrue(unguarded is SessionPlanResult.Applied)
+        assertEquals(3, (unguarded as SessionPlanResult.Applied).session.changes.size)
+
+        // Deselecting one member clears the guard: the same dialog dispatch
+        // now plans exactly the two remaining removals through the existing
+        // RemoveFromHome contract.
+        val reduced = fullSelection - 181
+        assertNull(EditSurfaceDuplicateGroups.fullySelectedGroup(groups, reduced))
+        val planned = EditSurfaceSessionPlanner.plan(
+            capture,
+            lockStates,
+            EditSurfaceSession.EMPTY,
+            reduced,
+            PendingSessionAction.RemoveFromHome,
+        )
+        assertTrue(planned is SessionPlanResult.Applied)
+        assertEquals(setOf(180, 182), (planned as SessionPlanResult.Applied).session.changes.map { it.targetId }.toSet())
+    }
+
     // --- row description oracle (AC-8). ---
 
     @Test

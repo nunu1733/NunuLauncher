@@ -92,7 +92,11 @@ object EditSurfaceDuplicateGroups {
      */
     fun rowSelectable(item: EditSurfaceItem, touchedIds: Set<Int>): Boolean = item.eligibility == SelectionEligibility.SELECTABLE && item.id !in touchedIds
 
-    /** メンバーの表示順キー。フォルダ内は親フォルダの位置に従属させる。 */
+    /**
+     * メンバーの表示順キー。workspace直置きとfolder内メンバーは同じ
+     * ページ/行/列軸で比較し（folder内は親フォルダの位置に従属。同位置では
+     * rank→idのtie-break）、Dockは全workspace/folderメンバーより後ろ。
+     */
     private fun memberKey(item: EditSurfaceItem, byId: Map<Int, EditSurfaceItem>, pages: List<Int>): List<Int> = when {
         item.container == HomeEditContainers.DESKTOP ->
             listOf(0, pageIndex(pages, item.screenId), item.cellY, item.cellX, 0, item.id)
@@ -100,16 +104,16 @@ object EditSurfaceDuplicateGroups {
         item.container > 0 || isEditSurfaceNewFolderKey(item.container) -> {
             val parent = byId[item.container]
             if (parent == null) {
-                listOf(1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE, item.rank, item.id)
+                listOf(0, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE, item.rank, item.id)
             } else {
-                listOf(1, pageIndex(pages, parent.screenId), parent.cellY, parent.cellX, item.rank, item.id)
+                listOf(0, pageIndex(pages, parent.screenId), parent.cellY, parent.cellX, item.rank, item.id)
             }
         }
 
         item.container == HomeEditContainers.HOTSEAT ->
-            listOf(2, item.rank, 0, 0, 0, item.id)
+            listOf(1, item.rank, 0, 0, 0, item.id)
 
-        else -> listOf(3, item.id, 0, 0, 0, 0)
+        else -> listOf(2, item.id, 0, 0, 0, 0)
     }
 
     /** [List<Int>]キー（辞書順）で並べ替える。`List` はComparableでないため明示比較。 */
