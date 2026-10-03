@@ -2,7 +2,7 @@
 
 > Issue: #508
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted
 > Risk tier: H — spec冒頭の根拠と同じ（`organizer/application/preview/**` の高リスクpath拡張 + coordinatorの確認前段契約。書込み経路・適用契約は不変）。手順は現行どおり: accepted spec + 本plan.md、Execution and approval contract、`risk: layout-data` label による高リスク独立エビデンス（CI `final-status` 成功run + `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit。auditは実装sessionとは別のgeneral-purposeサブエージェント作業で行う）。
 > Phase 1（本書の初版）: spec + planの起草とreviewを追跡する。Phase 2（実装）は同じbranch/PRで行い、本planのRevisionで追跡する（#448/#449/#507と同じ進め方）。
 > Revision 2: 2026-10-03 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5969642249): accepted化前に修正が必要、高1/中3）への対応。指摘1（高・base input喪失）: Data flowとcoordinator拡張を、Operationがimmutableなbase（`baseInput` + `baseExcludable` + 現行exclusions）を所有し `pending` は現行派生のみを運ぶ構成へ改め、派生は常に `baseInput` から直接導出・`next ⊆ baseExcludable` 検証・除外集合空への復帰契約を明記。復帰4scenarioとbase/current取り違えのtest oracleをVerificationへ追加。指摘2（中・鍵型の所有層）: `ProposalExclusionKey` を `organizer/planning` 側のneutralなclosed型（TargetSet近傍）へ移動（application/planningからorganizer.uiへの逆向き依存を作らない）。指摘3（中・diagrams nullable矛盾）: `PlanPreviewDetails.diagrams` をnon-null必須化（default null廃止）。構築をprotocol内のaggregate builderへ集約（両投影成功後に1回だけ構築、不整合は `MATERIALIZATION_INVALID`）。既存constructor呼び出し箇所はtest fixture builder側で移行。指摘4（中・retry契約の不一致）: 再試行を既存 `retryPlanPreview` seam（保持済み派生input/resultに対する `inspectPlan` 再実行。planner再実行なし）へ確定し、spec D-7/Scenario側を同じ契約へ同期（spec Revision 2）。

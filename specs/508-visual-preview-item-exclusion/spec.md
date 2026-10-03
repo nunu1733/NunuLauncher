@@ -1,6 +1,6 @@
 ---
 issue: "#508"
-status: draft
+status: accepted
 tier: H
 requirements:
   - FR-004
@@ -260,6 +260,7 @@ None。Issueの決定ゲート項目（項目単位の対象、readonly投影の
 - 2026-10-03: Draft created for #508（seed-backlog order 1）。Issue本文のScope 1〜8を設計判断D-1〜D-9として確定し、NFR-014の追加課題B8を定義した。
 - 2026-10-03: Revision 2 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5969642249): accepted化前に修正が必要、高1/中3）への対応。(1) D-5へbase inputと現行派生inputの分離所有・常にbaseからの直接導出・除外集合空への復帰契約を明記し、AC-4/AC-8に復帰とbase/current取り違えのoracleを追加。(2) D-1へ「productionのPlanPreviewDetailsは図を必ず含む（図欠落を構築可能にしない）」を明記（型上保証。確認面の状態はdetailsなし/完全なdetailsの2つだけ）。(3) D-7とScenarioの再試行契約を「同一除外集合の派生input/resultに対するpreview再取得（既存retryPlanPreviewと同一seam。planner再実行なし）」へ修正（planとの整合。planner決定性とinspectPlanのstale検出により保証は等価）。
 - 2026-10-03: Revision 3 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5970681274): 4点中3点解消、残存1点（中））への対応。D-7のcount-only禁止判定を「現在の除外集合の非空」ではなく「run内でstickyな除外変更済み状態（再計画世代 > 0）」と明確化し、全解除（∅）後も禁止継続・再試行は失敗した再計画の要求集合で復元（coordinatorが最新要求集合を世代とともに保持）を明記。Scenario（全解除後も継続）とAC-8へ同期。
+- 2026-10-03: **accepted** — Phase 1 re-review round 4（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5970811532): **指摘なし。Phase 1 の spec / plan はこの状態で進行可**。round 3の低指摘1件はplan側で同期済み）を経て受理。受入revisionは本commit（Revision 3 + status遷移）。Phase 2実装は同branchで継続し、実装完了時にPR本文のpacketを最終PRとして更新する。
 
 ## References
 
