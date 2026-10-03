@@ -95,8 +95,10 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import com.android.launcher3.R
 import com.patrykmichalik.opto.core.firstBlocking
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -419,7 +421,11 @@ fun ManualOrganizationPreferences(
             // hub re-derives the durable status); every other state keeps the
             // plain dismissal. Host disposals never call this — result states
             // survive diagnostics pushes and recompositions.
-            if (!coordinator.leaveRecoveryResultToHub()) {
+            // Issue #418: both machine entries below run off-main — the
+            // composition scope launches on main, so the machine calls hop
+            // through Dispatchers.IO.
+            val hubReturned = withContext(Dispatchers.IO) { coordinator.leaveRecoveryResultToHub() }
+            if (!hubReturned) {
                 val outcome = withContext(Dispatchers.IO) { coordinator.dismiss() }
                 // D-13: 中断 stops the run and returns to the hub — the same
                 // navigation system Back takes. After the apply checkpoint the
@@ -481,7 +487,16 @@ fun ManualOrganizationPreferences(
         }
     }
     DisposableEffect(coordinator) {
-        onDispose { coordinator.dismiss() }
+        // Issue #418: host disposal runs on the composition thread (main),
+        // and the machine refuses main-thread execution. The composition
+        // scope is already leaving during dispose, so the dismissal is
+        // dispatched on a detached worker — a fire-and-forget cleanup whose
+        // result the departing host no longer consumes.
+        onDispose {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                coordinator.dismiss()
+            }
+        }
     }
     // Issue #371 (review round 3): the exchange holder is remembered, so a
     // route change or activity recreation discards it silently. Any live JIT

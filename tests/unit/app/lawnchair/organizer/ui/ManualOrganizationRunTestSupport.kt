@@ -32,6 +32,24 @@ object ManualOrganizationRunTestSupport {
     )
 
     /**
+     * Issue #418: NotReady variant with explicit publication seam wiring for
+     * the confinement oracles. [diagnostics] replaces the silent journal so
+     * tests can record emit threads/order.
+     */
+    fun newRun(
+        publicationThread: RunPublicationThread,
+        writeThreadTracker: ((String, Thread) -> Unit)? = null,
+        diagnostics: DiagnosticsPort? = null,
+        usageAccessGate: UsageAccessJitGate? = null,
+    ): ManualOrganizationRun = ManualOrganizationRun(
+        application = NotReadyApplication(diagnostics),
+        planner = OrganizationPlanner { error("planner must not run") },
+        usageAccessGate = usageAccessGate ?: UsageAccessJitGate(isGranted = { true }),
+        publicationThread = publicationThread,
+        writeThreadTracker = writeThreadTracker,
+    )
+
+    /**
      * Issue #417: a run double whose detection is READY (one stable
      * candidate), so a test can drive it to the frozen scope
      * (`State.ScopeConfirmed`) via `start()` + `confirmSelection(...)` — the
@@ -45,14 +63,31 @@ object ManualOrganizationRunTestSupport {
         planner = OrganizationPlanner { error("planner must not run") },
     )
 
+    /**
+     * Issue #418: ReadyDetection variant with explicit publication seam
+     * wiring (admission publication oracles).
+     */
+    fun newReadyDetectionRun(
+        publicationThread: RunPublicationThread,
+        writeThreadTracker: ((String, Thread) -> Unit)? = null,
+        diagnostics: DiagnosticsPort? = null,
+    ): ManualOrganizationRun = ManualOrganizationRun(
+        application = ReadyDetectionApplication(diagnostics),
+        planner = OrganizationPlanner { error("planner must not run") },
+        publicationThread = publicationThread,
+        writeThreadTracker = writeThreadTracker,
+    )
+
     /** The stable candidate of [ReadyDetectionApplication]'s detection cut. */
     val readyDetectionCandidate: CandidateTarget.AppKey = CandidateTarget.AppKey(
         app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
         app.lawnchair.organizer.planning.ProfileId("personal"),
     )
 
-    private open class BaseTestApplication : ManualOrganizationApplication {
-        override val diagnostics = object : DiagnosticsPort {
+    private open class BaseTestApplication(
+        diagnosticsOverride: DiagnosticsPort? = null,
+    ) : ManualOrganizationApplication {
+        override val diagnostics = diagnosticsOverride ?: object : DiagnosticsPort {
             override fun emit(event: RunEvent) = Unit
             override fun snapshot() = emptyList<RunEvent>()
         }
@@ -118,14 +153,18 @@ object ManualOrganizationRunTestSupport {
         private fun notReadyPreview(): app.lawnchair.organizer.application.public.PlanPreviewResult = app.lawnchair.organizer.application.public.PlanPreviewResult.WriterBusy
     }
 
-    private class NotReadyApplication : BaseTestApplication() {
+    private class NotReadyApplication(
+        diagnosticsOverride: DiagnosticsPort? = null,
+    ) : BaseTestApplication(diagnosticsOverride) {
         // Issue #228: detection unavailable keeps the legacy full flow.
         override fun detectMissingAppCandidates() = CandidateDetectionResult.Unavailable(
             DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
         )
     }
 
-    private class ReadyDetectionApplication : BaseTestApplication() {
+    private class ReadyDetectionApplication(
+        diagnosticsOverride: DiagnosticsPort? = null,
+    ) : BaseTestApplication(diagnosticsOverride) {
         override fun detectMissingAppCandidates() = CandidateDetectionResult.Ready(
             listOf(
                 app.lawnchair.organizer.integration.DetectedCandidate(
