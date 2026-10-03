@@ -37,7 +37,7 @@
   - `Fixture 02, ページ1・行3、列2`（非選択）
   - 図上アイテムも同様に `名前, ページn (行, 列)[, 選択中][, 選択できません]` のcontent-descが供給される（node tree dump、20+ノード）。
 - `507-d11-talkback-locked-row.png`: **選択不可の理由つきメンバー行へのTalkBackフォーカス到達**。Fixture 02片方を `organizerLockState=2`（LOCKED）へ補正したうえで確認面を開き、理由つき行「Fixture 02 / ページ1・行3、列2」へTalkBackフォーカス矩形（緑）が到達した状態。当該行の読み上げ対象（content-desc）はnode treeで `Fixture 02, ページ1・行3、列2, ロック中` が供給されていることを確認（名前・位置・選択不可の理由）。補正したlock値は確認後に再seedingで解消。
-- **owner実読み上げ確認（2026-10-03）**: ownerが実機（Pixel 9a）でTalkBack読み上げ音声を直接確認した（サマリ行・確認面メンバー行の名前/位置/選択状態/選択不可の理由。d09〜d11のフォーカス状態でTalkBackが読み上げる内容とcontent-descの一致を耳で確認）。owner decision は [Issue #507](https://github.com/nunu1733/NunuLauncher/issues/507) へ記録する。
+- **owner実読み上げ確認（2026-10-03）**: ownerが実機（Pixel 9a）でTalkBack読み上げ音声を直接確認した（サマリ行・確認面メンバー行の名前/位置/選択状態/選択不可の理由。d09〜d11のフォーカス状態でTalkBackが読み上げる内容とcontent-descの一致を耳で確認）。owner decision は [Issue #507 コメント #5969244414](https://github.com/nunu1733/NunuLauncher/issues/507#issuecomment-5969244414) に記録済み。
 - TTS録音は行っていない（label等価性は TalkBackフォーカス矩形＋node treeのcontent-desc同一性＋ownerの実読み上げ確認で担保。#452 の運用と同水準）。
 - **accessibility設定の復元**: 確認前に `enabled_accessibility_services` を保存し、確認後に同一文字列へ復元した（diff一致。TalkBack以外の既存service: MacroDroid / Sleep as Android / Bitwarden / Nova Launcher は全程無変更）。
 - 実施上の注記: TalkBack有効下ではadb単一tapが「フォーカス」として効くため、手順の途中で図上アイテムが意図せず選択状態になることがある（`507-d10` 背景の選択枠。確認対象の動作には影響しない）。セッションは確認後にキャンセルで閉じ、DBは不変（確定操作なし）。
@@ -50,4 +50,4 @@
 | AC-4（最後の1個のguard・零書込み） | §2（d05） |
 | AC-5（面内Remove=既存アクション・確定・Undo） | §3/§4（d06/d07・DB oracle） |
 | AC-6（表示・選択の零書込み） | §1〜§4（確定までDB不変を構造的に満たす。#449適用経路の契約は既存test群が担保） |
-| AC-8（TalkBack・200% font） | §5（d09/d10・node tree）+ emulator evidence §6（200% font scale） |
+| AC-8（TalkBack・200% font） | §5（d09〜d11・node tree・owner実読み上げdecision [#5969244414](https://github.com/nunu1733/NunuLauncher/issues/507#issuecomment-5969244414)）+ emulator evidence §6（200% font scale） |
