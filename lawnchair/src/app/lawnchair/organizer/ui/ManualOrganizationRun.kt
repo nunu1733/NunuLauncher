@@ -66,9 +66,7 @@ import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Narrow façade used by the manual run coordinator. It deliberately exposes
@@ -249,6 +247,10 @@ internal object ManualOrganizationModule {
                     exchangeGateTransaction = ManualOrganizationRun.gateHeldExchangeGateTransaction(
                         PendingImportedIntentModule.gate(),
                     ),
+                    // Issue #418: production publishes UI state on the Android
+                    // main thread; the machine itself never runs there (its
+                    // entry points fail fast on main).
+                    publicationThread = HandlerRunPublicationThread(),
                 ).also { instance = it }
             }
         }
@@ -311,6 +313,18 @@ class ManualOrganizationRun internal constructor(
     // mutation without a gate so embedders/tests that never wire the exchange
     // side keep today's behavior.
     private val exchangeGateTransaction: ExchangeGateTransaction = DirectExchangeGateTransaction,
+    // Issue #418: the thread that owns UI state publication. Production wires
+    // the Android main thread (HandlerRunPublicationThread in get(context));
+    // the same-thread default keeps JVM/instrumentation tests exactly on
+    // today's behavior. Machine entry points fail fast on the publication
+    // thread, and every UI state write block-joins onto it through a
+    // lock-free task (spec 418; spec 375 amendment for the gate-held path).
+    private val publicationThread: RunPublicationThread = DirectRunPublicationThread(),
+    // Issue #418 (test seam): records (field, thread) for every state bus
+    // write so the confinement oracle can verify publication threads. The
+    // production default observes nothing — the same pattern as
+    // ExchangeFlowStateHolder.onSettleObserved.
+    writeThreadTracker: ((String, Thread) -> Unit)? = null,
 ) {
     enum class DismissalOutcome {
         CancelledAndMayNavigate,
@@ -741,10 +755,16 @@ class ManualOrganizationRun internal constructor(
         )
     }
 
-    private val stateHolder = MutableStateFlow<State>(State.Idle)
-    val stateFlow: StateFlow<State> = stateHolder.asStateFlow()
+    // Issue #418: the UI-facing holders live in the state bus — its publish
+    // methods are the only write path, and each write is routed onto the
+    // publication thread by the helpers below.
+    private val stateBus = ManualOrganizationRunStateBus(
+        initialState = State.Idle,
+        writeThreadTracker = writeThreadTracker,
+    )
+    val stateFlow: StateFlow<State> = stateBus.stateFlow
     val state: State
-        get() = stateHolder.value
+        get() = stateBus.state
 
     // Issue #368: run/recovery operation lifetime, independent of the display
     // State enumeration. Terminal states (Applied, NoChanges, Stale, …) stay
@@ -752,18 +772,16 @@ class ManualOrganizationRun internal constructor(
     // them as "run active"; this projection tracks the actual lifetime
     // (activeOperation / recoveryLease). It is not equivalent to admission
     // domain occupancy: another AUTHORING token can hold the domain.
-    private val operationActiveHolder = MutableStateFlow(false)
 
     /** True while a run or recovery operation is alive (spec #368). */
-    val operationActive: StateFlow<Boolean> = operationActiveHolder.asStateFlow()
+    val operationActive: StateFlow<Boolean> = stateBus.operationActive
 
     // Issue #369 (spec RD-7): deterministic user-visible preparation phase for
     // T-09. Reset to DETECTION on every admission and only advanced under the
     // lock, before the state publish it describes.
-    private val preparationPhaseHolder = MutableStateFlow(PreparationPhase.DETECTION)
 
     /** Issue #369 (spec RD-7): the visible 検出 → capture → plan progression. */
-    val preparationPhase: StateFlow<PreparationPhase> = preparationPhaseHolder.asStateFlow()
+    val preparationPhase: StateFlow<PreparationPhase> = stateBus.preparationPhase
 
     private val lock = Any()
     private var activeOperation: Operation? = null
@@ -772,6 +790,22 @@ class ManualOrganizationRun internal constructor(
     private var pendingRecovery: RecoveryPreviewResult.Restorable? = null
     private var recoveryLease: AutoCloseable? = null
     private var lastVerifiedApply: State.Applied? = null
+
+    // Issue #418: run-scoped UI state publications. Each helper block-joins on
+    // the publication thread with a lock-free bus write; the calling machine
+    // section keeps its own lock held so section atomicity and publication
+    // instants are unchanged (spec 418; spec 375 gate-held amendment).
+    private fun publishState(next: State) {
+        publicationThread.run { stateBus.publishState(next) }
+    }
+
+    private fun publishPreparationPhase(phase: PreparationPhase) {
+        publicationThread.run { stateBus.publishPreparationPhase(phase) }
+    }
+
+    private fun publishOperationActive(active: Boolean) {
+        publicationThread.run { stateBus.publishOperationActive(active) }
+    }
 
     /**
      * Issue #376 (spec D5): which surface opened the live recovery flow, and
@@ -820,10 +854,13 @@ class ManualOrganizationRun internal constructor(
     }
 
     private fun updateOperationActiveLocked() {
-        operationActiveHolder.value = activeOperation != null || recoveryLease != null
+        publishOperationActive(activeOperation != null || recoveryLease != null)
     }
 
-    fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome = start(trigger, intent = null)
+    fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome {
+        publicationThread.assertNotPublicationThread()
+        return start(trigger, intent = null)
+    }
 
     /**
      * Issue #205: run entry from an imported, validated personalization intent
@@ -848,6 +885,7 @@ class ManualOrganizationRun internal constructor(
         admissionAnchor: StartAdmissionAnchor? = null,
         selectionRestore: SelectionRestore = SelectionRestore.None,
     ): StartOutcome {
+        publicationThread.assertNotPublicationThread()
         when (val attempt = beginAdmission(trigger, intent, admissionAnchor)) {
             is StartAttempt.Busy -> return StartOutcome.Busy
             is StartAttempt.Refused -> return StartOutcome.AdmissionRefused
@@ -880,6 +918,9 @@ class ManualOrganizationRun internal constructor(
                 pendingRecovery = null
                 appliedPoint = null
                 lastVerifiedApply = null
+                // Issue #418: a fresh operation starts unbound — the volatile
+                // mirror follows the lock-held [Operation.boundExportId].
+                boundScopeRunId = null
                 // Issue #376 (spec D5): a fresh run dissolves any live recovery
                 // flow identity — the entry origin never outlives its flow.
                 recoveryEntryOrigin = null
@@ -887,8 +928,8 @@ class ManualOrganizationRun internal constructor(
                 // Issue #369 (RD-7): a fresh run always starts the visible
                 // progression at detection — the legacy admission Capturing below
                 // projects as 検出, so the first visible phase is never capture.
-                preparationPhaseHolder.value = PreparationPhase.DETECTION
-                stateHolder.value = State.Capturing
+                publishPreparationPhase(PreparationPhase.DETECTION)
+                publishState(State.Capturing)
                 updateOperationActiveLocked()
                 created = operation
             }
@@ -1077,6 +1118,7 @@ class ManualOrganizationRun internal constructor(
      * method choice decides when (and whether) the composed phase runs.
      */
     fun confirmSelection(selection: Set<CandidateTarget.AppKey>) {
+        publicationThread.assertNotPublicationThread()
         val sortedSelection = selection.sortedWith(
             compareBy({ it.component.value }, { it.profile.value }),
         )
@@ -1111,12 +1153,14 @@ class ManualOrganizationRun internal constructor(
                 )
             }
             if (earlyCause != null) {
-                stateHolder.value = State.Selecting(
-                    current.runId,
-                    current.detectedCandidates.orEmpty(),
-                    intentScopeCount = intent!!.session.scopeCandidates.size,
-                    scopeRejection = app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(earlyCause),
-                    intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                publishState(
+                    State.Selecting(
+                        current.runId,
+                        current.detectedCandidates.orEmpty(),
+                        intentScopeCount = intent!!.session.scopeCandidates.size,
+                        scopeRejection = app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(earlyCause),
+                        intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                    ),
                 )
                 null
             } else if (current.trigger == Trigger.ONBOARDING_PROPOSAL || current.intent != null) {
@@ -1142,11 +1186,13 @@ class ManualOrganizationRun internal constructor(
                 // [planWithConfirmedScope] and [attachIntent] continue from
                 // here.
                 val cut = current.detectedCandidates.orEmpty()
-                stateHolder.value = State.ScopeConfirmed(
-                    runId = current.runId,
-                    candidates = cut,
-                    selection = sortedSelection,
-                    candidateLabels = cut.associate { it.target to it.label },
+                publishState(
+                    State.ScopeConfirmed(
+                        runId = current.runId,
+                        candidates = cut,
+                        selection = sortedSelection,
+                        candidateLabels = cut.associate { it.target to it.label },
+                    ),
                 )
                 null
             }
@@ -1167,6 +1213,7 @@ class ManualOrganizationRun internal constructor(
      * operation is a no-op: nothing is composed, nothing is written.
      */
     fun planWithConfirmedScope() {
+        publicationThread.assertNotPublicationThread()
         val claimed = synchronized(lock) {
             val current = state as? State.ScopeConfirmed ?: return
             val operation = activeOperation ?: return
@@ -1192,18 +1239,23 @@ class ManualOrganizationRun internal constructor(
      * here — the hosting surface calls this only after the scope-bound request
      * discard ([discardScopeBoundRequest]) succeeded.
      */
-    fun reopenSelection(): Boolean = synchronized(lock) {
-        val current = state as? State.ScopeConfirmed ?: return@synchronized false
-        val operation = activeOperation ?: return@synchronized false
-        if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized false
-        if (current.candidates.isEmpty()) return@synchronized false
-        stateHolder.value = State.Selecting(
-            current.runId,
-            current.candidates,
-            intentScopeCount = current.intentScopeCount,
-            intentScopeCandidates = current.intentScopeCandidates,
-        )
-        true
+    fun reopenSelection(): Boolean {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            val current = state as? State.ScopeConfirmed ?: return@synchronized false
+            val operation = activeOperation ?: return@synchronized false
+            if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized false
+            if (current.candidates.isEmpty()) return@synchronized false
+            publishState(
+                State.Selecting(
+                    current.runId,
+                    current.candidates,
+                    intentScopeCount = current.intentScopeCount,
+                    intentScopeCandidates = current.intentScopeCandidates,
+                ),
+            )
+            true
+        }
     }
 
     /**
@@ -1217,6 +1269,7 @@ class ManualOrganizationRun internal constructor(
      * paths.
      */
     fun continueAfterUsageAccessGate() {
+        publicationThread.assertNotPublicationThread()
         val claimed = synchronized(lock) {
             val current = state as? State.AwaitingUsageAccessJit ?: return
             val op = activeOperation ?: return
@@ -1224,7 +1277,7 @@ class ManualOrganizationRun internal constructor(
             // Resolution is idempotent and owner-checked; safe to call for the
             // non-owner (waiter) path too, where it is a no-op.
             usageAccessGate.resolve(current.runId)
-            stateHolder.value = State.ResumingUsageAccessJit(current.runId, current.selection)
+            publishState(State.ResumingUsageAccessJit(current.runId, current.selection))
             op to current.selection
         }
         val (operation, selection) = claimed
@@ -1265,6 +1318,7 @@ class ManualOrganizationRun internal constructor(
      * the explicit consent point, so no additional confirmation is inserted.
      */
     fun attachIntent(intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent): AttachIntentOutcome {
+        publicationThread.assertNotPublicationThread()
         val claimed: Triple<AttachIntentOutcome, Operation?, List<CandidateTarget.AppKey>> = synchronized(lock) {
             when (val current = state) {
                 is State.Selecting -> {
@@ -1273,9 +1327,11 @@ class ManualOrganizationRun internal constructor(
                         Triple(AttachIntentOutcome.NotAttachable, null, emptyList<CandidateTarget.AppKey>())
                     } else {
                         operation.intent = intent
-                        stateHolder.value = current.copy(
-                            intentScopeCount = intent.session.scopeCandidates.size,
-                            intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                        publishState(
+                            current.copy(
+                                intentScopeCount = intent.session.scopeCandidates.size,
+                                intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                            ),
                         )
                         Triple(AttachIntentOutcome.Attached, null, emptyList<CandidateTarget.AppKey>())
                     }
@@ -1298,14 +1354,16 @@ class ManualOrganizationRun internal constructor(
                         if (cause != null) {
                             val failure =
                                 app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(cause)
-                            stateHolder.value = current.copy(scopeRejection = failure)
+                            publishState(current.copy(scopeRejection = failure))
                             Triple(AttachIntentOutcome.Rejected(failure), null, emptyList<CandidateTarget.AppKey>())
                         } else {
                             operation.intent = intent
-                            stateHolder.value = current.copy(
-                                intentScopeCount = intent.session.scopeCandidates.size,
-                                intentScopeCandidates = intent.session.scopeCandidates.toSet(),
-                                scopeRejection = null,
+                            publishState(
+                                current.copy(
+                                    intentScopeCount = intent.session.scopeCandidates.size,
+                                    intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                                    scopeRejection = null,
+                                ),
                             )
                             Triple(AttachIntentOutcome.Attached, operation, current.selection)
                         }
@@ -1350,19 +1408,22 @@ class ManualOrganizationRun internal constructor(
      * null when there is no live [State.ScopeConfirmed] on this run or
      * [scopeIdentity] is not exactly the confirmed selection (fail-closed).
      */
-    fun claimGenerationEpoch(scopeIdentity: List<CandidateTarget.AppKey>): GenerationEpoch? = synchronized(lock) {
-        val current = state as? State.ScopeConfirmed ?: return@synchronized null
-        val operation = activeOperation ?: return@synchronized null
-        if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized null
-        if (scopeIdentity != current.selection) return@synchronized null
-        val next = GenerationEpoch(
-            runId = operation.runId,
-            operationId = operation.operationId,
-            scopeIdentity = scopeIdentity,
-            epoch = (operation.generationEpoch?.epoch ?: 0L) + 1L,
-        )
-        operation.generationEpoch = next
-        next
+    fun claimGenerationEpoch(scopeIdentity: List<CandidateTarget.AppKey>): GenerationEpoch? {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            val current = state as? State.ScopeConfirmed ?: return@synchronized null
+            val operation = activeOperation ?: return@synchronized null
+            if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized null
+            if (scopeIdentity != current.selection) return@synchronized null
+            val next = GenerationEpoch(
+                runId = operation.runId,
+                operationId = operation.operationId,
+                scopeIdentity = scopeIdentity,
+                epoch = (operation.generationEpoch?.epoch ?: 0L) + 1L,
+            )
+            operation.generationEpoch = next
+            next
+        }
     }
 
     /**
@@ -1374,6 +1435,7 @@ class ManualOrganizationRun internal constructor(
      * (and advances) again.
      */
     fun invalidateGenerationEpoch() {
+        publicationThread.assertNotPublicationThread()
         synchronized(lock) {
             activeOperation?.generationEpoch = null
         }
@@ -1384,8 +1446,11 @@ class ManualOrganizationRun internal constructor(
      * generation epoch. The commit path re-verifies this under the run lock;
      * this read is the cheap stale-check for completion/cleanup paths.
      */
-    fun isCurrentEpoch(epoch: GenerationEpoch): Boolean = synchronized(lock) {
-        activeOperation?.generationEpoch == epoch
+    fun isCurrentEpoch(epoch: GenerationEpoch): Boolean {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            activeOperation?.generationEpoch == epoch
+        }
     }
 
     /**
@@ -1420,6 +1485,7 @@ class ManualOrganizationRun internal constructor(
             onGateHeld = { outcome ->
                 if (outcome == PersistOutcome.Committed) {
                     operation.boundExportId = exportId
+                    boundScopeRunId = operation.runId
                 }
             },
         )
@@ -1454,7 +1520,11 @@ class ManualOrganizationRun internal constructor(
             durableMutation = { exchangeGateTransaction.commit() },
             onGateHeld = { result ->
                 when (result) {
-                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> operation.boundExportId = null
+                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> {
+                        operation.boundExportId = null
+                        boundScopeRunId = null
+                    }
+
                     StoreInvalidationOutcome.WriteFailed -> Unit
                 }
             },
@@ -1503,7 +1573,11 @@ class ManualOrganizationRun internal constructor(
             durableMutation = { exchangeGateTransaction.commit(bound) },
             onGateHeld = { result ->
                 when (result) {
-                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> operation.boundExportId = null
+                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> {
+                        operation.boundExportId = null
+                        boundScopeRunId = null
+                    }
+
                     StoreInvalidationOutcome.WriteFailed -> Unit
                 }
             },
@@ -1566,8 +1640,11 @@ class ManualOrganizationRun internal constructor(
      * exchange side ASK without reaching into the run-private
      * `Operation.boundExportId`.
      */
-    fun isLiveScopeOwner(runId: RunId, expectedExportId: String): Boolean = synchronized(lock) {
-        isLiveScopeOwnerLocked(runId, expectedExportId)
+    fun isLiveScopeOwner(runId: RunId, expectedExportId: String): Boolean {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            isLiveScopeOwnerLocked(runId, expectedExportId)
+        }
     }
 
     /** The [isLiveScopeOwner] verdict; callers hold [lock]. */
@@ -1576,6 +1653,16 @@ class ManualOrganizationRun internal constructor(
         val operation = activeOperation ?: return false
         return operation.runId == runId && isActiveLocked(operation) && operation.boundExportId == expectedExportId
     }
+
+    // Issue #418: mirrors [Operation.boundExportId] presence per run so
+    // [hasBoundScopeRequest] can answer WITHOUT taking the run lock. Its only
+    // production caller runs on the main thread (the method-choice face's
+    // system-Back routing), and main must never wait on the run lock now that
+    // machine sections block-join their state writes onto main (spec 418
+    // deadlock audit rule 2). Updated inside the same critical sections that
+    // mutate [Operation.boundExportId].
+    @Volatile
+    private var boundScopeRunId: RunId? = null
 
     /**
      * Issue #417 (spec 417, AC-5): read-only UI routing fact — whether the
@@ -1586,11 +1673,20 @@ class ManualOrganizationRun internal constructor(
      * the confirmed scope, so it must never freeze it (the Back path then
      * re-opens the selection without a 破棄確認). Pure read — no mutation, no
      * store access.
+     *
+     * Lock-free by construction (see [boundScopeRunId]): the volatile mirror
+     * may trail the authoritative lock-held state by the microseconds of the
+     * publishing section. For this Back-routing hint a stale `true` merely
+     * raises the confirmation while the run is already tearing down, where the
+     * next display state settles the face; a stale `false` routes to the
+     * selection re-open, whose own lock section re-validates. The lock-taken
+     * `isActiveLocked` half of the original verdict is subsumed by the state
+     * check within that window (a cancelled run publishes `Cancelled`, which
+     * fails the [State.ScopeConfirmed] test).
      */
-    fun hasBoundScopeRequest(): Boolean = synchronized(lock) {
-        val current = state as? State.ScopeConfirmed ?: return@synchronized false
-        val operation = activeOperation ?: return@synchronized false
-        operation.runId == current.runId && isActiveLocked(operation) && operation.boundExportId != null
+    fun hasBoundScopeRequest(): Boolean {
+        val current = state as? State.ScopeConfirmed ?: return false
+        return current.runId == boundScopeRunId
     }
 
     /**
@@ -1600,6 +1696,7 @@ class ManualOrganizationRun internal constructor(
      * seam as the first attempt.
      */
     fun retryPlanPreview() {
+        publicationThread.assertNotPublicationThread()
         val retained = synchronized(lock) {
             if (state !is State.PreviewUnavailable) return
             val operation = activeOperation ?: return
@@ -1681,10 +1778,12 @@ class ManualOrganizationRun internal constructor(
                     usageAccessGate.release(runId)
                     return
                 }
-                stateHolder.value = State.AwaitingUsageAccessJit(
-                    runId,
-                    selection,
-                    isOwner = gateDecision == UsageAccessJitGate.Decision.Present,
+                publishState(
+                    State.AwaitingUsageAccessJit(
+                        runId,
+                        selection,
+                        isOwner = gateDecision == UsageAccessJitGate.Decision.Present,
+                    ),
                 )
             }
             return
@@ -1707,8 +1806,8 @@ class ManualOrganizationRun internal constructor(
             // never observe RUN_STARTED issued while the run still shows
             // Selecting/Resuming, and a paused run never shows a capture
             // that has not started.
-            preparationPhaseHolder.value = PreparationPhase.CAPTURE
-            stateHolder.value = State.Capturing
+            publishPreparationPhase(PreparationPhase.CAPTURE)
+            publishState(State.Capturing)
             operation.journalStarted = true
             emit(
                 RunEvent(
@@ -1764,11 +1863,13 @@ class ManualOrganizationRun internal constructor(
                             val detected = operation.detectedCandidates
                             if (isActiveLocked(operation) && detected != null) {
                                 operation.intent = null
-                                stateHolder.value = State.Selecting(
-                                    operation.runId,
-                                    detected,
-                                    intentScopeCount = 0,
-                                    scopeRejection = failure,
+                                publishState(
+                                    State.Selecting(
+                                        operation.runId,
+                                        detected,
+                                        intentScopeCount = 0,
+                                        scopeRejection = failure,
+                                    ),
                                 )
                                 true
                             } else {
@@ -1807,8 +1908,8 @@ class ManualOrganizationRun internal constructor(
                 // Planning publish, in the same lock section.
                 synchronized(lock) {
                     if (isActiveLocked(operation)) {
-                        preparationPhaseHolder.value = PreparationPhase.PLAN
-                        stateHolder.value = State.Planning
+                        publishPreparationPhase(PreparationPhase.PLAN)
+                        publishState(State.Planning)
                     }
                 }
                 if (!isActive(operation)) return
@@ -1948,11 +2049,12 @@ class ManualOrganizationRun internal constructor(
         synchronized(lock) {
             if (!isActiveLocked(operation)) return
             pending = PendingPlan(operation, input, result, summary, previewPlan = null)
-            stateHolder.value = State.PreviewUnavailable(summary)
+            publishState(State.PreviewUnavailable(summary))
         }
     }
 
     fun cancel() {
+        publicationThread.assertNotPublicationThread()
         val operation = synchronized(lock) {
             val candidate = activeOperation ?: return
             if (candidate.applicationAdmitted.get()) return
@@ -1969,7 +2071,7 @@ class ManualOrganizationRun internal constructor(
             candidate.cancelled.set(true)
             pending = null
             activeOperation = null
-            stateHolder.value = State.Cancelled
+            publishState(State.Cancelled)
             updateOperationActiveLocked()
             candidate
         }
@@ -1998,11 +2100,12 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun confirm() {
+        publicationThread.assertNotPublicationThread()
         val (operation, pendingPlan) = synchronized(lock) {
             val currentOperation = activeOperation ?: return
             val currentPlan = pending ?: return
             if (state !is State.Preview) return
-            stateHolder.value = State.Applying
+            publishState(State.Applying)
             currentOperation to currentPlan
         }
         try {
@@ -2064,7 +2167,7 @@ class ManualOrganizationRun internal constructor(
                     appliedPoint = result.pointId
                     lastVerifiedApply = nextState
                 }
-                stateHolder.value = nextState
+                publishState(nextState)
             }
             operation.lease.close()
         } catch (failure: Throwable) {
@@ -2074,6 +2177,7 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun beginRecoveryPreview() {
+        publicationThread.assertNotPublicationThread()
         val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return
         val request = synchronized(lock) {
             val current = lastVerifiedApply
@@ -2086,7 +2190,7 @@ class ManualOrganizationRun internal constructor(
                 recoveryEntryOrigin = RecoveryEntryOrigin.AppliedSurface
                 recoveryEntryReturnState = null
                 recoveryLease = lease
-                stateHolder.value = State.InspectingRecovery
+                publishState(State.InspectingRecovery)
                 updateOperationActiveLocked()
                 pointId to current
             }
@@ -2117,7 +2221,7 @@ class ManualOrganizationRun internal constructor(
                             ?.takeIf { it.pointId == restorable.pointId }
                             ?.let { retained.summary }
                     }
-                stateHolder.value = State.RecoveryPreview(preview, correlated)
+                publishState(State.RecoveryPreview(preview, correlated))
                 true
             }
         }
@@ -2152,9 +2256,10 @@ class ManualOrganizationRun internal constructor(
      * an empty run face.
      */
     fun beginRecoveryPreviewFromDurableEntry(): Boolean {
+        publicationThread.assertNotPublicationThread()
         val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return false
         val admitted = synchronized(lock) {
-            val current = stateHolder.value
+            val current = stateBus.state
             if (activeOperation != null || recoveryLease != null ||
                 !(current is State.Idle || current is State.Cancelled)
             ) {
@@ -2163,7 +2268,7 @@ class ManualOrganizationRun internal constructor(
                 recoveryEntryOrigin = RecoveryEntryOrigin.HubStatusCard
                 recoveryEntryReturnState = current
                 recoveryLease = lease
-                stateHolder.value = State.InspectingRecovery
+                publishState(State.InspectingRecovery)
                 updateOperationActiveLocked()
                 current
             }
@@ -2197,7 +2302,7 @@ class ManualOrganizationRun internal constructor(
                 pendingRecovery = preview as? RecoveryPreviewResult.Restorable
                 // spec 230 D2 correlation gate, reused unchanged: with no
                 // retained verified apply this always renders without history.
-                stateHolder.value = State.RecoveryPreview(preview, appliedSummary = null)
+                publishState(State.RecoveryPreview(preview, appliedSummary = null))
                 true
             }
         }
@@ -2222,11 +2327,12 @@ class ManualOrganizationRun internal constructor(
      * reports whether this call resolved the flow.
      */
     fun leaveRecoveryResultToHub(): Boolean {
+        publicationThread.assertNotPublicationThread()
         val restored = synchronized(lock) {
             if (state !is State.RecoveryResultState || recoveryEntryOrigin != RecoveryEntryOrigin.HubStatusCard) {
                 false
             } else {
-                stateHolder.value = recoveryEntryReturnState ?: State.Idle
+                publishState(recoveryEntryReturnState ?: State.Idle)
                 recoveryEntryOrigin = null
                 recoveryEntryReturnState = null
                 true
@@ -2236,9 +2342,10 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun cancelRecoveryPreview() {
+        publicationThread.assertNotPublicationThread()
         val lease = synchronized(lock) {
             pendingRecovery = null
-            stateHolder.value = recoveryCancelTargetLocked()
+            publishState(recoveryCancelTargetLocked())
             recoveryEntryOrigin = null
             recoveryEntryReturnState = null
             recoveryLease.also { recoveryLease = null }
@@ -2259,9 +2366,10 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun confirmRecovery() {
+        publicationThread.assertNotPublicationThread()
         val preview = synchronized(lock) {
             val current = pendingRecovery ?: return
-            stateHolder.value = State.Recovering
+            publishState(State.Recovering)
             pendingRecovery = null
             current
         }
@@ -2272,7 +2380,7 @@ class ManualOrganizationRun internal constructor(
             throw failure
         }
         val lease = synchronized(lock) {
-            if (state is State.Recovering) stateHolder.value = State.RecoveryResultState(result)
+            if (state is State.Recovering) publishState(State.RecoveryResultState(result))
             recoveryLease.also { recoveryLease = null }
                 .also { updateOperationActiveLocked() }
         }
@@ -2299,10 +2407,11 @@ class ManualOrganizationRun internal constructor(
         get() = application.readinessState
 
     fun dismiss(): DismissalOutcome {
+        publicationThread.assertNotPublicationThread()
         val recovery = synchronized(lock) {
             if (activeOperation == null && recoveryLease != null) {
                 pendingRecovery = null
-                stateHolder.value = recoveryCancelTargetLocked()
+                publishState(recoveryCancelTargetLocked())
                 recoveryEntryOrigin = null
                 recoveryEntryReturnState = null
                 recoveryLease.also { recoveryLease = null }
@@ -2327,7 +2436,7 @@ class ManualOrganizationRun internal constructor(
             activeOperation = null
             pending = null
             pendingRecovery = null
-            stateHolder.value = State.Cancelled
+            publishState(State.Cancelled)
             updateOperationActiveLocked()
             DismissalOutcome.CancelledAndMayNavigate to operation
         }
@@ -2369,7 +2478,7 @@ class ManualOrganizationRun internal constructor(
         synchronized(lock) {
             if (!isActiveLocked(operation)) return
             pending = PendingPlan(operation, input, result, summary, preview?.plan)
-            stateHolder.value = State.Preview(summary, preview?.details)
+            publishState(State.Preview(summary, preview?.details))
         }
     }
 
@@ -2385,7 +2494,7 @@ class ManualOrganizationRun internal constructor(
             } else {
                 pending = null
                 activeOperation = null
-                stateHolder.value = State.Stale(origin)
+                publishState(State.Stale(origin))
                 updateOperationActiveLocked()
                 true
             }
@@ -2402,7 +2511,7 @@ class ManualOrganizationRun internal constructor(
 
     private fun setIfActive(operation: Operation, nextState: State) {
         synchronized(lock) {
-            if (isActiveLocked(operation)) stateHolder.value = nextState
+            if (isActiveLocked(operation)) publishState(nextState)
         }
     }
 
@@ -2413,7 +2522,7 @@ class ManualOrganizationRun internal constructor(
             } else {
                 activeOperation = null
                 pending = null
-                stateHolder.value = nextState
+                publishState(nextState)
                 updateOperationActiveLocked()
                 true
             }
@@ -2428,7 +2537,7 @@ class ManualOrganizationRun internal constructor(
             } else {
                 activeOperation = null
                 pending = null
-                stateHolder.value = State.Cancelled
+                publishState(State.Cancelled)
                 updateOperationActiveLocked()
                 true
             }
