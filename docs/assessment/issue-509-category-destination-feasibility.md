@@ -1,20 +1,20 @@
 # Issue #509 — カテゴリ別新規アプリ配置のfeasibility調査（Phase A）
 
-> Status: Complete（判定: **`rebase後へ延期`** — Revision 2で判定を訂正。Revision 1の「前へ進める」はplatform事実の誤認に基づいていたため撤回する）
-> Date: 2026-10-04（Revision 2同日）
+> Status: Complete（technical investigation）/ **implementation deferred** / owner product decision **pending**（判定: **`rebase後へ延期`**。Revision 2で「前へ進める」を撤回。owner判断項目はPhase A exitの未完了項目として§7に明示）
+> Date: 2026-10-04（Revision 3同日）
 > 対象commit: `main` @ `8508c14182412c2a9cf6f6240eadfe30b5322047`（2026-10-04時点。本調査のfork側path:line実測とエミュレータ実証はこのcommitで実施）
 > 再確認: #508（PR #515/#517）merge後の`main` @ `aac74df8e2cf3503af2f729934cc77d40f57e51b`で引用したfork側ファイルの`git log`と代表行を実再確認し、差異なし（引用ファイルの最終変更はいずれも2026-10-02以前）
 > Environment: reference系emulator `nunu_smoke_api35`（API 35、google_apis、arm64）＋ `nunu_qpr2_api36_1`（API 36.1）。Build: `Lawnchair.15.Dev.(8508c14).github.debug.apk`（対象commitから`assembleLawnWithQuickstepGithubDebug`）。fixture install対象は既存の`tests/benchmark-install-targets/`。追加の検証用probe app（§3.2。`QUERY_ALL_PACKAGES`のみを宣言する最小Activity。調査用の一時artifactでありrepositoryへはcommitしない）
 > 出典Issue: [#509](https://github.com/nunu1733/NunuLauncher/issues/509)。延期依存先: #516（Lawnchair 16 rebase Epic。実在番号）
-> Review: Phase 1 review round 1（ChatGPT、[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973424478)）の指摘1（高）でRevision 1のplatform因果説明の誤りを指摘され、probe実験とAOSP行レベル再確認（§3.1〜§3.3）により判定を訂正した
+> Review: Phase 1 review round 1（ChatGPT、[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973424478)）の指摘1（高）でRevision 1のplatform因果説明の誤りを指摘され、probe実験とAOSP行レベル再確認（§3.1〜§3.3）により判定を訂正した。round 2（[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973633431)）の指摘（高1件・中1件・低1件）をRevision 3で対応（状態分離・証拠強度の整合・obsolete draft明記）。
 
 ## 1. 結論（Phase A判定: Revision 2）
 
 **`rebase後へ延期`**。Revision 1では「promise icon経路は現代のAndroidで第三者launcherに到達しない」ことを根拠に「前へ進める」と判定したが、この因果説明は誤りであった（review round 1指摘1。訂正の経緯と証拠は§3）。訂正後の事実:
 
 1. **capture時分類を既存seamで接続する技術は成立する**。変更surfaceはfork-owned moduleのみで、5つのplatform file（`ItemInstallQueue` / `AddWorkspaceItemsTask` / `DirectEditContract` / `ModelWriter` / `PersistedItemArray`）の差分は0行のままである（§2）。
-2. しかし**実機の主要install経路（trusted installer＝Play経由の新規install）では、captureがinstall完了前に発生し、その時点で分類signalが読めない**。Session callbackはQUERY_ALL_PACKAGESを持つ第三者launcherへ届き（§3.1〜§3.3でplatform機構を実証）、badging付きsessionではpromise icon経路が発火する。capture→UPSTREAM snapshot→上流既定配置となり、完了後の再captureは`alreadyAddedPromiseIcon`で抑止されるため、**カテゴリ解決は二度と起こらない**（§3.4）。
-3. よって本機能がカテゴリ振り分けを成功させる対象は「promise経路を通らないcapture（信頼できないinstaller経由のinstall等）」に限られる。これはIssue本文が要求する「上流が追加を決めた新規アプリを追加操作なしで該当フォルダへ置く」の中核経路を外れるものであり、**成功対象の縮小を利用者にどう説明するかという製品判断がowner判断として未成立である**。Issue本文の停止規則「分類品質/対応identityの製品判断が未成立でも実装を停止する」を適用し、実装へは進めない。
+2. **実機の主要install経路（trusted installer＝Play経由の新規install）では、captureがinstall完了前に発生し、その時点で分類signalが読めないと強く示唆される**。Session callbackはQUERY_ALL_PACKAGESを持つ第三者launcherへ届き（§3.1〜§3.3でplatform機構を実証）、launcherコードの構造上、badging付きsessionではpromise icon経路が発火してcapture→UPSTREAM snapshot→上流既定配置となり、完了後の再captureは`alreadyAddedPromiseIcon`で抑止される。ただし**Play実機での発火とbadging成立の直接確認は未実施であり（§8.1）、本項は「AOSP＋launcherコード＋probe実証から強く示唆される」段階の記述である**。いずれにせよ実機主要経路でのpromise契約（capture時分類）を成立させる証拠は得られず、**カテゴリ解決が主要経路で起こらない構造はコードから確定する**（§3.4）。
+3. よって本機能がカテゴリ振り分けを成功させる対象は「promise経路を通らないcapture（信頼できないinstaller経由のinstall等）」に限られる（§3.3）。これはIssue本文が要求する「上流が追加を決めた新規アプリを追加操作なしで該当フォルダへ置く」の中核経路を外れるものであり、**成功対象の縮小を利用者にどう説明するかという製品判断がowner判断として未成立である**。Issue本文の停止規則「分類品質/対応identityの製品判断が未成立でも実装を停止する」を適用し、実装へは進めない。
 4. 「後へ回す条件」の技術的動機（追加のupstream bridge、model/loader bridge拡張、queue wire format/`DirectEditContract`拡張の必要性）には**該当しない**（bridge増分は0のまま）。延期の理由はplatform由来のcapture時点制約と、それに伴う製品判断の未成立である。したがって再開条件は、Issue本文の定義（「#516完了と受入ADRの成立→新baselineでseam再調査→owner再判断」）に加え、**「ownerがpromise経路を成功対象外とする縮小scopeを受容するか」の判断**が先決である（§9）。rebase完了だけでは制約は解消しない。
 
 判定の記録に合わせ、Revision 1で作成した進行側の成果物（`specs/509-category-new-app-destination/spec.md`、`docs/adr/0017-category-new-app-destination.md`の草案）は本revisionでbranchから取り下げた。設計草案は履歴（commit `59aa164a62`）に残っており、owner判断で縮小scopeを受容して再開する場合の下書きとして参照できる。
@@ -109,11 +109,11 @@ Revision 1のlauncher実験（§3.5のE1〜E3）でpromise enqueueのログが�
 | 信頼できないinstaller経由のinstall（install reason USER） | `SessionCommitReceiver`（install完了後） | install済み・可視 | 同上 | **読める** | 可（signalがあれば） |
 | shell stream（badging無し）・adb（reason不明で自動追加自体が不発。benchmark §7実績） | 完了後（queueに入る場合のみ） | install済み | 同上 | 読める | 可（signalがあれば） |
 
-結論: **実機の主要経路（Play経由）ではcapture時分類が成立せず、カテゴリ別配置は効かない**。効くのは非promise captureに限られ、さらにS2のcoverageは「manifestで`appCategory`を宣言するアプリ」、S5は「新規の`com.google.*`アプリ」に限られる（S1は再install時のoverrideのみ）。ADR-0015 Alternatives/#446メモの「分類品質が不十分（8種＋OTHER）」の記録に、capture時点制約が重なる。
+結論: **実機の主要経路（Play経由）では、launcherコードの構造上、capture時分類が成立しない**（promise captureが分類不能時点で起こり、完了後の再captureは抑止される。Play実機での直接確認は§8.1を再開時の最初のoracleとする）。効くのは非promise captureに限られ、さらにS2のcoverageは「manifestで`appCategory`を宣言するアプリ」、S5は「新規の`com.google.*`アプリ」に限られる（S1は再install時のoverrideのみ）。ADR-0015 Alternatives/#446メモの「分類品質が不十分（8種＋OTHER）」の記録に、capture時点制約が重なる。
 
 ### 3.4 fallback設計の位置づけ（訂正後）
 
-promise段階でのcapture（分類不可→`UPSTREAM` snapshot→上流既定配置）は、#497の契約（first enqueue wins・flush読み出しのみ・stage-2再検証）の中で決定的かつ安全に動く。しかしIssue本文の要件「利用者が明示したカテゴリと既存フォルダの対応により、上流が追加を決めた新規アプリを追加操作なしで該当フォルダへ置く」に対し、主要経路が常にfallbackになる設計は、成功対象（非promise captureのみ）を利用者に明示し、その価値をownerが受容することが前提になる。この製品判断が未成立のまま実装へ進むこと禁止している（Issue本文・停止規則）。「install完了後にもう一度振り分ける」を採用しない方針（Issue本文どおり）は、訂正後も変わらない。
+promise段階でのcapture（分類不可→`UPSTREAM` snapshot→上流既定配置）は、#497の契約（first enqueue wins・flush読み出しのみ・stage-2再検証）の中で決定的かつ安全に動く。しかしIssue本文の要件「利用者が明示したカテゴリと既存フォルダの対応により、上流が追加を決めた新規アプリを追加操作なしで該当フォルダへ置く」に対し、主要経路が常にfallbackになる構造は（§3.3。Play実機での直接確認は§8.1）、成功対象（非promise captureのみ）を利用者に明示し、その価値をownerが受容することが前提になる。この製品判断が未成立のまま実装へ進むこと禁止している（Issue本文・停止規則）。「install完了後にもう一度振り分ける」を採用しない方針（Issue本文どおり）は、訂正後も変わらない。
 
 ### 3.5 再現手順（E1〜E3＋probe。API 35 `nunu_smoke_api35`、emulator-5574）
 
@@ -160,13 +160,14 @@ install reason定数の実測値: API 35/36とも`--install-reason 4`が`INSTALL
 
 opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不可の上流既定fallback、対応先folder消失等の既存typed fallback、FileLogへのtyped記録（package名なし、wire拡張不要、通知なし）はいずれも既存seamの延長で設計可能である（§2.2）。network・新権限は不要である。
 
-## 7. Phase A exit条件の照合（Revision 2）
+## 7. Phase A exit条件の照合（Revision 3）
 
 - [x] 調査成果物に確認日・対象commit・根拠path/行・再現手順と結果、変更候補path、未確認範囲を記録した（本書。`docs/assessment/issue-509-category-destination-feasibility.md`）。
-- [x] profile内classification、明示対応identity、promise不足時の扱い、enqueue固定/reflush/stage-2の境界を確定した（§2〜§6）。ADR-0015を変える部分はsuccessor ADRを要するが、実装停止のため起草しない（Revision 1草案は履歴`59aa164a62`に残す）。
-- [x] **前に進める条件は満たさない**: fork-owned moduleのみの変更・既存hook・既存4field snapshot・既存書込み/queue protocolの使用は証明できたが、「必要なprofile/**promise**/fallback契約が成立する証拠」において、promise経路（主要install経路）のcapture時に分類が成立しないことが確定し、成功対象の縮小という製品判断が未成立である（§3.3/§3.4）。
+- [x] **技術的境界の確定**: profile内classification、明示対応identity、enqueue固定/reflush/stage-2の境界を確定した（§2〜§6）。ADR-0015を変える部分はsuccessor ADRを要するが、実装停止のため起草しない（Revision 1草案は履歴`59aa164a62`に残す。obsolete draft。§9）。
+- [ ] **promise不足時の扱いを含む成功対象scopeについてowner判断が確定した** → **未完了**。promise経路（主要install経路と強く示唆される。§3.3/§8.1）のcapture時分類不成立により、成功対象が非promise captureへ縮小することの製品受容がowner判断として未成立である。これが延期の理由そのものである（§1/§9）。再開時はこの項目から始める。
+- [x] **前に進める条件は満たさない**: fork-owned moduleのみの変更・既存hook・既存4field snapshot・既存書込み/queue protocolの使用は証明できたが、「必要なprofile/**promise**/fallback契約が成立する証拠」をPhase A内で示せなかった（promise契約の成立を裏付ける実機証跡がなく、製品scope判断も未成立）。
 - [x] **後へ回す条件の技術的動機には非該当**だが、Issue本文の停止規則（製品判断未成立でも実装を停止）により`rebase後へ延期`として記録する（§9）。
-- [x] 判定を本Issueに`rebase後へ延期`として記録した（worker comment。Phase 1 review round 1の指摘対応と合わせる）。
+- [x] 判定を本Issueに`rebase後へ延期`として記録した（worker comment。Phase 1 review round 1/2の指摘対応と合わせる）。
 
 ## 8. 未確認範囲
 
@@ -180,7 +181,7 @@ opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不�
 - 本Issueをopenのまま`phase: later`へ変更する。依存linkは#516（Lawnchair 16 rebase Epic、実在番号）。
 - 延期理由は「追加bridgeの必要性」ではなく「**capture時点のplatform制約により主要install経路で分類が成立しない**こと」と、それに伴う「**成功対象の縮小（非promise captureのみ＋appCategory等のsignal coverage制約）の製品受容がowner判断として未成立**」である。bridge増分0の技術成果（§2）はrevision 1から変更なく成立している。
 - 再開条件（Issue本文の定義＋訂正後の実態を明記）: ①ownerが「promise経路を成功対象外とする縮小scope」を受容するかを判断する（これが先決。受容しない場合、本機能は capture時分類の限界により実装困難であり、FR-009等の別の解決（install後の明示的移動支援）へ分流する）。②受容する場合、#516完了と受入rebase ADRの成立後に新baselineでseam再調査（§3のplatform事実の実機確認を含む）→owner再判断。③rebase完了だけでは制約は解消しない。
-- 本調査の他の成果物: Revision 1で起草したspec/ADR草案は履歴`59aa164a62`に残す（縮小scopeを受容する場合の下書き）。正本（`CONTEXT.md`/`DESIGN.md`/requirements/ベンチマーク）への反映は実装へ進む場合のみ行う。
+- 本調査の他の成果物: Revision 1で起草したspec/ADR草案（履歴`59aa164a62`）は**withdrawn/obsolete draftであり、そのまま再利用しない**。この草案はreview round 1で指摘された論点（ADR-0015 Decision 11との置換関係の明文化、promise/work profile/reflush/category identityのoracle不足）が未修正のままである。再開時は、縮小scopeの受容判断を踏まえたうえで、新baselineでD11 relationの明文化と不足oracleの再設計を行ったうえで起草し直す。
 
 ## 10. External reference scan（研究記録）
 
@@ -194,5 +195,6 @@ opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不�
 
 ## Change history
 
-- 2026-10-04: Revision 2 — Phase 1 review round 1（[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973424478)）指摘1（高）に対応。Revision 1の「session callbackは第三者launcherに届かない」因果説明を撤回し、AOSP行レベル再確認（installing case＋QUERY_ALL_PACKAGES fast path。android15/16/main）とprobe実験で配信を実証。launcher実験の不発の真因をshell sessionのbadging欠損（`verifySessionInfo`のicon/label要件。E1ログ`has app icon: false`が証拠）へ訂正。訂正後は実機主要経路（Play）でpromise captureが発火し分類不能のため、判定を`前へ進める`から`rebase後へ延期`へ訂正。spec/ADR草案を取り下げ（履歴`59aa164a62`に残存）。
+- 2026-10-04: Revision 3 — Phase 1 review round 2（[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973633431)）の指摘（高1件・中1件・低1件）に対応。高: §7のowner判断項目を未完了として分離し、状態を「technical investigation complete / implementation deferred / owner product decision pending」へ明示（記録矛盾の解消）。中: §1/§3.3/§3.4/§7のPlay経路に関する断定を証拠強度へ合わせ、「AOSP＋launcherコード＋probeから強く示唆される（Play実機は未確認）」へ修正し、実機直接確認を再開時の最初のoracle（§8.1）として固定。低: 履歴`59aa164a62`の草案をobsolete draftとして明記し、再開時の再起草要件（D11 relation明文化・oracle再設計）を§9へ追記。
+- 2026-10-04: Revision 2 — Phase 1 review round 1（[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973424478)）指摘1（高）に対応。Revision 1の「session callbackは第三者launcherに届かない」因果説明を撤回し、AOSP行レベル再確認（installing case＋QUERY_ALL_PACKAGES fast path。android15/16/main）とprobe実験で配信を実証。launcher実験の不発の真因をshell sessionのbadging欠損（`verifySessionInfo`のicon/label要件。E1ログ`has app icon: false`が証拠）へ訂正。訂正後は実機主要経路（Play）でpromise captureが発火する構造のため、判定を`前へ進める`から`rebase後へ延期`へ訂正。spec/ADR草案を取り下げ（履歴`59aa164a62`に残存）。
 - 2026-10-04: Revision 1 — 初版。対象commit `8508c14182`で調査・実証（fork側path:line実測、E1〜E3）。判定「前へ進める」（後にRevision 2で訂正）。
