@@ -1,9 +1,11 @@
 # Implementation Plan: Organizer runのUI状態公開のmain thread収束
 
 > Issue: #418
-> Spec: [spec.md](./spec.md)（Revision 3）
+> Spec: [spec.md](./spec.md)（Revision 4。spec 375へのAmendmentを含む）
 > Status: draft
-> Risk tier: L（spec冒頭の判定を参照）
+> Risk tier: L（path基準）。ただしspec 375「gate下のUI待機禁止」への例外契約のAmendmentを
+> 同PRでowner reviewに付すため、手続きは階層H相当（spec/plan review・独立監査・
+> Owner merge判断）を踏む（spec冒頭の判定を参照）。
 
 ## Current evidence
 
@@ -24,10 +26,15 @@
   （`:2231-2251`）。anchorの `complete`（`ManualOrganizationRun.kt:876-894`）は
   run lock + exchange mutation gate保持下でoperation生成と初回公開
   （`:890-891`）を行う。spec 375 SR-AC-08は「gate内でのoperation生成・
-  `State.Capturing`発行までの完結」をoracle化しており、
-  lock順序契約「run lock → gate、逆は禁止」（constructor comment）と併せ、
-  この区間をmainへ移すことも公開をgate外へ遅延することも **契約違反** である
-  （round 1・2 reviewで確定）。
+  `State.Capturing`発行までの完結」をoracle化する。
+- **gate下のUI待機禁止（spec 375、4th review指摘1）**: gate保持中の
+  `withContext(uiDispatcher)` 等によるMain切替・完了待機は禁止。根拠は
+  「Main: run lock → gate待ち / IO: gate → Main待ち」の循環防止
+  （[spec 375](../375-scope-remedy-rebind/spec.md) 該当節、
+  [plan](../375-scope-remedy-rebind/plan.md) のdeadlock解析参照）。
+  Revision 3の同期Main hopはこのletterに該当するため（round 3 指摘）、
+  本revisionで **狭い例外をspec 375へAmend** する（hop taskのlock-free性により
+  同循環が構成的に成立しないことを根拠とする）。
 - Main起点のmachine実行: `UsageAccessJitRequest.kt:378, :382, :412, :425` の
   `LaunchedEffect` / dialog callbackから `run.continueAfterUsageAccessGate()` が
   直接呼ばれ、今日は `runComposedPhase` → `emit` → `JournalStore.append`（fsync）が
@@ -54,7 +61,7 @@
 
 ## Design
 
-### 基本原則（Revision 3）
+### 基本原則（Revision 4）
 
 1. **run state machineはpublication thread（main）上では実行しない。**
    main起点のUI呼出しは既存 `execute` と同一のworker dispatchに統一し、
@@ -64,8 +71,13 @@
    取らない短いblock-join hop（`publicationThread.run { bus.write(...) }`）で実行する。
    呼出し元の区間はworker上でrun lockを保持し続けるため、区間の原子性・公開時点は
    現行と同一である（spec 375のgate内完結・RD-7の単一区間は構造ごと保持）。
-3. **journal・既存契約は触らない。** emitは区間内のworker上で同期のまま
+3. **journal・診断契約は触らない。** emitは区間内のworker上で同期のまま
    （durability barrierの変更なし。非同期flusherは廃止）。
+4. **spec 375「gate下のUI待機禁止」への例外をAmendする。** 同期publication hopの
+   みを許す条件固定の例外（hop taskはstate bus書込みのみ・lock等を取得しない・
+   machine入口のmain fail-fast・gate取得経路の非main実行）を
+   `specs/375-scope-remedy-rebind/spec.md` へ契約化し、SR-AC-08のdeadlock oracleへ
+   例外の不変条件を追加する（round 3 reviewの修正案どおり）。
 
 ### Modules and interfaces
 
@@ -110,14 +122,18 @@
 
 ### Deadlock監査規則（実装とreviewの両方が確認）
 
-1. hop taskはrun lock / exchange mutation gate / usage access gate / journalを
-   **一切取らない** lock-freeなStateFlow書込みに限定する。
-2. machineはpublication thread上で実行されない（guard）。
+1. hop taskはrun lock / exchange mutation gate / usage access gate / journal /
+   durable storeを **一切取らない** lock-freeなStateFlow書込みに限定する
+   （spec 375 Amendment例外条件(i)）。
+2. machineはpublication thread上で実行されない（guard、例外条件(ii)）。
    よってmainがrun lockを待つことは構成的に生じない。
 3. workerがrun lock（±gate）を保持したままhopの完了を待つ関係は、
    mainが待つ対象を持たないことで常に解消される（循環なし）。
+   これはspec 375が禁止する「Main: run lock → gate待ち / IO: gate → Main待ち」
+   循環が成立しないことの構成的根拠であり、Amendment例外の根拠でもある。
 4. mainがexchange mutation gateを取る経路を設けない
-   （既存のgate取得はholder coroutineのIO scope上。実装時にgrepで監査）。
+   （既存のgate取得はholder coroutineのIO scope上。実装時にgrepで監査。
+   Amendment例外条件(ii)の後半）。
 5. JVM testではDirect doubleがhopをno-opにするため、既存の同一thread実行が維持される。
 
 ### Data flow
@@ -128,6 +144,9 @@ machine実行（worker、run lock保持）→ state書込みのみmain上へbloc
 
 ### Alternatives rejected
 
+- **spec 375を不変としたままのanchor経路residual化（caller thread残置）**:
+  callerが `scope.launch(Dispatchers.IO)` でありmain-only証明ができない
+  （round 1 指摘2）。owner decisionなしにresidual化することもreview契約上不可。不採用。
 - **Revision 2の初回公開遅延（gate release後の再検証付き公開）**:
   spec 375 SR-AC-08の線形化点を変えるため不採用（round 2 指摘1）。
 - **Revision 2の非同期flusher（Main起点のjournal引渡し）**:
@@ -139,9 +158,6 @@ machine実行（worker、run lock保持）→ state書込みのみmain上へbloc
   main上でfsyncが発生する。machine非main原則と矛盾。不採用。
 - **Handler.post（非同期・joinなし）**: state machineが直後に自stateを読むため
   可視性/順序の論理raceを生む。不採用。
-- **anchor区間のcaller thread残置（residual化）**: callerが
-  `scope.launch(Dispatchers.IO)` でありmain-only証明ができない（round 1 指摘2）。
-  Revision 3ではlock-free hopによりanchor区間を含めて収束するため不採用。
 - **何もしない（観測継続）**: T2の静的経路がproduction codeに存在する以上、
   #418の終了条件（安定化）に進めない。不採用。
 
@@ -149,16 +165,17 @@ machine実行（worker、run lock保持）→ state書込みのみmain上へbloc
 
 | Area | Intended change | Why here |
 |---|---|---|
+| `specs/375-scope-remedy-rebind/spec.md` | 「gate下のUI待機禁止」への同期publication hop例外の契約化 + SR-AC-08例外不変条件oracleの追記 + header Amendment note | round 3指摘の正本同期（Amendment本体） |
 | `lawnchair/src/app/lawnchair/organizer/ui/RunPublicationThread.kt`（新） | seam interface + production Handler実装 + guard | 収束先threadの単一点とmachine非main実行の強制 |
 | `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRunStateBus.kt`（新） | 3 holderの所有と書込みmethod、thread記録hook | AC-1の構成的検出（bypass不能化） |
-| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | seam注入、33 siteの書込みhop化、入口guard | publication本体（区間構造・emit位置は不変） |
+| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | seam注入、33 siteの書込みhop化、入口guard、`StartAdmissionAnchor`契約commentの同期 | publication本体（区間構造・emit位置は不変） |
 | `lawnchair/src/app/lawnchair/organizer/ui/UsageAccessJitRequest.kt` | main起点の `continueAfterUsageAccessGate` 3箇所をworker dispatchへ統一 | machine非main実行（現状main上でfsyncする経路の除去） |
 | `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunTestSupport.kt` | `DirectRunPublicationThread`既定注入 | 既存JVM testの動作維持 |
-| `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunPublicationConfinementTest.kt`（新） | AC-1（全書込みthread検証）とAC-3(a)(b)のoracle | 決定的検証（最低層） |
-| `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunAdmissionPublicationTest.kt`（新） | AC-3(c): anchor gate内完結・`AdmissionRefused`無公開・cancel競合順序oracle | spec 375/369契約の回帰 |
+| `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunPublicationConfinementTest.kt`（新） | AC-1（全書込みthread検証）とAC-3(a)(b)(d)のoracle | 決定的検証（最低層） |
+| `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunAdmissionPublicationTest.kt`（新） | AC-3(c)(d): anchor gate内完結・`AdmissionRefused`無公開・cancel競合順序・hop例外不変条件oracle | spec 375 Amendmentの検証 |
 | `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunTest.kt` | seam注入への追従（必要最小限） | compile/動作維持 |
 | `docs/engineering/ci-test-portfolio.md` | T2 = 本変更対象 / T1・T3 = category 6未解決 の分類同期 | AC-5 |
-| instrumentation tests / spec 375 / spec 369 / organizer-diagnostics.md | 変更なし | 既存契約の不変を明示 |
+| instrumentation tests / spec 369 / organizer-diagnostics.md | 変更なし | 既存契約の不変を明示 |
 
 ## Migration and recovery
 
@@ -188,9 +205,11 @@ machine実行（worker、run lock保持）→ state書込みのみmain上へbloc
 ## Documentation updates
 
 - [ ] spec status/history（acceptance・実装完了時）
+- [x] spec 375 Amendment（「gate下のUI待機禁止」例外契約 + SR-AC-08不変条件oracle。
+  本planのChange setどおり同PRで実施済み）
 - [ ] CONTEXT.md — 不要（domain language変更なし）
 - [ ] DESIGN.md — 不要（module構造・interfaceの外見は不変）
-- [ ] ADR — 不要（ADR 3条件を満たす判断なし。採用判断は先行seam + 公式文書の採否記録で足りる）
+- [ ] ADR — 不要（ADR 3条件を満たす判断なし。契約変更はspec 375のAmendmentとして正本側で行う）
 - [ ] AGENTS.md — 不要（新必須commandなし）
 - [x] ci-test-portfolio.md — 失敗分類表の同期（AC-5）
 

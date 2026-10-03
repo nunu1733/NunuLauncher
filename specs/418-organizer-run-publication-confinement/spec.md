@@ -7,28 +7,31 @@ updated: 2026-10-03
 
 # Organizer runのUI状態公開がmain threadに収束する
 
-> Revision 3: 2026-10-03 — Phase1 review round 2
-> （[Issue #418 comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963610854)）
-> の指摘1・2への再設計。Revision 2の「gate release後への初回公開遅延」（spec 375線形化点の
-> 変更）と「Main起点の非同期flusher」（durability barrierの緩み）を **双方撤回** し、
-> 次の設計へ置換した:
-> (i) run state machineはpublication thread（main）上では実行しない
-> — main起点のUI呼出しは既存の `scope.launch(Dispatchers.IO)` patternでworkerへ
-> dispatchし、machine入口にfail-fast guardを置く。
-> (ii) UI状態の書込みのみを、run lockを取らない短いblock-join hop
-> （`publicationThread.run { bus.write(...) }`）でmainへ収束する。区間構造・
-> spec 375のgate内完結（operation生成→`State.Capturing`発行）・spec 369 RD-7の
-> 単一critical section・journalの同期append（worker上・fsync込み）は **いずれも現行のまま
-> 変更しない**。staged event機構と非同期flusherは廃止。
+> Revision 4: 2026-10-03 — Phase1 review round 3
+> （[Issue #418 comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963754655)）
+> の指摘への対応。「gate下のUI待機禁止」（spec 375）と Revision 3の同期Main hopが
+> 非両立である指摘を受け、[spec 375](../375-scope-remedy-rebind/spec.md) を
+> **本IssueのPRで明示的にAmend** する: gate保持中のUI待機禁止に、条件固定の
+> 同期publication hop例外（hop taskはstate bus書込みのみ・lock等を取得しない・
+> machine入口のmain fail-fast・gate取得経路の非main実行）を契約化し、SR-AC-08の
+> deadlock oracleへ例外の不変条件を追加する。spec 375のadmission線形化点
+> （gate内でのoperation生成→`State.Capturing`発行）・処理内容・既存oracleの網羅は不変。
+> Risk tierの判定根拠をpath基準（高リスクpath外・新規書込み経路なし）+ Amendment所有の
+> 明示へ更新。
 >
-> Revision 2: 2026-10-03 — Phase1 review round 1
-> （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963456834)）
-> 指摘1（T1/T3の因果限定）・指摘4（外部参照scan）は本revisionで解消済み。
+> Revision 3: 2026-10-03 — round 2指摘（gate release後遅延・非同期flusher）の撤回と
+> 「machine非main実行 + lock-freeな書込みhop」への統一。
 >
-> Risk tier: **L**（refactor。高リスクpath一覧に触れず、新しい書込み経路・migration・
-> recovery契約・上流model/loader bridgeも作らない。spec 375 / 369 / diagnostics正本の
-> 契約変更なし。`organizer/ui/`配下とUI呼出し経路の動作維持refactor。
-> 本増分はユーザー指定の手順により、Lの要求を超えてspec/plan review・独立監査を行う）
+> Revision 2: 2026-10-03 — round 1指摘（T1/T3の因果限定・外部参照scan）の反映。
+>
+> Risk tier: **L**。判定基準は変更pathである（[workflowの階層判定](../../docs/project/github-workflow.md)）:
+> 高リスクpath一覧（`organizer/application/`、Launcher3 provider/model、backup、deck等）に
+> 触れず、Launcher DB・recovery store・schema・upstream model/loader bridgeへの
+> 新しい書込み経路も作らない。ただし本増分は accepted spec 375 の
+> 「gate下のUI待機禁止」契約へ狭い例外をAmendする spec-level の変更を含むため、
+> 実装PRはそのAmendment（`specs/375-scope-remedy-rebind/spec.md`のdiff）を同じPRで
+> owner reviewに付し、手続きは階層H相当（spec/plan review・独立監査・Owner merge判断）を
+> 踏む。本増分はユーザー指定の手順により、Lの要求を超えてspec/plan review・独立監査を行う。
 
 ## Problem
 
@@ -99,6 +102,12 @@ composition・lifecycle処理と重なった際の断続違反（T2は実測）�
   hopの完了を待つため、区間の原子性（spec 369 RD-7のphase→state→journal単一区間、
   cancel-vs-start勝者規則）とspec 375のgate内完結
   （operation生成→`State.Capturing`発行→gate release）は **現行と同一の時点で維持される**。
+- **spec 375のAmendment**（本PRで実施）: 「gate下のUI待機禁止」へ、上記hopに限定した
+  狭い例外を契約化する（条件: hop taskはstate bus書込みのみ・lock等を取得しない、
+  machine入口のmain fail-fast guard、gate取得経路の非main実行）。
+  SR-AC-08のdeadlock oracleへは、例外の不変条件
+  （workerがrun lock + gate保持でhop完了を待つ間、Main側がlock/gate待ちへ入らず
+  publicationを完了すること、gate release時点で`State.Capturing`可視）を追加する。
 - holder群はstate busが唯一の書込み経路として所有し、bypassを構成的に不可能にする。
 - 上記を決定的に検証するred-firstなJVM oracle test。
 - 既存JVM test / instrumentation testの動作維持（同一seam注入）。
@@ -113,11 +122,13 @@ composition・lifecycle処理と重なった際の断続違反（T2は実測）�
   focus gate（#304）、ComposeTimeout（#473）、receipt test race（#443）の原因解決。
 - #418の終了条件（root cause文書化の全体、3回連続full-workflow成功）は本増分では主張しない。
   #418は本増分後もopenのまま。
-- **既存契約の変更は一切ない**: spec 375のadmission線形化点
+- **既存契約の変更範囲（明示）**: spec 375のadmission線形化点
   （gate内でのoperation生成・`State.Capturing`発行、`AdmissionRefused`無公開）、
-  spec 369 RD-7の単一critical sectionと勝者規則、
+  gate下処理の内容、spec 369 RD-7の単一critical sectionと勝者規則、
   [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) の
-  journal生存・同期追記・fail-open契約、UIの表示・操作・状態遷移、診断recordの内容。
+  journal生存・同期追記・fail-open契約、UIの表示・操作・状態遷移、診断recordの内容は
+  いずれも不変。変更するのはspec 375「gate下のUI待機禁止」の **例外契約の追加のみ**
+  （本PRでのAmendment。Scope参照）。
 - `ExchangeFlowStateHolder` の変更なし（既に `settleDispatcher` / `uiDispatcher` で
   Main-confined。repository内の先行seam）。
 
@@ -167,9 +178,18 @@ And もしmain上でmachine入口が呼ばれた場合、guardがfail-fastする
 Given rebind再開が `scope.launch(Dispatchers.IO)` からanchor付き `start()` で行われる
 When anchorのfresh検証が成立し `complete` がoperationを生成する（gate保持下・worker上）
 Then `State.Capturing` を含む初回公開はgate release前に完了する
-（書込みのみがblock-join hopでmain上へ収束する）
+（書込みのみがblock-join hopでmain上へ収束する。Mainはlock/gate待ちへ入らない）
 And anchor検証が不成立の場合（`AdmissionRefused`）はoperation生成も公開も行われない
 And 既存のcancel競合規則（cancelはrun lockで直列化）が維持される
+And gate下のUI待機禁止は、例外条件を満たすpublication hop以外については維持される
+
+### Scenario: gate下UI待機禁止の例外不変条件（spec 375 SR-AC-08 Amendment）
+
+Given workerがrun lock + exchange mutation gateを保持して同期publication hopの完了を待つ
+When hop taskがmain上で実行される
+Then Main側はrun lock・exchange gate待ちへ入らずにpublicationを完了できる
+And gate releaseの時点で `State.Capturing` が既に可視である
+And 例外条件を満たさないMain切替（hop taskからのlock/gate/journal取得）は存在しない
 
 ### Scenario: publicationとemitが同一critical sectionにある（RUN_STARTED）
 
@@ -219,7 +239,7 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
   変更前のcodeでred、変更後greenであることをPRへ記録する。
 - [ ] AC-2（既存振る舞いの維持）: 既存 `ManualOrganizationRunTest` 等、
   `app.lawnchair.organizer.*` のJVM test群が、test用publication seam注入でgreenである。
-- [ ] AC-3（machine非main実行とemit契約）: 次の3点をJVM testが決定的に検証する。
+- [ ] AC-3（machine非main実行とemit契約）: 次の4点をJVM testが決定的に検証する。
   (a) main起点経路のUI dispatch後、journal appendがpublication thread上で実行されない
   （appendはmachine実行thread＝worker上に留まる）。
   (b) publication thread上でmachine入口が呼ばれた場合、guardがfail-fastする
@@ -227,6 +247,8 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
   (c) 既存の順序契約（RUN_STARTED先行、cancel-vs-start勝者規則、
   `AdmissionRefused`無公開、gate release時点で`State.Capturing`可視）を
   競合oracleが維持する。
+  (d) spec 375 Amendmentの例外不変条件（workerがrun lock + gate保持でhop完了を待つ間、
+  Main側がlock/gate待ちへ入らずpublicationを完了する）を決定的に検証する。
 - [ ] AC-4（instrumentation回帰）: `UsageAccessJitInstrumentationTest.crossOriginExchangePresentationPausesTheRunUntilResolution`
   （生thread軸を保持する既存oracle）がCIのmanual-organization-ui laneでgreenである。
 - [ ] AC-5（文書同期）: [ci-test-portfolio.md](../../docs/engineering/ci-test-portfolio.md)
@@ -257,3 +279,8 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
   （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963610854)）
   の指摘1・2へ再設計。初回公開遅延と非同期flusherを撤回し、
   「machine非main実行 + lock-freeな書込みhop」へ統一。既存契約（375/369/diagnostics）は不変。
+- 2026-10-03: Revision 4 — Phase1 review round 3
+  （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963754655)）
+  の指摘へ対応。spec 375「gate下のUI待機禁止」への狭い例外契約とSR-AC-08 deadlock
+  oracleの不変条件追加を、本IssueのPRで明示的にAmendする方針へ確定
+  （[specs/375-scope-remedy-rebind/spec.md](../375-scope-remedy-rebind/spec.md) 参照）。
