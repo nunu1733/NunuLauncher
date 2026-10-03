@@ -37,7 +37,7 @@ Organizerの確認面（`State.Preview`）は具体的な変更一覧（spec 195
 
 `organizer/application/preview/` に純粋な図投影（`ValidatedLayoutPlan` の `sourceState` → before図、`intendedState` → after図）を追加する。UIへは `LayoutState`・`ValidatedLayoutPlan`・DB型・適用可能planを一切露出せず、表示に必要なtypedな図data（ページ順・格子寸法・各アイテムの位置/span/種別/label・dock行・予約領域・folderメンバー数）だけを渡す。新規page/folder/candidateの参照は typedなproposal-local identity（`NewPageOrdinal` / `NewFolderOrdinal` / candidate `ItemId`）で保持し、永続IDへの転用・生値の表示をしない。同名folderの混同は構造identity（参照の等価）で防ぎ、表示名の一致に依存しない。
 
-図投影はtotalである: 図と変更一覧・件数は同一の `ValidatedLayoutPlan` から同時に導かれ、「図だけが欠け、一覧だけが得られる」状態を型上作らない。投影の内部不整合は spec 194 の `MATERIALIZATION_INVALID` と同じ契約違反（fail-closed）であり、継続可能なdegrade pathではない。Compose描画層の失敗はデータ契約のdegradeではなく画面の失敗であり、本契約の対象外である。既存の `details == null`（環境的preview失敗のcount-only fallback）は図を持たず、除外UIも提供しない（現行契約の維持）。
+図投影はtotalである: 図と変更一覧・件数は同一の `ValidatedLayoutPlan` から同時に導かれ、「図だけが欠け、一覧だけが得られる」状態を型上作らない。production の `PlanPreviewDetails` は図を必ず含む（図を欠いた構築を型で許さない。図なしは `details == null` のみ）。投影の内部不整合は spec 194 の `MATERIALIZATION_INVALID` と同じ契約違反（fail-closed）であり、継続可能なdegrade pathではない。Compose描画層の失敗はデータ契約のdegradeではなく画面の失敗であり、本契約の対象外である。既存の `details == null`（環境的preview失敗のcount-only fallback）は図を持たず、除外UIも提供しない（現行契約の維持。確認面に現れる状態は「detailsなし（count-only）」と「完全なdetails（一覧+図）」の2つだけである）。
 
 ### D-2: 部品共有 — 静的描画の最小抽出のみ
 
@@ -55,9 +55,9 @@ Organizerの確認面（`State.Preview`）は具体的な変更一覧（spec 195
 
 ### D-5: 再計画 — 元の整合したinputの対象集合変更 → 純粋planner → 既存materialize/inspectPlan
 
-除外集合が変わるたび、coordinatorは**元の整合したinput**（`PendingPlan.input`）から対象集合だけを変更した派生input（snapshot revision・rules・taxonomy・catalog・signals（除外候補分を除く）・personalization・intentPreferences不変。派生は常に元inputから直接行い、逐次適用しない）を作り、純粋plannerで再計画し、既存のmaterialize/`inspectPlan` 経路で新しいpreviewを得る。capture内のitem削除・materialized actionsの間引き・intended stateだけの書き換えは行わない。folder min-size・分割・page割当・警告・件数は再導出される。
+除外集合が変わるたび、coordinatorは**元の整合したinput**（base input。初回previewのinputをrun単位でimmutableに保持し、表示中の現在planとは分離して所有する）から対象集合だけを変更した派生input（snapshot revision・rules・taxonomy・catalog・signals（除外候補分を除く）・personalization・intentPreferences不変）を作り、純粋plannerで再計画し、既存のmaterialize/`inspectPlan` 経路で新しいpreviewを得る。**派生は常にbase inputから直接行い、逐次適用しない**（派生済みinputをさらに派生しない。除外済みの追加候補やroleを現行pendingから復元しないための契約である）。除外要求の検証はbase由来の除外可能集合（baseExcludable）に対して行う。capture内のitem削除・materialized actionsの間引き・intended stateだけの書き換えは行わない。folder min-size・分割・page割当・警告・件数は再導出される。
 
-再計画の結果は既存の結果分岐に従う: 空差分（moved/newFolder/newPage/addedすべて0）は既存の `NoChanges` 扱いでrunを終了する（変更したように成功表示しない）。plannerの `Rejected` は既存の `PlanningRejected` 扱いである（派生inputは妥当な対象集合変更のみを行うため通常到達しない防御path）。
+再計画の結果は既存の結果分岐に従う: 空差分（moved/newFolder/newPage/addedすべて0）は既存の `NoChanges` 扱いでrunを終了する（変更したように成功表示しない）。plannerの `Rejected` は既存の `PlanningRejected` 扱いである（派生inputは妥当な対象集合変更のみを行うため通常到達しない防御path）。除外をすべて解除して除外集合が空に戻るとき、派生inputはbase inputと等価になり、初回提案と同一のplanへ復帰する（決定性からの帰結）。
 
 ### D-6: 確認の権威 — 世代管理と構造的なconfirm不可
 
@@ -66,7 +66,7 @@ coordinatorに再計画の世代カウンタを追加する。除外集合の変
 ### D-7: 失敗・寿命 — 零書込み、capability不変、count-onlyへの落下禁止
 
 - **stale**（再計画時の再capture revision不一致）: 既存どおり `State.Stale`（preview時のため `DETECTED_BEFORE_REVIEW`）+ `APPLY_REJECTED` event。零書込み。最新homeで提案を作り直す（除外設定は持ち越さない）。
-- **環境的失敗**（`WriterBusy` / `Concurrent` / `Unavailable` / `CAPTURE_FAILED`）: **除外を一度でも変更した提案ではcount-only確認へ落とさず**、既存の `State.PreviewUnavailable` で再試行のみを提供する（再試行は同一除外集合で再計画からやり直す）。除外変更を行っていない初回previewは、Add を含まないrunの既存fallback（`details = null` でも確認可）を無変更で維持する（Issue Scope 8）。
+- **環境的失敗**（`WriterBusy` / `Concurrent` / `Unavailable` / `CAPTURE_FAILED`）: **除外を一度でも変更した提案ではcount-only確認へ落とさず**、既存の `State.PreviewUnavailable` で再試行のみを提供する。再試行は**同一除外集合の派生input/resultに対するpreview再取得**である（既存 `retryPlanPreview` と同一seam。plannerの再実行は含まない — 同一inputに対するplannerは決定的であり、再captureとrevision照合は `inspectPlan` 自体が行うため、stale検出の保証は変わらない）。除外変更を行っていない初回previewは、Add を含まないrunの既存fallback（`details = null` でも確認可）を無変更で維持する（Issue Scope 8）。
 - **候補解決失敗**（`CandidateResolutionFailed`）: 既存のtyped stateのまま。
 - **契約違反**（`OUTCOME_NOT_PLANNED` / `MATERIALIZATION_INVALID`）: 既存どおりfail-closed。
 - **cancel / process再生成**: `PendingPlan` はprocess-localであり、除外を含む古いconfirm capabilityは復活しない。除外設定のreplay・永続的な除外設定は作らない。
@@ -162,7 +162,7 @@ And 例外の到着順序に依存しない（零書込み）。
 Given 除外を1つでも変更した提案の再計画で、preview取得が環境的に失敗した（writer busy等）,
 When 失敗が返る,
 Then 既存のPreviewUnavailable面（再試行・中断のみ）となり、count-only（details = null）での確認・確定はできない,
-And 再試行は同一除外集合で再計画からやり直す。
+And 再試行は同一除外集合の派生input/resultに対するpreview再取得である（planner再実行なし。staleは再captureで検出される）。
 
 ### Scenario: 再計画でstaleを検出すると零書込みで止まる
 
@@ -222,11 +222,11 @@ None。新規permission・外部通信・telemetryなし。図と除外表面が
 | AC-1 | before/after図がapplication-ownedの純粋投影から作られ、`State` 経由でUIが受け取るのは図表示data（と既存details）のみである。`LayoutState` / `ValidatedLayoutPlan` / DB型の非露出、ページ順・grid/span・予約領域・Dock・既存/新規folder（同名混同なし）・新規page・追加候補の識別、planned参照のtyped proposal-local identityをunit testで検証する。 |
 | AC-2 | 図・変更一覧・件数・確定対象が同一plan由来で一致する: 同一 `(input, result)` + revisionからの図投影・detailsの決定性（2回実行一致）、図と一覧の行対応（同一planのactionsから導かれること）をcontract testで検証する。図のみが欠けた状態は型上存在しない（投影total。AC-9参照）。 |
 | AC-3 | 部品共有が最小である: #449 の選択・編集・stale/Undo と spec 507 の重複確認が回帰しないこと（既存test群 + エミュレータ操作）、共有部品へ選択規則・セッションstate・icon解決が流入しないことをdiffで確認する。 |
-| AC-4 | 既存項目の除外・解除がD-4/D-5の経路で動く: 除外項目は `Preserved(NON_TARGET)` 行として元配置に現れ、保持セルが他項目の配置先にならないこと（planner占有のtest）、lock/profile/folder参照/conservationが不変であること、派生inputの決定性と、除外→解除→元の提案への復帰（同一入力から同一plan）をunit testで検証する。 |
+| AC-4 | 既存項目の除外・解除がD-4/D-5の経路で動く: 除外項目は `Preserved(NON_TARGET)` 行として元配置に現れ、保持セルが他項目の配置先にならないこと（planner占有のtest）、lock/profile/folder参照/conservationが不変であること、派生inputの決定性（常にbase inputから直接導出されること）、除外→解除→元の提案への復帰（同一入力から同一plan。除外集合を空へ戻した場合を含む）をunit testで検証する。 |
 | AC-5 | 追加候補の除外が動く: 除外候補のAdd行・生成folderメンバーからの消滅、未配置のまま（create 0件）、signal entryの同期除去、全候補除外時の妥当な再計画（additions空のscope-composed）をunit testで検証する。 |
 | AC-6 | 生成folder/pageの連動: 除外でfolder min-size未満のgroupはfolderを作らない、不要になった新規pageは消える、生成folder/page行は独立の除外対象でないことをunit testで検証する。 |
 | AC-7 | 確認の権威: 再計画中（`Replanning`）はconfirm不可、高速連続操作・結果の到着逆転で古い結果が新しいpreviewを上書きしない（世代一致test）、confirmは表示済み最新previewのplan（同一インスタンス）のみをapplyへ渡すことをcoordinator testで検証する。 |
-| AC-8 | 失敗・寿命: 除外変更後の環境的preview失敗はcount-only確認へ落とさずPreviewUnavailable（再試行は同一除外集合）、除外変更なき初回は既存fallback維持、staleは零書込みで `State.Stale`、cancel/process再生成で除外を含むcapabilityが復活しない、空差分はNoChanges扱い（成功表示なし）をcoordinator testで検証する。 |
+| AC-8 | 失敗・寿命: 除外変更後の環境的preview失敗はcount-only確認へ落とさずPreviewUnavailable（再試行は同一除外集合の派生input/resultに対するpreview再取得。planner再実行なし）、除外変更なき初回は既存fallback維持、staleは零書込みで `State.Stale`、cancel/process再生成で除外を含むcapabilityが復活しない、空差分はNoChanges扱い（成功表示なし）、retry/stale/cancelのいずれでもbase inputと現行派生inputを取り違えて古いplanがconfirm対象にならないことをcoordinator testで検証する。 |
 | AC-9 | degrade: `details == null` 面は図なし・除外UIなしの既存構成のまま（回帰test）。図のみ欠落・一覧のみの状態は存在しない（投影total性のunit test）。 |
 | AC-10 | a11y/i18n: 図itemの単一node・collection semantics・除外actionのstate・対象外理由・再計画中の無効化がTalkBackで読めて操作でき（emulator構造確認 + 実機owner確認）、200% font scaleで崩れず、追加stringsがja/en両localeで解決する。 |
 | AC-11 | ベンチマークB8: 本specの固定手順の会計（本経路6・現行10）をPR本文に記録し、fixtureでのエミュレータ実行で本経路が成立することを確認する。`editing-burden-benchmark.md` へB8を追加する。既存B1〜B7の値だけで価値を主張しない。 |
@@ -251,6 +251,7 @@ None。Issueの決定ゲート項目（項目単位の対象、readonly投影の
 ## Change history
 
 - 2026-10-03: Draft created for #508（seed-backlog order 1）。Issue本文のScope 1〜8を設計判断D-1〜D-9として確定し、NFR-014の追加課題B8を定義した。
+- 2026-10-03: Revision 2 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5969642249): accepted化前に修正が必要、高1/中3）への対応。(1) D-5へbase inputと現行派生inputの分離所有・常にbaseからの直接導出・除外集合空への復帰契約を明記し、AC-4/AC-8に復帰とbase/current取り違えのoracleを追加。(2) D-1へ「productionのPlanPreviewDetailsは図を必ず含む（図欠落を構築可能にしない）」を明記（型上保証。確認面の状態はdetailsなし/完全なdetailsの2つだけ）。(3) D-7とScenarioの再試行契約を「同一除外集合の派生input/resultに対するpreview再取得（既存retryPlanPreviewと同一seam。planner再実行なし）」へ修正（planとの整合。planner決定性とinspectPlanのstale検出により保証は等価）。
 
 ## References
 
