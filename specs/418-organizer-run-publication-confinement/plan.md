@@ -2,7 +2,7 @@
 
 > Issue: #418
 > Spec: [spec.md](./spec.md)（Revision 4。spec 375へのAmendmentを含む）
-> Status: draft
+> Status: implemented
 > Risk tier: L（path基準）。ただしspec 375「gate下のUI待機禁止」への例外契約のAmendmentを
 > 同PRでowner reviewに付すため、手続きは階層H相当（spec/plan review・独立監査・
 > Owner merge判断）を踏む（spec冒頭の判定を参照）。
@@ -204,7 +204,7 @@ machine実行（worker、run lock保持）→ state書込みのみmain上へbloc
 
 ## Documentation updates
 
-- [ ] spec status/history（acceptance・実装完了時）
+- [x] spec status/history（acceptance・実装完了時）
 - [x] spec 375 Amendment（「gate下のUI待機禁止」例外契約 + SR-AC-08不変条件oracle。
   本planのChange setどおり同PRで実施済み）
 - [ ] CONTEXT.md — 不要（domain language変更なし）
@@ -215,10 +215,10 @@ machine実行（worker、run lock保持）→ state書込みのみmain上へbloc
 
 ## Execution checklist
 
-- [ ] Current behavior: AC-1/AC-3 oracleが「seam+bus導入のみ」のheadでredであることを記録。
-- [ ] Seam + state bus + 33 siteのhop化（監査表に従う）。
-- [ ] 入口guard + UI呼出しdispatch統一（UsageAccessJitRequest 3箇所、grep監査）。
-- [ ] oracle green化、既存test群green。
-- [ ] spotlessCheck / assemble 成功。
-- [ ] hosted CI（PR run）: organizer-unit-tests、manual-organization-ui lane、final-status。
-- [ ] PR evidence（head SHA、red/green記録、CI run URL、残存risk）を記録。
+- [x] Current behavior: AC-1/AC-3 oracleが「seam+bus導入のみ」のheadでredであることを記録。
+- [x] Seam + state bus + 33 siteのhop化（監査表に従う）。
+- [x] 入口guard + UI呼出しdispatch統一（実装中にCI guardがmachine-on-main 2経路を追加捕捉し同PRで修正）（UsageAccessJitRequest 3箇所、grep監査）。
+- [x] oracle green化、既存test群green。
+- [x] spotlessCheck / assemble 成功。
+- [x] hosted CI（PR run）: organizer-unit-tests、manual-organization-ui lane、final-status。
+- [x] PR evidence（head SHA、red/green記録、CI run URL、残存risk）を記録。
