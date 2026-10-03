@@ -1009,6 +1009,15 @@
     <string name="edit_surface_a11y_reserved">reserved area</string>
     <string name="edit_surface_a11y_dock">dock</string>
     <string name="edit_surface_a11y_page">Page %1$d</string>
+    <!-- Issue #507: duplicate confirmation surface -->
+    <string name="edit_surface_duplicate_summary">Duplicate icons: %1$d groups</string>
+    <string name="edit_surface_duplicate_dialog_title">Duplicate icons</string>
+    <string name="edit_surface_duplicate_guard_last">Keep at least one icon in each duplicate group.</string>
+    <string name="edit_surface_duplicate_no_selectable">No removable icon in this group.</string>
+    <string name="edit_surface_duplicate_handled">Handled in this session</string>
+    <string name="edit_surface_duplicate_workspace_position">Page %1$d, row %2$d, column %3$d</string>
+    <string name="edit_surface_duplicate_in_folder">In folder \'%1$s\'</string>
+    <string name="edit_surface_duplicate_on_dock">On the dock</string>
     <string name="organizer_lock_state_locked">Locked</string>
     <string name="organizer_lock_state_unlocked">Unlocked</string>
     <string name="organizer_lock_state_unknown">Needs review</string>

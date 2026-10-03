@@ -36,6 +36,8 @@ import androidx.compose.ui.res.stringResource
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.homeedit.EditSurfaceApplyPlan
 import app.lawnchair.homeedit.EditSurfaceDiagram
+import app.lawnchair.homeedit.EditSurfaceDuplicateGroup
+import app.lawnchair.homeedit.EditSurfaceDuplicateGroups
 import app.lawnchair.homeedit.EditSurfacePlanBuilder
 import app.lawnchair.homeedit.EditSurfaceProjection
 import app.lawnchair.homeedit.EditSurfaceSession
@@ -58,6 +60,7 @@ import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
 import com.android.launcher3.icons.IconCache
 import com.android.launcher3.pm.UserCache
+import com.android.launcher3.util.UserIconInfo
 
 class HomeEditSurfaceActivity : ComponentActivity() {
 
@@ -96,6 +99,12 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     /** セッション開始時captureにUNKNOWNロック行があるか（確定ゲート。AC-7）。 */
     private var captureHasUnknownLock by mutableStateOf(false)
 
+    // Issue #507: 重複確認面の状態。グループはセッション計画を反映した図から
+    // 毎回再計算する（作業投影が単一の権威。Removal済みitemはグループから消える）。
+    private var duplicateGroups by mutableStateOf<List<EditSurfaceDuplicateGroup>>(emptyList())
+    private var duplicatesOpen by mutableStateOf(false)
+    private var profileLabels by mutableStateOf<Map<Long, String>>(emptyMap())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { Content() }
@@ -125,6 +134,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             icons = icons,
             reasonText = currentReasonRes?.let { stringResource(it) },
             busy = busy,
+            duplicateGroups = duplicateGroups,
+            duplicatesOpen = duplicatesOpen,
+            touchedIds = session.touchedIds,
+            profileLabels = profileLabels,
             onToggleSelection = ::toggleSelection,
             onCreateFolder = ::createFolder,
             onRemove = ::removeFromHome,
@@ -133,6 +146,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             onCancel = { finish() },
             onPickPage = ::moveToPage,
             onPickFolder = ::addToFolder,
+            onOpenDuplicates = ::openDuplicates,
+            onDismissDuplicates = { duplicatesOpen = false },
+            onToggleDuplicateMember = ::toggleDuplicateMember,
+            onRemoveFromDuplicates = ::removeFromDuplicateDialog,
         )
     }
 
@@ -152,6 +169,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             val working = EditSurfaceProjection.workingSnapshot(snapshot, EditSurfaceSession.EMPTY)
             val newDiagram = EditSurfaceProjection.diagram(layoutState, working)
             val resolved = resolveIcons(newDiagram)
+            val labels = resolveProfileLabels()
             runOnUiThread {
                 captureState = layoutState
                 captureRevision = captured.revision
@@ -160,14 +178,51 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                     it.lockState == app.lawnchair.organizer.application.public.OrganizerLockState.UNKNOWN
                 }
                 diagram = newDiagram
+                duplicateGroups = EditSurfaceDuplicateGroups.groups(newDiagram)
+                profileLabels = labels
                 icons = resolved
                 session = EditSurfaceSession.EMPTY
+                duplicatesOpen = false
                 selection.clear()
                 reasonRes = null
                 busy = false
             }
         }
     }
+
+    /**
+     * セッション計画を図へ反映した作業投影で図と重複グループを再計算する
+     * （spec 507: 図と確認面の双方がcapture + セッション計画の単一権威に従う）。
+     * 零書込みの表示更新のみ。iconはid不変のため解決済みmapをそのまま使う。
+     */
+    private fun refreshDiagram(newSession: EditSurfaceSession) {
+        val layoutState = captureState ?: return
+        val snapshot = captureSnapshot ?: return
+        val working = EditSurfaceProjection.workingSnapshot(snapshot, newSession)
+        val newDiagram = EditSurfaceProjection.diagram(layoutState, working)
+        diagram = newDiagram
+        duplicateGroups = EditSurfaceDuplicateGroups.groups(newDiagram)
+    }
+
+    /** 確認面メンバー行のprofile区別ラベル（serial → localized label。main userは出ない）。 */
+    private fun resolveProfileLabels(): Map<Long, String> = runCatching {
+        val userCache = UserCache.INSTANCE.get(this)
+        val work = getString(R.string.organizer_lock_screen_profile_work)
+        val cloned = getString(R.string.organizer_lock_screen_profile_cloned)
+        val private = getString(R.string.organizer_lock_screen_profile_private)
+        val other = getString(R.string.organizer_lock_screen_profile_other)
+        userCache.userProfiles.mapNotNull { user ->
+            if (user == Process.myUserHandle()) return@mapNotNull null
+            val serial = userCache.getSerialNumberForUser(user)
+            val label = when (userCache.getUserInfo(user).type) {
+                UserIconInfo.TYPE_WORK -> work
+                UserIconInfo.TYPE_CLONED -> cloned
+                UserIconInfo.TYPE_PRIVATE -> private
+                else -> other
+            }
+            serial to label
+        }.toMap()
+    }.getOrDefault(emptyMap())
 
     private fun toggleSelection(itemId: Int) {
         val currentDiagram = diagram ?: return
@@ -188,9 +243,9 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         }
     }
 
-    private fun runAction(action: PendingSessionAction) {
-        val snapshot = captureSnapshot ?: return
-        when (
+    private fun runAction(action: PendingSessionAction): SessionPlanResult {
+        val snapshot = captureSnapshot ?: return SessionPlanResult.Rejected(HomeEditRejection.UNSUPPORTED)
+        return when (
             val result = EditSurfaceSessionPlanner.plan(
                 snapshot,
                 sessionLockStates(),
@@ -202,11 +257,17 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             is SessionPlanResult.Applied -> {
                 session = result.session
                 // アクションを実行したアイテムは選択から外れる（spec決定済み）。
+                // 図と重複グループをセッション計画の作業投影で更新（spec 507）。
+                refreshDiagram(result.session)
                 selection.clear()
                 reasonRes = null
+                result
             }
 
-            is SessionPlanResult.Rejected -> reasonRes = rejectionText(result.reason)
+            is SessionPlanResult.Rejected -> {
+                reasonRes = rejectionText(result.reason)
+                result
+            }
         }
     }
 
@@ -262,8 +323,67 @@ class HomeEditSurfaceActivity : ComponentActivity() {
 
     private fun resetSession() {
         session = EditSurfaceSession.EMPTY
+        refreshDiagram(EditSurfaceSession.EMPTY)
         selection.clear()
         reasonRes = null
+    }
+
+    // Issue #507: 重複確認面の操作。表示・選択・guard拒否は零書込みであり、
+    // 「ホームから外す」は既存のRemoveFromHomeアクションへの共通入口
+    // （新規アクション種別なし。dispatch直前のguard含む）。
+    private fun openDuplicates() {
+        duplicatesOpen = true
+        reasonRes = null
+    }
+
+    /**
+     * 確認面からの選択toggle（既存の選択機構と同一実体。guardはtoggle時に適用）。
+     * 選択解除は常に受け付ける。選択がグループの全メンバーを含む場合は
+     * typedな理由表示で受け付けない（零書込み）。
+     */
+    private fun toggleDuplicateMember(itemId: Int) {
+        val currentDiagram = diagram ?: return
+        val item = currentDiagram.itemById[itemId] ?: return
+        when (item.eligibility) {
+            SelectionEligibility.SELECTABLE -> {
+                if (itemId in session.touchedIds) return
+                if (itemId in selection) {
+                    selection.remove(itemId)
+                    reasonRes = null
+                    return
+                }
+                val guard = EditSurfaceDuplicateGroups.fullySelectedGroup(duplicateGroups, selection + itemId)
+                if (guard != null) {
+                    reasonRes = R.string.edit_surface_duplicate_guard_last
+                    return
+                }
+                selection.add(itemId)
+                reasonRes = null
+            }
+
+            SelectionEligibility.LOCKED -> reasonRes = R.string.homeedit_lock_note_locked
+
+            SelectionEligibility.LOCK_UNKNOWN -> reasonRes = R.string.edit_surface_error_lock_unknown
+
+            SelectionEligibility.UNSUPPORTED -> Unit
+        }
+    }
+
+    /**
+     * 確認面内の「ホームから外す」。既存RemoveFromHomeへ流す直前にguardを
+     * 再適用する（図上での事前全選択経由の迂回を塞ぐ。spec 507 AC-4）。
+     * 成功時は面を閉じて確定に進め、拒否時は零書込みで理由表示・面保持。
+     */
+    private fun removeFromDuplicateDialog() {
+        val guard = EditSurfaceDuplicateGroups.fullySelectedGroup(duplicateGroups, selection.toList())
+        if (guard != null) {
+            reasonRes = R.string.edit_surface_duplicate_guard_last
+            return
+        }
+        when (runAction(PendingSessionAction.RemoveFromHome)) {
+            is SessionPlanResult.Applied -> duplicatesOpen = false
+            else -> Unit
+        }
     }
 
     // Internal so the instrumentation oracle can drive the real #449 confirm

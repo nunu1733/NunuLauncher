@@ -21,14 +21,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -56,11 +60,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.lawnchair.homeedit.EditSurfaceDiagram
+import app.lawnchair.homeedit.EditSurfaceDuplicateGroup
+import app.lawnchair.homeedit.EditSurfaceDuplicateGroups
 import app.lawnchair.homeedit.EditSurfaceItem
 import app.lawnchair.homeedit.EditSurfaceSessionPlanner
 import app.lawnchair.homeedit.HomeEditContainers
 import app.lawnchair.homeedit.HomeEditItemTypes
 import app.lawnchair.homeedit.SelectionEligibility
+import app.lawnchair.homeedit.isEditSurfaceNewFolderKey
 import com.android.launcher3.R
 
 /** ダイアログの種別（ページ移動/フォルダ追加の選択dialog。spec決定済み）。 */
@@ -81,6 +88,10 @@ fun EditSurfaceScreen(
     icons: Map<Int, ImageBitmap?>,
     reasonText: String?,
     busy: Boolean,
+    duplicateGroups: List<EditSurfaceDuplicateGroup>,
+    duplicatesOpen: Boolean,
+    touchedIds: Set<Int>,
+    profileLabels: Map<Long, String>,
     onToggleSelection: (Int) -> Unit,
     onCreateFolder: () -> Unit,
     onRemove: () -> Unit,
@@ -89,6 +100,10 @@ fun EditSurfaceScreen(
     onCancel: () -> Unit,
     onPickPage: (Int) -> Unit,
     onPickFolder: (Int) -> Unit,
+    onOpenDuplicates: () -> Unit,
+    onDismissDuplicates: () -> Unit,
+    onToggleDuplicateMember: (Int) -> Unit,
+    onRemoveFromDuplicates: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var dialog by remember { mutableStateOf<EditSurfaceDialog?>(null) }
@@ -122,6 +137,15 @@ fun EditSurfaceScreen(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
+        if (duplicateGroups.isNotEmpty()) {
+            TextButton(
+                onClick = onOpenDuplicates,
+                enabled = !busy,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            ) {
+                Text(stringResource(R.string.edit_surface_duplicate_summary, duplicateGroups.size))
+            }
+        }
         reasonText?.let {
             Text(
                 text = it,
@@ -179,7 +203,228 @@ fun EditSurfaceScreen(
 
         null -> Unit
     }
+    if (duplicatesOpen) {
+        DuplicatePickerDialog(
+            diagram = diagram,
+            groups = duplicateGroups,
+            selection = selection,
+            touchedIds = touchedIds,
+            profileLabels = profileLabels,
+            reasonText = reasonText,
+            busy = busy,
+            onDismiss = onDismissDuplicates,
+            onToggleMember = onToggleDuplicateMember,
+            onRemove = onRemoveFromDuplicates,
+        )
+    }
 }
+
+/**
+ * 重複確認面（spec 507）。各グループの各メンバー行に名前・位置・所属フォルダ・
+ * profile区別・選択状態・選択不可の理由を出す。メンバー行のtapは既存の選択toggle
+ * （guardはActivity側の純粋関数経由）へ流し、面内の「ホームから外す」は既存の
+ * RemoveFromHomeアクションの共通入口（dispatch直前のguardもActivity側）。
+ */
+@Composable
+private fun DuplicatePickerDialog(
+    diagram: EditSurfaceDiagram,
+    groups: List<EditSurfaceDuplicateGroup>,
+    selection: List<Int>,
+    touchedIds: Set<Int>,
+    profileLabels: Map<Long, String>,
+    reasonText: String?,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onToggleMember: (Int) -> Unit,
+    onRemove: () -> Unit,
+) {
+    val defaultLabelText = stringResource(R.string.homeedit_folder_default_label)
+    val selectedText = stringResource(R.string.edit_surface_a11y_selected)
+    val lockedText = stringResource(R.string.organizer_lock_state_locked)
+    val lockUnknownText = stringResource(R.string.organizer_lock_state_unknown)
+    val handledText = stringResource(R.string.edit_surface_duplicate_handled)
+    val noSelectableText = stringResource(R.string.edit_surface_duplicate_no_selectable)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.edit_surface_duplicate_dialog_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                reasonText?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+                groups.forEach { group ->
+                    val groupLabel = group.members.first().label ?: defaultLabelText
+                    Text(
+                        text = groupLabel,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    if (group.selectableMembers.isEmpty()) {
+                        Text(
+                            text = noSelectableText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    group.members.forEach { member ->
+                        DuplicateMemberRow(
+                            diagram = diagram,
+                            member = member,
+                            selected = member.id in selection,
+                            selectable = EditSurfaceDuplicateGroups.rowSelectable(member, touchedIds),
+                            handled = member.id in touchedIds,
+                            profileLabel = profileLabels[member.userSerial],
+                            lockedText = lockedText,
+                            lockUnknownText = lockUnknownText,
+                            handledText = handledText,
+                            defaultLabelText = defaultLabelText,
+                            selectedText = selectedText,
+                            onToggleMember = onToggleMember,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onRemove, enabled = selection.isNotEmpty() && !busy) {
+                Text(stringResource(R.string.edit_surface_action_remove))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.edit_surface_cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun DuplicateMemberRow(
+    diagram: EditSurfaceDiagram,
+    member: EditSurfaceItem,
+    selected: Boolean,
+    selectable: Boolean,
+    handled: Boolean,
+    profileLabel: String?,
+    lockedText: String,
+    lockUnknownText: String,
+    handledText: String,
+    defaultLabelText: String,
+    selectedText: String,
+    onToggleMember: (Int) -> Unit,
+) {
+    val position = duplicateMemberPositionText(diagram, member, defaultLabelText)
+    val reason = when {
+        member.eligibility == SelectionEligibility.LOCKED -> lockedText
+        member.eligibility == SelectionEligibility.LOCK_UNKNOWN -> lockUnknownText
+        handled -> handledText
+        else -> null
+    }
+    val description = editSurfaceDuplicateRowDescription(
+        label = member.label ?: defaultLabelText,
+        position = position,
+        profile = profileLabel,
+        reason = reason,
+        selected = selected,
+        selectedText = selectedText,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (selectable) {
+                    Modifier.clickable { onToggleMember(member.id) }
+                } else {
+                    Modifier
+                },
+            )
+            .padding(vertical = 2.dp)
+            .semantics { contentDescription = description },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (selectable) {
+            Checkbox(checked = selected, onCheckedChange = null)
+        } else {
+            Spacer(modifier = Modifier.width(36.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = member.label ?: defaultLabelText,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (position.isNotBlank()) {
+                Text(
+                    text = position,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            profileLabel?.let {
+                Text(text = it, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+/**
+ * メンバー行の位置表示（ページ/行/列、所属フォルダ、Dock）。純投影
+ * （[EditSurfaceDuplicateGroups]）の並びと同じ視覚順の根拠に基づく表示のみ。
+ */
+@Composable
+private fun duplicateMemberPositionText(
+    diagram: EditSurfaceDiagram,
+    member: EditSurfaceItem,
+    defaultFolderLabel: String,
+): String = when {
+    member.container == HomeEditContainers.DESKTOP -> {
+        val pageIndex = diagram.pages.indexOf(member.screenId)
+        stringResource(
+            R.string.edit_surface_duplicate_workspace_position,
+            pageIndex + 1,
+            member.cellY,
+            member.cellX,
+        )
+    }
+
+    member.container > 0 || isEditSurfaceNewFolderKey(member.container) -> {
+        val folderLabel = diagram.itemById[member.container]?.label ?: defaultFolderLabel
+        stringResource(R.string.edit_surface_duplicate_in_folder, folderLabel)
+    }
+
+    member.container == HomeEditContainers.HOTSEAT ->
+        stringResource(R.string.edit_surface_duplicate_on_dock)
+
+    // 未知のcontainerコード（上流のUnsupportedContainer等）。行はラベルのみで示す。
+    else -> ""
+}
+
+/**
+ * 確認面メンバー行のTalkBack読み上げ文言の純構築（AC-8のsemantics供給のoracle対象）。
+ * 名前・位置・profile区別・選択不可の理由・選択状態を1つの純関数が決定する
+ * （editSurfaceItemDescriptionと同じ単一権威の構成）。
+ */
+internal fun editSurfaceDuplicateRowDescription(
+    label: String,
+    position: String?,
+    profile: String?,
+    reason: String?,
+    selected: Boolean,
+    selectedText: String,
+): String = listOfNotNull(
+    label,
+    position?.takeIf { it.isNotBlank() },
+    profile?.takeIf { it.isNotBlank() },
+    reason?.takeIf { it.isNotBlank() },
+    selectedText.takeIf { selected },
+).joinToString(", ")
 
 @Composable
 private fun ActionBar(

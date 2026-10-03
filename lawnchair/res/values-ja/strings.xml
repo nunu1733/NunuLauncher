@@ -140,6 +140,15 @@
     <string name="edit_surface_a11y_reserved">予約領域</string>
     <string name="edit_surface_a11y_dock">ドック</string>
     <string name="edit_surface_a11y_page">ページ %1$d</string>
+    <!-- Issue #507: duplicate confirmation surface -->
+    <string name="edit_surface_duplicate_summary">重複アイコン: %1$d組</string>
+    <string name="edit_surface_duplicate_dialog_title">重複アイコン</string>
+    <string name="edit_surface_duplicate_guard_last">各重複グループで少なくとも1個は残してください</string>
+    <string name="edit_surface_duplicate_no_selectable">このグループには外せるアイコンがありません</string>
+    <string name="edit_surface_duplicate_handled">このセッションで処理済み</string>
+    <string name="edit_surface_duplicate_workspace_position">ページ%1$d・行%2$d、列%3$d</string>
+    <string name="edit_surface_duplicate_in_folder">フォルダ「%1$s」内</string>
+    <string name="edit_surface_duplicate_on_dock">Dock上</string>
     <string name="organizer_lock_state_locked">ロック中</string>
     <string name="organizer_lock_state_unlocked">ロック解除済み</string>
     <string name="organizer_lock_state_unknown">要確認</string>
