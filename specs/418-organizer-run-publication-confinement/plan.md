@@ -1,7 +1,7 @@
 # Implementation Plan: Organizer runのUI状態公開のmain thread収束
 
 > Issue: #418
-> Spec: [spec.md](./spec.md)（Revision 2）
+> Spec: [spec.md](./spec.md)（Revision 3）
 > Status: draft
 > Risk tier: L（spec冒頭の判定を参照）
 
@@ -17,23 +17,25 @@
   :1194, :1201, :1245, :1330`）。
 - `ManualOrganizationRun.kt` — `stateHolder` / `preparationPhaseHolder` /
   `operationActiveHolder`（`:744, :755, :763`）へのwriteはcaller thread上
-  （33 site、`:823`〜`:2431`）。大半が `synchronized(lock)` 区間内。
+  （33 site、`:823`〜`:2431`）。大半が `synchronized(lock)` 区間内
+  （例: admission `:870-905`、RD-7区間 `:1699-1722`、terminal `:2405-2431`）。
 - admission anchor経路: `ExchangeFlowUi.kt` の `continuePendingImport` が
-  `scope.launch(Dispatchers.IO)`（`:2140`付近）からanchor付き `run.start(...)` を呼び
-  （`:2231-2251`）、exchange mutation gate保持下のworker上で初回UI状態を公開する。
-  lock順序契約は「run lock → gate、逆は禁止」（`ManualOrganizationRun.kt` constructor
-  comment `:305`付近）。**このためanchor区間をmainへhopすると
-  「mainがgateを保持→run lock取得」の逆順となり、workerの「run lock保持→gate待ち」と
-  deadlockする。hop不可能な区間である。**
-- Main起点のJIT resume: `UsageAccessJitRequest.kt:378, :382, :412` の `LaunchedEffect`
-  から `run.continueAfterUsageAccessGate()` が直接呼ばれ、今日はその中で
-  `runComposedPhase` → `emit` → `JournalStore.append`（fsync）が **main上で実行される**。
+  `scope.launch(Dispatchers.IO)` からanchor付き `run.start(...)` を呼ぶ
+  （`:2231-2251`）。anchorの `complete`（`ManualOrganizationRun.kt:876-894`）は
+  run lock + exchange mutation gate保持下でoperation生成と初回公開
+  （`:890-891`）を行う。spec 375 SR-AC-08は「gate内でのoperation生成・
+  `State.Capturing`発行までの完結」をoracle化しており、
+  lock順序契約「run lock → gate、逆は禁止」（constructor comment）と併せ、
+  この区間をmainへ移すことも公開をgate外へ遅延することも **契約違反** である
+  （round 1・2 reviewで確定）。
+- Main起点のmachine実行: `UsageAccessJitRequest.kt:378, :382, :412, :425` の
+  `LaunchedEffect` / dialog callbackから `run.continueAfterUsageAccessGate()` が
+  直接呼ばれ、今日は `runComposedPhase` → `emit` → `JournalStore.append`（fsync）が
+  **main上で実行される**。
 - journal: `JournalStore.append`（`diagnostics/journal/JournalStore.kt:128-164`）は
-  file open + write + **`fd.sync()`（fsync）を毎appendで実行**し、`@Synchronized`。
+  file open + write + `fd.sync()`を毎appendで実行し、`@Synchronized`。
   正本契約はprocess death生存・同期追記
   （[organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §11/§13）。
-- RD-7契約（`ManualOrganizationRun.kt:1699-1722`のcomment）:
-  phase→state→journal openを単一critical sectionで行い、cancel-vs-startの勝者規則を担保。
 
 ### 観測済みfailureと因果の限界
 
@@ -42,7 +44,7 @@
 - T1（SnapshotStateObserver）は [静的監査](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5798752755)
   によりfailure後のrun操作が説明要因から除外されており、原因未確定。
 - T3（CalledFromWrongThread）はrun面を経由しないhub画面の記録で、別signature。
-- T1/T3を本変更の解決対象に含めない（spec Revision 2 指摘1）。
+- T1/T3を本変更の解決対象に含めない（round 1 指摘1）。
 
 ### 先行seamと外部根拠
 
@@ -52,89 +54,94 @@
 
 ## Design
 
+### 基本原則（Revision 3）
+
+1. **run state machineはpublication thread（main）上では実行しない。**
+   main起点のUI呼出しは既存 `execute` と同一のworker dispatchに統一し、
+   machine入口にfail-fast guardを置く。これにより **mainはrun lockを取らない**
+   （run lockの取得者はmachine実行のみであるため、構成的に成立する）。
+2. **UI状態の書込みのみをmainへ収束する。** 書込みはrun lock・gate・journalを
+   取らない短いblock-join hop（`publicationThread.run { bus.write(...) }`）で実行する。
+   呼出し元の区間はworker上でrun lockを保持し続けるため、区間の原子性・公開時点は
+   現行と同一である（spec 375のgate内完結・RD-7の単一区間は構造ごと保持）。
+3. **journal・既存契約は触らない。** emitは区間内のworker上で同期のまま
+   （durability barrierの変更なし。非同期flusherは廃止）。
+
 ### Modules and interfaces
 
 - **新seam `RunPublicationThread`**（`lawnchair/src/app/lawnchair/organizer/ui/`に新file）:
   ```kotlin
   interface RunPublicationThread {
       val isCurrent: Boolean
-      fun <T> run(block: () -> T): T   // publication thread上で実行してcallerを再開
+      fun <T> run(block: () -> T): T            // publication thread上で実行してcallerを再開
+      fun assertNotPublicationThread() {}        // machine入口guard。productionはmainでthrow
   }
   ```
   - production: `HandlerRunPublicationThread`（`Handler(Looper.getMainLooper())`）。FIFO順。
-  - test double: `DirectRunPublicationThread`（同一thread、既存JVM testの既定動作維持）、
-    oracle用recording double。
+    `assertNotPublicationThread()` はmain threadで `IllegalStateException` を投げる。
+  - test double: `DirectRunPublicationThread`（同一thread、guard no-op。
+    既存JVM testの既定動作維持）、oracle用recording / dedicated-thread double。
 - **内部state bus `ManualOrganizationRunStateBus`**（同file群）:
-  3つのholder（state / preparationPhase / operationActive）を **privateに所有** し、
-  書込みmethod（`publishState` 等）のみを公開。各書込みで
-  `writeThreadTracker: ((String, Thread) -> Unit)?`（test注入、既定null）を呼ぶ。
+  3つのholderを **privateに所有** し、書込みmethod（`publishState` 等）のみを公開。
+  各書込みで `writeThreadTracker: ((String, Thread) -> Unit)?`（test注入、既定null）を呼ぶ。
   run本体はholderへ直接触れられないため、bypassは構成的に不可能（AC-1の検出主体）。
-- **staged event機構と単一flush owner**（`ManualOrganizationRun`内）:
-  - `lock`でguardされた `stagedEvents: ArrayDeque<RunEvent>`。hopped区間内の
-    `emit(...)` を `stageEvent(...)` へ置換。
-  - **drain mutex（`flushLock`）が dequeue→append のloop全体を所有**する。
-    非publication threadからのdrainは `flushLock` 下で同期的に実行（既存のdurability）。
-    publication threadからのdrainは、単一threadの `journalFlusher: Executor`
-    （production: daemon単一thread、test: 呼出しthread直列double）へtaskを引き渡して
-    即returnし、mainを塞がない。flusherのtaskも `flushLock` を通るため、
-    並行drainでもdequeue順 = append順が保存される（指摘3(b)の解消）。
-  - 区間外の直接emit（`emitInputNotReady` / `emitStaleRejection`）は
-    drain呼出しを前置してから既存どおり同期emitする（worker上）。
-- **admission anchor経路の初回公開分離**（指摘2の解消）:
-  - gate保持下の `complete`: operation生成・`activeOperation` 等のbookkeepingのみ行い、
-    初回公開は `pendingFirstPublication` としてoperationに記録する。
-  - anchor戻り後（gate release済み・`start` のlock区間抜け後）、
-    `publicationThread.run { synchronized(lock) { if (isActiveLocked(op)) busへ初回公開 } }`
-    を実行する。lock順序契約（run lock → gate）を崩さない。
-  - `AdmissionRefused` では `pendingFirstPublication` が立たないため無公開のまま
-    （spec 375契約維持）。初回公開の再検証前にcancelが勝った場合は公開をskipする。
-  - plain `start()`（anchor無し）はlock区間ごとhopするため今日と同一の公開時点を保つ。
+- **`ManualOrganizationRun`**: constructorへ `publicationThread: RunPublicationThread`
+  を追加。33 siteのholder書込みを `publishXxx(...)` helper（bus経由のhop）へ置換。
+  公開method入口に `publicationThread.assertNotPublicationThread()` を置く
+  （start / cancel / dismiss / confirmSelection / planWithConfirmedScope /
+  reopenSelection / continueAfterUsageAccessGate / attachIntent / claimGenerationEpoch /
+  commitGeneratedSession / cleanupBoundExport / discardScopeBoundRequest /
+  savePendingImportForLiveOwner / recovery一式）。
+- **UI呼出しのdispatch統一（machine非main実行）**:
+  - `UsageAccessJitRequest.kt` — waiter wakeup（`:375-388`）、
+    `grantCheckTick` effect（`:407-413`）、dialog `onContinue`（`:425`）の
+    `run.continueAfterUsageAccessGate()` を `scope.launch(Dispatchers.IO) { ... }` へ
+    統一（`markPresented` 等のgate単独呼出しは対象外）。
+  - 実装時に `ManualOrganizationRun` の公開methodをUI/main呼出し経路で
+    grepし、直接呼出しが残っていないことを監査する（checklist）。
 
 ### Section書換規則（実装時の監査表）
 
-`ManualOrganizationRun` の全publication site（33 site）を次に分類し、(a)/(b)/(d)のみ書換:
+`ManualOrganizationRun` の全publication site（33 site）を次に分類し、全てを(a)として書換:
 
-- (a) UI状態writeを含む `synchronized(lock)` 区間 →
-  `publicationThread.run { synchronized(lock) { ... } }` で包む。区間内のemitは
-  stageへ置換し、区間return後にdrainする。
-- (b) lock区間に属さない単発write → 同様に最小区間で包む。
-- (c) **書換しない残存**: なし（Revision 2で解消。anchor経路は初回公開分離により収束対象に含む）。
-- (d) anchor経路の初回公開 → 上記の分離設計（gate release後の再検証付きhopped区間）。
+- (a) `holder.value = X` → `publicationThread.run { bus.publishXxx(X) }`
+  （hop taskはlock-free。呼出し元区間のlock保持・区間構造・emit位置は不変）。
+- 分離・遅延・flusherの新設はしない（Revision 2で撤回済み）。
 
 ### Deadlock監査規則（実装とreviewの両方が確認）
 
-1. hopはlock取得の **前** に行う（lockを保持したままpublication threadを待たない）。
-   ただしpublication thread上の区間がlockを取ることは許容する（inline除く）。
-2. publication thread（main）自身はhopされない（`isCurrent`でinline）。
-3. journal append（fsync）はpublication thread上で行わない
-   （staging + flush owner。Main起点はflusherへの非同期引渡し）。
-4. **exchange mutation gate保持下ではhopしない**（lock順序契約の逆順になるため）。
-   gate保持区間のUI公開は(d)の分離設計でのみ収束させる。
-5. drainは `flushLock` で直列化し、drain中にrun lockを保持し続けない
-   （dequeue時のみ短区間取得）。`flushLock` の取得順は常時 run lock → flushLock の順
-   （逆は発生しない）でcycleを作らない。
-6. flusher executorは単一thread（FIFO）とし、その内部でpublication threadを待たない。
+1. hop taskはrun lock / exchange mutation gate / usage access gate / journalを
+   **一切取らない** lock-freeなStateFlow書込みに限定する。
+2. machineはpublication thread上で実行されない（guard）。
+   よってmainがrun lockを待つことは構成的に生じない。
+3. workerがrun lock（±gate）を保持したままhopの完了を待つ関係は、
+   mainが待つ対象を持たないことで常に解消される（循環なし）。
+4. mainがexchange mutation gateを取る経路を設けない
+   （既存のgate取得はholder coroutineのIO scope上。実装時にgrepで監査）。
+5. JVM testではDirect doubleがhopをno-opにするため、既存の同一thread実行が維持される。
 
 ### Data flow
 
-既存と同一の状態遷移・診断record。変化は実行threadと初回公開の時点のみ:
-caller worker → (hop) → main上の区間実行（state bus経由のwrite + event staging）→
-worker再開 → flush（worker直列 または Main起点はflusher引渡し）→ 操作完了。
+既存と同一の状態遷移・診断record。変化はUI状態書込みの実行threadのみ:
+machine実行（worker、run lock保持）→ state書込みのみmain上へblock-join →
+完了後workerへ復帰 → journal append（同一worker上、同期・fsync込み）→ 操作完了。
 
 ### Alternatives rejected
 
+- **Revision 2の初回公開遅延（gate release後の再検証付き公開）**:
+  spec 375 SR-AC-08の線形化点を変えるため不採用（round 2 指摘1）。
+- **Revision 2の非同期flusher（Main起点のjournal引渡し）**:
+  同期durability契約（crash直前eventからのphase特定）を緩めるため不採用
+  （round 2 指摘2）。flushLock・staged queueも一緒に廃止。
 - **公開method群のsuspend化 + 入口でのMain hop**: 重いdomain呼び出しがmain上に移り、
   さらに内部でIO hopが必要。約20 method・全callerのsignature変更でblast radiusが過大。
-- **非同期journal writer（バッファ + 常駐threadへの全委譲）**: journal生存
-  （process deathで失われない）・同期追記の正本契約に反する。flusherは
-  publication thread起点の引渡しに限定し、worker起点は同期drainを維持。
+- **区間ごとのmain実行（Revision 1のsection hop）**: emitが区間に同在するため
+  main上でfsyncが発生する。machine非main原則と矛盾。不採用。
 - **Handler.post（非同期・joinなし）**: state machineが直後に自stateを読むため
   可視性/順序の論理raceを生む。不採用。
-- **lock保持下でのhop / gate保持下でのhop**: それぞれmain待ちの循環、
-  lock順序逆転による循環が成立する。規則1/4で排除。
-- **anchor区間もhopする（含めない残存とする）案**: callerが
-  `scope.launch(Dispatchers.IO)` でありmain-only証明ができない（指摘2）ため、
-  Phase1 reviewの判定に従い分離設計で収束する。不採用。
+- **anchor区間のcaller thread残置（residual化）**: callerが
+  `scope.launch(Dispatchers.IO)` でありmain-only証明ができない（round 1 指摘2）。
+  Revision 3ではlock-free hopによりanchor区間を含めて収束するため不採用。
 - **何もしない（観測継続）**: T2の静的経路がproduction codeに存在する以上、
   #418の終了条件（安定化）に進めない。不採用。
 
@@ -142,23 +149,22 @@ worker再開 → flush（worker直列 または Main起点はflusher引渡し）
 
 | Area | Intended change | Why here |
 |---|---|---|
-| `lawnchair/src/app/lawnchair/organizer/ui/RunPublicationThread.kt`（新） | seam interface + production Handler実装 | 収束先threadの単一点 |
+| `lawnchair/src/app/lawnchair/organizer/ui/RunPublicationThread.kt`（新） | seam interface + production Handler実装 + guard | 収束先threadの単一点とmachine非main実行の強制 |
 | `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRunStateBus.kt`（新） | 3 holderの所有と書込みmethod、thread記録hook | AC-1の構成的検出（bypass不能化） |
-| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | seam注入、(a)/(b)/(d)区間のhop化、staged event + flush owner、anchor初回公開分離、bus経由への置換 | publication本体 |
+| `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt` | seam注入、33 siteの書込みhop化、入口guard | publication本体（区間構造・emit位置は不変） |
+| `lawnchair/src/app/lawnchair/organizer/ui/UsageAccessJitRequest.kt` | main起点の `continueAfterUsageAccessGate` 3箇所をworker dispatchへ統一 | machine非main実行（現状main上でfsyncする経路の除去） |
 | `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunTestSupport.kt` | `DirectRunPublicationThread`既定注入 | 既存JVM testの動作維持 |
 | `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunPublicationConfinementTest.kt`（新） | AC-1（全書込みthread検証）とAC-3(a)(b)のoracle | 決定的検証（最低層） |
-| `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunAdmissionPublicationTest.kt`（新） | AC-3(c): anchor経路の初回公開分離・競合順序oracle | spec 375境界の検証 |
+| `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunAdmissionPublicationTest.kt`（新） | AC-3(c): anchor gate内完結・`AdmissionRefused`無公開・cancel競合順序oracle | spec 375/369契約の回帰 |
 | `tests/unit/app/lawnchair/organizer/ui/ManualOrganizationRunTest.kt` | seam注入への追従（必要最小限） | compile/動作維持 |
 | `docs/engineering/ci-test-portfolio.md` | T2 = 本変更対象 / T1・T3 = category 6未解決 の分類同期 | AC-5 |
-| instrumentation tests | 直接変更なし（AC-4は既存oracleのCI再実行） | 回帰確認 |
+| instrumentation tests / spec 375 / spec 369 / organizer-diagnostics.md | 変更なし | 既存契約の不変を明示 |
 
 ## Migration and recovery
 
 - schema / rule / store migrationなし。データ移行なし。
-- failure中のrollback: 通常のcommit revert。staged未flushイベントは既存の
-  fail-openに従い、永続stateを変えない。Main起点flusher引渡しの未実行taskは
-  process deathで失われるが、これは「append前に死亡したイベントは記録されない」
-  既存durability契約の範囲内であり、順序契約は維持される。
+- journal書込みの実行thread・時点・durabilityは現行のまま（barrier変更なし）。
+- failure中のrollback: 通常のcommit revert。永続stateへの影響なし。
 - release rollback / downgrade: 影響なし（journal形式不変）。
 - backup/restore compatibility: 影響なし。
 
@@ -166,9 +172,9 @@ worker再開 → flush（worker直列 または Main起点はflusher引渡し）
 
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
-| AC-1 | 新規oracle test（red→green、両方のlogをPR記録） | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunPublicationConfinementTest'` |
+| AC-1 | 新規oracle test（red→green、両方のlogをPR記録。redは「seam+bus導入のみでhop前」のhead、greenはhop後head） | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunPublicationConfinementTest'` |
 | AC-2 | 既存organizer JVM test全green | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'` ＋ CI `organizer-unit-tests` |
-| AC-3 | flush直列化oracle / Main起点resume oracle / admission競合oracle（red-first記録を含む） | 同上（新規2 test class） |
+| AC-3 | guard oracle / append thread oracle / 競合順序oracle（red-first記録を含む） | 同上（新規2 test class） |
 | AC-4 | CI `organizer-instrumentation-manual-organization-ui-tests` green（PR run） | hosted CI（full portfolio） |
 | AC-5 | portfolio文書diff | PR同梱 |
 
@@ -190,10 +196,9 @@ worker再開 → flush（worker直列 または Main起点はflusher引渡し）
 
 ## Execution checklist
 
-- [ ] Current behavior: AC-1/AC-3 oracleが現行codeでredであることを記録。
-- [ ] Seam導入 + state bus + 区間書換（監査表に従う）。
-- [ ] staged event + flush owner（規則3/5/6の遵守）。
-- [ ] anchor初回公開分離（規則4の遵守、spec 375契約の検証）。
+- [ ] Current behavior: AC-1/AC-3 oracleが「seam+bus導入のみ」のheadでredであることを記録。
+- [ ] Seam + state bus + 33 siteのhop化（監査表に従う）。
+- [ ] 入口guard + UI呼出しdispatch統一（UsageAccessJitRequest 3箇所、grep監査）。
 - [ ] oracle green化、既存test群green。
 - [ ] spotlessCheck / assemble 成功。
 - [ ] hosted CI（PR run）: organizer-unit-tests、manual-organization-ui lane、final-status。

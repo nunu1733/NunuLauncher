@@ -7,18 +7,27 @@ updated: 2026-10-03
 
 # Organizer runのUI状態公開がmain threadに収束する
 
-> Revision 2: 2026-10-03 — Phase1 review
-> （[Issue #418 comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963456834)）
-> の指摘1〜4を反映。指摘1: 因果主張をT2とproductionのoff-main publication軸に限定し、
-> T1/T3をNon-goals（原因未解決）へ移す。指摘2: spec 375 admission anchorの初回publicationを
-> gate release後の再検証付きhopped区間へ分離する設計をspec化し、AC-1のoracleを
-> 「seam経由の呼出し」ではなく「全state writeの収束」を構成的に検出する形へ変更。
-> 指摘3: journal flushを単一serialized flush ownerで直列化し、Main起点経路では
-> publication thread上でappendしない設計へ変更（決定的oracle2件をAC-3へ追加）。
-> 指摘4: External reference scanを実施しPrior artへ記録。
+> Revision 3: 2026-10-03 — Phase1 review round 2
+> （[Issue #418 comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963610854)）
+> の指摘1・2への再設計。Revision 2の「gate release後への初回公開遅延」（spec 375線形化点の
+> 変更）と「Main起点の非同期flusher」（durability barrierの緩み）を **双方撤回** し、
+> 次の設計へ置換した:
+> (i) run state machineはpublication thread（main）上では実行しない
+> — main起点のUI呼出しは既存の `scope.launch(Dispatchers.IO)` patternでworkerへ
+> dispatchし、machine入口にfail-fast guardを置く。
+> (ii) UI状態の書込みのみを、run lockを取らない短いblock-join hop
+> （`publicationThread.run { bus.write(...) }`）でmainへ収束する。区間構造・
+> spec 375のgate内完結（operation生成→`State.Capturing`発行）・spec 369 RD-7の
+> 単一critical section・journalの同期append（worker上・fsync込み）は **いずれも現行のまま
+> 変更しない**。staged event機構と非同期flusherは廃止。
+>
+> Revision 2: 2026-10-03 — Phase1 review round 1
+> （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963456834)）
+> 指摘1（T1/T3の因果限定）・指摘4（外部参照scan）は本revisionで解消済み。
 >
 > Risk tier: **L**（refactor。高リスクpath一覧に触れず、新しい書込み経路・migration・
-> recovery契約・上流model/loader bridgeも作らない。`organizer/ui/`配下の動作維持refactor。
+> recovery契約・上流model/loader bridgeも作らない。spec 375 / 369 / diagnostics正本の
+> 契約変更なし。`organizer/ui/`配下とUI呼出し経路の動作維持refactor。
 > 本増分はユーザー指定の手順により、Lの要求を超えてspec/plan review・独立監査を行う）
 
 ## Problem
@@ -56,36 +65,41 @@ thread affinity違反系として次の3 signatureが記録されている:
   `scope.launch(Dispatchers.IO)` からanchor付き `run.start(...)` を呼び、
   exchange mutation gate保持下のworker上で初回UI状態を公開している。
 - 逆に、Main起点の `continueAfterUsageAccessGate`（JIT hostの`LaunchedEffect`）経路では
-  今日、journal append（`JournalStore.append`のfsync）がmain thread上で実行されている。
+  今日、run state machine自体がmain上で実行され、journal append
+  （`JournalStore.append`のfsync）がmainを塞いでいる。
 
-すなわち現行codeは「UI状態の公開がworker上で行われる経路」と「journal I/Oがmain上で
-行われる経路」の両方をproductionに持つ。Android UI toolkitはmain thread以外からの
-UI操作を禁止し（[Prior art](#prior-art)参照）、Composeのcomposition・lifecycle処理と
-重なった際の断続違反（T2は実測）の温床である。これらのfailureはlane全体の失敗・
-merge evidenceの阻害を繰り返してきた（#418終了条件の主要障害）。
+すなわち現行codeは「UI状態の公開がworker上で行われる経路」と「state machineと
+journal I/Oがmain上で実行される経路」の両方をproductionに持つ。Android UI toolkitは
+main thread以外からのUI操作を禁止し（[Prior art](#prior-art)参照）、Composeの
+composition・lifecycle処理と重なった際の断続違反（T2は実測）の温床である。
+これらのfailureはlane全体の失敗・merge evidenceの阻害を繰り返してきた
+（#418終了条件の主要障害）。
 
 ## Outcome
 
-`ManualOrganizationRun` のUI状態公開がすべてmain thread上で実行され、domain作業と
-journal書込み（fsync付き同期append）がmain threadを塞ぐことがなくなる。
+`ManualOrganizationRun` のUI状態公開がすべてmain thread上で実行され、run state machineの
+実行とjournal書込み（fsync付き同期append）はmain thread上からなくなる。
 これによりT2のproduction暴露経路が構造的に除去され、journal I/Oのmain-thread占有も
 解消される。T2の断続redがCIで非再現になることをもって修正の証明とはせず、
 #418の終了判定は引き続き統計的な観察に委ねられる。
 
 ## Scope
 
-- `ManualOrganizationRun` のUI状態publication（`stateHolder`、`preparationPhaseHolder`、
-  `operationActiveHolder`への書込み）を、注入可能なpublication seam経由でmain threadに
-  収束する。state holder群は専用の内部state busが唯一の書込み経路として所有し、
-  bypassを構成的に不可能にする。
-- spec 375のadmission anchor（rebind再開）経路の初回publication時点を変更する:
-  gate保持下の `complete` はoperation生成までを行い、初回UI状態の公開は
-  gate release後のhopped区間で `isActiveLocked` 再検証付きで行う
-  （admission決定の原子性・`AdmissionRefused`で無公開の契約は維持）。
-- journal emitをpublication threadから分離する。区間内でのstaging・単一serialized
-  flush ownerによるdequeue→appendの直列化とし、Main起点経路ではpublication thread上で
-  appendせずflusherへ引き渡す。journal順序契約（spec 369 RD-7のphase→state→journal、
-  cancel-vs-start勝者規則）とdurability契約は維持する。
+- **state machineのmain-thread排除**（契約ではなく現状の暴露の除去）:
+  main起点のUI呼出し（JIT hostの `LaunchedEffect` からの
+  `continueAfterUsageAccessGate` 等）を、既存の `execute` と同一の
+  `scope.launch(Dispatchers.IO)` patternでworkerへdispatchする。
+  machine入口には、publication thread（main）上での実行をfail-fastするguardを置く
+  （production実装のみ活性、test doubleはno-op）。
+- **UI状態書込みのmain収束**: `ManualOrganizationRun` の3 holder
+  （`stateHolder` / `preparationPhaseHolder` / `operationActiveHolder`）への書込みを、
+  専用state bus経由の短いblock-join hop `publicationThread.run { bus.write(...) }`
+  でmain上へ収束する。hop taskはrun lock・exchange gate・journalを一切取らない
+  lock-freeなStateFlow書込みである。各区間は現行どおりworker上でrun lockを保持したまま
+  hopの完了を待つため、区間の原子性（spec 369 RD-7のphase→state→journal単一区間、
+  cancel-vs-start勝者規則）とspec 375のgate内完結
+  （operation生成→`State.Capturing`発行→gate release）は **現行と同一の時点で維持される**。
+- holder群はstate busが唯一の書込み経路として所有し、bypassを構成的に不可能にする。
 - 上記を決定的に検証するred-firstなJVM oracle test。
 - 既存JVM test / instrumentation testの動作維持（同一seam注入）。
 
@@ -99,32 +113,31 @@ journal書込み（fsync付き同期append）がmain threadを塞ぐことがな
   focus gate（#304）、ComposeTimeout（#473）、receipt test race（#443）の原因解決。
 - #418の終了条件（root cause文書化の全体、3回連続full-workflow成功）は本増分では主張しない。
   #418は本増分後もopenのまま。
-- UIの表示・操作・状態遷移の変化なし。診断recordの内容変化なし。
+- **既存契約の変更は一切ない**: spec 375のadmission線形化点
+  （gate内でのoperation生成・`State.Capturing`発行、`AdmissionRefused`無公開）、
+  spec 369 RD-7の単一critical sectionと勝者規則、
+  [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) の
+  journal生存・同期追記・fail-open契約、UIの表示・操作・状態遷移、診断recordの内容。
 - `ExchangeFlowStateHolder` の変更なし（既に `settleDispatcher` / `uiDispatcher` で
   Main-confined。repository内の先行seam）。
-- journalのdurability・順序・fail-open契約の変更なし
-  （正本: [organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md) §11/§13）。
-- spec 375のadmission決定（gate内fresh検証とoperation生成の原子性、
-  `AdmissionRefused`で無公開）の変更なし。変更するのは初回UI状態公開の **時点** のみ。
 
 ## Domain language
 
-実装語のみ（publication seam、state bus、staged event、flush owner）。
-`CONTEXT.md` への反映なし。
+実装語のみ（publication seam、state bus）。`CONTEXT.md` への反映なし。
 
 ## Prior art
 
 - repository内先行例: `ExchangeFlowStateHolder`
   （`lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt`）の
   `settleDispatcher` / `uiDispatcher` seam — 2026-10-03確認。Main-confined表示更新の
-  既存解答として方向を採用。ただし本変更のsynchronousなcross-thread join・state bus・
-  serialized flushはこのseamより契約が広く、単純横展開ではない（次の外部根拠で補強）。
+  既存解答として方向を採用。ただし本変更のsynchronousなcross-thread join・state busは
+  このseamより契約が広く、単純横展開ではない（次の外部根拠で補強）。
 - Android公式: Processes and threads
   （https://developer.android.com/guide/components/processes-and-threads） —
   2026-10-03確認。「Don't block the UI thread」「Don't access the Android UI toolkit
   from outside the UI thread」の2規則と、worker threadでの作業 + UI threadへのpostと
-  いう承認pattern。**採用**: 重いdomain作業とjournal I/Oは非main、UI状態操作はmain、
-  という本設計の直接の根拠。
+  いう承認pattern。**採用**: 重いstate machine実行とjournal I/Oは非main、UI状態操作はmain、
+  という本設計の直接の根拠（main起点呼出しをworkerへdispatchする規則もここから導かれる）。
 - Android公式: Composeのmental model
   （https://developer.android.com/develop/ui/compose/mental-model） — 2026-10-03確認。
   「Compose operates on the main thread」でありcomposition外部からの状態変更は
@@ -141,55 +154,51 @@ Then すべての `State` / `PreparationPhase` / `operationActive` の書込み�
 （main）上で実行される
 And 操作の結果状態・診断recordは既存と同一である
 
-### Scenario: admission anchor（rebind再開）での初回公開
+### Scenario: main起点のUI呼び出しはworkerへdispatchされる
+
+Given JIT hostの `LaunchedEffect` がmain threadから `continueAfterUsageAccessGate` を呼ぶ
+When UI呼出しが `scope.launch(Dispatchers.IO)` でdispatchされ、machineがworker上で走る
+Then run state machine・journal appendはmain上で実行されない
+And pause解除の結果状態は既存と同一である
+And もしmain上でmachine入口が呼ばれた場合、guardがfail-fastする
+
+### Scenario: admission anchor（rebind再開）のgate内完結は変わらない
 
 Given rebind再開が `scope.launch(Dispatchers.IO)` からanchor付き `start()` で行われる
 When anchorのfresh検証が成立し `complete` がoperationを生成する（gate保持下・worker上）
-Then 初回UI状態の公開はgate release後のhopped区間で行われ、
-その区間は `isActiveLocked` を再検証する
-And anchor検証が不成立の場合（`AdmissionRefused`）はoperation生成も初回公開も行われない
-And 初回公開の再検証前にcancelが勝った場合、初回公開は行われずcancel面へ遷移する
+Then `State.Capturing` を含む初回公開はgate release前に完了する
+（書込みのみがblock-join hopでmain上へ収束する）
+And anchor検証が不成立の場合（`AdmissionRefused`）はoperation生成も公開も行われない
+And 既存のcancel競合規則（cancelはrun lockで直列化）が維持される
 
 ### Scenario: publicationとemitが同一critical sectionにある（RUN_STARTED）
 
 Given run操作がcomposed phaseに入り、phase→state→journal openを単一区間で行う
-When 区間がpublication thread上で実行される
-Then journal appendはpublication thread上では実行されない
-（worker起点ではworker上に、Main起点では単一flush owner上に引き渡される）
+When 区間がworker上でrun lockを保持したまま実行される
+Then state書込みはblock-join hopでmain上へ収束し、その完了後にjournal appendが
+同一worker上で同期実行される
 And journal内のイベント順序は区間の実行順序と一致する（RUN_STARTEDが後続イベントに先行する）
-
-### Scenario: Main起点のJIT resume
-
-Given JIT hostの `LaunchedEffect` がmain threadから `continueAfterUsageAccessGate` を呼ぶ
-When publication区間がinline実行され、journal eventがstagingされる
-Then journal appendはflush owner（非main）上で実行され、mainはappendを待たない
-And pause解除の結果状態は既存と同一である
+And observerがRUN_STARTEDを観測するとき、`State.Capturing`は既に観測可能である
 
 ### Scenario: 区間実行中のcancel
 
-Given run操作がpublication thread上のcritical section内にある
+Given run操作がworker上のcritical section内にある
 When 別workerから `cancel()` が呼ばれる
 Then 既存の勝者規則（`isActiveLocked` による取込判定）が維持され、
 cancelが勝った場合RUN_STARTEDはjournalに現れない
 And gate commitが先の場合USER_CANCELLEDはRUN_STARTEDに後続する
 
-### Scenario: UI threadからの直接呼び出し
-
-Given JIT host等がmain threadから `continueAfterUsageAccessGate` 等を呼ぶ
-When publication thread上からの呼び出しである
-Then state公開のhopは行われずinlineで実行される（既存の応答性を維持）
-
 ### Scenario: journal append失敗（failure/edge case）
 
 Given journal storeがappendに失敗する（fail-open契約）
-When flush ownerのappendがfalseを返す
+When 区間内のemitがfalseを返す
 Then run操作は失敗せず継続し、ユーザー可視の状態遷移は変わらない
 And 既存のdiagnostics fail-open契約どおりdiagnostics側のみが影響を受ける
 
 ## Data and state
 
-- 永続化data・identity・retentionの変化なし。journal書込みの **実行threadと時点**
-  （admission初回公開の分離、Main起点のflush引き渡し）のみが変わる。
+- 永続化data・identity・retentionの変化なし。journal書込みの実行threadは
+  worker上のまま（変更なし）。UI状態書込みの実行threadのみが変わる。
 - spec 375のdurable record・export sessionへの書込み経路は変更しない。
 - migration / backup / restore / rollbackへの影響なし。Launcher DBへの書込み経路は触れない。
 
@@ -210,13 +219,14 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
   変更前のcodeでred、変更後greenであることをPRへ記録する。
 - [ ] AC-2（既存振る舞いの維持）: 既存 `ManualOrganizationRunTest` 等、
   `app.lawnchair.organizer.*` のJVM test群が、test用publication seam注入でgreenである。
-- [ ] AC-3（emit分離と順序）: 次の3点をJVM testが決定的に検証する。
-  (a) journal appendがpublication thread上で実行されない（worker起点・Main起点の両経路）。
-  (b) 単一flush ownerによりdequeue→appendの順序が保存される
-  （並行drainでもRUN_STARTED→USER_CANCELLEDの順序が崩れない）。
-  (c) admission anchor経路で、`AdmissionRefused`時にjournal event・state公開が生じないこと、
-  およびgate commit後のcancel競合でRUN_STARTED→USER_CANCELLED順が維持されること。
-  既存の順序契約testもgreenを維持する。
+- [ ] AC-3（machine非main実行とemit契約）: 次の3点をJVM testが決定的に検証する。
+  (a) main起点経路のUI dispatch後、journal appendがpublication thread上で実行されない
+  （appendはmachine実行thread＝worker上に留まる）。
+  (b) publication thread上でmachine入口が呼ばれた場合、guardがfail-fastする
+  （production意味論のtest double）。
+  (c) 既存の順序契約（RUN_STARTED先行、cancel-vs-start勝者規則、
+  `AdmissionRefused`無公開、gate release時点で`State.Capturing`可視）を
+  競合oracleが維持する。
 - [ ] AC-4（instrumentation回帰）: `UsageAccessJitInstrumentationTest.crossOriginExchangePresentationPausesTheRunUntilResolution`
   （生thread軸を保持する既存oracle）がCIのmanual-organization-ui laneでgreenである。
 - [ ] AC-5（文書同期）: [ci-test-portfolio.md](../../docs/engineering/ci-test-portfolio.md)
@@ -229,7 +239,7 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
 |---|---|
 | AC-1 | 新規JVM test（`tests/unit/app/lawnchair/organizer/ui/`、既存 `organizer-unit-tests` gate内）。state busのthread記録で全書込みの実行threadを検証。red-first記録はPR本文 |
 | AC-2 | `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`（CI `organizer-unit-tests` jobのmirror） |
-| AC-3 | 同JVM test群: flush owner直列化oracle・Main起点resume oracle・admission競合oracle ＋ 既存順序契約testの維持（DiagnosticsPort/JournalStore doubleがappend呼出しthreadと順序を記録） |
+| AC-3 | 同JVM test群: guard oracle・append thread oracle・競合順序oracle（DiagnosticsPort doubleがappend呼出しthreadと順序、gate doubleがrelease時点のstate可視性を記録） |
 | AC-4 | CI `organizer-instrumentation-manual-organization-ui-tests` job（full portfolio run） |
 | AC-5 | PR同梱のportfolio文書diff |
 
@@ -240,6 +250,10 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
 ## Change history
 
 - 2026-10-03: Draft created for #418。
-- 2026-10-03: Revision 2 — Phase1 review
+- 2026-10-03: Revision 2 — Phase1 review round 1
   （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963456834)）
   の指摘1〜4を反映。
+- 2026-10-03: Revision 3 — Phase1 review round 2
+  （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963610854)）
+  の指摘1・2へ再設計。初回公開遅延と非同期flusherを撤回し、
+  「machine非main実行 + lock-freeな書込みhop」へ統一。既存契約（375/369/diagnostics）は不変。
