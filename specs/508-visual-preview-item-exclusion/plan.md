@@ -6,6 +6,7 @@
 > Risk tier: H — spec冒頭の根拠と同じ（`organizer/application/preview/**` の高リスクpath拡張 + coordinatorの確認前段契約。書込み経路・適用契約は不変）。手順は現行どおり: accepted spec + 本plan.md、Execution and approval contract、`risk: layout-data` label による高リスク独立エビデンス（CI `final-status` 成功run + `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit。auditは実装sessionとは別のgeneral-purposeサブエージェント作業で行う）。
 > Phase 1（本書の初版）: spec + planの起草とreviewを追跡する。Phase 2（実装）は同じbranch/PRで行い、本planのRevisionで追跡する（#448/#449/#507と同じ進め方）。
 > Revision 2: 2026-10-03 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5969642249): accepted化前に修正が必要、高1/中3）への対応。指摘1（高・base input喪失）: Data flowとcoordinator拡張を、Operationがimmutableなbase（`baseInput` + `baseExcludable` + 現行exclusions）を所有し `pending` は現行派生のみを運ぶ構成へ改め、派生は常に `baseInput` から直接導出・`next ⊆ baseExcludable` 検証・除外集合空への復帰契約を明記。復帰4scenarioとbase/current取り違えのtest oracleをVerificationへ追加。指摘2（中・鍵型の所有層）: `ProposalExclusionKey` を `organizer/planning` 側のneutralなclosed型（TargetSet近傍）へ移動（application/planningからorganizer.uiへの逆向き依存を作らない）。指摘3（中・diagrams nullable矛盾）: `PlanPreviewDetails.diagrams` をnon-null必須化（default null廃止）。構築をprotocol内のaggregate builderへ集約（両投影成功後に1回だけ構築、不整合は `MATERIALIZATION_INVALID`）。既存constructor呼び出し箇所はtest fixture builder側で移行。指摘4（中・retry契約の不一致）: 再試行を既存 `retryPlanPreview` seam（保持済み派生input/resultに対する `inspectPlan` 再実行。planner再実行なし）へ確定し、spec D-7/Scenario側を同じ契約へ同期（spec Revision 2）。
+> Revision 3: 2026-10-03 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5970681274): 4点中3点解消、残存1点（中））への対応。指摘（fallback禁止のstickiness + retry復元）: 環境失敗時の `PreviewUnavailable` 分岐条件を `next 非空` から **`replanGeneration > 0`（stickyな「除外変更済み」。`next` が∅に戻った後も継続）** へ変更（除外→全解除→環境失敗の経路だけ既存fallbackへ落ちる抜け道を塞ぐ。spec D-7/Scenario/AC-8も同時に明確化。spec Revision 3）。`Operation.currentExclusions` を「最後に成功した集合」ではなく**世代要求の受理時に更新する最新要求集合**とする所有規則を明文化し、retry成功時に `exclusions = currentExclusions` で `State.Preview` へ復帰できることを明記。sticky禁止とretry復帰（全解除後を含む）のcoordinator test oracleをVerificationへ追加。
 
 ## Current evidence
 
@@ -102,10 +103,12 @@ organizer/ui/
                                            #     （絶対集合。State.Preview/Replanningから受理。
                                            #      next ⊆ baseExcludable を検証。世代カウンタ claimed
                                            #      under lock、完了時世代一致検査）
-                                           #   - Operationがimmutableなbase（baseInput + baseExcludable
-                                           #    + 現行exclusions）を所有。pending（PendingPlan）は
-                                           #    現行の(input, result, summary, previewPlan)のみを持つ
-                                           #    （base/current取り違えを構造で防ぐ）
+                                           #   - Operationがimmutableなbase（baseInput + baseExcludable）
+                                           #    と「最新の要求除外集合」(currentExclusions) を所有。
+                                           #    currentExclusions は「最後に成功した集合」ではなく
+                                           #    世代要求の受理時に更新する（retryで復元できる鍵）。
+                                           #    pending（PendingPlan）は現行の(input, result, summary,
+                                           #    previewPlan)のみを持つ（base/current取り違えを構造で防ぐ）
                                            #   - 再計画: derive(baseInput, next) → planner.plan →
                                            #    既存handlePlanPreview相当の分岐（除外集合非空なら
                                            #    環境失敗でfallback不可）
@@ -186,7 +189,8 @@ ProposalExclusionKey                     // organizer/planning 側のclosed型�
 
 除外action tap（対象行）→ UI: next = 現在のexclusions ± key → coordinator.applyProposalExclusions(next)
   under lock: state ∈ {Preview, Replanning}、activeOperation/pending 存在、
-    next ⊆ baseExcludable を検証 → 世代++ → State.Replanning(summary, stableDetails, next)
+    next ⊆ baseExcludable を検証 → 世代++、currentExclusions = next（要求受理時に更新。
+    「最後に成功した集合」ではない — retryで復元する鍵）→ State.Replanning(summary, stableDetails, next)
   worker:
     ProposalExclusionDerivation.derive(baseInput, next)   // 純粋。常にbaseInputから直接導出
       → derivedInput（role変更 / additions・signal除去。snapshot revision不変。
@@ -194,15 +198,21 @@ ProposalExclusionKey                     // organizer/planning 側のclosed型�
     planner.plan(derivedInput) → PlanningResult
       （空差分 → finish(State.NoChanges)。Rejected → 既存PlanningRejected）
     handlePlanPreview相当（derivedInput, result）:
-      Previewed → 世代一致を検査 → currentExclusions = next、
+      Previewed → 世代一致を検査 →
                     pending = PendingPlan(op, derivedInput, result, newSummary, previewPlan)
-                    → State.Preview(newSummary, newDetails, exclusions = next)
+                    → State.Preview(newSummary, newDetails, exclusions = currentExclusions)
       Stale → 既存 State.Stale(DETECTED_BEFORE_REVIEW) + APPLY_REJECTED event（零書込み）
-      環境失敗かつ next 非空 → pending を (derivedInput, result, summary, previewPlan = null) へ置換 →
+      環境失敗かつ replanGeneration > 0（stickyな「除外変更済み」。next が∅に戻った後も
+                    継続 — spec D-7の禁止判定。next 非空でのみ禁止すると、除外→全解除→
+                    環境失敗の経路だけ既存fallbackへ落ちてしまう）→
+                    pending を (derivedInput, result, summary, previewPlan = null) へ置換 →
                     State.PreviewUnavailable(summary)。再試行は既存 retryPlanPreview が
                     pending の (derivedInput, result) に対して inspectPlan を再実行する
-                    （planner再実行なし。staleは再captureで検出。成功時は
-                    currentExclusions = next で State.Preview へ）
+                    （planner再実行なし。staleは再captureで検出。currentExclusions は
+                    世代要求の受理時点で next へ更新済みのため、retry成功時にそのまま
+                    exclusions = currentExclusions の State.Preview へ復帰できる）
+      ※ replanGeneration == 0（除外要求なし）の初回previewは既存分岐のまま
+        （Add を含まないrunの環境失敗は details = null fallback。無変更）
       CandidateResolutionFailed / NotPlannable(OUTCOME_NOT_PLANNED|MATERIALIZATION_INVALID)
                     → 既存typed state / fail-closed
       世代不一致（より新しい要求が存在）→ 結果を破棄（零書込み・state不変）
@@ -243,6 +253,7 @@ confirm → 既存どおり pending.previewPlan（同一インスタンス）を
   - planner再計画: min-size未満groupのfolder消滅・不要pageの消滅・全除外・全変更空→NoChanges・冪等性。
   - coordinator: 除外適用・世代（遅延完了注入による破棄）・Replanning中confirm拒否・環境失敗→PreviewUnavailable（同一除外集合の派生input/resultに対する再試行。planner再実行なしの検証）・初回fallback維持・stale零書込み・cancel/process死・`details = null` 面の図・除外なし・previewPlan同一インスタンス適用。
   - 除外解除の復帰（base分離のoracle）: (1) 既存項目の除外→解除、(2) 候補の除外→解除、(3) 既存+候補を順に除外して片方ずつ戻す、(4) 除外集合を空へ戻すと初回 `(input, result)` と同一のplanへ復帰、をcoordinator/derivation testで固定する。あわせてretry/stale/cancelでbaseと現行派生を取り違えないこと（confirm対象が常に表示済み最新previewのplanであること）をoracle化する。
+  - stickyなfallback禁止（round 2指摘のoracle）: 除外→全解除（next = ∅）→ 再計画は成功・preview取得が環境失敗、の経路で `PreviewUnavailable` のままcount-only confirm不可であること、retry成功後にexclusions空の最新preview（baseと同一plan）へ復帰すること、replanGeneration == 0の初回は既存fallbackのまま、をcoordinator testへ追加する。
   - 既存 `PlanPreviewDetails` constructor呼び出し箇所（unit test fixture等）の移行: diagrams必須化に伴い、fixture builder側で図modelを供給する（図投影のtest資産を流用）。
   - UI純粋部: 除外可能行の判定・除外済みgroupの行構築・semantics descriptor。
 - instrumentation（既存laneへの追加。test-audit skillで配置確定）: 確認面の図表示・除外操作→再計画→確定の一連、TalkBack構造、200% font scale。

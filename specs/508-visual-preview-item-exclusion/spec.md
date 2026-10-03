@@ -66,7 +66,7 @@ coordinatorに再計画の世代カウンタを追加する。除外集合の変
 ### D-7: 失敗・寿命 — 零書込み、capability不変、count-onlyへの落下禁止
 
 - **stale**（再計画時の再capture revision不一致）: 既存どおり `State.Stale`（preview時のため `DETECTED_BEFORE_REVIEW`）+ `APPLY_REJECTED` event。零書込み。最新homeで提案を作り直す（除外設定は持ち越さない）。
-- **環境的失敗**（`WriterBusy` / `Concurrent` / `Unavailable` / `CAPTURE_FAILED`）: **除外を一度でも変更した提案ではcount-only確認へ落とさず**、既存の `State.PreviewUnavailable` で再試行のみを提供する。再試行は**同一除外集合の派生input/resultに対するpreview再取得**である（既存 `retryPlanPreview` と同一seam。plannerの再実行は含まない — 同一inputに対するplannerは決定的であり、再captureとrevision照合は `inspectPlan` 自体が行うため、stale検出の保証は変わらない）。除外変更を行っていない初回previewは、Add を含まないrunの既存fallback（`details = null` でも確認可）を無変更で維持する（Issue Scope 8）。
+- **環境的失敗**（`WriterBusy` / `Concurrent` / `Unavailable` / `CAPTURE_FAILED`）: **当該runで除外要求が一度でも受理された後は、count-only確認へ落とさない**。禁止の判定は現在の除外集合の非空ではなく、run内でstickyな「除外変更済み」状態（再計画世代 > 0）とする。したがって一度除外して**全解除（除外集合∅）に戻した後も禁止は継続**し、既存の `State.PreviewUnavailable` で再試行のみを提供する。再試行は**同一除外集合（失敗した再計画の要求集合）の派生input/resultに対するpreview再取得**である（既存 `retryPlanPreview` と同一seam。plannerの再実行は含まない — 同一inputに対するplannerは決定的であり、再captureとrevision照合は `inspectPlan` 自体が行うため、stale検出の保証は変わらない）。coordinatorは最新の要求除外集合を世代とともに保持し、retryから復元できる。除外要求が一度も受理されていない初回previewは、Add を含まないrunの既存fallback（`details = null` でも確認可）を無変更で維持する（Issue Scope 8）。
 - **候補解決失敗**（`CandidateResolutionFailed`）: 既存のtyped stateのまま。
 - **契約違反**（`OUTCOME_NOT_PLANNED` / `MATERIALIZATION_INVALID`）: 既存どおりfail-closed。
 - **cancel / process再生成**: `PendingPlan` はprocess-localであり、除外を含む古いconfirm capabilityは復活しない。除外設定のreplay・永続的な除外設定は作らない。
@@ -157,12 +157,19 @@ When 1つ目の再計画が完了する前に2つ目の除外要求が出る,
 Then 画面は再計画中の表示（確定無効）になり、1つ目の結果は世代不一致で破棄され、2つ目の除外集合に対する再計画結果だけが表示される,
 And 例外の到着順序に依存しない（零書込み）。
 
-### Scenario: 除外を変更した提案はcount-only確認へ落ちない
+### Scenario: 除外を変更した提案はcount-only確認へ落ちない（全解除後も継続）
 
 Given 除外を1つでも変更した提案の再計画で、preview取得が環境的に失敗した（writer busy等）,
 When 失敗が返る,
 Then 既存のPreviewUnavailable面（再試行・中断のみ）となり、count-only（details = null）での確認・確定はできない,
 And 再試行は同一除外集合の派生input/resultに対するpreview再取得である（planner再実行なし。staleは再captureで検出される）。
+
+### Scenario: 全解除して空に戻した後も禁止は継続する
+
+Given 一度除外を変更してから、すべて解除して除外集合を空に戻した（要求は受理されている）,
+When その再計画でpreview取得が環境的に失敗した,
+Then 既存のPreviewUnavailable面となり、count-only確認・確定はできない（stickyな禁止。除外集合∅でもfallbackへ落ちない）,
+And 再試行が成功すると、除外集合空の最新preview（base inputと同一のplan）へ復帰する。
 
 ### Scenario: 再計画でstaleを検出すると零書込みで止まる
 
@@ -226,7 +233,7 @@ None。新規permission・外部通信・telemetryなし。図と除外表面が
 | AC-5 | 追加候補の除外が動く: 除外候補のAdd行・生成folderメンバーからの消滅、未配置のまま（create 0件）、signal entryの同期除去、全候補除外時の妥当な再計画（additions空のscope-composed）をunit testで検証する。 |
 | AC-6 | 生成folder/pageの連動: 除外でfolder min-size未満のgroupはfolderを作らない、不要になった新規pageは消える、生成folder/page行は独立の除外対象でないことをunit testで検証する。 |
 | AC-7 | 確認の権威: 再計画中（`Replanning`）はconfirm不可、高速連続操作・結果の到着逆転で古い結果が新しいpreviewを上書きしない（世代一致test）、confirmは表示済み最新previewのplan（同一インスタンス）のみをapplyへ渡すことをcoordinator testで検証する。 |
-| AC-8 | 失敗・寿命: 除外変更後の環境的preview失敗はcount-only確認へ落とさずPreviewUnavailable（再試行は同一除外集合の派生input/resultに対するpreview再取得。planner再実行なし）、除外変更なき初回は既存fallback維持、staleは零書込みで `State.Stale`、cancel/process再生成で除外を含むcapabilityが復活しない、空差分はNoChanges扱い（成功表示なし）、retry/stale/cancelのいずれでもbase inputと現行派生inputを取り違えて古いplanがconfirm対象にならないことをcoordinator testで検証する。 |
+| AC-8 | 失敗・寿命: 除外要求が一度でも受理されたrunの環境的preview失敗はcount-only確認へ落とさずPreviewUnavailable（判定はstickyな「除外変更済み」。**全解除して除外集合∅に戻した後も禁止継続**。再試行は同一除外集合の派生input/resultに対するpreview再取得。planner再実行なし。最新要求除外集合は世代とともに保持されretryから復元できる）、除外要求なしの初回は既存fallback維持、staleは零書込みで `State.Stale`、cancel/process再生成で除外を含むcapabilityが復活しない、空差分はNoChanges扱い（成功表示なし）、retry/stale/cancelのいずれでもbase inputと現行派生inputを取り違えて古いplanがconfirm対象にならないことをcoordinator testで検証する。 |
 | AC-9 | degrade: `details == null` 面は図なし・除外UIなしの既存構成のまま（回帰test）。図のみ欠落・一覧のみの状態は存在しない（投影total性のunit test）。 |
 | AC-10 | a11y/i18n: 図itemの単一node・collection semantics・除外actionのstate・対象外理由・再計画中の無効化がTalkBackで読めて操作でき（emulator構造確認 + 実機owner確認）、200% font scaleで崩れず、追加stringsがja/en両localeで解決する。 |
 | AC-11 | ベンチマークB8: 本specの固定手順の会計（本経路6・現行10）をPR本文に記録し、fixtureでのエミュレータ実行で本経路が成立することを確認する。`editing-burden-benchmark.md` へB8を追加する。既存B1〜B7の値だけで価値を主張しない。 |
@@ -252,6 +259,7 @@ None。Issueの決定ゲート項目（項目単位の対象、readonly投影の
 
 - 2026-10-03: Draft created for #508（seed-backlog order 1）。Issue本文のScope 1〜8を設計判断D-1〜D-9として確定し、NFR-014の追加課題B8を定義した。
 - 2026-10-03: Revision 2 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5969642249): accepted化前に修正が必要、高1/中3）への対応。(1) D-5へbase inputと現行派生inputの分離所有・常にbaseからの直接導出・除外集合空への復帰契約を明記し、AC-4/AC-8に復帰とbase/current取り違えのoracleを追加。(2) D-1へ「productionのPlanPreviewDetailsは図を必ず含む（図欠落を構築可能にしない）」を明記（型上保証。確認面の状態はdetailsなし/完全なdetailsの2つだけ）。(3) D-7とScenarioの再試行契約を「同一除外集合の派生input/resultに対するpreview再取得（既存retryPlanPreviewと同一seam。planner再実行なし）」へ修正（planとの整合。planner決定性とinspectPlanのstale検出により保証は等価）。
+- 2026-10-03: Revision 3 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5970681274): 4点中3点解消、残存1点（中））への対応。D-7のcount-only禁止判定を「現在の除外集合の非空」ではなく「run内でstickyな除外変更済み状態（再計画世代 > 0）」と明確化し、全解除（∅）後も禁止継続・再試行は失敗した再計画の要求集合で復元（coordinatorが最新要求集合を世代とともに保持）を明記。Scenario（全解除後も継続）とAC-8へ同期。
 
 ## References
 
