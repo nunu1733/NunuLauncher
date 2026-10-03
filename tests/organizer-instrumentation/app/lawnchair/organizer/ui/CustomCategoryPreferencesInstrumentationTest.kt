@@ -67,6 +67,7 @@ import app.lawnchair.organizer.rules.storedSnapshot
 import app.lawnchair.ui.preferences.destinations.CustomCategoryPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -88,7 +89,8 @@ import org.junit.runner.RunWith
 class CustomCategoryPreferencesInstrumentationTest {
 
     @get:Rule
-    val composeRule = createComposeRule()
+    // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
+    val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
 
     private val userId = UserCategoryId("3f2b8c4e-1234-4abc-9de0-1234567890ab")
 
