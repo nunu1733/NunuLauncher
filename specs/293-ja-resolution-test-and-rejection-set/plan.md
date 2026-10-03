@@ -2,7 +2,7 @@
 issue: "#293"
 status: draft
 spec: ./spec.md
-updated: 2026-09-28
+updated: 2026-10-03
 ---
 
 # Plan: issue #228 follow-up (ja解決test拡張とspec 13 `PreWriteRejection` 追記)
@@ -10,9 +10,9 @@ updated: 2026-09-28
 Risk tier: **L** (test + docs-only。高リスクpath・書込み経路不変。Issue #444運用では
 階層LはPRのみで足りるため、本planは判断資料であり実装PR本文へtier判定を記載する)。
 
-> Baseline: `origin/main` = `c5a7840b880ed4c436b67170930ca87d4ef7f148`
-> (2026-09-28再検証時点。前回baselineは
-> `3076bdae7ebf8dbb086f251203968c06e9986258`、初版draft時のbaselineは
+> Baseline: `origin/main` = `10ee58336e8848e0c7723d36d249600524f18a80`
+> (2026-10-03再検証時点。前回baselineは
+> `c5a7840b880ed4c436b67170930ca87d4ef7f148`、初版draft時のbaselineは
 > `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。本planは spec.md (**draft**)
 > に対応し、記載の実装状態はすべてbaseline上での実確認に基づく。
 > **実装開始前に再入場検証を行うこと** (spec.mdの参照先がbaseline以降に
@@ -187,6 +187,39 @@ Risk tier: **L** (test + docs-only。高リスクpath・書込み経路不変。
 > ADR-0013〜0015 / `docs/project/github-workflow.md` (#444) の変更は本planの
 > 対象file・行番号・契約に無関係 (tier判定のみ影響、反映済み)。
 > 以下の行番号は現baseline (`c5a7840b`) 基準 (2026-09-28再確認)。
+>
+> 2026-10-03再入場検証結果: 前回baseline (`c5a7840b`) 以降は173 commit
+> (#449複数選択編集画面、#450 edit undo、#451重複超過保持、#452整理入口、
+> #461 fail-closed recovery、#479 hub row可視性、#482 External reference
+> scan、#487/#490/#491系test修正、#497新規アプリ配置先policy (ADR-0015/0016)、
+> #502〜#506系docs/test整理、#504/#505 organizer run publication thread等)。
+> このうち本planの対象に影響したのは行位置の後方移動のみで、**契約内容の
+> 変化はない**。(1) 対象test fileへ14行追加 (#504系列の `FakeApplication`
+> への #449/#450 seam実装、L2987以降) があったが、
+> `japaneseResourcesResolveEveryConcretePreviewString` (L2124-2267) は
+> 内容不変で#228keyは0件のまま (機械検索0 match)。(2) `strings.xml` /
+> `values-ja/strings.xml` は #497/#450/#449/#452/#451系の文字列追加により
+> `values` 側 `<!-- Issue #228 -->` ブロックがL1246→**L1316**、values-ja側が
+> L320→**L388**へ後方移動。19リソースはすべてvalues/values-jaに存在し、
+> 17 stringsは機械突合で17/17がja≠en、2 pluralsはja `other` のみを現baselineで
+> 再確認。range内の追加nameでvalues-ja欠落は0件 (新たなvalues-only欠落なし、
+> manual_organization/exchange系のvalues-only欠落は #336 provenance + #443
+> AI相談toggle 2件の計3件のまま)。(3) CIはlane構成に変化なし:
+> `organizer-instrumentation-manual-organization-ui-tests` は **L648** へ移動
+> (API 36、`tools/ci/run-manual-organization-ui-instrumentation.sh` 経由)、
+> `final-status` gateは **L1023** へ移動 (needsに同lane、**L1033**)。
+> runner scriptは #479 review round 3 によりdrag-guard oracle
+> (`OrganizerHubDragGuardInstrumentationTest`) の第二invocationが追加されたが、
+> 対象classは第一invocationのclasslistに残存、`surface_organizer_ui`
+> (対象test pathを含む) でのself-trigger条件も不変。api35 lane
+> (`organizer-instrumentation-production-input-tests`) は引き続き対象classを
+> 含まない。(4) spec 13 (閉集合L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま、
+> #185 precedent L645-649)、`Results.kt` (L40 KDoc、L74/L83/L90)、
+> `ApplyResultContractTest.kt` (L72)、監査記録 §5、spec 123 AC-5/AC-6 は
+> 分岐基点 `f9afd8bfde12` から現mainまでblob単位で無変化、spec 228 specの
+> 前回baseline以降の変化はなし (#293委譲は不変: L17/L285)。本branchの
+> spec 13草案は現mainへそのまま適用可能。
+> 以下の行番号は現baseline (`10ee58336e`) 基準 (2026-10-03再確認)。
 
 ## 1. 現状の実装と不足 (baseline確認済み)
 
@@ -196,7 +229,7 @@ Risk tier: **L** (test + docs-only。高リスクpath・書込み経路不変。
 | contract testによる固定 | `tests/unit/app/lawnchair/organizer/application/contract/ApplyResultContractTest.kt` (L72) | 存在 |
 | spec 13の閉集合記載 | `specs/13-safe-layout-application/spec.md` (Results節、L255-261) | **`CANDIDATE_UNAVAILABLE` 未記載。本planで解消 (docs-only)** |
 | ja解決test | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt` の `japaneseResourcesResolveEveryConcretePreviewString` (L2124-2267) | 既存assert対象に #228由来keyが**1件も含まれない**。17 strings + 2 pluralsの追加が必要 |
-| #228由来リソースのja値 | `lawnchair/res/values/strings.xml` と `lawnchair/res/values-ja/strings.xml` (`<!-- Issue #228 -->` ブロック: values L1246 / values-ja L320) | 残存19件 (17 strings + 2 plurals) とも `values-ja` に存在。17 stringsはen≠ja (機械突合17/17)、2 pluralsはjaが `other` のみ |
+| #228由来リソースのja値 | `lawnchair/res/values/strings.xml` と `lawnchair/res/values-ja/strings.xml` (`<!-- Issue #228 -->` ブロック: values L1316 / values-ja L388) | 残存19件 (17 strings + 2 plurals) とも `values-ja` に存在。17 stringsはen≠ja (機械突合17/17)、2 pluralsはjaが `other` のみ |
 
 監査記録 ([docs/assessment/pr-289-organizer-missing-app-selection.md](../../docs/assessment/pr-289-organizer-missing-app-selection.md) §5 L105) が
 この2項目を「follow-upとして残存」と記録していることが出発点である
@@ -253,15 +286,16 @@ Risk tier: **L** (test + docs-only。高リスクpath・書込み経路不変。
 ```bash
 git submodule update --init --recursive
 ./gradlew spotlessCheck
-# API 36 emulator接続後 (CI lane organizer-instrumentation-issue52-tests と同じ):
+# API 36 emulator接続後 (CI lane organizer-instrumentation-manual-organization-ui-tests と同じ):
 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest
 ```
 
-- CI (baseline `c5a7840b` 時点、#422 impact-based CI portfolio構成):
+- CI (baseline `10ee58336e` 時点、#422 impact-based CI portfolio構成):
   lane `organizer-instrumentation-manual-organization-ui-tests`
-  (ci.yml L636-、API 36 / Platform 36.1) がgreenであること。同laneは
-  `tools/ci/run-manual-organization-ui-instrumentation.sh` のclasslistで
+  (ci.yml L648-、API 36 / Platform 36.1) がgreenであること。同laneは
+  `tools/ci/run-manual-organization-ui-instrumentation.sh` の第一invocationの
+  classlistで
   `ManualOrganizationProductionE2EInstrumentationTest` /
   `ManualOrganizationPreferencesInstrumentationTest` (対象class) /
   `OrganizerHubPreferencesInstrumentationTest` /
@@ -269,11 +303,13 @@ git submodule update --init --recursive
   `UsageAccessJitInstrumentationTest` / `ExchangeImportSuccessInstrumentationTest` /
   `StrategyPickerFreezeInstrumentationTest` / `OrganizerDiagnosticsRouteInstrumentationTest` /
   `EditingBurdenBenchmarkFixtureSeedingInstrumentationTest` /
-  `OrganizerDiagnosticsExportTimestampInstrumentationTest` を実行する。
+  `OrganizerDiagnosticsExportTimestampInstrumentationTest` を実行する
+  (#479 review round 3 で追加された第二invocationはdrag-guard oracle
+  `OrganizerHubDragGuardInstrumentationTest` のみで、対象classには無関係)。
   対象test path (`tests/organizer-instrumentation/app/lawnchair/organizer/ui/**`)
   は `surface_organizer_ui` filterに含まれるため、test-only変更のPRでも
-  当該laneはself-triggerする。`final-status` merge gate (L1011) は同laneを
-  needsに含む。旧 `organizer-instrumentation-issue52-tests` lane名は #422 で
+  当該laneはself-triggerする。`final-status` merge gate (L1023) は同laneを
+  needsに含む (L1033)。旧 `organizer-instrumentation-issue52-tests` lane名は #422 で
   廃止されているため、旧名称をPR記録に使わないこと。
 - 本PRの差分はtest+docsのみであり、高リスク独立エビデンス契約
   (workflow: 純粋な計画moduleやtestのみの変更、docs-only PRは対象外)

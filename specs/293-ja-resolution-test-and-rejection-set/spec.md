@@ -2,7 +2,7 @@
 issue: "#293"
 status: draft
 requirements: []
-updated: 2026-09-28
+updated: 2026-10-03
 ---
 
 # issue #228 follow-up: ja解決test拡張とspec 13 `PreWriteRejection` 追記
@@ -55,10 +55,10 @@ PR #289 (issue #228) のmerge前監査
 
 `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt`
 の `japaneseResourcesResolveEveryConcretePreviewString` へ、次のissue #228由来
-リソースを追加する (2026-09-28時点、baseline `c5a7840b880ed4c436b67170930ca87d4ef7f148`
+リソースを追加する (2026-10-03時点、baseline `10ee58336e8848e0c7723d36d249600524f18a80`
 で再確認済みの `lawnchair/res/values/strings.xml`
-`<!-- Issue #228: missing-app selection and Add rows -->` ブロック (L1246、
-`values-ja` 側はL320) と `unplaced_strategy_scope` / `selection_stale` /
+`<!-- Issue #228: missing-app selection and Add rows -->` ブロック (L1316、
+`values-ja` 側はL388) と `unplaced_strategy_scope` / `selection_stale` /
 `candidate_unresolved` の3件を含む。PR #289時点に存在した
 `manual_organization_missing_apps_empty` は #369実装でvalues/values-jaともに
 削除済みのため対象外)。
@@ -105,13 +105,15 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 - issue #235が後から追加したwidget系string
   (`manual_organization_widget_moved_count` 等)、issue #336が追加した
   `manual_organization_rejection_invalid_category_provenance`
-  (2026-09-28時点 (baseline `c5a7840b880ed4c436b67170930ca87d4ef7f148`) でも
+  (2026-10-03時点 (baseline `10ee58336e8848e0c7723d36d249600524f18a80`) でも
   引き続きvalues側のみに存在しvalues-ja未整備)、issue #417が追加した
   `manual_organization_missing_apps_empty_continue` (0件続行の明示告知。
   en/jaとも存在するが#417由来であり#228由来ではない)、およびissue #443が
   追加した `exchange_ai_consultation_toggle_label` /
-  `exchange_ai_consultation_toggle_description` (AI相談凍結toggle。2026-09-28時点で
-  values側のみでvalues-ja未整備) のja解決test追加
+  `exchange_ai_consultation_toggle_description` (AI相談凍結toggle。2026-10-03時点で
+  values側のみでvalues-ja未整備。manual_organization/exchange系の
+  values-only欠落は引き続きこの3件のみで、前回baseline以降の追加
+  (#449/#450/#451/#452/#497系) はすべてja対応済み) のja解決test追加
   (別scope。各IssueのAC-12相当の追跡が必要なら別Issueとする)。
 - 上流Lawnchair文字列の翻訳、ja以外localeへの展開 (spec 123の非対象を引き継ぐ)。
 - `PreWriteRejection` の意味論・順序・型shapeの変更 (記載の正本化のみ)。
@@ -127,7 +129,7 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ## Constraints
 
 - ja値がenと等価なリソースを `assertNotEquals` パターンへ追加しない
-  (2026-09-28時点 (baseline `c5a7840b880ed4c436b67170930ca87d4ef7f148`) で
+  (2026-10-03時点 (baseline `10ee58336e8848e0c7723d36d249600524f18a80`) で
   17 stringsはすべてja≠enを再確認済み。将来の翻訳変更で
   衝突が生じた場合は、当該keyのassert形式を既存pluralsの「解決すること」
   assertionへ寄せ、en fallback検出を弱めない)。
@@ -277,3 +279,30 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   現mainまでblob単位で無変更のため、本branchのspec 13草案は現mainへ
   そのまま適用可能。`values` 側 `<!-- Issue #228 -->` ブロックはL1246、
   values-ja側はL320へ移動。
+- 2026-10-03: baseline `origin/main` = `10ee58336e8848e0c7723d36d249600524f18a80`
+  で再入場検証。前回baseline以降の173 commit (#449複数選択編集画面、#450 edit
+  undo、#451重複超過保持、#452整理入口、#479 hub row可視性、#497新規アプリ配置先、
+  #504/#505 organizer run publication thread等) を調査した。**契約内容の変化は
+  ないが、対象test file・res・CIの行位置が更新された**。
+  (1) 対象test fileへ14行追加 (#504系列の `FakeApplication` への #449/#450
+  seam実装、L2987以降) があったが、`japaneseResourcesResolveEveryConcretePreviewString`
+  (L2124-2267) は内容不変で#228keyは0件のまま (機械検索0 match)。
+  (2) `strings.xml` / `values-ja/strings.xml` は #497/#450/#449/#452/#451系の
+  追加により `values` 側 `<!-- Issue #228 -->` ブロックがL1246→L1316、
+  values-ja側がL320→L388へ後方移動。19リソース (17 strings + 2 plurals) は
+  すべてvalues/values-jaに存在し、17 stringsは機械突合で17/17がja≠en、
+  2 pluralsはja `other` のみ。range内の追加nameでvalues-ja欠落は0件
+  (新たなvalues-only欠落なし、#336/#443の3件のみが既存のまま)。
+  (3) CIはlane構成に変化なし: `organizer-instrumentation-manual-organization-ui-tests`
+  (L648へ移動、API 36) が対象classを実行し、`final-status` gateはL1023へ移動
+  (needsに同lane、L1033)。runner script
+  (`tools/ci/run-manual-organization-ui-instrumentation.sh`) は #479 review
+  round 3 によりdrag-guard oracleの第二invocationが追加されたが、対象classは
+  第一invocationのclasslistに残存。`surface_organizer_ui` (対象test pathを含む)
+  でのself-trigger条件も不変。
+  (4) spec 13 (閉集合L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま)、
+  `Results.kt` (L40 KDoc、L74/L83/L90)、`ApplyResultContractTest.kt` (L72)、
+  監査記録 §5、spec 123 AC-5/AC-6 は分岐基点 `f9afd8bfde12` から現mainまで
+  blob単位で無変化 (spec 228 specのみ前回分の#369 Amendまででblob変化済み、
+  前回baselineからの変化はなし。#293委譲は不変: L17/L285)、
+  本branchのspec 13草案は現mainへそのまま適用可能。契約内容の変更なし。
