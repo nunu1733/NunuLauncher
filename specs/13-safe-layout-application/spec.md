@@ -9,7 +9,7 @@ requirements:
   - NFR-007
   - NFR-011
   - NFR-012
-updated: 2026-09-12
+updated: 2026-10-03
 ---
 
 # Safe layout application and recovery contract
@@ -652,7 +652,7 @@ Source observations are fixed to
   desktop-entry `1×1` normalization rule. It closes direct and
   folder → Hotseat → desktop transitions without changing raw folder/Dock
   semantics, strict desktop capture, or exact recovery.
-- 2026-09-12: Issue #293 recorded the `CANDIDATE_UNAVAILABLE` extension that
+- 2026-10-03: Issue #293 recorded the `CANDIDATE_UNAVAILABLE` extension that
   issue #228 added to the closed `PreWriteRejection` set: apply-time candidate
   availability re-verification sits between the stale-revision recheck and
   checkpoint creation and rejects with `CANDIDATE_UNAVAILABLE`, failing closed
