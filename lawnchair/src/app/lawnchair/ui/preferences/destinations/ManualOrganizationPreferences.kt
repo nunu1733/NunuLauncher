@@ -3,6 +3,7 @@ package app.lawnchair.ui.preferences.destinations
 import android.content.Context
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,10 +11,12 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
@@ -27,22 +30,30 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CollectionInfo
+import androidx.compose.ui.semantics.CollectionItemInfo
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collectionInfo
+import androidx.compose.ui.semantics.collectionItemInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -52,9 +63,14 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
+import app.lawnchair.organizer.application.public.PlanPreviewDiagrams
 import app.lawnchair.organizer.application.public.PreviewCounts
+import app.lawnchair.organizer.application.public.PreviewDiagram
+import app.lawnchair.organizer.application.public.PreviewDiagramPageRef
+import app.lawnchair.organizer.application.public.PreviewLabel
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.diagnostics.model.Trigger
@@ -66,6 +82,7 @@ import app.lawnchair.organizer.integration.exchange.ShareSheetExchangeTransport
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.ProposalExclusionKey
 import app.lawnchair.organizer.planning.RejectionCode
 import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
@@ -78,6 +95,8 @@ import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
+import app.lawnchair.organizer.ui.PreviewExclusionBlockReason
+import app.lawnchair.organizer.ui.PreviewRowExclusion
 import app.lawnchair.organizer.ui.RunUsageAccessJitDialogHost
 import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
 import app.lawnchair.organizer.ui.exchange.ExchangeDiscardConfirmDialog
@@ -88,6 +107,10 @@ import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.organizer.ui.openUsageAccessSettings
+import app.lawnchair.ui.diagram.DiagramItemContent
+import app.lawnchair.ui.diagram.DiagramPageSurface
+import app.lawnchair.ui.diagram.DiagramReservedSurface
+import app.lawnchair.ui.diagram.diagramCellPlacement
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
@@ -350,6 +373,29 @@ fun ManualOrganizationPreferences(
             .orEmpty()
     }
     val expandedPreviewGroups = remember(previewDetails) { mutableStateOf(emptySet<Int>()) }
+
+    // Issue #508: the replan surface keeps the last stable proposal visible —
+    // its change list is planned once per stable details, like the preview's.
+    val replanningState = state as? ManualOrganizationRun.State.Replanning
+    val replanningDetails = replanningState?.stableDetails
+    val replanSections = remember(replanningDetails, context) {
+        replanningDetails
+            ?.let { OrganizationPreviewContent.sections(it, organizationPreviewWording(context)) }
+            .orEmpty()
+    }
+    val replanExpandedGroups = remember(replanningDetails) { mutableStateOf(emptySet<Int>()) }
+
+    // Issue #508: display labels for the exclusion surface, accumulated from
+    // every preview's excludable items so an item that is currently excluded
+    // (and therefore no longer on the derived proposal's surface) still shows
+    // its name in the excluded group with its 戻す action. Process-local UI
+    // state like the expansion state; stale entries never render because the
+    // group only draws the run's current exclusions.
+    val exclusionLabels = remember { mutableStateMapOf<ProposalExclusionKey, PreviewLabel>() }
+    LaunchedEffect(previewDetails, (state as? ManualOrganizationRun.State.Replanning)?.stableDetails) {
+        previewDetails?.excludableItems?.forEach { exclusionLabels[it.key] = it.label }
+        (state as? ManualOrganizationRun.State.Replanning)?.stableDetails?.excludableItems?.forEach { exclusionLabels[it.key] = it.label }
+    }
 
     // Issue #228: the selection surface's process-local state, keyed by the
     // owning run — a fresh detection cut always starts unchecked (D-1/AC-3),
@@ -995,11 +1041,92 @@ fun ManualOrganizationPreferences(
                                 onCancel = { pendingInterrupt = { interruptAndNavigate() } },
                             )
                         }
+                        // Issue #508 (spec D-8 order): 決定 → 図（変更前/変更後） →
+                        // 変更一覧（除外actionつき） → 除外済みgroup（戻す）。
+                        previewDiagramItems(currentState.details.diagrams)
                         previewDetailsItems(
                             summary = currentState.summary,
                             counts = currentState.details.counts,
                             sections = previewSections,
                             expandedGroups = expandedPreviewGroups,
+                            exclusions = currentState.exclusions,
+                            onExclusionsChange = { next ->
+                                execute { coordinator.applyProposalExclusions(next) }
+                            },
+                        )
+                        excludedProposalItems(
+                            exclusions = currentState.exclusions,
+                            labels = exclusionLabels,
+                            wording = organizationPreviewWording(context),
+                            onExclusionsChange = { next ->
+                                execute { coordinator.applyProposalExclusions(next) }
+                            },
+                        )
+                        unplacedCandidateItems(
+                            candidates = OrganizationPreviewContent.unplacedCandidateExclusions(currentState.details),
+                            exclusions = currentState.exclusions,
+                            wording = organizationPreviewWording(context),
+                            onExclusionsChange = { next ->
+                                execute { coordinator.applyProposalExclusions(next) }
+                            },
+                        )
+                    }
+                }
+
+                is ManualOrganizationRun.State.Replanning -> {
+                    // Issue #508 (spec D-8): an exclusion replan is in flight —
+                    // progress notice, confirm disabled, the last stable
+                    // proposal (summary + details) stays visible, and exclusion
+                    // changes remain possible (rapid consecutive edits).
+                    item {
+                        FocusTargetText(
+                            text = stringResource(R.string.manual_organization_replanning),
+                            focusRequester = focusRequester,
+                            modifier = focusTargetModifier,
+                        )
+                    }
+                    item {
+                        SummaryText(stringResource(R.string.manual_organization_replanning_summary))
+                    }
+                    item {
+                        PreviewDecisionActions(
+                            onConfirm = {},
+                            confirmEnabled = false,
+                            onCancel = { pendingInterrupt = { interruptAndNavigate() } },
+                        )
+                    }
+                    val replanningDetails = currentState.stableDetails
+                    if (replanningDetails != null) {
+                        previewDiagramItems(replanningDetails.diagrams)
+                        previewDetailsItems(
+                            summary = currentState.summary,
+                            counts = replanningDetails.counts,
+                            sections = replanSections,
+                            expandedGroups = replanExpandedGroups,
+                            exclusions = currentState.exclusions,
+                            onExclusionsChange = { next ->
+                                execute { coordinator.applyProposalExclusions(next) }
+                            },
+                        )
+                    } else {
+                        summaryItems(currentState.summary)
+                    }
+                    excludedProposalItems(
+                        exclusions = currentState.exclusions,
+                        labels = exclusionLabels,
+                        wording = organizationPreviewWording(context),
+                        onExclusionsChange = { next ->
+                            execute { coordinator.applyProposalExclusions(next) }
+                        },
+                    )
+                    replanningDetails?.let {
+                        unplacedCandidateItems(
+                            candidates = OrganizationPreviewContent.unplacedCandidateExclusions(it),
+                            exclusions = currentState.exclusions,
+                            wording = organizationPreviewWording(context),
+                            onExclusionsChange = { next ->
+                                execute { coordinator.applyProposalExclusions(next) }
+                            },
                         )
                     }
                 }
@@ -1588,10 +1715,14 @@ private fun FocusTargetText(
 private fun PreviewDecisionActions(
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
+    // Issue #508: a replan in flight disables confirm only — the proposal the
+    // disabled button guards against is still visible below.
+    confirmEnabled: Boolean = true,
 ) {
     DecisionActionsRow {
         Button(
             onClick = onConfirm,
+            enabled = confirmEnabled,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(text = stringResource(R.string.manual_organization_confirm))
@@ -1636,6 +1767,270 @@ private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
     contextItems(summary)
     changeCountItems(summary)
     constraintItems(summary)
+}
+
+/**
+ * Issue #508: the read-only before/after diagrams of the confirmed proposal —
+ * one page surface per page (planned pages included), reserved regions drawn
+ * but inert, dock items in rank order. Geometry comes from the shared static
+ * diagram parts (the same cells the #449 edit surface draws); the organizer
+ * diagram renders labels + kind words only, never icons.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.previewDiagramItems(diagrams: PlanPreviewDiagrams) {
+    item(key = "preview-diagram-before-heading") {
+        Text(
+            text = stringResource(R.string.manual_organization_diagram_before),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+    item(key = "preview-diagram-before") { PreviewDiagramView(diagrams.before) }
+    item(key = "preview-diagram-after-heading") {
+        Text(
+            text = stringResource(R.string.manual_organization_diagram_after),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+    item(key = "preview-diagram-after") { PreviewDiagramView(diagrams.after) }
+}
+
+@Composable
+private fun PreviewDiagramView(diagram: PreviewDiagram) {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val cellSize = ((screenWidth - 32.dp) / diagram.columns).coerceAtLeast(28.dp)
+    val wording = organizationPreviewWording(LocalContext.current)
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        diagram.pages.forEachIndexed { pageIndex, page ->
+            val pageText = if (page.ref is PreviewDiagramPageRef.Planned) {
+                stringResource(R.string.manual_organization_diagram_new_page)
+            } else {
+                stringResource(R.string.manual_organization_diagram_page, pageIndex + 1)
+            }
+            Text(
+                text = pageText,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+            )
+            // Issue #508 (AC-10): the page grid exposes its geometry through
+            // collection semantics; each item merges into ONE reading node
+            // (icon/label/member-count children never read separately).
+            DiagramPageSurface(
+                columns = diagram.columns,
+                rows = diagram.rows,
+                cellSize = cellSize,
+                modifier = Modifier.semantics {
+                    collectionInfo = CollectionInfo(rowCount = diagram.rows, columnCount = diagram.columns)
+                },
+            ) {
+                diagram.reservedRegions
+                    .filter { it.page == page.ref }
+                    .forEach { reserved ->
+                        DiagramReservedSurface(
+                            modifier = Modifier.diagramCellPlacement(
+                                reserved.cell.x,
+                                reserved.cell.y,
+                                cellSize,
+                                reserved.span.width,
+                                reserved.span.height,
+                            ),
+                        )
+                    }
+                page.items.forEach { item ->
+                    val description = stringResource(
+                        R.string.manual_organization_diagram_item_a11y,
+                        OrganizationPreviewContent.labelText(item.label, wording),
+                        OrganizationPreviewContent.kindText(item.kind, wording),
+                        pageText,
+                    )
+                    DiagramItemContent(
+                        isFolder = item.kind is CanonicalItemKind.Folder,
+                        memberCount = item.memberCount ?: 0,
+                        isWidget = item.kind is CanonicalItemKind.AppWidget ||
+                            item.kind is CanonicalItemKind.CustomAppWidget,
+                        icon = null,
+                        label = OrganizationPreviewContent.labelText(item.label, wording),
+                        cellSize = cellSize,
+                        folderIcon = painterResource(R.drawable.ic_folder),
+                        widgetLabel = stringResource(R.string.manual_organization_diagram_widget),
+                        modifier = Modifier
+                            .diagramCellPlacement(
+                                item.cell.x,
+                                item.cell.y,
+                                cellSize,
+                                item.span.width,
+                                item.span.height,
+                            )
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = description
+                                collectionItemInfo = CollectionItemInfo(
+                                    rowIndex = item.cell.y,
+                                    rowSpan = item.span.height,
+                                    columnIndex = item.cell.x,
+                                    columnSpan = item.span.width,
+                                )
+                            },
+                    )
+                }
+            }
+        }
+        if (diagram.dockItems.isNotEmpty()) {
+            val dockText = stringResource(R.string.manual_organization_diagram_dock)
+            Text(
+                text = dockText,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+                    .padding(4.dp)
+                    .semantics {
+                        collectionInfo = CollectionInfo(rowCount = 1, columnCount = diagram.dockItems.size)
+                    },
+                horizontalArrangement = Arrangement.Start,
+            ) {
+                diagram.dockItems.forEachIndexed { dockIndex, item ->
+                    val description = stringResource(
+                        R.string.manual_organization_diagram_item_a11y,
+                        OrganizationPreviewContent.labelText(item.label, wording),
+                        OrganizationPreviewContent.kindText(item.kind, wording),
+                        dockText,
+                    )
+                    DiagramItemContent(
+                        isFolder = item.kind is CanonicalItemKind.Folder,
+                        memberCount = item.memberCount ?: 0,
+                        isWidget = item.kind is CanonicalItemKind.AppWidget ||
+                            item.kind is CanonicalItemKind.CustomAppWidget,
+                        icon = null,
+                        label = OrganizationPreviewContent.labelText(item.label, wording),
+                        cellSize = cellSize,
+                        folderIcon = painterResource(R.drawable.ic_folder),
+                        widgetLabel = stringResource(R.string.manual_organization_diagram_widget),
+                        modifier = Modifier
+                            .width(cellSize)
+                            .height(cellSize)
+                            .padding(2.dp)
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = description
+                                collectionItemInfo = CollectionItemInfo(
+                                    rowIndex = 0,
+                                    rowSpan = 1,
+                                    columnIndex = dockIndex,
+                                    columnSpan = 1,
+                                )
+                            },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Issue #508: the excluded-items group — each excluded key with its display
+ * label (kept from a previous preview's exclusion surface) and its 戻す
+ * action. Hidden while nothing is excluded.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.excludedProposalItems(
+    exclusions: Set<ProposalExclusionKey>,
+    labels: Map<ProposalExclusionKey, PreviewLabel>,
+    wording: OrganizationPreviewWording,
+    onExclusionsChange: (Set<ProposalExclusionKey>) -> Unit,
+) {
+    if (exclusions.isEmpty()) return
+    item(key = "preview-excluded-heading") {
+        Text(
+            text = stringResource(R.string.manual_organization_excluded_heading, exclusions.size),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+    val ordered = exclusions.sortedWith(
+        compareBy({ it is ProposalExclusionKey.Candidate }, { exclusionKeyValue(it) }),
+    )
+    ordered.forEachIndexed { index, key ->
+        item(key = "preview-excluded-$index") {
+            val name = labels[key]
+                ?.let { OrganizationPreviewContent.labelText(it, wording) }
+                ?: stringResource(R.string.manual_organization_excluded_unknown_item)
+            val excludedStateText = stringResource(R.string.manual_organization_exclusion_state_excluded)
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { stateDescription = excludedStateText },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onExclusionsChange(exclusions - key) }) {
+                    Text(text = stringResource(R.string.manual_organization_include_action))
+                }
+            }
+        }
+    }
+}
+
+private fun exclusionBlockReasonString(reason: PreviewExclusionBlockReason): Int = when (reason) {
+    PreviewExclusionBlockReason.KIND_NOT_EXCLUDABLE -> R.string.manual_organization_exclusion_blocked_kind
+    PreviewExclusionBlockReason.PLACEMENT_NOT_EXCLUDABLE -> R.string.manual_organization_exclusion_blocked_placement
+    PreviewExclusionBlockReason.PRESERVED_NOT_EXCLUDABLE -> R.string.manual_organization_exclusion_blocked_preserved
+    PreviewExclusionBlockReason.STRUCTURAL_ROW -> R.string.manual_organization_exclusion_blocked_structural
+}
+
+/**
+ * Issue #508 (Phase 2 re-review round 2): candidates this proposal never
+ * placed (overflow etc.) have no change row, so the surface renders them as
+ * an explicit supplementary group with the same exclude action — every
+ * exclusion key always has a user path into `applyProposalExclusions`.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.unplacedCandidateItems(
+    candidates: List<app.lawnchair.organizer.application.public.PreviewExcludableItem>,
+    exclusions: Set<ProposalExclusionKey>,
+    wording: OrganizationPreviewWording,
+    onExclusionsChange: (Set<ProposalExclusionKey>) -> Unit,
+) {
+    val pending = candidates.filter { it.key !in exclusions }
+    if (pending.isEmpty()) return
+    item(key = "preview-unplaced-heading") {
+        Text(
+            text = stringResource(R.string.manual_organization_unplaced_candidates_heading, pending.size),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+    pending.forEachIndexed { index, entry ->
+        item(key = "preview-unplaced-$index") {
+            val name = OrganizationPreviewContent.labelText(entry.label, wording)
+            val kindWord = OrganizationPreviewContent.kindText(entry.kind, wording)
+            val description = stringResource(R.string.manual_organization_unplaced_candidate_a11y, name, kindWord)
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { contentDescription = description },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "$name ($kindWord)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onExclusionsChange(exclusions + entry.key) }) {
+                    Text(text = stringResource(R.string.manual_organization_exclude_action))
+                }
+            }
+        }
+    }
+}
+
+private fun exclusionKeyValue(key: ProposalExclusionKey): String = when (key) {
+    is ProposalExclusionKey.Existing -> key.item.value
+    is ProposalExclusionKey.Candidate -> key.item.value
 }
 
 /**
@@ -1827,6 +2222,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
     counts: PreviewCounts,
     sections: List<OrganizationPreviewSection>,
     expandedGroups: MutableState<Set<Int>>,
+    exclusions: Set<ProposalExclusionKey> = emptySet(),
+    onExclusionsChange: (Set<ProposalExclusionKey>) -> Unit = {},
 ) {
     contextItems(summary)
     item { SummaryText(stringResource(R.string.manual_organization_moved_count, counts.movedCount)) }
@@ -1877,8 +2274,53 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
         }
         val expanded = sectionIndex in expandedGroups.value
         val visibleRows = if (expanded) section.rows else section.rows.take(PREVIEW_ROWS_BEFORE_EXPANSION)
+        val includedStateRes = R.string.manual_organization_exclusion_state_included
+        val blockedReasonIds = PreviewExclusionBlockReason.entries.associateWith { reason ->
+            exclusionBlockReasonString(reason)
+        }
         visibleRows.forEachIndexed { rowIndex, row ->
-            item(key = "preview-row-$sectionIndex-$rowIndex") { SummaryText(row) }
+            item(key = "preview-row-$sectionIndex-$rowIndex") {
+                // Issue #508 (AC-10): rows whose item is on the proposal's
+                // exclusion surface (and not already excluded) carry the 行単位
+                // exclude action with its inclusion state; every other row
+                // speaks its typed not-excludable reason through a11y.
+                when (val rowExclusion = section.rowExclusions.getOrNull(rowIndex)) {
+                    is PreviewRowExclusion.Excludable -> {
+                        val exclusionKey = rowExclusion.key.takeIf { it !in exclusions }
+                        val includedStateText = stringResource(includedStateRes)
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .semantics { stateDescription = includedStateText },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = row,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (exclusionKey != null) {
+                                TextButton(onClick = { onExclusionsChange(exclusions + exclusionKey) }) {
+                                    Text(text = stringResource(R.string.manual_organization_exclude_action))
+                                }
+                            }
+                        }
+                    }
+
+                    is PreviewRowExclusion.NotExcludable -> {
+                        val reason = stringResource(blockedReasonIds.getValue(rowExclusion.reason))
+                        Text(
+                            text = row,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .semantics { contentDescription = "$row、$reason" },
+                        )
+                    }
+
+                    null -> SummaryText(row)
+                }
+            }
         }
         if (section.rows.size > PREVIEW_ROWS_BEFORE_EXPANSION) {
             item(key = "preview-toggle-$sectionIndex") {

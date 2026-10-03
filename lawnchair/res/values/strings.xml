@@ -1445,6 +1445,29 @@
     <!-- Issue #201: safe generic title for generated folders whose semantic name cannot be resolved. -->
     <string name="organizer_generated_folder_fallback_name">Folder</string>
     <string name="manual_organization_preview_new_page_row">Add a new page at position %1$d</string>
+    <!-- Issue #508: before/after diagrams, per-item exclusion, and the replan
+         progress on the confirmation surface. Zero-write display state. -->
+    <string name="manual_organization_diagram_before">Before</string>
+    <string name="manual_organization_diagram_after">After</string>
+    <string name="manual_organization_diagram_page">Page %1$d</string>
+    <string name="manual_organization_diagram_new_page">New page</string>
+    <string name="manual_organization_diagram_dock">Dock</string>
+    <string name="manual_organization_diagram_widget">Widget</string>
+    <string name="manual_organization_diagram_item_a11y">%1$s, %2$s, %3$s</string>
+    <string name="manual_organization_exclude_action">Exclude</string>
+    <string name="manual_organization_include_action">Put back</string>
+    <string name="manual_organization_excluded_heading">Excluded from this proposal: %1$d</string>
+    <string name="manual_organization_excluded_unknown_item">Item</string>
+    <string name="manual_organization_exclusion_blocked_kind">not excludable: this item type is never an exclusion target</string>
+    <string name="manual_organization_exclusion_blocked_placement">not excludable: dock, folder, and app-pair placements are not exclusion targets</string>
+    <string name="manual_organization_exclusion_blocked_preserved">not excludable: a stronger preservation rule keeps this placement</string>
+    <string name="manual_organization_exclusion_blocked_structural">not excludable: replanning decides this row automatically</string>
+    <string name="manual_organization_exclusion_state_included">In the proposal</string>
+    <string name="manual_organization_exclusion_state_excluded">Excluded</string>
+    <string name="manual_organization_unplaced_candidates_heading">Not placed by this proposal: %1$d</string>
+    <string name="manual_organization_unplaced_candidate_a11y">%1$s (%2$s), not placed by this proposal</string>
+    <string name="manual_organization_replanning">Replanning the proposal</string>
+    <string name="manual_organization_replanning_summary">Preparing a new proposal with your exclusions. The diagrams and list below still show the previous proposal.</string>
 
     <!-- Issue #53: non-blocking onboarding proposal. -->
     <string name="organization_onboarding_proposal_title">Organize your Home screen?</string>

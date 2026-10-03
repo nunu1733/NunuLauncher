@@ -70,19 +70,19 @@ class PlanPreviewProjectorDuplicateWarningTest {
         val result = PlanPreviewProjector.project(validated, planned) as PlanPreviewProjector.Result.Ready
 
         // The preserve row speaks the duplicate reason.
-        val preserveRow = result.details.changes.filterIsInstance<PreservedChange>().single()
+        val preserveRow = result.changes.filterIsInstance<PreservedChange>().single()
         assertEquals(PreserveReason.DUPLICATE_LAUNCH_TARGET, preserveRow.reason)
         assertEquals(ItemId("photos.2"), preserveRow.item)
 
         // The warning group carries exactly one concrete row for the surplus.
-        val warningRow = result.details.changes.filterIsInstance<ItemWarningChange>().single()
+        val warningRow = result.changes.filterIsInstance<ItemWarningChange>().single()
         assertEquals(WarningCode.DUPLICATE_LAUNCH_TARGET, warningRow.code)
         assertEquals(ItemId("photos.2"), warningRow.item)
 
         // Spec 195 D2: the header count equals the concrete row count; the
         // duplicate warning adds no new row kind.
-        assertEquals(mapOf(WarningCode.DUPLICATE_LAUNCH_TARGET to 1), result.details.counts.warningCounts)
-        assertEquals(1, result.details.counts.preservedCount)
+        assertEquals(mapOf(WarningCode.DUPLICATE_LAUNCH_TARGET to 1), result.counts.warningCounts)
+        assertEquals(1, result.counts.preservedCount)
     }
 
     /**

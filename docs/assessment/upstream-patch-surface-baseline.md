@@ -166,6 +166,8 @@ explicit review rule. No unexpectedly broad or unowned bridge was found at the
 captured main commit; such a path would have caused the command to fail rather
 than being silently absorbed.
 
+- 2026-10-04: Recapture at branch `issue-508-visual-preview-item-exclusion` head `8af117b6fc` — Issue #508 implementation (confirmation before/after diagrams + per-item exclusion/replan). `ui/diagram/HomeDiagramParts.kt` (pure read-only diagram parts extracted from `EditSurfaceScreen.kt`: page surface, cell placement, item visuals; new project file, no selection/session/icon logic) joins `homeedit-edit-surface`, consumed by both the edit surface and the organizer confirmation diagrams; `EditSurfaceScreen.kt` shrinks by the extraction (−79/+25 net inside the group). All organizer-side changes stay under the `organizer/` project-owned prefix (coordinator, application preview, planning derivation, UI, tests). `expected_measurement` re-adopted at head `8af117b6fc` — owning Issue #508, accepted spec `specs/508-visual-preview-item-exclusion/spec.md` (tier H, Phase 1 re-review round 4 Clear; Phase 2 review rounds tracked on PR #515).
+
 ## References
 
 [1]: ../engineering/upstream-strategy.md "Lawnchair Upstream Strategy"

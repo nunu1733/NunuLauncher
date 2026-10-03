@@ -1,9 +1,11 @@
 package app.lawnchair.organizer.application.protocol
 
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
+import app.lawnchair.organizer.application.preview.PlanDiagramProjector
 import app.lawnchair.organizer.application.preview.PlanPreviewProjector
 import app.lawnchair.organizer.application.public.FolderTitleResolver
 import app.lawnchair.organizer.application.public.PlanPreview
+import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PlanPreviewRejection
 import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.application.public.PlanPreviewUnavailable
@@ -88,8 +90,21 @@ class PlanPreviewProtocol(
                 return PlanPreviewResult.NotPlannable(PlanPreviewRejection.MATERIALIZATION_INVALID)
         }
         val projection = PlanPreviewProjector.project(plan, planned)
-        val details = (projection as? PlanPreviewProjector.Result.Ready)?.details
+        val rows = projection as? PlanPreviewProjector.Result.Ready
             ?: return PlanPreviewResult.NotPlannable(PlanPreviewRejection.MATERIALIZATION_INVALID)
+        // Issue #508: the before/after diagrams and the exclusion surface are
+        // part of the same total projection — a details value is only built
+        // complete, and a diagram join miss is the same contract violation as
+        // a row join miss (fail-closed MATERIALIZATION_INVALID).
+        val visual = PlanDiagramProjector.project(plan, input)
+        val visuals = visual as? PlanDiagramProjector.Result.Ready
+            ?: return PlanPreviewResult.NotPlannable(PlanPreviewRejection.MATERIALIZATION_INVALID)
+        val details = PlanPreviewDetails(
+            changes = rows.changes,
+            counts = rows.counts,
+            diagrams = visuals.diagrams,
+            excludableItems = visuals.excludableItems,
+        )
         return PlanPreviewResult.Previewed(PlanPreview(plan = plan, details = details))
     }
 }
