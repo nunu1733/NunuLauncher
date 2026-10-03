@@ -54,26 +54,28 @@ class DirectRunPublicationThread : RunPublicationThread {
 }
 
 /**
- * Issue #418 (Phase2 review round 2): the shared uninterruptible latch join
- * behind BOTH [RunPublicationThread] implementations. Once a publication task
- * is queued, its caller — possibly holding the run lock and the exchange
- * mutation gate (spec 375) — must not unwind before the publication
- * completes; a late publication would invert the gate-release linearization.
- * Returns whether the wait observed an interrupt so the caller can re-assert
- * the interrupt status after completion. The JVM join oracle exercises THIS
- * primitive through [DedicatedThreadPublication], so production and test
- * cannot drift apart on this contract.
+ * Issue #418 (Phase2 review round 2/3): the shared uninterruptible latch join
+ * behind BOTH [RunPublicationThread] implementations — wait AND interrupt
+ * status restoration in ONE primitive. Once a publication task is queued, its
+ * caller — possibly holding the run lock and the exchange mutation gate
+ * (spec 375) — must not unwind before the publication completes; a late
+ * publication would invert the gate-release linearization. An interrupt
+ * during the wait never aborts the join; after completion the caller's
+ * interrupt status is restored. The JVM join oracle exercises THIS primitive
+ * through [DedicatedThreadPublication], so production and test cannot drift
+ * apart on this contract.
  */
-internal fun CountDownLatch.awaitPublicationCompletion(): Boolean {
+internal fun CountDownLatch.awaitPublicationCompletion() {
     var interrupted = false
     while (true) {
         try {
             await()
-            return interrupted
+            break
         } catch (_: InterruptedException) {
             interrupted = true
         }
     }
+    if (interrupted) Thread.currentThread().interrupt()
 }
 
 /**
@@ -96,8 +98,7 @@ class HandlerRunPublicationThread(
             latch.countDown()
         }
         check(posted) { "organizer run publication task could not be posted to the main looper" }
-        val interrupted = latch.awaitPublicationCompletion()
-        if (interrupted) Thread.currentThread().interrupt()
+        latch.awaitPublicationCompletion()
         return outcome.get()!!.getOrThrow()
     }
 
@@ -143,8 +144,7 @@ class DedicatedThreadPublication(
             outcome.set(runCatching(block))
             latch.countDown()
         }
-        val interrupted = latch.awaitPublicationCompletion()
-        if (interrupted) Thread.currentThread().interrupt()
+        latch.awaitPublicationCompletion()
         return outcome.get()!!.getOrThrow()
     }
 
