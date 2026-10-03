@@ -324,3 +324,20 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   行わない」へ修正。(3) 低: 冒頭の「拘束契約として定義する」を
   「実装PR向けのre-entry/完了チェック資料 (accepted不要)」へ弱め、
   正本をIssue終了条件 + spec 228 AC-12 + spec 13へ一本化。
+- 2026-10-03: 実装完了 (impl branch `issue-293-impl`)。
+  (1) AC-293-01: `japaneseResourcesResolveEveryConcretePreviewString` へ
+  19リソース (17 strings + 2 plurals) を追加 (17 stringsはen fallback検出の
+  `assertNotEquals`、`preview_add_row` / `preview_add_descriptor` は#208前例の
+  placeholder survival assert、2 pluralsは#231前例のja解決 + en one-vs-other
+  assert)。ローカル検証: `./gradlew spotlessCheck` green
+  (spotless対象は`lawnchair/src` / `tests/unit`であり、本件の
+  `tests/organizer-instrumentation`は対象外)、
+  `./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+  -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest`
+  がAPI 36 emulator (Android 16) で **56 tests / 0 failures**。
+  CI結果 (lane `organizer-instrumentation-manual-organization-ui-tests`) はPRで記録する。
+  (2) AC-293-02: spec 13へ `| CANDIDATE_UNAVAILABLE` を `EXACT_PRECONDITION_FAILED`
+  の直後に追記し、change history entryを#185 precedent形式で追加
+  (membership契約、順序合わせの並べ替えなし)。
+  (3) AC-293-03: 差分は対象test file + spec 13 + `specs/293-*` のみで、
+  production source・DB・依存に差分なし。
