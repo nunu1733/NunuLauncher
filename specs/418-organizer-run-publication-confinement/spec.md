@@ -1,6 +1,6 @@
 ---
 issue: "#418"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-10-03
 ---
@@ -293,3 +293,6 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
   （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963853590)）
   でAmendmentの波及先同期（処理時間契約の例外対象外化・既存oracleのscope明示・
   375 plan.mdのAmendment note）を完了。
+- 2026-10-03: **Accepted** — Phase1 review round 5のApprove
+  （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963896376)、
+  head `2363fcd0de`）。Phase 2実装へ進む。
