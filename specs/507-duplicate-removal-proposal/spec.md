@@ -30,7 +30,7 @@ updated: 2026-10-03
   3. 各組で外す側をtap（2組 × 1）= **2**
   4. 確認面内の「ホームから外す」tap（1）= **1**（面が閉じ、既存セッション計画へ反映）
   5. 確定tap（1）= **1**
-  - 合計: 重み付き **8**（すべてtap。drag・swipe・確認dialogなし）、操作数8。**9未満を満たす。**
+  - 合計: 重み付き **8**（手順は長押し1回（重み2）+ 以降はtapのみ。drag・swipe・追加の確認stepはなし）、操作数8。**9未満を満たす。**
 - Undo（確定直後の既存snackbar）はB7の勘定に含めない（B5 = #450の対象）。
 - #451が確定したB7目標（構造保証: 新規フォルダ内の重複0組。可視性: preview警告行での識別）は不変であり、本specはその「発見と削除」の残りを担当する。50%削減目標や探索時間の目標を追加しない（根拠なし）。
 
@@ -49,8 +49,9 @@ updated: 2026-10-03
 - **重複グループの計算（homeedit内の純粋投影）**: 編集画面のcaptureから投影した図のitems（作業投影。capture + セッション計画。単一の権威）を入力に、重複グループを決定的に計算する純粋関数をhomeedit内に追加する。入力は図のitem（id、種別、targetKey、label、位置、container、profile、lock）のみで、Android型・DB行をinterfaceへ出さない。グループはサイズ≥2の同一起動先集合であり、セッション計画で既に除かれた（Removal済み）itemはグループから消える（残す個体の確認と一致させる）。グループとメンバーの並びは決定的（視覚順基準。JVM testで固定）。
 - **入口（サマリ行）**: 編集画面の上部（選択数表示の下）に「重複アイコン N組」の行を置く。重複グループが0組の間は行を出さない。零書込みの表示であり、tapで重複確認面を開く。
 - **重複確認面（dialog）**: 各グループを節として示し、各メンバー行に (1) 名前（label。無い場合は既存の既定表示）、(2) 位置（ページN・行/列、または所属フォルダ名、またはDock）、(3) profile区別（main userでないprofileは区別表示）、(4) 選択状態、(5) 選択不可の理由（ロック中/ロック状態不明/Dock・フォルダ内等。既存eligibility語彙）を出す。メンバー行のtapは既存の選択toggle（#449のselection。eligibility判定・touched guard・ロック扱いは既存と同一）へ流す。別の選択stateは作らない。
-- **最後の1個を守る選択規則（提案経路の選択規則。Issue未決事項の確定）**: 重複確認面からの選択toggleは、そのtoggleによって当該グループの全メンバーが選択状態になる場合、typedな理由表示で受け付けない（零書込み。グループに少なくとも1個が残る）。対象外のみのグループ（全メンバーが選択不可）は理由を示して選択不可とする。この規則は重複確認面からの選択にのみ適用され、図上のtap → 既存Removeの通常契約（#449）は変更しない。guardはhomeedit内の純粋関数とし、JVM testで検証する。
-- **確認面内の「ホームから外す」**: 既存の `RemoveFromHome` アクション（#449。図のアクションバーと同一アクション）への共通入口を確認面内に置く。新規アクション種別・新規planner intentは作らない。選択全体（重複以外を含みうる既存選択）に適用され、成功時は確認面を閉じて図へ戻す（確定ボタンが届く）。拒否時は零書込みで理由を表示し確認面を保持する。
+- **最後の1個を守る選択規則（提案経路の選択規則。Issue未決事項の確定）**: 確認面において、当該グループの全メンバーが選択（removal対象）になる状態を作る操作は、typedな理由表示で受け付けない（零書込み。グループに少なくとも1個が残る）。guardは **2つの境界** で同一の純粋関数により適用する: (1) 確認面からの選択toggle時、(2) 確認面内の「ホームから外す」を既存 `RemoveFromHome` へ流す直前（dispatch時）。(2)は、図上で事前に全メンバーを選択してから確認面を開き、面内ではtoggleせずRemoveを実行する経由でguardを迂回しないための同一検証であり、現行selectionがグループの全メンバーを含む場合は同一のtyped理由で拒否し、零書込み・確認面保持とする。guardの判定はduplicate groupのメンバーのみを対象とし、重複以外の項目を含む「選択全体へ既存Removeを適用」の通常意味論は変えない。guardを共有の `EditSurfaceSessionPlanner.plan(RemoveFromHome)` 側へ入れない（図上の通常Remove契約（#449）が「重複を1個残す」契約に変わってしまうため）。この規則は重複確認面からの選択・実行にのみ適用され、図上のtap → 既存Removeの通常契約（#449）は変更しない。guardはhomeedit内の純粋関数とし、JVM testで検証する。
+- **対象外のみのグループ（全メンバーが選択不可）は理由を示して選択不可とする。**
+- **確認面内の「ホームから外す」**: 既存の `RemoveFromHome` アクション（#449。図のアクションバーと同一アクション）への共通入口を確認面内に置く。新規アクション種別・新規planner intentは作らない。選択全体（重複以外を含みうる既存選択）に適用され、成功時は確認面を閉じて図へ戻す（確定ボタンが届く）。実行直前には最後の1個のguard（上記のdispatch時検証）を通し、拒否時は零書込みで理由を表示し確認面を保持する。
 - **確定とUndo**: 既存#449経路（確定時の再captureとrevision・状態一致検証、recovery point 1個、1 transaction、相関reload、適用後検証）と既存#450 snackbarをそのまま使う。削除専用Undo・追加確認step・自動選択は作らない。
 - **stale/キャンセル/capture失敗**: 既存契約どおり零書込み。確認面の表示は常に現行capture由来の図から再計算し、確定時のstaleはセッション（選択を含む）破棄+最新captureでの開き直し（既存flow。重複表示も再計算される）。古いpreviewの`ItemId`を新セッションへ無検証で持ち込む経路は存在しない（選択はprocess内セッション状態のみ。永続化しない）。
 
@@ -94,6 +95,20 @@ Given 重複グループ1組（メンバー2個とも選択可能）で確認面
 When 1個目を選んだ後、もう1個もtapする
 Then 2個目の選択は受け付けられず、各グループで少なくとも1個残す必要がある旨のtypedな理由が表示される（零書込み）
 And 既存の1個目の選択は保持される
+
+### Scenario: 図上で事前に全メンバーを選択してから確認面のRemoveを実行しても拒否される
+
+Given 図上で重複グループのメンバー2個を事前に選択してから確認面を開いた
+When 面内の「ホームから外す」をtapする
+Then dispatch直前のguardが適用され、選択は実行されず、typedな理由が表示され、零書込みで確認面は保持される（セッション計画は変化しない）
+And その後1個の選択を解除すると、残り1個のremovalは既存のRemove経路で計画できる
+
+### Scenario: guardは重複メンバーのみを判定する
+
+Given 図上で重複グループのメンバー1個と、重複でない別アイテム1個を事前に選択してから確認面を開いた
+When 面内の「ホームから外す」をtapする
+Then 重複グループには選択されていないメンバーが残るため、選択全体（重複メンバー+別アイテム）への既存Removeが通常どおり実行される
+And guardは「選択全体への既存Remove」の通常意味論を変更しない
 
 ### Scenario: 対象外のみのグループは理由を示して選択できない
 
@@ -174,7 +189,7 @@ And セッション（選択を含む）は破棄され、最新のcaptureで編
 - [ ] AC-1: 重複が存在するcaptureでの編集画面に「重複アイコン N組」のサマリ行が現れ、0組では現れない。tapで重複確認面が開き、各グループの各メンバーが名前・ページ/位置・フォルダ所属・profile区別・選択状態・選択不可の理由つきで一覧される（エミュレータスクリーンショット+実機owner確認）。
 - [ ] AC-2: 重複判定が#451と同一である: 名前だけの一致は重複としない、profile違いは重複としない、deep shortcutはpackage + shortcut id + profile、widget/folder自身/app pair/legacy shortcut/session作成行は参加しない。planningの一般化関数への委譲構成（判定規則の2実装を作らない）をdiffで確認し、既存planning test群とgolden corpusの不変をtestで確認する。
 - [ ] AC-3: 確認面からの選択が既存の選択機構と同一実体で動く（eligibility、touched guard、ロック扱い、選択解除）。自動選択は行わない。
-- [ ] AC-4: 最後の1個のguard: 確認面からのtoggleでグループ全メンバーが選択される場合はtypedな理由表示で受け付けず、零書込みである。対象外のみのグループは理由を示して選択不可。3個の重複では2個まで外せる。JVM testで検証する。
+- [ ] AC-4: 最後の1個のguard（確認面の2境界で同一の純粋関数を適用）: (1) 確認面からのtoggleでグループ全メンバーが選択される場合、および(2) 確認面内の「ホームから外す」を既存`RemoveFromHome`へ流す直前に現行selectionがグループ全メンバーを含む場合、いずれもtypedな理由表示で受け付けず、零書込みである（図上での事前全選択経由の迂回を含む）。guardはduplicateメンバーのみを判定し、重複以外を含む「選択全体への既存Remove」の通常意味論を変えない。guardを共有planner（`EditSurfaceSessionPlanner.plan`）へ入れず、図上の通常Remove契約が不変であることをdiffとtestで確認する。対象外のみのグループは理由を示して選択不可。3個の重複では2個まで外せる。JVM testで検証する。
 - [ ] AC-5: 確認面内の「ホームから外す」が既存 `RemoveFromHome` と同一アクションであること（新規アクション種別・intentなし）。成功時は面が閉じて確定に進め、拒否時は零書込みで理由表示する。確定・Undoが既存#449/#450契約のままであること（既存test群が回帰を担保。新規instrumentation laneは作らない）。
 - [ ] AC-6: 表示・選択・キャンセル・capture失敗が零書込みであり、stale時は既存どおりセッション破棄+最新captureでの開き直し（重複表示の再計算を含む）である（JVM test+エミュレータ操作記録）。
 - [ ] AC-7: ベンチマークB7: Benchmark節の固定手順の重み付きコストが9未満（8）であることを#441の重み表で会計し、fixtureでのエミュレータ実行記録をPRに残す。実装PRで `docs/engineering/editing-burden-benchmark.md` のB7行へ削除提案経路の目標（重み付きコスト9未満）を反映する（#451の構造保証・可視性目標は不変）。
@@ -188,7 +203,7 @@ And セッション（選択を含む）は破棄され、最新のcaptureで編
 |---|---|
 | AC-1 / AC-3 | エミュレータスクリーンショット（サマリ行・確認面・選択状態）+ 実機owner確認。グループ計算のJVM test |
 | AC-2 | homeedit JVM test（名前違い・profile違い・deep shortcut・対象外・session作成行の非参加）+ 既存planning test群（`DuplicateInjectionPropertyTest`）とgolden corpusのgreen + diff確認（委譲refactor） |
-| AC-4 | homeedit JVM test（guardのtyped拒否、対象外のみグループ、3個の重複、決定性） |
+| AC-4 | homeedit JVM test（guardのtyped拒否: toggle時+dispatch直前、図上事前全選択（2個組・3個組）からの面内Remove拒否、1個解除後の計画成功、unrelated選択混在でduplicateメンバーのみ判定、対象外のみグループ、3個の重複、決定性） |
 | AC-5 / AC-6 | homeedit JVM test（アクション種別の同一性・零書込み経路）+ エミュレータ操作記録（外す → 確定 → ホーム反映 → Undo）。既存shared-writer instrumentation laneが#449/#450契約の回帰を担保 |
 | AC-7 | ベンチマーク§5 fixtureでのエミュレータ実行記録 + 会計表（PR本文）+ `editing-burden-benchmark.md` のdiff |
 | AC-8 | semantics descriptorのJVM test + strings resource oracle（en/ja非空）+ エミュレータ200% font scaleのスクリーンショット |
@@ -198,3 +213,4 @@ And セッション（選択を含む）は破棄され、最新のcaptureで編
 ## Change history
 
 - 2026-10-03: Draft created for #507（seed-backlog order 6。Issue本文の未確定事項 — 入口の形式・グループ表示・対象外の理由・最後の1個の選択規則・B7の固定手順 — を本specで確定）。
+- 2026-10-03: Revision 2 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/pull/513#issuecomment-5967339973): accepted化前に修正が必要、指摘2件）への対応。指摘1（高）: 最後の1個のguardの適用境界を「確認面からのtoggle」に加えて「確認面内Removeのdispatch直前」へ拡張（図上で事前に全メンバーを選択してから面内Removeを実行する迂回を塞ぐ。guardを共有 `EditSurfaceSessionPlanner.plan` へ入れず図上の通常Remove契約を不変に保つことを明記）。Scope・Behavior scenario（事前選択迂回・unrelated混在の2 scenario追加）・AC-4・Test oracleへ同期。指摘2（低）: Benchmark節の会計説明を「長押し1回 + 以降はtapのみ」へ文言修正（重み付き8・操作数8の数値不変）。
