@@ -1,6 +1,6 @@
 ---
 issue: "#507"
-status: draft
+status: accepted
 tier: M
 requirements:
   - FR-019
@@ -214,3 +214,4 @@ And セッション（選択を含む）は破棄され、最新のcaptureで編
 
 - 2026-10-03: Draft created for #507（seed-backlog order 6。Issue本文の未確定事項 — 入口の形式・グループ表示・対象外の理由・最後の1個の選択規則・B7の固定手順 — を本specで確定）。
 - 2026-10-03: Revision 2 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/pull/513#issuecomment-5967339973): accepted化前に修正が必要、指摘2件）への対応。指摘1（高）: 最後の1個のguardの適用境界を「確認面からのtoggle」に加えて「確認面内Removeのdispatch直前」へ拡張（図上で事前に全メンバーを選択してから面内Removeを実行する迂回を塞ぐ。guardを共有 `EditSurfaceSessionPlanner.plan` へ入れず図上の通常Remove契約を不変に保つことを明記）。Scope・Behavior scenario（事前選択迂回・unrelated混在の2 scenario追加）・AC-4・Test oracleへ同期。指摘2（低）: Benchmark節の会計説明を「長押し1回 + 以降はtapのみ」へ文言修正（重み付き8・操作数8の数値不変）。
+- 2026-10-03: **accepted** — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/pull/513#issuecomment-5967402221): **Clear**。round 1の2指摘はいずれも解消済み、新規blocking findingなし）を経て受理。受入revisionは本commit（Revision 2 + status遷移）。Phase 2実装は同branchで継続し、実装完了時にPR本文のpacketを最終PRとして更新する。
