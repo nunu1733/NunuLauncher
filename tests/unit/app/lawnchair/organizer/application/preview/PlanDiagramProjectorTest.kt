@@ -62,7 +62,6 @@ import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -404,11 +403,17 @@ class PlanDiagramProjectorTest {
     }
 
     @Test
-    fun anUnplacedCandidateIsNotExcludable() {
+    fun anUnplacedCandidateStaysExcludableWithItsPlanningKind() {
+        // D-3: the additions set is the authoritative candidate surface — an
+        // unplaced (overflow) candidate must stay excludable so the user can
+        // remove it from the next replan even though this plan never places it.
         val plan = plan(sourceItems = emptyList(), intendedItems = emptyList(), actions = emptyList())
 
         val result = PlanDiagramProjector.project(plan, input(targets(emptyList(), listOf(candidateItem())))) as PlanDiagramProjector.Result.Ready
 
-        assertNull(result.excludableItems.firstOrNull { it.key is ProposalExclusionKey.Candidate })
+        val entry = result.excludableItems.single { it.key is ProposalExclusionKey.Candidate }
+        assertTrue(entry.isCandidate)
+        assertEquals(CanonicalItemKind.Application, entry.kind)
+        assertEquals(PreviewLabel.KindFallback(CanonicalItemKind.Application), entry.label)
     }
 }

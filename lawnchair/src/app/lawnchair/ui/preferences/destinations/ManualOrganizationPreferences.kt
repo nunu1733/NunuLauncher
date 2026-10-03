@@ -47,8 +47,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CollectionInfo
+import androidx.compose.ui.semantics.CollectionItemInfo
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collectionInfo
+import androidx.compose.ui.semantics.collectionItemInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -91,6 +95,8 @@ import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
+import app.lawnchair.organizer.ui.PreviewExclusionBlockReason
+import app.lawnchair.organizer.ui.PreviewRowExclusion
 import app.lawnchair.organizer.ui.RunUsageAccessJitDialogHost
 import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
 import app.lawnchair.organizer.ui.exchange.ExchangeDiscardConfirmDialog
@@ -1789,7 +1795,17 @@ private fun PreviewDiagramView(diagram: PreviewDiagram) {
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
             )
-            DiagramPageSurface(columns = diagram.columns, rows = diagram.rows, cellSize = cellSize) {
+            // Issue #508 (AC-10): the page grid exposes its geometry through
+            // collection semantics; each item merges into ONE reading node
+            // (icon/label/member-count children never read separately).
+            DiagramPageSurface(
+                columns = diagram.columns,
+                rows = diagram.rows,
+                cellSize = cellSize,
+                modifier = Modifier.semantics {
+                    collectionInfo = CollectionInfo(rowCount = diagram.rows, columnCount = diagram.columns)
+                },
+            ) {
                 diagram.reservedRegions
                     .filter { it.page == page.ref }
                     .forEach { reserved ->
@@ -1828,7 +1844,15 @@ private fun PreviewDiagramView(diagram: PreviewDiagram) {
                                 item.span.width,
                                 item.span.height,
                             )
-                            .semantics { contentDescription = description },
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = description
+                                collectionItemInfo = CollectionItemInfo(
+                                    rowIndex = item.cell.y,
+                                    rowSpan = item.span.height,
+                                    columnIndex = item.cell.x,
+                                    columnSpan = item.span.width,
+                                )
+                            },
                     )
                 }
             }
@@ -1844,10 +1868,13 @@ private fun PreviewDiagramView(diagram: PreviewDiagram) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-                    .padding(4.dp),
+                    .padding(4.dp)
+                    .semantics {
+                        collectionInfo = CollectionInfo(rowCount = 1, columnCount = diagram.dockItems.size)
+                    },
                 horizontalArrangement = Arrangement.Start,
             ) {
-                diagram.dockItems.forEach { item ->
+                diagram.dockItems.forEachIndexed { dockIndex, item ->
                     val description = stringResource(
                         R.string.manual_organization_diagram_item_a11y,
                         OrganizationPreviewContent.labelText(item.label, wording),
@@ -1868,7 +1895,15 @@ private fun PreviewDiagramView(diagram: PreviewDiagram) {
                             .width(cellSize)
                             .height(cellSize)
                             .padding(2.dp)
-                            .semantics { contentDescription = description },
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = description
+                                collectionItemInfo = CollectionItemInfo(
+                                    rowIndex = 0,
+                                    rowSpan = 1,
+                                    columnIndex = dockIndex,
+                                    columnSpan = 1,
+                                )
+                            },
                     )
                 }
             }
@@ -1903,8 +1938,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.excludedProposalItems
             val name = labels[key]
                 ?.let { OrganizationPreviewContent.labelText(it, wording) }
                 ?: stringResource(R.string.manual_organization_excluded_unknown_item)
+            val excludedStateText = stringResource(R.string.manual_organization_exclusion_state_excluded)
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { stateDescription = excludedStateText },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -1918,6 +1956,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.excludedProposalItems
             }
         }
     }
+}
+
+private fun exclusionBlockReasonString(reason: PreviewExclusionBlockReason): Int = when (reason) {
+    PreviewExclusionBlockReason.KIND_NOT_EXCLUDABLE -> R.string.manual_organization_exclusion_blocked_kind
+    PreviewExclusionBlockReason.PLACEMENT_NOT_EXCLUDABLE -> R.string.manual_organization_exclusion_blocked_placement
+    PreviewExclusionBlockReason.PRESERVED_NOT_EXCLUDABLE -> R.string.manual_organization_exclusion_blocked_preserved
+    PreviewExclusionBlockReason.STRUCTURAL_ROW -> R.string.manual_organization_exclusion_blocked_structural
 }
 
 private fun exclusionKeyValue(key: ProposalExclusionKey): String = when (key) {
@@ -2166,28 +2211,51 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
         }
         val expanded = sectionIndex in expandedGroups.value
         val visibleRows = if (expanded) section.rows else section.rows.take(PREVIEW_ROWS_BEFORE_EXPANSION)
+        val includedStateRes = R.string.manual_organization_exclusion_state_included
+        val blockedReasonIds = PreviewExclusionBlockReason.entries.associateWith { reason ->
+            exclusionBlockReasonString(reason)
+        }
         visibleRows.forEachIndexed { rowIndex, row ->
             item(key = "preview-row-$sectionIndex-$rowIndex") {
-                // Issue #508: rows whose item is on the proposal's exclusion
-                // surface (and not already excluded) carry the 行単位 exclude
-                // action; every other row renders unchanged.
-                val exclusionKey = section.rowKeys.getOrNull(rowIndex)?.takeIf { it !in exclusions }
-                if (exclusionKey != null) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    ) {
+                // Issue #508 (AC-10): rows whose item is on the proposal's
+                // exclusion surface (and not already excluded) carry the 行単位
+                // exclude action with its inclusion state; every other row
+                // speaks its typed not-excludable reason through a11y.
+                when (val rowExclusion = section.rowExclusions.getOrNull(rowIndex)) {
+                    is PreviewRowExclusion.Excludable -> {
+                        val exclusionKey = rowExclusion.key.takeIf { it !in exclusions }
+                        val includedStateText = stringResource(includedStateRes)
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .semantics { stateDescription = includedStateText },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = row,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (exclusionKey != null) {
+                                TextButton(onClick = { onExclusionsChange(exclusions + exclusionKey) }) {
+                                    Text(text = stringResource(R.string.manual_organization_exclude_action))
+                                }
+                            }
+                        }
+                    }
+
+                    is PreviewRowExclusion.NotExcludable -> {
+                        val reason = stringResource(blockedReasonIds.getValue(rowExclusion.reason))
                         Text(
                             text = row,
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .semantics { contentDescription = "$row、$reason" },
                         )
-                        TextButton(onClick = { onExclusionsChange(exclusions + exclusionKey) }) {
-                            Text(text = stringResource(R.string.manual_organization_exclude_action))
-                        }
                     }
-                } else {
-                    SummaryText(row)
+
+                    null -> SummaryText(row)
                 }
             }
         }

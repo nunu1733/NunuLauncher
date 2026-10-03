@@ -10,6 +10,7 @@ import app.lawnchair.organizer.application.public.NewPageChange
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PreservedChange
 import app.lawnchair.organizer.application.public.PreviewCounts
+import app.lawnchair.organizer.application.public.PreviewExcludableItem
 import app.lawnchair.organizer.application.public.PreviewFolderRef
 import app.lawnchair.organizer.application.public.PreviewLabel
 import app.lawnchair.organizer.application.public.PreviewPlacementIdentity
@@ -20,8 +21,11 @@ import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.ProposalExclusionKey
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.WarningCode
+import app.lawnchair.organizer.ui.PreviewExclusionBlockReason
+import app.lawnchair.organizer.ui.PreviewRowExclusion
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -705,6 +709,84 @@ class OrganizationPreviewContentTest {
     )
 
     private fun newPage(displayPosition: Int) = NewPageChange(ordinal = NewPageOrdinal(0), displayPosition = displayPosition)
+
+    // --- Issue #508: per-row exclusion state (AC-10 typed reasons) ---
+
+    @Test
+    fun excludableRowsCarryTheirKeysAndOtherRowsCarryTypedReasons() {
+        val details = planPreviewDetails(
+            changes = listOf(
+                MoveChange(
+                    item = ItemId("game"),
+                    label = PreviewLabel.Named("game"),
+                    identity = PreviewPlacementIdentity.Workspace(1, false, 2, 1),
+                    kind = CanonicalItemKind.Application,
+                    source = source(1, RowBand.TOP, ColumnBand.CENTER, 2),
+                    destination = destination(1, RowBand.BOTTOM, ColumnBand.RIGHT, 1),
+                    rationale = PlacementCode.SINGLE_PLACEMENT,
+                ),
+                preserved("locked", "locked", PreserveReason.LOCKED),
+                PreservedChange(
+                    item = ItemId("docked"),
+                    label = PreviewLabel.Named("docked"),
+                    identity = PreviewPlacementIdentity.Dock(2),
+                    kind = CanonicalItemKind.Application,
+                    current = PreviewPosition.DockRank(2),
+                    reason = PreserveReason.DOCK,
+                ),
+                itemWarning("notes", WarningCode.FALLBACK_CATEGORY),
+                newFolder(0),
+                newPage(3),
+            ),
+            counts = PreviewCounts(
+                movedCount = 1,
+                preservedCount = 2,
+                newFolderCount = 1,
+                newPageCount = 1,
+                warningCounts = mapOf(WarningCode.FALLBACK_CATEGORY to 1),
+            ),
+            excludableItems = listOf(
+                PreviewExcludableItem(
+                    key = ProposalExclusionKey.Existing(app.lawnchair.organizer.planning.ItemId("game")),
+                    label = PreviewLabel.Named("game"),
+                    kind = CanonicalItemKind.Application,
+                    isCandidate = false,
+                ),
+            ),
+        )
+
+        val sections = OrganizationPreviewContent.sections(details, TestWording)
+
+        val moveSection = sections.first { it.heading == "Move (1)" }
+        assertEquals(
+            PreviewRowExclusion.Excludable(ProposalExclusionKey.Existing(app.lawnchair.organizer.planning.ItemId("game"))),
+            moveSection.rowExclusions.single(),
+        )
+        val preservedSection = sections.first { it.heading == "Preserve (2)" }
+        assertEquals(
+            PreviewExclusionBlockReason.PRESERVED_NOT_EXCLUDABLE,
+            (preservedSection.rowExclusions[0] as PreviewRowExclusion.NotExcludable).reason,
+        )
+        assertEquals(
+            PreviewExclusionBlockReason.PLACEMENT_NOT_EXCLUDABLE,
+            (preservedSection.rowExclusions[1] as PreviewRowExclusion.NotExcludable).reason,
+        )
+        val warningSection = sections.first { it.heading == "Warnings (1)" }
+        assertEquals(
+            PreviewExclusionBlockReason.STRUCTURAL_ROW,
+            (warningSection.rowExclusions.single() as PreviewRowExclusion.NotExcludable).reason,
+        )
+        val folderSection = sections.first { it.heading == "New folders (1)" }
+        assertEquals(
+            PreviewExclusionBlockReason.STRUCTURAL_ROW,
+            (folderSection.rowExclusions.single() as PreviewRowExclusion.NotExcludable).reason,
+        )
+        val pageSection = sections.first { it.heading == "New pages (1)" }
+        assertEquals(
+            PreviewExclusionBlockReason.STRUCTURAL_ROW,
+            (pageSection.rowExclusions.single() as PreviewRowExclusion.NotExcludable).reason,
+        )
+    }
 
     private fun preserved(
         itemId: String,

@@ -1458,6 +1458,12 @@
     <string name="manual_organization_include_action">Put back</string>
     <string name="manual_organization_excluded_heading">Excluded from this proposal: %1$d</string>
     <string name="manual_organization_excluded_unknown_item">Item</string>
+    <string name="manual_organization_exclusion_blocked_kind">not excludable: this item type is never an exclusion target</string>
+    <string name="manual_organization_exclusion_blocked_placement">not excludable: dock, folder, and app-pair placements are not exclusion targets</string>
+    <string name="manual_organization_exclusion_blocked_preserved">not excludable: a stronger preservation rule keeps this placement</string>
+    <string name="manual_organization_exclusion_blocked_structural">not excludable: replanning decides this row automatically</string>
+    <string name="manual_organization_exclusion_state_included">In the proposal</string>
+    <string name="manual_organization_exclusion_state_excluded">Excluded</string>
     <string name="manual_organization_replanning">Replanning the proposal</string>
     <string name="manual_organization_replanning_summary">Preparing a new proposal with your exclusions. The diagrams and list below still show the previous proposal.</string>
 

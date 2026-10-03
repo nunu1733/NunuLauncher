@@ -151,10 +151,14 @@ object PlanDiagramProjector {
     /**
      * The exclusion surface of this proposal (spec D-3): existing members the
      * input marks `Movable` whose captured placement is a top-level workspace
-     * app/deep-shortcut, plus every placed candidate (an unplaced candidate
-     * has no Add row to act on — the overflow warning path owns it). A
-     * `Movable` member missing from the source state is a join contract
-     * violation and fails closed.
+     * app/deep-shortcut, plus **every** selected candidate — the additions
+     * set is the authoritative key surface, so an unplaced (overflow)
+     * candidate stays excludable too: excluding it removes it from the next
+     * replan even though this plan never places it. Label/kind come from the
+     * materialized insert when one exists; an unplaced candidate carries its
+     * planning kind as the fallback (the same kind-fallback wording path as
+     * every label). A `Movable` member missing from the source state is a
+     * join contract violation and fails closed.
      */
     private fun excludableItems(plan: ValidatedLayoutPlan, input: OrganizationInput): List<PreviewExcludableItem>? {
         val sourceById = plan.sourceState.items.mapNotNull { item ->
@@ -179,15 +183,20 @@ object PlanDiagramProjector {
                 (insert.ref as? ApplicationItemRef.PlannedCandidate)?.let { it.itemId to insert.intended }
             }
             .toMap()
-        val candidates = input.targets.additions.mapNotNull { addition ->
-            val intended = candidateInserts[addition.id] ?: return@mapNotNull null
+        val candidates = input.targets.additions.map { addition ->
+            val intended = candidateInserts[addition.id]
             PreviewExcludableItem(
                 key = ProposalExclusionKey.Candidate(addition.id),
-                label = itemLabel(intended),
-                kind = intended.kind,
+                label = intended?.let(::itemLabel) ?: PreviewLabel.KindFallback(addition.kind.toCanonical()),
+                kind = intended?.kind ?: addition.kind.toCanonical(),
                 isCandidate = true,
             )
         }
         return existing + candidates
+    }
+
+    private fun app.lawnchair.organizer.planning.CandidateKind.toCanonical(): CanonicalItemKind = when (this) {
+        app.lawnchair.organizer.planning.CandidateKind.APPLICATION -> CanonicalItemKind.Application
+        app.lawnchair.organizer.planning.CandidateKind.DEEP_SHORTCUT -> CanonicalItemKind.DeepShortcut
     }
 }
