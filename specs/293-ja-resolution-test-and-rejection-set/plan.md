@@ -1,0 +1,367 @@
+---
+issue: "#293"
+status: draft
+spec: ./spec.md
+updated: 2026-10-03
+---
+
+# Plan: issue #228 follow-up (ja解決test拡張とspec 13 `PreWriteRejection` 追記)
+
+Risk tier: **L** (test + docs-only。高リスクpath・書込み経路不変。Issue #444運用では
+階層LはPRのみで足りるため、本planは判断資料であり実装PR本文へtier判定を記載する)。
+
+> Baseline: `origin/main` = `10ee58336e8848e0c7723d36d249600524f18a80`
+> (2026-10-03再検証時点。前回baselineは
+> `c5a7840b880ed4c436b67170930ca87d4ef7f148`、初版draft時のbaselineは
+> `f9afd8bfde121932c0c8ed965225d52a84d86ab4`)。本planは spec.md (**draft**)
+> に対応し、記載の実装状態はすべてbaseline上での実確認に基づく。
+> **実装開始前に再入場検証を行うこと** (spec.mdの参照先がbaseline以降に
+> 変更されていないか、PR #289以降の関連diffの有無)。
+>
+> 2026-09-13再入場検証結果: 初版baseline以降のmain差分 (33 commit) のうち
+> 対象test fileへの変更は #300 (window-focus gate helpers) と #308
+> (`awaitDisplayed` 等) であり、`japaneseResourcesResolveEveryConcretePreviewString`
+> 自体は内容不変のまま後方へ移動 (旧L1473→現L1606)。#228由来20リソース、
+> spec 13、`Results.kt`、`ApplyResultContractTest.kt`、spec 228、
+> 監査記録 §5 に影響する変更はなし。`.github/workflows/ci.yml` は #304系で
+> 変更されているが `organizer-instrumentation-issue52-tests` laneと
+> `final-status` gate構成は不変。
+>
+> 2026-09-14再入場検証結果: 前回baseline (`c5274b5d0d`) 以降の54 commit
+> (#299 restore capture、#298 reload thread affinity、#315 failure evidence
+> capture) により `specs/299-*` / `specs/298-*` / `specs/315-*`、runtime
+> (`NovaBackupConverter.kt`、`LayoutApplicationModule.kt`、`LauncherModel.java`、
+> `LoaderTask.java` 等) および `tests/unit` / `tests/organizer-instrumentation`
+> の一部が変更されたが、いずれも本planの対象file・行番号に影響しない。
+> `japaneseResourcesResolveEveryConcretePreviewString` (L1606-1748)、
+> spec 13閉集合 (L255-261)、`Results.kt` (L83)、`ApplyResultContractTest.kt`
+> (L72)、spec 228 change historyの#293委譲、監査記録 §5 (L101-105) は
+> すべて不変。`.github/workflows/ci.yml` は #299用
+> `organizer-instrumentation-issue299-tests` laneの追加のみで、
+> `organizer-instrumentation-issue52-tests` lane (L432) と `final-status`
+> gate (L662、L672で同laneを包含)、api35 lane (L375) は不変。
+> 以下の行番号は現baseline (`397d3fd0`) 基準
+> (2026-09-14再確認、前回baseline `c5274b5d0d` と同値)。
+>
+> 2026-09-15再入場検証結果: 前回baseline (`397d3fd0`) 以降の66 commit
+> (#203 personalization signal snapshot、#204 AI personalization
+> context/intent exchange、#298 reload thread affinity) により `specs/203-*` /
+> `specs/204-*`、runtime (`strings.xml` への #203 personalization文字列7件追加で
+> `values` 側 `<!-- Issue #228 -->` ブロックがL1166→L1173へ後方移動、
+> `Results.kt` 等のorganizer application層は変更なし) および
+> `tests/organizer-instrumentation` への新規test file追加 (#203 probe test 2件、
+> #298 `RestoreLeaseDeferredLoaderThreadAffinityTest`) があったが、
+> いずれも本planの対象file・行番号に影響しない。対象test fileは前回baselineと
+> bit単位で同一 (`japaneseResourcesResolveEveryConcretePreviewString`
+> L1606-1748、#228keyは0件のまま)、#228由来20リソース (18 stringsはja≠enのまま、
+> 2 pluralsはen `one`/`other` vs ja `other`)、spec 13閉集合 (L255-261、
+> `CANDIDATE_UNAVAILABLE` 未記載のまま)、`Results.kt` (L83、L74の
+> `EXACT_PRECONDITION_FAILED` とL90の `OVERLAP_POLICY_REJECTED` の間)、
+> `ApplyResultContractTest.kt` (L72)、spec 228 change historyの#293委譲、
+> 監査記録 §5 (L101-105) はすべて不変。`.github/workflows/ci.yml` は #298用の
+> shared-writer lane (L243) へのtest class追加 (in-place編集、行数不変) のみで、
+> `organizer-instrumentation-issue52-tests` lane (L432)、`final-status` gate
+> (L662、L672で同laneを包含)、api35 lane (L375) は行番号含め不変。
+> なお issue #292 (api35 laneの `TwoPanelOrientationCaptureInstrumentationTest`
+> flake追跡) はPR #297 (fix `56c5fec7`、`7419579006`、merge `f95fbfed3d`) で
+> 修正され、2026-09-12にCOMPLETEDでclose済み。Step 3のapi35注意書きを本日更新した。
+>
+> 2026-09-16再入場検証結果: 前回baseline (`0cf82bc1`) 以降の33 commitは
+> すべて #205 (External Agent Exchange workflow: spec/plan、
+> `organizer/integration/exchange` / `organizer/personalization/exchange`
+> runtime、`ExchangeFlowUi` / `ManualOrganizationRun` UI、unit test追加、
+> PR #325/#326) である。`strings.xml` / `values-ja/strings.xml` への
+> #205文字列 (`exchange_*`、values L1289- / values-ja L378-) は純追加で
+> #228ブロックより後方への挿入であり、`values` 側 `<!-- Issue #228 -->`
+> ブロックはL1173のまま (values-ja側はL260)。対象test fileは前回baselineと
+> bit単位で同一 (`japaneseResourcesResolveEveryConcretePreviewString`
+> L1606-1748、#228keyは0件のまま)、#228由来20リソース (18 stringsはja≠en、
+> 2 pluralsはen `one`/`other` vs ja `other`)、spec 13閉集合 (L255-261、
+> `CANDIDATE_UNAVAILABLE` 未記載のまま、#205はspecs/13へ無変更)、
+> `Results.kt` (L83、L74の `EXACT_PRECONDITION_FAILED` とL90の
+> `OVERLAP_POLICY_REJECTED` の間)、`ApplyResultContractTest.kt` (L72)、
+> spec 228 change historyの#293委譲、監査記録 §5 (L101-105)、spec 123
+> AC-5/AC-6 (L132-133) はすべて不変。`.github/workflows/ci.yml` は前回
+> baseline以降無変更 (api35 lane L375、issue52 lane L432、`final-status`
+> gate L662/L671-672)。#205による `CONTEXT.md` / `DESIGN.md` /
+> `docs/product/requirements.md` の変更は本planの対象file・行番号・契約に無関係。
+> 以下の行番号は現baseline (`4f555450`) 基準 (2026-09-16再確認、
+> 対象test fileは前回baseline `0cf82bc1` とbit単位で同一)。
+>
+> 2026-09-17再入場検証結果: 前回baseline (`4f555450`) 以降の67 commitは
+> #329 (Import Normalizer) / #330 (partial intent authoring) / #331
+> (exchange target scope coupling) / #332 (Exchange import input UI) /
+> #336 (user-defined categories) / #345 (import device evidence) 系であり、
+> 対象test fileは #336 により #300/#308 (2026-09-13確認分) 以来再び
+> 変更された (`planningResult()`
+> fixture helperの `taxonomy` 引数が `catalog = ActiveCategoryCatalog(...)`
+> 形式へ変更、差分はL2502以降) が、`japaneseResourcesResolveEveryConcretePreviewString`
+> (L1606-1748) は内容不変で#228keyは0件のまま。#228由来20リソースは不変
+> (18 strings ja≠en、2 plurals en `one`/`other` vs ja `other`)。なお#336が
+> 追加した `manual_organization_rejection_invalid_category_provenance` は
+> values側のみ (L1160) に存在しvalues-jaには存在しないため対象外
+> (spec.md Non-goalsへ記録)。この追加によりvalues側 `<!-- Issue #228 -->`
+> ブロックはL1173→L1174へ後方移動 (values-ja側はL260のまま)。spec 13閉集合
+> (L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま)、`Results.kt` (L83、
+> L74の `EXACT_PRECONDITION_FAILED` とL90の `OVERLAP_POLICY_REJECTED` の間)、
+> `ApplyResultContractTest.kt` (L72)、spec 228 change historyの#293委譲
+> (L17/L285)、監査記録 §5 (L101-105)、spec 123 AC-5/AC-6 (L132-133) は
+> すべて不変。`.github/workflows/ci.yml` は #332用
+> `organizer-instrumentation-issue332-tests` laneの追加のみ (additive) で、
+> api35 lane (L375) と issue52 lane (L432) は行番号含め不変、`final-status`
+> gateはL662→L710へ移動しissue332 laneをneedsへ追加したが既存lane構成は不変。
+> #329〜#336による `CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md`
+> (FR-010) の変更は本planの対象file・行番号・契約に無関係。
+> 以下の行番号は現baseline (`703afe3f`) 基準 (2026-09-17再確認、
+> 対象test fileのja解決test領域は前回baselineと同一、同fileの差分は
+> L2502以降のfixture helperのみ)。
+>
+> 2026-09-19再入場検証結果: 前回baseline (`703afe3f`) 以降の70 commitは
+> #327 (interview-first exchange instruction) / #328 (import success state) /
+> #337 (exchange category group proposals v4) / #348 (AI-facing contract) /
+> #356・#361 (Organizer UX docs) 系であり、対象test fileは前回baselineと
+> bit単位で同一 (blob `c0fa5d459dd6`) で、`japaneseResourcesResolveEveryConcretePreviewString`
+> (L1606-1748) も内容不変・#228keyは0件のまま。#228由来20リソースは不変
+> (18 stringsは機械突合で18/18がja≠en、2 pluralsはen `one`/`other` vs ja
+> `other` only)。range内のres差分は `exchange_*` 領域のみ (values L1290-以降 /
+> values-ja L378-以降) で、range内の追加・変更43 nameはすべてvalues-ja対応済み
+> (新たなvalues-only欠落なし)。spec 13閉集合 (L255-261、`CANDIDATE_UNAVAILABLE`
+> 未記載のまま)、`Results.kt` (L83、L74/L90間)、`ApplyResultContractTest.kt`
+> (L72)、spec 228 change historyの#293委譲 (L17/L285)、監査記録 §5
+> (L101-105)、spec 123 AC-5/AC-6 (L132-133) は不変 — 上記6fileは分岐基点
+> `f9afd8bfde12` から現mainまでblob単位で無変更であり、Step 1のspec 13草案は
+> 現mainへそのまま適用可能。`.github/workflows/ci.yml` はissue52 lane script
+> への2 class追記 (`ExchangeImportSuccessInstrumentationTest`、
+> `StrategyPickerFreezeInstrumentationTest`、in-place 1行編集) のみで、
+> api35 lane (L375) / issue52 lane (L432) / `final-status` gate (L710) の
+> 行位置は不変、issue52 laneは引き続き対象test classを実行する (Step 3の
+> lane説明を本日更新)。`specs/336-*` はspec 337 v4へのcross-reference改訂のみで
+> `manual_organization_rejection_invalid_category_provenance` は引き続き
+> values側のみ (L1160)。`CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md`
+> の変更は本planの対象file・行番号・契約に無関係。
+> 以下の行番号は現baseline (`3076bdae`) 基準 (2026-09-19再確認、
+> 対象test fileは前回baseline `703afe3f` とbit単位で同一)。
+>
+> 2026-09-28再入場検証結果: 前回baseline (`3076bdae`) 以降は419 commit
+> (PR #378〜#475: organizer hub/onboarding・AI相談request/rebind系
+> (issue #370〜#377、#398等)、#342 custom category CI lane、#352 exchange receipt
+> determinism、#369 run面表示統合、#417 scope-first method choice、
+> #422 impact-based CI portfolio、#440/#456系docs、#441/#442 benchmark・
+> fitness研究、#443 AI相談凍結toggle、#444 risk-tiered workflow、
+> #445〜#448 ADR-0013〜0015 edit-actions一族)。このうち本Issueの対象に
+> 影響したのは #369/#417/#443 (resourceの追加・削除と対象test fileへの
+> test追加)、#422 (CI lane再構成)、#444 (workflowのtier運用) のみである。
+> **対象key集合が変化した**:
+> #369実装 (commit `5b138bd33d`「0件notice経路の削除」) により
+> `manual_organization_missing_apps_empty` がvalues/values-jaから削除された
+> ため、対象は17 strings + 2 plurals = 19リソースへ縮小 (17 stringsは機械突合で
+> 17/17がja≠en、2 pluralsはen `one`/`other` vs ja `other`のみを現baselineで再確認)。
+> #417追加の `manual_organization_missing_apps_empty_continue` (en/jaあり) は
+> #417由来、#443追加の `exchange_ai_consultation_toggle_label` / `_description`
+> (values側のみ) と #336の `manual_organization_rejection_invalid_category_provenance`
+> (values側のみ) は各Issue由来として対象外 (spec.md Non-goalsへ記録)。
+> 対象test fileは #417/#443のjourney test追加等で再び大きく変化したが
+> `japaneseResourcesResolveEveryConcretePreviewString` 自体は内容不変のまま
+> L1606-1748から **L2124-2267** へ移動、#228keyは依然0件 (L2124-2267を機械検索
+> して0 match。L2124の手前にある `generatedFolderTitlesResolveActualResourcesAndFallback`
+> (L1153、#201) のja contextはfolder命名resolver対象で本件とは無関係)。
+> **CI構成が #422 で再構成された**: 旧 `organizer-instrumentation-issue52-tests`
+> laneは廃止され、対象class `app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest`
+> は新lane `organizer-instrumentation-manual-organization-ui-tests` (ci.yml L636-、
+> API 36 / Platform 36.1) が `tools/ci/run-manual-organization-ui-instrumentation.sh`
+> 経由で実行する (同scriptのclasslistに対象classを確認済み)。laneは
+> `instrumentation_enabled && (full || surface_organizer_ui)` で発火し、
+> `surface_organizer_ui` は `tests/organizer-instrumentation/app/lawnchair/organizer/ui/**`
+> を含むためtest-only変更でself-triggerする。`final-status` gate (L1011) は
+> 同laneをneedsに含む (L1022)。api35は `organizer-instrumentation-production-input-tests`
+> (L596) のみで対象classを含まない。#444によりworkflowへRisk tiersが導入され、
+> 本Issueは階層Lと判定 (spec.md/本plan冒頭に明記)。spec 13 (閉集合L255-261、
+> `CANDIDATE_UNAVAILABLE` 未記載のまま)、`Results.kt` (L40 KDoc「Exactly the
+> variants from spec.md」、L74 `EXACT_PRECONDITION_FAILED` / L83
+> `CANDIDATE_UNAVAILABLE` / L90 `OVERLAP_POLICY_REJECTED`)、
+> `ApplyResultContractTest.kt` (L72)、spec 228 change historyの#293委譲
+> (L17/L285)、監査記録 §5 (L105)、spec 123 AC-5/AC-6 (L132-133) は分岐基点
+> `f9afd8bfde12` から現mainまでblob単位で無変更 (Step 1のspec 13草案は現mainへ
+> そのまま適用可能)。`values` 側 `<!-- Issue #228 -->` ブロックはL1246、
+> values-ja側はL320。`CONTEXT.md` / `DESIGN.md` / `docs/product/requirements.md` /
+> ADR-0013〜0015 / `docs/project/github-workflow.md` (#444) の変更は本planの
+> 対象file・行番号・契約に無関係 (tier判定のみ影響、反映済み)。
+> 以下の行番号は現baseline (`c5a7840b`) 基準 (2026-09-28再確認)。
+>
+> 2026-10-03再入場検証結果: 前回baseline (`c5a7840b`) 以降は173 commit
+> (#449複数選択編集画面、#450 edit undo、#451重複超過保持、#452整理入口、
+> #461 fail-closed recovery、#479 hub row可視性、#482 External reference
+> scan、#487/#490/#491系test修正、#497新規アプリ配置先policy (ADR-0015/0016)、
+> #502〜#506系docs/test整理、#504/#505 organizer run publication thread等)。
+> このうち本planの対象に影響したのは行位置の後方移動のみで、**契約内容の
+> 変化はない**。(1) 対象test fileへ14行追加 (#504系列の `FakeApplication`
+> への #449/#450 seam実装、L2987以降) があったが、
+> `japaneseResourcesResolveEveryConcretePreviewString` (L2124-2267) は
+> 内容不変で#228keyは0件のまま (機械検索0 match)。(2) `strings.xml` /
+> `values-ja/strings.xml` は #497/#450/#449/#452/#451系の文字列追加により
+> `values` 側 `<!-- Issue #228 -->` ブロックがL1246→**L1316**、values-ja側が
+> L320→**L388**へ後方移動。19リソースはすべてvalues/values-jaに存在し、
+> 17 stringsは機械突合で17/17がja≠en、2 pluralsはja `other` のみを現baselineで
+> 再確認。range内の追加nameでvalues-ja欠落は0件 (新たなvalues-only欠落なし、
+> manual_organization/exchange系のvalues-only欠落は #336 provenance + #443
+> AI相談toggle 2件の計3件のまま)。(3) CIはlane構成に変化なし:
+> `organizer-instrumentation-manual-organization-ui-tests` は **L648** へ移動
+> (API 36、`tools/ci/run-manual-organization-ui-instrumentation.sh` 経由)、
+> `final-status` gateは **L1023** へ移動 (needsに同lane、**L1033**)。
+> runner scriptは #479 review round 3 によりdrag-guard oracle
+> (`OrganizerHubDragGuardInstrumentationTest`) の第二invocationが追加されたが、
+> 対象classは第一invocationのclasslistに残存、`surface_organizer_ui`
+> (対象test pathを含む) でのself-trigger条件も不変。api35 lane
+> (`organizer-instrumentation-production-input-tests`) は引き続き対象classを
+> 含まない。(4) spec 13 (閉集合L255-261、`CANDIDATE_UNAVAILABLE` 未記載のまま、
+> #185 precedent L645-649)、`Results.kt` (L40 KDoc、L74/L83/L90)、
+> `ApplyResultContractTest.kt` (L72)、監査記録 §5、spec 123 AC-5/AC-6 は
+> 分岐基点 `f9afd8bfde12` から現mainまでblob単位で無変化、spec 228 specの
+> 前回baseline以降の変化はなし (#293委譲は不変: L17/L285)。本branchの
+> spec 13草案は現mainへそのまま適用可能。
+> 以下の行番号は現baseline (`10ee58336e`) 基準 (2026-10-03再確認)。
+>
+> Phase 1 review round 1 (ChatGPT、
+> [コメント](https://github.com/nunu1733/NunuLauncher/issues/293#issuecomment-5966185292))
+> 対応: Step 1の「`Results.kt` の宣言順序と一致させる」を「可読性のための位置、
+> 契約は閉集合のmembership一致で列挙順は契約ではない、並べ替え/order
+> assertion追加は行わない」へ修正。Issue本文の終了条件を
+> docs+test-onlyへ更新 (本planのscope記述と語彙一致)。authority表現は
+> spec.md冒頭を「実装PR向けのre-entry/完了チェック資料」へ統一 (本plan冒頭の
+> 「判断資料」表現と一致)。
+
+## 1. 現状の実装と不足 (baseline確認済み)
+
+| 要素 | 場所 | 状態 |
+|---|---|---|
+| `PreWriteRejection.CANDIDATE_UNAVAILABLE` | `lawnchair/src/app/lawnchair/organizer/application/public/Results.kt` (enum宣言、`CANDIDATE_UNAVAILABLE` L83、`EXACT_PRECONDITION_FAILED` L74と `OVERLAP_POLICY_REJECTED` L90の間) | 存在 (PR #289)。KDoc (L40)が「Exactly the variants from spec.md」を要求 |
+| contract testによる固定 | `tests/unit/app/lawnchair/organizer/application/contract/ApplyResultContractTest.kt` (L72) | 存在 |
+| spec 13の閉集合記載 | `specs/13-safe-layout-application/spec.md` (Results節、L255-261) | **`CANDIDATE_UNAVAILABLE` 未記載。本planで解消 (docs-only)** |
+| ja解決test | `tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt` の `japaneseResourcesResolveEveryConcretePreviewString` (L2124-2267) | 既存assert対象に #228由来keyが**1件も含まれない**。17 strings + 2 pluralsの追加が必要 |
+| #228由来リソースのja値 | `lawnchair/res/values/strings.xml` と `lawnchair/res/values-ja/strings.xml` (`<!-- Issue #228 -->` ブロック: values L1316 / values-ja L388) | 残存19件 (17 strings + 2 plurals) とも `values-ja` に存在。17 stringsはen≠ja (機械突合17/17)、2 pluralsはjaが `other` のみ |
+
+監査記録 ([docs/assessment/pr-289-organizer-missing-app-selection.md](../../docs/assessment/pr-289-organizer-missing-app-selection.md) §5 L105) が
+この2項目を「follow-upとして残存」と記録していることが出発点である
+(同記録の「18 new keys」はstrings数の数え方の違いであり、resource単位の
+正は本planの現baselineでは19件=17 strings+2 pluralsである。PR #289時点の
+18 stringsのうち `manual_organization_missing_apps_empty` は #369実装
+(2026-09-20 spec 228 Amend、TO-BE D-06) で削除済み)。
+
+## 2. 変更内容と手順
+
+### Step 1: spec 13 追記 (docs-only、本branchで草案済み)
+
+- `specs/13-safe-layout-application/spec.md`:
+  - 閉集合へ `| CANDIDATE_UNAVAILABLE` を `EXACT_PRECONDITION_FAILED` の次の行に
+    追加する。これは可読性のための位置であり (`Results.kt` の宣言でも
+    `CANDIDATE_UNAVAILABLE` は `EXACT_PRECONDITION_FAILED` の直後)、契約は
+    閉集合のmembership一致であって列挙順は契約ではない (spec 13の列挙順は
+    runtimeの宣言順と全体として一致しておらず、
+    `ApplyResultContractTest.everyPreWriteRejectionVariantExists` も
+    set比較で順序を契約化していない)。順序合わせのための既存行の並べ替えや
+    order assertionの追加は行わない。
+  - Change history 末尾へentryを #185 precedent (L645-649) と
+    同形式で追記 (issue #228由来 / PR #289でruntimeとcontract testは確定済み /
+    本entryは正本記録のみ / 他のresult shape・lifecycle・behavior変更なし)。
+  - frontmatter `updated:` を本追記の実施日へ更新。
+- 実装PRでは本branchの草案をrebaseして利用し、reviewで受理された時点で
+  spec 13の追記が正本として確定する (準備タスクはacceptedと扱わない)。
+
+### Step 2: ja解決test拡張 (test-only)
+
+`japaneseResourcesResolveEveryConcretePreviewString` 内で既存様式を踏襲する。
+
+1. **strings (17件)**: spec.md §対象のリストを既存 `addedPreviewStrings` へ
+   追加する。既存の `assertNotEquals("string resource $id falls back to
+   English under a Japanese locale", context.getString(id),
+   japanese.getString(id))` パターンをそのまま使う (17件ともja≠en確認済みの
+   ため成立する)。format文字列はformat引数なしのtemplate比較でよい
+   (既存のformat文字列と同じ扱い)。`manual_organization_missing_apps_empty`
+   は #369実装で削除済みのため追加しない。
+2. **placeholder survival (任意だが推奨)**: `manual_organization_preview_add_row`
+   (引数2件) について、#208の `preview_move_row` 前例と同様に
+   `japanese.getString(id, "A", "B")` が両引数を含むことをassertする。
+   `preview_add_descriptor` (引数2件) も同様に扱ってよい。
+3. **plurals (2件)**: #231ブロックの前例に従う。
+   - ja解決: `japanese.resources.getQuantityString(id, 2, 2)` と
+     `context.resources.getQuantityString(id, 2, 2)` の `assertNotEquals`
+     (jaは `other` のみのためquantity 2で解決する)。
+   - en数量区別: `context.resources.getQuantityString(id, 1, 1)` と
+     `(id, 2, 2)` の `assertNotEquals` (enは `one`/`other` を持つ)。
+   - 対象: `manual_organization_missing_apps_selected_count`,
+     `manual_organization_applied_added_count`。
+4. **配置とコメント**: 追加は既存リストの末尾付近へ集約し、
+   `// Issue #228: missing-app selection and Add rows` のcommentを付ける
+   (既存の `// Issue #230:` / `// Issue #231:` 前例と同じ)。
+5. **他testへの影響**: 同file内の他test (例: #235由来の
+   `previewDetailsHeaderShowsTheSeparateWidgetMoveCount`) は変更しない。
+
+### Step 3: 検証
+
+```bash
+git submodule update --init --recursive
+./gradlew spotlessCheck
+# API 36 emulator接続後 (CI lane organizer-instrumentation-manual-organization-ui-tests と同じ):
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.ManualOrganizationPreferencesInstrumentationTest
+```
+
+- CI (baseline `10ee58336e` 時点、#422 impact-based CI portfolio構成):
+  lane `organizer-instrumentation-manual-organization-ui-tests`
+  (ci.yml L648-、API 36 / Platform 36.1) がgreenであること。同laneは
+  `tools/ci/run-manual-organization-ui-instrumentation.sh` の第一invocationの
+  classlistで
+  `ManualOrganizationProductionE2EInstrumentationTest` /
+  `ManualOrganizationPreferencesInstrumentationTest` (対象class) /
+  `OrganizerHubPreferencesInstrumentationTest` /
+  `StrategyPickerInstrumentationTest` / `MissingAppSelectionInstrumentationTest` /
+  `UsageAccessJitInstrumentationTest` / `ExchangeImportSuccessInstrumentationTest` /
+  `StrategyPickerFreezeInstrumentationTest` / `OrganizerDiagnosticsRouteInstrumentationTest` /
+  `EditingBurdenBenchmarkFixtureSeedingInstrumentationTest` /
+  `OrganizerDiagnosticsExportTimestampInstrumentationTest` を実行する
+  (#479 review round 3 で追加された第二invocationはdrag-guard oracle
+  `OrganizerHubDragGuardInstrumentationTest` のみで、対象classには無関係)。
+  対象test path (`tests/organizer-instrumentation/app/lawnchair/organizer/ui/**`)
+  は `surface_organizer_ui` filterに含まれるため、test-only変更のPRでも
+  当該laneはself-triggerする。`final-status` merge gate (L1023) は同laneを
+  needsに含む (L1033)。旧 `organizer-instrumentation-issue52-tests` lane名は #422 で
+  廃止されているため、旧名称をPR記録に使わないこと。
+- 本PRの差分はtest+docsのみであり、高リスク独立エビデンス契約
+  (workflow: 純粋な計画moduleやtestのみの変更、docs-only PRは対象外)
+  の対象外である (Risk tier: L)。
+  ただし通常の検証記録として `spotlessCheck` (`check-style`) と
+  対象instrumentationの実行結果はPRへ正確に残す。
+
+## 3. Migration / Rollback
+
+- DB・schema・依存・permissionの変更なし。migration不要。
+- rollbackはPR revertのみで完結する (docs+test-only)。revert時に
+  runtime/stateへの残留影響はない。
+
+## 4. 所有境界と並行作業
+
+- 変更file: `specs/13-safe-layout-application/spec.md`,
+  `specs/293-ja-resolution-test-and-rejection-set/{spec,plan}.md`,
+  `tests/organizer-instrumentation/.../ManualOrganizationPreferencesInstrumentationTest.kt`。
+- spec 13は共有正本であるため、本IssueのPRと同時に他Issueがspec 13を
+  変更しない。merge順が入れ替わった場合は再入場検証で閉集合の
+  当該行を再確認する。
+- issue #235のwidget系string追加 (PR #296/#302以降)、#336の
+  `manual_organization_rejection_invalid_category_provenance` 追加
+  (values側のみ、values-ja未整備)、#417の
+  `manual_organization_missing_apps_empty_continue` 追加 (en/jaあり)、
+  #443の `exchange_ai_consultation_toggle_label` / `_description` 追加
+  (values側のみ) との競合面は同一test fileもしくは隣接resource blockのみ。
+  行単位で独立しており、rebaseで解決できる範囲である。
+  実績として、初版draft以降の #300/#308 に加え #336 (fixture helper変更)、
+  #369/#417/#443 (journey test・run面・AI凍結の各種追加) も同一test fileを
+  変更したが、ja解決test領域 (現baselineではL2124-2267) には触れておらず、
+  本planの追加点との実際の競合は発生していない。
+
+## 5. 未確定事項
+
+- なし (製品判断の未決はありません)。実装詳細の選択 (placeholder survival
+  assertionの有無) は実装PR内で決定してよく、spec受入条件に影響しない。
+- 本Issueは Risk tier L (#444運用) のためaccepted specを要求しない
+  (PRのみで足りる)。本spec/plan draftは実装PRの判断資料として添付し、
+  tier判定と変更scopeを実装PR本文へ記載する。
