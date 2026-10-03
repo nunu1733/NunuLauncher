@@ -1,6 +1,6 @@
 ---
 issue: "#418"
-status: accepted
+status: implemented
 requirements: []
 updated: 2026-10-03
 ---
@@ -237,14 +237,14 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
 
 ## Acceptance criteria
 
-- [ ] AC-1（決定的oracle・red-first・構成的検出）: UI状態holder群を専用state busが
+- [x] AC-1（決定的oracle・red-first・構成的検出）: UI状態holder群を専用state busが
   唯一の書込み経路として所有し、busの各書込みが実行threadを記録する。非main threadから
   駆動したrun操作の全state書込みがpublication thread上で実行されたことを、
   JVM unit testが決定的に検証する。holderへの直接書込みはbus所有により構成的に存在しない。
   変更前のcodeでred、変更後greenであることをPRへ記録する。
-- [ ] AC-2（既存振る舞いの維持）: 既存 `ManualOrganizationRunTest` 等、
+- [x] AC-2（既存振る舞いの維持）: 既存 `ManualOrganizationRunTest` 等、
   `app.lawnchair.organizer.*` のJVM test群が、test用publication seam注入でgreenである。
-- [ ] AC-3（machine非main実行とemit契約）: 次の4点をJVM testが決定的に検証する。
+- [x] AC-3（machine非main実行とemit契約）: 次の4点をJVM testが決定的に検証する。
   (a) main起点経路のUI dispatch後、journal appendがpublication thread上で実行されない
   （appendはmachine実行thread＝worker上に留まる）。
   (b) publication thread上でmachine入口が呼ばれた場合、guardがfail-fastする
@@ -254,9 +254,9 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
   競合oracleが維持する。
   (d) spec 375 Amendmentの例外不変条件（workerがrun lock + gate保持でhop完了を待つ間、
   Main側がlock/gate待ちへ入らずpublicationを完了する）を決定的に検証する。
-- [ ] AC-4（instrumentation回帰）: `UsageAccessJitInstrumentationTest.crossOriginExchangePresentationPausesTheRunUntilResolution`
+- [x] AC-4（instrumentation回帰）: `UsageAccessJitInstrumentationTest.crossOriginExchangePresentationPausesTheRunUntilResolution`
   （生thread軸を保持する既存oracle）がCIのmanual-organization-ui laneでgreenである。
-- [ ] AC-5（文書同期）: [ci-test-portfolio.md](../../docs/engineering/ci-test-portfolio.md)
+- [x] AC-5（文書同期）: [ci-test-portfolio.md](../../docs/engineering/ci-test-portfolio.md)
   の断続failure分類に、T2を「production off-main publication軸の除去対象（本変更）」、
   T1/T3を「category 6・原因未解決（本変更の対象外）」として記録する。
 
@@ -296,3 +296,13 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
 - 2026-10-03: **Accepted** — Phase1 review round 5のApprove
   （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963896376)、
   head `2363fcd0de`）。Phase 2実装へ進む。
+- 2026-10-03: **Implemented** — [PR #504](https://github.com/nunu1733/NunuLauncher/pull/504)
+  merge `63c71833c`（head `b624428b82`）。Phase2 review round 4 Clear
+  （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5964557718)）、独立監査
+  [docs/assessment/pr-504-organizer-run-publication-confinement.md](../../docs/assessment/pr-504-organizer-run-publication-confinement.md)（GO）、
+  CI [run 37092146212](https://github.com/nunu1733/NunuLauncher/actions/runs/37092146212) attempt 3 final-status green
+  （AC-4: manual-organization-ui lane 155/155、AC-2: organizer JVM 1816 tests 0 failure）、
+  AC-1 red-first記録はPR本文。AC-3はoracle 2クラス8 test。AC-5はportfolio文書同期済み。
+  PR CI中に新guardがmachine-on-main暴露2経路（onDispose dismiss・
+  interruptAndNavigate内leaveRecoveryResultToHub）を決定的に捕捉し同PRで修正。
+  #418自体の終了条件（T1/T3 root cause・3連続full-workflow）は未達でIssue はopen。
