@@ -47,6 +47,7 @@ import app.lawnchair.organizer.rules.sha256Canonical
 import app.lawnchair.ui.preferences.destinations.CategoryOverridePreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -56,7 +57,8 @@ import org.junit.runner.RunWith
 @OptIn(ExperimentalTestApi::class)
 class CategoryOverridePreferencesInstrumentationTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
+    val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
 
     @Test
     fun samePackageProfilesExposeTextStateAndIndependentAccessibleRows() {

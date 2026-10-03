@@ -57,6 +57,7 @@ import app.lawnchair.organizer.ui.LockMessages
 import app.lawnchair.ui.preferences.destinations.PlacementLockPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -75,7 +76,8 @@ import org.junit.runner.RunWith
 class OrganizerLockScreenTest {
 
     @get:Rule
-    val composeRule = createComposeRule()
+    // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
+    val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
 
     private class MutableCapture(var state: LayoutState, var revisionValue: String = "r0") : LockCapturePort {
         override fun capture(): LockCapture = LockCapture(state, app.lawnchair.organizer.planning.RevisionId(revisionValue))
