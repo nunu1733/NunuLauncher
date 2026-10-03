@@ -10,6 +10,7 @@ import app.lawnchair.organizer.application.public.NewPageChange
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PreservedChange
 import app.lawnchair.organizer.application.public.PreviewChange
+import app.lawnchair.organizer.application.public.PreviewExcludableItem
 import app.lawnchair.organizer.application.public.PreviewFolderRef
 import app.lawnchair.organizer.application.public.PreviewLabel
 import app.lawnchair.organizer.application.public.PreviewPlacementIdentity
@@ -307,6 +308,22 @@ object OrganizationPreviewContent {
             )
         }
         return sections
+    }
+
+    /**
+     * Issue #508 (Phase 2 re-review round 2): candidates on the exclusion
+     * surface that this plan never places (overflow etc.) have no `AddChange`
+     * row of their own, so the row-level action cannot reach them. The
+     * confirmation surface renders these entries as an explicit supplementary
+     * group with the same exclude action — the key must always have a user
+     * path into `applyProposalExclusions`. Deterministic: surface order.
+     */
+    fun unplacedCandidateExclusions(details: PlanPreviewDetails): List<PreviewExcludableItem> {
+        val placedCandidateItems = details.changes.filterIsInstance<AddChange>().mapTo(mutableSetOf()) { it.item }
+        return details.excludableItems.filter { entry ->
+            val candidateItem = (entry.key as? ProposalExclusionKey.Candidate)?.item
+            candidateItem != null && candidateItem !in placedCandidateItems
+        }
     }
 
     /**

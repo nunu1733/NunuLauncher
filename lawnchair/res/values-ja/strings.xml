@@ -527,6 +527,8 @@
     <string name="manual_organization_exclusion_blocked_structural">"除外できません: 再計画が自動的に決定する行です"</string>
     <string name="manual_organization_exclusion_state_included">"提案に含まれています"</string>
     <string name="manual_organization_exclusion_state_excluded">"除外済み"</string>
+    <string name="manual_organization_unplaced_candidates_heading">"この提案では配置されない候補: %1$d件"</string>
+    <string name="manual_organization_unplaced_candidate_a11y">"%1$s（%2$s）。この提案では配置されない候補"</string>
     <string name="manual_organization_replanning">提案を再計算中</string>
     <string name="manual_organization_replanning_summary">"除外した項目を反映した新しい提案を準備しています。下の図と一覧は直前の提案のものです。"</string>
     <!-- Issue #201: safe generic title for generated folders whose semantic name cannot be resolved. -->

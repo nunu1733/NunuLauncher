@@ -1062,6 +1062,14 @@ fun ManualOrganizationPreferences(
                                 execute { coordinator.applyProposalExclusions(next) }
                             },
                         )
+                        unplacedCandidateItems(
+                            candidates = OrganizationPreviewContent.unplacedCandidateExclusions(currentState.details),
+                            exclusions = currentState.exclusions,
+                            wording = organizationPreviewWording(context),
+                            onExclusionsChange = { next ->
+                                execute { coordinator.applyProposalExclusions(next) }
+                            },
+                        )
                     }
                 }
 
@@ -1111,6 +1119,16 @@ fun ManualOrganizationPreferences(
                             execute { coordinator.applyProposalExclusions(next) }
                         },
                     )
+                    replanningDetails?.let {
+                        unplacedCandidateItems(
+                            candidates = OrganizationPreviewContent.unplacedCandidateExclusions(it),
+                            exclusions = currentState.exclusions,
+                            wording = organizationPreviewWording(context),
+                            onExclusionsChange = { next ->
+                                execute { coordinator.applyProposalExclusions(next) }
+                            },
+                        )
+                    }
                 }
 
                 is ManualOrganizationRun.State.PreviewUnavailable -> {
@@ -1963,6 +1981,51 @@ private fun exclusionBlockReasonString(reason: PreviewExclusionBlockReason): Int
     PreviewExclusionBlockReason.PLACEMENT_NOT_EXCLUDABLE -> R.string.manual_organization_exclusion_blocked_placement
     PreviewExclusionBlockReason.PRESERVED_NOT_EXCLUDABLE -> R.string.manual_organization_exclusion_blocked_preserved
     PreviewExclusionBlockReason.STRUCTURAL_ROW -> R.string.manual_organization_exclusion_blocked_structural
+}
+
+/**
+ * Issue #508 (Phase 2 re-review round 2): candidates this proposal never
+ * placed (overflow etc.) have no change row, so the surface renders them as
+ * an explicit supplementary group with the same exclude action — every
+ * exclusion key always has a user path into `applyProposalExclusions`.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.unplacedCandidateItems(
+    candidates: List<app.lawnchair.organizer.application.public.PreviewExcludableItem>,
+    exclusions: Set<ProposalExclusionKey>,
+    wording: OrganizationPreviewWording,
+    onExclusionsChange: (Set<ProposalExclusionKey>) -> Unit,
+) {
+    val pending = candidates.filter { it.key !in exclusions }
+    if (pending.isEmpty()) return
+    item(key = "preview-unplaced-heading") {
+        Text(
+            text = stringResource(R.string.manual_organization_unplaced_candidates_heading, pending.size),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+    pending.forEachIndexed { index, entry ->
+        item(key = "preview-unplaced-$index") {
+            val name = OrganizationPreviewContent.labelText(entry.label, wording)
+            val kindWord = OrganizationPreviewContent.kindText(entry.kind, wording)
+            val description = stringResource(R.string.manual_organization_unplaced_candidate_a11y, name, kindWord)
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .semantics { contentDescription = description },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "$name ($kindWord)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onExclusionsChange(exclusions + entry.key) }) {
+                    Text(text = stringResource(R.string.manual_organization_exclude_action))
+                }
+            }
+        }
+    }
 }
 
 private fun exclusionKeyValue(key: ProposalExclusionKey): String = when (key) {

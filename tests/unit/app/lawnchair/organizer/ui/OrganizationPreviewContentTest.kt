@@ -788,6 +788,56 @@ class OrganizationPreviewContentTest {
         )
     }
 
+    @Test
+    fun unplacedCandidatesKeepASurfacePathToTheExcludeAction() {
+        // Phase 2 re-review round 2: a candidate the plan never placed has no
+        // AddChange row, so the supplementary surface must still list its key
+        // (same label/kind as the exclusion surface); placed candidates and
+        // already-excluded keys must not reappear.
+        val placedCandidateId = app.lawnchair.organizer.planning.ItemId("cand.placed")
+        val unplacedCandidateId = app.lawnchair.organizer.planning.ItemId("cand.unplaced")
+        val details = planPreviewDetails(
+            changes = listOf(
+                AddChange(
+                    item = placedCandidateId,
+                    label = PreviewLabel.Named("placed"),
+                    kind = CanonicalItemKind.Application,
+                    destination = PreviewPosition.DockRank(0),
+                ),
+            ),
+            counts = PreviewCounts(
+                movedCount = 0,
+                preservedCount = 0,
+                newFolderCount = 0,
+                newPageCount = 0,
+                warningCounts = emptyMap(),
+                addedCount = 1,
+            ),
+            excludableItems = listOf(
+                PreviewExcludableItem(
+                    key = ProposalExclusionKey.Candidate(placedCandidateId),
+                    label = PreviewLabel.Named("placed"),
+                    kind = CanonicalItemKind.Application,
+                    isCandidate = true,
+                ),
+                PreviewExcludableItem(
+                    key = ProposalExclusionKey.Candidate(unplacedCandidateId),
+                    label = PreviewLabel.Named("unplaced"),
+                    kind = CanonicalItemKind.DeepShortcut,
+                    isCandidate = true,
+                ),
+            ),
+        )
+
+        val unplaced = OrganizationPreviewContent.unplacedCandidateExclusions(details)
+
+        assertEquals(
+            listOf(ProposalExclusionKey.Candidate(unplacedCandidateId)),
+            unplaced.map { it.key },
+        )
+        assertEquals(PreviewLabel.Named("unplaced"), unplaced.single().label)
+    }
+
     private fun preserved(
         itemId: String,
         labelText: String,

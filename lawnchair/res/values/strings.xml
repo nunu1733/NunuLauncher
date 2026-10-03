@@ -1464,6 +1464,8 @@
     <string name="manual_organization_exclusion_blocked_structural">not excludable: replanning decides this row automatically</string>
     <string name="manual_organization_exclusion_state_included">In the proposal</string>
     <string name="manual_organization_exclusion_state_excluded">Excluded</string>
+    <string name="manual_organization_unplaced_candidates_heading">Not placed by this proposal: %1$d</string>
+    <string name="manual_organization_unplaced_candidate_a11y">%1$s (%2$s), not placed by this proposal</string>
     <string name="manual_organization_replanning">Replanning the proposal</string>
     <string name="manual_organization_replanning_summary">Preparing a new proposal with your exclusions. The diagrams and list below still show the previous proposal.</string>
 
