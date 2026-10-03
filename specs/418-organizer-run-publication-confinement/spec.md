@@ -17,7 +17,12 @@ updated: 2026-10-03
 > deadlock oracleへ例外の不変条件を追加する。spec 375のadmission線形化点
 > （gate内でのoperation生成→`State.Capturing`発行）・処理内容・既存oracleの網羅は不変。
 > Risk tierの判定根拠をpath基準（高リスクpath外・新規書込み経路なし）+ Amendment所有の
-> 明示へ更新。
+> 明示へ更新。Round 4指摘
+> （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963853590)）
+> への同期済み: gate保持時間のwall-clock短時間保証を例外経路で対象外化
+> （Main scheduling delayはtask実行時間と独立）、既存UI待機禁止oracleを
+> 「例外経路を除く」とscope明示、spec 375 plan.mdへのAmendment note追加と
+> `updated` metadata同期。
 >
 > Revision 3: 2026-10-03 — round 2指摘（gate release後遅延・非同期flusher）の撤回と
 > 「machine非main実行 + lock-freeな書込みhop」への統一。
@@ -284,3 +289,7 @@ None（表示・focus・文言は変わらない。focus復元等の既存挙動
   の指摘へ対応。spec 375「gate下のUI待機禁止」への狭い例外契約とSR-AC-08 deadlock
   oracleの不変条件追加を、本IssueのPRで明示的にAmendする方針へ確定
   （[specs/375-scope-remedy-rebind/spec.md](../375-scope-remedy-rebind/spec.md) 参照）。
+  Round 4
+  （[comment](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5963853590)）
+  でAmendmentの波及先同期（処理時間契約の例外対象外化・既存oracleのscope明示・
+  375 plan.mdのAmendment note）を完了。

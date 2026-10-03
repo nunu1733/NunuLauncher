@@ -3,7 +3,7 @@ issue: "#375"
 status: implemented
 requirements: [FR-004, FR-006, FR-017]
 risk: []
-updated: 2026-09-22
+updated: 2026-10-03
 ---
 
 # scope不一致のremedyを原因別に分割し、取り込み済み提案のprocess死後再開（fresh run rebind）を実現する（D-17）
@@ -411,7 +411,8 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   作らない（5th review指摘2で固定。実装PRへ残すのはDI提供位置など正当性に影響しない
   詳細のみである）。
 - **gate下のUI待機禁止（4th review指摘1）**: exchange mutation gate保持中は
-  `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**。
+  `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**
+  （次の例外を除く）。
   gate下の処理はIO上で完結する純粋なstore操作と判定のみとし、UI stateへのsettleは
   gate解放後に行う。#374のsave fence
   （`launchDurablePendingIntentSave` がmutex保持下で `withContext(uiDispatcher)` により
@@ -463,9 +464,12 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
 - **gate下の処理時間の界限**: gate保持区間はrecord1件・session1件の小さなlocal file読書き
   （`AtomicFile`）とadmission判定・operation生成のみに限り、readiness gate・model load・
   候補検出等の長時間処理をgate下で行わない。他の面でのcancel/confirmがblockされるのは
-  これらの短い区間のみである。#418の同期publication hop（例外条件を満たすものに限る）の
-  Main queue待ち込みも区間に含めうるが、hop taskはlock-freeなstate書込み1件であるため
-  区間は短く留まる。検出開始時点でgateが解放済みであることを構造的に確認する
+  これらの短い区間のみである。#418の同期publication hop（例外条件を満たすものに限る）は、
+  Main queueのscheduling delayがtask実行時間と独立であるため、hopを含むgate保持区間は
+  **wall-clockの短時間保証の対象外**である。この例外に関する停止は、Mainがrun lock /
+  exchange mutation gate / journal / durable store待ちへ入らない構造
+  （spec 418のmachine非main実行）によりdeadlockなしで解消される。それ以外の経路では
+  従来どおり短時間保証が適用される。検出開始時点でgateが解放済みであることを構造的に確認する
   （検出seamへのprobeでgate非保持を観測するtest。SR-AC-08）。
 - **TTL失効との競合の決定性**: TTLは時刻のみの競合であるため、anchorはgate保持下の
   admission区間内でclockを新鮮に読み、検証とadmissionが同一時点の値を共有する。
@@ -602,9 +606,10 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
       例外化せずtyped fail-closed（Invalid清掃・継続拒否）として扱われること**が
       fixture付きでtestされる。anchor拒否後の面の扱い（無効化済み→清掃・クローズ、
       record置換済み→読み直し）がtestされる。
-      **gate下のUI待機禁止のoracle**: durable saveをUI settle直前でbarrier停止させ
-      Main側でrebind admissionを開始する順を決定的に構成し、gate保持中にMain dispatcherへの
-      待機が発生しないこと（双方が進行可能であること）をwall-clock非依存でtestされる
+      **gate下のUI待機禁止のoracle（#418 publication hop例外を除く経路が対象）**: durable saveをUI settle直前でbarrier停止させ
+      Main側でrebind admissionを開始する順を決定的に構成し、例外経路以外のgate保持中に
+      Main dispatcherへの待機が発生しないこと（双方が進行可能であること）を
+      wall-clock非依存でtestされる
       （#374 save fence refactor後の回帰を含む）。
       **publication hop例外の不変条件oracle（#418で追加）**: workerがrun lock +
       exchange mutation gateを保持して同期publication hopの完了を待つ状態を決定的に構成し、
