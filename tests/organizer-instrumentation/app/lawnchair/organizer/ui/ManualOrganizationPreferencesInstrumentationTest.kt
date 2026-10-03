@@ -2201,6 +2201,26 @@ class ManualOrganizationPreferencesInstrumentationTest {
             R.string.manual_organization_preview_kind_unknown,
             R.string.manual_organization_preview_new_folder_row,
             R.string.manual_organization_preview_new_page_row,
+            // Issue #228: missing-app selection and Add rows. The #369-deleted
+            // `manual_organization_missing_apps_empty` stays out; the #417
+            // `manual_organization_missing_apps_empty_continue` is #417-origin.
+            R.string.manual_organization_detecting_missing_apps,
+            R.string.manual_organization_missing_apps_title,
+            R.string.manual_organization_missing_apps_search_hint,
+            R.string.manual_organization_missing_apps_select_all,
+            R.string.manual_organization_missing_apps_clear_all,
+            R.string.manual_organization_missing_apps_continue,
+            R.string.manual_organization_missing_apps_state_checked,
+            R.string.manual_organization_missing_apps_state_unchecked,
+            R.string.manual_organization_preview_unavailable_add,
+            R.string.manual_organization_preview_retry,
+            R.string.manual_organization_added_count,
+            R.string.manual_organization_group_added,
+            R.string.manual_organization_preview_add_descriptor,
+            R.string.manual_organization_preview_add_row,
+            R.string.manual_organization_unplaced_strategy_scope,
+            R.string.manual_organization_selection_stale,
+            R.string.manual_organization_candidate_unresolved,
         )
 
         addedPreviewStrings.forEach { id ->
@@ -2220,6 +2240,24 @@ class ManualOrganizationPreferencesInstrumentationTest {
             "C",
         )
         assert(japaneseMoveRow.contains("A") && japaneseMoveRow.contains("C"))
+
+        // Issue #228: the add-row template carries the label and the
+        // destination, and the add descriptor carries the label and kind.
+        val japaneseAddRow = japanese.getString(
+            R.string.manual_organization_preview_add_row,
+            "A",
+            "B",
+        )
+        assert(japaneseAddRow.contains("A") && japaneseAddRow.contains("B"))
+        val japaneseAddDescriptor = japanese.getString(
+            R.string.manual_organization_preview_add_descriptor,
+            "A",
+            "B",
+        )
+        assert(
+            japaneseAddDescriptor.contains("A") &&
+                japaneseAddDescriptor.contains("B"),
+        )
 
         // Issue #230: the recovery history plurals resolve in Japanese (the
         // ja locale carries only the `other` quantity).
@@ -2256,6 +2294,31 @@ class ManualOrganizationPreferencesInstrumentationTest {
             R.plurals.manual_organization_applied_preserved_count,
             R.plurals.manual_organization_applied_new_folders_count,
             R.plurals.manual_organization_applied_new_pages_count,
+        ).forEach { id ->
+            assertNotEquals(
+                "plurals resource $id ignores the one/other quantity distinction",
+                context.resources.getQuantityString(id, 1, 1),
+                context.resources.getQuantityString(id, 2, 2),
+            )
+        }
+
+        // Issue #228: the missing-app selection count and the applied-result
+        // add count resolve in Japanese too (the ja locale carries only the
+        // `other` quantity), and the English quantities stay distinct.
+        listOf(
+            R.plurals.manual_organization_missing_apps_selected_count,
+            R.plurals.manual_organization_applied_added_count,
+        ).forEach { id ->
+            val resolved = japanese.resources.getQuantityString(id, 2, 2)
+            assertNotEquals(
+                "plurals resource $id falls back to English under a Japanese locale",
+                context.resources.getQuantityString(id, 2, 2),
+                resolved,
+            )
+        }
+        listOf(
+            R.plurals.manual_organization_missing_apps_selected_count,
+            R.plurals.manual_organization_applied_added_count,
         ).forEach { id ->
             assertNotEquals(
                 "plurals resource $id ignores the one/other quantity distinction",
