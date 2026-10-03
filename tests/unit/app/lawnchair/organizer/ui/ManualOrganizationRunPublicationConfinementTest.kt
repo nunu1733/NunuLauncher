@@ -4,6 +4,10 @@ import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -125,6 +129,74 @@ class ManualOrganizationRunPublicationConfinementTest {
         )
         // The guard fires before any state was published.
         assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+    }
+
+    @Test
+    fun publicationJoinDoesNotUnwindBeforeCompletionEvenWhenInterrupted() {
+        // Spec 375 amendment blocker (Phase2 review): a caller that may hold
+        // the run lock + exchange gate must never unwind before its queued
+        // publication completes — a late publication would invert the
+        // gate-release linearization. The join is therefore uninterruptible.
+        val publication = DedicatedThreadPublication("join-pub")
+        val publicationStarted = CountDownLatch(1)
+        val releasePublication = CountDownLatch(1)
+        val publicationCompleted = AtomicBoolean(false)
+        val joinOutcome = AtomicReference<Result<Unit>?>(null)
+
+        val worker = Thread {
+            joinOutcome.set(
+                runCatching {
+                    publication.run {
+                        publicationStarted.countDown()
+                        releasePublication.await()
+                        publicationCompleted.set(true)
+                    }
+                },
+            )
+        }
+        worker.start()
+        assertTrue(publicationStarted.await(15_000, TimeUnit.SECONDS))
+
+        // The worker is blocked in the join; the publication is held back.
+        // Interrupting must neither unwind the caller nor cancel the queued
+        // publication.
+        worker.interrupt()
+        awaitWorkerBlockedAgainInJoin(worker)
+
+        releasePublication.countDown()
+        worker.join(15_000)
+        assertFalse(worker.isAlive)
+
+        val outcome = joinOutcome.get()
+        assertTrue("interrupted join must still complete the publication", outcome?.isSuccess == true)
+        assertTrue("publication block did not run", publicationCompleted.get())
+        assertTrue(
+            "interruption must be re-asserted on the caller after completion",
+            worker.isInterrupted,
+        )
+    }
+
+    /**
+     * Deterministic (no sleeps): wait until the worker is back in a
+     * WAITING/TIMED_WAITING state after the interrupt — the uninterruptible
+     * join re-enters the latch await; a broken implementation would instead
+     * terminate the worker, which also exits this loop and fails the
+     * subsequent assertions.
+     */
+    private fun awaitWorkerBlockedAgainInJoin(worker: Thread) {
+        var spins = 0
+        while (spins < 100_000) {
+            val state = worker.state
+            if (
+                state == Thread.State.TERMINATED ||
+                state == Thread.State.WAITING ||
+                state == Thread.State.TIMED_WAITING
+            ) {
+                return
+            }
+            Thread.yield()
+            spins++
+        }
     }
 
     private fun DedicatedThreadPublication.isCurrentOn(thread: Thread): Boolean = thread === this.thread

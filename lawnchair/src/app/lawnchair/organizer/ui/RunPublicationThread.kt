@@ -4,7 +4,6 @@ import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -74,8 +73,22 @@ class HandlerRunPublicationThread(
             latch.countDown()
         }
         check(posted) { "organizer run publication task could not be posted to the main looper" }
-        val completed = latch.await(JOIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        check(completed) { "organizer run publication task did not complete on the main thread in time" }
+        // Once the task is queued, this caller must not unwind before the
+        // publication completes: the caller may hold the run lock and the
+        // exchange mutation gate (spec 375), and a late publication after the
+        // caller moved on would invert the gate-release linearization. The
+        // join is therefore uninterruptible — interruption is remembered and
+        // re-asserted on the caller after completion.
+        var interrupted = false
+        while (true) {
+            try {
+                latch.await()
+                break
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
         return outcome.get()!!.getOrThrow()
     }
 
@@ -83,10 +96,6 @@ class HandlerRunPublicationThread(
         check(!isCurrent) {
             "organizer run state machine must not run on the publication (main) thread"
         }
-    }
-
-    private companion object {
-        const val JOIN_TIMEOUT_SECONDS = 10L
     }
 }
 
@@ -125,7 +134,19 @@ class DedicatedThreadPublication(
             outcome.set(runCatching(block))
             latch.countDown()
         }
-        latch.await()
+        // Mirrors [HandlerRunPublicationThread.run]: uninterruptible join once
+        // the task is queued (see the production implementation for the
+        // linearization rationale).
+        var interrupted = false
+        while (true) {
+            try {
+                latch.await()
+                break
+            } catch (_: InterruptedException) {
+                interrupted = true
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt()
         return outcome.get()!!.getOrThrow()
     }
 

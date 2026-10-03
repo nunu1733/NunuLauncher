@@ -172,7 +172,7 @@ thread affinity違反系signatureの分類と、spec
 | T3: `CalledFromWrongThreadException`（IO worker上のinline applyChanges） | [run 36251746356](https://github.com/nunu1733/NunuLauncher/actions/runs/36251746356) | category 6（unknown）。run面を経由しないhub画面のDataStore + Compose test環境のtiming raceと分類 | **本変更の対象外**。#418で原因調査継続 |
 
 本変更の回帰oracleは、既存 `organizer-unit-tests` gate内の
-`ManualOrganizationRunPublicationConfinementTest`（全UI状態書込みの実行thread検証）と
+`ManualOrganizationRunPublicationConfinementTest`（全UI状態書込みの実行thread検証と、publication hop完了までcallerがunwindしない uninterruptible join契約）と
 `ManualOrganizationRunAdmissionPublicationTest`（spec 375 gate内完結・journal順序の維持）が
 所有する。instrumentation回帰は既存manual-organization-ui laneの
 `UsageAccessJitInstrumentationTest`（生thread軸）が担当し、新laneは追加しない。
