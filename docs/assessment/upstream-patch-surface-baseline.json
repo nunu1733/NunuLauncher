@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "status": "accepted",
-  "captured_on": "2026-10-01",
+  "captured_on": "2026-10-03",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "2163020d8dfc96ddf4845b90dc42e0d7a127fa12",
+  "main_commit": "4e770fb196058a9da3a5c4ed24f301b24609dca8",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -444,7 +444,7 @@
     },
     {
       "id": "homeedit-edit-surface",
-      "responsibility": "Visual multi-select edit surface (Issue #449, ADR-0014 case B): pure session/planning layers, thin organizer-access window, full-screen UI, and the two entries. Since Issue #452 this file also hosts the fork's added popup entries generally (organize_home for #452, alongside edit_surface for #449) plus the DEFAULT_ORDER-relative order restoration and the no-op write guard; #452's share of this file's growth is adopted with #452 rationale. The one-shot apply goes through the existing organizer apply path (ORGANIZER lease, one recovery point, 1 transaction, correlated reload + verification); no direct DB writes. Includes the plan-coupled minimal extension of the apply path: the manifest-absence delete pass in LauncherLayoutAdapter (plan 結合点7) that materializes intended-row removals, and the read-only inspectCapture seam in LayoutApplicationModule.",
+      "responsibility": "Visual multi-select edit surface (Issue #449, ADR-0014 case B): pure session/planning layers, thin organizer-access window, full-screen UI, and the two entries. Since Issue #452 this file also hosts the fork's added popup entries generally (organize_home for #452, alongside edit_surface for #449) plus the DEFAULT_ORDER-relative order restoration and the no-op write guard; #452's share of this file's growth is adopted with #452 rationale. The one-shot apply goes through the existing organizer apply path (ORGANIZER lease, one recovery point, 1 transaction, correlated reload + verification); no direct DB writes. Includes the plan-coupled minimal extension of the apply path: the manifest-absence delete pass in LauncherLayoutAdapter (plan 結合点7) that materializes intended-row removals, and the read-only inspectCapture seam in LayoutApplicationModule. Since Issue #507 it also hosts the duplicate-group projection (EditSurfaceDuplicateGroups) over the session-applied working diagram; the #451 detection rule is generalized in place (planning/DuplicateLaunchTargets.kt, behavior-invariant delegation) and the last-one guard runs only at the duplicate-dialog boundaries.",
       "evidence": [
         "specs/449-multi-select-surface/spec.md",
         "docs/adr/0014-edit-surface.md",
@@ -452,6 +452,7 @@
       ],
       "paths": [
         "lawnchair/AndroidManifest.xml",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceDuplicateGroups.kt",
         "lawnchair/src/app/lawnchair/homeedit/EditSurfacePlanBuilder.kt",
         "lawnchair/src/app/lawnchair/homeedit/EditSurfaceProjection.kt",
         "lawnchair/src/app/lawnchair/homeedit/EditSurfaceSessionPlanner.kt",
@@ -464,12 +465,12 @@
         "lawnchair/src/app/lawnchair/homeedit/ui/EditActionsShortcuts.kt",
         "lawnchair/src/app/lawnchair/homeedit/ui/EditSurfaceScreen.kt",
         "lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt",
-        "lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt",
         "lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt",
         "lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt",
         "lawnchair/src/app/lawnchair/organizer/planning/PlanningResult.kt",
         "lawnchair/src/app/lawnchair/organizer/ui/GeneratedFolderTitles.kt",
         "lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt",
+        "lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt"
       ]
     },
@@ -521,20 +522,41 @@
         "lawnchair/src/app/lawnchair/backup/ui/RestoreBackupViewModel.kt",
         "lawnchair/src/app/lawnchair/bugreport/LawnchairBugReporter.kt"
       ]
+    },
+    {
+      "id": "new-app-destination",
+      "responsibility": "New-app destination policy (Issue #497, ADR-0015): the pure planner with the closed result, the snapshot classifier, the settings row + folder picker wiring, and the minimal upstream writer surface (AddWorkspaceItemsTask / ItemInstallQueue / PersistedItemArray) that realizes the ADR-0013 contract 4 admission-in-completion write. Registered here retroactively: the paths were merged with PR #498 but the bridge assignment missing from this inventory was only surfaced by the Issue #507 measurement.",
+      "evidence": [
+        "specs/497-new-app-destination-policy-impl/spec.md",
+        "docs/adr/0015-new-app-destination-policy.md",
+        "docs/adr/0013-direct-edit-write-contract.md"
+      ],
+      "paths": [
+        "lawnchair/src/app/lawnchair/LawnchairProcessInitializer.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationAdapter.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationNotice.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationPlanner.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationSettingsText.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/AppDestinationPreference.kt",
+        "lawnchair/src/app/lawnchair/preferences/PreferenceManager.kt",
+        "src/com/android/launcher3/model/AddWorkspaceItemsTask.java",
+        "src/com/android/launcher3/model/ItemInstallQueue.java",
+        "src/com/android/launcher3/util/PersistedItemArray.java"
+      ]
     }
   ],
   "expected_measurement": {
-    "counted_additions": 20327,
-    "counted_deletions": 1089,
-    "counted_files": 93,
-    "counted_paths_sha256": "fdffc8d961be514b981ea964cf4beac97185e90113fb9e3d042e2a0cc31f7c86",
-    "excluded_additions": 210739,
+    "counted_additions": 22506,
+    "counted_deletions": 1098,
+    "counted_files": 104,
+    "counted_paths_sha256": "3ee06c0fde3143a0c134a7a5892563ae7a66d670855fef92b701d09449a565f9",
+    "excluded_additions": 219668,
     "excluded_deletions": 863,
-    "excluded_files": 1207,
-    "excluded_paths_sha256": "66e0b2d8033aa56e316a6c0d814277d146704f258b2979816b7dad93c72ebae1",
+    "excluded_files": 1273,
+    "excluded_paths_sha256": "844f96c04f64e36bae35904428e7e040580137289ee9c7e12dfbf912d7a34477",
     "groups": {
       "deck-retirement": {
-        "additions": 759,
+        "additions": 765,
         "deletions": 862,
         "files": 20,
         "paths_sha256": "3f68fcbdba6182596817bcec19c8327c2f23cda9ee51a69499b7d2017a89616a"
@@ -546,10 +568,10 @@
         "paths_sha256": "727291c82bd7181e70278f6926a041ce86c3fb2e54b8efeedcab771586d51dbd"
       },
       "homeedit-edit-surface": {
-        "additions": 8538,
+        "additions": 9225,
         "deletions": 18,
-        "files": 20,
-        "paths_sha256": "beb57d705e8e94dc3c8b5faa2320dcb8dc1eca92435a55fdbdf0b6bad7329fb8"
+        "files": 21,
+        "paths_sha256": "27d6191912c4c6c1621aa516cfd1ad6c85e5ce14fafe10345525f2ed17b9dc7c"
       },
       "homeedit-edit-undo": {
         "additions": 932,
@@ -564,10 +586,16 @@
         "paths_sha256": "cd6606755781c3f5eac65d513e346f70b4b78f6fdddd1e851de8803836600724"
       },
       "model-reload-and-transaction-gates": {
-        "additions": 2979,
-        "deletions": 80,
+        "additions": 3425,
+        "deletions": 79,
         "files": 11,
         "paths_sha256": "89e436108363951a16ec544251fa6b70b7be336e2febf6009d197aa61a38eedc"
+      },
+      "new-app-destination": {
+        "additions": 941,
+        "deletions": 10,
+        "files": 10,
+        "paths_sha256": "2dabf75efced4b6bee37f2c113f088e4281c180a953e57a36c00057aa0fce0f4"
       },
       "organizer-home-entry": {
         "additions": 32,
@@ -576,15 +604,15 @@
         "paths_sha256": "6482bd763964e08a8ba115731819355cae35ec183124ed363bc6ec10e3e299f0"
       },
       "organizer-ui-and-lock-authoring": {
-        "additions": 5802,
+        "additions": 5901,
         "deletions": 9,
         "files": 13,
         "paths_sha256": "7f9dc79c4f97a2456a48e23a6fcfbc218dd0bf3c2148ebd65d194d361403004f"
       }
     },
-    "project_owned_additions": 36790,
+    "project_owned_additions": 37032,
     "project_owned_deletions": 0,
-    "project_owned_files": 174,
-    "project_owned_paths_sha256": "8eaafb934fd87ba5ada06e978931dd35e8b0e94d65683f37e44da86b7fb6c655"
+    "project_owned_files": 176,
+    "project_owned_paths_sha256": "18377239a0470b3a055ca7924bea9b715c6c0b2291742e284962a833d2d7f145"
   }
 }
