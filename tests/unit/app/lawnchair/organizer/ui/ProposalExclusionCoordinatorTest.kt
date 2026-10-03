@@ -296,6 +296,7 @@ class ProposalExclusionCoordinatorTest {
     fun aSupersededReplanResultIsDiscardedZeroWrite() {
         val application = FakeApplication(composition(baseInput()))
         val started1 = CountDownLatch(1)
+        val started2 = CountDownLatch(1)
         val release1 = CountDownLatch(1)
         val release2 = CountDownLatch(1)
         val callCount = AtomicInteger()
@@ -310,6 +311,7 @@ class ProposalExclusionCoordinatorTest {
                 }
 
                 else -> {
+                    started2.countDown()
                     release2.await(5, TimeUnit.SECONDS)
                     planningResult(replannedPlan)
                 }
@@ -320,9 +322,12 @@ class ProposalExclusionCoordinatorTest {
         runner.start()
         val worker1 = thread { runner.applyProposalExclusions(excludeApp) }
         assertTrue(started1.await(5, TimeUnit.SECONDS))
-        // A newer request while the first replan is still computing.
+        // A newer request while the first replan is still computing. Wait for
+        // ITS planner entry too — otherwise release1 could fire before the
+        // generation-2 claim, and worker1's result would legitimately surface
+        // (a test-thread scheduling race, not a coordinator behavior).
         val worker2 = thread { runner.applyProposalExclusions(emptySet()) }
-        // Give worker1 a moment to finish its gated completion attempt.
+        assertTrue(started2.await(5, TimeUnit.SECONDS))
         release1.countDown()
         worker1.join(5000)
         // The superseded generation-1 result must never surface.
