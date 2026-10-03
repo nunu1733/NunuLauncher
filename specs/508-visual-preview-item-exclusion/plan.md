@@ -7,6 +7,7 @@
 > Phase 1（本書の初版）: spec + planの起草とreviewを追跡する。Phase 2（実装）は同じbranch/PRで行い、本planのRevisionで追跡する（#448/#449/#507と同じ進め方）。
 > Revision 2: 2026-10-03 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5969642249): accepted化前に修正が必要、高1/中3）への対応。指摘1（高・base input喪失）: Data flowとcoordinator拡張を、Operationがimmutableなbase（`baseInput` + `baseExcludable` + 現行exclusions）を所有し `pending` は現行派生のみを運ぶ構成へ改め、派生は常に `baseInput` から直接導出・`next ⊆ baseExcludable` 検証・除外集合空への復帰契約を明記。復帰4scenarioとbase/current取り違えのtest oracleをVerificationへ追加。指摘2（中・鍵型の所有層）: `ProposalExclusionKey` を `organizer/planning` 側のneutralなclosed型（TargetSet近傍）へ移動（application/planningからorganizer.uiへの逆向き依存を作らない）。指摘3（中・diagrams nullable矛盾）: `PlanPreviewDetails.diagrams` をnon-null必須化（default null廃止）。構築をprotocol内のaggregate builderへ集約（両投影成功後に1回だけ構築、不整合は `MATERIALIZATION_INVALID`）。既存constructor呼び出し箇所はtest fixture builder側で移行。指摘4（中・retry契約の不一致）: 再試行を既存 `retryPlanPreview` seam（保持済み派生input/resultに対する `inspectPlan` 再実行。planner再実行なし）へ確定し、spec D-7/Scenario側を同じ契約へ同期（spec Revision 2）。
 > Revision 3: 2026-10-03 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/pull/515#issuecomment-5970681274): 4点中3点解消、残存1点（中））への対応。指摘（fallback禁止のstickiness + retry復元）: 環境失敗時の `PreviewUnavailable` 分岐条件を `next 非空` から **`replanGeneration > 0`（stickyな「除外変更済み」。`next` が∅に戻った後も継続）** へ変更（除外→全解除→環境失敗の経路だけ既存fallbackへ落ちる抜け道を塞ぐ。spec D-7/Scenario/AC-8も同時に明確化。spec Revision 3）。`Operation.currentExclusions` を「最後に成功した集合」ではなく**世代要求の受理時に更新する最新要求集合**とする所有規則を明文化し、retry成功時に `exclusions = currentExclusions` で `State.Preview` へ復帰できることを明記。sticky禁止とretry復帰（全解除後を含む）のcoordinator test oracleをVerificationへ追加。
+> Revision 4: 2026-10-03 — Phase 1 re-review round 3（round 2残存指摘は本質的に解消との判定。残存した低指摘1件: Modules and interfaces要約のcoordinator設計コメントに旧条件「除外集合非空なら環境失敗でfallback不可」の行が残存）への対応。当該行を `replanGeneration > 0` のsticky条件（next ∅でも継続）へ同期。Data flow・spec・test oracleはround 2で修正済みのため変更なし。
 
 ## Current evidence
 
@@ -110,8 +111,9 @@ organizer/ui/
                                            #    pending（PendingPlan）は現行の(input, result, summary,
                                            #    previewPlan)のみを持つ（base/current取り違えを構造で防ぐ）
                                            #   - 再計画: derive(baseInput, next) → planner.plan →
-                                           #    既存handlePlanPreview相当の分岐（除外集合非空なら
-                                           #    環境失敗でfallback不可）
+                                           #    既存handlePlanPreview相当の分岐（環境失敗で
+                                           #    fallback不可の判定は replanGeneration > 0 の
+                                           #    sticky条件。next が∅に戻った後も継続。spec D-7）
                                            #   - confirm/cancel/stale系は既存規則のまま
 
 homeedit/ui/
