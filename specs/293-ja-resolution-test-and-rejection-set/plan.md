@@ -1,6 +1,6 @@
 ---
 issue: "#293"
-status: draft
+status: implemented
 spec: ./spec.md
 updated: 2026-10-03
 ---
@@ -365,3 +365,20 @@ git submodule update --init --recursive
 - 本Issueは Risk tier L (#444運用) のためaccepted specを要求しない
   (PRのみで足りる)。本spec/plan draftは実装PRの判断資料として添付し、
   tier判定と変更scopeを実装PR本文へ記載する。
+
+
+## 6. 実施記録 (close-out)
+
+- 実装PR [#511](https://github.com/nunu1733/NunuLauncher/pull/511) merge
+  (merge commit `eb831de5e5`)。Step 1〜3ともにplanどおり実施:
+  Step 1 spec 13追記 (`805c36d41c`)、Step 2 test拡張 (`780f0c48e5`)、
+  Step 3 検証 (`spotlessCheck` green / ローカルclass実行 56 tests / 0 failures /
+  CI lane green — 最終head `89558a6c56` の
+  [run 37106454561](https://github.com/nunu1733/NunuLauncher/actions/runs/37106454561) 全job success)。
+- Step 3のCIで初回attemptが #418 既知flake (「同じlaneの別testでの
+  `length=320` SlotWriter crash + process crash」) に該当したため
+  `--failed` 再実行で回収。発生記録はIssue #418コメントへ追記済み。
+- 独立監査: [docs/assessment/pr-511-293-followup.md](../../docs/assessment/pr-511-293-followup.md)
+  (verdict GO、audited head `726e871209`)。
+- 変更fileはplan §4の所有境界どおり 4 file
+  (test 1 + `specs/13` 1 + `specs/293-*` 2)。並行作業との競合は発生せず。

@@ -1,6 +1,6 @@
 ---
 issue: "#293"
-status: draft
+status: implemented
 requirements: []
 updated: 2026-10-03
 ---
@@ -341,3 +341,19 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   (membership契約、順序合わせの並べ替えなし)。
   (3) AC-293-03: 差分は対象test file + spec 13 + `specs/293-*` のみで、
   production source・DB・依存に差分なし。
+
+- 2026-10-03: **status を implemented へ移行**。実装PR
+  [#511](https://github.com/nunu1733/NunuLauncher/pull/511) merge (merge commit
+  `eb831de5e5ec54818621eb9da8dd182879e61139`)。AC evidence:
+  AC-293-01 — 対象class実行 (ローカル API 36 emulator: 56 tests / 0 failures)
+  およびCI lane
+  [`organizer-instrumentation-manual-organization-ui-tests`](https://github.com/nunu1733/NunuLauncher/actions/runs/37106454561/job/111155887655)
+  green (head `89558a6c56`。初回attemptは #418 既知flake
+  `length=320; SlotWriter.moveSlotGapTo` + process crash のため `--failed` 再実行、
+  発生記録は [Issue #418コメント](https://github.com/nunu1733/NunuLauncher/issues/418#issuecomment-5966710958))。
+  AC-293-02 — spec 13閉集合へ `CANDIDATE_UNAVAILABLE` 追記 + change history記録、
+  `Results.kt` / `ApplyResultContractTest.kt` とのmembership突合は
+  [独立監査](../../docs/assessment/pr-511-293-followup.md) (verdict GO) で確認。
+  AC-293-03 — diff 4 file (test 1 + spec 3) でproduction source / res /
+  CI / dependencyの変更なし。全終了条件を満たし Issue #293 はCOMPLETEDでclose
+  ([close記録](https://github.com/nunu1733/NunuLauncher/issues/293#issuecomment-5966936853))。
