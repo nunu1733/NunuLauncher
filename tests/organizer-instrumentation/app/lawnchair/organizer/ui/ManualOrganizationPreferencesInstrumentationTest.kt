@@ -1393,10 +1393,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
             workspaceDestination(context, 2, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal),
             context.getString(R.string.manual_organization_preview_move_reason_single_placement),
         )
-        // Issue #508: the diagrams precede the list — scroll the rows into view.
-        scrollListToText(moveRow("game", 1))
-        composeRule.onNodeWithText(moveRow("game", 1)).assertIsDisplayed()
-        composeRule.onNodeWithText(moveRow("maps", 2)).assertIsDisplayed()
+        // Issue #508: the diagrams precede the list — scroll EACH row into
+        // view right before its assertion.
+        for (row in listOf(moveRow("game", 1), moveRow("maps", 2))) {
+            scrollListToText(row)
+            composeRule.onNodeWithText(row).assertIsDisplayed()
+        }
         assertEquals(0, application.applyCalls)
     }
 
@@ -1570,14 +1572,13 @@ class ManualOrganizationPreferencesInstrumentationTest {
         // the source descriptors (kind word + current position) actually
         // differ — the F-01 ambiguity is fixed at the rendered surface, not
         // just in the projection model.
-        // Issue #508: the diagrams precede the list — scroll the rows into view.
-        scrollListToText(moveRow)
-        composeRule.onNodeWithText(moveRow).assertIsDisplayed()
-        composeRule.onNodeWithText(folderChildRow).assertIsDisplayed()
-        composeRule.onNodeWithText(widgetRow).assertIsDisplayed()
-        composeRule.onNodeWithText(folderUnitRow).assertIsDisplayed()
-        composeRule.onNodeWithText(dockRow).assertIsDisplayed()
-        composeRule.onNodeWithText(appPairRow).assertIsDisplayed()
+        // Issue #508: the diagrams precede the list — scroll EACH row into
+        // view right before its assertion (the CI viewport is shorter than
+        // the diagrams plus six rows).
+        for (row in listOf(moveRow, folderChildRow, widgetRow, folderUnitRow, dockRow, appPairRow)) {
+            scrollListToText(row)
+            composeRule.onNodeWithText(row).assertIsDisplayed()
+        }
         assertEquals(6, setOf(moveRow, folderChildRow, widgetRow, folderUnitRow, dockRow, appPairRow).size)
         assertEquals(0, application.applyCalls)
     }
