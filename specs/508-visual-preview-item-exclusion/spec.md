@@ -1,6 +1,6 @@
 ---
 issue: "#508"
-status: accepted
+status: implemented
 tier: H
 requirements:
   - FR-004
@@ -11,7 +11,7 @@ requirements:
   - NFR-009
   - NFR-010
   - NFR-014
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
 # Organizerの確認面で変更前後を図で確認し、項目単位の除外・再計画ができる
@@ -276,3 +276,4 @@ None。Issueの決定ゲート項目（項目単位の対象、readonly投影の
 - [DESIGN.md](../../DESIGN.md) / [CONTEXT.md](../../CONTEXT.md)
 - [docs/engineering/organizer-diagnostics.md](../../docs/engineering/organizer-diagnostics.md)
 - [docs/project/github-workflow.md](../../docs/project/github-workflow.md)（Risk tiers・Execution and approval contract・高リスク独立エビデンス）
+- 2026-10-04: **implemented** 化。Phase 2実装が [PR #515](https://github.com/nunu1733/NunuLauncher/pull/515) でmerge（merge commit `8db762a360`）。実装はPhase 1 re-review 4 round（round 4で指摘なし）とPhase 2実装レビュー3 round（round 1 [要修正](https://github.com/nunu1733/NunuLauncher/pull/515#pullrequestreview-5401798123)→`dc418b0021`、round 2 [要修正](https://github.com/nunu1733/NunuLauncher/pull/515#pullrequestreview-5401885145)→`8af117b6fc`、round 3 [最終判定 merge可](https://github.com/nunu1733/NunuLauncher/pull/515#pullrequestreview-5402536558)）と独立監査2版（`docs/assessment/pr-515-visual-preview-item-exclusion.md`。初回merge不可 → 対応後の再監査でaccepted）を経て受理。実装詳細: planning（`ProposalExclusionKey` + base派生`ProposalExclusionDerivation`）、application（`PlanDiagramProjector`・`PlanPreviewDetails.diagrams`必須化・`PreviewRowExclusion` typed理由）、coordinator（`applyProposalExclusions`・世代gate・sticky count-only禁止・`State.Replanning`）、UI（`app.lawnchair.ui.diagram`共有部品・図before/after・行単位除外action・除外済みgroup・未配置候補group）、`CONTEXT.md`/`DESIGN.md`/organizer-diagnostics/benchmark（B8）同期。検証: CI run [37148204910](https://github.com/nunu1733/NunuLauncher/actions/runs/37148204910)（final-status success・manual-org-ui lane含む全lane pass）。残owner確認事項（阻止ではない）: emulator TalkBack/200% font scale読み上げ・TalkBack実機確認・B8 fixtureエミュレータ実行（AC-10/11の一部。PR本文Unverified欄どおり）。残follow-up（audit提案・非阻止）: AC-4/5/6のplanner統合test補強（別Issueで起票可）。
