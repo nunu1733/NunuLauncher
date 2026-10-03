@@ -157,6 +157,25 @@ db-migration lane class list に加わったため over-trigger のみの mappin
 - rerun で green になっても、分類と（失敗時）capture 証拠なしに merge evidence としない。
 - 一時的 failure = production 無関係とは扱わない。#304/#418 の環境系 signature は調査
   Issue が所有し、merge gate からの無条件除外は行わない。
+
+### #418 系 thread-affinity signature の分類（2026-10-03、Issue #418）
+
+[Issue #418](https://github.com/nunu1733/NunuLauncher/issues/418) が追跡してきた
+thread affinity違反系signatureの分類と、spec
+[418-organizer-run-publication-confinement](../../specs/418-organizer-run-publication-confinement/spec.md)
+による対応:
+
+| Signature | 観測 | 分類 | 対応 |
+|---|---|---|---|
+| T2: `LifecycleRegistry.removeObserver must be called on the main thread`（worker上のdialog dispose） | [run 35990634088](https://github.com/nunu1733/NunuLauncher/actions/runs/35990634088) | production off-main publication軸（`ManualOrganizationRun`がcaller worker上でUI状態を公開）を静的に追えた唯一のsignature | **本変更（spec 418）で除去対象**。CI非再現は修正の証明としない（統計観察は#418継続） |
+| T1: `Detected multithreaded access to SnapshotStateObserver` | [run 35886970989](https://github.com/nunu1733/NunuLauncher/actions/runs/35886970989) | category 6（unknown）。静的監査によりfailure後のrun操作は説明要因から除外済み | **本変更の対象外**。#418で原因調査継続 |
+| T3: `CalledFromWrongThreadException`（IO worker上のinline applyChanges） | [run 36251746356](https://github.com/nunu1733/NunuLauncher/actions/runs/36251746356) | category 6（unknown）。run面を経由しないhub画面のDataStore + Compose test環境のtiming raceと分類 | **本変更の対象外**。#418で原因調査継続 |
+
+本変更の回帰oracleは、既存 `organizer-unit-tests` gate内の
+`ManualOrganizationRunPublicationConfinementTest`（全UI状態書込みの実行thread検証）と
+`ManualOrganizationRunAdmissionPublicationTest`（spec 375 gate内完結・journal順序の維持）が
+所有する。instrumentation回帰は既存manual-organization-ui laneの
+`UsageAccessJitInstrumentationTest`（生thread軸）が担当し、新laneは追加しない。
 - Issue / PR の acceptance evidence は「full workflow N 連続 green」を機械的に要求せず、
   変更 risk と対象 surface に対応して選択する（[github-workflow.md](../project/github-workflow.md)
   の evidence 選択原則）。
