@@ -220,6 +220,15 @@ Risk tier: **L** (test + docs-only。高リスクpath・書込み経路不変。
 > 前回baseline以降の変化はなし (#293委譲は不変: L17/L285)。本branchの
 > spec 13草案は現mainへそのまま適用可能。
 > 以下の行番号は現baseline (`10ee58336e`) 基準 (2026-10-03再確認)。
+>
+> Phase 1 review round 1 (ChatGPT、
+> [コメント](https://github.com/nunu1733/NunuLauncher/issues/293#issuecomment-5966185292))
+> 対応: Step 1の「`Results.kt` の宣言順序と一致させる」を「可読性のための位置、
+> 契約は閉集合のmembership一致で列挙順は契約ではない、並べ替え/order
+> assertion追加は行わない」へ修正。Issue本文の終了条件を
+> docs+test-onlyへ更新 (本planのscope記述と語彙一致)。authority表現は
+> spec.md冒頭を「実装PR向けのre-entry/完了チェック資料」へ統一 (本plan冒頭の
+> 「判断資料」表現と一致)。
 
 ## 1. 現状の実装と不足 (baseline確認済み)
 
@@ -244,7 +253,13 @@ Risk tier: **L** (test + docs-only。高リスクpath・書込み経路不変。
 
 - `specs/13-safe-layout-application/spec.md`:
   - 閉集合へ `| CANDIDATE_UNAVAILABLE` を `EXACT_PRECONDITION_FAILED` の次の行に
-    追加 (`Results.kt` の宣言順序と一致させる)。
+    追加する。これは可読性のための位置であり (`Results.kt` の宣言でも
+    `CANDIDATE_UNAVAILABLE` は `EXACT_PRECONDITION_FAILED` の直後)、契約は
+    閉集合のmembership一致であって列挙順は契約ではない (spec 13の列挙順は
+    runtimeの宣言順と全体として一致しておらず、
+    `ApplyResultContractTest.everyPreWriteRejectionVariantExists` も
+    set比較で順序を契約化していない)。順序合わせのための既存行の並べ替えや
+    order assertionの追加は行わない。
   - Change history 末尾へentryを #185 precedent (L645-649) と
     同形式で追記 (issue #228由来 / PR #289でruntimeとcontract testは確定済み /
     本entryは正本記録のみ / 他のresult shape・lifecycle・behavior変更なし)。

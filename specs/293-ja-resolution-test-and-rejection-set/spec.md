@@ -13,11 +13,13 @@ Risk tiers、Issue #444運用。test拡張 + docs-only追記であり、高リ�
 実装PRの判断資料であり、acceptedを必要としない)。
 
 > 本specは [Issue #293](https://github.com/nunu1733/NunuLauncher/issues/293) の
-> maintenance/docs+test-only follow-upを拘束契約として定義する。要件の正本は
+> maintenance/docs+test-only follow-upについて、実装PR向けのre-entry/完了チェック
+> 資料である (Risk tier Lのため本specのacceptedは要求しない)。要件の正本は
+> [Issue #293](https://github.com/nunu1733/NunuLauncher/issues/293) の終了条件、
 > [spec 228](../228-organizer-missing-app-selection/spec.md) (AC-12、[spec 123](../123-organizer-ui-convergence/spec.md)契約) と
 > [spec 13](../13-safe-layout-application/spec.md) (`PreWriteRejection` 閉集合) であり、
 > 本specはそれらを再定義せず、`specs/228` change historyが issue #293 へ明示委譲した
-> 2項目の完了条件と矛盾しないことを拘束する。source実装・production振る舞いの変更はない。
+> 2項目の完了条件と矛盾しないことを確認対象とする。source実装・production振る舞いの変更はない。
 
 ## Problem
 
@@ -91,10 +93,14 @@ plurals (2件、既存のplurals assertionパターンへ追加):
 ### 対象 (item 2: spec 13 追記、docs-only)
 
 - `specs/13-safe-layout-application/spec.md` の `PreWriteRejection` 閉集合へ
-  `CANDIDATE_UNAVAILABLE` を追記する。挿入位置は spec 13テキスト上
-  `EXACT_PRECONDITION_FAILED` の直後 (`LOCK_STATE_UNAVAILABLE` の前) であり、
-  `Results.kt` での宣言順序 (`EXACT_PRECONDITION_FAILED` の次が
-  `CANDIDATE_UNAVAILABLE`) と一致する。
+  `CANDIDATE_UNAVAILABLE` を追記する。挿入位置は可読性のため
+  `EXACT_PRECONDITION_FAILED` の直後とする (`Results.kt` の宣言でも
+  `CANDIDATE_UNAVAILABLE` は `EXACT_PRECONDITION_FAILED` の直後に置かれている)。
+  契約は閉集合の **membership一致** であり列挙順は契約ではない
+  (spec 13の列挙順はruntimeの宣言順と全体として一致しておらず、
+  `ApplyResultContractTest.everyPreWriteRejectionVariantExists` もset比較で
+  順序を契約化していない)。順序合わせのための既存行の並べ替えや
+  order assertionの追加は行わない。
 - change history へ #185 precedent と同形式で issue #228 / PR #289 由来の
   拒否コードであることを記録する。
 
@@ -306,3 +312,15 @@ plurals (2件、既存のplurals assertionパターンへ追加):
   blob単位で無変化 (spec 228 specのみ前回分の#369 Amendまででblob変化済み、
   前回baselineからの変化はなし。#293委譲は不変: L17/L285)、
   本branchのspec 13草案は現mainへそのまま適用可能。契約内容の変更なし。
+- 2026-10-03: Phase 1 review round 1 (ChatGPT、
+  [コメント](https://github.com/nunu1733/NunuLauncher/issues/293#issuecomment-5966185292))
+  対応。(1) 中: Issue本文の終了条件「docs-only PRでmerge」が docs+test-only
+  scopeと矛盾する指摘により、Issue本文の終了条件を
+  「docs+test-only PRでmerge (production source・DB・依存に差分がない)」へ更新
+  (AC-293-03は元からdocs+test-only語彙のため語彙一致)。
+  (2) 中: spec 13追記の「`Results.kt` の宣言順序と一致」表現が実体より強い指摘を
+  受け、§対象 item 2 と plan Step 1 を「挿入位置は可読性のための位置、契約は
+  閉集合のmembership一致で列挙順は契約ではない、並べ替え/order assertion追加は
+  行わない」へ修正。(3) 低: 冒頭の「拘束契約として定義する」を
+  「実装PR向けのre-entry/完了チェック資料 (accepted不要)」へ弱め、
+  正本をIssue終了条件 + spec 228 AC-12 + spec 13へ一本化。
