@@ -239,3 +239,19 @@ _Avoid_: 前置き面 (方法選択を含まない入口面T-07との混同)、r
 **scope-bound依頼破棄 (scope-bound request discard)**:
 凍結scopeの再編集のために、そのscopeから作成したactive依頼 (とその従属物) をexchange mutation gate配下で順序付きに無効化する明示操作 ([spec 417](./specs/417-scope-first-method-choice/spec.md))。依頼時scopeを参照する全durable状態の消失原因の1つとなる。
 _Avoid_: 未送信依頼の破棄 (pre-send discardとの混同。scope再編集を目的としない)、中断 (zero-writeでrunを止める語彙との混同)
+
+**編集負担ベンチマーク (Editing Burden Benchmark)**:
+ホーム画面の日常的な編集と、散らからない状態の維持にかかる手間を、再現可能な課題 (B1〜B7) と重み付き操作コストで測る測定体系 ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md)が正本)。NFR-014の正本であり、Now段階の機能specは改善する課題と目標値をここから引用する ([spec 441](./specs/441-editing-burden-benchmark/spec.md))。
+_Avoid_: 性能budget (organizer runの性能はperformance-budgetsが正本。面が異なる)、UX指標 (測定対象は操作コストであり満足度ではない)
+
+**重み付き操作コスト (weighted operation cost)**:
+課題あたりの主指標。操作種別ごとの確定重み (tap=1、長押し=2、ページをまたぐdrag=4+越えたページ数等) の合計 ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md) §4)。
+_Avoid_: 操作時間 (副指標。実測時間は補助)、難易度 (主観値ではなく操作回数から決定的に算出される)
+
+**操作数 (operation count)**:
+利用者の手順の数。tapも長押しも1と数え、重み付きコストとは別の指標 ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md) §4)。#452等の「n操作以下」の数え方の正本である。
+_Avoid_: 重み付きコスト (dragの距離・待ち時間を反映する別指標)、タップ数 (長押し等も1と数える)
+
+**重複アイテム (duplicate item)**:
+同一起動先 (アプリ項目はcomponent + profileの一致) を持つ複数の配置アイテム。B7の対象であり、fixtureでは指定した2組のみがこれに該当する ([editing-burden-benchmark](./docs/engineering/editing-burden-benchmark.md) §5)。
+_Avoid_: 同じアイコン (視覚的一致ではなくidentityの一致)、重複アプリ (単一installのアプリが複数の配置アイテムを持つ状態を指す)

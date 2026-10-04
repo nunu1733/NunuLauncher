@@ -27,6 +27,7 @@
 | [engineering/organizer-diagnostics.md](./engineering/organizer-diagnostics.md) | organizer runのdiagnosticのfield・redaction・保持・出力はどう決まるか | diagnostics契約が変わるとき |
 | [engineering/package-provenance.md](./engineering/package-provenance.md) | package eventの証拠源比較は何か | Issue #54のsource evidenceが変わるとき |
 | [engineering/performance-budgets.md](./engineering/performance-budgets.md) | organizerの性能をどう測り、暫定budgetをどう運用するか | 測定環境・budget・matrixが変わるとき |
+| [engineering/editing-burden-benchmark.md](./engineering/editing-burden-benchmark.md) | 編集負担（日常編集の手間）をどう測り、目標をどう確定するか | 課題・重み・fixture・計測手順が変わるとき（NFR-014の正本。Issue #441） |
 | [adr/](./adr/) | 変更しにくい判断をなぜ行ったか | 判断時。日々の進捗では更新しない |
 | [specs/](../specs/) | あるIssueの観測可能な振る舞いは何か | 受入条件が変わるとき |
 
