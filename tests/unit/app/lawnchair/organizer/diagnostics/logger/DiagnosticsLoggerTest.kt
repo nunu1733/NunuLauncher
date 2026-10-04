@@ -171,6 +171,29 @@ class DiagnosticsLoggerTest {
     }
 
     @Test
+    fun captureFailureFormatAppendsBoundedInvariantConstantName() {
+        // Issue #299 / CI-AC-08: the typed invariant violation adds its closed
+        // category constant name; message-derived text stays Never.
+        val formatted = DiagnosticsLogger().formatCaptureFailure(
+            java.lang.IllegalArgumentException::class.java,
+            app.lawnchair.organizer.application.protocol.CaptureInvariantCategory.INVALID_WIDGET_ROW,
+        )
+        assertEquals(
+            "phase=CAPTURE exceptionClass=IllegalArgumentException invariant=INVALID_WIDGET_ROW",
+            formatted,
+        )
+    }
+
+    @Test
+    fun captureFailureFormatWithoutInvariantKeepsLegacyShape() {
+        val formatted = DiagnosticsLogger().formatCaptureFailure(
+            java.lang.IllegalStateException::class.java,
+            invariant = null,
+        )
+        assertEquals("phase=CAPTURE exceptionClass=IllegalStateException", formatted)
+    }
+
+    @Test
     fun captureFailureFormatNormalizesToSimpleNameWithoutMessage() {
         val formatted = DiagnosticsLogger().formatCaptureFailure(
             android.database.sqlite.SQLiteBlobTooBigException::class.java,

@@ -7,11 +7,13 @@ import android.content.pm.PackageManager
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import app.lawnchair.DeviceProfileOverrides
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.InvariantDeviceProfile
+import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.DatabaseHelper
 import com.android.launcher3.model.DeviceGridState
@@ -27,7 +29,10 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.URISyntaxException
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.roundToInt
@@ -49,6 +54,10 @@ class NovaBackupConverter(
         private const val FOLDER_PAGE_RANK_OFFSET = 1_000
         private const val FOLDER_ROW_RANK_OFFSET = 100
         private const val NOVA_TEMP_DIR_PREFIX = "nova_"
+        private const val RESTORE_RELOAD_COMPLETION_TIMEOUT_MS = 15_000L
+        private const val RELOAD_OUTCOME_COMPLETED = "completed"
+        private const val RELOAD_OUTCOME_CANCELLED = "cancelled"
+        private const val RELOAD_OUTCOME_TIMEOUT = "timeout"
         private const val NOVA_WORKSPACE_DB = "nova_workspace.db"
         private const val NOVA_TABLE_FAVORITES = "favorites"
         private const val NOVA_XML_TAG_STRING = "string"
@@ -159,6 +168,7 @@ class NovaBackupConverter(
         val tempDir = File(context.cacheDir, "$NOVA_TEMP_DIR_PREFIX${UUID.randomUUID()}")
         tempDir.mkdirs()
 
+        var reloadBarrier: RestoreReloadBarrier? = null
         try {
             // Issue #58: one BACKUP_RESTORE lease spans quiesce, helper close, staging,
             // IDp/prefs writes, restored.db copy, reentrant performRestore and the
@@ -219,12 +229,139 @@ class NovaBackupConverter(
 
                     val dbController = ModelDbController(context)
                     RestoreDbTask.performRestore(context, dbController)
-                    RestoreDbTask.reloadAfterRestore(context)
+                    // Issue #299 / CI-AC-02 restore completion barrier: the
+                    // token attaches to the reload generation dispatched here;
+                    // the generation itself runs only after this lease is
+                    // released (loaders defer behind the restore-family
+                    // lease), so the await happens after the use block below.
+                    // The barrier dispatches the tokenless repair reload even
+                    // without bound Launcher callbacks
+                    // (dispatchRestoreReload routes an empty callback list
+                    // through startLoaderWithoutCallbacks), so the
+                    // restore-correlated generation completes and the
+                    // workspace is capture-valid before the restore reports
+                    // completion in every case.
+                    val app = LauncherAppState.INSTANCE.getNoCreate()
+                    reloadBarrier = if (app != null) {
+                        RestoreReloadBarrier(app, RESTORE_RELOAD_COMPLETION_TIMEOUT_MS).also { it.dispatch() }
+                    } else {
+                        null
+                    }
+                    if (reloadBarrier == null) {
+                        // Baseline fallback: no launcher application, no
+                        // model, no reload to observe.
+                        RestoreDbTask.reloadAfterRestore(context)
+                    }
 
                     pinImportedDeepShortcuts(importedDeepShortcuts)
                 }
+            // The completion barrier is mandatory whenever the model exists
+            // (dispatched above iff `app != null`): the restore must not
+            // report completion without its restore-correlated repair
+            // generation having committed.
+            reloadBarrier?.awaitCompletion()
         } finally {
             tempDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * Issue #299 / CI-AC-02: observes the restore's reload through the
+     * generation-identity token ([LauncherModel.dispatchRestoreReload]) and
+     * returns only after THAT generation's terminal successful completion.
+     * Superseded or stopped generations report `cancelled` and are
+     * re-dispatched within the absolute deadline (computed once —
+     * re-dispatching never extends it); if the reload still has not
+     * completed, the restore FAILS (throws) instead of returning a workspace
+     * the organizer cannot capture.
+     */
+    private class RestoreReloadBarrier(
+        private val app: LauncherAppState,
+        private val timeoutMillis: Long,
+    ) {
+        private data class Attempt(
+            val latch: CountDownLatch = CountDownLatch(1),
+            val outcome: AtomicReference<String> = AtomicReference(""),
+        )
+
+        private val model = app.getModel()
+        private var currentAttempt = Attempt()
+        private var currentRequestId = 0L
+
+        // Computed lazily at awaitCompletion() — i.e. only once the
+        // restore-family lease has been released. The lease defers the
+        // dispatched reload generation, so time spent inside the lease (grid
+        // writes, deep-shortcut pinning) must not consume the completion
+        // budget. Computed once; re-dispatch never extends it.
+        private var deadlineUptimeMillis = -1L
+
+        fun dispatch() {
+            // Keep callbacks bound to this attempt. A stale cancellation or
+            // completion callback must never signal the next attempt's latch.
+            val attempt = Attempt()
+            currentAttempt = attempt
+            val requestId = model.beginRestoreReload()
+            currentRequestId = requestId
+            model.dispatchRestoreReload(
+                requestId,
+                {
+                    attempt.outcome.set(RELOAD_OUTCOME_COMPLETED)
+                    attempt.latch.countDown()
+                },
+                {
+                    attempt.outcome.set(RELOAD_OUTCOME_CANCELLED)
+                    attempt.latch.countDown()
+                },
+            )
+        }
+
+        fun awaitCompletion() {
+            if (deadlineUptimeMillis < 0) {
+                deadlineUptimeMillis = SystemClock.uptimeMillis() + timeoutMillis
+            }
+            var attempt = 0
+            while (true) {
+                attempt++
+                val remainingMillis = deadlineUptimeMillis - SystemClock.uptimeMillis()
+                val current = currentAttempt
+                val observed = try {
+                    if (remainingMillis > 0 && current.latch.await(remainingMillis, TimeUnit.MILLISECONDS)) {
+                        current.outcome.get()
+                    } else {
+                        RELOAD_OUTCOME_TIMEOUT
+                    }
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    model.cancelRestoreReloadIfCurrent(currentRequestId)
+                    throw IllegalStateException(
+                        "Restore reload wait was interrupted; failing the restore. Retry the restore.",
+                        interrupted,
+                    )
+                }
+                if (observed == RELOAD_OUTCOME_COMPLETED) {
+                    Log.i(TAG, "Restore reload completed after $attempt attempt(s); workspace is capture-valid")
+                    return
+                }
+                if (observed == RELOAD_OUTCOME_TIMEOUT || SystemClock.uptimeMillis() >= deadlineUptimeMillis) {
+                    // Clear the pending token by identity so no stale token
+                    // survives for a later generation to complete.
+                    model.cancelRestoreReloadIfCurrent(currentRequestId)
+                    throw IllegalStateException(
+                        "Restore reload did not complete within the ${RESTORE_RELOAD_COMPLETION_TIMEOUT_MS}ms " +
+                            "deadline (last outcome=$observed, attempts=$attempt); failing the restore " +
+                            "instead of returning a workspace the organizer cannot capture. " +
+                            "Retry the restore.",
+                    )
+                }
+                // A superseding stop cancelled this generation. The
+                // re-dispatch starts a fresh repair-carrying generation — with
+                // or without bound callbacks (dispatchRestoreReload routes an
+                // empty callback list through startLoaderWithoutCallbacks) —
+                // so the absolute deadline is the only bound and successful
+                // completion is the only success.
+                Log.w(TAG, "Restore reload attempt $attempt was $observed; re-dispatching")
+                dispatch()
+            }
         }
     }
 
