@@ -957,6 +957,8 @@
     <string name="homeedit_undo_error_restore_failed">Couldn\u2019t undo. You can restore from the organizer.</string>
     <!-- Issue #449: multi-select visual edit surface -->
     <string name="edit_surface_menu_open">Edit layout grid</string>
+    <!-- Issue #452: organizer entry in the workspace long-press popup -->
+    <string name="home_screen_organize">Organize home screen</string>
     <string name="edit_surface_title">Edit layout grid</string>
     <string name="edit_surface_snapshot_notice">Showing the layout captured when this screen opened. Changes made elsewhere are not reflected.</string>
     <string name="edit_surface_selection_count">%1$d selected</string>
