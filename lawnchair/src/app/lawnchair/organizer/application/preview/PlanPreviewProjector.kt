@@ -29,6 +29,7 @@ import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PreserveReason
 
@@ -179,6 +180,11 @@ object PlanPreviewProjector {
                 // Issue #228 (spec AC-5): Add rows count every fixed-destination
                 // candidate, including generated-folder members.
                 addedCount = changes.count { it is AddChange },
+                // Issue #235 (spec D-4): widget relocations counted separately
+                // from app/folder moves, from the same rows the list renders.
+                widgetMovedCount = changes.count { change ->
+                    change is MoveChange && change.rationale == PlacementCode.WIDGET_UNIT
+                },
             ),
         )
         return Result.Ready(details)

@@ -1,6 +1,31 @@
 package app.lawnchair.organizer.planning
 
 /**
+ * Issue #235 (spec D-2/D-3): the widget-role placement intent a strategy
+ * declares. A strategy with a non-null policy lifts eligible widgets into the
+ * widget stream consumed before its app/folder stream; a strategy without one
+ * keeps widgets fixed (`PreserveReason.WIDGET`, byte-identical to the
+ * pre-#235 behavior). Both values are page-local in this issue;
+ * `GLOBAL_COMPACT_V3`'s cross-page policy ships with its own child issue.
+ */
+internal sealed interface WidgetPlacementPolicy {
+    /**
+     * `STABLE_PAGE_TIDY_V2`: widgets stay on their captured page and
+     * consolidate into the rows that page's widgets already occupy (the
+     * captured widget band), first-fit row-major, invariant-key order.
+     */
+    data object PageLocalBand : WidgetPlacementPolicy
+
+    /**
+     * `BOTTOM_FIRST_V2` (and later `CATEGORY_CONTIGUOUS_V2`): widgets stay on
+     * their captured page and take the earliest row-major rectangle on it, so
+     * the app stream's own traversal (bottom-up / category order) forms the
+     * complementary region.
+     */
+    data object PageLocalTopAnchored : WidgetPlacementPolicy
+}
+
+/**
  * Internal curated catalog of built-in layout strategies (spec 182 / ADR-0012).
  * One executable [StrategyDefinition] per accepted catalog member; there is no
  * plugin surface and strategies cannot bypass the shared validation, allocator,
@@ -21,6 +46,8 @@ internal data class StrategyDefinition(
     val unitOrder: UnitOrdering,
     val pageScope: PageScope,
     val cellTraversal: CellTraversal,
+    /** Issue #235: non-null makes eligible widgets movable under this strategy. */
+    val widgetPolicy: WidgetPlacementPolicy? = null,
     val placeFullRun: (FullRunContext) -> PlacementOutput,
 ) {
     /**
@@ -108,6 +135,29 @@ internal object LayoutStrategyRegistry {
      */
     val CATEGORY_CONTIGUOUS_V1 = StrategyId("CATEGORY_CONTIGUOUS_V1")
 
+    /**
+     * Issue #235 STABLE_PAGE_TIDY_V2: STABLE_PAGE_TIDY_V1's page-local
+     * lift-then-place compaction of eligible `1×1` units, plus widget
+     * relocation — eligible widgets stay on their captured page and
+     * consolidate into the captured widget band (the rows that page's
+     * widgets already occupy) in invariant-key order, reported as
+     * `PlacementCode.WIDGET_UNIT` when they move. Widgets the band cannot
+     * place degrade the whole page back to V1 semantics
+     * (`STRATEGY_PRESERVED`). Never resizes, recreates, or rebinds a widget.
+     */
+    val STABLE_PAGE_TIDY_V2 = StrategyId("STABLE_PAGE_TIDY_V2")
+
+    /**
+     * Issue #235 BOTTOM_FIRST_V2: BOTTOM_FIRST_V1's canonical
+     * folder/unit/page policy with bottom-up traversal, plus widget
+     * relocation — eligible widgets stay on their captured page and take the
+     * earliest row-major rectangle on it (top-anchored), forming the
+     * complementary region above the bottom-first app area. Widget targets
+     * are occupancy for the app stream; apps may overflow to new pages under
+     * the unchanged `PREFERRED_THEN_NEW` scope.
+     */
+    val BOTTOM_FIRST_V2 = StrategyId("BOTTOM_FIRST_V2")
+
     private val definitions: Map<StrategyId, StrategyDefinition> = mapOf(
         CANONICAL_PAGE_COMPACT_V1 to StrategyDefinition(
             identity = CANONICAL_PAGE_COMPACT_V1,
@@ -174,6 +224,29 @@ internal object LayoutStrategyRegistry {
             pageScope = PageScope.CAPTURED_PAGE_ONLY,
             cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
             placeFullRun = FullRunExecution::execute,
+        ),
+        STABLE_PAGE_TIDY_V2 to StrategyDefinition(
+            identity = STABLE_PAGE_TIDY_V2,
+            createsFolders = false,
+            eligibleUnitFilter = { item ->
+                (item.kind == ItemKind.APPLICATION || item.kind == ItemKind.DEEP_SHORTCUT) &&
+                    (item.placement as? CapturedPlacement.Workspace)?.span == GridSpan(1, 1)
+            },
+            unitOrder = UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL,
+            pageScope = PageScope.CAPTURED_PAGE_ONLY,
+            cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
+            widgetPolicy = WidgetPlacementPolicy.PageLocalBand,
+            placeFullRun = FullRunExecution::executeWithWidgetStream,
+        ),
+        BOTTOM_FIRST_V2 to StrategyDefinition(
+            identity = BOTTOM_FIRST_V2,
+            createsFolders = true,
+            eligibleUnitFilter = { it.kind == ItemKind.APPLICATION || it.kind == ItemKind.DEEP_SHORTCUT },
+            unitOrder = UnitOrdering.CANONICAL_TIE_BREAK,
+            pageScope = PageScope.PREFERRED_THEN_NEW,
+            cellTraversal = CellTraversal.BOTTOM_UP_ROW_MAJOR,
+            widgetPolicy = WidgetPlacementPolicy.PageLocalTopAnchored,
+            placeFullRun = FullRunExecution::executeWithWidgetStream,
         ),
     )
 

@@ -27,6 +27,10 @@ internal object PlanningPlacement {
         // Strategies govern full organization only (spec 182): the incremental
         // run keeps the pre-182 canonical traversal regardless of selection.
         val cellTraversal = if (isIncremental) CellTraversal.TOP_LEFT_ROW_MAJOR else strategy.cellTraversal
+        // Issue #235: widget relocation applies to the strategy-governed run
+        // modes (full organization and the scope-composed full-run phase);
+        // the incremental candidate tail keeps widgets fixed.
+        val relocateWidgets = !isIncremental && strategy.widgetPolicy != null
         val allocator = Allocator(
             input.snapshot.device,
             capturedPagesSorted,
@@ -40,7 +44,7 @@ internal object PlanningPlacement {
         }
 
         for (item in input.snapshot.items) {
-            val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions)
+            val reason = determinePreservation(item, rolesById[item.id], input.snapshot.reservedWorkspaceRegions, relocateWidgets)
             if (reason != null || isIncremental) {
                 val ws = item.placement as? CapturedPlacement.Workspace
                 if (ws != null) {
@@ -74,7 +78,7 @@ internal object PlanningPlacement {
                     rolesById = rolesById,
                     itemById = input.snapshot.items.associateBy { it.id },
                     movableItems = input.snapshot.items.filter {
-                        determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions) == null
+                        determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions, relocateWidgets) == null
                     },
                     allocator = allocator,
                     pageOrderMap = pageOrderMap,
@@ -90,6 +94,7 @@ internal object PlanningPlacement {
                 pageOrderMap,
                 allocator,
                 preservationWarnings,
+                relocateWidgets,
             )
 
             RunMode.IncrementalPlacement -> placeIncrementalRun(input, classification, pageOrderMap, allocator, preservationWarnings)
@@ -120,6 +125,7 @@ internal object PlanningPlacement {
         pageOrderMap: Map<PageId, PageOrder>,
         allocator: Allocator,
         preservationWarnings: List<Warning>,
+        relocateWidgets: Boolean,
     ): PlacementOutput {
         val fullOutput = strategy.placeFullRun(
             FullRunContext(
@@ -129,7 +135,7 @@ internal object PlanningPlacement {
                 rolesById = rolesById,
                 itemById = input.snapshot.items.associateBy { it.id },
                 movableItems = input.snapshot.items.filter {
-                    determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions) == null
+                    determinePreservation(it, rolesById[it.id], input.snapshot.reservedWorkspaceRegions, relocateWidgets) == null
                 },
                 allocator = allocator,
                 pageOrderMap = pageOrderMap,
@@ -374,6 +380,7 @@ internal fun determinePreservation(
     item: CapturedItem,
     role: ExistingRole?,
     reservations: List<ReservedWorkspaceRegion>,
+    relocateWidgets: Boolean = false,
 ): PreserveReason? = when {
     // Issue #185 / ADR-0010: an item whose captured placement overlaps an
     // authoritative reservation is kept exactly where it is, ahead of every
@@ -389,7 +396,11 @@ internal fun determinePreservation(
 
     item.placement is CapturedPlacement.Dock -> PreserveReason.DOCK
 
-    item.kind == ItemKind.APPWIDGET || item.kind == ItemKind.CUSTOM_APPWIDGET -> PreserveReason.WIDGET
+    // Issue #235: under a widget-capable strategy this branch yields and the
+    // chain falls through — a widget outside the target set still reaches
+    // `NON_TARGET` below, and an eligible widget becomes movable for the
+    // widget stream. Higher-precedence reasons above are unaffected.
+    (item.kind == ItemKind.APPWIDGET || item.kind == ItemKind.CUSTOM_APPWIDGET) && !relocateWidgets -> PreserveReason.WIDGET
 
     item.kind == ItemKind.APP_PAIR || item.placement is CapturedPlacement.AppPairMember -> PreserveReason.APP_PAIR
 

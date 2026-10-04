@@ -52,6 +52,13 @@ enum class PlacementCode {
     SINGLE_PLACEMENT,
     FOLDER_MEMBER,
     FOLDER_UNIT,
+
+    /**
+     * Issue #235 (spec D-4): a relocated widget. Widgets move as fixed-span
+     * rectangles under their own placement semantics and are never reported
+     * as `SINGLE_PLACEMENT` — the confirmation row must say "widget".
+     */
+    WIDGET_UNIT,
 }
 
 enum class PreserveReason {

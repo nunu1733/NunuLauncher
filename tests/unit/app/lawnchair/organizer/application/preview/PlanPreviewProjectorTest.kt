@@ -161,6 +161,35 @@ class PlanPreviewProjectorTest {
     }
 
     @Test
+    fun widgetMoveRowsCarryWidgetUnitRationaleAndTheirOwnCount() {
+        // Issue #235 (spec D-4/AC-8): widget relocations render as ordinary
+        // move rows carrying the WIDGET_UNIT rationale and are counted
+        // separately from app/folder moves; page-local widget moves never
+        // enter crossPageMovedCount.
+        val widget = CanonicalFixtures.widgetItem(itemId = "widget.1", cell = GridCell(0, 0))
+        val plan = plan(
+            sourceItems = listOf(item("a", cell = GridCell(0, 0)), widget),
+            actions = listOf(
+                updateAction(item("a", cell = GridCell(0, 0)), item("a", cell = GridCell(1, 0))),
+                updateAction(widget, CanonicalFixtures.widgetItem(itemId = "widget.1", cell = GridCell(2, 2))),
+            ),
+        )
+        val widgetMove = PlannedPlacement(
+            item = ItemId("widget.1"),
+            disposition = Disposition.Moved(PlacementCode.WIDGET_UNIT),
+            target = PlacementTarget.WorkspaceTarget(PageRef(PageId("p0")), GridCell(2, 2), GridSpan(1, 1)),
+        )
+        val result = PlanPreviewProjector.project(plan, planned(moved("a"), widgetMove)) as PlanPreviewProjector.Result.Ready
+
+        val widgetRow = result.details.changes.filterIsInstance<MoveChange>().single { it.item.value == "widget.1" }
+        assertEquals(PlacementCode.WIDGET_UNIT, widgetRow.rationale)
+        assertEquals(CanonicalItemKind.AppWidget, widgetRow.kind)
+        assertEquals(2, result.details.counts.movedCount)
+        assertEquals(1, result.details.counts.widgetMovedCount)
+        assertEquals(0, result.details.counts.crossPageMovedCount)
+    }
+
+    @Test
     fun preserveRowsCarryPlannedReasonIdentityKindAndDerivedCurrent() {
         val widget = CanonicalFixtures.widgetItem(itemId = "widget.1")
         val plan = plan(

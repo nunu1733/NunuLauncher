@@ -70,6 +70,9 @@ interface OrganizationPreviewWording {
     val moveReasonSinglePlacement: String
     val moveReasonFolderMember: String
     val moveReasonFolderUnit: String
+
+    /** Issue #235: moved-as-widget rows never reuse the single-placement wording. */
+    val moveReasonWidgetUnit: String
     val moveReasonUnspecified: String
     val preservedReasonLocked: String
     val preservedReasonReservedRegion: String
@@ -419,6 +422,7 @@ object OrganizationPreviewContent {
         PlacementCode.SINGLE_PLACEMENT -> wording.moveReasonSinglePlacement
         PlacementCode.FOLDER_MEMBER -> wording.moveReasonFolderMember
         PlacementCode.FOLDER_UNIT -> wording.moveReasonFolderUnit
+        PlacementCode.WIDGET_UNIT -> wording.moveReasonWidgetUnit
         null -> wording.moveReasonUnspecified
     }
 

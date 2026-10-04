@@ -648,7 +648,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.durableStatusItems(
 private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
     "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_name
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_name
+    "STABLE_PAGE_TIDY_V2" -> R.string.organization_strategy_tidy_v2_name
     "BOTTOM_FIRST_V1" -> R.string.organization_strategy_bottom_first_name
+    "BOTTOM_FIRST_V2" -> R.string.organization_strategy_bottom_first_v2_name
     "GLOBAL_COMPACT_V1" -> R.string.organization_strategy_global_name
     "GLOBAL_COMPACT_V2" -> R.string.organization_strategy_global_v2_name
     "CATEGORY_CONTIGUOUS_V1" -> R.string.organization_strategy_category_contiguous_name
@@ -658,7 +660,9 @@ private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
 private fun strategyDescription(id: StrategyId): Int = when (id.value) {
     "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_description
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_description
+    "STABLE_PAGE_TIDY_V2" -> R.string.organization_strategy_tidy_v2_description
     "BOTTOM_FIRST_V1" -> R.string.organization_strategy_bottom_first_description
+    "BOTTOM_FIRST_V2" -> R.string.organization_strategy_bottom_first_v2_description
     "GLOBAL_COMPACT_V1" -> R.string.organization_strategy_global_description
     "GLOBAL_COMPACT_V2" -> R.string.organization_strategy_global_v2_description
     "CATEGORY_CONTIGUOUS_V1" -> R.string.organization_strategy_category_contiguous_description
@@ -680,8 +684,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
     if (catalog.isNullOrEmpty()) return
     // The whole picker lives in one selectableGroup so TalkBack announces the
     // rows as a single mutually-exclusive radio group ("x of N" semantics).
-    // Six rows fit one screen, so losing LazyColumn virtualization here is
-    // harmless (spec 182 child 8 a11y contract).
+    // The catalog's rows may exceed one small screen (eight strategies since
+    // issue #235); losing LazyColumn virtualization here only composes rows
+    // off-screen — never clips them — so the radio-group a11y contract holds
+    // (spec 182 child 8; picker tests scroll rows into view).
     item(key = "strategy-picker") {
         Column(
             modifier = Modifier
@@ -1047,6 +1053,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
 ) {
     contextItems(summary)
     item { SummaryText(stringResource(R.string.manual_organization_moved_count, counts.movedCount)) }
+    // Issue #235 (owner review): widget relocations get their own header line
+    // on the concrete change list too — AC-8's separate widget count must be
+    // visible wherever the details rows are shown, not only in the degraded
+    // count-only summary (whose movedByReason rows carry it).
+    if (counts.widgetMovedCount > 0) {
+        item { SummaryText(stringResource(R.string.manual_organization_widget_moved_count, counts.widgetMovedCount)) }
+    }
     if (counts.addedCount > 0) {
         item { SummaryText(stringResource(R.string.manual_organization_added_count, counts.addedCount)) }
     }
@@ -1160,6 +1173,7 @@ private fun organizationPreviewWording(context: Context): OrganizationPreviewWor
     moveReasonSinglePlacement = context.getString(R.string.manual_organization_preview_move_reason_single_placement),
     moveReasonFolderMember = context.getString(R.string.manual_organization_preview_move_reason_folder_member),
     moveReasonFolderUnit = context.getString(R.string.manual_organization_preview_move_reason_folder_unit),
+    moveReasonWidgetUnit = context.getString(R.string.manual_organization_preview_move_reason_widget_unit),
     moveReasonUnspecified = context.getString(R.string.manual_organization_preview_move_reason_unspecified),
     preservedReasonLocked = context.getString(R.string.manual_organization_preview_preserved_reason_locked),
     preservedReasonReservedRegion = context.getString(R.string.manual_organization_preview_preserved_reason_reserved_region),
@@ -1229,6 +1243,7 @@ private class ResourceOrganizationPreviewWording(
     override val moveReasonSinglePlacement: String,
     override val moveReasonFolderMember: String,
     override val moveReasonFolderUnit: String,
+    override val moveReasonWidgetUnit: String,
     override val moveReasonUnspecified: String,
     override val preservedReasonLocked: String,
     override val preservedReasonReservedRegion: String,
@@ -1294,6 +1309,7 @@ private fun movedReasonString(reason: PlacementCode): Int = when (reason) {
     PlacementCode.SINGLE_PLACEMENT -> R.string.manual_organization_moved_single_placement
     PlacementCode.FOLDER_MEMBER -> R.string.manual_organization_moved_folder_member
     PlacementCode.FOLDER_UNIT -> R.string.manual_organization_moved_folder_unit
+    PlacementCode.WIDGET_UNIT -> R.string.manual_organization_moved_widget_unit
 }
 
 private fun preservedReasonString(reason: PreserveReason): Int = when (reason) {

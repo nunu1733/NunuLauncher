@@ -1010,9 +1010,13 @@
     <string name="organization_strategy_canonical_name">Standard compaction</string>
     <string name="organization_strategy_canonical_description">Fills each screen from the top-left. The original organizer behavior.</string>
     <string name="organization_strategy_tidy_name">Tidy each screen</string>
-    <string name="organization_strategy_tidy_description">Closes gaps on each screen without moving apps to other screens.</string>
+    <string name="organization_strategy_tidy_description">Closes gaps on each screen without moving apps to other screens. Widgets stay in place.</string>
+    <string name="organization_strategy_tidy_v2_name">Tidy each screen, widgets included</string>
+    <string name="organization_strategy_tidy_v2_description">Closes gaps between apps and gathers widgets into the rows they already occupy on each screen.</string>
     <string name="organization_strategy_bottom_first_name">Bottom-first fill</string>
-    <string name="organization_strategy_bottom_first_description">Fills each screen starting from the bottom rows.</string>
+    <string name="organization_strategy_bottom_first_description">Fills each screen starting from the bottom rows. Widgets stay in place.</string>
+    <string name="organization_strategy_bottom_first_v2_name">Bottom-first fill, widgets included</string>
+    <string name="organization_strategy_bottom_first_v2_description">Fills each screen starting from the bottom rows and places widgets above the apps.</string>
     <string name="organization_strategy_global_name">Compact across screens (apps only)</string>
     <string name="organization_strategy_global_description">Moves apps from later screens into earlier free spaces. Existing folders stay where they are.</string>
     <string name="organization_strategy_global_v2_name">Compact across screens</string>
@@ -1036,6 +1040,7 @@
     <string name="manual_organization_no_changes">No changes are needed. Nothing was changed.</string>
     <string name="manual_organization_preview">Review the proposed organization</string>
     <string name="manual_organization_moved_count">%1$d placements will move</string>
+    <string name="manual_organization_widget_moved_count">Moved as a widget: %1$d</string>
     <string name="manual_organization_preserved_count">%1$d placements will be preserved</string>
     <string name="manual_organization_new_folders_count">%1$d new folders will be created</string>
     <string name="manual_organization_new_pages_count">%1$d new home screen pages will be created</string>
@@ -1105,6 +1110,7 @@
     <string name="manual_organization_moved_single_placement">Moved as a single placement: %1$d</string>
     <string name="manual_organization_moved_folder_member">Moved as a folder member: %1$d</string>
     <string name="manual_organization_moved_folder_unit">Moved as a folder unit: %1$d</string>
+    <string name="manual_organization_moved_widget_unit">Moved as a widget: %1$d</string>
     <string name="manual_organization_preserved_locked">Preserved locked placements: %1$d</string>
     <string name="manual_organization_preserved_reserved_region">Preserved placements in the reserved search area: %1$d</string>
     <string name="manual_organization_preserved_unavailable">Preserved unavailable placements: %1$d</string>
@@ -1215,6 +1221,7 @@
     <string name="manual_organization_preview_move_reason_single_placement">moves as a single placement</string>
     <string name="manual_organization_preview_move_reason_folder_member">moves as a folder member</string>
     <string name="manual_organization_preview_move_reason_folder_unit">moves as a folder unit</string>
+    <string name="manual_organization_preview_move_reason_widget_unit">moves as a widget</string>
     <string name="manual_organization_preview_move_reason_unspecified">moves</string>
     <string name="manual_organization_preview_preserved_reason_locked">kept because it is locked</string>
     <string name="manual_organization_preview_preserved_reason_reserved_region">kept for the reserved search area</string>

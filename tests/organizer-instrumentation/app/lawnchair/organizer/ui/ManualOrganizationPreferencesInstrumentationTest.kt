@@ -525,6 +525,59 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     @Test
+    fun previewDetailsHeaderShowsTheSeparateWidgetMoveCount() {
+        // Issue #235 (owner review): AC-8's separate widget count must be
+        // visible on the concrete change list — a dedicated header line next
+        // to the move total, not folded into it.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val widgetMove = MoveChange(
+            item = ItemId("clock"),
+            label = PreviewLabel.Named("clock"),
+            identity = PreviewPlacementIdentity.Workspace(1, false, 2, 0),
+            kind = CanonicalItemKind.AppWidget,
+            source = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1),
+            destination = workspace(1, RowBand.TOP, ColumnBand.LEFT, 2),
+            rationale = PlacementCode.WIDGET_UNIT,
+        )
+        val application = FakeApplication().apply {
+            inspectPlanOverride = { _, _ ->
+                previewed(
+                    PlanPreviewDetails(
+                        changes = listOf(
+                            move("game", sourceRowOrdinal = 2, destinationRowOrdinal = 1),
+                            widgetMove,
+                        ),
+                        counts = PreviewCounts(
+                            movedCount = 2,
+                            preservedCount = 0,
+                            newFolderCount = 0,
+                            newPageCount = 0,
+                            warningCounts = emptyMap(),
+                            widgetMovedCount = 1,
+                        ),
+                    ),
+                )
+            }
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+        runner.start()
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        awaitPreview(runner, context)
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_count, 2)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_widget_moved_count, 1)).assertIsDisplayed()
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
     fun generatedFolderTitlesResolveActualResourcesAndFallback() {
         // Issue #201 (FN-AC-15): the production resolver must resolve the v1
         // taxonomy categories from actual localized resources and map unknown

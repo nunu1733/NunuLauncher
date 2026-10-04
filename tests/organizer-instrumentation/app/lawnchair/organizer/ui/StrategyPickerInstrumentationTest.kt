@@ -9,7 +9,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -74,14 +77,22 @@ class StrategyPickerInstrumentationTest {
 
         composeRule.onNodeWithText(context().getString(R.string.manual_organization_strategy_section))
             .assertIsDisplayed()
+        // Issue #235: the catalog has eight rows and the tail rows sit below
+        // the fold on the CI emulator — scroll each row into view before the
+        // display assertion (the picker itself stays non-virtualized for the
+        // radio-group a11y contract).
         for (name in listOf(
             R.string.organization_strategy_canonical_name,
             R.string.organization_strategy_tidy_name,
+            R.string.organization_strategy_tidy_v2_name,
             R.string.organization_strategy_bottom_first_name,
+            R.string.organization_strategy_bottom_first_v2_name,
             R.string.organization_strategy_global_name,
             R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,
         )) {
+            composeRule.onNode(hasScrollAction())
+                .performScrollToNode(hasText(context().getString(name)))
             composeRule.onNodeWithText(context().getString(name)).assertIsDisplayed()
         }
     }
@@ -119,7 +130,9 @@ class StrategyPickerInstrumentationTest {
         for (name in listOf(
             R.string.organization_strategy_canonical_name,
             R.string.organization_strategy_tidy_name,
+            R.string.organization_strategy_tidy_v2_name,
             R.string.organization_strategy_bottom_first_name,
+            R.string.organization_strategy_bottom_first_v2_name,
             R.string.organization_strategy_global_name,
             R.string.organization_strategy_global_v2_name,
             R.string.organization_strategy_category_contiguous_name,

@@ -62,6 +62,9 @@ data class RunVersions private constructor(
             // Spec 237: the versioned folder-relocating successor strategy.
             "GLOBAL_COMPACT_V2",
             "CATEGORY_CONTIGUOUS_V1",
+            // Issue #235: the widget-relocating successor strategies.
+            "STABLE_PAGE_TIDY_V2",
+            "BOTTOM_FIRST_V2",
         )
 
         /** Construct [RunVersions] with approved version identifiers. */
