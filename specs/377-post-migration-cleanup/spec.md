@@ -1,13 +1,13 @@
 ---
 issue: "#377"
-status: accepted
+status: implemented
 requirements: []
 updated: 2026-09-22
 ---
 
 # TO-BE移行で余剰となった実装・文言・test oracleが、判断基準とobsolete理由の記録つきで整理されている
 
-> Status: **accepted**（2026-09-22。review Approved @ [Issue #377コメント](https://github.com/nunu1733/NunuLauncher/issues/377)、対象 `9f8d02a921`。plan Gating 4〔bug #407解決〕をreconciliation実装着手条件として含む）
+> Status: **implemented**（2026-09-22。実装は[PR #410](https://github.com/nunu1733/NunuLauncher/pull/410) merge `b4a2012640`。bug #407の前提解決は[PR #409](https://github.com/nunu1733/NunuLauncher/pull/409)。AC-1〜4の独立audit記録は[docs/assessment/pr-410-reconciliation-decision-table-consolidation.md](../../docs/assessment/pr-410-reconciliation-decision-table-consolidation.md)）
 > 正本参照: [disposition](../../docs/product/organizer-disposition-migration.md)（accepted。§1「削除時は旧oracleのobsolete理由を記録する」、§4.3 Defer、§8 backlog、§11「reconciliation統合の設計: #377が所有」）、[TO-BE](../../docs/product/organizer-to-be-ux.md)（D-14）、[AS-IS監査 §11.2](../../docs/assessment/organizer-as-is-ux-data-flow-audit.md)（accidental complexity候補）、[spec 13](../13-safe-layout-application/spec.md)（§"Transaction outcome classification"、§"Restart reconciliation"がdecision tableの受入済み正本）
 
 ## Problem
