@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.application.protocol
 
 import android.content.Context
+import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.PreWriteRejection
@@ -19,6 +20,12 @@ import app.lawnchair.organizer.diagnostics.journal.JournalSequence
 import app.lawnchair.organizer.diagnostics.journal.JournalStore
 import app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.integration.CompositionDiagnostic
+import app.lawnchair.organizer.integration.InputReadinessReason
+import app.lawnchair.organizer.integration.OrganizationInputComposition
+import app.lawnchair.organizer.integration.ProductionOrganizationInputComposer
+import app.lawnchair.organizer.planning.OrganizationInput
+import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.RevisionId
 import com.android.launcher3.LauncherAppState
 import java.io.File
@@ -74,10 +81,17 @@ internal class LayoutApplicationModule<S>(
     /** The diagnostics port, available for export (e.g. debug menu). */
     val diagnostics: DiagnosticsPort = diagnosticsPort
 
-    fun apply(plan: ValidatedLayoutPlan): ApplyResult = readinessGate.runWhenReady(
+    fun apply(plan: ValidatedLayoutPlan): ApplyResult = applyWithRunId(plan, operationIds.newRunId())
+
+    /**
+     * Issue #52 internal orchestration path. It preserves the public apply
+     * protocol while allowing pre-apply and application diagnostics to share
+     * one opaque run identifier.
+     */
+    internal fun applyWithRunId(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult = readinessGate.runWhenReady(
         unavailable = { state ->
             ApplyResult.Rejected(
-                operationIds.newRunId(),
+                runId,
                 if (state == ReadinessGate.State.FAILED) {
                     PreWriteRejection.RECOVERY_STORE_UNAVAILABLE
                 } else {
@@ -86,13 +100,50 @@ internal class LayoutApplicationModule<S>(
             )
         },
     ) {
-        // RUN_STARTED emission is owned by future orchestrators
-        // (#52 manual full, #53 onboarding, #55 incremental) which have
-        // the full contract context (trigger, runMode, deviceProfile,
-        // recoveryFormatVersion). Keep runId for apply-event correlation.
-        val runId = operationIds.newRunId()
         applyProtocol.apply(plan, runId)
     }
+
+    /**
+     * Internal, policy-owned composition for a fresh manual full-organization
+     * input. Capture is itself a new manual action, so it is fail-closed until
+     * startup reconciliation has reached a terminal state.
+     */
+    internal fun composeManualFullOrganizationInput(context: Context): OrganizationInputComposition = readinessGate.runWhenReady(
+        unavailable = { state ->
+            val failed = state == ReadinessGate.State.FAILED
+            OrganizationInputComposition.NotReady(
+                reason = if (failed) InputReadinessReason.ReconciliationFailed else InputReadinessReason.ReconciliationPending,
+                diagnostic = CompositionDiagnostic(
+                    code = if (failed) "reconciliation-failed" else "reconciliation-pending",
+                ),
+            )
+        },
+    ) {
+        ProductionOrganizationInputComposer(context.applicationContext, writer).composeFullOrganization()
+    }
+
+    /**
+     * Captures the current canonical state only to materialize the exact planner
+     * result for a prior input. Any capture failure or revision mismatch is a
+     * safe invalid result; it never falls back to a cached layout.
+     */
+    internal fun materializeManualFullOrganizationPlan(
+        input: OrganizationInput,
+        result: PlanningResult,
+    ): OrganizationPlanMaterializer.Result = readinessGate.runWhenReady(
+        unavailable = { OrganizationPlanMaterializer.Result.Invalid },
+    ) {
+        val capture = try {
+            writer.captureCurrent(CaptureId("manual-full-materialize"))
+        } catch (_: RuntimeException) {
+            return@runWhenReady OrganizationPlanMaterializer.Result.Invalid
+        }
+        if (capture.revision != input.snapshot.revision) return@runWhenReady OrganizationPlanMaterializer.Result.Invalid
+        OrganizationPlanMaterializer.materialize(input, result, capture.layoutState)
+    }
+
+    /** Internal run identity factory for the manual orchestration protocol. */
+    internal fun newManualRunId(): RunId = operationIds.newRunId()
 
     /**
      * Existing public mutation entry. All explicit recovery, including an

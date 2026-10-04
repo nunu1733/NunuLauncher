@@ -43,6 +43,7 @@ import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
+import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.util.collectAsStateBlocking
 import com.android.launcher3.LauncherAppState
@@ -150,6 +151,11 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.organizer_lock_screen_title),
                 destination = HomeScreenPlacementLocks,
                 subtitle = stringResource(id = R.string.organizer_lock_screen_summary),
+            )
+            NavigationActionPreference(
+                label = stringResource(id = R.string.manual_organization_title),
+                destination = HomeScreenManualOrganization,
+                subtitle = stringResource(id = R.string.manual_organization_summary),
             )
             SwitchPreference(
                 adapter = lockHomeScreenAdapter,

@@ -9,6 +9,7 @@ import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.OptionalText
+import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.RecoveryPointId
@@ -60,6 +61,22 @@ class ApplyProtocolTest {
         assertEquals(plan.intendedState, writer.currentState())
         assertEquals(1, writer.appliedWriteSets)
         assertEquals(1, writer.reloadCount)
+    }
+
+    @Test
+    fun materializedNonIdentityDriftIsRejectedByProtocol() {
+        writer.materializedIntendedStateOverride = { state ->
+            state.copy(
+                items = state.items.map { it.copy(lockState = OrganizerLockState.LOCKED) },
+            )
+        }
+
+        val result = protocol.apply(mutatingPlan())
+
+        assertTrue(result is ApplyResult.Rejected)
+        assertEquals(PreWriteRejection.INVALID_PLAN, (result as ApplyResult.Rejected).reason)
+        assertEquals(0, writer.appliedWriteSets)
+        assertEquals(0, writer.reloadCount)
     }
 
     @Test
