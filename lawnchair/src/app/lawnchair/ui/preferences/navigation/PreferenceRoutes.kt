@@ -77,6 +77,11 @@ data object FeatureFlags : PreferenceRoute
 @Serializable
 data class GeneralFontSelection(val prefKey: String) : PreferenceRoute
 
+// Predictions section routes
+// Rebase Phase 2 adapt (#532): route for the fork's dismissed-predictions screen.
+@Serializable
+data object DismissedPredictionApps : PreferenceRoute
+
 @Serializable
 data object GeneralIconPack : PreferenceRoute
 

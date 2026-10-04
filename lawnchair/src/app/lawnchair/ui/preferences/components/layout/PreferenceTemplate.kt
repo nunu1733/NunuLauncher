@@ -16,6 +16,8 @@
 
 package app.lawnchair.ui.preferences.components.layout
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -27,8 +29,10 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -54,7 +58,12 @@ fun PreferenceTemplate(
     description: @Composable () -> Unit = {},
     startWidget: (@Composable () -> Unit)? = null,
     endWidget: (@Composable () -> Unit)? = null,
+    // Rebase Phase 2 adapt (#532): anchor's PreferenceTemplate exposes onClick and
+    // interactionSource; the fork template implements them with a plain clickable Row.
+    onClick: (() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
 ) {
+    val templateInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
     Column {
         Row(
             verticalAlignment = verticalAlignment,
@@ -64,6 +73,14 @@ fun PreferenceTemplate(
                 .fillMaxWidth()
                 .addIf(applyPaddings) {
                     padding(horizontal = horizontalPadding, vertical = verticalPadding)
+                }
+                .addIf(onClick != null) {
+                    clickable(
+                        enabled = enabled,
+                        interactionSource = templateInteractionSource,
+                        indication = ripple(),
+                        onClick = onClick ?: {},
+                    )
                 },
         ) {
             startWidget?.let {

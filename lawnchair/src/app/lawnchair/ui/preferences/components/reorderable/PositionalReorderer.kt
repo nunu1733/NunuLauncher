@@ -45,10 +45,9 @@ import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
-data class PositionalListItem<T>(
-    val data: T,
-    val id: String,
-)
+// Rebase Phase 2 adapt (#532): the anchor's PositionalList.kt declares
+// PositionalListItem<T, K : Any>; the fork's String-id variant is expressed as
+// PositionalListItem<T, String> instead of redeclaring the name.
 
 object PositionalMapper {
     /**
@@ -60,7 +59,7 @@ object PositionalMapper {
         allItems: List<T>,
         enabledIds: List<String>,
         idSelector: (T) -> String,
-    ): Pair<List<PositionalListItem<T>>, Int> {
+    ): Pair<List<PositionalListItem<T, String>>, Int> {
         val enabledItems = allItems.filter { idSelector(it) in enabledIds }
             // Ensure enabled items follow the order defined in enabledIds
             .sortedBy { enabledIds.indexOf(idSelector(it)) }
@@ -76,7 +75,7 @@ object PositionalMapper {
      * Converts the UI state back to the enabled IDs list for saving.
      */
     fun <T> getEnabledKeys(
-        uiItems: List<PositionalListItem<T>>,
+        uiItems: List<PositionalListItem<T, String>>,
         enabledCount: Int,
     ): List<String> {
         return uiItems.take(enabledCount).map { it.id }
@@ -86,31 +85,31 @@ object PositionalMapper {
      * Re-sorts the disabled section alphabetically while maintaining the active section's order.
      */
     fun <T> sortInactiveItems(
-        items: List<PositionalListItem<T>>,
+        items: List<PositionalListItem<T, String>>,
         activeCount: Int,
         labelSelector: (T) -> String,
-    ): List<PositionalListItem<T>> {
+    ): List<PositionalListItem<T, String>> {
         val active = items.take(activeCount)
         val inactive = items.drop(activeCount).sortedBy { labelSelector(it.data) }
         return active + inactive
     }
 
     fun <T> swapCategories(
-        items: List<PositionalListItem<T>>,
+        items: List<PositionalListItem<T, String>>,
         activeCount: Int,
-    ): Pair<List<PositionalListItem<T>>, Int> {
+    ): Pair<List<PositionalListItem<T, String>>, Int> {
         val newActive = items.drop(activeCount)
         val newInactive = items.take(activeCount)
         return (newActive + newInactive) to newActive.size
     }
 
     fun <T> toggleItemStatus(
-        items: List<PositionalListItem<T>>,
+        items: List<PositionalListItem<T, String>>,
         activeCount: Int,
         itemId: String,
         makeActive: Boolean,
         labelSelector: (T) -> String,
-    ): Pair<List<PositionalListItem<T>>, Int> {
+    ): Pair<List<PositionalListItem<T, String>>, Int> {
         val currentIndex = items.indexOfFirst { it.id == itemId }
         if (currentIndex == -1) return items to activeCount
 
@@ -159,9 +158,9 @@ object PositionalMapper {
  */
 @Composable
 fun <T> PositionalReorderer(
-    items: List<PositionalListItem<T>>,
+    items: List<PositionalListItem<T, String>>,
     activeCount: Int,
-    onOrderChange: (newList: List<PositionalListItem<T>>, newEnabledCount: Int) -> Unit,
+    onOrderChange: (newList: List<PositionalListItem<T, String>>, newEnabledCount: Int) -> Unit,
     itemContent: @Composable ReorderableCollectionItemScope.(
         item: T,
         dragHandle: @Composable () -> Unit,
@@ -199,7 +198,7 @@ fun <T> PositionalReorderer(
     val lazyListState = rememberLazyListState()
     val haptic = rememberReorderHapticFeedback()
 
-    val updateState: (List<PositionalListItem<T>>, Int) -> Unit = { list, count ->
+    val updateState: (List<PositionalListItem<T, String>>, Int) -> Unit = { list, count ->
         localItems = list
         localActiveCount = count
         onOrderChange(list, count)
@@ -332,9 +331,9 @@ fun <T> PositionalReorderer(
 
 private fun <T> Modifier.semanticReorderActions(
     index: Int,
-    items: List<PositionalListItem<T>>,
+    items: List<PositionalListItem<T, String>>,
     activeCount: Int,
-    onUpdate: (newList: List<PositionalListItem<T>>, newEnabledCount: Int) -> Unit,
+    onUpdate: (newList: List<PositionalListItem<T, String>>, newEnabledCount: Int) -> Unit,
 ) = this.semantics {
     customActions = listOfNotNull(
         if (index > 0) {
@@ -366,7 +365,7 @@ private fun <T> Modifier.semanticReorderActions(
 
 @Composable
 private fun <T> ReorderableCollectionItemScope.ReorderableItemContainer(
-    item: PositionalListItem<T>,
+    item: PositionalListItem<T, String>,
     active: Boolean,
     onActiveChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -429,9 +428,9 @@ private fun <T> ReorderableCollectionItemScope.ReorderableItemContainer(
 
 @Composable
 fun <T> PositionalOrderMenu(
-    items: List<PositionalListItem<T>>,
+    items: List<PositionalListItem<T, String>>,
     activeCount: Int,
-    onUpdate: (newList: List<PositionalListItem<T>>, newCount: Int) -> Unit,
+    onUpdate: (newList: List<PositionalListItem<T, String>>, newCount: Int) -> Unit,
     modifier: Modifier = Modifier,
     additionalContent: @Composable OverflowMenuScope.(hideMenu: () -> Unit) -> Unit = {},
 ) {

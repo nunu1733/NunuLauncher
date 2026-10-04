@@ -28,6 +28,7 @@ import app.lawnchair.ui.preferences.destinations.CategoryOverridePreferences
 import app.lawnchair.ui.preferences.destinations.CustomCategoryPreferences
 import app.lawnchair.ui.preferences.destinations.CustomIconShapePreference
 import app.lawnchair.ui.preferences.destinations.DebugMenuPreferences
+import app.lawnchair.ui.preferences.destinations.DismissedPredictionAppsPreferences
 import app.lawnchair.ui.preferences.destinations.DockPreferences
 import app.lawnchair.ui.preferences.destinations.DummyPreference
 import app.lawnchair.ui.preferences.destinations.ExperimentalFeaturesPreferences
@@ -183,6 +184,9 @@ fun PreferenceNavigation(
 
         composable<DebugMenu> { DebugMenuPreferences() }
         composable<FeatureFlags> { FeatureFlagsPreference() }
+
+        // Rebase Phase 2 adapt (#532): dismissed predictions destination.
+        composable<DismissedPredictionApps> { DismissedPredictionAppsPreferences() }
 
         composable<SelectIcon> { backStackEntry ->
             val args: SelectIcon = backStackEntry.toRoute()
