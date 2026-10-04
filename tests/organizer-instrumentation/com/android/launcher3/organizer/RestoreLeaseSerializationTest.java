@@ -11,6 +11,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
+import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
 import androidx.test.core.app.ApplicationProvider;
@@ -23,6 +24,9 @@ import com.android.launcher3.model.ModelDbController;
 import com.android.launcher3.provider.RestoreDbTask;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -30,6 +34,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -42,7 +48,22 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public class RestoreLeaseSerializationTest {
 
+    private static final String REPLACEMENT_DB_NAME = "restore-helper-replacement-source.db";
     private final LayoutWriteCoordinator mCoordinator = LayoutWriteCoordinator.getInstance();
+
+    @Before
+    public void setUpFixtureFiles() {
+        Context context = ApplicationProvider.getApplicationContext();
+        deleteDatabaseFileSet(context, HelperProbeController.TEST_DB_NAME);
+        deleteDatabaseFileSet(context, REPLACEMENT_DB_NAME);
+    }
+
+    @After
+    public void tearDownFixtureFiles() {
+        Context context = ApplicationProvider.getApplicationContext();
+        deleteDatabaseFileSet(context, HelperProbeController.TEST_DB_NAME);
+        deleteDatabaseFileSet(context, REPLACEMENT_DB_NAME);
+    }
 
     @Test
     public void restoreFamilyIsReentrantAcrossRestoreKindsAndExcludesOthers() {
@@ -209,35 +230,94 @@ public class RestoreLeaseSerializationTest {
     }
 
     /**
-     * SR-06 / AC-4: closeActiveHelperForRestore closes the active helper (no open
-     * handle on the DB files, mOpenHelper cleared) and the next getDb lazily
-     * constructs a fresh helper on the same controller.
+     * Issue #120 matrix case 1 / SR-06 / AC-4: closeActiveHelperForRestore closes the active
+     * helper (no open handle on the DB files, mOpenHelper cleared) and the next getDb lazily
+     * constructs a fresh helper on the same controller after main-file-only deletion.
      */
     @Test
     public void closeActiveHelperClosesHandleAndReopensFreshHelper() {
         Context appContext = ApplicationProvider.getApplicationContext();
         HelperProbeController controller = new HelperProbeController(appContext);
-        SQLiteDatabase before = controller.getDb();
-        assertTrue(before.isOpen());
-        Object helperBefore = controller.openHelper();
+        try {
+            SQLiteDatabase before = controller.getDb();
+            assertTrue(before.isOpen());
+            Object helperBefore = controller.openHelper();
 
-        controller.closeActiveHelperForRestore();
+            controller.closeActiveHelperForRestore();
 
-        // The old handle is closed and the controller no longer holds a helper,
-        // so the underlying files are replaceable as raw bytes.
-        assertFalse(before.isOpen());
-        assertNull(controller.openHelper());
-        File dbFile = appContext.getDatabasePath(HelperProbeController.TEST_DB_NAME);
-        assertTrue("db file must be deletable while helper is closed", dbFile.delete());
+            // The old handle is closed and the controller no longer holds a helper,
+            // so the underlying files are replaceable as raw bytes.
+            assertFalse(before.isOpen());
+            assertNull(controller.openHelper());
+            File dbFile = appContext.getDatabasePath(HelperProbeController.TEST_DB_NAME);
+            assertTrue("db file must be deletable while helper is closed", dbFile.delete());
 
-        // Lazy reopen: the next getDb builds a fresh helper with a usable database.
-        SQLiteDatabase after = controller.getDb();
-        assertTrue(after.isOpen());
-        assertTrue(after != before);
-        assertTrue(controller.openHelper() != null);
-        assertTrue(controller.openHelper() != helperBefore);
-        after.execSQL("SELECT 1");
-        controller.closeActiveHelperForRestore();
+            // Lazy reopen: the next getDb builds a fresh helper with a usable database.
+            SQLiteDatabase after = controller.getDb();
+            assertTrue(after.isOpen());
+            assertTrue(after != before);
+            assertTrue(controller.openHelper() != null);
+            assertTrue(controller.openHelper() != helperBefore);
+            // SELECT is a query; execSQL routes through the changed-row-count path and is
+            // rejected by API 36. Use the production read seam for this health check.
+            try (Cursor cursor = after.rawQuery("SELECT 1", null)) {
+                assertTrue(cursor.moveToFirst());
+                assertEquals(1, cursor.getInt(0));
+            }
+        } finally {
+            controller.closeActiveHelperForRestore();
+        }
+    }
+
+    /**
+     * Issue #120 matrix case 2: production restores replace the complete SQLite file set,
+     * not only the main database. The same controller must lazily reopen the replacement.
+     */
+    @Test
+    public void fullFileSetReplacementReopensOnSameController() {
+        Context context = ApplicationProvider.getApplicationContext();
+        HelperProbeController controller = new HelperProbeController(context);
+        File replacement = createReplacementDatabase(context);
+        try {
+            controller.getDb();
+            controller.closeActiveHelperForRestore();
+
+            replaceDatabaseFileSet(replacement,
+                    context.getDatabasePath(HelperProbeController.TEST_DB_NAME));
+
+            SQLiteDatabase reopened = controller.getDb();
+            assertReplacementMarker(reopened);
+        } finally {
+            controller.closeActiveHelperForRestore();
+        }
+    }
+
+    /**
+     * Issue #120 matrix case 3: a fresh controller (the closest in-process analogue to the
+     * production process restart) must observe the replacement file set without inheriting
+     * the closed controller's helper or database handle.
+     */
+    @Test
+    public void fullFileSetReplacementReopensWithFreshController() {
+        Context context = ApplicationProvider.getApplicationContext();
+        HelperProbeController activeController = new HelperProbeController(context);
+        HelperProbeController freshController = null;
+        File replacement = createReplacementDatabase(context);
+        try {
+            activeController.getDb();
+            activeController.closeActiveHelperForRestore();
+            replaceDatabaseFileSet(replacement,
+                    context.getDatabasePath(HelperProbeController.TEST_DB_NAME));
+
+            freshController = new HelperProbeController(context);
+            SQLiteDatabase reopened = freshController.getDb();
+            assertReplacementMarker(reopened);
+        } finally {
+            activeController.closeActiveHelperForRestore();
+            if (freshController != null) {
+                freshController.closeActiveHelperForRestore();
+            }
+        }
     }
 
     /**
@@ -250,8 +330,9 @@ public class RestoreLeaseSerializationTest {
     @Test
     public void sanitizationFailureReturnsFalseAndDoesNotWedgeCoordinator() {
         android.content.Context context = getInstrumentation().getTargetContext();
-        File bad = context.getDatabasePath("restore-fault-injection.db");
-        bad.delete();
+        final String badDatabaseName = "restore-fault-injection.db";
+        deleteDatabaseFileSet(context, badDatabaseName);
+        File bad = context.getDatabasePath(badDatabaseName);
         bad.getParentFile().mkdirs();
         SQLiteDatabase badDb = SQLiteDatabase.openOrCreateDatabase(bad, null);
         // Favorites table without the columns sanitizeDB requires: any restore
@@ -279,7 +360,7 @@ public class RestoreLeaseSerializationTest {
             assertEquals(0, mCoordinator.pendingDeferredCount());
         } finally {
             badDb.close();
-            bad.delete();
+            deleteDatabaseFileSet(context, badDatabaseName);
         }
     }
 
@@ -313,6 +394,68 @@ public class RestoreLeaseSerializationTest {
             t.join(5_000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static File createReplacementDatabase(Context context) {
+        DatabaseHelper helper = new DatabaseHelper(context, REPLACEMENT_DB_NAME,
+                user -> 0L, () -> { });
+        try {
+            SQLiteDatabase database = helper.getWritableDatabase();
+            database.execSQL("CREATE TABLE issue120_replacement_marker (value TEXT NOT NULL)");
+            database.execSQL(
+                    "INSERT INTO issue120_replacement_marker(value) VALUES ('replacement')");
+        } finally {
+            helper.close();
+        }
+        return context.getDatabasePath(REPLACEMENT_DB_NAME);
+    }
+
+    private static void assertReplacementMarker(SQLiteDatabase database) {
+        try (Cursor cursor = database.rawQuery(
+                "SELECT value FROM issue120_replacement_marker", null)) {
+            assertTrue(cursor.moveToFirst());
+            assertEquals("replacement", cursor.getString(0));
+        }
+    }
+
+    private static void replaceDatabaseFileSet(File source, File target) {
+        deleteDatabaseFileSet(target);
+        for (String suffix : new String[] {"", "-journal", "-wal", "-shm"}) {
+            File sourceFile = new File(source.getPath() + suffix);
+            if (sourceFile.exists()) {
+                copyFile(sourceFile, new File(target.getPath() + suffix));
+            }
+        }
+        assertTrue("replacement main database must be present", target.isFile());
+    }
+
+    private static void deleteDatabaseFileSet(Context context, String databaseName) {
+        deleteDatabaseFileSet(context.getDatabasePath(databaseName));
+    }
+
+    private static void deleteDatabaseFileSet(File database) {
+        for (String suffix : new String[] {"", "-journal", "-wal", "-shm"}) {
+            File artifact = new File(database.getPath() + suffix);
+            if (artifact.exists()) {
+                assertTrue("SQLite fixture artifact must be deleted: " + artifact,
+                        artifact.delete());
+            }
+            assertFalse("SQLite fixture artifact must be absent: " + artifact,
+                    artifact.exists());
+        }
+    }
+
+    private static void copyFile(File source, File target) {
+        try (FileInputStream input = new FileInputStream(source);
+                FileOutputStream output = new FileOutputStream(target)) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                output.write(buffer, 0, count);
+            }
+        } catch (IOException e) {
+            throw new AssertionError("Unable to replace SQLite file set", e);
         }
     }
 

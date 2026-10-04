@@ -28,6 +28,48 @@ Baseline for evidence: main `cfc665c19c`. Spec: `spec.md` in this directory.
 - `LauncherModel.forceReload()` (`LauncherModel.java:311-315`) is the existing
   correlated-ish reload; `LoaderTask.run` defers under a held lease.
 
+## Issue #120 follow-up evidence (2026-08-24)
+
+The focused API 36 method was reproduced three consecutive times on
+2026-08-24 before changing the test; every run failed at the same statement
+with the same exception (about 7–9 seconds per run):
+
+- Device: `nunu_qpr2_api36_1(AVD) - 16`, serial `emulator-5554`.
+- Reproduction class filter: `com.android.launcher3.organizer.RestoreLeaseSerializationTest#closeActiveHelperClosesHandleAndReopensFreshHelper`.
+- Artifact: `build/outputs/androidTest-results/connected/debug/flavors/lawnWithQuickstepGithub/TEST-nunu_qpr2_api36_1(AVD) - 16-_-lawnWithQuickstepGithub.xml`
+  and the corresponding `nunu_qpr2_api36_1(AVD) - 16/logcat-...closeActiveHelperClosesHandleAndReopensFreshHelper.txt`.
+- Exact failure at test line 239 (`after.execSQL("SELECT 1")`):
+  `android.database.sqlite.SQLiteException: unknown error (code 0 SQLITE_OK): Queries can be performed using SQLiteDatabase query or rawQuery methods only.`
+  Stack: `SQLiteConnection.nativeExecuteForChangedRowCount` →
+  `executeForChangedRowCount` → `SQLiteSession.executeForChangedRowCount` →
+  `SQLiteStatement.executeUpdateDelete` → `SQLiteDatabase.executeSql` →
+  `SQLiteDatabase.execSQL` → `RestoreLeaseSerializationTest.closeActiveHelperClosesHandleAndReopensFreshHelper`.
+- The failing SQL is `SELECT 1`, passed through the mutation/changed-row-count
+  `execSQL` API. It is not evidence that `closeActiveHelperForRestore`, raw file
+  deletion, or helper reopen failed. The production-faithful health check must
+  use `rawQuery` and close its cursor.
+
+The fixture is `restore-helper-close-test.db`; its complete companion set is
+`restore-helper-close-test.db`, `-journal`, `-wal`, and `-shm`. Cleanup must
+remove all four before and after each case. The Issue #120 matrix now covers:
+main-file-only delete with same-controller lazy reopen, complete file-set
+replacement with same-controller lazy reopen, and complete file-set replacement
+with a fresh controller (the practical in-process proxy for a new process).
+
+Production semantics remain unchanged: `LawnchairBackup.restore` closes the
+active helper, recursively removes the databases directory, writes the staged
+`restored.db` and associated settings files, then a fresh `ModelDbController`
+renames `restored.db` to the active grid DB on first open. The test must model
+the target DB's complete SQLite file set while avoiding destructive deletion of
+the test application's shared databases directory.
+
+No production fix is justified by this artifact. The regression coverage is
+added to the existing API 36 `organizer-instrumentation-shared-writer-tests`
+lane alongside the coordinator tests; no additional emulator lane is created.
+After correcting the query oracle and adding the replacement matrix, the full
+`RestoreLeaseSerializationTest` class passed all 11 tests on the same API 36
+AVD (`BUILD SUCCESSFUL`, 11 seconds).
+
 ## Change modules and order
 
 1. **Coordinator restore-family reentrancy** —
