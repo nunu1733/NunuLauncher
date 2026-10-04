@@ -18,7 +18,7 @@ baseline `505dbc40` 以降のfork変更全量を、16-dev候補 `43a21b43d7cc785
 - **AC-1（replay完了とancestry）**: 300単位すべてがrebase branchへ適用され、`git merge-base --is-ancestor 43a21b43 <rebase head>` が真である。各単位の適用結果（適用/conflict解消/skip理由）が `replay-log.md` に記録されている。
 - **AC-2（disposition遵守）**: conflict解消はPhase 0 §5のdisposition（keep 57 / adapt 48 / drop 0）に従う。rebase中に挙動変更が必要になった単位は、rebase差分で解決せずaccepted ADR/specの改訂を経る。ログに「挙動変更なし」を確認した記録がある。
 - **AC-3（無関係差分の混入禁止）**: rebase差分にformat/package移動・無関係cleanupが含まれない。`git diff 43a21b43..<rebase head>` の各pathが、いずれかのreplay単位由来であることで説明できる。
-- **AC-4（検証gate）**: `./gradlew assembleLawnWithQuickstepGithubDebug` と `spotlessCheck` 成功、organizer unit test gate成功、patch-surface再計測（`--upstream 43a21b43 --target <rebase head>`）が受入inventory（105 path）の再現、[#522 assessment](../../docs/assessment/issue-522-rebase-data-compatibility.md) のT1〜T9実行、CI merge gate（final-status）成功。
+- **AC-4（検証gate）**: `./gradlew assembleLawnWithQuickstepGithubDebug` と `spotlessCheck` 成功、organizer unit test gate成功、**patch-surface ownership gate**（旧105 inventoryのowner写像によるcandidate ownership inventoryを `--baseline-file` に渡し、全non-excluded production差分がowner分類済みで増分・移動がreview済み。accepted baselineの再採択はPhase 4）、[#522 assessment](../../docs/assessment/issue-522-rebase-data-compatibility.md) T1〜T9の実行（T4/T5/T7/T8は追加oracleの実装を含む。実行表は[plan §7](./plan.md)）、CI merge gate（final-status）成功。
 - **AC-5（正本同期）**: replay完了時点で、upstream-patch-surface-baselineの再採択（Phase 4）以外の正本が矛盾なく、conflict解消で生じた判断がADR/specに反映されている。
 
 ## 3. 失敗時の振る舞い

@@ -16,11 +16,11 @@
 - **rebase branch**: `issue-516-rebase-16-dev`（`43a21b43` から作成済み）。`main` はrebase完了・検証完了まで変更しない。
 - **replay単位**: per-PR squash replay。merge commit `M` には `git cherry-pick -m 1 <M>`（first parent基準の差分）を適用し、messageを `PR #<番号>: <title>` へrewordする。直接commitは単純cherry-pickする。元commit SHAはreplay-logに記録する。
 - **順序**: first-parentの現在順（時系列）を厳守する。並べ替えによるsemantic conflictを避ける。
-- **submodule**: `platform_frameworks_libs_systemui` のpinは、C群のreplay中に ADR-0018 Decision 2のとおり判断する（16-dev pin `7d9e92bd` + icon shadow修正の再適用、または修正済み `6a11ef76` 維持）。判断まで当該単位のsubmodule差分を適用しない。
+- **submodule**: `platform_frameworks_libs_systemui` のpinは、当該submodule差分を含む単位に最初に到達した時点でreplayを停止し、「選択SHA（`7d9e92bd` + icon shadow修正の再適用、または修正済み `6a11ef76` 維持）・保持方法・根拠」をADR-0018の改訂（Decision 2の判断記録）としてassessment/ADRへ反映し、review/accept後にreplayを再開する。判断確定まで当該単位のsubmodule差分を適用しない。選択結果はreplay-logと最終review packetへ固定する。
 
 ## 3. インベントリと実行順（2026-10-04時点。実行中の増分はreplay-logへ記録）
 
-| 群 | 単位数 | 定義 | 取扱い |
+| 群 | 単位数 | 定義 | 取扱い（分類ラベルであり、実行順には使わない。§8参照） |
 |---|---:|---|---|
 | A | 132 | docs/specs/tools/.github等の非production単位 | 競合なし想定。適用して次へ |
 | B | 86 | production差分だがadapt path非接触（fork-owned新規file中心） | 競合なし想定。依存先API変化のcompile追従は後続単位またはgate時に解消 |
@@ -52,14 +52,29 @@ C群の代表（replay-logへ全量を記録）: PR #79（deck退役本体、95 
 |---|---|
 | G1 build/format | `./gradlew assembleLawnWithQuickstepGithubDebug`、`./gradlew spotlessCheck` |
 | G2 unit | organizer unit test gate（[quality-strategy](../../docs/engineering/quality-strategy.md)のcommand） |
-| G3 surface | `python3 tools/repo-contract/measure_upstream_patch_surface.py --upstream 43a21b43… --target <rebase head>`（受入inventory 105 pathの再現を確認。expected再採択はPhase 4） |
-| G4 data互換 | [#522 assessment](../../docs/assessment/issue-522-rebase-data-compatibility.md) T1〜T9（upgrade/downgrade/backup-restore/recovery/Nova oracle） |
+| G3 surface ownership | **candidate ownership inventory**（旧105 inventoryの各ownerを新pathへ写像した未採択inventory。`LauncherModel.java`→`.kt`、grid migration分割、onPostInit代替で新たに触れるpathを含む）を `--baseline-file` で渡して計測し、**全non-excluded production差分がowner分類され、増分・移動がreview済みであること** を合格条件とする。旧inventoryの `counted_files == 105` の一致は合格条件から外す（adapt後のpath移動でfail-closedするため）。accepted baselineの正式な再採択はPhase 4に残し、candidateをそのまま自動採択しない（Phase 4で最終headを再計測する） |
+| G4 data互換（[#522 assessment](../../docs/assessment/issue-522-rebase-data-compatibility.md) T1〜T9の実行表） | 下表 |
 | G5 CI | PRのCI merge gate（final-status）。本spec/plan自体はdocs-onlyだが、replay結果のPRは高リスクgateの対象 |
+
+### G4: T1〜T9実行表（owner / 再利用or追加 / lane / evidence。出典: #522 assessment §test表）
+
+| T | ownerと対象 | 再利用/追加 | lane / routing | evidence |
+|---|---|---|---|---|
+| T1 schema33/列維持 | DatabaseHelperSchema33Test、DowngradeSchema33Test、InactiveGridDbNormalizationTest | 再利用 | surface_db_schema、db-migration API36 Conditional | fresh33/default1、32→33 UNKNOWN、失敗rollback、33→32→33 row保持、inactive32/source33 lock |
+| T2 transaction ownership | MigrationTransactionOwnershipTest、Schema32RollbackBinaryTest、NestedTransactionTest | 再利用 | db-migration API36 + production-input API35 Conditional | legacy upgrade/downgrade部分失敗のwipe commitと旧binary failureの33残存の区別 |
+| T3 grid migration分割 | GridMigrationSuccessTest/FailureTest | 再利用・**両entry（tryMigrateDB/attemptMigrateDb）へ拡張** | surface_db_schema/layout_write、db-migration Conditional | 各operation前後throw、commit-close、digest破損、process restart。両entryのgreen必須 |
+| T4 restore lifecycle | RestoreLeaseSerializationTest、RestoreProfileRemapTest、ModelWriterTransactionReentryTest | 再利用 + **追加（performRestore成功経路の実DB assert。未実装）** | layout_write/backup_restore、既存filter再利用。追加oracle採用時にfilter/portfolio/map更新 | profile remap/消滅削除、widget ID復元、surviving lock |
+| T5 ZIP artifact | backup/recovery既存tests | 再利用 + **追加（real ZIP32/33 fixture。未実装）** | unit Permanent + backup_restore API36拡張候補（採用時filter追加・portfolio/map更新） | row/lock/prefs・epoch、cold-start READY/Pristine |
+| T6 recovery codec | RecoveryRecordCodecTest等 | 再利用 | unit Permanent + reservation-recovery Conditional | schema3 checksum、chunk欠損、NotRestorable |
+| T7 prefs | LauncherPrefsCommitTest、NovaRestoreGridApplicationTest等 | 再利用 + **追加・拡張（未実装）** | db_schema/backup_restore既存lane候補。key変換は最低層。**routing変更は実装PRで ci_portfolio_map.yml/portfolioを同期** | legacy XML conflict/missing key、listener/cache readback |
+| T8 Nova 2挙動 | NovaRestoreGridApplicationTest + #299 A/B群 | 再利用 + **追加（converter境界fixture。未実装）** | backup_restore restore-capture API36 Conditional（A/B間force-stop維持） | fractional四フィールド、smartspace ON/OFF、clamp/skip、warning/toggle表示 |
+| T9 実APK F/R | 15↔16実APK roundtrip | **追加の互換実証（on-demand）** | Permanent laneは増やさない。API36 emulator + API37 Pixel 9a実機。Phase 4 owner closure | R→16→R→16同一data、DB/prefs/recovery独立比較 |
+
+**T4/T5/T7/T8は追加oracleの実装がgateの前提**である（実装PRでrouting正本 `tools/repo-contract/ci_portfolio_map.yml` / [ci-test-portfolio](../../docs/engineering/ci-test-portfolio.md) を同期する。新規恒久laneは増やさない）。T9はPhase 2時点の証跡とcutover前の再確認を区別し、closureはPhase 4 owner decision（ADR-0018 Decision 5）。
 
 ## 8. 実行順のまとめ
 
 1. 本plan/specのreview・accepted（本PR）
-2. A群（132単位）→ B群（86単位）を時系列でcherry-pick（replay-logへ逐次記録）
-3. C群（82単位）を時系列でcherry-pickし、§4の手順で解消
-4. submodule pin判断（§2）
-5. G1〜G5 gate → PR（`Refs #516`、`Refs #532`。Phase 3検証はEpic側で継続のため、本PRは#532の終了条件が満たされた時点で `Closes #532` となる）
+2. **replay queueは300単位のfirst-parent時系列を唯一の実行順とする**（並べ替えは行わない。A/B/Cは各単位の分類ラベルであり、処理規則の対応表である。replay-logの単位番号はこの単一時系列indexで固定する）
+3. 時系列に沿ってcherry-pickし、C分類の単位は§4の手順で解消。submodule pin判断点（§2）で停止→ADR改訂→review/accept→再開
+4. G1〜G5 gate（§7。T4/T5/T7/T8の追加oracle実装を含む）→ PR（`Refs #516`、`Refs #532`。Phase 3検証はEpic側で継続のため、本PRは#532の終了条件が満たされた時点で `Closes #532` となる）
