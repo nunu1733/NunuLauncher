@@ -153,8 +153,9 @@ jobs:
   # Source-only: run the organizer JVM unit/contract/property suite. The
   # --tests filter covers app.lawnchair.organizer.planning.* and the pure
   # application tests, so new tests under that package tree join this gate
-  # automatically. The focused real-adapter instrumentation seam is verified
-  # independently below on an emulator.
+  # automatically. The preference navigation retention tests (Issue #116) are
+  # listed explicitly. The focused real-adapter instrumentation seam is
+  # verified independently below on an emulator.
   organizer-unit-tests:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
@@ -171,7 +172,7 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v5
       - name: Run organizer unit tests
-        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*'
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
