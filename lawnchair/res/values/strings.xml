@@ -979,4 +979,10 @@
     <string name="organizer_lock_screen_placement_dock">Dock %1$d</string>
     <string name="organizer_lock_screen_placement_folder">Inside a folder, position %1$d</string>
     <string name="organizer_lock_screen_placement_app_pair">In an app pair</string>
+
+    <!-- Organizer diagnostics export -->
+    <string name="organizer_diagnostics_export_label">Export organizer diagnostics</string>
+    <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
+    <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
+    <string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
 </resources>

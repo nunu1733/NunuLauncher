@@ -93,6 +93,10 @@ jobs:
         run: python3 tools/repo-contract/test_validate_deck_retirement.py
       - name: Writer inventory scan
         run: python3 tools/repo-contract/validate_writer_inventory.py
+      - name: Validate diagnostics contract (AC-67-12)
+        run: python3 tools/repo-contract/validate_diagnostics_contract.py
+      - name: Diagnostics contract self-tests
+        run: python3 tools/repo-contract/test_validate_diagnostics_contract.py
 
   # Source-only: style check. Skipped for docs-only PRs so they do not spin up
   # a Gradle daemon.

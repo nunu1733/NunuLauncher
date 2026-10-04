@@ -11,7 +11,13 @@ import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.store.RecoveryStore
+import app.lawnchair.organizer.diagnostics.DiagnosticsPort
+import app.lawnchair.organizer.diagnostics.journal.JournalSequence
+import app.lawnchair.organizer.diagnostics.journal.JournalStore
+import app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger
+import app.lawnchair.organizer.diagnostics.model.RunEvent
 import com.android.launcher3.LauncherAppState
+import java.io.File
 import java.security.SecureRandom
 
 /**
@@ -30,13 +36,17 @@ class LayoutApplicationModule(
     private val clock: Clock,
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector = FaultInjector.NOOP,
+    diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
 
     private val mutex: RunMutex = RunMutex()
-    private val applyProtocol: ApplyProtocol = ApplyProtocol(writer, store, clock, operationIds, faults, mutex)
+    private val applyProtocol: ApplyProtocol = ApplyProtocol(writer, store, clock, operationIds, faults, mutex, diagnosticsPort)
     private val recoveryProtocol: RecoveryProtocol = RecoveryProtocol(writer, store, clock, operationIds, faults, mutex)
-    private val restartReconciler: RestartReconciler = RestartReconciler(writer, store, faults)
+    private val restartReconciler: RestartReconciler = RestartReconciler(writer, store, faults, diagnosticsPort)
     val readinessGate: ReadinessGate = ReadinessGate()
+
+    /** The diagnostics port, available for export (e.g. debug menu). */
+    val diagnostics: DiagnosticsPort = diagnosticsPort
 
     fun apply(plan: ValidatedLayoutPlan): ApplyResult = readinessGate.runWhenReady(
         unavailable = { state ->
@@ -50,7 +60,12 @@ class LayoutApplicationModule(
             )
         },
     ) {
-        applyProtocol.apply(plan)
+        // RUN_STARTED emission is owned by future orchestrators
+        // (#52 manual full, #53 onboarding, #55 incremental) which have
+        // the full contract context (trigger, runMode, deviceProfile,
+        // recoveryFormatVersion). Keep runId for apply-event correlation.
+        val runId = operationIds.newRunId()
+        applyProtocol.apply(plan, runId)
     }
 
     fun recover(request: RecoveryRequest): RecoveryResult = readinessGate.runWhenReady(
@@ -66,7 +81,41 @@ class LayoutApplicationModule(
             }
         },
     ) {
-        recoveryProtocol.recover(request)
+        emitRecoveryRequested(request)
+        val result = recoveryProtocol.recover(request)
+        emitRecoveryResult(result, request)
+        result
+    }
+
+    private fun emitRecoveryResult(result: RecoveryResult, request: RecoveryRequest) {
+        try {
+            val record = store.readRecord(request.pointId)
+            val pointOriginRunId = record?.runId?.value
+            val event = app.lawnchair.organizer.diagnostics.projection.RecoveryProjection.project(
+                result = result,
+                journalSequence = 0L,
+                pointId = request.pointId.value,
+                pointOriginRunId = pointOriginRunId,
+            )
+            diagnostics.emit(event)
+        } catch (_: Exception) {
+            // Fail-open
+        }
+    }
+
+    private fun emitRecoveryRequested(request: RecoveryRequest) {
+        try {
+            val record = store.readRecord(request.pointId)
+            val pointOriginRunId = record?.runId?.value
+            val event = app.lawnchair.organizer.diagnostics.projection.RecoveryProjection.projectRequested(
+                pointId = request.pointId.value,
+                pointOriginRunId = pointOriginRunId,
+                journalSequence = 0L,
+            )
+            diagnostics.emit(event)
+        } catch (_: Exception) {
+            // Fail-open
+        }
     }
 
     fun reconcileAtStart(): RestartReconciler.ReconciliationSummary = readinessGate.reconcile(
@@ -93,6 +142,28 @@ class LayoutApplicationModule(
         ): LayoutApplicationModule {
             val appContext = context.applicationContext
             val clock = SystemClock()
+            val diagnosticsDir = File(appContext.filesDir, "organizer_diagnostics")
+            diagnosticsDir.mkdirs()
+            val journalFile = File(diagnosticsDir, "organizer_diagnostics.journal")
+            val seqFile = File(diagnosticsDir, "journal_seq")
+            val journalSequence = JournalSequence(seqFile)
+            val journalStore = JournalStore(journalFile, journalSequence, clock::nowMillis)
+            val diagnosticsLogger = DiagnosticsLogger(isReleaseBuild = !com.android.launcher3.BuildConfig.DEBUG)
+            val diagnosticsPort = object : DiagnosticsPort {
+                override fun emit(event: RunEvent) {
+                    val persisted = journalStore.append(event)
+                    if (persisted) {
+                        diagnosticsLogger.log(event)
+                    }
+                }
+                override fun snapshot(): List<RunEvent> = journalStore.snapshot()
+            }
+            // Open the journal store eagerly so it's ready for use
+            try {
+                journalStore.open()
+            } catch (_: Exception) {
+                // Fail-open
+            }
             val module = LayoutApplicationModule(
                 writer = LauncherLayoutAdapter(
                     appContext,
@@ -102,6 +173,7 @@ class LayoutApplicationModule(
                 store = RecoveryStore(appContext, clock::nowMillis),
                 clock = clock,
                 operationIds = defaultOperationIdSource(),
+                diagnosticsPort = diagnosticsPort,
             )
             return module
         }
