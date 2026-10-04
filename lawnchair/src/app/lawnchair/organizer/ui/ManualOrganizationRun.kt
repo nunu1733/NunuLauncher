@@ -5,6 +5,10 @@ import app.lawnchair.LawnchairApp
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.PlanPreview
+import app.lawnchair.organizer.application.public.PlanPreviewDetails
+import app.lawnchair.organizer.application.public.PlanPreviewRejection
+import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
@@ -53,6 +57,7 @@ internal interface ManualOrganizationApplication {
 
     fun newRunId(): RunId
     fun composeFullOrganization(): OrganizationInputComposition
+    fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult
     fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result
     fun apply(plan: ValidatedLayoutPlan, runId: RunId): ApplyResult
     fun inspectRecovery(pointId: RecoveryPointId): RecoveryPreviewResult
@@ -71,6 +76,11 @@ internal class ProductionManualOrganizationApplication(
     override fun newRunId(): RunId = module.newManualRunId()
 
     override fun composeFullOrganization(): OrganizationInputComposition = module.composeManualFullOrganizationInput(appContext)
+
+    override fun inspectPlan(
+        input: OrganizationInput,
+        result: PlanningResult,
+    ): PlanPreviewResult = module.inspectPlan(input, result)
 
     override fun materialize(
         input: OrganizationInput,
@@ -131,7 +141,7 @@ class ManualOrganizationRun internal constructor(
         data class InputUnavailable(val reason: InputReadinessReason) : State
         data class PlanningRejected(val kind: PlanningFailureKind, val summary: Summary) : State
         data object NoChanges : State
-        data class Preview(val summary: Summary) : State
+        data class Preview(val summary: Summary, val details: PlanPreviewDetails?) : State
         data object Applying : State
         data object Stale : State
         data class Applied(val result: ApplyResult, val summary: Summary) : State
@@ -248,20 +258,35 @@ class ManualOrganizationRun internal constructor(
                             if (summary.movedCount == 0 && summary.newFolderCount == 0 && summary.newPageCount == 0) {
                                 finish(operation, State.NoChanges)
                             } else {
-                                synchronized(lock) {
-                                    if (!isActiveLocked(operation)) return started
-                                    pending = PendingPlan(operation, input, result, summary)
-                                    stateHolder.value = State.Preview(summary)
+                                when (val preview = application.inspectPlan(input, result)) {
+                                    is PlanPreviewResult.Previewed -> enterPreview(operation, input, result, summary, preview.preview)
+
+                                    is PlanPreviewResult.Stale -> transitionToStale(operation, emitRejection = true)
+
+                                    is PlanPreviewResult.NotPlannable -> when (preview.reason) {
+                                        PlanPreviewRejection.CAPTURE_FAILED -> enterPreview(operation, input, result, summary, null)
+
+                                        PlanPreviewRejection.OUTCOME_NOT_PLANNED,
+                                        PlanPreviewRejection.MATERIALIZATION_INVALID,
+                                        -> finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary))
+                                    }
+
+                                    is PlanPreviewResult.Unavailable,
+                                    PlanPreviewResult.WriterBusy,
+                                    PlanPreviewResult.Concurrent,
+                                    -> enterPreview(operation, input, result, summary, null)
                                 }
-                                emit(
-                                    RunEvent(
-                                        journalSequence = 0L,
-                                        runId = runId.value,
-                                        trigger = operation.trigger,
-                                        runMode = RunMode.FULL_ORGANIZATION,
-                                        phase = PhaseCode.PREVIEWED,
-                                    ),
-                                )
+                                if (state is State.Preview) {
+                                    emit(
+                                        RunEvent(
+                                            journalSequence = 0L,
+                                            runId = runId.value,
+                                            trigger = operation.trigger,
+                                            runMode = RunMode.FULL_ORGANIZATION,
+                                            phase = PhaseCode.PREVIEWED,
+                                        ),
+                                    )
+                                }
                             }
                         }
 
@@ -325,20 +350,14 @@ class ManualOrganizationRun internal constructor(
                     phase = PhaseCode.USER_CONFIRMED,
                 ),
             )
-            val materialized = application.materialize(pendingPlan.input, pendingPlan.result)
+            val materialized = if (pendingPlan.previewPlan != null) {
+                OrganizationPlanMaterializer.Result.Ready(pendingPlan.previewPlan)
+            } else {
+                application.materialize(pendingPlan.input, pendingPlan.result)
+            }
             val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
             if (plan == null) {
-                val stale = synchronized(lock) {
-                    if (!isActiveLocked(operation)) return
-                    pending = null
-                    activeOperation = null
-                    stateHolder.value = State.Stale
-                    true
-                }
-                if (stale) {
-                    operation.lease.close()
-                    emitStaleRejection(operation)
-                }
+                transitionToStale(operation, emitRejection = true)
                 return
             }
             val admitted = synchronized(lock) {
@@ -490,6 +509,47 @@ class ManualOrganizationRun internal constructor(
             )
         }
         return operation.first
+    }
+
+    /**
+     * Issue #194: publishes the count summary together with the optional
+     * change-level preview details. `preview == null` is the count-only
+     * compatibility fallback; the previewed executable plan itself stays
+     * private to [PendingPlan] and is never exposed through [State].
+     */
+    private fun enterPreview(
+        operation: Operation,
+        input: OrganizationInput,
+        result: PlanningResult,
+        summary: Summary,
+        preview: PlanPreview?,
+    ) {
+        synchronized(lock) {
+            if (!isActiveLocked(operation)) return
+            pending = PendingPlan(operation, input, result, summary, preview?.plan)
+            stateHolder.value = State.Preview(summary, preview?.details)
+        }
+    }
+
+    /**
+     * Ends the active run in [State.Stale]. [emitRejection] reproduces the
+     * existing A2 stale-rejection run event for materialize-time staleness.
+     */
+    private fun transitionToStale(operation: Operation, emitRejection: Boolean) {
+        val stale = synchronized(lock) {
+            if (!isActiveLocked(operation)) {
+                false
+            } else {
+                pending = null
+                activeOperation = null
+                stateHolder.value = State.Stale
+                true
+            }
+        }
+        if (stale) {
+            operation.lease.close()
+            if (emitRejection) emitStaleRejection(operation)
+        }
     }
 
     private fun beginOperation(trigger: Trigger): Operation? {
@@ -675,6 +735,8 @@ class ManualOrganizationRun internal constructor(
         val input: OrganizationInput,
         val result: PlanningResult,
         val summary: Summary,
+        /** Previewed executable plan; null means the count-only compatibility fallback. */
+        val previewPlan: ValidatedLayoutPlan?,
     ) {
         val runId: RunId
             get() = operation.runId

@@ -4,6 +4,8 @@ import android.content.Context
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.PlanPreviewResult
+import app.lawnchair.organizer.application.public.PlanPreviewUnavailable
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
@@ -74,6 +76,12 @@ internal class LayoutApplicationModule<S>(
         faults,
         ordinaryMutex,
         confirmationIssuer = ::issuePreviewConfirmation,
+    )
+    private val planPreviewProtocol: PlanPreviewProtocol = PlanPreviewProtocol(
+        writer,
+        operationIds,
+        faults,
+        ordinaryMutex,
     )
     private val restartReconciler: RestartReconciler = RestartReconciler(
         writer,
@@ -167,6 +175,30 @@ internal class LayoutApplicationModule<S>(
 
     /** Internal run identity factory for the manual orchestration protocol. */
     internal fun newManualRunId(): RunId = operationIds.newRunId()
+
+    /**
+     * Read-only plan preview (Issue #194). Captures authoritative current state
+     * under a short non-blocking lease, verifies the planning snapshot revision,
+     * materializes the exact plan for this input/result pair, and projects it
+     * into the UI-facing change list. Silent diagnostically; every result is a
+     * non-write outcome.
+     */
+    internal fun inspectPlan(
+        input: OrganizationInput,
+        result: PlanningResult,
+    ): PlanPreviewResult = readinessGate.runWhenReady(
+        unavailable = { state ->
+            PlanPreviewResult.Unavailable(
+                if (state == ReadinessGate.State.FAILED) {
+                    PlanPreviewUnavailable.RECONCILIATION_FAILED
+                } else {
+                    PlanPreviewUnavailable.RECONCILIATION_PENDING
+                },
+            )
+        },
+    ) {
+        planPreviewProtocol.inspect(input, result)
+    }
 
     /**
      * Existing public mutation entry. All explicit recovery, including an

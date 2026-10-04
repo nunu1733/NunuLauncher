@@ -61,6 +61,7 @@ import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.LayoutSnapshot
 import app.lawnchair.organizer.planning.NewFolderProfileScope
+import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.OrganizationPlanner
 import app.lawnchair.organizer.planning.Orientation
@@ -339,6 +340,13 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 policyBundle = PolicyBundleIdentity("v1", SHA_256),
             ),
         )
+
+        /**
+         * Issue #194: this fixture keeps the legacy count-only flow, so the
+         * preview seam reports busy and confirm materializes as before.
+         */
+        override fun inspectPlan(input: OrganizationInput, result: PlanningResult): PlanPreviewResult =
+            PlanPreviewResult.WriterBusy
 
         override fun materialize(input: OrganizationInput, result: PlanningResult): OrganizationPlanMaterializer.Result =
             OrganizationPlanMaterializer.Result.Ready(
