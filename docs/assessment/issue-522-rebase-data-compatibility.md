@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # 16-dev rebaseのデータ互換性・rollback条件（Issue #522）
 
-> Status: Proposed（研究成果。APK互換性の実証やproduction rebaseの完了ではない）
+> Status: Accepted（研究成果。独立review承認を受けた遷移、受入完了はPR #530 merge。APK互換性の実証やproduction rebaseの完了ではない）
 > 確認日: 2026-10-04
 > 対応: [#522](https://github.com/nunu1733/NunuLauncher/issues/522)、Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) Phase 1
 > Risk tier: L（assessment・ADR・Phase 0の比較範囲注記のみ。source、schema、test、CIは変更しない）。researchなのでspec/planはN/A。Phase 2の移植・Phase 3の実行をEpic #516が所有する。
@@ -167,3 +167,5 @@ Phase 2のplanにはT1〜T9のowner、最終source SHA/command/filter/fixture、
 - 2026-10-04: 起草。#522はresearch完了が終了条件で、production移植/runtime証明はEpic #516の後続Phaseが所有する。F/B/U固定で問い1〜4、Nova二件採用、Phase2 T1〜T9を記録し、ADR-0018とPhase0比較範囲注記を同期した。
 
 - 2026-10-04（review revision）: PR #530初回独立reviewのP2を反映。T4の既存testが守るlease/直接remap範囲と、正常sanitize/profile inventory/widget ID・provider remapの追加・拡張oracleを区別し、未実装/未routingと明記。C7のreload引用範囲とZIP条件付きentryの表現も精密化した。
+
+- 2026-10-04（accepted遷移）: PR #530 [独立review](https://github.com/nunu1733/NunuLauncher/pull/530#issuecomment-5976529880) がT4修正条件の解除、全3文書diff、main取り込みを確認しApprove（条件なし）。研究成果としてacceptedへ遷移し、受入完了はPR #530 merge。後続の実装/runtime/cutoverはEpic #516 Phase2/3/4が継続して所有する。
