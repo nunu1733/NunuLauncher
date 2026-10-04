@@ -18,7 +18,6 @@ import app.lawnchair.theme.ThemeProvider
 import app.lawnchair.ui.preferences.components.colorpreference.ColorPreferenceModelList
 import app.lawnchair.ui.preferences.data.liveinfo.LiveInformationManager
 import app.lawnchair.util.LawnchairWindowManagerProxy
-import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.dagger.ApplicationContext
 import com.android.launcher3.dagger.LauncherAppSingleton
 import dagger.Module
@@ -32,16 +31,20 @@ import dagger.Provides
  * by the anchor DI constructors. This module intentionally replaces the
  * deleted ForkBridgeModule, whose model providers (LauncherAppState /
  * LauncherModel / BgDataModel via legacy accessors) are forbidden under
- * Decision 9. InvariantDeviceProfile is included because the fork IDP keeps
- * DeviceProfileOverrides-based constructors (S2/S3 port target) and has no
- * @Inject constructor yet.
+ * Decision 9.
+ *
+ * Issue #532 G4: InvariantDeviceProfile deliberately has NO provider here.
+ * The anchor IDP is component-backed (`InvariantDeviceProfile.INSTANCE` is a
+ * `DaggerSingletonObject(LauncherAppComponent::getIDP)`), so a `@Provides`
+ * that calls `INSTANCE.get(context)` re-enters the component it is serving
+ * and stack-overflows on the first IDP request (the launcher could not boot;
+ * G4 replay-log §6.2). The anchor `@Inject` constructor
+ * (InvariantDeviceProfile.java) provides the binding instead. Every other
+ * accessor delegated to below is a `MainThreadInitializedObject` singleton
+ * that constructs directly and never re-enters the component.
  */
 @Module
 class ForkServiceModule {
-
-    @Provides
-    @LauncherAppSingleton
-    fun provideIdp(@ApplicationContext context: Context): InvariantDeviceProfile = InvariantDeviceProfile.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
