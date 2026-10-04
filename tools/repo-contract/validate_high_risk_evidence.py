@@ -88,11 +88,14 @@ _CRITERIA_RE = re.compile(r"(specs/[\w.-]+/spec\.md|docs/adr/[\w.-]+\.md)")
 # The machine-checked criteria come only from 'Criteria:' lines, so prose in
 # Scope/Findings cannot satisfy (or smuggle) criteria references.
 _CRITERIA_LINE_RE = re.compile(_FIELD_PREFIX + r"Criteria:\s*(.*)$", re.MULTILINE)
-# Requirement identifiers used by specs and ADRs (FR-004, NFR-001, AC-3,
-# ADR-0004).  A citation must be a whole token: a malformed value such as
-# ``FR-004-extra`` must not be silently parsed as a citation of ``FR-004``.
+# Requirement identifiers used by specs and ADRs: bare families (FR-004,
+# NFR-001, AC-3) and hyphen-prefixed per-spec families (CW-AC-01, as used by
+# the #174 spec), plus ADR-0004.  A citation must be a whole token: a
+# malformed value such as ``FR-004-extra`` must not be silently parsed as a
+# citation of ``FR-004``, and ``CW-AC-01`` is never extracted from inside a
+# longer token such as ``XCW-AC-01``.
 _REQUIREMENT_ID_RE = re.compile(
-    r"(?<![A-Za-z0-9_-])(?:(?:FR|NFR|AC)-\d+|ADR-\d{4})(?![A-Za-z0-9_-])"
+    r"(?<![A-Za-z0-9_-])(?:(?:[A-Z]+-)?(?:FR|NFR|AC)-\d+|ADR-\d{4})(?![A-Za-z0-9_-])"
 )
 # A concrete executed command: a gradle/python/gh/adb/git invocation, so prose
 # like "tests pass" cannot satisfy the executed-test-surface requirement.
@@ -268,7 +271,7 @@ def parse_audit(path: Path) -> AuditDocument:
     elif not any(ids for _, ids in doc.criteria_entries):
         doc.findings.append(
             "criteria reference lacks requirement IDs (expected e.g. FR-004, "
-            "NFR-002, or ADR-0003 alongside each spec/ADR reference)"
+            "NFR-002, CW-AC-01, or ADR-0003 alongside each spec/ADR reference)"
         )
 
     for section in _REQUIRED_SECTIONS:
@@ -320,7 +323,12 @@ def _frontmatter_status(text: str) -> Optional[str]:
 
 
 def _id_variants(requirement_id: str) -> Tuple[str, ...]:
-    """Accept both ``FR-4`` and the zero-padded ``FR-004`` specs use."""
+    """Accept both ``FR-4`` and the zero-padded ``FR-004`` specs use.
+
+    Only the bare families get padding variants. A hyphen-prefixed family
+    (``CW-AC-01``) owns its padding convention, so it is cited exactly as the
+    document defines it.
+    """
 
     kind, _, number = requirement_id.partition("-")
     if kind in ("FR", "NFR", "AC") and number.isdigit():
@@ -333,7 +341,9 @@ def _id_defined(requirement_id: str, text: str) -> bool:
 
     ``FR-004`` must not match a document that only defines ``FR-0040``,
     ``FR-004foo``, ``FR-004_more``, or ``FR-004-extra``, so the ID is
-    anchored: no alphanumeric, underscore, or hyphen on either side.
+    anchored: no alphanumeric, underscore, or hyphen on either side. The same
+    anchoring is what lets a hyphen-prefixed family like ``CW-AC-01`` match
+    without also matching a longer sibling token such as ``XCW-AC-01``.
     """
 
     pattern = rf"(?<![\w-]){re.escape(requirement_id)}(?![\w-])"
@@ -614,8 +624,8 @@ def _remediation(pr_number: int) -> str:
         "  3. Fill Auditor, Audit date, Head SHA (the commit the audit "
         "covers), CI run (that PR merge-gate run), and the spec/ADR criteria "
         "checked — the referenced documents must exist and be accepted, and "
-        "every cited requirement ID (FR-x/NFR-x/AC-x/ADR-xxxx) must be defined "
-        "in them.\n"
+        "every cited requirement ID (FR-x/NFR-x/AC-x/prefixed family like "
+        "CW-AC-01/ADR-xxxx) must be defined in them.\n"
         "  4. If code changes after the audit, only docs-only commits may "
         "follow; otherwise re-audit against the new head."
     )

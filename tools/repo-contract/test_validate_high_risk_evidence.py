@@ -250,6 +250,30 @@ class ParseAuditTests(unittest.TestCase):
                 )
                 self.assertTrue(any("lists no requirement IDs" in p for p in problems))
 
+    def test_hyphen_prefixed_family_ids_are_parsed(self) -> None:
+        # Issue #178: a spec may number its acceptance criteria with a
+        # hyphen-prefixed family (CW-AC-01); the gate must machine-cite it.
+        spec = "specs/174-recovery-record-cursor-window/spec.md"
+        doc = self._parse(VALID_AUDIT.replace(
+            self._CRITERIA_LINE,
+            f"- Criteria: {spec} CW-AC-01, CW-AC-10\n",
+        ))
+        self.assertEqual(doc.findings, [], f"prefixed IDs flagged: {doc.findings}")
+        self.assertEqual(doc.criteria_entries, [(spec, ["CW-AC-01", "CW-AC-10"])])
+
+    def test_malformed_prefixed_ids_cannot_be_partially_parsed(self) -> None:
+        # Whole-token boundaries apply to prefixed families too: a malformed
+        # citation must not be reduced to the defined CW-AC-01.
+        spec = "specs/174-recovery-record-cursor-window/spec.md"
+        for malformed_id in ("CW-AC-01foo", "CW-AC-01_more", "CW-AC-01-extra"):
+            with self.subTest(malformed_id=malformed_id):
+                doc = self._parse(VALID_AUDIT.replace(
+                    self._CRITERIA_LINE,
+                    f"- Criteria: {spec} {malformed_id}\n",
+                ))
+                self.assertEqual(doc.criteria_entries, [(spec, [])])
+                self.assertTrue(any("requirement IDs" in f for f in doc.findings))
+
     def test_criteria_ids_from_body_prose_do_not_count(self) -> None:
         # IDs and doc paths mentioned only in Scope/Findings prose must not
         # satisfy the criteria requirement (third-review P1 finding).
@@ -377,6 +401,7 @@ class CriteriaSubstanceTests(unittest.TestCase):
     """
 
     SPEC_13 = "specs/13-safe-layout-application/spec.md"
+    SPEC_174 = "specs/174-recovery-record-cursor-window/spec.md"
     ADR_0003 = "docs/adr/0003-organizer-recovery-point-storage.md"
 
     def test_real_accepted_refs_with_correctly_paired_ids_pass(self) -> None:
@@ -429,6 +454,18 @@ class CriteriaSubstanceTests(unittest.TestCase):
         problems = gate.verify_criteria_substance(REPO_ROOT, [(self.SPEC_13, [])])
         self.assertTrue(any("lists no requirement IDs" in p for p in problems))
 
+    def test_hyphen_prefixed_family_ids_verify_against_their_spec(self) -> None:
+        # CW-AC-01 is the #174 spec's own numbering; the machine check must
+        # accept it when defined and reject an invented sibling (Issue #178).
+        problems = gate.verify_criteria_substance(
+            REPO_ROOT, [(self.SPEC_174, ["CW-AC-01", "CW-AC-10"])]
+        )
+        self.assertEqual(problems, [], f"real prefixed criteria flagged: {problems}")
+        problems = gate.verify_criteria_substance(
+            REPO_ROOT, [(self.SPEC_174, ["CW-AC-99"])]
+        )
+        self.assertTrue(any("CW-AC-99" in p for p in problems))
+
     def test_zero_padded_id_variant_is_accepted(self) -> None:
         # Specs write FR-004; the audit may cite FR-4 for the same criterion.
         problems = gate.verify_criteria_substance(REPO_ROOT, [(self.SPEC_13, ["FR-4"])])
@@ -463,6 +500,11 @@ class CriteriaSubstanceTests(unittest.TestCase):
         self.assertFalse(gate._id_defined("FR-004", "FR-004foo only"))
         self.assertFalse(gate._id_defined("FR-004", "FR-004_more only"))
         self.assertFalse(gate._id_defined("FR-004", "FR-004-extra only"))
+        # The same anchoring applies to hyphen-prefixed families (Issue #178).
+        self.assertTrue(gate._id_defined("CW-AC-01", "criteria CW-AC-01 holds"))
+        self.assertFalse(gate._id_defined("CW-AC-01", "XCW-AC-01 typo"))
+        self.assertFalse(gate._id_defined("CW-AC-0", "CW-AC-01 only"))
+        self.assertFalse(gate._id_defined("CW-AC-01", "CW-AC-011 only"))
 
 
 class CiRunsVerificationTests(unittest.TestCase):

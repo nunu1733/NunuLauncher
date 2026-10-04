@@ -5,9 +5,10 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 /**
- * Recovery DB only. Creates format 1, enables WAL, configures
- * `PRAGMA synchronous=FULL`, and never touches Launcher DB. There is no
- * automatic downgrade path — see [RecoveryDbVersionGate].
+ * Recovery DB only. Creates the schema at [RecoveryDbSchema.SCHEMA_VERSION]
+ * from the shared DDL, enables WAL, configures `PRAGMA synchronous=FULL`, and
+ * never touches Launcher DB. There is no automatic downgrade path — see
+ * [RecoveryDbVersionGate].
  *
  * Issue #14 Stage B step 3.
  */
