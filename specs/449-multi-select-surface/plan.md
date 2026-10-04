@@ -8,6 +8,7 @@
 > Revision 2: 2026-09-28 — Phase 1 review round 1（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862216096): Request changes）の指摘1〜4のうちplan側の対応。指摘1（受入前提）: spec冒頭へ受入条件（ADR-0014の受入前提。#442結論待ち）を明記し、本planもPhase 2の開始条件に同じ前提を置く。指摘2: data flowを `ApplyResult` variantごとの観測契約へ修正。指摘3: 共有plannerへの「指定セルへの新規フォルダ作成」intent variant追加をDesign/Change setへ反映。指摘4: 結合点5（lockState UNKNOWN）を未決の確認事項から撤去し、既存 `LOCK_STATE_UNAVAILABLE` 契約と一致する設計（選択不可+確定ゲート）へ確定。
 > Revision 3: 2026-09-28 — Phase 1 re-review round 2（[判定](https://github.com/nunu1733/NunuLauncher/issues/449#issuecomment-5862337471): Request changes。round 1指摘3・4は解消認定）の指摘2（variant契約の残差）に対応: data flowで `ConcurrentRun` を独立variantとして明示、`NoChanges` の到達不能不変条件（builderの空差分計画の禁止+test）と防御到達時の扱いを追加、`Migration and recovery` の旧来の包括表現（「失敗時は変更前へ戻る」）をvariant分類へ同期。指摘1（受入前提）は判定どおり外部前提の完了が解除条件であり、specは `draft` 維持、Phase 2実装は開始しない。
 > Revision 4: 2026-09-28 — 受入前提の成立。#442最終結論C確定 → ADR-0014 Accepted（Revision 3、受入PR #475）を受けて、現行main（`c5a7840b88`）を本branchへmergeし、受入revisionとの整合を再照合した。照合結果: 受入ADRの再確認3点（案A/B比較不変、#448/#449の15 baseline継続、patch surface方針不変）は本plan/specと矛盾しない。実質変更はなく、spec冒頭の受入前提の記述を「成立済み」へ更新するのみ。round 3判定の保留条件が満たされたためround 4再reviewへ進める。
+> Revision 7: 2026-09-29 — AC-13/AC-14の完了とowner確認の省略判断。AC-14: spec `implemented` 化（Revision履歴追記）、`CONTEXT.md` へdomain language 3語（編集画面/編集セッション/セッション計画）、`DESIGN.md` へhomeedit module記述（#449）と読み取りseam族への `inspectCapture` 追記、`docs/product/requirements.md` のFR-018/FR-019/NFR-013を `implemented` へ更新（FR-018はPR #472を根拠に）しD-013/D-014をADR link形式へ更新。AC-13: `upstream-patch-surface-baseline.json` をmain `29476b10a0` で再取得（新bridge group `homeedit-edit-surface`、既存fork platform変更の `fork-platform-preexisting` 整理、non-production exclusion追加。`--enforce-baseline` PASS）。owner確認事項の省略（owner判断 2026-09-29）: TalkBack読み上げ（AC-15のTalkBack部分）、ベンチマークB2〜B4実測（AC-12）、NFR-013詳細実測は、a11y文字列のJVM oracleとsemantics descriptor oracle、操作面の会計設計（入口3+選択+アクション+確定）とエミュレータ動作確認で代替可能と判断し、実機での詳細計測を要求しない。
 > Revision 6: 2026-09-28 — Phase 2実機検証（Pixel 9a）で2件の欠陥を発見・修正し、APPLY_VERIFIEDを確認。(1) 入口rowを実装時にrun面（ManualOrganizationPreferences）へ入れていたのをOrganizer hub（OrganizerHubPreferences）へ移動（spec AC-1の「Organizer hub row」の正しい同定。hub traversal testのDPAD順に組み込み）。(2) 編集画面のcapture/applyを `Executors.MODEL_EXECUTOR`（単一のlauncher-loader Looperスレッド）から専用スレッドへ移動。相関reloadはLoaderTaskをMODEL_EXECUTORへpostし、その世代の完了を呼び出し元が待つため、MODEL_EXECUTOR上で待つとLoaderTaskが実行されずタイムアウトし、適用が必ず `MODEL_RELOAD_FAILED`（RecoveryFailed）で失敗していた。organizer runと同じ「待ちの間にMODEL_EXECUTORを塞がない」規約（Dispatchers.IO相当）へ統一。修正後、実機で select→外す→確定→checkpoint(A4)→commit(A6)→APPLY_VERIFIED(A8)、1復元点、行削除、相関reloadでのホーム反映を確認。CI: shared-writer他14 job green、manual-org-uiのみ既存flake（mainでも同一失敗、#477）。
 > Revision 5: 2026-09-28 — Phase 2実装中の結合点発見（fail-closedプロトコルに従い実装を止めて本revisionで確定）。**結合点7（新設、解決済み）: 「削除はintendedStateからの不在で表現される」というCurrent evidence/Designの前提が現行適用経路と不一致だった。** `LauncherLayoutAdapter.applyWriteSet` の通常branch（`recoveryActions` が空の経路）は `intendedManifest.rows` のupdate/insertのみを行い、captureの行のうちintendedManifestに欠落した行は**削除されずに残存する**（削除を書くのはrecovery経路の `RecoveryAction.DeleteRow` のみ。`LauncherLayoutAdapter.kt:356-372`）。このまま「外す」を不在表現で構築すると、DBに削除対象行が残り、A7のexact検証（`ApplyProtocol.kt:373-381`）が必ず失敗して自動復旧（`Recovered`）に至る。**最小拡張（specの観測可能な振る舞い=行削除を維持するため）**: 通常branchの書込み後に、`before.manifest.rows` のうち `intendedManifest.rows` に含まれない行を削除するpassを1段追加する（manifest置換セマンティクスの完成。A2のexact一致検証済みpre-stateから派生するため安全性は既存契約に従属。public契約の変更なし、`ApplyAction`/`ApplyResult`/`ApplyProtocol`の変更なし、recovery経路は不変）。これに伴い「適用経路の実装は変更しない」の記述を「**結合点7の削除passの最小拡張を除き**変更しない」へ修正し、Change setへ `LauncherLayoutAdapter.kt` の行を追加。あわせて結合点2（`FolderNaming.FromUserCreation` variant追加を確定）、結合点3（policy versionは `BuiltInOrganizerPolicyBundleSource.readActive()` から取得しbuilderへ渡す）の確認結果を記録した。
 
@@ -210,13 +211,14 @@ test-audit審査の要点（JVM testの追加とinstrumentation class追加の�
 
 ## Documentation updates
 
-- [ ] spec status/history（accepted → implemented）
-- [ ] `CONTEXT.md`（domain language 3語: 編集画面 / 編集セッション / セッション計画）
-- [ ] `DESIGN.md`（§4のhomeedit記述へ編集画面と一括適用を追加、§4.2の読み取り専用seam族へ `inspectCapture` を追記）
-- [ ] `docs/product/requirements.md`（FR-019 / NFR-013のstatus。FR-018は#448分を実装merge済みであることへの言及とともにstatus更新）
-- [ ] `docs/engineering/ci-test-portfolio.md` / `tools/repo-contract/ci_portfolio_map.yml`（instrumentation classの割付記録。lane↔surface対応は不変の見込み）
-- [ ] `docs/engineering/organizer-diagnostics.md`（結合点4の確認結果に応じて記載要否を判断）
-- [ ] ADR（新設しない。ADR-0013/0014を参照するのみ。ADR-0014は2026-09-28にAccepted（Revision 3）。受入revisionとの整合再照合は完了し、実質変更はなかった（本plan Revision 4））
+- [x] spec status/history（accepted → implemented。2026-09-29）
+- [x] `CONTEXT.md`（domain language 3語: 編集画面 / 編集セッション / セッション計画。2026-09-29）
+- [x] `DESIGN.md`（§のhomeedit記述へ編集画面と一括適用を追加、読み取り専用seam族へ `inspectCapture` を追記。2026-09-29）
+- [x] `docs/product/requirements.md`（FR-018 / FR-019 / NFR-013を `implemented` へ、D-013/D-014をADR link形式へ。2026-09-29）
+- [x] `docs/engineering/ci-test-portfolio.md` / `tools/repo-contract/ci_portfolio_map.yml`（instrumentation classの割付記録。PR #476で更新済み）
+- [x] `docs/assessment/upstream-patch-surface-baseline.json`（main `29476b10a0` で再取得。`homeedit-edit-surface` group等。2026-09-29）
+- [x] ADR（新設しない。ADR-0013/0014を参照するのみ。ADR-0014は2026-09-28にAccepted（Revision 3）。受入revisionとの整合再照合は完了し、実質変更はなかった（本plan Revision 4））
+- [x] `docs/engineering/organizer-diagnostics.md`（結合点4: 適用イベントは既存journal経路にそのまま流れる。runIdで区別可能なため専用の分離記載は不要と判断。PR #476のreviewで確認）
 
 ## Execution checklist
 
