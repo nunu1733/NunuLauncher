@@ -1,6 +1,6 @@
 ---
 issue: "#376"
-status: accepted
+status: implemented
 requirements: [FR-004]
 risk: [layout-data]
 updated: 2026-09-22
@@ -16,6 +16,11 @@ updated: 2026-09-22
 > 本specは[Issue #376][1]の成果物である。statusが `draft` の間はimplementation-readyではない。
 > 2026-09-22: Phase1 re-entry（r2〜r4の4ラウンドreview、最終 [Approve][10] @5764528122）を経て
 > owner受入により `accepted` へ進めた。
+> 2026-09-22: 実装PR [PR #403][11]（head `60780b9c1b`、merge `eb032d75f4`）により **implemented**。
+> 実装review 5ラウンド（最終 [Approve][12] @5767316971）、CI `final-status` green（
+> [run 35658466389][13]）、独立audit記録
+> [docs/assessment/pr-403-durable-status-recovery-entry.md](../../docs/assessment/pr-403-durable-status-recovery-entry.md)
+> （Approve）、`High-risk gate / high-risk-evidence` green を確認。
 
 ## Problem
 
@@ -695,6 +700,9 @@ review指摘で明確化した戻り先契約（D5）とregistry所有境界（D
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/376
 [10]: https://github.com/nunu1733/NunuLauncher/issues/376#issuecomment-5764528122
+[11]: https://github.com/nunu1733/NunuLauncher/pull/403
+[12]: https://github.com/nunu1733/NunuLauncher/issues/376#issuecomment-5767316971
+[13]: https://github.com/nunu1733/NunuLauncher/actions/runs/35658466389
 [2]: ../../lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt
 [3]: ../../lawnchair/src/app/lawnchair/organizer/application/public/OrganizerDurableStatus.kt
 [4]: ../../lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt

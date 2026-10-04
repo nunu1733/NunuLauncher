@@ -1,8 +1,10 @@
 # Implementation Plan: hub status cardから復元flowへの接続（D-15）
 
-> Spec: [spec.md](./spec.md)（**accepted**。2026-09-22、Phase1 re-entry 4ラウンドreviewの
-> 最終 [Approve](https://github.com/nunu1733/NunuLauncher/issues/376#issuecomment-5764528122)
-> を経てowner受入）。実装着手可能。
+> Spec: [spec.md](./spec.md)（**implemented**。実装PR
+> [PR #403](https://github.com/nunu1733/NunuLauncher/pull/403) merge、head `60780b9c1b` /
+> merge `eb032d75f4`。実装review 5ラウンド、最終
+> [Approve](https://github.com/nunu1733/NunuLauncher/issues/376#issuecomment-5767316971)、
+> 独立audit記録: docs/assessment/pr-403-durable-status-recovery-entry.md）。
 > 本planは main `c05435a947`（2026-09-22時点。PR #379（#365）・#380（#366）・#387（#369）・
 > #391（#371）・#393（#372）・#396（#373）merge後）の実装調査に基づく。実装開始時に最新
 > `origin/main`・Issueコメントを再確認し、差分を反映してから着手する。
