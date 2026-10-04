@@ -2,7 +2,7 @@
 
 > Issue: #271
 > Spec: [spec.md](./spec.md)
-> Status: accepted (Phase-1 review: APPROVE, code-reviewer-2 session, head bcd01e915441af5ea6840ac6552783bfb162180c delta b68578790f..bcd01e9154; two non-blocking implementer notes folded into test wording)
+> Status: implemented (merged as PR #276, commit 69eb1c3e5; accepted after Phase-1 review: APPROVE, code-reviewer-2 session, head bcd01e915441af5ea6840ac6552783bfb162180c delta b68578790f..bcd01e9154; two non-blocking implementer notes folded into test wording)
 > PR #276 owner review round: Request changes (P1 re-read race, P1 cold settings entry, P2 loading distinct) → addressed in this revision (readiness-driven re-read, cold-start-safe entry, checking row).
 > PR #276 re-review round: Request changes (cold settings entry still never starts reconciliation — the surface stays status-less while open) → addressed: the shared trigger now drives the no-callback model load itself; the checking row persists while the gate is pending.
 

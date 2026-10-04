@@ -1,6 +1,6 @@
 ---
 issue: "#271"
-status: accepted
+status: implemented
 requirements: [DS-AC-01, DS-AC-02, DS-AC-03, DS-AC-04, DS-AC-05, DS-AC-06, DS-AC-07, DS-AC-08, DS-AC-09, DS-AC-10]
 risk: []
 updated: 2026-09-10
