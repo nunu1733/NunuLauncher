@@ -268,3 +268,30 @@ For each candidate gate-`FAILED` route, the investigation must produce:
 - None blocking the investigation. The choice between "reproduce the route"
   and "prove it unreachable on `main`" is the investigation's own outcome, not
   a precondition.
+
+## Change history
+
+- 2026-09-10 (PR #280): draft created at baseline `6b6bf8dd9…`; re-baselined
+  to `ed7ce5a2…` per the snapshot re-entry rule (owner re-reviewed at
+  `14815fa2eb` with one blocking correction applied).
+- 2026-09-11 (PR #281): status `draft` → `accepted` for investigation
+  execution.
+- 2026-09-11 (this PR): investigation executed and classified in
+  [the #265 classification comment](https://github.com/nunu1733/NunuLauncher/issues/265#issuecomment-5629608418).
+  #265 is a research/decision issue whose termination condition was the
+  completion of the classification, so this spec intentionally remains
+  `accepted` (not `implemented`); any future implementation is owned by
+  separate issues, and the classification required none. Summary of the
+  outcome: the reported compose signature is reproducible on `main` only via
+  restart-time gate-`FAILED` routes (unresolved record, reconciliation
+  capture exception, artifact-pair poison state) — all reproduced
+  deterministically on `nunu_qpr2_api36_1`; the pre-reconciliation
+  model-load-timeout route is excluded by the recorded 28 s gap; the attached
+  journal's non-`main` codes remain attributable to a non-`main` build; the
+  `WriterBusy` observation was dispositioned will-not-investigate with two
+  recorded immediate-confirm runs (`Restored` / `NotRestorable(STALE_REVISION)`).
+  The reproduction harness
+  (`tests/organizer-instrumentation/app/lawnchair/organizer/application/Issue265GateFailedRouteInstrumentationTest.kt`)
+  remains untracked working-tree evidence per the plan's "no code lands"
+  rule; it can land as a separate evidence PR if the owner later wants it
+  durable.
