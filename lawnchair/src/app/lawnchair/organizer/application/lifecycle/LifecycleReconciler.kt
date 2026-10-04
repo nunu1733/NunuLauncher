@@ -350,5 +350,6 @@ object LifecycleReconciler {
         data class NeedsRecovery(val nextLifecycle: LifecycleState) : RecoveryOutcomeClassification
     }
 
-    const val SUPPORTED_FORMAT: Int = 1
+    /** Issue #155: v2 records carry the reservation-aware capture context. */
+    const val SUPPORTED_FORMAT: Int = 2
 }

@@ -12,6 +12,7 @@ import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
@@ -28,6 +29,8 @@ data class LayoutState(
     val profiles: List<ProfileState>,
     val deviceCapabilities: DeviceCapabilities,
     val items: List<CanonicalItemState>,
+    /** Platform-owned cells that constrain planning but are never layout items (Issue #155). */
+    val reservedWorkspaceRegions: List<ReservedWorkspaceRegion> = emptyList(),
 ) {
     init {
         require(pages.distinctBy { it.ref }.size == pages.size) {
@@ -38,6 +41,9 @@ data class LayoutState(
         }
         require(items.distinctBy { it.ref }.size == items.size) {
             "LayoutState.items must be duplicate-free by ref"
+        }
+        require(reservedWorkspaceRegions.distinct().size == reservedWorkspaceRegions.size) {
+            "LayoutState.reservedWorkspaceRegions must be duplicate-free"
         }
     }
 }

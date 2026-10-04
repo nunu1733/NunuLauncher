@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.application.actions
 
+import app.lawnchair.organizer.application.adapter.ContextResourceCodec
 import app.lawnchair.organizer.application.canonical.Digest
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.canonical.PersistentResource
@@ -57,10 +58,13 @@ object RecoveryWriteSetMaterializer {
             }
         }
 
-        require(target.resources == reviewedCurrent.resources) {
+        require(ContextResourceCodec.recoveryContextsMatch(target.resources, reviewedCurrent.resources)) {
             "Externally-owned recovery context changed"
         }
-        val resourceActions = target.resources.map(RecoveryAction::PreserveResource)
+        // Resources have no Launcher DB mutation. Their precondition must be
+        // the user-reviewed current context; the target manifest is verified
+        // only after restored rows recreate its logical page inventory.
+        val resourceActions = reviewedCurrent.resources.map(RecoveryAction::PreserveResource)
         return RecoveryWriteSet(targetManifest = target, actions = rowActions + resourceActions)
     }
 }

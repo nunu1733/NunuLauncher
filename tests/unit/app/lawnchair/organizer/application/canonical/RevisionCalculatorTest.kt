@@ -16,7 +16,9 @@ import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.SnapPositionToken
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
@@ -84,6 +86,24 @@ class RevisionCalculatorTest {
         val s0 = CanonicalFixtures.state(pages = listOf(page0))
         val s1 = CanonicalFixtures.state(pages = listOf(page1))
         assertNotEquals(RevisionCalculator.revisionOf(s0), RevisionCalculator.revisionOf(s1))
+    }
+
+    @Test
+    fun revisionChangesWhenWorkspaceReservationChanges() {
+        val base = CanonicalFixtures.state()
+        val qsbEnabled = base.copy(
+            reservedWorkspaceRegions = listOf(
+                ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(4, 1)),
+            ),
+        )
+        val qsbSpanChanged = base.copy(
+            reservedWorkspaceRegions = listOf(
+                ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(3, 1)),
+            ),
+        )
+
+        assertNotEquals(RevisionCalculator.revisionOf(base), RevisionCalculator.revisionOf(qsbEnabled))
+        assertNotEquals(RevisionCalculator.revisionOf(qsbEnabled), RevisionCalculator.revisionOf(qsbSpanChanged))
     }
 
     @Test

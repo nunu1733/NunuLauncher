@@ -28,7 +28,7 @@ internal class RecoveryDbHelper(
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        for (stmt in RecoveryDbSchema.DDL_FORMAT_1.trimIndent().split(";")) {
+        for (stmt in RecoveryDbSchema.DDL_FORMAT_2.trimIndent().split(";")) {
             val trimmed = stmt.trim()
             if (trimmed.isNotEmpty()) {
                 db.execSQL(trimmed)
@@ -37,13 +37,12 @@ internal class RecoveryDbHelper(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Future-compatible migrations of the recovery DB live here. Format 1
-        // is the initial version; no upgrade path is needed yet.
-        if (oldVersion != newVersion) {
-            throw UnsupportedOperationException(
-                "Recovery DB upgrade from $oldVersion to $newVersion is not implemented",
-            )
-        }
+        // Issue #155 migrates only a tombstone-free empty v1 store before this
+        // helper is opened. Any other version transition is rejected by the
+        // pre-open RecoveryDbVersionGate and must never be inferred here.
+        throw UnsupportedOperationException(
+            "Recovery DB upgrade from $oldVersion to $newVersion must be handled before helper open",
+        )
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {

@@ -23,7 +23,10 @@ object RecoveryDbVersionGate {
         data class ReadFailed(val cause: Throwable) : VersionDecision
     }
 
-    fun probe(file: File): VersionDecision {
+    fun probe(file: File): VersionDecision = probeForFormat(file, RecoveryDbSchema.FORMAT_VERSION)
+
+    /** Internal compatibility seam for instrumentation of an older binary's read-only gate. */
+    internal fun probeForFormat(file: File, supportedFormat: Int): VersionDecision {
         if (!file.exists() || file.length() == 0L) {
             return VersionDecision.CreateNew
         }
@@ -43,7 +46,7 @@ object RecoveryDbVersionGate {
                 if (!it.moveToFirst()) 0 else it.getInt(0)
             }
             when {
-                version == RecoveryDbSchema.FORMAT_VERSION -> VersionDecision.OpenExisting(version)
+                version == supportedFormat -> VersionDecision.OpenExisting(version)
                 else -> VersionDecision.Incompatible(version)
             }
         } catch (e: SQLiteException) {

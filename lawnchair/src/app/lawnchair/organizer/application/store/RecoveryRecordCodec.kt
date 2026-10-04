@@ -472,6 +472,9 @@ object RecoveryRecordCodec {
         return entries[ordinal]
     }
 
+    // Recovery DB record v2 is gated by PRAGMA user_version; the manifest wire
+    // framing remains v1 because resources are opaque bytes and no v1 DB is
+    // opened by a v2 binary before compatibility checks (Issue #155).
     private const val MANIFEST_VERSION: Int = 1
     private const val MAX_MANIFEST_BYTES: Int = 64 * 1024 * 1024
     private const val MAX_FIELD_BYTES: Int = 16 * 1024 * 1024

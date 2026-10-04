@@ -1,14 +1,24 @@
 package app.lawnchair.organizer.application.actions
 
+import app.lawnchair.organizer.application.adapter.ContextResourceCodec
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.canonical.PersistentResource
 import app.lawnchair.organizer.application.canonical.PersistentResourceKind
 import app.lawnchair.organizer.application.canonical.PersistentRow
+import app.lawnchair.organizer.application.public.DeviceCapabilities
+import app.lawnchair.organizer.application.public.DeviceOrientation
 import app.lawnchair.organizer.application.public.OrganizerLockState
+import app.lawnchair.organizer.application.public.ProfileAvailability
+import app.lawnchair.organizer.application.public.ProfileState
 import app.lawnchair.organizer.planning.ContainerCode
+import app.lawnchair.organizer.planning.GridCell
+import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.KindCode
+import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -47,6 +57,40 @@ class RecoveryWriteSetTest {
     }
 
     @Test
+    fun workspaceReservationRecoveryAllowsRowDerivedPageChangesButRejectsReservationChanges() {
+        val reservation = ReservedWorkspaceRegion(PageRef(PageId("0")), GridCell(0, 0), GridSpan(4, 1))
+        val target = workspaceManifest(
+            pages = listOf(PageId("0"), PageId("1"), PageId("3")),
+            reservations = listOf(reservation),
+        )
+        val reviewed = workspaceManifest(
+            pages = listOf(PageId("0"), PageId("1")),
+            reservations = listOf(reservation),
+        )
+
+        val result = RecoveryWriteSetMaterializer.materialize(target, reviewed)
+        assertEquals(
+            reviewed.resources,
+            result.actions.filterIsInstance<RecoveryAction.PreserveResource>().map { it.expected },
+        )
+
+        val disabled = workspaceManifest(
+            pages = listOf(PageId("0"), PageId("1")),
+            reservations = emptyList(),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            RecoveryWriteSetMaterializer.materialize(target, disabled)
+        }
+        val changedSpan = workspaceManifest(
+            pages = listOf(PageId("0"), PageId("1")),
+            reservations = listOf(reservation.copy(span = GridSpan(3, 1))),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            RecoveryWriteSetMaterializer.materialize(target, changedSpan)
+        }
+    }
+
+    @Test
     fun contextualResourceMismatchIsRejectedInsteadOfMaterializedAsMutation() {
         val target = manifest(row(1, "one"))
         val changed = target.copy(
@@ -58,6 +102,23 @@ class RecoveryWriteSetTest {
             RecoveryWriteSetMaterializer.materialize(target, changed)
         }
     }
+
+    private fun workspaceManifest(
+        pages: List<PageId>,
+        reservations: List<ReservedWorkspaceRegion>,
+    ): PersistenceManifest = PersistenceManifest(
+        formatVersion = 1,
+        schemaVersion = 33,
+        rowCount = 0,
+        rows = emptyList(),
+        resources = ContextResourceCodec.encode(
+            profiles = listOf(ProfileState(ProfileId("personal"), ProfileAvailability.AVAILABLE)),
+            capabilities = DeviceCapabilities(4, 5, 4, 4, 4, DeviceOrientation.PORTRAIT),
+            pages = pages,
+            reservedWorkspaceRegions = reservations,
+        ),
+        modifiedAtMillis = 0,
+    )
 
     private fun manifest(vararg rows: PersistentRow): PersistenceManifest = PersistenceManifest(
         formatVersion = 1,

@@ -33,6 +33,10 @@ internal object PlanningPlacement {
         )
         val isIncremental = input.runMode == RunMode.IncrementalPlacement
 
+        input.snapshot.reservedWorkspaceRegions.forEach { reservation ->
+            allocator.markOccupied(reservation.page, reservation.cell, reservation.span)
+        }
+
         for (item in input.snapshot.items) {
             val reason = determinePreservation(item, rolesById[item.id])
             if (reason != null || isIncremental) {

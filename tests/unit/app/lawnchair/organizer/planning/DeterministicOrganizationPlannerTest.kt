@@ -86,10 +86,11 @@ class DeterministicOrganizationPlannerTest {
         taxonomy: TaxonomyContract = defaultTaxonomy(),
         signals: List<ClassificationSignal> = emptyList(),
         pages: List<Page> = listOf(Page(PageId("p0"), PageOrder(0))),
+        reservations: List<ReservedWorkspaceRegion> = emptyList(),
     ): OrganizationInput {
         val existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }
         return OrganizationInput(
-            snapshot = LayoutSnapshot(RevisionId("rev"), device, pages, items),
+            snapshot = LayoutSnapshot(RevisionId("rev"), device, pages, items, reservations),
             rules = rules,
             taxonomy = taxonomy,
             signals = ClassificationSignals(signals),
@@ -149,6 +150,48 @@ class DeterministicOrganizationPlannerTest {
         assertEquals(0, planned.newFolders.size)
         assertEquals(0, planned.categories.size)
         assertEquals(0, planned.warnings.size)
+    }
+
+    @Test
+    fun qsbReservationPreventsFullOrganizationFromTargetingFirstScreenCells() {
+        val reservation = ReservedWorkspaceRegion(
+            PageRef(PageId("p0")),
+            GridCell(0, 0),
+            GridSpan(4, 1),
+        )
+        val input = fullInput(
+            items = listOf(app("folder", x = 0, y = 1)),
+            device = defaultDevice(columns = 4, rows = 5),
+            reservations = listOf(reservation),
+        )
+
+        val planned = planner.plan(input).outcome as Planned
+        val target = planned.placements.single().target as PlacementTarget.WorkspaceTarget
+
+        assertEquals(reservation.page, target.page)
+        assertTrue(target.cell.y >= reservation.cell.y + reservation.span.height)
+        assertEquals(GridCell(0, 1), target.cell)
+    }
+
+    @Test
+    fun reservationOverlapAndUnknownPageAreRejected() {
+        val reserved = ReservedWorkspaceRegion(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(1, 1))
+        val overlap = fullInput(items = listOf(app("overlap", x = 0, y = 0)), reservations = listOf(reserved))
+        assertTrue(
+            (planner.plan(overlap).outcome as Rejected.Invalid).reasons.contains(
+                RejectionReason(RejectionCode.OVERLAP, emptyList()),
+            ),
+        )
+
+        val unknown = fullInput(
+            items = emptyList(),
+            reservations = listOf(ReservedWorkspaceRegion(PageRef(PageId("unknown")), GridCell(0, 0), GridSpan(1, 1))),
+        )
+        assertTrue(
+            (planner.plan(unknown).outcome as Rejected.Invalid).reasons.contains(
+                RejectionReason(RejectionCode.UNKNOWN_PAGE, listOf(DiagnosticParam.PageParam(PageId("unknown")))),
+            ),
+        )
     }
 
     @Test

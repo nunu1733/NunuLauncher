@@ -2,6 +2,7 @@ package app.lawnchair.organizer.application.store
 
 import android.content.ContentValues
 import android.content.Context
+import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
@@ -70,21 +71,115 @@ internal class RecoveryStore(
     private val versionGateFile: java.io.File =
         context.applicationContext.getDatabasePath(RecoveryDbSchema.FILE_NAME)
     private val snapshotFence = InspectionSnapshotFence()
+
+    private companion object {
+        const val LEGACY_FORMAT_VERSION: Int = 1
+    }
     private val snapshotPublisher = RecoveryInspectionSnapshotPublisher(context.applicationContext)
     private var reconciliationMutex: RunMutex? = null
 
     fun probeVersion(): RecoveryDbVersionGate.VersionDecision = versionProbe(versionGateFile)
 
-    override fun availability(): RecoveryStorePort.StoreAvailability = when (probeVersion()) {
+    override fun availability(): RecoveryStorePort.StoreAvailability = when (val decision = probeVersion()) {
         RecoveryDbVersionGate.VersionDecision.CreateNew,
         is RecoveryDbVersionGate.VersionDecision.OpenExisting,
         -> RecoveryStorePort.StoreAvailability.READY
 
-        is RecoveryDbVersionGate.VersionDecision.Incompatible ->
-            RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION
+        is RecoveryDbVersionGate.VersionDecision.Incompatible -> {
+            if (decision.version == LEGACY_FORMAT_VERSION && migrateEmptyLegacyStore()) {
+                when (probeVersion()) {
+                    is RecoveryDbVersionGate.VersionDecision.OpenExisting -> RecoveryStorePort.StoreAvailability.READY
+                    else -> RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION
+                }
+            } else {
+                RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION
+            }
+        }
 
         is RecoveryDbVersionGate.VersionDecision.ReadFailed ->
             RecoveryStorePort.StoreAvailability.READ_FAILED
+    }
+
+    /**
+     * Issue #155 / ADR-0008: v1 records lack the reservation context used by
+     * v2 revisions. Only an empty legacy store can be advanced. Retained
+     * tombstones make the store non-empty; expired tombstones are removed in
+     * the same transaction as the PRAGMA update.
+     */
+    private fun migrateEmptyLegacyStore(): Boolean {
+        // A legacy point or retained tombstone must be rejected without a
+        // write-open. In particular, do not purge an expired tombstone from a
+        // v1 store that also contains an active/verified record.
+        if (!legacyStoreIsMigrationEligible()) return false
+        val db = try {
+            SQLiteDatabase.openDatabase(
+                versionGateFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READWRITE,
+            )
+        } catch (_: android.database.sqlite.SQLiteException) {
+            return false
+        }
+        return try {
+            db.beginTransaction()
+            try {
+                val now = clock()
+                val points = DatabaseUtils.longForQuery(
+                    db,
+                    "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}",
+                    null,
+                )
+                val retainedTombstones = DatabaseUtils.longForQuery(
+                    db,
+                    "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES} WHERE expires_at_ms > ?",
+                    arrayOf(now.toString()),
+                )
+                if (points != 0L || retainedTombstones != 0L) return false
+                db.delete(
+                    RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES,
+                    "expires_at_ms <= ?",
+                    arrayOf(now.toString()),
+                )
+                db.execSQL("PRAGMA user_version = ${RecoveryDbSchema.FORMAT_VERSION}")
+                db.setTransactionSuccessful()
+                true
+            } finally {
+                db.endTransaction()
+            }
+        } catch (_: RuntimeException) {
+            false
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun legacyStoreIsMigrationEligible(): Boolean {
+        val db = try {
+            SQLiteDatabase.openDatabase(
+                versionGateFile.absolutePath,
+                null,
+                SQLiteDatabase.OPEN_READONLY,
+            )
+        } catch (_: android.database.sqlite.SQLiteException) {
+            return false
+        }
+        return try {
+            val points = DatabaseUtils.longForQuery(
+                db,
+                "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_POINTS}",
+                null,
+            )
+            val retainedTombstones = DatabaseUtils.longForQuery(
+                db,
+                "SELECT COUNT(*) FROM ${RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES} WHERE expires_at_ms > ?",
+                arrayOf(clock().toString()),
+            )
+            points == 0L && retainedTombstones == 0L
+        } catch (_: RuntimeException) {
+            false
+        } finally {
+            db.close()
+        }
     }
 
     /** Startup-only availability: classify on-disk artifacts before any SQLite open. */

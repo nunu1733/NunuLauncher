@@ -13,7 +13,7 @@ requirements:
   - NFR-004
   - NFR-005
   - NFR-010
-updated: 2026-08-10
+updated: 2026-08-27
 ---
 
 # Pure organization planning interface
@@ -139,14 +139,26 @@ LayoutSnapshot {
     device:   DeviceCapabilities
     pages:    [Page]
     items:    [CapturedItem]            // captured existing layout only
+    reservedWorkspaceRegions: [ReservedWorkspaceRegion]
 }
 Page { id: PageId, order: PageOrder }   // order is unique within snapshot
+ReservedWorkspaceRegion { page: PageRef, cell: GridCell, span: GridSpan }
 
 DeviceCapabilities {
     columns: Int, rows: Int, hotseatSlots: Int
     folderMaxColumns: Int, folderMaxRows: Int
     orientation: Orientation             // PORTRAIT | LANDSCAPE | TWO_PANEL_*
 }
+
+`ReservedWorkspaceRegion` is a canonical, platform-owned occupancy constraint.
+It is neither a `CapturedItem`, a target member, a candidate, nor a requested
+mutation. Its page must occur exactly once in `pages`; its rectangle obeys the
+same workspace bounds as an item; duplicate value-equal regions are rejected;
+and two regions may overlap only when their pages differ. A region overlapping a
+captured workspace item is invalid input. A rowless logical page is valid when
+it is present in `pages` and is referenced only by a reservation. The planner
+must preserve such a region as occupancy and never expose it as a disposition,
+placement, action, or persistent item identity.
 
 CapturedItem {
     id:           ItemId

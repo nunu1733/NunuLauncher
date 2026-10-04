@@ -8,6 +8,7 @@ import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.canonical.PersistentResource
 import app.lawnchair.organizer.application.canonical.PersistentResourceKind
 import app.lawnchair.organizer.application.canonical.PersistentRow
+import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.public.AuthoritativeState
 import app.lawnchair.organizer.application.public.OrganizerLockState
@@ -308,7 +309,7 @@ class RecoveryProtocolTest {
 
     private fun seedVerifiedPoint(
         checksumValid: Boolean = true,
-        formatVersion: Int = 1,
+        formatVersion: Int = LifecycleReconciler.SUPPORTED_FORMAT,
     ) {
         val preState = writer.currentState()
         val preManifest = PersistenceManifest(

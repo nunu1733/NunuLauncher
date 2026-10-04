@@ -5,6 +5,7 @@ import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
+import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.public.OrganizerLockState
@@ -111,12 +112,37 @@ class RecoveryPreviewProtocolTest {
     @Test
     fun checksumFormatAndFinalLifecycleMatrixReturnsClosedRejectionsWithoutCapture() {
         val cases = listOf(
-            MatrixCase(LifecycleState.VERIFIED, false, 1, RecoveryPreviewRejection.CORRUPT),
+            MatrixCase(
+                LifecycleState.VERIFIED,
+                false,
+                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryPreviewRejection.CORRUPT,
+            ),
             MatrixCase(LifecycleState.VERIFIED, true, 99, RecoveryPreviewRejection.INCOMPATIBLE_VERSION),
-            MatrixCase(LifecycleState.RESTORED, true, 1, RecoveryPreviewRejection.ALREADY_RESTORED),
-            MatrixCase(LifecycleState.EXPIRED, true, 1, RecoveryPreviewRejection.EXPIRED),
-            MatrixCase(LifecycleState.CORRUPT, true, 1, RecoveryPreviewRejection.CORRUPT),
-            MatrixCase(LifecycleState.INCOMPATIBLE, true, 1, RecoveryPreviewRejection.INCOMPATIBLE_VERSION),
+            MatrixCase(
+                LifecycleState.RESTORED,
+                true,
+                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryPreviewRejection.ALREADY_RESTORED,
+            ),
+            MatrixCase(
+                LifecycleState.EXPIRED,
+                true,
+                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryPreviewRejection.EXPIRED,
+            ),
+            MatrixCase(
+                LifecycleState.CORRUPT,
+                true,
+                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryPreviewRejection.CORRUPT,
+            ),
+            MatrixCase(
+                LifecycleState.INCOMPATIBLE,
+                true,
+                LifecycleReconciler.SUPPORTED_FORMAT,
+                RecoveryPreviewRejection.INCOMPATIBLE_VERSION,
+            ),
         )
 
         cases.forEachIndexed { index, case ->
@@ -287,7 +313,7 @@ class RecoveryPreviewProtocolTest {
         createdAtMs: Long = FakeClock.nowMillis(),
         updatedAtMs: Long = FakeClock.nowMillis(),
         checksumValid: Boolean = true,
-        formatVersion: Int = 1,
+        formatVersion: Int = LifecycleReconciler.SUPPORTED_FORMAT,
     ) {
         val state = writer.currentState()
         val manifest = PersistenceManifest(

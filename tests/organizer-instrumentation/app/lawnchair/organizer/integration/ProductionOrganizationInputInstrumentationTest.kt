@@ -1001,6 +1001,12 @@ class ProductionOrganizationInputInstrumentationTest {
     ): ItemId {
         val id = launcher.model.modelDbController.generateNewItemId()
         val itemId = ItemId(id.toString())
+        // Keep the production composer fixture independent of the runtime QSB
+        // preference. The first workspace row is always reserved when QSB is
+        // enabled, while this deterministic 4x4 region begins below it.
+        val fixtureSlot = Math.floorMod(id - 1L, 16L).toInt()
+        val cellX = fixtureSlot % 4
+        val cellY = fixtureSlot / 4 + 1
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_LAUNCHER)
             .setComponent(component)
@@ -1013,8 +1019,8 @@ class ProductionOrganizationInputInstrumentationTest {
                 put(Favorites.INTENT, intent.toUri(0))
                 put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
                 put(Favorites.SCREEN, 0)
-                put(Favorites.CELLX, 0)
-                put(Favorites.CELLY, 0)
+                put(Favorites.CELLX, cellX)
+                put(Favorites.CELLY, cellY)
                 put(Favorites.SPANX, 1)
                 put(Favorites.SPANY, 1)
                 put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPLICATION)
