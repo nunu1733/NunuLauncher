@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Lawnchair 16 rebase — 採用baseline・移行方式・rollback（ADR-0018）
 
-> Status: proposed（2026-10-04起草。review受理後にacceptedへ変更する）
+> Status: Accepted（2026-10-04。PR #523 review round 3でblocking findingなしを確認（[review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975761227)）。受入は本PR #523のmergeで完了する）
 > Date: 2026-10-04
 > 対応: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) / Phase 0 [#519](https://github.com/nunu1733/NunuLauncher/issues/519)
 > 出典: [#442 最終結論C](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)（2026-09-28）、[upstream-strategy.md](../engineering/upstream-strategy.md) Upgrade policy 5比較軸、Phase 0計測 [issue-516 assessment](../assessment/issue-516-16-rebase-phase0-research.md)
@@ -55,3 +55,4 @@ status: proposed
 - 2026-10-04: 起草（proposed）。Phase 0計測（[issue-516 assessment](../assessment/issue-516-16-rebase-phase0-research.md)）に基づく。
 - 2026-10-04（revision 2）: PR #523 review round 1指摘対応。Decision 2にbaseline側33 commitsの棚卸し結論（30件不運搬可、3件port/pin判断）を反映、Decision 4にpath単位で確定したdispositionとdrop判定の根拠を反映、Decision 5のrollback点を「cutover merge直前の旧main headへのtag固定＋rollback操作の明示」へ修正、Decision 7/8を#520/#521/#522の起票済み実態とadvertised range変化の表現へ同期。
 - 2026-10-04（revision 3）: PR #523 review round 2指摘対応。Decision 2のNova restore 2件（`9b48473c` / `53a2092541`）を「UI＋restoreデータ変換契約」の挙動単位へ展開し、採否確定を#522（Phase 1、rebase前）へ移管（icon shadow pinのみPhase 2 plan判断として分離）。Decision 4のdisposition表記をkeep 57 / adapt 48 / drop 0のpath単位内訳へ統一。
+- 2026-10-04（revision 4）: **acceptedへ遷移**。PR #523 review round 3（[review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975761227)）でblocking findingなし・「ADR-0018は `proposed` → `accepted` へ遷移してよい」の確認を受けた。受入は本PR #523のmergeで完了する。

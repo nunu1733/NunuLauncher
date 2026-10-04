@@ -1,6 +1,6 @@
 # Lawnchair 16 rebase Phase 0 — 候補baseline固定・差分分類・patch-surface計測（Issue #516 / #519）
 
-> Status: proposed（[ADR-0018](../adr/0018-lawnchair-16-rebase.md)とともにreview中。受理時にacceptedへ更新する）
+> Status: accepted（2026-10-04。PR #523 review round 3でblocking findingなしを確認（[review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975761227)）。[ADR-0018](../adr/0018-lawnchair-16-rebase.md)のaccepted遷移とともに受入。受入は本PR #523のmergeで完了する）
 > Research date: 2026-10-04（revision 2: 同日のreview round 1指摘対応。Change history参照）
 > Agent session: ZCode（GLM-5.3-flash）
 > Issues: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516)、Phase 0子Issue [#519](https://github.com/nunu1733/NunuLauncher/issues/519)
@@ -153,3 +153,4 @@ merge-base `b011d84c` から baseline `505dbc40` 側だけに存在する33 comm
 - 2026-10-04: 初版。候補固定（§2）、7区分分類（§3）、surface計測（§4）、disposition分析（§5）、発見（§6）を記録。対象: main `0b4db97a9aa8853fba9824ae148aadb4ec42e32b`、候補upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35`。
 - 2026-10-04（revision 2）: PR #523 review round 1（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975549572)）指摘対応: (1) §4の `--verify` 記録を実測（105 files +23,314/−1,098、anchor `8af117b6fc`）へ修正し、初回capture値（47/+3,993/−1,017）との混在を解消、(2) §5.1にbaseline側33 commitsの棚卸しを追加（30件不運搬可、3件port/pin判断）、(3) §5のdispositionを `keep / adapt` の単一結論（path内訳つき）へ変更しdrop判定の根拠を明記、(4) §6-2のquickstepMinSdk影響記述を「advertised range変化・実影響は#520で確定」へ修正、(5) §1のnetwork記述と§7のIssue番号を修正。
 - 2026-10-04（revision 3）: PR #523 review round 2（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975684996)）指摘対応: (1) §5.1 Group CのNova restore 2件を「UI＋restoreデータ変換契約」の挙動単位へ展開（`9b48473c`: subgrid警告＋`roundToInt()`座標変換〔16-devは `.toInt()` のまま〕、`53a2092541`: toggle＋rows+1補償・cellY shift・clamp/skip〔16-devに同等なし〕。いずれも16-dev候補で確認済み）し、採否確定を#522（Phase 1、rebase前）へ移管、(2) §5のdispositionを全groupでkeep/adapt subsetの統一粒度に変更（合計keep 57 / adapt 48 / drop 0）、(3) §4のanchor後差分説明を「docs/spec-only（#507/#508/#509を含むmerge群）でsurface差分なし」へ修正。
+- 2026-10-04（revision 4）: **acceptedへ遷移**。PR #523 review round 3（[review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975761227)）でblocking findingなしを確認し、ADR-0018のaccepted遷移とともに本書を受入。受入は本PR #523のmergeで完了する。
