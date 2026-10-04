@@ -1,0 +1,129 @@
+# Lawnchair 16 rebase Phase 0 — 候補baseline固定・差分分類・patch-surface計測（Issue #516 / #519）
+
+> Status: proposed（[ADR-0018](../adr/0018-lawnchair-16-rebase.md)とともにreview中。受理時にacceptedへ更新する）
+> Research date: 2026-10-04
+> Agent session: ZCode（GLM-5.3-flash）
+> Issues: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516)、Phase 0子Issue [#519](https://github.com/nunu1733/NunuLauncher/issues/519)
+> 対象revision: fork main `0b4db97a9aa8853fba9824ae148aadb4ec42e32b`、upstream baseline `505dbc40e6154c05158b5d0271c45f6a885a411b`、候補upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35`
+
+## 1. 問いと方法
+
+Epic #516 Phase 0の問いは、「Lawnchair 16系（`16-dev`）のどのcommitをrebase候補として固定し、現baseline（`505dbc40`）からの差分とfork patch surfaceをどう管理するか」である。本書は観測と分類のみを行い、採用判断は[ADR-0018](../adr/0018-lawnchair-16-rebase.md)に委ねる。
+
+方法はすべてlocal Git object databaseとrepository内toolingによる（network requestなし、worktree変更なし）:
+
+- `git fetch upstream 16-dev` による候補commitの取得
+- `git diff --no-renames --numstat 505dbc40..43a21b43` による差分分類（区分規則は§3）
+- `python3 tools/repo-contract/measure_upstream_patch_surface.py --verify` による受入済みbaselineの再現
+- [upstream-patch-surface-baseline.json](./upstream-patch-surface-baseline.json) のbridge path × 16-dev上の状態照合によるdisposition分析（§5）
+
+## 2. 候補upstream commitの固定
+
+確認日: 2026-10-04。方法: `git ls-remote upstream refs/heads/16-dev`（読み取りのみ）とlocal `git fetch`。
+
+- `16-dev` head: `43a21b43d7cc7850ab54e14b1a57dc9646685f35`（2026-10-02T06:12:03+05:00 commit "fix: keyboard closing when clearing app search (#7353)"）。Epic #516起票時（2026-10-04）の観測値と同一である。**本SHAは観測値であり、採用はADR-0018のacceptance時点で確定する。**
+- `git fetch upstream 16-dev` でlocal object databaseへ取得済み（`git cat-file -e 43a21b43^{commit}` 成功）。
+- baseline `505dbc40` とのmerge-base: `b011d84ca9ce3e381e3e7601116e99a9ac170ec3`。**両者はdivergeしている**: merge-base以後、16-dev側7,377 commits、baseline（15系）側33 commits。
+- `v16*` tagは存在しない（`git ls-remote upstream 'refs/tags/v16*'` は空。2026-10-04確認）。
+- 16-devの統合履歴はmerge主体（merge-base以後のmerge commit 3,236件。`Merge tag 'android-16.0.0_r3'`、25Q3 cherrypick等のAOSP統合と `Merge remote-tracking branch 'origin/15-dev' into 16-dev` を含む）。
+
+## 3. 差分分類（7区分）
+
+対象区間: `505dbc40..43a21b43`（baseline→16-dev候補の全upstream差分。rebase時にforkが吸収する範囲と一致する）。
+
+全規模: `--no-renames` で **5,166 files, +532,729 / −185,654**（rename検知ありでは 4,999 files, +510,077 / −163,002）。数値はrename検知なしの`--numstat`基準である。
+
+| 区分 | files | 追加 / 削除 | 代表的な内容 |
+|---|---:|---:|---|
+| 1. Launcher3 model / schema / event | 57 | +3,864 / −4,045 | `src/com/android/launcher3/model/`、`LauncherModel.java`→`LauncherModel.kt`（Kotlin化）、`LauncherProvider.java`、`LauncherSettings.java`、`protos/` |
+| 2. DB migration / downgrade / backup / restore | 33 | +4,192 / −3,107 | `DatabaseHelper`、`RestoreDbTask`、`LauncherBackupAgent.java`、grid migration系、`lawnchair/src/app/lawnchair/backup/`、**`SCHEMA_VERSION` は32のまま不変** |
+| 3. Quickstep / SystemUI compat | 2,904 | +320,337 / −70,655 | `quickstep/`、`systemUI/`、`compatLib/`（`compatLibVBaklava`=API 36新設）、**vendored `wmshell/` 1,639 files +198,101行**、`go/` |
+| 4. Workspace / drag / folder / widget / hotseat | 85 | +5,895 / −2,662 | `dragndrop/`、`folder/`、`widget/`、`hotseat/`、`Workspace.java`、`CellLayout.java` 等 |
+| 5. build / Gradle / SDK / module構成 | 620 | +60,627 / −20,391 | AGP 9.0.1→9.4.1、Kotlin 2.3.0→2.4.20、新module（`flags`、`wmshell`、`dagger`、`concurrent`、`modules:widgetpicker`、`baseline-profile`、`androidx-lib`、`checks`、composeはinclude済みだが`//include ':compose'`と無効化）、新submodule `platform_frameworks_libs_systemui`（branch 16-dev）、`src_no_quickstep/` variant分割、`tests/` |
+| 6. permission / manifest / targetSdk | 37 | +966 / −92 | `AndroidManifest*.xml` 37件。build.gradleのtargetSdk 35→37は区分5に計上 |
+| 7. Nunu固有bridge / fork-owned module | （§5で分類） | — | 本区分はfork側のinventoryであり、§4/§5で扱う |
+| （補助）その他Launcher3 product code | 287 | +21,660 / −13,861 | `allapps/`、`search/` 等の区分4名目外のLauncher3 src |
+| （補助）upstream Lawnchair app code | 280 | +14,621 / −5,276 | `lawnchair/src/app/lawnchair/` のupstream側変更 |
+| （補助）upstream resources / metadata / docs | 858 | +19,645 / −7,852 | `fastlane/` 398件、`res/`、`lawnchair/res/`、README等 |
+| （補助）生成物 | 5 | +80,922 / −57,713 | `baseline-prof.txt` 生成物2件、`google_fonts.json` 等 |
+
+分類規則（regex、first match優先）の要点: migration/backup/manifest語を含むpathは区分1より区分2/6を優先、`wmshell/`は内容がSystemUI/WindowManager Shell（recents/quickstep compat基盤）であるため区分3へ計上（新moduleという構成事実は区分5にも記載）、区分7はfork側のみを対象とする。生成物5件は補助区分へ手動帰属した。
+
+## 4. patch-surface計測
+
+実行コマンドと結果（2026-10-04）:
+
+```bash
+python3 tools/repo-contract/measure_upstream_patch_surface.py --verify
+# -> PASS: measurement completed with complete bridge ownership.
+#    （受入済みbaseline: 47 counted files, +3,993 / -1,017 を正確に再現）
+
+python3 tools/repo-contract/measure_upstream_patch_surface.py \
+  --upstream 43a21b43d7cc7850ab54e14b1a57dc9646685f35 --target HEAD --enforce-baseline
+# -> FAIL: the upstream commit must be an ancestor of the target; ...（期待どおりの拒否）
+
+python3 tools/repo-contract/test_measure_upstream_patch_surface.py
+# -> Ran 22 tests ... OK
+```
+
+- `--verify` のPASSにより、**現行bridge inventory（105 path、9 group）が再適用候補の全リストとして確定した**。これがPhase 2での `keep / adapt / drop` 判定の対象集合である。
+- `measure_upstream_patch_surface.py` は「upstreamがtargetのancestor」を前提とする。16-dev候補は現mainのancestorではないため、**正式なsurface再計測（`--upstream <採用SHA> --target <rebase後head> --enforce-baseline`）はrebase完了後（Phase 2）に可能になる**。rebase前の本Phaseでは、§5のbridge path × 16-dev状態照合が代替の競合面記録である。
+- 受入済みbaselineの数値（47 files +3,993/−1,017）を「新baselineとの比較」へ流用してはならない（Epic Phase 4の規定どおり、新upstream ancestor基準での再採択が必要）。
+
+## 5. bridge disposition分析（区分7: Nunu固有bridge / fork-owned）
+
+[upstream-patch-surface-baseline.json](./upstream-patch-surface-baseline.json) のbridge group全105 pathを、16-dev候補上の状態と照合した。方法: pathごとに (a) baselineに存在したか、(b) 16-devに存在するか、(c) `git diff --no-renames --numstat 505dbc40..43a21b43 -- <path>`（upstream側変更量）、(d) `git diff --no-renames --numstat 505dbc40..HEAD -- <path>`（fork側変更量）を記録。
+
+**内訳: 105 = fork追加file 49 + upstream無変更（再適用が自明）8 + upstream変更あり（競合面）45 + upstreamで削除（移動/分割の追従が必要）3。**
+
+| bridge group | paths | fork追加 | up無変更 | up変更 | up削除 | 初期disposition |
+|---|---:|---:|---:|---:|---:|---|
+| deck-retirement | 20 | 0 | 1 | 19 | 0 | **keep/adapt** — deck runtimeは16-devに存続（`LawndeckManager.kt` up +7/−3、`AddFoldersWithItemsTask.kt` up +11/−27）。退役（ADR-0006）はdrop不可 |
+| organizer-ui-and-lock-authoring | 13 | 8 | 1 | 4 | 0 | **keep/adapt** — strings churn大（`lawnchair/res/values/strings.xml` up +215/−66）、`BaseLauncherBinder.java` up −440の大規模改変 |
+| model-reload-and-transaction-gates | 11 | 3 | 1 | 6 | 1 | **keep/adapt** — 競合面最大。`LauncherModel.java`→`LauncherModel.kt`化、`ModelDbController` up +235/−193、`ModelWriter` up +147/−63、`LoaderTask` up +403/−418、`InvariantDeviceProfile` up +1,677/−1,288、`MainThreadInitializedObject` up −128 |
+| layout-schema-and-recovery | 11 | 4 | 2 | 3 | 2 | **keep/adapt** — `GridSizeMigrationUtil.java` が `GridSizeMigrationDBController.java` + `GridSizeMigrationLogic.kt` に分割、`LauncherDbUtils.java`→`.kt`化。`SCHEMA_VERSION` 32不変、`downgrade_schema.json` 無変更 |
+| homeedit-edit-surface | 22 | 20 | 0 | 2 | 0 | **keep（ほぼ自明）** — 追加file主体。`LauncherOptionsPopup.kt` up +61/−14 のみ競合面 |
+| homeedit-edit-undo | 8 | 7 | 0 | 1 | 0 | **keep/adapt** — `Folder.java` up +426/−161 の大規模改変に対しOPTIONS bit guard（+26/−3）を再適用 |
+| organizer-home-entry | 2 | 1 | 0 | 1 | 0 | **keep（自明）** — `LauncherPopupPreference.kt` up +1/−4 |
+| fork-platform-preexisting | 8 | 1 | 2 | 5 | 0 | **keep/adapt** — `build.gradle` up +111/−64、`settings.gradle` up +28/−5（module再編）へのfork pin再適用 |
+| new-app-destination | 10 | 5 | 1 | 4 | 0 | **keep/adapt** — `AddWorkspaceItemsTask` up +25/−43、`ItemInstallQueue` up +45/−23、`PreferenceManager.kt` up +135/−20 |
+
+初期dispositionでの **drop候補は0件** である。16-devがfork patchの目的を代替した領域（例: deck runtime自体の退役）は観測されなかった。`keep/adapt/drop` の確定は各pathのconflict解消時に、owner ADR/specの受入条件に基づいて行う（Phase 2）。
+
+### 要対応の3点（upstream側構造変化によりfork patchの再表現が必要）
+
+1. **`LauncherModel.java` → `LauncherModel.kt`**（Kotlin化、内容継続）。model-reload groupのfork bridge（fork +322/−3。`OrganizerModelReloadAdapter` 接続等）はKotlin版への再適用になる。
+2. **`GridSizeMigrationUtil.java` の分割**（`GridSizeMigrationDBController.java` + `GridSizeMigrationLogic.kt`）。layout-schema groupのgrid migration契約（`GridMigrationJournal` / `GridMigrationOperation` / `GridMigrationRuntime`、fork追加file）の接続先を分割後の構造へ合わせる。
+3. **`MainThreadInitializedObject` の `Overrides`/`onPostInit` 機構の上流削除**（up −128。Lawnchair由来のmodification除去）。forkの3行patch（Issue #14: 初期化値publish後の `onPostInit` 呼び出し順序）は、16-dev上に `onPostInit` が存在しなくなるためhookを再表現する必要がある。`ResourceBasedOverride` 自体は16-devに残存している。
+
+## 6. 主要な発見
+
+1. **DB schemaは不変**: `SCHEMA_VERSION` 32は両側で同一、`res/raw/downgrade_schema.json` 無変更（`git diff` で確認）。Launcher DB migration/downgrade契約の連続性は高い。一方でgrid migration utilの分割・Kotlin化という構造変化がある（§5）。
+2. **Quickstep/compat**: 16-devはAPI 36（Baklava）用 `QuickstepCompatFactoryVBaklava` と `QUICKSTEP_MIN_SDK=35 / MAX_SDK=36` を実装済み（`build.gradle:147-148`）。**API 37（Android 17）のcompat factoryは存在せず、`quickstepMaxSdk=36` のまま**。また `quickstepMinSdk` が29→35へ引き上げられており、**API 29〜34端末ではlauncher提供recentsが無効化される構成になる**。この2点はPhase 1子Issueの評価対象であり、`QUICKSTEP_MAX_SDK` の単純な定数引き上げを先に採用しない（Epic Non-goals）。
+3. **targetSdk 37**: 16-devは `targetSdk = 37`、compileSdk 37（minor 2）、buildTools 37.0.0、minSdk 26。Android 16/17 behavior changesの分離はPhase 1子Issueへ委ねる。
+4. **build再編の規模**: AGP 9.0.1→9.4.1、Kotlin 2.3.0→2.4.20。vendored `wmshell/`（1,639 files +198k行、Gradle module `:wmshell`）、`flags`、`dagger`、`concurrent`、`modules:widgetpicker` 等の新moduleと、新submodule `platform_frameworks_libs_systemui`（branch 16-dev）の取込みが必要。toolchain詳細の正本更新（building guide）はPhase 4である。
+5. **fork patchの所在**: 再適用対象は105 path（49 fork追加file + 56 upstream file patch/追従）。fork commitはbaseline後に1,799件（merge commitを含む）。replay単位の扱い（merge commitの保持有無）はPhase 2 planで決定する。
+6. **16-devはmerge主体の統合履歴**（merge 3,236件）であり、upstream自体は15→16をmerge/再構築で進めている。forkはEpic指定のとおり監査性のためreplay型rebaseを採用する（ADR-0018 Alternatives参照）。
+
+## 7. Phase 1への引き継ぎ
+
+- **API 37 Quickstep/recents**: §6-2の事実（`compatLibVBaklava` まで、`quickstepMaxSdk=36`、minSdk 29→35の影響）を入力として、引き上げ評価・compat前提・system overviewとの境界を子Issueで確定する。
+- **targetSdk 37 / behavior changes**: §6-3を入力に、upstream変更で自動的に解けるものとNunu固有対応の分離を子Issueで行う。
+- **schema/migration/backup/restore互換**: §6-1と§5の構造変化（grid migration分割、`RestoreDbTask` up +116/−111、`DatabaseHelper` up +48/−59、`NovaBackupConverter.kt` up +13/−42）を入力に、既存layout/recovery契約との互換性とrollbackをrebase前に確定する子Issueで行う。
+
+## 8. 未確認範囲とリスク
+
+- **build可否は未検証**: 本書はdiff/object database解析のみであり、AGP 9.4.1 / compileSdk 37 でのbuild（JDK 21継続可否を含む）はPhase 2の最初のgateである。
+- **数値は `--no-renames` 基準**: 分類とbridge照合の数値はrename検知なし。rename-aware総量（4,999 files +510,077/−163,002）は参考値として併記した。
+- **候補SHAの先取り禁止**: `43a21b43` は2026-10-04の観測値。Phase 2着手までに16-devが前進した場合の扱いはADR-0018（再anchor手続き）に記載する。
+- **dispositionは初期判定**: `keep/adapt/drop` の確定はPhase 2のconflict解消時、各bridge groupのowner ADR/spec受入条件に基づいて行う。本書のup/fork行数は競合面の規模指標であり、作業量の確約ではない。
+- **runtime観測なし**: recents動作、behavior changeの実挙動、wmshell取込み後のbuild時間等は未観測である。
+
+## 9. Prior art
+
+- git公式docs `git-rebase`（https://git-scm.com/docs/git-rebase 。確認日 2026-10-04）: `--onto` によるcommit replayの機構的根拠。fork commitのreplay型rebase（upstream ancestry維持）に採用。
+- 上流Lawnchair 16-devの統合履歴（local object database `b011d84c..43a21b43`、merge commit 3,236件。確認日 2026-10-04）: upstreamはmerge主体でAOSP tag/15-devを統合している。forkは監査性（bridgeごとのconflict attribution、patch所在の追跡）を優先し、merge方式を採用しない（不採用の理由。ADR-0018 Alternativesに展開）。
+
+## 10. Change history
+
+- 2026-10-04: 初版。候補固定（§2）、7区分分類（§3）、surface計測（§4）、disposition分析（§5）、発見（§6）を記録。対象: main `0b4db97a9aa8853fba9824ae148aadb4ec42e32b`、候補upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35`。
