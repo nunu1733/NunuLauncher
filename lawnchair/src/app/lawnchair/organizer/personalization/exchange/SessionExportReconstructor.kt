@@ -64,6 +64,18 @@ object SessionExportReconstructor {
         var unsupportedContainerCount = 0
         var unknownKindCount = 0
         val items = ArrayList<ExportItem>(session.itemRefs.size)
+        // Issue #337 (spec 337 D-5): the advertised category refs of the
+        // validation view are exactly the session's ref → identity mapping
+        // intersected with the CURRENT composition's catalog. An identity the
+        // catalog no longer contains (deleted between export and import) is not
+        // advertised, so an intent referencing it fails closed with
+        // `UNKNOWN_CATEGORY_REF` instead of resolving a stale category.
+        val catalog = current.catalog
+        val advertisedRefs = LinkedHashMap<CategoryIdentity, String>()
+        for ((ref, identity) in session.categoryRefs) {
+            if (catalog != null && identity in catalog) advertisedRefs[identity] = ref
+        }
+        val categoryRefsByIdentity = advertisedRefs.toSortedMap()
 
         for (item in snapshot.items) {
             val excludedReason = when {
@@ -86,7 +98,7 @@ object SessionExportReconstructor {
                 continue
             }
             val ref = refByItem[item.id] ?: continue // captured after the export
-            items += item.toValidationItem(ref, snapshot, current, folderSemantics, pageOrdinal)
+            items += item.toValidationItem(ref, snapshot, current, folderSemantics, categoryRefsByIdentity, pageOrdinal)
         }
         // Issue #331: candidate subjects reconstruct from the session scope
         // alone — they have no captured item and the validator needs only
@@ -101,8 +113,8 @@ object SessionExportReconstructor {
             items += ExportItem(
                 ref = ref,
                 role = ExportItemRole.APP_OR_SHORTCUT,
-                category = null,
-                groupSemantic = null,
+                categoryRef = current.resolvedIdentities[candidateId]?.let { categoryRefsByIdentity[it] },
+                folderCategoryRef = null,
                 label = null,
                 pageAffinity = null,
                 regionAffinity = null,
@@ -145,6 +157,7 @@ object SessionExportReconstructor {
                     pageCount = snapshot.pages.size,
                 ),
                 items = items,
+                categories = categoryEntriesOf(categoryRefsByIdentity, catalog, session.tier),
                 preservedConstraints = preserved,
                 capabilities = ExportCapabilities(
                     intentSchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
@@ -163,16 +176,53 @@ object SessionExportReconstructor {
         snapshot: app.lawnchair.organizer.planning.LayoutSnapshot,
         current: CanonicalStructuralInputs,
         folderSemantics: Map<String, CategoryIdentity?>,
+        categoryRefsByIdentity: Map<CategoryIdentity, String>,
         pageOrdinal: Map<app.lawnchair.organizer.planning.PageId, Int>,
     ): ExportItem = toExportItemCore(
         ref = ref,
         snapshot = snapshot,
         resolvedIdentities = current.resolvedIdentities,
+        categoryRefsByIdentity = categoryRefsByIdentity,
         folderSemantics = folderSemantics,
         pageOrdinal = pageOrdinal,
         label = null,
         usage = null,
     )
+}
+
+/**
+ * Issue #337 (spec 337 D-3): the validation view's category entries. Names are
+ * presentation, not authority — a renamed category reconstructs with its
+ * current display name and validation is unaffected; the entry set is the
+ * advertised ref set the validator resolves against.
+ */
+private fun categoryEntriesOf(
+    categoryRefsByIdentity: Map<CategoryIdentity, String>,
+    catalog: app.lawnchair.organizer.planning.ActiveCategoryCatalog?,
+    tier: app.lawnchair.organizer.personalization.PrivacyTier,
+): List<app.lawnchair.organizer.personalization.ExportCategory> = categoryRefsByIdentity.map { (identity, ref) ->
+    when (identity) {
+        is CategoryIdentity.BuiltIn -> app.lawnchair.organizer.personalization.ExportCategory(
+            ref = ref,
+            kind = app.lawnchair.organizer.personalization.CategoryRefKind.BUILT_IN,
+            taxonomyId = identity.id.value,
+        )
+
+        is CategoryIdentity.UserDefined -> app.lawnchair.organizer.personalization.ExportCategory(
+            ref = ref,
+            kind = app.lawnchair.organizer.personalization.CategoryRefKind.USER_DEFINED,
+            displayName = if (tier == app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED) {
+                null
+            } else {
+                catalog?.displayNameOf(identity.id)?.let {
+                    app.lawnchair.organizer.personalization.ExportCategoryName(
+                        app.lawnchair.organizer.personalization.FreeTextClass.USER_CATEGORY_NAME,
+                        it,
+                    )
+                }
+            },
+        )
+    }
 }
 
 sealed interface ReconstructionResult {

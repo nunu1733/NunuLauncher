@@ -83,6 +83,10 @@ class ExchangeInputAdapter(
                     // pre-336 bytes) while the session freshness digests
                     // consume the resolved CategoryIdentity itself.
                     resolvedIdentities = resolvedIdentitiesOf(input.signals.entries.map { it.item to it.candidate }),
+                    // Issue #337: the SAME composition cut's category catalog is
+                    // what the export advertises, so category refs resolve at
+                    // import time and stale semantics stay detectable.
+                    catalog = input.catalog,
                     userLabels = titleSource.read() + candidateLabelEntries,
                     signals = input.personalization,
                     usageKeysByItem = usageKeysOf(input),
@@ -101,6 +105,9 @@ class ExchangeInputAdapter(
                 snapshot = result.inputs.snapshot,
                 targets = result.inputs.targets,
                 resolvedIdentities = result.inputs.resolvedIdentities,
+                // Issue #337: import-time reconstruction advertises only the
+                // identities this catalog still contains.
+                catalog = result.inputs.catalog,
             ),
         )
     }

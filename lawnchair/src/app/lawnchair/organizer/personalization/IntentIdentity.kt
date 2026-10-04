@@ -47,8 +47,8 @@ object IntentIdentityCalculator {
 
 private fun ItemIntent.canonicalRow(): String = "item|$ref|${importance?.name ?: "-"}|" +
     (desiredGroupRefs?.sorted()?.joinToString(",") ?: "-") + "|" +
-    (groupSemantic?.category ?: "-") + "|" +
-    (groupSemantic?.freeText ?: "-") + "|" +
+    (groupSemantic?.categoryRef ?: "-") + "|" +
+    (groupSemantic?.proposalLabel ?: "-") + "|" +
     (pageAffinity ?: -1) + "|" + (regionAffinity?.name ?: "-") + "|" + (preserve ?: "-")
 
 /**

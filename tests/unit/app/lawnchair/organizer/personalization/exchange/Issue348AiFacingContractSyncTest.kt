@@ -105,8 +105,23 @@ class Issue348AiFacingContractSyncTest {
             items,
         )
         val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, additions)
-        val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>())
-        val inputs = ExportInputs(snapshot = snapshot, targets = targets, nowEpochMs = now)
+        // Issue #337: the fixture advertises a catalog, so the parity matrix
+        // can author both a resolvable category reference and a stale one.
+        val catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+            builtIn = app.lawnchair.organizer.planning.TaxonomyContract(
+                app.lawnchair.organizer.planning.TaxonomyVersion("tv1"),
+                listOf(app.lawnchair.organizer.planning.CategoryId("OTHER"), app.lawnchair.organizer.planning.CategoryId("TOOLS")),
+                app.lawnchair.organizer.planning.CategoryId("OTHER"),
+            ),
+            userDefined = emptyList(),
+        )
+        val structural = CanonicalStructuralInputs(
+            snapshot,
+            targets,
+            emptyMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>(),
+            catalog = catalog,
+        )
+        val inputs = ExportInputs(snapshot = snapshot, targets = targets, catalog = catalog, nowEpochMs = now)
         return ContextExportBuilder.build(inputs, PrivacyTier.EXTERNAL_REDACTED, SequentialIdAllocator()) to structural
     }
 
@@ -185,7 +200,7 @@ class Issue348AiFacingContractSyncTest {
     fun everyGlobalAndSemanticDescriptorNameIsAcceptedByTheCodec() {
         val global = "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"e\",\"globalPreference\":{\"minimizeMovement\":null}}"
         assertTrue(IntentCodec.decode(global.encodeToByteArray()) is IntentDecodeResult.Success)
-        val semantic = "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"e\",\"itemIntents\":[{\"ref\":\"r\",\"groupSemantic\":{\"category\":\"tools\"}}]}"
+        val semantic = "{\"schemaVersion\":\"$schemaVersion\",\"exportId\":\"e\",\"itemIntents\":[{\"ref\":\"r\",\"groupSemantic\":{\"proposalLabel\":\"tools\"}}]}"
         assertTrue(IntentCodec.decode(semantic.encodeToByteArray()) is IntentDecodeResult.Success)
     }
 
@@ -227,7 +242,11 @@ class Issue348AiFacingContractSyncTest {
         assertTrue(pkg.contains("At most ${entryLimit("itemIntents")} \"itemIntents\" entries"))
         assertTrue(pkg.contains("at most ${entryLimit("unresolvedRefs")} \"unresolvedRefs\" entries"))
         assertTrue(pkg.contains("at most ${IntentWireContract.field("rationale").maxLength} characters"))
-        assertTrue(pkg.contains("at most ${IntentWireContract.field("freeText").maxLength} characters"))
+        assertTrue(pkg.contains("at most ${IntentWireContract.field("proposalLabel").maxLength} characters"))
+        // Issue #337: the exactly-one-of rule and the category-ref scope are
+        // rendered from the descriptor, not hand-written.
+        assertTrue(pkg.contains("exactly one of \"categoryRef\""))
+        assertTrue(pkg.contains(IntentWireContract.policySentence("policy.categoryRefFromContext")))
         // The context-dependent bound refers the agent to the CONTEXT data.
         assertTrue(pkg.contains("gridContext"))
         assertTrue(pkg.contains("pageCount"))
@@ -324,7 +343,7 @@ class Issue348AiFacingContractSyncTest {
             "itemIntents" -> canonicalEntries(built)
             "unresolvedRefs" -> "[\"$movable\"]"
             "globalPreference" -> "{\"minimizeMovement\":false}"
-            "groupSemantic" -> "{\"freeText\":\"Tools\"}"
+            "groupSemantic" -> "{\"proposalLabel\":\"Tools\"}"
             "confidence" -> "${IntentWireContract.field("confidence").max}"
             "preserve" -> "true"
             "pageAffinity" -> "0"
@@ -401,7 +420,7 @@ class Issue348AiFacingContractSyncTest {
 
                     IntentWireContract.WireType.OBJECT -> when (field) {
                         "globalPreference" -> "{\"minimizeMovement\":true}"
-                        "groupSemantic" -> "{\"${IntentWireContract.groupSemanticAnyOf.first}\":\"tools\"}"
+                        "groupSemantic" -> "{\"${IntentWireContract.groupSemanticExactlyOneOf.first}\":\"${built.export.categories.first().ref}\"}"
                         else -> error("no object members known for $field")
                     }
 
@@ -460,17 +479,27 @@ class Issue348AiFacingContractSyncTest {
                 rejects += placed("\"${"x".repeat(s.max + 1)}\"") to contract(IntentValidationFailure.Oversize)
             }
 
-            is Semantic.AnyOf -> {
+            is Semantic.ExactlyOneOf -> {
                 // Production parity: the members are exactly the production
                 // groupSemantic wire keys — removing or duplicating fails.
                 assertEquals(
                     IntentWireContract.groupSemantic.map { it.name }.toSet(),
                     s.members.toSet(),
                 )
+                // Issue #337: exactly one — a proposal label for the
+                // proposal member, an advertised ref for the reference member.
                 for (member in s.members) {
-                    accepts += payload(entry(movable, ",\"groupSemantic\":{\"$member\":\"Tools\"}"))
+                    val value = if (member == "categoryRef") built.export.categories.first().ref else "Tools"
+                    accepts += payload(entry(movable, ",\"groupSemantic\":{\"$member\":\"$value\"}"))
                 }
+                // Neither field set, and both set, are shape violations.
                 rejects += payload(entry(movable, ",\"groupSemantic\":{}")) to contract(IntentValidationFailure.SchemaMismatch)
+                rejects += payload(
+                    entry(
+                        movable,
+                        ",\"groupSemantic\":{\"categoryRef\":\"${built.export.categories.first().ref}\",\"proposalLabel\":\"Tools\"}",
+                    ),
+                ) to contract(IntentValidationFailure.SchemaMismatch)
             }
 
             is Semantic.EntryLimit -> {
@@ -513,8 +542,21 @@ class Issue348AiFacingContractSyncTest {
 
             is Semantic.RefScope -> when (s.inKey) {
                 "itemIntents" -> rejects += payload(entry("zzz", ",\"preserve\":true")) to contract(IntentValidationFailure.UnknownRef("zzz"))
+
                 "desiredGroup" -> rejects += payload(entry(movable, ",\"desiredGroup\":[\"zzz\"]")) to contract(IntentValidationFailure.UnknownRef("zzz"))
+
+                // Issue #337: a category ref outside the advertised catalog
+                // (a name, a fabricated id, a deleted category) fails closed.
+                "categoryRef" -> {
+                    accepts += payload(
+                        entry(movable, ",\"groupSemantic\":{\"categoryRef\":\"${built.export.categories.first().ref}\"}"),
+                    )
+                    rejects += payload(entry(movable, ",\"groupSemantic\":{\"categoryRef\":\"zzz\"}")) to
+                        contract(IntentValidationFailure.UnknownCategoryRef("zzz"))
+                }
+
                 "unresolvedRefs" -> rejects += payload(entry(movable, ",\"preserve\":true"), unresolved = ",\"unresolvedRefs\":[\"zzz\"]") to contract(IntentValidationFailure.UnknownRef("zzz"))
+
                 else -> error("unexpected ref scope ${s.inKey}")
             }
 
@@ -532,7 +574,7 @@ class Issue348AiFacingContractSyncTest {
                     "pageAffinity" to "0",
                     "regionAffinity" to "\"${IntentWireContract.enumClaims.getValue("regionAffinity").first()}\"",
                     "desiredGroup" to "[\"$movable\"]",
-                    "groupSemantic" to "{\"freeText\":\"Tools\"}",
+                    "groupSemantic" to "{\"proposalLabel\":\"Tools\"}",
                     "preserve" to "true",
                 )
                 // Every forbidden field is individually rejected...
@@ -625,7 +667,13 @@ class Issue348AiFacingContractSyncTest {
         val acceptance: Map<ConstraintClaim, String> = IntentWireContract.authoringPolicyClaims.associateWith { claim ->
             when (val s = claim.semantic) {
                 is Semantic.StringsAsJsonStrings ->
-                    doc(built, entry(movable, ",\"groupSemantic\":{\"freeText\":\"Tools\"},\"preserve\":true"))
+                    doc(built, entry(movable, ",\"groupSemantic\":{\"proposalLabel\":\"Tools\"},\"preserve\":true"))
+
+                is Semantic.CategoryRefFromContextArray ->
+                    doc(
+                        built,
+                        entry(movable, ",\"groupSemantic\":{\"categoryRef\":\"${built.export.categories.first().ref}\"}"),
+                    )
 
                 is Semantic.UppercaseSpelledEnums ->
                     doc(
@@ -693,7 +741,7 @@ class Issue348AiFacingContractSyncTest {
                 entry(
                     movable,
                     ",\"importance\":\"$importanceCanonical\",\"desiredGroup\":[\"$other\"]," +
-                        "\"groupSemantic\":{\"freeText\":\"Tools\"},\"pageAffinity\":0,\"regionAffinity\":\"TOP\",\"preserve\":true",
+                        "\"groupSemantic\":{\"proposalLabel\":\"Tools\"},\"pageAffinity\":0,\"regionAffinity\":\"TOP\",\"preserve\":true",
                 ),
                 entry(other),
                 entry(fixed, ",\"preserve\":true"),

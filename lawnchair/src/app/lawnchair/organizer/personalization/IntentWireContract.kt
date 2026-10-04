@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.personalization
 
+import app.lawnchair.organizer.rules.UserDefinedCategoryNameRules
+
 /**
  * Issue #348: the wire descriptor of the #204 intent payload — the single
  * data table that the [IntentCodec] allow-lists, the AI-facing output
@@ -113,13 +115,13 @@ internal object IntentWireContract {
     )
 
     val groupSemantic: List<FieldSpec> = listOf(
-        FieldSpec("category", WireType.STRING, Location.GROUP_SEMANTIC, required = false),
+        FieldSpec("categoryRef", WireType.STRING, Location.GROUP_SEMANTIC, required = false),
         FieldSpec(
-            "freeText",
+            "proposalLabel",
             WireType.STRING,
             Location.GROUP_SEMANTIC,
             required = false,
-            maxLength = ContextExportContract.MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS,
+            maxLength = UserDefinedCategoryNameRules.MAX_CODE_POINTS,
         ),
     )
 
@@ -131,8 +133,11 @@ internal object IntentWireContract {
     val enumClaims: Map<String, List<String>> =
         allFields.filter { it.enumValues.isNotEmpty() }.associate { it.name to it.enumValues }
 
-    /** The #204 model-level any-of rule for `groupSemantic`. */
-    val groupSemanticAnyOf: Pair<String, String> = "category" to "freeText"
+    /**
+     * Issue #337: the model-level exactly-one-of rule for `groupSemantic` — an
+     * existing-category reference or a run-scoped proposal, never both.
+     */
+    val groupSemanticExactlyOneOf: Pair<String, String> = "categoryRef" to "proposalLabel"
 
     /** Typed constraint semantics — what the claim actually asserts. */
     sealed interface Semantic {
@@ -157,8 +162,8 @@ internal object IntentWireContract {
         /** String length upper bound. */
         data class LengthLimit(val max: Int) : Semantic
 
-        /** At least one of the member fields must be set. */
-        data class AnyOf(val members: List<String>) : Semantic
+        /** Exactly one of the member fields must be set. */
+        data class ExactlyOneOf(val members: List<String>) : Semantic
 
         /** Array size upper bound. */
         data class EntryLimit(val max: Int) : Semantic
@@ -191,6 +196,13 @@ internal object IntentWireContract {
 
         /** A FIXED item is authored with preserve:true, or left unjudged. */
         object FixedAuthoredAsPreserve : Semantic
+
+        /**
+         * Issue #337: an existing-category reference is authored as a `ref`
+         * advertised in the CONTEXT data's `categories` array — never a
+         * category name, and never a made-up identifier.
+         */
+        object CategoryRefFromContextArray : Semantic
     }
 
     data class ConstraintClaim(
@@ -204,7 +216,7 @@ internal object IntentWireContract {
         val semantic: Semantic,
     )
 
-    enum class ClaimKind { PRESENCE, TYPE, EXACT_VALUE, ALLOWED_VALUES, VALUE_BOUND, LENGTH_LIMIT, ANY_OF, ENTRY_LIMIT, REF_SCOPE, REF_PARTITION, MOBILITY_FORBIDDEN, POLICY }
+    enum class ClaimKind { PRESENCE, TYPE, EXACT_VALUE, ALLOWED_VALUES, VALUE_BOUND, LENGTH_LIMIT, EXACTLY_ONE, ENTRY_LIMIT, REF_SCOPE, REF_PARTITION, MOBILITY_FORBIDDEN, POLICY }
 
     private fun claim(
         id: String,
@@ -217,7 +229,7 @@ internal object IntentWireContract {
     private val schemaVersionSpec = field("schemaVersion")
     private val confidenceSpec = field("confidence")
     private val rationaleSpec = field("rationale")
-    private val freeTextSpec = field("freeText")
+    private val proposalLabelSpec = field("proposalLabel")
     private val pageAffinitySpec = field("pageAffinity")
 
     /**
@@ -274,13 +286,13 @@ internal object IntentWireContract {
             Enforcement.PRODUCTION_ENFORCED,
             Semantic.IntBounds(pageAffinitySpec.min!!, max = null),
         ),
-        // Any-of (model rule).
+        // Exactly-one-of (model rule).
         claim(
-            "groupSemantic.anyOf",
+            "groupSemantic.exactlyOneOf",
             field("groupSemantic"),
-            ClaimKind.ANY_OF,
+            ClaimKind.EXACTLY_ONE,
             Enforcement.PRODUCTION_ENFORCED,
-            Semantic.AnyOf(listOf(groupSemanticAnyOf.first, groupSemanticAnyOf.second)),
+            Semantic.ExactlyOneOf(listOf(groupSemanticExactlyOneOf.first, groupSemanticExactlyOneOf.second)),
         ),
         // Mobility rules (validate).
         claim(
@@ -310,6 +322,13 @@ internal object IntentWireContract {
         // Ref scope and partition (validate).
         claim("refScope.itemIntents", field("ref"), ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED, Semantic.RefScope("itemIntents")),
         claim("refScope.desiredGroup", field("desiredGroup"), ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED, Semantic.RefScope("desiredGroup")),
+        claim(
+            "refScope.groupSemanticCategoryRef",
+            field("categoryRef"),
+            ClaimKind.REF_SCOPE,
+            Enforcement.PRODUCTION_ENFORCED,
+            Semantic.RefScope("categoryRef"),
+        ),
         claim("refScope.unresolvedRefs", field("unresolvedRefs"), ClaimKind.REF_SCOPE, Enforcement.PRODUCTION_ENFORCED, Semantic.RefScope("unresolvedRefs")),
         claim("refPartition.duplicate", field("ref"), ClaimKind.REF_PARTITION, Enforcement.PRODUCTION_ENFORCED, Semantic.RefPartition(duplicate = true)),
         claim("refPartition.disjoint", field("ref"), ClaimKind.REF_PARTITION, Enforcement.PRODUCTION_ENFORCED, Semantic.RefPartition(duplicate = false)),
@@ -322,11 +341,11 @@ internal object IntentWireContract {
             Semantic.LengthLimit(rationaleSpec.maxLength!!),
         ),
         claim(
-            "groupSemantic.freeText.lengthLimit",
-            freeTextSpec,
+            "groupSemantic.proposalLabel.lengthLimit",
+            proposalLabelSpec,
             ClaimKind.LENGTH_LIMIT,
             Enforcement.PRODUCTION_ENFORCED,
-            Semantic.LengthLimit(freeTextSpec.maxLength!!),
+            Semantic.LengthLimit(proposalLabelSpec.maxLength!!),
         ),
         claim(
             "itemIntents.entryLimit",
@@ -380,6 +399,13 @@ internal object IntentWireContract {
             Enforcement.AUTHORING_POLICY,
             Semantic.FixedAuthoredAsPreserve,
         ),
+        claim(
+            "policy.categoryRefFromContext",
+            field("categoryRef"),
+            ClaimKind.POLICY,
+            Enforcement.AUTHORING_POLICY,
+            Semantic.CategoryRefFromContextArray,
+        ),
     )
 
     val productionClaims: List<ConstraintClaim> =
@@ -393,10 +419,18 @@ internal object IntentWireContract {
     /** The exact sentence a policy claim contributes to the instruction. */
     fun policySentence(id: String): String = when (val s = claim(id).semantic) {
         is Semantic.StringsAsJsonStrings -> "Write string values as JSON strings"
+
         is Semantic.UppercaseSpelledEnums -> "UPPERCASE exactly as listed"
+
         is Semantic.StringArrayOfStrings -> "array of strings"
+
         is Semantic.NonEmptyArray -> "if present, at least ${s.minElements} element(s)"
+
         is Semantic.FixedAuthoredAsPreserve -> "author only \"preserve\": true"
+
+        is Semantic.CategoryRefFromContextArray ->
+            "set \"categoryRef\" only to a \"ref\" from the CONTEXT data \"categories\" array"
+
         else -> error("$id is not a policy claim")
     }
 

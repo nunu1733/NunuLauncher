@@ -68,14 +68,14 @@ class ContextExportCodecTest {
         assertTrue(encoded is ContextExportResult.Success)
         val bytes = (encoded as ContextExportResult.Success).bytes
         val text = bytes.decodeToString()
-        assertTrue(text.contains("\"schemaVersion\":\"personalization-context-v3\""))
+        assertTrue(text.contains("\"schemaVersion\":\"${ContextExportContract.SCHEMA_VERSION}\""))
         assertTrue(text.contains("\"exportId\":\"${export.exportId}\""))
 
         val decoded = ContextExportCodec.decode(bytes)
         assertTrue(decoded is ContextExportResult.Success)
-        assertEquals(export, export)
-        // Symmetric decode reproduces the same export content.
-        val roundTripped = ContextExportCodec.decode(bytes) as ContextExportResult.Success
+        // Decoding is a validation pass over the payload; the codec's success
+        // value is the payload itself, so equality here re-checks the bytes.
+        assertEquals(bytes.decodeToString(), (decoded as ContextExportResult.Success).bytes.decodeToString())
         // Decoding only validates; the encoded payload is the contract.
         assertTrue(ContextExportCodec.decode((ContextExportCodec.encode(export) as ContextExportResult.Success).bytes) is ContextExportResult.Success)
         assertEquals(export.items.size, 2)
@@ -91,27 +91,39 @@ class ContextExportCodecTest {
 
     @Test
     fun oversizeExportsAreFailClosedAtEncodeTime() {
-        // Build an export whose serialized form exceeds 256 KiB: long category
-        // strings are the lever within the item-count cap.
-        val longCategory = "C".repeat(600)
-        val snapshot = LayoutSnapshot(
-            app.lawnchair.organizer.planning.RevisionId("rev"),
-            device(),
-            listOf(Page(PageId("p0"), PageOrder(0))),
-            (0 until 512).map { app("i$it") },
-        )
-        val targets = TargetSet(snapshot.items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
-        val built = ContextExportBuilder.build(
-            ExportInputs(
-                snapshot = snapshot,
-                targets = targets,
-                resolvedIdentities = snapshot.items.associate { it.id to app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(app.lawnchair.organizer.planning.CategoryId(longCategory)) },
-                nowEpochMs = 1L,
+        // The codec's document-size bound is independent of which field carries
+        // the bytes (Issue #337 moved the category projection behind refs). A
+        // synthetic model with maximal item refs is still a valid v4 document
+        // shape and overshoots the 256 KiB budget.
+        val longRef = "R".repeat(600)
+        val items = (0 until ContextExportContract.MAX_EXPORT_ITEMS).map { index ->
+            ExportItem(
+                ref = "$longRef$index",
+                role = ExportItemRole.APP_OR_SHORTCUT,
+                categoryRef = null,
+                folderCategoryRef = null,
+                label = null,
+                pageAffinity = null,
+                regionAffinity = null,
+                mobility = Mobility.MOVABLE,
+                fixReason = null,
+                usage = null,
+            )
+        }
+        val export = PersonalizationContextExportV1(
+            exportId = "e",
+            tier = PrivacyTier.LOCAL_FULL,
+            grid = ExportGridContext(4, 6, 1),
+            items = items,
+            categories = emptyList(),
+            preservedConstraints = PreservedConstraints(emptyList(), emptyMap()),
+            capabilities = ExportCapabilities(
+                ContextExportContract.INTENT_SCHEMA_VERSION,
+                ContextExportContract.FIXED_CAPABILITIES,
             ),
-            PrivacyTier.LOCAL_FULL,
-            SequentialIdAllocator(),
+            usageSignals = null,
         )
-        val result = ContextExportCodec.encode(built.export)
+        val result = ContextExportCodec.encode(export)
         assertTrue(result is ContextExportResult.Failure)
         assertEquals(ExportEncodeProblem.Oversize, (result as ContextExportResult.Failure).problem)
     }

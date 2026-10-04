@@ -14,7 +14,7 @@ updated: 2026-09-17
 
 # User-defined categories as first-class Organizer taxonomy
 
-> **Status:** Implemented (merged to `main` as PR #341, merge commit `45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1`; Issue #336 closed). Originally accepted on Issue [#336][1] after ChatGPT review (initial review [changes requested][r1], addressed at `8024653378`; re-review [changes requested][r2] on the exchange projection, addressed at `0cff39b7a1`; re-review 2 **Approved** with no blocking/required findings — [verdict][r3]). This specification and its companion `plan.md` are the binding contract for Phase2 implementation. Production behavior must remain within the stated scope and stop conditions.
+> **Status:** Implemented (merged to `main` as PR #341, merge commit `45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1`; Issue #336 closed)。なお [spec 337](../337-exchange-category-group-proposals/spec.md) (accepted) がexchange投影規律 (「Exchange export and #331 binding projection」節およびAC-14) をv4契約として改訂した — 本specのcategory identity / store / authoring契約は不変。 Originally accepted on Issue [#336][1] after ChatGPT review (initial review [changes requested][r1], addressed at `8024653378`; re-review [changes requested][r2] on the exchange projection, addressed at `0cff39b7a1`; re-review 2 **Approved** with no blocking/required findings — [verdict][r3]). This specification and its companion `plan.md` are the binding contract for Phase2 implementation. Production behavior must remain within the stated scope and stop conditions.
 
 ## Problem and outcome
 
@@ -94,7 +94,7 @@ Deleted assignments are never silently remapped to the fallback category or to a
 
 User-defined category identity never enters the external exchange surface: neither the raw `UserCategoryId` nor a display name may appear in an export document, a session record field, or an intent payload. Two distinct layers keep that promise, and collapsing them is explicitly rejected:
 
-- **Export presentation surface**: a candidate whose resolved classification is a user-defined category is exported with **no category** (the existing absent-category projection) in `ExportItem.category` / `groupSemantic` — never an ID or a name. Built-in classifications export exactly as today.
+- **Export presentation surface** (改訂: [spec 337](../337-exchange-category-group-proposals/spec.md) D-1/D-3、v4): すべてのcategory露出はexport文書内で **advertised category ref** として投影される。`PersonalizationContextExportV1.categories` がactive catalog (built-in + user-defined) をexport-scoped ref・`kind`・built-in `taxonomyId`・tier制御付き user-defined `displayName` としてadvertiseし、item-levelは `ExportItem.categoryRef` / `folderCategoryRef` のrefのみを持つ。raw `UserCategoryId` は文書にもitem levelにも現れず、display nameはadvertised entryの表示名 (free-text class、`EXTERNAL_REDACTED` では不在) としてのみ現れる。stable IDは引き続きsession (app-private・backup対象外) のref→identity mappingにのみ存在する。
 - **Session-local freshness identity (internal)**: the #331 freshness identity keeps digesting the resolved `CategoryIdentity` itself — the `CandidateScopeIdentity` canonical row (and the placed-item freshness projections owned by `SourceContextIdentity`) use the identity's kind discriminator + stable ID as canonical digest input. A raw ID may flow only into the one-way session digest; it is never persisted as an export/session *field*. Redacting the export field to "absent" therefore does **not** collapse the freshness identity: a reassignment from user-defined category A to user-defined category B (or across the built-in/user-defined boundary) is detected exactly as a built-in resolved-category change is today, through the existing typed scope-mismatch/stale path.
 
 The resulting stale semantics are exact:
@@ -102,7 +102,7 @@ The resulting stale semantics are exact:
 - **Never stale**: creating a category, renaming one (stable ID unchanged), or deleting an **unassigned** category changes no candidate's/item's resolved `CategoryIdentity` and cannot invalidate an active exchange session.
 - **Typed mismatch/stale as today**: reassigning a candidate or item across any categories, or deleting an **assigned** category (whose protocol removes its overrides, letting classification fall through to S2–S6 built-in resolution), changes resolved identities and fails through the existing typed scope-mismatch path with its specified replan/remedy.
 
-#204 `PersonalizedIntentProjection.groupSemantic` keeps addressing built-in categories only (built-in `CategoryId`-typed); intents cannot reference, assign, or create user-defined categories.
+#204 `PersonalizedIntentProjection` はv4 ([spec 337](../337-exchange-category-group-proposals/spec.md) D-4/D-5) 以降、advertiseされたcategory ref (built-in / user-defined の双方) をstable identityへ解決してplannerへ渡す。intentはユーザー定義カテゴリを **参照** できるが、作成・rename・deleteはできない (永続化はユーザーの明示操作による #336 authoring path のみ)。run-scopedな新group提案 (`proposalLabel`) は永続categoryではなく、catalogを変更しない。
 
 ## Planner and strategy integration
 
@@ -146,7 +146,7 @@ Accessibility bar (carried from #99 AC-10): TalkBack labels/roles, focus restora
 - [ ] **AC-11** — Built-in-only runs keep deterministic, byte-identical plans; mixed-catalog determinism/idempotence/property coverage exists; backup exclusion is verified; downgrade to a pre-336 binary observes its existing fail-closed override outcome (`Unreadable`/`OVERRIDE_UNREADABLE` on the current mainline) without stale or empty S1 consumption and without layout changes.
 - [ ] **AC-12** — Focused unit, composer-integration, UI, and connected/device evidence covers create/rename/delete/assign/remove, migration, cut instability, corruption, conflict, title binding, and no-layout-mutation.
 - [ ] **AC-13** — TalkBack, keyboard/DPAD, Switch Access, non-color state, focus restoration, and 200% font scale are verified for authoring and assignment flows; no raw IDs in any user UI.
-- [ ] **AC-14** — Privacy: diagnostics/journal/export never contain user-defined IDs, display names, or entry contents; exchange exports project user-defined classifications as absent categories while the internal session freshness identity still digests the stable `CategoryIdentity` (detecting reassignment/deletion-driven changes); the store is excluded from backup.
+- [ ] **AC-14** — Privacy: diagnostics/journal/export never contain user-defined IDs, display names, or entry contents; exchange exports advertise the active catalog as export-scoped refs and project item classifications as those refs (v4, [spec 337](../337-exchange-category-group-proposals/spec.md) D-1/D-3: no raw ID and no name at item level, name only at the advertised entry and only when the tier admits the free-text class), while the internal session freshness identity still digests the stable `CategoryIdentity` (detecting reassignment/deletion-driven changes); the store is excluded from backup.
 
 ## Explicit non-goals
 

@@ -260,7 +260,7 @@ internal object PlanningPlacement {
                     FolderCandidate(
                         candidate.id,
                         candidate.profile,
-                        classification.decisions[candidate.id]?.category ?: catalog.fallback,
+                        FormationKey.Existing(classification.decisions[candidate.id]?.category ?: catalog.fallback),
                     )
                 },
                 fallbackCategory = catalog.fallback,
@@ -354,7 +354,7 @@ internal object PlanningPlacement {
                 newFolders += NewFolder(
                     ordinal = nf.ordinal,
                     profile = nf.profile,
-                    naming = folderNamingFor(nf.category),
+                    naming = folderNamingFor(nf.key),
                     workspacePlacement = wsTarget,
                     members = nf.members,
                 )

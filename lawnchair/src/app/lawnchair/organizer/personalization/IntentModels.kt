@@ -36,17 +36,32 @@ enum class Importance {
 }
 
 /**
- * Proposed group/folder semantic: an existing taxonomy category id or bounded
- * free text. Free text is data-as-data; it never becomes a planner rule.
+ * Issue #337 (v4, spec 337 D-4): the group semantic of one item — either an
+ * existing-category reference or a run-scoped proposal label, **exactly one**
+ * of the two.
+ *
+ * - [categoryRef] — an export-scoped ref advertised in the envelope
+ *   `categories` projection. It names an existing (built-in or user-defined)
+ *   category and is resolved by identity through the export session, never by
+ *   a display name.
+ * - [proposalLabel] — a run-scoped proposal: a normalized label (the #336
+ *   category-name rule) that becomes the item's formation key for this run
+ *   only. It is never interpreted as a category identity and nothing is
+ *   persisted.
+ *
+ * The v3 any-of allowed both fields at once, which left the grouping authority
+ * undecided; v4 accepts exactly one.
  */
 data class GroupSemantic(
-    val category: String?,
-    val freeText: String?,
+    val categoryRef: String?,
+    val proposalLabel: String?,
 ) {
     init {
-        require(category != null || freeText != null)
-        require(category == null || category.isNotEmpty())
-        require(freeText == null || freeText.length <= ContextExportContract.MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS)
+        require((categoryRef == null) != (proposalLabel == null)) {
+            "groupSemantic must set exactly one of categoryRef / proposalLabel"
+        }
+        require(categoryRef == null || categoryRef.isNotEmpty())
+        require(proposalLabel == null || proposalLabel.isNotEmpty())
     }
 }
 
@@ -60,7 +75,7 @@ data class ItemIntent(
     val importance: Importance? = null,
     /** Desired group members within the same export (other `ref`s). */
     val desiredGroupRefs: List<String>? = null,
-    /** Proposed group/folder semantic for the desired group. */
+    /** Proposed group/folder semantic for the desired group (see [GroupSemantic]). */
     val groupSemantic: GroupSemantic? = null,
     /** Page affinity at the export's abstraction level (page ordinal). */
     val pageAffinity: Int? = null,

@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.personalization
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
@@ -75,6 +76,16 @@ data class CanonicalStructuralInputs(
      * export presentation fields.
      */
     val resolvedIdentities: Map<ItemId, CategoryIdentity?>,
+    /**
+     * Issue #337 (v4): the active category catalog of the SAME composition cut.
+     * Deliberately NOT a digest input (the digest stays the structural
+     * projection of [snapshot]/[targets]/[resolvedIdentities] only); it is
+     * carried so import-time reconstruction can advertise exactly the
+     * categories that still exist. A null catalog means "no catalog
+     * projection available": the reconstructed view then advertises no
+     * category, so every category ref fails closed (`UNKNOWN_CATEGORY_REF`).
+     */
+    val catalog: ActiveCategoryCatalog? = null,
 )
 
 private fun reservedRegionOrder(

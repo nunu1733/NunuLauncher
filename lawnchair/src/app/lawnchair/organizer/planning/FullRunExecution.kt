@@ -586,7 +586,9 @@ internal object FullRunExecution {
                         FolderCandidate(
                             item.id,
                             item.profile,
-                            context.classification.decisions[item.id]?.category ?: catalog.fallback,
+                            FormationKey.Existing(
+                                context.classification.decisions[item.id]?.category ?: catalog.fallback,
+                            ),
                         )
                     },
                 fallbackCategory = catalog.fallback,
@@ -656,7 +658,7 @@ internal object FullRunExecution {
             outputNewFolders += NewFolder(
                 ordinal = group.ordinal,
                 profile = group.profile,
-                naming = folderNamingFor(group.category),
+                naming = folderNamingFor(group.key),
                 workspacePlacement = PlacementTarget.WorkspaceTarget(pageRef, cell, GridSpan(1, 1)),
                 members = group.members,
             )
@@ -728,16 +730,25 @@ internal object FullRunExecution {
                 preferenceByItem.orEmpty().values.any { it.preserve == true }
             )
 
-        // Issue #336: the effective category is an identity. An accepted
-        // intent's `groupSemantic` stays built-in-only (#204), so the intent
-        // branch keeps producing built-in identities; user-defined identities
-        // flow through the classification decision unchanged.
+        // Issue #337 (spec 337 D-6): the accepted intent's `groupSemantic` is
+        // the item's formation key — an existing-category reference resolves to
+        // its identity, a run-scoped proposal label becomes a `Proposed` key
+        // (never a category identity). `effectiveCategory` stays the ordering
+        // key: it consumes existing-category identities exactly as before and
+        // deliberately IGNORES proposals, so a proposal never enters the
+        // category ordering (matching v3, where `freeText` had no ordering
+        // effect either).
         fun effectiveCategory(itemId: ItemId): CategoryIdentity {
-            val intentCategory = preferenceByItem?.get(itemId)?.groupSemantic?.category
-            if (intentCategory != null && context.input.taxonomy.allowedCategories.any { it.value == intentCategory }) {
-                return CategoryIdentity.BuiltIn(CategoryId(intentCategory))
-            }
+            val reference = preferenceByItem?.get(itemId)?.groupCategory
+            if (reference != null) return reference
             return context.classification.decisions[itemId]?.category ?: catalog.fallback
+        }
+
+        fun formationKey(itemId: ItemId): FormationKey {
+            val preference = preferenceByItem?.get(itemId)
+            preference?.groupCategory?.let { return FormationKey.Existing(it) }
+            preference?.groupProposalLabel?.let { return FormationKey.Proposed(it) }
+            return FormationKey.Existing(context.classification.decisions[itemId]?.category ?: catalog.fallback)
         }
 
         data class FormedFolder(
@@ -754,7 +765,7 @@ internal object FullRunExecution {
                     FolderCandidate(
                         item.id,
                         item.profile,
-                        effectiveCategory(item.id),
+                        formationKey(item.id),
                     )
                 },
                 fallbackCategory = catalog.fallback,
@@ -768,7 +779,7 @@ internal object FullRunExecution {
             val preferredPage = group.members
                 .map { id -> (itemById.getValue(id).placement as CapturedPlacement.Workspace).page }
                 .minWith(pageRefComparator(context.pageOrderMap))
-            FormedFolder(group.ordinal, group.profile, folderNamingFor(group.category), group.members, preferredPage)
+            FormedFolder(group.ordinal, group.profile, folderNamingFor(group.key), group.members, preferredPage)
         }
         val folderMemberIds = folderGroups.flatMapTo(mutableSetOf()) { it.members }
 

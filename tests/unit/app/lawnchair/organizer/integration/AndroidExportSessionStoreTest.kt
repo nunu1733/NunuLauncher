@@ -16,6 +16,7 @@ import app.lawnchair.organizer.personalization.PersonalizedIntentV1
 import app.lawnchair.organizer.personalization.PreservedConstraints
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.SignalProvenance
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ItemId
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -37,7 +38,22 @@ class AndroidExportSessionStoreTest {
         signalProvenance = SignalProvenance("personalization-signals-v1", "e".repeat(64)),
         createdAtEpochMs = 1_000L,
         expiresAtEpochMs = 1_000L + ContextExportContract.SESSION_TTL_MS,
+        // Issue #337: the advertised category ref → identity mapping (the only
+        // resolution surface; the document itself carries no stable ID).
+        categoryRefs = mapOf(
+            "cat-1" to app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(
+                app.lawnchair.organizer.planning.CategoryId("NEWS"),
+            ),
+            "cat-2" to app.lawnchair.organizer.planning.CategoryIdentity.UserDefined(
+                app.lawnchair.organizer.planning.UserCategoryId(USER_CATEGORY_ID),
+            ),
+        ),
     )
+
+    private companion object {
+        /** Canonical lowercase UUID v4 fixture; a session-only identity. */
+        const val USER_CATEGORY_ID = "3f2b8c4e-1234-4abc-9de0-1234567890ab"
+    }
 
     private fun store(directory: File, name: String): AndroidExportSessionStore {
         directory.mkdirs()
@@ -112,8 +128,8 @@ class AndroidExportSessionStoreTest {
             ExportItem(
                 ref = ref,
                 role = ExportItemRole.APP_OR_SHORTCUT,
-                category = null,
-                groupSemantic = null,
+                categoryRef = null,
+                folderCategoryRef = null,
                 label = null,
                 pageAffinity = null,
                 regionAffinity = null,
@@ -122,6 +138,7 @@ class AndroidExportSessionStoreTest {
                 usage = null,
             )
         },
+        categories = emptyList(),
         preservedConstraints = PreservedConstraints(emptyList(), emptyMap()),
         capabilities = ExportCapabilities(ContextExportContract.INTENT_SCHEMA_VERSION, ContextExportContract.FIXED_CAPABILITIES),
         usageSignals = null,
@@ -219,5 +236,88 @@ class AndroidExportSessionStoreTest {
         directory.delete()
         directory.mkdirs()
         return directory
+    }
+
+    /**
+     * Issue #337 (spec 337 D-1/D-5, AC-11): the ref → identity mapping is
+     * durable with the session (process death must not break category
+     * resolution), and a record written before v4 (no mapping) still decodes
+     * with an empty mapping — its refs fail closed rather than resolving.
+     */
+    @Test
+    fun categoryRefMappingIsDurableAndLegacyRecordsFailClosed() {
+        val directory = tempDirectory()
+        try {
+            store(directory, "s1").save(session)
+            val reloaded = store(directory, "s1").load("export-1")!!
+            assertEquals(session.categoryRefs, reloaded.categoryRefs)
+            assertEquals("NEWS", (reloaded.categoryRefs.getValue("cat-1") as CategoryIdentity.BuiltIn).id.value)
+
+            // A record without the additive field (pre-v4 writer) decodes with
+            // an empty mapping: nothing resolves, the import fails closed.
+            val legacy = File(directory, "s2")
+            legacy.writeText(
+                """{"schemaVersion":2,"exportId":"export-2",""" +
+                    """"itemRefs":[{"ref":"ref-a","itemId":"item-1"}],"tier":"EXTERNAL_REDACTED",""" +
+                    """"sourceContextDigest":"${"d".repeat(64)}","signalProvenance":null,""" +
+                    """"createdAtEpochMs":1000,"expiresAtEpochMs":${1_000L + ContextExportContract.SESSION_TTL_MS},""" +
+                    """"scopeCandidates":[],"scopeCandidateDigest":""}""",
+            )
+            val legacySession = store(directory, "s2").load("export-2")!!
+            assertTrue(legacySession.categoryRefs.isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    /**
+     * Issue #337 (spec 337 D-8, AC-11): the record schema is strict — a
+     * category entry with an unknown kind (corrupted/partially rewritten file)
+     * degrades to "no session" instead of being accepted as user-defined.
+     */
+    @Test
+    fun unknownCategoryRefKindInTheRecordFailsClosed() {
+        val directory = tempDirectory()
+        try {
+            val file = File(directory, "s1")
+            directory.mkdirs()
+            file.writeText(
+                """{"schemaVersion":2,"exportId":"export-1",""" +
+                    """"itemRefs":[{"ref":"ref-a","itemId":"item-1"}],"tier":"EXTERNAL_REDACTED",""" +
+                    """"sourceContextDigest":"${"d".repeat(64)}","signalProvenance":null,""" +
+                    """"createdAtEpochMs":1000,"expiresAtEpochMs":${1_000L + ContextExportContract.SESSION_TTL_MS},""" +
+                    """"scopeCandidates":[],"scopeCandidateDigest":"",""" +
+                    """"categoryRefs":[{"ref":"cat-1","kind":"FUTURE_KIND","id":"$USER_CATEGORY_ID"}]}""",
+            )
+            assertNull("an unknown ref kind must not load", store(directory, "s1").load("export-1"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    /**
+     * Issue #337 (AC-11 reverse direction): a v4 record read by an older
+     * strict reader fails closed on the unknown key. Pinned here by removing
+     * the field from a written record and confirming the strict decoder
+     * rejects a record that carries an unexpected property instead of
+     * silently ignoring it.
+     */
+    @Test
+    fun recordsCarryingUnknownPropertiesAreRejected() {
+        val directory = tempDirectory()
+        try {
+            val file = File(directory, "s1")
+            directory.mkdirs()
+            file.writeText(
+                """{"schemaVersion":2,"exportId":"export-1",""" +
+                    """"itemRefs":[],"tier":"EXTERNAL_REDACTED",""" +
+                    """"sourceContextDigest":"${"d".repeat(64)}","signalProvenance":null,""" +
+                    """"createdAtEpochMs":1000,"expiresAtEpochMs":${1_000L + ContextExportContract.SESSION_TTL_MS},""" +
+                    """"scopeCandidates":[],"scopeCandidateDigest":"","futureField":1}""",
+            )
+            assertNull("unknown properties are not ignored", store(directory, "s1").load("export-1"))
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 }

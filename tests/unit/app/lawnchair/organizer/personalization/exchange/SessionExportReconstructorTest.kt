@@ -100,7 +100,8 @@ class SessionExportReconstructorTest {
             assertEquals(original.fixReason, item.fixReason)
             assertEquals(original.pageAffinity, item.pageAffinity)
             assertEquals(original.regionAffinity, item.regionAffinity)
-            assertEquals(original.category, item.category)
+            assertEquals(original.categoryRef, item.categoryRef)
+            assertEquals(original.folderCategoryRef, item.folderCategoryRef)
         }
         // Labels/usage live only in the original document.
         assertTrue(view.items.all { it.label == null && it.usage == null })

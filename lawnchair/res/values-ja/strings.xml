@@ -391,7 +391,7 @@
     <string name="exchange_entry_import">回答を取り込む</string>
     <string name="exchange_privacy_title">外部送信のプライバシー</string>
     <string name="exchange_privacy_redacted">アプリ名を含めない (既定)</string>
-    <string name="exchange_privacy_labels">アプリ名を含める</string>
+    <string name="exchange_privacy_labels">アプリ名とカテゴリ名を含める</string>
     <string name="exchange_privacy_labels_warning">依頼文にアプリ名・フォルダ名が含まれます。</string>
     <string name="exchange_replacement_notice">未完了の交換があります。新規作成すると無効になります。</string>
     <string name="exchange_replacement_title">既存の交換を置き換えますか?</string>
@@ -403,8 +403,8 @@
     <string name="exchange_cancel">キャンセル</string>
     <string name="exchange_close">閉じる</string>
     <string name="exchange_disclosure_title">送信前の確認</string>
-    <string name="exchange_disclosure_redacted">この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。</string>
-    <string name="exchange_disclosure_labels_included">この依頼文にはアプリ名・フォルダ名が含まれます。</string>
+    <string name="exchange_disclosure_redacted">この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。カテゴリの一覧 (ユーザー定義を含む) は含まれますが、その名前は含まれません。</string>
+    <string name="exchange_disclosure_labels_included">この依頼文にはアプリ名・フォルダ名と、ユーザー定義カテゴリの名前が含まれます。</string>
     <string name="exchange_disclosure_hint">この内容を任意のAIアプリへ送信します。送信方法を選ぶまで何も送信されません。</string>
     <string name="exchange_copy">コピー</string>
     <string name="exchange_share">共有…</string>
@@ -459,6 +459,7 @@
     <string name="exchange_failure_mobility_contradiction">整理案が移動できない項目を動かそうとしています。</string>
     <string name="exchange_failure_capability_unsupported">整理案が未対応の機能を使用しています。</string>
     <string name="exchange_failure_scope_mismatch">選択したアプリが依頼内容と一致していません。同じアプリを選び直すか、依頼を再作成してください。</string>
+    <string name="exchange_failure_unknown_category_ref">回答が参照したカテゴリは現在利用できません。依頼を再作成して、もう一度回答を得てください。</string>
     <string name="exchange_scoped_entry_title">選択したアプリをAIの依頼に含める</string>
     <string name="exchange_scoped_entry_subtitle">現在のホームと選択したアプリをまとめて依頼文に含め、AIにすべての対象を判断してもらえます。</string>
     <string name="exchange_scoped_entry_open">依頼文を作成</string>
@@ -496,6 +497,12 @@
     </plurals>
     <plurals name="exchange_import_summary_priority">
         <item quantity="other">優先度の指定: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_existing_category">
+        <item quantity="other">既存カテゴリを参照する項目: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_proposed_group">
+        <item quantity="other">今回だけの新しいグループ提案: %1$d件 (保存されません)</item>
     </plurals>
     <plurals name="exchange_import_summary_group">
         <item quantity="other">グループの希望: %1$d件</item>

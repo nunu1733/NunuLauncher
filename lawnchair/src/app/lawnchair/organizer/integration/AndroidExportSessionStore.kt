@@ -9,9 +9,12 @@ import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.RandomIdAllocator
 import app.lawnchair.organizer.personalization.SignalProvenance
 import app.lawnchair.organizer.planning.CandidateTarget
+import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.UserCategoryId
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -67,6 +70,16 @@ class AndroidExportSessionStore : ExportSessionStore {
                 .map { CandidateScopeRecord(component = it.component.value, profile = it.profile.value) }
                 .sortedWith(compareBy({ it.component }, { it.profile })),
             scopeCandidateDigest = session.scopeCandidateDigest,
+            // Issue #337: the ref → identity mapping (app-private; the
+            // document itself carries no stable identifier).
+            categoryRefs = session.categoryRefs.entries
+                .map { (ref, identity) ->
+                    when (identity) {
+                        is CategoryIdentity.BuiltIn -> CategoryRefRecord(ref, "BUILT_IN", identity.id.value)
+                        is CategoryIdentity.UserDefined -> CategoryRefRecord(ref, "USER_DEFINED", identity.id.value)
+                    }
+                }
+                .sortedBy { it.ref },
         )
         val bytes = json.encodeToString(SessionRecord.serializer(), record).encodeToByteArray()
         val out = try {
@@ -134,6 +147,16 @@ class AndroidExportSessionStore : ExportSessionStore {
                     CandidateTarget.AppKey(ComponentKey(it.component), ProfileId(it.profile))
                 },
                 scopeCandidateDigest = record.scopeCandidateDigest.ifEmpty { CandidateScopeIdentity.EMPTY_DIGEST },
+                categoryRefs = record.categoryRefs.associate { entry ->
+                    // An unknown kind is a corrupted record, not a category:
+                    // the surrounding runCatching degrades it to "no session"
+                    // (fail-closed) instead of accepting it as user-defined.
+                    entry.ref to when (entry.kind) {
+                        "BUILT_IN" -> CategoryIdentity.BuiltIn(CategoryId(entry.id))
+                        "USER_DEFINED" -> CategoryIdentity.UserDefined(UserCategoryId(entry.id))
+                        else -> error("unknown category ref kind")
+                    }
+                },
             )
         }.getOrNull()
     }
@@ -150,6 +173,7 @@ class AndroidExportSessionStore : ExportSessionStore {
         @SerialName("expiresAtEpochMs") val expiresAtEpochMs: Long,
         @SerialName("scopeCandidates") val scopeCandidates: List<CandidateScopeRecord> = emptyList(),
         @SerialName("scopeCandidateDigest") val scopeCandidateDigest: String = "",
+        @SerialName("categoryRefs") val categoryRefs: List<CategoryRefRecord> = emptyList(),
     ) {
         init {
             require(exportId.isNotEmpty())
@@ -162,6 +186,26 @@ class AndroidExportSessionStore : ExportSessionStore {
         @SerialName("component") val component: String,
         @SerialName("profile") val profile: String,
     )
+
+    /**
+     * Issue #337 (v4, spec 337 D-1/D-5): the advertised category ref → stable
+     * identity mapping. Additive with an empty default, so a record written
+     * before v4 still decodes (its refs cannot resolve and fail closed with
+     * `UNKNOWN_CATEGORY_REF`); a v4 record read by an older build fails to
+     * decode on the unknown key, which is the pre-existing "no session"
+     * fail-closed path. Identity is kind-discriminated, never a display name.
+     */
+    @Serializable
+    private data class CategoryRefRecord(
+        @SerialName("ref") val ref: String,
+        @SerialName("kind") val kind: String,
+        @SerialName("id") val id: String,
+    ) {
+        init {
+            require(ref.isNotEmpty())
+            require(id.isNotEmpty())
+        }
+    }
 
     @Serializable
     private data class RefEntry(val ref: String, val itemId: String) {
