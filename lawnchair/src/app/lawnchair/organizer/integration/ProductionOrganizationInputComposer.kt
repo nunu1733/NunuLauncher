@@ -12,8 +12,9 @@ import app.lawnchair.organizer.rules.CategoryOverrideStoreModule
 class ProductionOrganizationInputComposer(
     appContext: Context,
     layoutWriter: LayoutWriterPort,
+    captureFailureObserver: CaptureFailureObserver = NoopCaptureFailureObserver,
 ) : OrganizationInputComposer by DefaultOrganizationInputComposer(
-    captureSource = LayoutWriterCanonicalCaptureSource(layoutWriter),
+    captureSource = LayoutWriterCanonicalCaptureSource(layoutWriter, captureFailureObserver),
     bundleSource = BuiltInOrganizerPolicyBundleSource,
     overrides = CategoryOverrideStoreModule.source(appContext),
     platformEvidence = AndroidClassificationSignalSnapshotSource(appContext),

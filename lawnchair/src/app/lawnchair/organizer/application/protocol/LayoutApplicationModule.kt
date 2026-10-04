@@ -20,8 +20,11 @@ import app.lawnchair.organizer.diagnostics.journal.JournalSequence
 import app.lawnchair.organizer.diagnostics.journal.JournalStore
 import app.lawnchair.organizer.diagnostics.logger.DiagnosticsLogger
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.integration.CaptureFailureObserver
 import app.lawnchair.organizer.integration.CompositionDiagnostic
+import app.lawnchair.organizer.integration.InputCompositionCode
 import app.lawnchair.organizer.integration.InputReadinessReason
+import app.lawnchair.organizer.integration.NoopCaptureFailureObserver
 import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.integration.ProductionOrganizationInputComposer
 import app.lawnchair.organizer.planning.OrganizationInput
@@ -48,6 +51,7 @@ internal class LayoutApplicationModule<S>(
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector = FaultInjector.NOOP,
     diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
+    private val captureFailureObserver: CaptureFailureObserver = NoopCaptureFailureObserver,
 ) where S : RecoveryStorePort, S : RecoveryStoreReconciliationPort {
 
     private val mutex: RunMutex = RunMutex()
@@ -114,12 +118,12 @@ internal class LayoutApplicationModule<S>(
             OrganizationInputComposition.NotReady(
                 reason = if (failed) InputReadinessReason.ReconciliationFailed else InputReadinessReason.ReconciliationPending,
                 diagnostic = CompositionDiagnostic(
-                    code = if (failed) "reconciliation-failed" else "reconciliation-pending",
+                    code = if (failed) InputCompositionCode.RECONCILIATION_FAILED else InputCompositionCode.RECONCILIATION_PENDING,
                 ),
             )
         },
     ) {
-        ProductionOrganizationInputComposer(context.applicationContext, writer).composeFullOrganization()
+        ProductionOrganizationInputComposer(context.applicationContext, writer, captureFailureObserver).composeFullOrganization()
     }
 
     /**
@@ -319,6 +323,11 @@ internal class LayoutApplicationModule<S>(
             val journalSequence = JournalSequence(seqFile)
             val journalStore = JournalStore(journalFile, journalSequence, clock::nowMillis)
             val diagnosticsLogger = DiagnosticsLogger(isReleaseBuild = !com.android.launcher3.BuildConfig.DEBUG)
+            // Issue #172: capture-side failures surface as the exception class
+            // name on the single organizer tag, debug builds only.
+            val captureFailureObserver = CaptureFailureObserver { exceptionClass ->
+                diagnosticsLogger.logCaptureFailure(exceptionClass)
+            }
             val diagnosticsPort = object : DiagnosticsPort {
                 override fun emit(event: RunEvent) {
                     val persisted = journalStore.append(event)
@@ -345,6 +354,7 @@ internal class LayoutApplicationModule<S>(
                 clock = clock,
                 operationIds = defaultOperationIdSource(),
                 diagnosticsPort = diagnosticsPort,
+                captureFailureObserver = captureFailureObserver,
             )
             return module
         }

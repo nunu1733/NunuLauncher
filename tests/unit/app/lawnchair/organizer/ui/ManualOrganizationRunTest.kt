@@ -15,6 +15,7 @@ import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.integration.CompositionDiagnostic
+import app.lawnchair.organizer.integration.InputCompositionCode
 import app.lawnchair.organizer.integration.InputProvenance
 import app.lawnchair.organizer.integration.InputReadinessReason
 import app.lawnchair.organizer.integration.OrganizationInputComposition
@@ -86,7 +87,7 @@ class ManualOrganizationRunTest {
                     InputReadinessReason.InvalidCanonicalCapture(
                         app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
                     ),
-                    CompositionDiagnostic("capture-unavailable"),
+                    CompositionDiagnostic(InputCompositionCode.CAPTURE_INVALID),
                 ),
             ),
             planner = OrganizationPlanner { error("planner must not run") },
@@ -126,7 +127,7 @@ class ManualOrganizationRunTest {
                 InputReadinessReason.InvalidCanonicalCapture(
                     app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
                 ),
-                CompositionDiagnostic("capture-unavailable"),
+                CompositionDiagnostic(InputCompositionCode.CAPTURE_INVALID),
             ),
         )
         val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
@@ -136,8 +137,85 @@ class ManualOrganizationRunTest {
         assertTrue(runner.state is ManualOrganizationRun.State.InputUnavailable)
         assertEquals(0, application.materializeCalls)
         assertEquals(0, application.applyCalls)
-        assertEquals(1, application.events.size)
-        assertEquals(app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED, application.events.single().phase)
+        assertEquals(
+            listOf(
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED,
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.INPUT_NOT_READY,
+            ),
+            application.events.map { it.phase },
+        )
+    }
+
+    @Test
+    fun inputUnavailableRunEmitsTerminalInputNotReadyWithReadinessCode() {
+        val application = FakeApplication(
+            composition = OrganizationInputComposition.NotReady(
+                InputReadinessReason.InvalidCanonicalCapture(
+                    app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
+                ),
+                CompositionDiagnostic(InputCompositionCode.CAPTURE_INVALID),
+            ),
+        )
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+
+        runner.start()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.InputUnavailable)
+        assertEquals(
+            listOf(
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED,
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.INPUT_NOT_READY,
+            ),
+            application.events.map { it.phase },
+        )
+        val terminal = application.events.last()
+        assertEquals(RUN_ID, terminal.runId)
+        assertEquals(Trigger.MANUAL_FULL, terminal.trigger)
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.ErrorEntry(
+                app.lawnchair.organizer.diagnostics.model.ErrorFamily.INPUT_READINESS,
+                InputCompositionCode.CAPTURE_INVALID.name,
+            ),
+            terminal.error,
+        )
+    }
+
+    @Test
+    fun reconciliationPendingRunEmitsTerminalInputNotReadyWithPendingCode() {
+        val application = FakeApplication(
+            composition = OrganizationInputComposition.NotReady(
+                InputReadinessReason.ReconciliationPending,
+                CompositionDiagnostic(InputCompositionCode.RECONCILIATION_PENDING),
+            ),
+        )
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+
+        runner.start()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.InputUnavailable)
+        val terminal = application.events.last()
+        assertEquals(app.lawnchair.organizer.diagnostics.model.PhaseCode.INPUT_NOT_READY, terminal.phase)
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.ErrorFamily.INPUT_READINESS,
+            terminal.error?.family,
+        )
+        assertEquals(InputCompositionCode.RECONCILIATION_PENDING.name, terminal.error?.code)
+    }
+
+    @Test
+    fun diagnosticsEmitFailureDoesNotBlockInputUnavailableTerminalState() {
+        val application = FakeApplication(
+            composition = OrganizationInputComposition.NotReady(
+                InputReadinessReason.SourceUnavailable(PolicySourceKind.ORGANIZER_POLICY_BUNDLE),
+                CompositionDiagnostic(InputCompositionCode.BUNDLE_MISSING),
+            ),
+        )
+        application.diagnostics.emitOverride = { error("journal failure") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+
+        runner.start()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.InputUnavailable)
     }
 
     @Test
@@ -717,7 +795,9 @@ class ManualOrganizationRunTest {
 
     private class RecordingDiagnostics : DiagnosticsPort {
         val events = mutableListOf<RunEvent>()
+        var emitOverride: ((RunEvent) -> Unit)? = null
         override fun emit(event: RunEvent) {
+            emitOverride?.invoke(event)
             events += event
         }
         override fun snapshot(): List<RunEvent> = events.toList()

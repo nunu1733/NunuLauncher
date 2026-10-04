@@ -91,6 +91,65 @@ class ManualOrganizationPreferencesInstrumentationTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun reconciliationPendingShowsTryAgainLaterCopy() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            notReadyComposition = OrganizationInputComposition.NotReady(
+                reason = app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
+                    app.lawnchair.organizer.integration.InputCompositionCode.RECONCILIATION_PENDING,
+                ),
+            )
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_input_not_ready_yet),
+        ).assertIsDisplayed()
+    }
+
+    @Test
+    fun sourceUnavailableShowsBugReportCopyWithRetry() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            notReadyComposition = OrganizationInputComposition.NotReady(
+                reason = app.lawnchair.organizer.integration.InputReadinessReason.SourceUnavailable(
+                    PolicySourceKind.ORGANIZER_POLICY_BUNDLE,
+                ),
+                diagnostic = app.lawnchair.organizer.integration.CompositionDiagnostic(
+                    app.lawnchair.organizer.integration.InputCompositionCode.BUNDLE_MISSING,
+                ),
+            )
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { error("planner must not run") },
+        )
+        runner.start()
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.InputUnavailable }
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_input_unavailable_bug),
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText(
+            context.getString(R.string.manual_organization_retry),
+        ).assertHasClickAction()
+    }
+
+    @Test
     fun previewRendersScopeReasonWarningAndNoWriteBeforeConfirmation() {
         val application = FakeApplication()
         val runner = ManualOrganizationRun(
@@ -453,9 +512,17 @@ class ManualOrganizationPreferencesInstrumentationTest {
         var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
         var materializationInvalid = false
 
+        /** Issue #172: override to simulate a NotReady composition for copy-split coverage. */
+        var notReadyComposition: OrganizationInputComposition.NotReady? = null
+
         override fun newRunId() = RunId(RUN_ID)
 
-        override fun composeFullOrganization(): OrganizationInputComposition = OrganizationInputComposition.Ready(
+        override fun composeFullOrganization(): OrganizationInputComposition {
+            notReadyComposition?.let { return it }
+            return ready()
+        }
+
+        private fun ready(): OrganizationInputComposition = OrganizationInputComposition.Ready(
             input = input(),
             provenance = InputProvenance(
                 revision = RevisionId(REVISION),

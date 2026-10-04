@@ -62,6 +62,7 @@ class DiagnosticsLoggerTest {
     fun warnForTerminalFailure() {
         val logger = DiagnosticsLogger()
         assertEquals("WARN", logger.levelFor(event(phase = PhaseCode.PLANNING_REJECTED)))
+        assertEquals("WARN", logger.levelFor(event(phase = PhaseCode.INPUT_NOT_READY)))
         assertEquals("WARN", logger.levelFor(event(phase = PhaseCode.CHECKPOINT_REJECTED)))
         assertEquals("WARN", logger.levelFor(event(phase = PhaseCode.APPLY_REJECTED)))
         assertEquals("WARN", logger.levelFor(event(phase = PhaseCode.CONCURRENT_RUN_REJECTED)))
@@ -135,5 +136,55 @@ class DiagnosticsLoggerTest {
         for (f in forbidden) {
             assertFalse("Forbidden '$f' must not appear in logcat format", formatted.contains(f))
         }
+    }
+
+    @Test
+    fun inputNotReadyCarriesOnlyReadinessFamilyAndCode() {
+        val formatted = DiagnosticsLogger().format(
+            event(
+                runId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                phase = PhaseCode.INPUT_NOT_READY,
+                error = ErrorEntry(ErrorFamily.INPUT_READINESS, app.lawnchair.organizer.integration.InputCompositionCode.BUNDLE_CORRUPT.name),
+            ),
+        )
+        assertTrue(formatted.contains("phase=INPUT_NOT_READY"))
+        assertTrue(formatted.contains("err=INPUT_READINESS.BUNDLE_CORRUPT"))
+        val forbidden = listOf(
+            "packageName",
+            "com.example",
+            "cell",
+            "revision",
+            "message",
+            "digest",
+            "bundle-corrupt",
+            "kebab",
+        )
+        for (f in forbidden) {
+            assertFalse("Forbidden '$f' must not appear in logcat format", formatted.contains(f))
+        }
+    }
+
+    @Test
+    fun captureFailureFormatContainsOnlyExceptionClassName() {
+        val formatted = DiagnosticsLogger().formatCaptureFailure(java.lang.IllegalStateException::class.java)
+        assertEquals("phase=CAPTURE exceptionClass=IllegalStateException", formatted)
+    }
+
+    @Test
+    fun captureFailureFormatNormalizesToSimpleNameWithoutMessage() {
+        val formatted = DiagnosticsLogger().formatCaptureFailure(
+            android.database.sqlite.SQLiteBlobTooBigException::class.java,
+        )
+        assertEquals("phase=CAPTURE exceptionClass=SQLiteBlobTooBigException", formatted)
+        assertFalse(formatted.contains("Row too big"))
+        assertFalse(formatted.contains("CursorWindow"))
+        assertFalse(formatted.contains("message"))
+    }
+
+    @Test
+    fun releaseBuildSuppressesCaptureFailureLine() {
+        // Early return must happen before any logcat call; reaching Log.d in a
+        // JVM unit test throws "not mocked", so a passing call proves suppression.
+        DiagnosticsLogger(isReleaseBuild = true).logCaptureFailure(java.lang.IllegalStateException::class.java)
     }
 }
