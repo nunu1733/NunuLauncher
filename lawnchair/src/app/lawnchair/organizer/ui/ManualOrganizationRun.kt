@@ -366,6 +366,17 @@ class ManualOrganizationRun internal constructor(
     val state: State
         get() = stateHolder.value
 
+    // Issue #368: run/recovery operation lifetime, independent of the display
+    // State enumeration. Terminal states (Applied, NoChanges, Stale, …) stay
+    // visible after the operation ends, so the strategy surface must not read
+    // them as "run active"; this projection tracks the actual lifetime
+    // (activeOperation / recoveryLease). It is not equivalent to admission
+    // domain occupancy: another AUTHORING token can hold the domain.
+    private val operationActiveHolder = MutableStateFlow(false)
+
+    /** True while a run or recovery operation is alive (spec #368). */
+    val operationActive: StateFlow<Boolean> = operationActiveHolder.asStateFlow()
+
     private val lock = Any()
     private var activeOperation: Operation? = null
     private var pending: PendingPlan? = null
@@ -373,6 +384,10 @@ class ManualOrganizationRun internal constructor(
     private var pendingRecovery: RecoveryPreviewResult.Restorable? = null
     private var recoveryLease: AutoCloseable? = null
     private var lastVerifiedApply: State.Applied? = null
+
+    private fun updateOperationActiveLocked() {
+        operationActiveHolder.value = activeOperation != null || recoveryLease != null
+    }
 
     fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome = start(trigger, intent = null)
 
@@ -827,6 +842,7 @@ class ManualOrganizationRun internal constructor(
             pending = null
             activeOperation = null
             stateHolder.value = State.Cancelled
+            updateOperationActiveLocked()
             candidate
         }
         operation.lease.close()
@@ -897,6 +913,7 @@ class ManualOrganizationRun internal constructor(
             synchronized(lock) {
                 if (!isActiveLocked(operation)) return
                 activeOperation = null
+                updateOperationActiveLocked()
                 val nextState = when (result) {
                     is ApplyResult.NoChanges -> State.NoChanges
 
@@ -931,6 +948,7 @@ class ManualOrganizationRun internal constructor(
             } else {
                 recoveryLease = lease
                 stateHolder.value = State.InspectingRecovery
+                updateOperationActiveLocked()
                 pointId to current
             }
         }
@@ -965,7 +983,10 @@ class ManualOrganizationRun internal constructor(
             }
         }
         if (!updated) {
-            val abandoned = synchronized(lock) { recoveryLease.also { recoveryLease = null } }
+            val abandoned = synchronized(lock) {
+                recoveryLease.also { recoveryLease = null }
+                    .also { updateOperationActiveLocked() }
+            }
             abandoned?.close()
         }
     }
@@ -975,6 +996,7 @@ class ManualOrganizationRun internal constructor(
             pendingRecovery = null
             stateHolder.value = lastVerifiedApply ?: State.Idle
             recoveryLease.also { recoveryLease = null }
+                .also { updateOperationActiveLocked() }
         }
         lease?.close()
     }
@@ -995,6 +1017,7 @@ class ManualOrganizationRun internal constructor(
         val lease = synchronized(lock) {
             if (state is State.Recovering) stateHolder.value = State.RecoveryResultState(result)
             recoveryLease.also { recoveryLease = null }
+                .also { updateOperationActiveLocked() }
         }
         lease?.close()
     }
@@ -1016,6 +1039,7 @@ class ManualOrganizationRun internal constructor(
                 pendingRecovery = null
                 stateHolder.value = lastVerifiedApply ?: State.Idle
                 recoveryLease.also { recoveryLease = null }
+                    .also { updateOperationActiveLocked() }
             } else {
                 null
             }
@@ -1037,6 +1061,7 @@ class ManualOrganizationRun internal constructor(
             pending = null
             pendingRecovery = null
             stateHolder.value = State.Cancelled
+            updateOperationActiveLocked()
             DismissalOutcome.CancelledAndMayNavigate to operation
         }
         operation.second?.lease?.close()
@@ -1090,6 +1115,7 @@ class ManualOrganizationRun internal constructor(
                 pending = null
                 activeOperation = null
                 stateHolder.value = State.Stale(origin)
+                updateOperationActiveLocked()
                 true
             }
         }
@@ -1116,6 +1142,7 @@ class ManualOrganizationRun internal constructor(
             appliedPoint = null
             lastVerifiedApply = null
             stateHolder.value = State.Capturing
+            updateOperationActiveLocked()
             operation
         }
     }
@@ -1138,6 +1165,7 @@ class ManualOrganizationRun internal constructor(
                 activeOperation = null
                 pending = null
                 stateHolder.value = nextState
+                updateOperationActiveLocked()
                 true
             }
         }
@@ -1152,6 +1180,7 @@ class ManualOrganizationRun internal constructor(
                 activeOperation = null
                 pending = null
                 stateHolder.value = State.Cancelled
+                updateOperationActiveLocked()
                 true
             }
         }

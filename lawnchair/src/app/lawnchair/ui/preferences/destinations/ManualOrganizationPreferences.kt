@@ -14,12 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -32,7 +30,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -45,7 +42,6 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.selectableGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -69,18 +65,12 @@ import app.lawnchair.organizer.planning.RejectionCode
 import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
-import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
-import app.lawnchair.organizer.rules.LayoutStrategySelectionModule
-import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
-import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
-import app.lawnchair.organizer.rules.LayoutStrategySelectionWriteResult
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
-import app.lawnchair.organizer.ui.StrategyWriteArbiter
 import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.missingAppSelectionItems
@@ -116,46 +106,11 @@ fun ManualOrganizationPreferences(
             scope = scope,
         )
     }
-    // Issue #328: the single strategy-write arbiter shared by the exchange
-    // flow (import/CTA gates) and this screen (picker gates). The write and
-    // the run restart are injected seams so their mutual exclusion is one
-    // state machine (Idle -> Writing -> RestartReserved -> Restarting -> Idle),
-    // never a set of UI disabled states.
-    val strategyArbiter = remember {
-        StrategyWriteArbiter(
-            scope = scope,
-            writeStrategy = { id ->
-                LayoutStrategySelectionModule.store(context).select(id) is
-                    LayoutStrategySelectionWriteResult.Committed
-            },
-            restartRun = {
-                coordinator.dismiss()
-                coordinator.start(trigger)
-            },
-            writeStartBlocked = {
-                // Issue #328: one shared truth table with the tests.
-                app.lawnchair.organizer.ui.exchange.strategyWriteStartBlockedFor(
-                    runInEntry = coordinator.state is ManualOrganizationRun.State.Selecting,
-                    importAttemptActive = exchangeHolder.importAttemptActive,
-                    importContinuationActive = exchangeHolder.importContinuationActive,
-                )
-            },
-            restartSuppressed = {
-                app.lawnchair.organizer.ui.exchange.strategyRestartSuppressedFor(
-                    runInEntry = coordinator.state is ManualOrganizationRun.State.Selecting,
-                    importAttemptActive = exchangeHolder.importAttemptActive,
-                    importContinuationActive = exchangeHolder.importContinuationActive,
-                )
-            },
-            restartNeeded = {
-                coordinator.state !is ManualOrganizationRun.State.Idle &&
-                    coordinator.state !is ManualOrganizationRun.State.Cancelled
-            },
-        )
-    }
-    // The holder's structural gates consult the same arbiter: new imports
-    // and CTA starts are refused while a strategy write or restart runs.
-    exchangeHolder.strategyArbiterBusy = { strategyArbiter.busy }
+    // Issue #368: the strategy picker moved to the materials surface T-05
+    // (OrganizerStrategyPreferences). The run surface offers no strategy
+    // selection — not even a read-only row — and the write-time restart
+    // special case is gone with it: a strategy change applies to the next
+    // run's composition, never to the live one.
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
     // Issue #308: a stateFlow transition can be observed before the lazy-list
@@ -260,60 +215,6 @@ fun ManualOrganizationPreferences(
         }
     }
 
-    // Spec 182 child 8: strategy picker. The catalog is display-only (the
-    // composer still validates); the current selection is read from and every
-    // change is issued through Rule Management's validated write command — the
-    // UI never mutates the store directly. On a committed change while a run
-    // is active, the run is dismissed (pre-checkpoint cancellation writes
-    // nothing) and a fresh compose/plan cycle starts with a fresh capture.
-    val strategyCatalog = remember {
-        (BuiltInOrganizerPolicyBundleSource.readActive() as? app.lawnchair.organizer.rules.BundleReadResult.Ready)
-            ?.bundle?.layoutStrategies
-    }
-    // Spec 182: a valid absent selection means the bundle default is what the
-    // planner uses, so the picker shows the default as the effective choice.
-    // Only a failed read hides the active selection (fail-closed).
-    var selectedStrategy by remember {
-        val snapshot = readSelectedStrategy(context)
-        // Read succeeded: an absent selection means the bundle default is
-        // what the planner resolves, so show the default as effective.
-        // Read failed (unreadable/unsupported): show nothing — fail-closed,
-        // matching the composer.
-        mutableStateOf(if (snapshot == null) null else snapshot.selection ?: strategyCatalog?.default)
-    }
-    fun onStrategySelected(id: StrategyId) {
-        // Radio semantics: re-selecting the effective strategy is a no-op, not
-        // a new policy generation or a run restart.
-        if (id == selectedStrategy) return
-        // Issue #328: every strategy write goes through the single arbiter —
-        // single-flight against other writes, gated against import/CTA work,
-        // and its commit-time restart decision is atomic on the Main-confined
-        // point (the restart itself runs on IO).
-        strategyArbiter.onStrategySelected(id) { committedId ->
-            selectedStrategy = committedId
-        }
-    }
-
-    // Issue #328: the strategy picker's enabled state mirrors the arbiter
-    // gates (affordance only — the structural gates live in the arbiter and
-    // the holder). Run-in entry: frozen while its import attempt lives; idle
-    // entry: frozen while the import continuation runs; both: frozen while
-    // the arbiter is busy. Computed here because the lazy-list scope is not a
-    // composable context.
-    val strategyPickerFreeze = if (state is ManualOrganizationRun.State.Selecting) {
-        exchangeHolder.importAttemptActive
-    } else {
-        exchangeHolder.importContinuationActive
-    }
-    val strategyPickerEnabled = !strategyPickerFreeze && !strategyArbiter.busy
-    val strategyFrozenReason = when {
-        exchangeHolder.importContinuationActive ->
-            stringResource(R.string.exchange_strategy_frozen_continuing)
-
-        strategyPickerFreeze -> stringResource(R.string.exchange_strategy_frozen_import)
-
-        else -> null
-    }
     PreferenceScaffold(
         label = stringResource(R.string.manual_organization_title),
         modifier = modifier,
@@ -801,18 +702,9 @@ fun ManualOrganizationPreferences(
                     }
                 }
             }
-            strategyPickerItems(
-                catalog = strategyCatalog?.runtimeSupported,
-                selected = selectedStrategy,
-                enabled = strategyPickerEnabled,
-                frozenReason = strategyFrozenReason,
-                onSelect = ::onStrategySelected,
-            )
             // Issue #205: the external agent exchange surface closes the list.
-            // It must stay below the strategy picker: the picker's radio rows
-            // are position-sensitive in tests and in muscle memory, and the
-            // entry is a secondary affordance hosted only while the run is
-            // idle/cancelled (spec 205 V1 rule).
+            // The entry is a secondary affordance hosted only while the run
+            // is idle/cancelled (spec 205 V1 rule).
             val idleLike = state is ManualOrganizationRun.State.Idle ||
                 state is ManualOrganizationRun.State.Cancelled
             if (idleLike) {
@@ -829,19 +721,6 @@ fun ManualOrganizationPreferences(
             }
         }
     }
-}
-
-/**
- * Reads the persisted selection snapshot. `Ready` is returned even for the
- * first-run absent state (`selection = null`) — the caller then displays the
- * bundle default as the effective selection. A failed read (unreadable,
- * unsupported schema) returns `null` and the picker shows no active
- * selection, failing closed exactly like the composer.
- */
-
-private fun readSelectedStrategy(context: Context): LayoutStrategySelectionSnapshot? {
-    val read = LayoutStrategySelectionModule.store(context).read()
-    return (read as? LayoutStrategySelectionReadResult.Ready)?.snapshot
 }
 
 /**
@@ -899,7 +778,7 @@ private fun durableStatusItemCount(status: OrganizerDurableStatus?): Int = when 
     -> 0
 }
 
-private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
+internal fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
     "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_name
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_name
     "STABLE_PAGE_TIDY_V2" -> R.string.organization_strategy_tidy_v2_name
@@ -911,7 +790,7 @@ private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {
     else -> R.string.organization_strategy_unknown_name
 }
 
-private fun strategyDescription(id: StrategyId): Int = when (id.value) {
+internal fun strategyDescription(id: StrategyId): Int = when (id.value) {
     "CANONICAL_PAGE_COMPACT_V1" -> R.string.organization_strategy_canonical_description
     "STABLE_PAGE_TIDY_V1" -> R.string.organization_strategy_tidy_description
     "STABLE_PAGE_TIDY_V2" -> R.string.organization_strategy_tidy_v2_description
@@ -921,82 +800,6 @@ private fun strategyDescription(id: StrategyId): Int = when (id.value) {
     "GLOBAL_COMPACT_V2" -> R.string.organization_strategy_global_v2_description
     "CATEGORY_CONTIGUOUS_V1" -> R.string.organization_strategy_category_contiguous_description
     else -> R.string.organization_strategy_unknown_description
-}
-
-/**
- * Spec 182: strategy picker. Only the active bundle's runtime-supported
- * strategies are offered, each with a localized name and intent description.
- * Selection uses radio semantics so TalkBack announces name, state, and
- * description as one node; a store read failure hides the active selection
- * instead of inventing one (fail-closed, matching the composer).
- */
-internal fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
-    catalog: List<StrategyId>?,
-    selected: StrategyId?,
-    enabled: Boolean,
-    frozenReason: String?,
-    onSelect: (StrategyId) -> Unit,
-) {
-    if (catalog.isNullOrEmpty()) return
-    // The whole picker lives in one selectableGroup so TalkBack announces the
-    // rows as a single mutually-exclusive radio group ("x of N" semantics).
-    // The catalog's rows may exceed one small screen (eight strategies since
-    // issue #235); losing LazyColumn virtualization here only composes rows
-    // off-screen — never clips them — so the radio-group a11y contract holds
-    // (spec 182 child 8; picker tests scroll rows into view).
-    item(key = "strategy-picker") {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("manual-organization-strategy-picker")
-                .semantics { selectableGroup() },
-        ) {
-            Text(
-                text = stringResource(R.string.manual_organization_strategy_section),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            if (!enabled && frozenReason != null) {
-                // Issue #328: the frozen state and its reason are read out,
-                // not only shown (a11y; spec 328 競合affordance).
-                Text(
-                    text = frozenReason,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .semantics { liveRegion = LiveRegionMode.Polite }
-                        .testTag("strategy-picker-frozen-reason"),
-                )
-            }
-            catalog.forEach { id ->
-                val name = stringResource(strategyDisplayName(id))
-                val description = stringResource(strategyDescription(id))
-                val isSelected = selected == id
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectable(
-                            selected = isSelected,
-                            enabled = enabled,
-                            role = Role.RadioButton,
-                            onClick = { onSelect(id) },
-                        )
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = null,
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(name, style = MaterialTheme.typography.bodyLarge)
-                        Text(description, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable

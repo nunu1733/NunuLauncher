@@ -135,29 +135,6 @@ sealed interface ExchangeScreen {
     ) : ExchangeScreen
 }
 
-/**
- * Issue #328 (spec 328 strategy mutual exclusion): the entry-specific
- * write-start gate — a strategy write must not begin while the run-in entry's
- * import attempt lives, nor while the idle entry's import continuation runs.
- * Pure so the hosting wiring and tests share one truth table.
- */
-internal fun strategyWriteStartBlockedFor(
-    runInEntry: Boolean,
-    importAttemptActive: Boolean,
-    importContinuationActive: Boolean,
-): Boolean = importContinuationActive || (runInEntry && importAttemptActive)
-
-/**
- * Issue #328: the commit-time restart suppression — a committed selection may
- * not dismiss/restart the run the import is bound to: while the continuation
- * runs (both entries), or while a run-in import attempt lives.
- */
-internal fun strategyRestartSuppressedFor(
-    runInEntry: Boolean,
-    importAttemptActive: Boolean,
-    importContinuationActive: Boolean,
-): Boolean = importContinuationActive || (runInEntry && importAttemptActive)
-
 /** Issue #328: which exchange entry produced the import attempt. */
 enum class ExchangeImportEntryKind { IDLE, RUN_IN }
 
@@ -555,10 +532,9 @@ class ExchangeFlowStateHolder(
     private var nextAttemptToken = 0L
 
     /**
-     * Snapshot-backed so the hosting screen's freeze predicates (idle start
-     * row / strategy picker) recompose the moment an attempt starts or ends,
-     * including the editor-press path where the screen state itself does not
-     * change.
+     * Snapshot-backed so the hosting screen's freeze predicate (the idle
+     * start row) recomposes the moment an attempt starts or ends, including
+     * the editor-press path where the screen state itself does not change.
      */
     private val activeAttemptState = mutableStateOf<ImportAttempt?>(null)
     private var activeAttempt: ImportAttempt?
@@ -574,7 +550,7 @@ class ExchangeFlowStateHolder(
      * moment an attempt is numbered until the attempt reaches its terminal
      * (failure surface shown, success state closed/discarded/replaced, or a
      * stale settle dropped). The hosting screen freezes the idle start row
-     * and the run-in strategy picker while this is true.
+     * while this is true.
      */
     val importAttemptActive: Boolean get() = activeAttempt != null
 
@@ -586,15 +562,6 @@ class ExchangeFlowStateHolder(
      */
     val importContinuationActive: Boolean
         get() = (screenState.value as? ExchangeScreen.ImportSuccess)?.continuing == true
-
-    /**
-     * Issue #328 (spec: strategy書込との相互排他): true while the hosting
-     * screen's [app.lawnchair.organizer.ui.StrategyWriteArbiter] is non-idle
-     * (strategy write or run restart in progress). The holder refuses new
-     * imports and CTA starts while true; the default no-op keeps injected
-     * holder tests (which never render the settings screen) unaffected.
-     */
-    var strategyArbiterBusy: () -> Boolean = { false }
 
     private fun invalidateImportAttempt() {
         activeAttempt = null
@@ -626,14 +593,6 @@ class ExchangeFlowStateHolder(
      * newer import or an input edit are dropped).
      */
     fun import(replyText: String) {
-        // The structural arbiter gate: a strategy write/restart in progress
-        // refuses the import before any IO (spec 328 strategy mutual
-        // exclusion; the hosting affordance is disabled too, but disabled
-        // states are affordances only).
-        if (strategyArbiterBusy()) {
-            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY)
-            return
-        }
         val attempt = beginImportAttempt()
         scope.launch(Dispatchers.IO) {
             val outcome = controller.importReply(replyText)
@@ -747,10 +706,6 @@ class ExchangeFlowStateHolder(
         if (current.continuing) return
         val attempt = activeAttempt ?: return
         if (attempt.token != current.attemptToken) return
-        if (strategyArbiterBusy()) {
-            status = ExchangeStatus(ExchangeStatus.Kind.CTA_STRATEGY_BUSY)
-            return
-        }
         val validated = pendingValidated ?: return
         screen = current.copy(continuing = true)
         scope.launch(Dispatchers.IO) {
@@ -845,18 +800,6 @@ data class ExchangeStatus(val kind: Kind) {
 
         /** Issue #332 (spec AC-6): the clipboard carries no text item. */
         CLIPBOARD_NOT_TEXT,
-
-        /**
-         * Issue #328: an import was refused because a strategy write/restart
-         * is in progress (arbiter non-idle). Zero-write, retryable.
-         */
-        IMPORT_STRATEGY_BUSY,
-
-        /**
-         * Issue #328: the continuation CTA was refused because the strategy
-         * arbiter is non-idle. Zero-write, retryable.
-         */
-        CTA_STRATEGY_BUSY,
 
         /**
          * Issue #328: the run-connection seam failed (exception, or a
@@ -1789,8 +1732,6 @@ fun exchangeStatusTextResource(kind: ExchangeStatus.Kind): Int = when (kind) {
     ExchangeStatus.Kind.RUN_BUSY -> R.string.exchange_run_busy
     ExchangeStatus.Kind.CLIPBOARD_EMPTY -> R.string.exchange_status_clipboard_empty
     ExchangeStatus.Kind.CLIPBOARD_NOT_TEXT -> R.string.exchange_status_clipboard_not_text
-    ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY -> R.string.exchange_import_strategy_busy
-    ExchangeStatus.Kind.CTA_STRATEGY_BUSY -> R.string.exchange_import_cta_strategy_busy
     ExchangeStatus.Kind.CTA_START_FAILED -> R.string.exchange_import_cta_failed
     ExchangeStatus.Kind.IMPORT_DISCARDED -> R.string.exchange_import_discarded_guidance
 }

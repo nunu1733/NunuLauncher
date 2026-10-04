@@ -143,7 +143,7 @@ Provenance responsibilities are split so that every `InputProvenance` row keeps 
   1. validates the requested `StrategyId` against the active bundle's runtime-supported catalog at write time (an unsupported request is rejected without touching storage);
   2. publishes the new selection snapshot atomically with a new monotonic generation and content digest (same contract family as the category override store);
   3. on write failure keeps the existing selection intact (the store is never left empty or half-written);
-  4. on success, the caller starts a fresh compose/plan cycle (spec 52: a run never reuses a prior snapshot) — the published snapshot reaches planning only through the next composer read, never through an in-run substitution.
+  4. on success, the committed selection reaches planning through the next composer read of a future run (spec 52: a run never reuses a prior snapshot) — the caller never dismisses or restarts an active run, and never substitutes the selection into a running one (amended by #368: selection is possible only while no run/recovery operation is active; the materials surface holds it permanently, the run surface none).
 - The composer (`OrganizationInputComposer`) materializes `RuleSemantics` from the bundle with the selected strategy substituted after validating it against the bundle's runtime-supported set. The selection snapshot participates in the stable composition cut (read-after-validate, re-read as B, per Provenance above).
 - Bundle v2 declares the runtime-supported strategy catalog and the default. A selection naming a strategy absent from the active bundle's runtime-supported set is `NotReady(UnsupportedVersion)`-equivalent (typed non-write), not a fallback.
 
@@ -222,7 +222,7 @@ A strategy produces ordered placement units/preferences for the shared allocator
 
 The manual flow inherits spec 194/195 contracts unchanged and adds:
 
-- Strategy selection lives on the manual-run surface before planning: only strategies in the active bundle's runtime-supported set are offered, each with a localized name and short intent description. Changing the selection publishes through the Rule Management write command and then starts a new compose/plan cycle with a fresh capture (spec 52: a run never reuses a prior snapshot); staleness continues to be detected only by capture revision.
+- Strategy selection lives on the strategy materials surface (T-05, hub materials section; amended by #368 — the manual-run surface hosts no picker) and is possible only while no run/recovery operation is active: only strategies in the active bundle's runtime-supported set are offered, each with a localized name and short intent description. A committed selection publishes through the Rule Management write command and reaches planning through the next composer read of a future run — the caller never dismisses or restarts an active run (spec 52: a run never reuses a prior snapshot); staleness continues to be detected only by capture revision.
 - The preview shows the effective strategy identity and strategy-specific consequences: moved count split by within-page vs cross-page moves, new folders/pages, preserved-by-strategy count (`STRATEGY_PRESERVED`), and warnings. This rides the existing `PreviewChange`/`PreviewCounts` projection (rationale/preserve reasons come from `Planned`, per spec 194's responsibility split) plus header-level presentation in #195's UI; no new projection kinds are required.
 - `GLOBAL_COMPACT_V1` preview must make the cross-page move count visible because that change is materially more disruptive than page-local tidy.
 - Confirmation, recovery-point creation, transactional apply, and post-apply verification are unchanged for every strategy.
@@ -317,9 +317,9 @@ For `STABLE_PAGE_TIDY_V1`, per-page placeability is constructive (lift-then-plac
 
 ### Scenario: selection write is validated, atomic, and failure-preserving
 
-**Given** the strategy picker visible on the manual-run surface and an active bundle whose runtime-supported set contains `BOTTOM_FIRST_V1` but not a removed `LEGACY_SORT_V0`,
+**Given** the strategy picker visible on the T-05 materials surface (no run/recovery operation active) and an active bundle whose runtime-supported set contains `BOTTOM_FIRST_V1` but not a removed `LEGACY_SORT_V0`,
 **When** the user selects `BOTTOM_FIRST_V1`,
-**Then** the picker issues a Rule Management write command that validates against the runtime-supported set, publishes the new selection atomically with a new generation/digest, and the coordinator then starts a fresh compose/plan cycle,
+**Then** the picker issues a Rule Management write command that validates against the runtime-supported set and publishes the new selection atomically with a new generation/digest; the selection reaches planning through the next composer read of a future run and no run is dismissed or restarted,
 **And** a write attempt naming `LEGACY_SORT_V0` is rejected at write time without touching the store,
 **And** a storage failure during publication leaves the previous selection intact and does not start a new run.
 
@@ -332,9 +332,9 @@ For `STABLE_PAGE_TIDY_V1`, per-page placeability is constructive (lift-then-plac
 
 ### Scenario: strategy change replans under the stable-cut discipline
 
-**Given** a displayed preview computed for strategy S1,
-**When** the user selects strategy S2 supported on this device,
-**Then** the coordinator starts a new compose/plan cycle with a fresh capture (spec 52: no snapshot reuse); if the layout is unchanged the plan is recomputed under S2 and re-previewed with S2's identity and consequences,
+**Given** a displayed preview computed for strategy S1 (amended by #368: a strategy change is no longer possible while a run is active — the picker lives on T-05 and selection requires no active operation; this scenario describes the amended contract for changes between runs),
+**When** strategy S2 supported on this device is committed between runs,
+**Then** the next run's compose/plan cycle composes with a fresh capture under S2 (spec 52: no snapshot reuse) and previews S2's identity and consequences,
 **And** staleness continues to be detected only by capture revision.
 
 ### Scenario: cross-strategy isolation
@@ -416,6 +416,8 @@ None blocking acceptance. Deferred deliberately: catalog renaming policy (a rena
 - 2026-09-04: Fourth re-review revision (owner re-review on `8903156e`): the `1×1` restriction is propagated consistently through `GLOBAL_COMPACT_V1` — folder formation is "canonical grouping/partition policy applied to the eligible `1×1` candidates only" (a non-`1×1` app is never a folder candidate, so no item is both `STRATEGY_PRESERVED` and a new-folder member), and the counterexample fixture/scenario gains a movable `1×1` app with both non-`1×1` apps `STRATEGY_PRESERVED` — Blocking. The effective-rules digest formula is unified on the plan's shape (including `bundleIdentity.semanticVersion`) with a required unambiguous byte representation (length-prefixed/labeled; raw concatenation forbidden) — Medium. The execution checklist's stale "golden capture at extraction-child start" step is replaced with the pinned-baseline/both-children procedure — Medium.
 - 2026-09-05: Clarified the counterexample fixture phrase — the movable 1x1 app sits on page 1 at (2,1), so it compacts to (0,0) within page 1; 'moving from page 2' contradicted the fixture geometry (auditor Low finding during child-6 review). No behavioral change.
 - 2026-09-04: Accepted by the Issue #182 owner after the fifth review round found no further issues (reviewed head `9b6eec73a9`). Implementation may begin within this specification and plan, split across the child issues; child 2 is the first implementation vertical. The spec-10/12 delta rows in this acceptance PR are the only planner public-shape changes authorized by this spec.
+
+- 2026-09-19: Amended by #368 (strategy picker relocation to T-05 and abolition of the run-time change special case). §Preview integration now places selection on the strategy materials surface reachable only while no run/recovery operation is active (AUTHORING admission lease), write-authority step 4 and the two scenarios now state that a committed selection reaches planning only through the next composer read of a future run and that the caller never dismisses/restarts an active run. Store, fail-closed, and validation contracts are unchanged.
 
 ## References
 
