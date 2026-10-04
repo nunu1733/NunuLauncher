@@ -15,6 +15,7 @@ import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
+import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.integration.CompositionDiagnostic
@@ -1991,6 +1992,238 @@ class ManualOrganizationRunTest {
     )
 
     /** Issue #369 (RD-6): a gate whose lease counts `.close()` calls. */
+
+    // region Issue #371: JIT Usage Access request pause (spec 371)
+
+    @Test
+    fun detectionUnavailablePausesForTheJitRequestBeforeTheJournalOpens() {
+        val application = FakeApplication(readyInput())
+        val gate = UsageAccessJitGate(isGranted = { false })
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { error("planner must not run while paused") },
+            operationGate = OrganizationOperationLease,
+            usageAccessGate = gate,
+        )
+
+        val outcome = runner.start()
+
+        assertTrue(outcome is ManualOrganizationRun.StartOutcome.Started)
+        val awaiting = runner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit
+        assertTrue(awaiting.isOwner)
+        assertEquals(null, awaiting.selection)
+        assertTrue(application.events.isEmpty())
+        // The RUN lease stays held: a second start is Busy.
+        assertTrue(runner.start() is ManualOrganizationRun.StartOutcome.Busy)
+        // The host has not presented yet: the reservation is un-presented.
+        assertEquals(UsageAccessJitGate.Phase.Reserved, gate.ownedPhase(awaiting.runId))
+
+        // Test hygiene: release the process-wide RUN lease.
+        runner.cancel()
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+    }
+
+    @Test
+    fun jitResolutionResumesTheCompositionExactlyOnce() {
+        val application = FakeApplication(readyInput())
+        val gate = UsageAccessJitGate(isGranted = { false })
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            usageAccessGate = gate,
+        )
+
+        runner.start()
+        val awaiting = runner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit
+        gate.markPresented(awaiting.runId)
+
+        runner.continueAfterUsageAccessGate()
+        runner.continueAfterUsageAccessGate()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(1, application.events.count { it.phase == PhaseCode.RUN_STARTED })
+    }
+
+    @Test
+    fun cancellingDuringTheJitPauseKeepsTheJournalEmptyAndReleasesTheOpportunity() {
+        val application = FakeApplication(readyInput())
+        val gate = UsageAccessJitGate(isGranted = { false })
+        val runner = ManualOrganizationRun(
+            application = application,
+            operationGate = OrganizationOperationLease,
+            usageAccessGate = gate,
+        )
+
+        runner.start()
+        runner.cancel()
+
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        assertTrue(application.events.isEmpty())
+        assertEquals(UsageAccessJitGate.Phase.Available, gate.snapshot.value.phase)
+        // The next trigger requests again — the opportunity was not consumed.
+        assertTrue(runner.start() is ManualOrganizationRun.StartOutcome.Started)
+        assertTrue(runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit)
+
+        // Test hygiene: release the process-wide RUN lease.
+        runner.cancel()
+    }
+
+    @Test
+    fun cancellingAfterPresentationResolvesTheRequestSoWaitersProceed() {
+        val gate = UsageAccessJitGate(isGranted = { false })
+        val ownerApp = FakeApplication(readyInput())
+        val owner = ManualOrganizationRun(
+            application = ownerApp,
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            usageAccessGate = gate,
+        )
+        owner.start()
+        val ownerAwaiting = owner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit
+        gate.markPresented(ownerAwaiting.runId)
+
+        owner.cancel()
+
+        // Abandon resolution: waiters unblock, the destroyed owner composes nothing.
+        assertEquals(UsageAccessJitGate.Phase.Resolved, gate.snapshot.value.phase)
+        assertTrue(ownerApp.events.isEmpty())
+
+        val waiterApp = FakeApplication(readyInput())
+        val waiter = ManualOrganizationRun(
+            application = waiterApp,
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            usageAccessGate = gate,
+        )
+        waiter.start()
+
+        assertFalse(waiter.state is ManualOrganizationRun.State.AwaitingUsageAccessJit)
+        assertTrue(waiter.state is ManualOrganizationRun.State.Preview)
+    }
+
+    @Test
+    fun continueAfterThePauseWasCancelledDoesNotResurrectTheRun() {
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(
+            application = application,
+            usageAccessGate = UsageAccessJitGate(isGranted = { false }),
+        )
+
+        runner.start()
+        runner.cancel()
+        runner.continueAfterUsageAccessGate()
+
+        assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
+        assertTrue(application.events.isEmpty())
+    }
+
+    @Test
+    fun selectionConfirmationPausesWithTheSelectionAndResumesScopeComposed() {
+        val application = FakeApplication(readyInput()).apply {
+            detection = detected("app.missing.one")
+        }
+        val gate = UsageAccessJitGate(isGranted = { false })
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            usageAccessGate = gate,
+        )
+
+        runner.start()
+        assertTrue(runner.state is ManualOrganizationRun.State.Selecting)
+
+        val target = (runner.state as ManualOrganizationRun.State.Selecting).candidates.single().target
+        runner.confirmSelection(setOf(target))
+
+        val awaiting = runner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit
+        assertEquals(listOf(target), awaiting.selection)
+        assertTrue(application.events.isEmpty())
+
+        gate.markPresented(awaiting.runId)
+        runner.continueAfterUsageAccessGate()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        val started = application.events.filter { it.phase == PhaseCode.RUN_STARTED }
+        assertEquals(1, started.size)
+        assertEquals(
+            app.lawnchair.organizer.diagnostics.model.RunMode.SCOPE_COMPOSED_ORGANIZATION,
+            started.single().runMode,
+        )
+    }
+
+    @Test
+    fun waiterPausesWithoutPresentingAndProceedsWhenTheOwnerResolves() {
+        val gate = UsageAccessJitGate(isGranted = { false })
+        val ownerApp = FakeApplication(readyInput())
+        val owner = ManualOrganizationRun(
+            application = ownerApp,
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            usageAccessGate = gate,
+        )
+        owner.start()
+        val ownerAwaiting = owner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit
+        gate.markPresented(ownerAwaiting.runId)
+
+        val waiterApp = FakeApplication(readyInput())
+        val waiter = ManualOrganizationRun(
+            application = waiterApp,
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            usageAccessGate = gate,
+        )
+        waiter.start()
+
+        val waiterAwaiting = waiter.state as ManualOrganizationRun.State.AwaitingUsageAccessJit
+        assertFalse(waiterAwaiting.isOwner)
+        assertTrue(waiterApp.events.isEmpty())
+
+        // The owner's user resolves; the waiter's host observes and continues.
+        gate.resolve(ownerAwaiting.runId)
+        waiter.continueAfterUsageAccessGate()
+
+        assertTrue(waiter.state is ManualOrganizationRun.State.Preview)
+        assertEquals(1, waiterApp.events.count { it.phase == PhaseCode.RUN_STARTED })
+    }
+
+    @Test
+    fun dSixEmptyCutContinuationPausesAtTheSameChokePoint() {
+        val application = FakeApplication(readyInput()).apply {
+            detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
+        }
+        val runner = ManualOrganizationRun(
+            application = application,
+            usageAccessGate = UsageAccessJitGate(isGranted = { false }),
+        )
+
+        runner.start()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit)
+        assertTrue(application.events.isEmpty())
+    }
+
+    @Test
+    fun grantedFirstTriggerNeverPausesAndConsumesTheOpportunityForTheProcess() {
+        var granted = true
+        val gate = UsageAccessJitGate(isGranted = { granted })
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { planningResult(movingPlan()) },
+            usageAccessGate = gate,
+        )
+
+        runner.start()
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(UsageAccessJitGate.Phase.Resolved, gate.snapshot.value.phase)
+
+        // Revoke mid-process: the moment has passed, no request appears.
+        runner.cancel()
+        granted = false
+        runner.start()
+
+        assertFalse(runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit)
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+    }
+
+    // endregion
+
     private class CountingGate : OrganizationOperationGate {
         var closeCount = 0
 

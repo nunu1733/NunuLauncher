@@ -26,8 +26,10 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,7 +45,12 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.public.RunId
+import app.lawnchair.organizer.integration.UsageAccess
 import app.lawnchair.organizer.integration.exchange.ClipboardImportRead
 import app.lawnchair.organizer.integration.exchange.ClipboardImportTransport
 import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
@@ -66,6 +73,11 @@ import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
 import app.lawnchair.organizer.personalization.exchange.exchangeImportSummary
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.UsageAccessJitGate
+import app.lawnchair.organizer.ui.UsageAccessJitGateProvider
+import app.lawnchair.organizer.ui.UsageAccessJitRequestDialog
+import app.lawnchair.organizer.ui.awaitUsageAccessGrant
+import app.lawnchair.organizer.ui.openUsageAccessSettings
 import com.android.launcher3.R
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -132,6 +144,25 @@ sealed interface ExchangeScreen {
         val entryKind: ExchangeImportEntryKind,
         val attemptToken: Long,
         val continuing: Boolean = false,
+    ) : ExchangeScreen
+
+    /**
+     * Issue #371 (spec 371): the JIT Usage Access request pause for one
+     * generation attempt. The attempt's [attemptToken] anchors the pending
+     * generation: resume applies only when the current screen still carries
+     * the same token, exactly once, so a close + regenerate sequence can
+     * never be resumed by a stale callback. Owner destruction (close,
+     * another transition, host navigation teardown) follows the gate's
+     * owner-destruction rules — release while un-presented, abandon-resolve
+     * once presented — so the process-wide barrier is never orphaned.
+     */
+    data class AwaitingUsageAccessJit(
+        val attemptToken: Long,
+        val tier: PrivacyTier,
+        /** The run-in scoped selection the generation continues with. */
+        val scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
+        /** Whether this surface owns the presentation (gate decision at entry). */
+        val isPresenter: Boolean,
     ) : ExchangeScreen
 }
 
@@ -210,6 +241,15 @@ class ExchangeFlowStateHolder(
      * settle decision completed. Production passes the no-op default.
      */
     internal var onSettleObserved: ((ExchangeDisclosureState, Boolean) -> Unit)? = null,
+    /**
+     * Issue #371: the process-wide JIT Usage Access request gate. Defaults to
+     * an always-resolved gate so existing holder tests keep today's behavior;
+     * production passes the shared singleton (UsageAccessJitGateProvider) so
+     * run and exchange draw on one process-scoped request opportunity. Public
+     * read access: the hosting surface collects the gate snapshot for waiter
+     * wakeup and drives the dialog from it.
+     */
+    val usageAccessGate: UsageAccessJitGate = UsageAccessJitGate(isGranted = { true }),
 ) {
     private val controller: ExchangeFlowController by lazy(LazyThreadSafetyMode.NONE) { controllerFactory() }
 
@@ -231,20 +271,71 @@ class ExchangeFlowStateHolder(
         }
 
     fun openFlow() {
+        abandonAwaitingUsageAccessJit()
         status = null
         screen = ExchangeScreen.SelectingPrivacy(replacementConfirmationRequired = controller.activeSession() != null)
     }
 
     fun openImport() {
+        abandonAwaitingUsageAccessJit()
         invalidateImportAttempt()
         status = null
         screen = ExchangeScreen.Importing("")
     }
 
     fun close() {
+        abandonAwaitingUsageAccessJit()
         invalidateImportAttempt()
         status = null
         screen = ExchangeScreen.Closed
+    }
+
+    /**
+     * Issue #371: owner-destruction rules for the JIT pause, applied whenever
+     * the awaiting screen leaves the machine (close, a newer transition, host
+     * teardown). The gate's atomic [UsageAccessJitGate.abandon] completes the
+     * state-specific action under one monitor — release while un-presented,
+     * abandon-resolve once presented — so a racing presentation can never
+     * orphan the barrier; the abandoned attempt's generation is never resumed.
+     */
+    private fun abandonAwaitingUsageAccessJit() {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return
+        usageAccessGate.abandon(ExchangeJitAttemptOwner(awaiting.attemptToken))
+    }
+
+    /**
+     * Issue #371 (review round 3): host-teardown hook. The hosting surface
+     * must call this from its `DisposableEffect` onDispose — the holder is
+     * `remember`ed, so a route change or activity recreation discards it
+     * without any other lifecycle signal, and a live JIT pause would
+     * otherwise strand the process-wide gate (a `Reserved` reservation never
+     * re-acquirable, a `Presented` barrier never resolved).
+     */
+    fun dispose() {
+        abandonAwaitingUsageAccessJit()
+        // Invalidate the pending attempt itself: a stale resume callback must
+        // find no awaiting screen to match its token against. Only when the
+        // pause is still on screen — the normal-resolution unmount (screen
+        // already `Generating`/past) must not be clobbered.
+        if (screen is ExchangeScreen.AwaitingUsageAccessJit) {
+            screen = ExchangeScreen.Closed
+        }
+    }
+
+    /**
+     * Issue #371 (review round 4): attempt-bound teardown for the JIT dialog
+     * host's unmount. Acts only when the CURRENT screen is still the SAME
+     * attempt's awaiting state — a stale host unmounting after the pending
+     * generation moved to a newer attempt must never abandon the new one
+     * (JIT-AC-05 identity binding).
+     */
+    fun disposeUsageAccessJitAttempt(attemptToken: Long) {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return
+        if (awaiting.attemptToken != attemptToken) return
+        abandonAwaitingUsageAccessJit()
+        if (screen is ExchangeScreen.AwaitingUsageAccessJit) {
+            screen = ExchangeScreen.Closed
+        }
     }
 
     /**
@@ -257,6 +348,7 @@ class ExchangeFlowStateHolder(
         tier: PrivacyTier,
         scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
     ) {
+        abandonAwaitingUsageAccessJit()
         if (replacementConfirmationRequired) {
             screen = ExchangeScreen.ReplacementConfirm(tier, scoped)
         } else if (scoped != null) {
@@ -271,6 +363,7 @@ class ExchangeFlowStateHolder(
         tier: PrivacyTier,
         scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
     ) {
+        abandonAwaitingUsageAccessJit()
         if (scoped != null) generateScoped(tier, scoped.first, scoped.second) else generate(tier)
     }
 
@@ -280,9 +373,69 @@ class ExchangeFlowStateHolder(
     }
 
     fun generate(tier: PrivacyTier) {
+        val attemptToken = nextJitAttemptToken()
+        when (val decision = usageAccessGate.evaluate(ExchangeJitAttemptOwner(attemptToken))) {
+            UsageAccessJitGate.Decision.Proceed -> startGeneration(tier, scoped = null)
+
+            else -> screen = ExchangeScreen.AwaitingUsageAccessJit(
+                attemptToken = attemptToken,
+                tier = tier,
+                scoped = null,
+                isPresenter = decision == UsageAccessJitGate.Decision.Present,
+            )
+        }
+    }
+
+    /**
+     * Issue #371: resolves the JIT request for [attemptToken] and continues
+     * the pending generation. Applies only when the current screen is still
+     * the same attempt's awaiting state (a close + regenerate sequence mints
+     * a new token, so a stale resume is dropped), and exactly once — after
+     * the resume the screen has moved on and a late callback finds nothing to
+     * continue.
+     */
+    fun continueUsageAccessJit(attemptToken: Long) {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return
+        if (awaiting.attemptToken != attemptToken) return
+        usageAccessGate.resolve(ExchangeJitAttemptOwner(attemptToken))
+        if (awaiting.scoped != null) {
+            startGeneration(awaiting.tier, scoped = awaiting.scoped)
+        } else {
+            startGeneration(awaiting.tier, scoped = null)
+        }
+    }
+
+    /**
+     * Issue #371: re-checks whether this awaiting surface can (still) present
+     * the request dialog — used when the gate state observed by the host
+     * changes (e.g. the previous owner released before presenting and this
+     * waiter may now acquire the presentation right). Returns whether this
+     * attempt currently holds the reservation.
+     */
+    fun tryAcquireJitPresentation(attemptToken: Long): Boolean {
+        val awaiting = screenState.value as? ExchangeScreen.AwaitingUsageAccessJit ?: return false
+        if (awaiting.attemptToken != attemptToken) return false
+        return when (usageAccessGate.ownedPhase(ExchangeJitAttemptOwner(attemptToken))) {
+            UsageAccessJitGate.Phase.Reserved -> true
+
+            UsageAccessJitGate.Phase.Available -> {
+                val decision = usageAccessGate.evaluate(ExchangeJitAttemptOwner(attemptToken))
+                decision == UsageAccessJitGate.Decision.Present
+            }
+
+            else -> false
+        }
+    }
+
+    private fun startGeneration(tier: PrivacyTier, scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>?) {
         screen = ExchangeScreen.Generating
         scope.launch(Dispatchers.IO) {
-            val result = controller.generate(tier)
+            val result =
+                if (scoped != null) {
+                    controller.generateForSelection(tier, scoped.first, scoped.second)
+                } else {
+                    controller.generate(tier)
+                }
             withContext(uiDispatcher) { handleGeneration(result, tier) }
         }
     }
@@ -298,10 +451,17 @@ class ExchangeFlowStateHolder(
         selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
         candidateLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
     ) {
-        screen = ExchangeScreen.Generating
-        scope.launch(Dispatchers.IO) {
-            val result = controller.generateForSelection(tier, selection, candidateLabels)
-            withContext(uiDispatcher) { handleGeneration(result, tier) }
+        val scoped = selection to candidateLabels
+        val attemptToken = nextJitAttemptToken()
+        when (val decision = usageAccessGate.evaluate(ExchangeJitAttemptOwner(attemptToken))) {
+            UsageAccessJitGate.Decision.Proceed -> startGeneration(tier, scoped = scoped)
+
+            else -> screen = ExchangeScreen.AwaitingUsageAccessJit(
+                attemptToken = attemptToken,
+                tier = tier,
+                scoped = scoped,
+                isPresenter = decision == UsageAccessJitGate.Decision.Present,
+            )
         }
     }
 
@@ -530,6 +690,14 @@ class ExchangeFlowStateHolder(
     )
 
     private var nextAttemptToken = 0L
+
+    /**
+     * Issue #371: JIT request attempt tokens come from the process-wide
+     * counter (UsageAccessJitGateProvider), never an instance-local one — a
+     * recreated holder must never re-emit a token a disposed holder used
+     * (stale-owner ABA).
+     */
+    private fun nextJitAttemptToken(): Long = UsageAccessJitGateProvider.nextAttemptToken()
 
     /**
      * Snapshot-backed so the hosting screen's freeze predicate (the idle
@@ -945,6 +1113,12 @@ fun LazyListScope.exchangeFlowItems(
                 )
             }
         }
+
+        is ExchangeScreen.AwaitingUsageAccessJit -> {
+            item(key = "exchange-usage-access-jit") {
+                ExchangeUsageAccessJitDialogHost(state = current, holder = holder)
+            }
+        }
     }
     holder.status?.let { status ->
         item(key = "exchange-status") {
@@ -957,6 +1131,91 @@ fun LazyListScope.exchangeFlowItems(
                     .testTag("exchange-status"),
             )
         }
+    }
+}
+
+/**
+ * Issue #371: exchange-surface host of the JIT request dialog. Presentation
+ * ownership mirrors the run surface: only the attempt holding the gate
+ * reservation presents; a waiter wakes on the gate's resolution or
+ * re-acquires when the reservation was released. Returning from the system
+ * settings runs the bounded grant re-read before the pending generation
+ * resumes (granted or not — the decline is never a failure).
+ */
+@Composable
+private fun ExchangeUsageAccessJitDialogHost(
+    state: ExchangeScreen.AwaitingUsageAccessJit,
+    holder: ExchangeFlowStateHolder,
+) {
+    val context = LocalContext.current
+    val gateSnapshot by holder.usageAccessGate.snapshot.collectAsStateWithLifecycle()
+    var presenter by remember(state.attemptToken) { mutableStateOf(state.isPresenter) }
+    var settingsRequested by remember(state.attemptToken) { mutableStateOf(false) }
+    var settingsLaunchFailed by remember(state.attemptToken) { mutableStateOf(false) }
+    var grantCheckTick by remember(state.attemptToken) { mutableIntStateOf(0) }
+    val owner = ExchangeJitAttemptOwner(state.attemptToken)
+
+    // Unmount while the pause is unresolved (navigation away, a run admission
+    // leaving the Idle face, host teardown): apply the owner-destruction
+    // rules — release while un-presented, abandon-resolve once presented — so
+    // the process barrier is never orphaned. No-op on the normal-resolution
+    // unmount (the screen has already moved past the awaiting state).
+    DisposableEffect(state.attemptToken) {
+        // Bind the cleanup to THIS attempt's identity: a stale host unmount
+        // (the screen already moved to a newer attempt) must not act on it.
+        val ownToken = state.attemptToken
+        onDispose { holder.disposeUsageAccessJitAttempt(ownToken) }
+    }
+
+    // Waiter wakeup: deterministic observation of the gate snapshot.
+    LaunchedEffect(gateSnapshot, state.attemptToken) {
+        if (presenter) return@LaunchedEffect
+        when (gateSnapshot.phase) {
+            UsageAccessJitGate.Phase.Resolved -> holder.continueUsageAccessJit(state.attemptToken)
+
+            UsageAccessJitGate.Phase.Available ->
+                if (holder.tryAcquireJitPresentation(state.attemptToken)) presenter = true
+
+            else -> Unit
+        }
+    }
+    // Presenting consumes the re-presentation right exactly once.
+    LaunchedEffect(presenter, state.attemptToken) {
+        if (presenter) holder.usageAccessGate.markPresented(owner)
+    }
+    // Returning from the system settings: observe ON_RESUME, run the bounded
+    // grant re-read, then resume the pending generation (granted or not).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && settingsRequested) {
+                settingsRequested = false
+                grantCheckTick += 1
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(grantCheckTick, state.attemptToken) {
+        if (grantCheckTick == 0) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            awaitUsageAccessGrant(isGranted = { UsageAccess.isGranted(context) })
+        }
+        holder.continueUsageAccessJit(state.attemptToken)
+    }
+
+    if (presenter) {
+        UsageAccessJitRequestDialog(
+            settingsLaunchFailed = settingsLaunchFailed,
+            onOpenSettings = {
+                if (openUsageAccessSettings(context)) {
+                    settingsRequested = true
+                } else {
+                    settingsLaunchFailed = true
+                }
+            },
+            onContinue = { holder.continueUsageAccessJit(state.attemptToken) },
+        )
     }
 }
 
@@ -1799,3 +2058,6 @@ fun exchangeContractFailureText(failure: IntentValidationFailure): String = when
 
     is IntentValidationFailure.UnknownCategoryRef -> stringResource(R.string.exchange_failure_unknown_category_ref)
 }
+
+/** Issue #371: gate owner identity of one generation attempt's JIT request. */
+internal data class ExchangeJitAttemptOwner(val attemptToken: Long)

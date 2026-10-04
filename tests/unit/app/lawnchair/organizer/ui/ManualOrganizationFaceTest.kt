@@ -47,6 +47,18 @@ class ManualOrganizationFaceTest {
             ) to ManualOrganizationFace.SELECTION,
 
             ManualOrganizationRun.State.Capturing to ManualOrganizationFace.PREPARATION,
+            // Issue #371: the JIT pause and its internal resume claim are
+            // preparation-phase waiting points — the request dialog is a modal
+            // overlay on T-09, never a new user-visible state.
+            ManualOrganizationRun.State.AwaitingUsageAccessJit(
+                runId = RunId(FACE_TEST_RUN_ID),
+                selection = null,
+                isOwner = true,
+            ) to ManualOrganizationFace.PREPARATION,
+            ManualOrganizationRun.State.ResumingUsageAccessJit(
+                runId = RunId(FACE_TEST_RUN_ID),
+                selection = null,
+            ) to ManualOrganizationFace.PREPARATION,
             ManualOrganizationRun.State.CandidateDetection to ManualOrganizationFace.PREPARATION,
             ManualOrganizationRun.State.Planning to ManualOrganizationFace.PREPARATION,
 

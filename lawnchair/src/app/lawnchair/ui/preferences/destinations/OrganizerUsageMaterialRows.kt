@@ -37,10 +37,16 @@ import com.android.launcher3.R
 
 /**
  * Issue #366: the personalization material rows — the launcher-origin
- * recording toggle and the usage access row — shared by Home screen settings
- * (Personalization group) and the Organizer hub (materials group). Both
- * surfaces must read and write the same preference and the same app-op state;
- * a second persistence would be a second truth (spec #203 U-2).
+ * recording toggle and the usage access row — shared by the Organizer hub
+ * materials section (T-06; #367 removed the settings-side second instance).
+ * Both rows must read and write the same preference and the same app-op
+ * state; a second persistence would be a second truth (spec #203 U-2).
+ *
+ * Issue #371: the usage-access row's explanation copy (label/subtitle) is
+ * owned by #371's permission-copy contract and meets TO-BE §7.3's one-sentence
+ * standard (purpose / why this row / what changes when declined, plus the
+ * qualified privacy statement). The row's state display, settings transition
+ * and ON_RESUME re-read are unchanged from the #367 relocation contract.
  */
 @Composable
 fun OrganizerUsageMaterialRows() {

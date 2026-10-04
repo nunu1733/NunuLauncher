@@ -72,6 +72,11 @@ internal fun manualOrganizationFace(state: ManualOrganizationRun.State): ManualO
     ManualOrganizationRun.State.Capturing,
     ManualOrganizationRun.State.CandidateDetection,
     ManualOrganizationRun.State.Planning,
+    // Issue #371: the JIT Usage Access pause and its internal resume claim
+    // are preparation-phase waiting points (the request dialog is a modal
+    // overlay on the T-09 face), never a new user-visible state.
+    is ManualOrganizationRun.State.AwaitingUsageAccessJit,
+    is ManualOrganizationRun.State.ResumingUsageAccessJit,
     -> ManualOrganizationFace.PREPARATION
 
     is ManualOrganizationRun.State.Preview,
