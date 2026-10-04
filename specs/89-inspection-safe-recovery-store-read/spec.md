@@ -1,6 +1,6 @@
 ---
 issue: "#89"
-status: accepted
+status: implemented
 requirements:
   - FR-004
   - FR-005
@@ -287,6 +287,7 @@ Stage B must stop and return to the owning storage/application contract rather t
 
 ## Change history
 
+- 2026-08-20: Implemented and merged through [PR #90](https://github.com/nunu1733/NunuLauncher/pull/90) at merge commit `4adb0411d8ee193836702cb90e0f49d0157d5185`. The final source head passed `CI / final-status`, API 26/API 35 physical-oracle instrumentation, and the independent high-risk audit recorded in [`docs/assessment/pr-90-inspection-safe-recovery-store-read.md`](../../docs/assessment/pr-90-inspection-safe-recovery-store-read.md). The merged #89 seam unblocks #84 I2 replacement; it does not weaken #84 confirmation-time authoritative recovery checks.
 - 2026-08-20: Revised after final Stage A re-review. Distinguished pristine fresh-install absence from suspicious missing-store residual state, made pristine startup initialize/validate an empty authoritative store before publishing an empty snapshot, replaced the cross-file private-constructor assumption with active exact-`RunMutex` lease identity enforcement, and narrowed `PROVEN_NO_COMMIT` to committed logical-state change rather than SQLite byte equality.
 - 2026-08-20: Revised after additional review. Added `PROVEN_NO_COMMIT` fence rollback for PointIdCollision retry, direct-final `FileInputStream` inspection with companion-entry fail-closed behavior, and a `RunMutexPort`/module-only startup-session issuer boundary.
 - 2026-08-20: Revised after re-review. Replaced platform AtomicFile with the pinned AndroidX implementation to fix the API 26–35 publication protocol, and added the opaque reconciliation-only capability that is required to bypass dirty/unknown ordinary-mutation rejection.
