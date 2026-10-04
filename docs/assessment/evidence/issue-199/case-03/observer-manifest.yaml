@@ -1,0 +1,20 @@
+contract: ux-visual-review/evidence-manifest-v1
+case_id: issue-199-case-03
+observer_visible: true
+neutral_user_goal: Understand the first screen shown for a home-screen organization suggestion and decide what to do next.
+capture:
+  locale: en
+  theme: dark
+  font_scale: 1.0
+  viewport: Android emulator, portrait
+  provenance:
+    subject_revision: 8104ce2af3dd9e26f7ddcb2ea339369e5b7b64b9
+    build_ref: retained Issue #123 after-capture
+    retrieved: 2026-08-27
+    retention: repository
+frames:
+  - id: frame-01
+    relation: {kind: root}
+    preceding_user_action: The launcher displayed this screen without a user action immediately before capture.
+    image_ref: frame-01.png
+    sha256: df655c964ddc73a698970d7b53a3b05c609dc891c8735a77c6eee5d5485617b5

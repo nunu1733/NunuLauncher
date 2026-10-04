@@ -1,0 +1,7 @@
+contract: ux-visual-review/critic-context-v1
+case_id: issue-199-case-05
+observer_visible: false
+user_product_goal: Understand which home-screen placements are locked and manage them safely.
+safety_classification: low-risk settings inspection; later actions may change placement locks
+known_defects: withheld until calibration adjudication
+human_baseline_ref: withheld until calibration adjudication

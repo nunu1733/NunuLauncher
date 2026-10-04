@@ -1,0 +1,61 @@
+contract: ux-visual-review/v1
+report_type: observer
+status: observed
+report_id: issue-199-case-02-observer
+provenance:
+  contract_revision: sha256:97459d25bbb3cb2e8402a24d14ed1e8f529299771572129889c0f51dffb21da3
+  subject:
+    revision: 5b9ad9fab45a050fd09388cf7c8647d77cc7789a
+    build_ref: retained Issue #123 before-capture
+  runtime:
+    client: codex
+    client_version: 0.151.0
+    provider: openai
+    model: gpt-5.6-luna
+    protocol: codex
+    reasoning: xhigh
+    permission_mode: danger-full-access
+    tool_surface:
+      file_read: allowed
+      file_write: allowed
+      shell: allowed
+      network: allowed
+      external_side_effects: allowed
+    tools_used:
+      - functions.exec
+      - exec_command
+      - view_image
+      - apply_patch
+  evidence_manifest_ref: docs/assessment/evidence/issue-199/case-02/observer-manifest.yaml
+scenario: Understand the first screen shown for a home-screen organization suggestion and decide what to do next.
+isolation:
+  mode: limited
+  limitations:
+    - Behavior was instruction-constrained because danger-full-access exposed mutation/network tools; only the explicitly permitted instruction, manifest, and frame files were read, and no mutation or network tools were used during observation.
+evidence:
+  - id: frame-01
+    apparent_state: A bright rounded bottom sheet is open over a dark home-screen background, presenting explanatory text and three stacked action rows.
+observations:
+  - evidence_refs: [frame-01]
+    visible: The brightest area is a white rounded sheet in the lower portion of the screen. Above it are a dark wallpaper, a faint "Tap to set up" label near the upper left, status indicators, and two small dots. Partial app icons remain visible behind the sheet near the lower left.
+    inference: First attention is drawn to the foreground sheet; the background appears secondary.
+  - evidence_refs: [frame-01]
+    visible: The sheet title reads "Organize your Home screen?" followed by text explaining that the user can review a proposed organization and that nothing changes until the preview is confirmed.
+    inference: The apparent purpose is to introduce a home-screen organization proposal and invite the user to choose a next step.
+  - evidence_refs: [frame-01]
+    visible: Three uniformly styled gray rows are labeled "LATER", "SKIP", and "REVIEW ORGANIZATION".
+    inference: The rows appear to be the available controls. "REVIEW ORGANIZATION" appears to be the most direct continuation because it names the review destination; "LATER" and "SKIP" appear to defer or bypass the process.
+  - evidence_refs: [frame-01]
+    visible: The title, explanatory paragraph, and three rows are grouped inside one sheet with a clear top-to-bottom arrangement.
+    inference: A likely scan path is title, supporting explanation, then the stacked controls. The three controls have similar visual weight, so their relative priority is communicated mainly by wording and order.
+  - evidence_refs: [frame-01]
+    visible: The background is sparse while the foreground sheet contains the only dense grouping; the three rows have rectangular button-like shapes.
+    inference: The rows are likely interactive affordances, while the wallpaper, status indicators, dots, and partial app icons read as background or surrounding launcher content.
+  - evidence_refs: [frame-01]
+    visible: '"LATER" and "SKIP" are short labels, and the sheet overlays part of the home-screen icons. The faint "Tap to set up" text is separate from the sheet.'
+    inference: It is unclear from this still whether "SKIP" bypasses only the review or the organization suggestion altogether, what time or condition "LATER" implies, and how the background setup message relates to the foreground prompt.
+sequence_changes: []
+uncertainties:
+  - Only a root still frame is provided; the visual response after choosing any row and the persistence of the choice cannot be observed.
+  - The apparent button affordances and the exact meaning of "LATER" and "SKIP" cannot be verified from pixels alone.
+missing_evidence: []

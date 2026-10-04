@@ -1,0 +1,4 @@
+interface:
+  display_name: "UX Visual Review"
+  short_description: "Review UI evidence for qualitative UX risks"
+  default_prompt: "Review this UI evidence with the UX visual review workflow."

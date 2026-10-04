@@ -1,0 +1,55 @@
+contract: ux-visual-review/evidence-manifest-v1
+case_id: issue-199-pilot-01-rerun
+observer_visible: true
+neutral_user_goal: >-
+  Understand the screens in a home-screen organization flow and decide what to
+  do at each point.
+capture:
+  locale: en
+  theme: light
+  font_scale: 1.0
+  viewport: Android emulator, 1080x1920 capture
+  provenance:
+    subject_revision: 76973333fd61e74981ac4bfd1cc487aba07b3cef
+    build_ref: https://github.com/nunu1733/NunuLauncher/actions/runs/33707975932
+    artifact: issue52-ui-evidence
+    retrieved: 2026-09-03
+    retention: repository
+frames:
+  - id: frame-01
+    relation:
+      kind: root
+    preceding_user_action: The user opened this screen.
+    image_ref: case-01-organizer-flow/frame-01.png
+    sha256: 503063c5f16e21e622a1aca44478aee9bb5b533c92961c19d1543ae1023d5974
+  - id: frame-02
+    relation:
+      kind: follows
+      from: frame-01
+    preceding_user_action: The user activated the prominent action visible in frame-01.
+    image_ref: case-01-organizer-flow/frame-02.png
+    sha256: b51b3357fece4f5184582612fbaee1c9e0127c5bfd0e911b7b5ec6e7ff3d0a2f
+  - id: frame-03a
+    relation:
+      kind: alternative-branch
+      from: frame-02
+      branch: A
+    preceding_user_action: No user action was recorded between frame-02 and this capture.
+    image_ref: case-01-organizer-flow/frame-03a.png
+    sha256: 3c15d368bdc617be60c4461924b722d9eb1f415fe444ad21dcdbb8f33b2b022f
+  - id: frame-03b
+    relation:
+      kind: alternative-branch
+      from: frame-02
+      branch: B
+    preceding_user_action: In a separate run, the user activated the prominent affirmative action visible in frame-02.
+    image_ref: case-01-organizer-flow/frame-03b.png
+    sha256: c53e810e644ed9f387eeaa47d5e19ba71d1a1b948eed9208e1008ef530b64c36
+  - id: frame-03c
+    relation:
+      kind: alternative-branch
+      from: frame-02
+      branch: C
+    preceding_user_action: In a separate run, the user activated the prominent affirmative action visible in frame-02.
+    image_ref: case-01-organizer-flow/frame-03c.png
+    sha256: 5974bd1868f5736cdd618d23044ee84caaa85eecbf273bab8fbb43286838fb95

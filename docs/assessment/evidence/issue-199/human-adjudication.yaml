@@ -1,0 +1,157 @@
+contract: ux-visual-review/calibration-adjudication-v1
+status: completed-non-blind
+baseline_ref: calibration-baselines.yaml
+baseline_frozen_before_model_runs: true
+instructions:
+  - Review the named evidence and only the canonical fields of each named finding.
+  - Choose accept, reject, or needs-evidence without changing the frozen baseline.
+  - Record a short evidence-bound reason; do not use model confidence as a disposition.
+reviewer: repository-owner
+reviewed_at: 2026-09-03
+adjudication_mode: non-blind
+prior_exposure:
+  model_output: true
+  baseline_comparison: true
+  note: >-
+    The adjudicator had prior exposure to the retained Critic outputs and the
+    frozen human-baseline comparison before recording these dispositions.
+  limitation: >-
+    This is not equivalent to independent blind validation and remains a
+    calibration limitation.
+authorization:
+  source: current user confirmation
+  scope: >-
+    Record all 13 pending extra findings as non-blind needs-evidence.
+summary:
+  total_extras: 13
+  needs_evidence: 13
+  accepted: 0
+  rejected: 0
+  unresolved: 13
+  counted_true_positive: 0
+  counted_false_positive: 0
+  false_positive_rate: indeterminate
+  note: >-
+    Unresolved extras are not counted as true positives or false positives;
+    additional evidence is required before either disposition can be made.
+comparison:
+  semantic_root_cause_agreement: >-
+    The pilot's central pre-apply trust finding matches the human baseline;
+    the case-02 dark-theme root cause remains a missed baseline finding.
+  missed_baseline_findings: 1
+  missed_baseline_detail: >-
+    Case-02 did not report the frozen moderate visual-coherence finding that
+    the fixed light popup surface fails to follow the surrounding dark theme.
+  severity_drift: >-
+    The case-03 repeat retained the same two semantic extras; the visual
+    hierarchy finding moved from moderate to minor, a one-level
+    near-agreement drift.
+  reproducibility: >-
+    Case-03 Critic and its repeat both reported the same defer-versus-dismiss
+    and action-hierarchy concerns; recurrence does not resolve their
+    needs-evidence dispositions.
+  residual_risk: >-
+    Contextual visual-coherence misses, state-transition ambiguity, and
+    deterministic accessibility or interaction failures remain possible;
+    still-image calibration cannot establish those surfaces.
+cases:
+  - case_id: issue-199-pilot-01-rerun
+    critic_report_ref: pilot-01-critic.yaml
+    extras:
+      - finding_id: UVR-002
+        disposition: needs-evidence
+        reason: >-
+          Frames 01 and 03a show conflicting wording, but still images do not
+          establish whether the layout changed, only the proposal was
+          invalidated, or what state and action follow; ordered transition
+          evidence is needed.
+      - finding_id: UVR-003
+        disposition: needs-evidence
+        reason: >-
+          Frames 02, 03b, and 03c show similarly styled counts and inconsistent
+          singular forms, but the retained sequence does not establish whether
+          grouping or wording materially impedes first-time comprehension;
+          representative comprehension evidence is needed.
+      - finding_id: UVR-004
+        disposition: needs-evidence
+        reason: >-
+          Frames 01, 02, 03a, 03b, and 03c show text-line actions with
+          typographic emphasis, but stills do not establish hit regions or
+          recognition of the primary or safest path; action-recognition and
+          interaction evidence is needed.
+      - finding_id: UVR-005
+        disposition: needs-evidence
+        reason: >-
+          Frames 02 and 03c repeat counts around the verification-blocked
+          state, but they do not establish whether those counts describe a
+          prior proposal, an applied change, or the unverifiable current
+          layout; diagnostic and state-transition evidence is needed.
+  - case_id: issue-199-case-02
+    critic_report_ref: case-02/critic.yaml
+    extras:
+      - finding_id: UVR-001
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 shows the same pale-gray treatment for all three rows, but
+          a still cannot establish rendered contrast, enabled state, hit area,
+          or first-time action recognition; deterministic and interaction
+          evidence is needed.
+      - finding_id: UVR-002
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 shows only the labels LATER and SKIP and no resulting state,
+          so it cannot establish whether their actual timing, persistence, or
+          dismissal outcomes differ; immediate and later behavior evidence is
+          needed.
+      - finding_id: UVR-003
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 shows a faint setup cue behind the foreground sheet, but one
+          still does not establish whether users perceive the messages as
+          related or competing; broader context and user-task evidence is
+          needed.
+  - case_id: issue-199-case-03
+    critic_report_ref: case-03/critic.yaml
+    extras:
+      - finding_id: UVR-001
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 confirms that LATER and SKIP have no visible qualifiers,
+          but no post-selection state or user-comprehension evidence shows
+          whether the outcomes are actually ambiguous; outcome capture or
+          first-time validation is needed.
+      - finding_id: UVR-002
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 shows similar treatment for all three controls, but a still
+          does not establish action recognition or material task impact;
+          first-time hierarchy evidence is needed.
+  - case_id: issue-199-case-04
+    critic_report_ref: case-04/critic.yaml
+    extras:
+      - finding_id: UVR-001
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 at 2.0 text scale shows identical muted treatment, but it
+          cannot establish effective hit regions or whether users identify the
+          intended path; interaction and first-time recognition evidence is
+          needed.
+      - finding_id: UVR-002
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 shows separate 後で and スキップ buttons without outcome
+          qualifiers, but it does not establish their actual re-entry or
+          dismissal behavior; ordered outcome evidence is needed.
+      - finding_id: UVR-003
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 visibly ends the wrapped copy with an orphaned ん。, but
+          deterministic layout checks and user scanability evidence are needed
+          to distinguish a consequential reflow defect from a cosmetic wrap.
+      - finding_id: UVR-004
+        disposition: needs-evidence
+        reason: >-
+          Frame-01 provides reassurance but no scope or recovery details;
+          entry-only evidence cannot establish whether later preview,
+          confirmation, and recovery states make consequences reversible and
+          understandable before mutation.

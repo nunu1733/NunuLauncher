@@ -1,0 +1,20 @@
+contract: ux-visual-review/evidence-manifest-v1
+case_id: issue-199-case-06
+observer_visible: true
+neutral_user_goal: Understand the first screen shown for workspace guidance and decide what to do next.
+capture:
+  locale: en
+  theme: light
+  font_scale: 1.0
+  viewport: synthetic square crop, 1080x1080
+  provenance:
+    subject_revision: synthetic-ui-fixture-v1
+    build_ref: repo-native-svg-rendered-png
+    retrieved: 2026-09-03
+    retention: repository
+frames:
+  - id: frame-01
+    relation: {kind: root}
+    preceding_user_action: The workspace displayed this screen without a user action immediately before capture.
+    image_ref: frame-01.png
+    sha256: 32553300a907b43ab9c967a3710baf968eedca60a57b62255fe69fcd1ca54fd2

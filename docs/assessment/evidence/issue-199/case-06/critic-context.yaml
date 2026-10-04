@@ -1,0 +1,9 @@
+contract: ux-visual-review/critic-context-v1
+case_id: issue-199-case-06
+observer_visible: false
+user_product_goal: Help a user understand workspace guidance and choose an appropriate next step.
+safety_classification: Synthetic informational card; no real external action or workspace mutation is in scope.
+known_defects: withheld until review is complete
+human_baseline_ref: withheld until calibration adjudication
+evidence_integrity:
+  frame_sha256: 32553300a907b43ab9c967a3710baf968eedca60a57b62255fe69fcd1ca54fd2

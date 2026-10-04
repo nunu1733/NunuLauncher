@@ -1,0 +1,20 @@
+contract: ux-visual-review/evidence-manifest-v1
+case_id: issue-199-case-07
+observer_visible: true
+neutral_user_goal: Understand the first screen shown for workspace guidance.
+capture:
+  locale: en
+  theme: light
+  font_scale: 1.0
+  viewport: synthetic square, 1080x1080
+  provenance:
+    subject_revision: synthetic-missing-fixture-v1
+    build_ref: intentionally-absent-image
+    retrieved: 2026-09-03
+    retention: repository
+frames:
+  - id: frame-01
+    relation: {kind: root}
+    preceding_user_action: The workspace displayed this screen without a user action immediately before capture.
+    image_ref: frame-01.png
+    sha256: unknown
