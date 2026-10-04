@@ -1089,6 +1089,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
      * Issue #209 AC-2: after a verified apply the safety net renders as an
      * emphasized control, and the recovery preview renders the same
      * restore/cancel decision pair.
+     *
+     * Issue #230 AC-1/AC-2: the confirmation also renders the correlated
+     * apply history line, and a mismatched preview pointId falls back to the
+     * target-only surface without losing the decision pair.
      */
     @Test
     fun recoverySurfacesRenderDecisionButtons() {
@@ -1127,6 +1131,32 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(recoveryConfirm).assertIsDisplayed().assert(buttonRole())
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).assertIsDisplayed()
             .assert(buttonRole())
+
+        // Issue #230: the correlated apply history renders above the decision
+        // pair (the fixture plan moves exactly one placement). The singular
+        // plural form must resolve too.
+        val history = context.resources.getQuantityString(
+            R.plurals.manual_organization_recovery_history_moved,
+            1,
+            1,
+        ).let { context.getString(R.string.manual_organization_recovery_history_prefix, it) }
+        composeRule.onNodeWithText(history).assertIsDisplayed()
+
+        // Issue #230 AC-2: a preview whose pointId does not match the
+        // retained apply renders the target-only surface; confirm/cancel stay
+        // available.
+        application.recoveryPreview = RecoveryPreviewResult.Restorable(
+            pointId = RecoveryPointId(OTHER_POINT_ID),
+            summary = RecoveryPreviewSummary(),
+            confirmation = RecoveryPreviewConfirmation.issue(byteArrayOf(2)),
+        )
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_cancel)).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.Applied }
+        composeRule.onNodeWithText(restore).performClick()
+        composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
+
+        composeRule.onNodeWithText(recoveryConfirm).assertIsDisplayed()
+        composeRule.onAllNodesWithText(history).assertCountEquals(0)
     }
 
     @Test
@@ -1216,6 +1246,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
             R.string.manual_organization_stale_proposal_not_reviewed,
             R.string.manual_organization_recapture_summary,
             R.string.manual_organization_preview_details_unavailable,
+            // Issue #230: the recovery confirmation's apply-history prefix.
+            // The three count segments are plurals and are asserted below.
+            R.string.manual_organization_recovery_history_prefix,
             R.string.manual_organization_changes_heading,
             R.string.manual_organization_group_moved,
             R.string.manual_organization_group_new_folders,
@@ -1301,6 +1334,21 @@ class ManualOrganizationPreferencesInstrumentationTest {
             "C",
         )
         assert(japaneseMoveRow.contains("A") && japaneseMoveRow.contains("C"))
+
+        // Issue #230: the recovery history plurals resolve in Japanese (the
+        // ja locale carries only the `other` quantity).
+        listOf(
+            R.plurals.manual_organization_recovery_history_moved,
+            R.plurals.manual_organization_recovery_history_new_folders,
+            R.plurals.manual_organization_recovery_history_new_pages,
+        ).forEach { id ->
+            val resolved = japanese.resources.getQuantityString(id, 2, 2)
+            assertNotEquals(
+                "plurals resource $id falls back to English under a Japanese locale",
+                context.resources.getQuantityString(id, 2, 2),
+                resolved,
+            )
+        }
     }
 
     @Test
@@ -1835,6 +1883,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
     private companion object {
         const val RUN_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        const val OTHER_POINT_ID = "dddddddddddddddddddddddddddddddd"
         const val REVISION = "revision"
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 

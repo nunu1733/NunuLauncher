@@ -230,8 +230,12 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         )
 
         run.beginRecoveryPreview()
-        assertTrue(run.state is ManualOrganizationRun.State.RecoveryPreview)
-        assertTrue((run.state as ManualOrganizationRun.State.RecoveryPreview).result is RecoveryPreviewResult.Restorable)
+        val confirmation = run.state as? ManualOrganizationRun.State.RecoveryPreview
+            ?: error("Production recovery did not reach the confirmation surface: ${run.state}")
+        assertTrue(confirmation.result is RecoveryPreviewResult.Restorable)
+        // Issue #230 AC-2/AC-5: the confirmation carries the applied plan's
+        // summary as apply history (D2 correlation gate).
+        assertEquals(applied.summary, confirmation.appliedSummary)
 
         run.confirmRecovery()
         val recovery = run.state as? ManualOrganizationRun.State.RecoveryResultState
@@ -242,6 +246,62 @@ class ManualOrganizationProductionE2EInstrumentationTest {
             launcher.model.modelDbController,
             launcher.model,
         ).captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue52-after-recovery"))
+            .layoutState)
+    }
+
+    /**
+     * Issue #230 AC-5: the confirmation describes the pre-apply target, and
+     * restoring after an external layout change returns the exact pre-apply
+     * state. SA-18 premise: the external row is absent from the recovery
+     * point's pre-state, so the confirmed recovery write-set classifies it as
+     * an explicit Delete; the asserted oracle is the SA-18 general rule that
+     * no row is silently lost or unaccounted (the post-restore capture equals
+     * the pre-apply capture).
+     */
+    @Test
+    fun recoveryConfirmationExplainsTargetAndRestoresPreStateAfterExternalChange() {
+        val before = LauncherLayoutAdapter(
+            context,
+            launcher.model.modelDbController,
+            launcher.model,
+        ).captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue230-before"))
+
+        val module = LayoutApplicationModule.production(context, GeneratedFolderTitles.resolver(context), launcher)
+        assertEquals(
+            app.lawnchair.organizer.application.protocol.RestartReconciler.ReconciliationSummary.Clean,
+            module.reconcileAtStart(),
+        )
+        val run = ManualOrganizationRun(ProductionManualOrganizationApplication(context, module))
+
+        run.start()
+        assertTrue(run.state is ManualOrganizationRun.State.Preview)
+        run.confirm()
+        val applied = run.state as? ManualOrganizationRun.State.Applied
+            ?: error("Production manual run did not reach applied result: ${run.state}")
+        val applyResult = applied.result as? ApplyResult.Applied
+            ?: error("Production manual run returned non-success result: ${applied.result}")
+
+        // Simulate a user edit after the verified apply: one extra favorites
+        // row the recovery point does not contain.
+        insertFixtureRow(launcher.model.modelDbController.db, 0, 4, "Issue230 external row")
+        reloadAndWait()
+        assertEquals(4, snapshotFavorites().size)
+
+        run.beginRecoveryPreview()
+        val confirmation = run.state as? ManualOrganizationRun.State.RecoveryPreview
+            ?: error("Production recovery did not reach the confirmation surface: ${run.state}")
+        assertTrue(confirmation.result is RecoveryPreviewResult.Restorable)
+        assertEquals(applied.summary, confirmation.appliedSummary)
+
+        run.confirmRecovery()
+        val recovery = run.state as? ManualOrganizationRun.State.RecoveryResultState
+            ?: error("Production recovery did not reach terminal result: ${run.state}")
+        assertEquals(RecoveryResult.Restored(applyResult.pointId), recovery.result)
+        assertEquals(before.layoutState, LauncherLayoutAdapter(
+            context,
+            launcher.model.modelDbController,
+            launcher.model,
+        ).captureCurrent(app.lawnchair.organizer.application.protocol.CaptureId("issue230-after-recovery"))
             .layoutState)
     }
 

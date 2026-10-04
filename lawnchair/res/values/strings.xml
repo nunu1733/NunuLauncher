@@ -1038,17 +1038,30 @@
     <string name="manual_organization_recapture_summary">Captures your current home layout and prepares a new proposal to review.</string>
     <string name="manual_organization_apply_success">Organization was applied and verified.</string>
     <string name="manual_organization_apply_rejected">Organization was not applied.</string>
-    <string name="manual_organization_apply_rolled_back">The attempted organization was rolled back. Your previous layout remains in place.</string>
-    <string name="manual_organization_apply_recovered">The attempted organization could not finish. Your previous layout was restored.</string>
+    <string name="manual_organization_apply_rolled_back">The attempted organization was rolled back. Your saved layout remains in place.</string>
+    <string name="manual_organization_apply_recovered">The attempted organization could not finish. Your saved layout was restored.</string>
     <string name="manual_organization_apply_unresolved">The current layout could not be verified. Do not make another organization change yet.</string>
     <string name="manual_organization_apply_recovery_failed">Automatic recovery could not be verified. Do not make another organization change yet.</string>
     <string name="manual_organization_safe_terminal">The current layout needs a safety review. Do not start another organization run yet.</string>
     <string name="manual_organization_open_diagnostics">Open organizer diagnostics</string>
     <string name="manual_organization_open_diagnostics_summary">Export privacy-safe details for support before making another change.</string>
     <string name="manual_organization_apply_concurrent">Another layout operation is in progress. Try again later.</string>
-    <string name="manual_organization_recovery">Restore the previous layout</string>
-    <string name="manual_organization_recovery_inspecting">Checking whether the previous layout can be restored safely…</string>
-    <string name="manual_organization_recovery_preview">Restoring the saved layout requires confirmation.</string>
+    <string name="manual_organization_recovery">Restore saved layout</string>
+    <string name="manual_organization_recovery_inspecting">Checking whether the saved layout can be restored safely…</string>
+    <string name="manual_organization_recovery_preview">The saved layout — this returns your home layout to the state before the organization you reviewed on this screen. Confirmation is required to proceed.</string>
+    <string name="manual_organization_recovery_history_prefix">Changes made by the last organization: %1$s</string>
+    <plurals name="manual_organization_recovery_history_moved">
+        <item quantity="one">moved %1$d placement</item>
+        <item quantity="other">moved %1$d placements</item>
+    </plurals>
+    <plurals name="manual_organization_recovery_history_new_folders">
+        <item quantity="one">created %1$d folder</item>
+        <item quantity="other">created %1$d folders</item>
+    </plurals>
+    <plurals name="manual_organization_recovery_history_new_pages">
+        <item quantity="one">added %1$d page</item>
+        <item quantity="other">added %1$d pages</item>
+    </plurals>
     <string name="manual_organization_recovery_confirm">Restore saved layout</string>
     <string name="manual_organization_recovering">Restoring the saved layout…</string>
     <string name="manual_organization_recovery_restored">The saved layout was restored.</string>

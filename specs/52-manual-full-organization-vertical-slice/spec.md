@@ -133,6 +133,8 @@ After confirmation, the UI displays phase-aware progress. A dismissal/back/cance
 
 The result surface maps all accepted `ApplyResult` variants to distinct, localized user-visible outcomes. It never claims success merely because the transaction was attempted or committed. A verified success displays applied/preserved/unplaced summary counts, warnings, the manual trigger, and a recovery action while the point remains restorable. The recovery action first presents the accepted revision-bound read-only preview and then passes its opaque confirmation to the application-owned confirmation handoff after explicit consent; UI/coordinator code never constructs or receives a `RecoveryRequest`.
 
+Issue #230: a `Restorable` recovery confirmation also states the restore target — the home layout as it was before the organization reviewed on this screen — and renders the change counts of the correlated verified apply as **apply history** (what the last organization did), never as a predicted restore diff. The history line renders only while the preview's `RecoveryPointId` matches the `ApplyResult.Applied.pointId` retained for this run (same-process pairing); on summary absence or pointId mismatch it is omitted and confirm/cancel remain fully available. Cancelling the preview stays zero-write.
+
 | Application outcome | Required manual-run UI behavior |
 |---|---|
 | `NoChanges` | State that no changes were applied; no recovery action is shown for this run. |

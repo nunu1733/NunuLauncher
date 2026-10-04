@@ -795,6 +795,105 @@ class ManualOrganizationRunTest {
         assertEquals(applied.summary, (runner.state as ManualOrganizationRun.State.Applied).summary)
     }
 
+    @Test
+    fun recoveryPreviewCarriesTheCorrelatedApplyHistory() {
+        val application = FakeApplication(readyInput())
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+        val applied = runner.state as ManualOrganizationRun.State.Applied
+
+        runner.beginRecoveryPreview()
+
+        val preview = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        assertTrue(preview.result is RecoveryPreviewResult.Restorable)
+        assertEquals(applied.summary, preview.appliedSummary)
+        assertEquals(1, preview.appliedSummary?.movedCount)
+    }
+
+    @Test
+    fun recoveryPreviewWithMismatchedPointIdOmitsApplyHistoryButKeepsConfirmationUsable() {
+        val application = FakeApplication(readyInput())
+        application.recoveryPreview = restorablePreview(OTHER_POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+
+        runner.beginRecoveryPreview()
+
+        val preview = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        assertTrue(preview.result is RecoveryPreviewResult.Restorable)
+        assertEquals(null, preview.appliedSummary)
+
+        runner.cancelRecoveryPreview()
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+    }
+
+    @Test
+    fun recoveryPreviewFollowsTheLatestVerifiedApply() {
+        val application = FakeApplication(readyInput())
+        application.nextRunIds = listOf(RUN_ID, SECOND_RUN_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+        // Issue #230 recommended test (d): apply B supersedes apply A, and the
+        // confirmation carries B's history only.
+        application.applyResult = ApplyResult.Applied(RunId(SECOND_RUN_ID), RecoveryPointId(OTHER_POINT_ID))
+        runner.start()
+        runner.confirm()
+        val appliedB = runner.state as ManualOrganizationRun.State.Applied
+
+        application.recoveryPreview = restorablePreview(OTHER_POINT_ID)
+        runner.beginRecoveryPreview()
+        val previewB = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        assertEquals(appliedB.summary, previewB.appliedSummary)
+
+        runner.cancelRecoveryPreview()
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        runner.beginRecoveryPreview()
+        val previewA = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        assertEquals(null, previewA.appliedSummary)
+    }
+
+    @Test
+    fun freshRunInstanceDoesNotReachRecoveryPreview() {
+        val application = FakeApplication(readyInput())
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+
+        // Issue #230 recommended test (e): a process restart constructs a
+        // fresh run; the process-local apply context is empty, so the
+        // confirmation surface is unreachable.
+        val restarted = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        restarted.beginRecoveryPreview()
+
+        assertEquals(ManualOrganizationRun.State.Idle, restarted.state)
+    }
+
+    @Test
+    fun nonRestorablePreviewCarriesNoApplyHistory() {
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+
+        runner.beginRecoveryPreview()
+
+        val preview = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        assertTrue(preview.result is RecoveryPreviewResult.NotRestorable)
+        assertEquals(null, preview.appliedSummary)
+    }
+
+    private fun restorablePreview(pointId: String) = RecoveryPreviewResult.Restorable(
+        pointId = RecoveryPointId(pointId),
+        summary = RecoveryPreviewSummary(),
+        confirmation = RecoveryPreviewConfirmation.issue(byteArrayOf(1)),
+    )
+
     private fun readyInput() = OrganizationInputComposition.Ready(
         input = input(),
         provenance = InputProvenance(
@@ -967,6 +1066,7 @@ class ManualOrganizationRunTest {
         const val RUN_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         const val SECOND_RUN_ID = "cccccccccccccccccccccccccccccccc"
+        const val OTHER_POINT_ID = "dddddddddddddddddddddddddddddddd"
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
 }
