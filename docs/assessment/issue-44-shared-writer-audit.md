@@ -295,3 +295,23 @@ C-1 source proof passed; the C-2 SQLite reproduction passed; and the focused Gra
 task completed successfully. The C-1 command is deliberately a source proof, not
 a runtime stale-handle/lost-update reproduction. No production source file was
 modified by this audit.
+
+---
+
+## Update: Issue #60 follow-ups (2026-08-18)
+
+The rows tracked in #60 (executor admission, Binder future self-wait,
+superseding reload, deferred FIFO/exactly-once, nested transactions,
+process restart, and writer inventory) are now closed out by
+[`docs/assessment/issue-60-executor-writer-admission-audit.md`](./issue-60-executor-writer-admission-audit.md).
+
+Verdict summary: 6 sequences confirmed (including 1 fixed defect for FIFO
+exception isolation), 1 disproven (Binder two-future self-wait), and 1
+unsupported (device-level process death/restart) with documented source
+evidence and tracking note. The writer inventory is now an executable
+source-scan allowlist (18 files, 1025 scanned, passes in CI).
+
+The FIFO fix (per-entry try/catch around deferred callback drain in
+`LayoutWriteCoordinator.release()` at lines 343-350) was applied to the
+production source; all other assessment was additive (tests, scanner,
+documentation) with no production code change.

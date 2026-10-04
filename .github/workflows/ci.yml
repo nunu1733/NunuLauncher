@@ -89,6 +89,8 @@ jobs:
         run: python3 tools/repo-contract/test_validate_repo_contract.py
       - name: High-risk gate self-tests
         run: python3 tools/repo-contract/test_validate_high_risk_evidence.py
+      - name: Writer inventory scan
+        run: python3 tools/repo-contract/validate_writer_inventory.py
 
   # Source-only: style check. Skipped for docs-only PRs so they do not spin up
   # a Gradle daemon.

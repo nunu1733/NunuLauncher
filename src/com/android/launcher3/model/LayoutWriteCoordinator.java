@@ -334,8 +334,19 @@ public final class LayoutWriteCoordinator {
             deferred.clear();
             lock.notifyAll();
         }
+        // Issue #60: each deferred callback runs in isolation so a throwing entry
+        // (e.g. a plain runOrDefer runnable) cannot prevent later entries from
+        // receiving their exactly-once terminal signal. Futures from
+        // runOrDeferWithOperationFuture are already completed exceptionally by
+        // their own inner try/catch; the outer catch is a safety net for any
+        // remaining path, including Errors.
         while (!toRun.isEmpty()) {
-            toRun.removeFirst().runWithOperationFuture();
+            DeferredRunnable r = toRun.removeFirst();
+            try {
+                r.runWithOperationFuture();
+            } catch (Throwable t) {
+                Log.e(TAG, "Deferred callback threw", t);
+            }
         }
     }
 
