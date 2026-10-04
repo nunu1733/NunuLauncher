@@ -2624,6 +2624,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         var readOverride: (() -> app.lawnchair.organizer.application.public.OrganizerDurableStatus)? = null
 
         override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = readOverride?.invoke() ?: durableStatus
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = null
 
         /** Issue #271 review: overridable readiness for the re-read race test. */
         var readiness = kotlinx.coroutines.flow.MutableStateFlow(

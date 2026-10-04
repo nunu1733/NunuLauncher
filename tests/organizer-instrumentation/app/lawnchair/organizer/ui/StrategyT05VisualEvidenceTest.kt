@@ -223,6 +223,7 @@ class StrategyT05VisualEvidenceTest {
                 confirmation: RecoveryPreviewConfirmation,
             ) = error("not reached")
             override fun readDurableOrganizerStatus() = OrganizerDurableStatus.NEVER_ORGANIZED
+            override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = null
             override val readinessState = MutableStateFlow(
                 app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
             )
@@ -269,6 +270,7 @@ class StrategyT05VisualEvidenceTest {
                 confirmation: RecoveryPreviewConfirmation,
             ) = error("not reached")
             override fun readDurableOrganizerStatus() = OrganizerDurableStatus.NEVER_ORGANIZED
+            override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = null
             override val readinessState = MutableStateFlow(
                 app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
             )

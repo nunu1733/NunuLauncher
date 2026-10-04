@@ -984,6 +984,226 @@ class ManualOrganizationRunTest {
         assertEquals(null, preview.appliedSummary)
     }
 
+    @Test
+    fun durableEntryOpensPreviewFromIdleAndExplicitHubReturnRestoresPreEntryState() {
+        // Issue #376 (RS-AC-01/04): the hub entry needs no apply context, the
+        // preview carries no apply history, and the explicit hub return
+        // restores the pre-entry state so the hub re-derives the durable row.
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+
+        assertTrue(runner.beginRecoveryPreviewFromDurableEntry())
+
+        val preview = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        assertTrue(preview.result is RecoveryPreviewResult.Restorable)
+        assertEquals(null, preview.appliedSummary)
+
+        runner.confirmRecovery()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+
+        assertTrue(runner.leaveRecoveryResultToHub())
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+        // Idempotent: a second call is a no-op.
+        assertFalse(runner.leaveRecoveryResultToHub())
+    }
+
+    @Test
+    fun durableEntryFromCancelledStateRestoresCancelledOnPreviewCancel() {
+        // Issue #376 (spec D5): the cancel return target is the pre-entry
+        // display state — never a stale Applied face via lastVerifiedApply.
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.cancel()
+        assertTrue(runner.state is ManualOrganizationRun.State.Cancelled)
+
+        assertTrue(runner.beginRecoveryPreviewFromDurableEntry())
+        runner.cancelRecoveryPreview()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Cancelled)
+    }
+
+    @Test
+    fun durableEntryFromIdleRestoresIdleOnPreviewCancel() {
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        assertTrue(runner.beginRecoveryPreviewFromDurableEntry())
+        runner.cancelRecoveryPreview()
+
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+    }
+
+    @Test
+    fun durableEntryIsSilentlyRejectedOutsideIdleAndCancelledWithoutLeaseLeak() {
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+
+        // The durable row is not visible on an Applied face, so the entry
+        // rejects without touching the state — and the recovery lease must be
+        // released for the legacy entry to still work.
+        assertFalse(runner.beginRecoveryPreviewFromDurableEntry())
+        assertTrue(runner.state is ManualOrganizationRun.State.Applied)
+
+        runner.beginRecoveryPreview()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryPreview)
+    }
+
+    @Test
+    fun durableEntryIsRejectedWhenTheSelectionReadFailsClosed() {
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = null
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        assertFalse(runner.beginRecoveryPreviewFromDurableEntry())
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+
+        // The lease is released; a later read recovery admits the entry.
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        assertTrue(runner.beginRecoveryPreviewFromDurableEntry())
+    }
+
+    @Test
+    fun durableEntryLaunchHandoffIsConsumedExactlyOnceAndLostOnProcessDeath() {
+        // Issue #376 (RS-AC-03): the hub CTA arms a process-local handoff; a
+        // fresh coordinator (process death) has nothing armed, so a restored
+        // durable-recovery route pops back to the hub instead of re-running
+        // the flow.
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        assertFalse(runner.consumeDurableEntryLaunchArm())
+
+        runner.armDurableEntryLaunch()
+        assertTrue(runner.consumeDurableEntryLaunchArm())
+        assertFalse(runner.consumeDurableEntryLaunchArm())
+
+        // A fresh coordinator instance models the process death boundary.
+        val restarted = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        assertFalse(restarted.consumeDurableEntryLaunchArm())
+    }
+
+    @Test
+    fun hubOriginRecoveryResultStateSurvivesTheGenericDismissal() {
+        // Issue #376 (RS-AC-04 / spec D5): the explicit hub return owns the
+        // result-face exit; a generic dismissal (host dispose, diagnostics
+        // push) must keep the terminal state so the result surface survives.
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.beginRecoveryPreviewFromDurableEntry()
+        runner.confirmRecovery()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+
+        runner.dismiss()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+    }
+
+    @Test
+    fun durableEntryRepresentsTheNextRemainingPointAfterHubReturn() {
+        // Issue #376 (RS-AC-02): with two retained points, restoring the
+        // latest and returning to the hub re-presents the surviving point as
+        // the next restore target (state-machine proof, not manual evidence).
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        assertTrue(runner.beginRecoveryPreviewFromDurableEntry())
+        runner.confirmRecovery()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+        assertTrue(runner.leaveRecoveryResultToHub())
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+
+        // The hub's re-read now selects the surviving older point.
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(OTHER_POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(2),
+        )
+        application.recoveryPreview = restorablePreview(OTHER_POINT_ID)
+
+        assertTrue(runner.beginRecoveryPreviewFromDurableEntry())
+        val nextPreview = runner.state as ManualOrganizationRun.State.RecoveryPreview
+        val restorable = nextPreview.result as RecoveryPreviewResult.Restorable
+        assertEquals(RecoveryPointId(OTHER_POINT_ID), restorable.pointId)
+    }
+
+    @Test
+    fun legacyRecoveryResultStateIsUnchangedByTheExplicitHubReturn() {
+        val application = FakeApplication(readyInput())
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.start()
+        runner.confirm()
+        runner.beginRecoveryPreview()
+        runner.confirmRecovery()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+
+        // Applied-surface origin keeps the current behavior: the terminal
+        // state is not dissolved by the hub-return path.
+        assertFalse(runner.leaveRecoveryResultToHub())
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+    }
+
+    @Test
+    fun newRunAdmissionDissolvesTheHubRecoveryEntryOrigin() {
+        val application = FakeApplication(readyInput())
+        application.restorableEntry = app.lawnchair.organizer.application.public.RestorableRecoveryEntry(
+            pointId = RecoveryPointId(POINT_ID),
+            remainingWindow = app.lawnchair.organizer.application.public.RemainingWindow.HoursRemaining(5),
+        )
+        application.recoveryPreview = restorablePreview(POINT_ID)
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        runner.beginRecoveryPreviewFromDurableEntry()
+        runner.confirmRecovery()
+        assertTrue(runner.state is ManualOrganizationRun.State.RecoveryResultState)
+
+        runner.start()
+        val runState = runner.state
+
+        // The origin was dissolved by the new admission: the hub return does
+        // nothing and the live run is untouched.
+        assertFalse(runner.leaveRecoveryResultToHub())
+        assertEquals(runState, runner.state)
+    }
+
     private fun restorablePreview(pointId: String) = RecoveryPreviewResult.Restorable(
         pointId = RecoveryPointId(pointId),
         summary = RecoveryPreviewSummary(),
@@ -2458,6 +2678,10 @@ class ManualOrganizationRunTest {
         var durableStatus: app.lawnchair.organizer.application.public.OrganizerDurableStatus =
             app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
 
+        // Issue #376: the D-15 restore-entry hint; null = fail-closed (no CTA).
+        var restorableEntry: app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = null
+        var restorableEntryReads = 0
+
         // Issue #228: default keeps the legacy behavior — detection is
         // unavailable, so start() falls straight through to the plain full
         // compose (spec §7). Tests of the selection flow override this.
@@ -2528,6 +2752,11 @@ class ManualOrganizationRunTest {
         override fun confirmRecovery(pointId: RecoveryPointId, confirmation: RecoveryPreviewConfirmation): RecoveryResult = RecoveryResult.NotRestorable(pointId, app.lawnchair.organizer.application.public.RecoveryRejection.MISSING)
 
         override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus = durableStatus
+
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? {
+            restorableEntryReads++
+            return restorableEntry
+        }
 
         val readiness = kotlinx.coroutines.flow.MutableStateFlow(
             app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,

@@ -69,6 +69,8 @@ object ManualOrganizationRunTestSupport {
 
         override fun readDurableOrganizerStatus() = error("not reached in exchange holder tests")
 
+        override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = error("not reached in exchange holder tests")
+
         override val readinessState: StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
             MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
 

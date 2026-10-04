@@ -3,7 +3,7 @@ issue: "#366"
 status: implemented
 requirements: [FR-004, FR-006]
 risk: []
-updated: 2026-09-21
+updated: 2026-09-22
 ---
 
 # Organizer hub（T-01）を設定から開ける恒常的なOrganizer作業領域として新設する
@@ -199,8 +199,9 @@ And run state machine、確認・復旧の契約、diagnostics event、persisten
 
 - None — 新しいpermission、外部送信、sensitive dataの扱い追加はない。
 - durable statusの語彙はspec 271どおり閉域であり、payload・revision・digest・item
-  identity・timestampを運ばない。hubはdurable statusを表示のみに使い、復元等の操作を
-  新設しない。
+  identity・timestampを運ばない。hubはdurable statusを表示のみに使う（2026-09-22以降の
+  復元CTAと残時間は[D-15 / spec 376](../376-durable-status-recovery-entry/spec.md)が所有し、
+  閉じたentry型を経由する。本specの閉域語彙契約は変わらない）。
 - Usage Access行は既存どおりsystem設定への遷移のみであり、app-op状態の表示に留まる。
 
 ## Accessibility and localization
@@ -258,10 +259,13 @@ And run state machine、確認・復旧の契約、diagnostics event、persisten
       では行なし。reconciliation未完了ではchecking行を表示し、gate terminal到達時に
       同一面で回復する。読み取り失敗はfail-closed（行なし、書込み・journal eventなし）。run
       進行中はdurable行とchecking行を表示しない。（Issue受入2）
-- [ ] **HUB-AC-03**（#374改訂）: hubに復元CTA（#376）と最近のrun結果の表示・操作が存在
+- [ ] **HUB-AC-03**（#374改訂→#376実装で再改訂）: hubに最近のrun結果の表示・操作が存在
       しない（non-goalsの機械的保証としての否定的観測）。進行中AI依頼行・取り込み済み提案行は
       #374実装でstatus cardへ追加された（D-02/D-08。追加行の契約は
       [spec 374](../374-durable-imported-intent/spec.md) が所有する）。
+      復元CTAは2026-09-22に[D-15（accepted spec 376）](../376-durable-status-recovery-entry/spec.md)
+      の実装によりstatus cardへ追加されたため、このACの対象から除外される
+      （Change history参照）。
 - [ ] **HUB-AC-04**: hubの「整理を開始」CTAから既存manual organization run面へ到達し、
       既存開始行により `MANUAL_FULL` triggerのrun flowが開始できる。hubから `start()` を
       直接発行する経路がなく、spec 13/52の安全契約・run state machine・spec 328/205の
@@ -340,6 +344,16 @@ And run state machine、確認・復旧の契約、diagnostics event、persisten
   「整理を開始」CTAのlabelは既存 `manual_organization_start` を再利用する。
 - 2026-09-19: **implemented**。[PR #380](https://github.com/nunu1733/NunuLauncher/pull/380) merge（commit `32c72094a4`）。ChatGPT reviewはhead `b59c11c85b`で中重要度2件（[初回](https://github.com/nunu1733/NunuLauncher/pull/380#issuecomment-5740584469)）→ `d22f33db60`修正 → [再レビュー: 指摘なし](https://github.com/nunu1733/NunuLauncher/pull/380#issuecomment-5740683416) → test-only修正 `c2efd2178a` を[実質変更なし確認](https://github.com/nunu1733/NunuLauncher/pull/380#issuecomment-5740825290)。CI `final-status` green（[run 35434960677](https://github.com/nunu1733/NunuLauncher/actions/runs/35434960677)、head `c2efd2178a`）。HUB-AC-01..AC-10のevidenceはPR本文のVerification表・[emulator evidence](../../docs/assessment/evidence/issue-366/README.md)（`docs/assessment/evidence/issue-366/`）。本PR本文は`Closes #366`でmerge時にIssue #366をclose済み。
 - 2026-09-19: 実装review対応（ChatGPT review [PR #380 comment](https://github.com/nunu1733/NunuLauncher/pull/380#issuecomment-5740584469)、head `b59c11c85b`基準、中重要度2件）。(1) hubのdurable status描画を`showDurableStatus`で同時ガードし、run-active遷移直後に前回のdurable行を1 composition描画し得る構造を解消（HUB-AC-02）。hides testも「Idle表示中にrunを開始してactive遷移で行が消える」順に固定。 (2) HUB-AC-07の受入証跡を補強: hub入口focusの決定的focus restoration（start CTAへの`FocusRequester`。`clickable()`がfocus targetとEnter活性化を所有するため`focusable()`は付けない）、keyboard/DPAD traversal（状態→CTA→診断→材料の順に到達し各操作が活性化可能）、semantics（行のname＋click action、Switchのrole/state）のinstrumentation test 3件を追加。合計15件green、run面41件は無編集green。
+- 2026-09-22: Companion revision for #376（D-15、accepted
+  [spec 376](../376-durable-status-recovery-entry/spec.md)）。HUB-AC-03の否定的観測のうち
+  「復元CTAが存在しない」部分をspec 376の受入によりsupersedeする: hub status cardの
+  `ORGANIZED_RESTORABLE` 行は残時間表示と復元CTAを持つ（閉じたentry型
+  `RestorableRecoveryEntry` 由来。 TalkBack読み順はTO-BE §13-5の「状態→残期限→操作」へ
+  本 AC群の規約どおり拡張）。進行中AI依頼・取り込み済み提案・最近のrun結果の
+  表示・操作が存在しないこと、およびhubから `start()` を直接発行しないこと（HUB-AC-04）は
+  変わらず維持され、対応する否定的instrumentation oracle
+  （`hubExposesNoRestoreOrRunResultAffordancesAndStartsNothing`）は復元CTAを除いた形へ更新される。
+  HUB-AC-01/02/04〜の契約は無変更。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/366
 [2]: https://github.com/nunu1733/NunuLauncher/issues/365

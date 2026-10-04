@@ -16,6 +16,7 @@
 
 package app.lawnchair.ui.preferences.destinations
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
@@ -38,6 +39,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.OrganizerDurableStatus
+import app.lawnchair.organizer.application.public.RemainingWindow
+import app.lawnchair.organizer.application.public.RestorableRecoveryEntry
 import app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
 import app.lawnchair.organizer.integration.exchange.PendingImportedIntentModule
 import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
@@ -55,10 +59,12 @@ import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.exchange.RequestRemaining
 import app.lawnchair.organizer.ui.exchange.requestRemainingDisplay
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
+import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.NavigationActionPreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
+import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import app.lawnchair.ui.preferences.navigation.ExchangeOpen
 import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
 import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
@@ -82,7 +88,9 @@ import kotlinx.coroutines.withContext
  * The start CTA only navigates to the existing run surface: `start()` stays
  * exclusive to the run surface's start row, so the spec #328/#205 admission
  * gates are never re-implemented or bypassed here (1-tap start is T-07,
- * owned by #369).
+ * owned by #369). Issue #376 (D-15) adds the status card's restore CTA: it
+ * navigates with the durable-recovery flag and the run destination owns the
+ * admission, so the restore flow reuses the existing #84/#13 seams.
  */
 @Composable
 fun OrganizerHubPreferences(
@@ -101,9 +109,24 @@ fun OrganizerHubPreferences(
     val showDurableStatus = state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled
     val readinessState by coordinator.readinessState.collectAsStateWithLifecycle()
     var durableStatus by remember { mutableStateOf<OrganizerDurableStatus?>(null) }
+
+    // Issue #376 (spec D6 read serialization): the restore-entry hint is read
+    // only after the status read, and only for the restorable status. Both
+    // reads share the application module's non-blocking mutex, so running
+    // them concurrently would starve one into its fail-closed value and
+    // invent a missing-CTA state; a fail-closed hint read leaves the plain
+    // restorable line (display only) and a later re-read recovers.
+    var restorableEntry by remember { mutableStateOf<RestorableRecoveryEntry?>(null) }
     LaunchedEffect(showDurableStatus, readinessState) {
-        durableStatus = if (showDurableStatus) {
-            withContext(Dispatchers.IO) { coordinator.readDurableOrganizerStatus() }
+        if (!showDurableStatus) {
+            durableStatus = null
+            restorableEntry = null
+            return@LaunchedEffect
+        }
+        val status = withContext(Dispatchers.IO) { coordinator.readDurableOrganizerStatus() }
+        durableStatus = status
+        restorableEntry = if (status == OrganizerDurableStatus.ORGANIZED_RESTORABLE) {
+            withContext(Dispatchers.IO) { coordinator.readRestorableRecoveryEntry() }
         } else {
             null
         }
@@ -208,6 +231,18 @@ fun OrganizerHubPreferences(
         runCatching { focusRequester.requestFocus() }
     }
 
+    // Issue #376 (spec D5): the restore CTA arms a process-local launch
+    // handoff and navigates to the existing run destination with the
+    // durable-recovery flag; that destination consumes the handoff, owns the
+    // admission in its own scope, and pops itself on a silent rejection or a
+    // process-death restore (nothing to consume), so the navigation never
+    // depends on this surface's composition lifetime.
+    val navController = LocalNavController.current
+    val onRestore: () -> Unit = {
+        coordinator.armDurableEntryLaunch()
+        navController.navigate(HomeScreenManualOrganization(durableRecovery = true))
+    }
+
     PreferenceScaffold(
         label = stringResource(R.string.organizer_hub_label),
         modifier = modifier,
@@ -220,6 +255,9 @@ fun OrganizerHubPreferences(
             // two session-scoped rows between the durable rows and the start
             // CTA, each reading 状態→残期限→操作 (TO-BE §13-5's remaining-time
             // insertion into the #366 first-phase order; spec 366 revision).
+            // Issue #376: the restorable durable row itself carries
+            // 状態→残期限→復元CTA, and its activation is the hub-origin
+            // restore entry (D-15).
             if (showCheckingRow) {
                 item(key = "organizer-hub-status-checking") {
                     HubCheckingLine(R.string.manual_organization_durable_status_checking)
@@ -229,7 +267,7 @@ fun OrganizerHubPreferences(
             // transition into a run state can never render the previous
             // durable row for one recomposition while the read effect is
             // still catching up (HUB-AC-02 run-active hiding).
-            if (showDurableStatus) durableStatus?.let { hubDurableStatusItems(it) }
+            if (showDurableStatus) durableStatus?.let { hubDurableStatusItems(it, restorableEntry, onRestore) }
             // Issue #374 (DI-AC-11): the session-scoped rows render regardless
             // of the run state — they are durable facts about the exchange
             // session, not run-projection rows. Absence renders no row (no
@@ -318,10 +356,21 @@ fun OrganizerHubPreferences(
  * unresolved status keeps the existing safe-support guidance line; its
  * diagnostics entry is the standing hub diagnostics row above.
  */
-private fun LazyListScope.hubDurableStatusItems(status: OrganizerDurableStatus) {
+private fun LazyListScope.hubDurableStatusItems(
+    status: OrganizerDurableStatus,
+    restorableEntry: RestorableRecoveryEntry?,
+    onRestore: () -> Unit,
+) {
     when (status) {
-        OrganizerDurableStatus.ORGANIZED_RESTORABLE -> item(key = "organizer-hub-status") {
-            HubStatusLine(stringResource(R.string.manual_organization_durable_status_restorable))
+        OrganizerDurableStatus.ORGANIZED_RESTORABLE -> {
+            item(key = "organizer-hub-status") {
+                HubRestorableLine(restorableEntry?.remainingWindow)
+            }
+            if (restorableEntry != null) {
+                item(key = "organizer-hub-restore") {
+                    HubRestoreCta(onRestore)
+                }
+            }
         }
 
         OrganizerDurableStatus.RESTORED_OR_EXPIRED -> item(key = "organizer-hub-status") {
@@ -349,6 +398,53 @@ private fun HubStatusLine(text: String) {
         text = text,
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.padding(horizontal = 16.dp),
+    )
+}
+
+/**
+ * Issue #376 (D-15): the restorable status line with its optional coarse
+ * remaining-window line, composed in the TO-BE §13-5 order (状態 → 残期限).
+ */
+@Composable
+private fun HubRestorableLine(remainingWindow: RemainingWindow?) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Text(
+            text = stringResource(R.string.manual_organization_durable_status_restorable),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (remainingWindow != null) {
+            Text(
+                text = remainingWindowText(remainingWindow),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun remainingWindowText(window: RemainingWindow): String = when (window) {
+    is RemainingWindow.HoursRemaining -> pluralStringResource(
+        R.plurals.manual_organization_recovery_remaining_hours,
+        window.value,
+        window.value,
+    )
+
+    RemainingWindow.LessThanOneHour -> stringResource(
+        R.string.manual_organization_recovery_remaining_under_one_hour,
+    )
+}
+
+/**
+ * Issue #376 (D-15): the restore CTA on the hub status card — the only
+ * restore operation entry (D-15), reusing the existing confirmation face's
+ * closed-vocabulary label. The navigation itself is decided by the caller
+ * (only after an admitted entry).
+ */
+@Composable
+private fun HubRestoreCta(onRestore: () -> Unit) {
+    PreferenceTemplate(
+        modifier = Modifier.clickable(role = Role.Button, onClick = onRestore),
+        title = { Text(text = stringResource(R.string.manual_organization_recovery)) },
     )
 }
 

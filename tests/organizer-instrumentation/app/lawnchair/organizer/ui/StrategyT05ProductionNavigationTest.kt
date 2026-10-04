@@ -144,8 +144,10 @@ class StrategyT05ProductionNavigationTest {
                 confirmation: app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation,
             ) = error("not reached")
 
-            override fun readDurableOrganizerStatus() =
+            override fun readDurableOrganizerStatus(): app.lawnchair.organizer.application.public.OrganizerDurableStatus =
                 app.lawnchair.organizer.application.public.OrganizerDurableStatus.NEVER_ORGANIZED
+
+            override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = null
 
             override val readinessState: MutableStateFlow<ReadinessGate.State> =
                 MutableStateFlow(ReadinessGate.State.READY)
