@@ -250,11 +250,35 @@ class ApplyProtocolTest {
     }
 
     @Test
-    fun sa11PostApplyVerificationFailureTriggersAutomaticRecovery() {
+    fun sa11EarlyReloadCompletionRecaptureMismatchTriggersAutomaticRecovery() {
         val plan = mutatingPlan()
-        writer.nextTxOutcome = ApplyTxOutcome.Committed
+        writer.onReloadRequest = { requestNumber ->
+            if (requestNumber == 1) {
+                writer.setCurrentState(plan.sourceState)
+            }
+        }
+
         val result = protocol.apply(plan)
-        assertTrue(result is ApplyResult.Applied)
+        assertTrue("Expected automatic recovery, got $result", result is ApplyResult.Recovered)
+        assertEquals("Initial and recovery reloads must both complete", 2, writer.reloadCount)
+        assertEquals(plan.sourceState, writer.currentState())
+    }
+
+    @Test
+    fun sa11AutomaticRecoveryVerificationMismatchIsNotFalseSuccess() {
+        val plan = mutatingPlan()
+        writer.onReloadRequest = { requestNumber ->
+            when (requestNumber) {
+                1 -> writer.setCurrentState(plan.sourceState)
+                2 -> writer.setCurrentState(CanonicalFixtures.state())
+            }
+        }
+
+        val result = protocol.apply(plan)
+
+        assertTrue("Expected recovery verification failure, got $result", result is ApplyResult.RecoveryFailed)
+        assertEquals(ApplyFailure.VERIFICATION_FAILED, (result as ApplyResult.RecoveryFailed).failure)
+        assertEquals("Recovery verification must use its reload completion", 2, writer.reloadCount)
     }
 
     @Test

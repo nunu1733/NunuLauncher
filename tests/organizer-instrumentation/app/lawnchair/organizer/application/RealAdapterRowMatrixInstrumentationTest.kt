@@ -173,6 +173,79 @@ class RealAdapterRowMatrixInstrumentationTest {
         }
     }
 
+    /**
+     * Issue #150: canonical LayoutState item order is ItemId byte order — the
+     * same order the planner emits (`placements.sortedBy { it.item }`) — while
+     * manifest.rows keeps the raw row-enumeration order. Numeric row ids with
+     * more than one digit distinguish the two orders ("10" sorts before "2" as
+     * bytes, after "2" as a number). A7 verification compares LayoutState
+     * exactly, so a capture that leaked row order into the canonical surface
+     * failed every real workspace with ten or more rows.
+     */
+    @Test
+    fun captureOrdersCanonicalItemsByItemIdByteOrderNotRowEnumeration() {
+        val source = SQLiteDatabase.create(null)
+        try {
+            Favorites.addTableToDb(source, 10L, false)
+            val rows = listOf(
+                row(
+                    1,
+                    Favorites.ITEM_TYPE_APPLICATION,
+                    10,
+                    Favorites.CONTAINER_DESKTOP,
+                    0,
+                    0,
+                    0,
+                    OrganizerLockState.UNLOCKED,
+                    intent = "#Intent;component=com.example/.A1;end",
+                ),
+                row(
+                    2,
+                    Favorites.ITEM_TYPE_APPLICATION,
+                    10,
+                    Favorites.CONTAINER_DESKTOP,
+                    0,
+                    1,
+                    0,
+                    OrganizerLockState.UNLOCKED,
+                    intent = "#Intent;component=com.example/.A2;end",
+                ),
+                row(
+                    10,
+                    Favorites.ITEM_TYPE_APPLICATION,
+                    10,
+                    Favorites.CONTAINER_DESKTOP,
+                    0,
+                    2,
+                    0,
+                    OrganizerLockState.UNLOCKED,
+                    intent = "#Intent;component=com.example/.A10;end",
+                ),
+            )
+            rows.forEach { source.insertOrThrow(Favorites.TABLE_NAME, null, RowManifestCodec.values(it)) }
+            val captured = RowManifestCodec.capture(
+                source,
+                DeviceCapabilities(4, 5, 5, 4, 4, DeviceOrientation.PORTRAIT),
+                listOf(PageId("0")),
+                listOf(ProfileState(ProfileId("10"), ProfileAvailability.AVAILABLE)),
+            )
+            assertEquals(
+                "Canonical items must follow ItemId byte order",
+                listOf("1", "10", "2"),
+                captured.state.items.map {
+                    (it.ref as ApplicationItemRef.PersistentItem).itemId.value
+                },
+            )
+            assertEquals(
+                "Manifest rows keep the row-enumeration order",
+                listOf(1L, 2L, 10L),
+                captured.manifest.rows.map { it.rowId },
+            )
+        } finally {
+            source.close()
+        }
+    }
+
     private fun row(
         id: Long,
         type: Int,

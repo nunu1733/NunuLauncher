@@ -92,11 +92,20 @@ internal object RowManifestCodec {
         val childrenByParent = rows.filter { it.containerCode.value >= 0 }
             .groupBy { it.containerCode.value.toLong() }
         val kindById = rows.associate { it.rowId to it.itemType.value }
+        // Issue #150: the canonical LayoutState item order is ItemId byte order —
+        // the same canonical order the planner emits — not the raw favorites row
+        // enumeration. Numeric row ids with more than one digit sort differently
+        // under the two orders, and A7 verification compares LayoutState exactly,
+        // so the capture must use the canonical order while manifest.rows keeps
+        // the row-enumeration order.
+        val canonicalItems = rows
+            .sortedBy { ItemId(it.rowId.toString()) }
+            .map { toCanonical(it, profileById.getValue(it.profileId), childrenByParent, kindById) }
         val state = LayoutState(
             pages,
             profileInventory,
             capabilities,
-            rows.map { toCanonical(it, profileById.getValue(it.profileId), childrenByParent, kindById) },
+            canonicalItems,
             reservedWorkspaceRegions,
         )
         return Capture(

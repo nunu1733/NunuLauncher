@@ -46,6 +46,7 @@ class FakeLayoutWriter(
     var reloadResult: ReloadResult = ReloadResult.Completed
     var materializedIntendedStateOverride: ((LayoutState) -> LayoutState)? = null
     var onApplyA5Reread: (() -> Unit)? = null
+    var onReloadRequest: ((Int) -> Unit)? = null
 
     var capturedSnapshots: Int = 0
         private set
@@ -174,6 +175,7 @@ class FakeLayoutWriter(
 
     override fun requestCorrelatedReload(lease: LeaseHandle): ReloadResult {
         reloadCount += 1
+        onReloadRequest?.invoke(reloadCount)
         return reloadResult
     }
 

@@ -1,6 +1,8 @@
 package com.android.launcher3.organizer;
 
+import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -31,6 +33,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Instrumentation tests for AC-04 reload supersession.
@@ -88,6 +91,88 @@ public class OrganizerReloadSupersessionTest {
     // ------------------------------------------------------------------
 
     /**
+     * Issue #150 (re-review P1): a request whose loader already closed its
+     * transaction but whose completion notification is still queued on
+     * MODEL_EXECUTOR must not lose its terminal signal when a newer request
+     * replaces the token. The replacement used to overwrite the outstanding
+     * token without cancelling it, because stopLoader only cancels when it
+     * actually stopped a running task; the stale notification was then dropped
+     * by the identity check and the old request could only time out.
+     *
+     * <p>Deterministic construction: hold the loader mid-task with the page
+     * selection barrier, enqueue a blocking runnable ahead of the completion
+     * notification (the notification is posted at the end of the loader task,
+     * so the blocker runs first), and issue the replacement while the gap is
+     * held open. The old request must be terminalized with SUPERSEDED by the
+     * replacement itself, without waiting for the executor to drain.
+     */
+    @Test
+    public void terminalSignalSurvivesReplacementDuringPostCloseDeliveryGap() throws Exception {
+        var barrier = new SyncPageSelectionBarrier();
+        addModelCallback(barrier);
+        waitForModelIdle();
+        barrier.arm();
+
+        var lease = LayoutWriteCoordinator.getInstance()
+                .tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+        assertNotNull("Must acquire organizer lease", lease);
+        var executor = Executors.newFixedThreadPool(3);
+        try {
+            var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
+
+            // Request A: waits on a background thread while its loader is held.
+            Future<OrganizerModelReloadAdapter.Outcome> outcomeAFuture = executor.submit(
+                    () -> adapter.requestAndWait(lease.token()));
+            barrier.awaitReached();
+
+            // Enqueue the delivery blocker. A's task posts its notification when it
+            // finishes, so the blocker is strictly ahead of it in the queue.
+            var blockerStarted = new CountDownLatch(1);
+            var blockerRelease = new CountDownLatch(1);
+            var blockerFailed = new AtomicBoolean(false);
+            MODEL_EXECUTOR.execute(() -> {
+                blockerStarted.countDown();
+                try {
+                    if (!blockerRelease.await(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                        blockerFailed.set(true);
+                    }
+                } catch (InterruptedException e) {
+                    blockerFailed.set(true);
+                    Thread.currentThread().interrupt();
+                }
+            });
+
+            // Let A's loader finish: transaction commit/close, notification posted
+            // behind the blocker, then the blocker starts and holds the gap open.
+            barrier.release();
+            assertTrue("Delivery blocker did not start", blockerStarted.await(
+                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+
+            // Issue request B while A is closed-but-not-delivered. The replacement
+            // must terminalize A synchronously; A must not wait for the executor.
+            Future<OrganizerModelReloadAdapter.Outcome> outcomeBFuture = executor.submit(
+                    () -> adapter.requestAndWait(lease.token()));
+            OrganizerModelReloadAdapter.Outcome outcomeA = outcomeAFuture.get(
+                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            assertEquals("A must be SUPERSEDED by the replacement, not silently dropped",
+                    OrganizerModelReloadAdapter.Outcome.SUPERSEDED, outcomeA);
+
+            // Drain: B's loader runs behind the blocker and completes normally.
+            blockerRelease.countDown();
+            OrganizerModelReloadAdapter.Outcome outcomeB = outcomeBFuture.get(
+                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            assertEquals("B must complete successfully",
+                    OrganizerModelReloadAdapter.Outcome.COMPLETED, outcomeB);
+            assertFalse("Delivery blocker timed out or was interrupted", blockerFailed.get());
+        } finally {
+            barrier.release();
+            lease.close();
+            shutdownExecutor(executor);
+        }
+        waitForModelIdle();
+    }
+
+    /**
      * A single organizer reload request completes with
      * {@link OrganizerModelReloadAdapter.Outcome#COMPLETED} when no
      * supersession or cancellation occurs.
@@ -109,6 +194,58 @@ public class OrganizerReloadSupersessionTest {
                     outcome);
         } finally {
             lease.close();
+        }
+    }
+
+    /**
+     * Issue #150 adapter coverage after the deterministic completion-runnable
+     * ordering oracle in {@code OrganizerReloadCompletionOrderingTest}.
+     *
+     * <p>The callback is deliberately held with a latch after the existing
+     * organizer bind-completion signal and before the loader can leave its
+     * {@code waitForIdle()} boundary. This callback uses the interface default
+     * {@code null} item inflater, so its own binder deterministically takes the
+     * synchronous non-inflation path even when workspace inflation is enabled
+     * for a real Launcher callback. This makes {@code model.isModelLoaded()}
+     * false without changing a feature flag or adding a production hook. This
+     * test releases the barrier before awaiting the adapter outcome, so no
+     * timed non-return assertion is used as ordering evidence here.</p>
+     */
+    @Test
+    public void completedOutcomeAfterTransactionBarrierRelease() throws Exception {
+        var barrier = new LoaderTransactionBarrier();
+        addModelCallback(barrier);
+        waitForModelIdle();
+        barrier.arm();
+
+        var lease = LayoutWriteCoordinator.getInstance()
+                .tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
+        assertNotNull("Must acquire organizer lease", lease);
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
+            var outcome = new AtomicReference<OrganizerModelReloadAdapter.Outcome>();
+            Future<?> requestFuture = executor.submit(() -> {
+                outcome.set(adapter.requestAndWait(lease.token()));
+            });
+
+            barrier.awaitEntered();
+            assertTrue(
+                    "Loader transaction must remain uncommitted while the callback barrier is held",
+                    !model.isModelLoaded());
+            assertTrue(
+                    "The test callback must be holding the loader before commit",
+                    barrier.isHolding());
+
+            barrier.release();
+            requestFuture.get(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            assertEquals(OrganizerModelReloadAdapter.Outcome.COMPLETED, outcome.get());
+            barrier.assertWaitDidNotFail();
+        } finally {
+            barrier.release();
+            lease.close();
+            shutdownExecutor(executor);
+            waitForModelIdle();
         }
     }
 
@@ -388,6 +525,71 @@ public class OrganizerReloadSupersessionTest {
 
         void assertWaitDidNotFail() {
             assertTrue("Pre-completion barrier timed out or was interrupted",
+                    !waitFailed.get());
+        }
+    }
+
+    /**
+     * Holds the callback that follows the existing organizer bind-completion
+     * signal. Its default-null item inflater selects the synchronous
+     * non-inflation path for this callback, where every Launcher binder mode
+     * calls {@code onInitialBindComplete} after the organizer signal. This
+     * controls the loader transaction through an existing callback seam rather
+     * than changing a feature flag.
+     */
+    private static final class LoaderTransactionBarrier implements BgDataModel.Callbacks {
+        private final CountDownLatch entered = new CountDownLatch(1);
+        private final CountDownLatch released = new CountDownLatch(1);
+        private final AtomicBoolean armed = new AtomicBoolean(false);
+        private final AtomicBoolean holding = new AtomicBoolean(false);
+        private final AtomicBoolean waitFailed = new AtomicBoolean(false);
+
+        @Override
+        public void onInitialBindComplete(
+                IntSet boundPages,
+                com.android.launcher3.util.RunnableList pendingTasks,
+                com.android.launcher3.util.RunnableList onCompleteSignal,
+                int workspaceItemCount,
+                boolean isBindSync) {
+            if (!armed.compareAndSet(true, false)) {
+                pendingTasks.executeAllAndDestroy();
+                return;
+            }
+            holding.set(true);
+            entered.countDown();
+            try {
+                if (!released.await(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    waitFailed.set(true);
+                }
+            } catch (InterruptedException e) {
+                waitFailed.set(true);
+                Thread.currentThread().interrupt();
+            } finally {
+                holding.set(false);
+            }
+            pendingTasks.executeAllAndDestroy();
+        }
+
+        void arm() {
+            assertTrue("Loader transaction barrier was already armed",
+                    armed.compareAndSet(false, true));
+        }
+
+        void awaitEntered() throws InterruptedException {
+            assertTrue("Loader did not reach the post-bind transaction barrier",
+                    entered.await(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+        }
+
+        boolean isHolding() {
+            return holding.get();
+        }
+
+        void release() {
+            released.countDown();
+        }
+
+        void assertWaitDidNotFail() {
+            assertTrue("Loader transaction barrier timed out or was interrupted",
                     !waitFailed.get());
         }
     }
