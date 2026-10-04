@@ -2,9 +2,12 @@
 
 > Issue: #373
 > Spec: [spec.md](./spec.md)
-> Status: **accepted**（2026-09-21。Phase1 review 3回対応head `40beddc0f2` への最終
-> [Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756962168)
-> を経て受入。実装着手条件（#372 merge、CI merge gate通過）は満た済み）
+> Status: **implemented**（2026-09-21。Phase1最終
+> [Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5756962168) 受入後、
+> 実装review 3回（1回目 [Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758033715)・
+> 2回目 [Changes requested](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5758731467)・
+> 最終 [Approved](https://github.com/nunu1733/NunuLauncher/issues/373#issuecomment-5759122578)）を経て
+> 実装PR [#396](https://github.com/nunu1733/NunuLauncher/pull/396) mergeで完了）
 
 ## Current evidence
 
