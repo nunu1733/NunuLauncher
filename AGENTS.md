@@ -9,6 +9,13 @@
 - baseline導入は [Issue #1](https://github.com/nunu1733/NunuLauncher/issues/1) で追跡する。
 - Lawnchair 16への変更は通常updateとして扱わず、専用EpicとADRを要求する。
 
+### GitHub操作先
+
+- GitHub Issue/PRを操作する対象は常に `nunu1733/NunuLauncher` とする。checkoutの既定repository解決に依存しない。
+- Issue/PR操作の前に、read-onlyで `gh repo view -R nunu1733/NunuLauncher --json nameWithOwner,defaultBranchRef` を実行し、`nameWithOwner` が `nunu1733/NunuLauncher`、default branchが `main` であることを確認する。
+- `gh issue`、`gh pr`、GitHub APIを使うときは、すべて `-R nunu1733/NunuLauncher` または `repos/nunu1733/NunuLauncher/...` を明示する。PRのbaseは `main` とする。
+- Lawnchair上流へのIssue報告は、このforkのIssue formへ混ぜず、[上流Issue chooser](https://github.com/LawnchairLauncher/lawnchair/issues/new/choose)を意図的に開いて行う。上流同期の調査とforkの作業Issueは別の対象として記録する。
+
 ## 作業開始時の必読順
 
 1. 作業対象のGitHub Issueと全コメント

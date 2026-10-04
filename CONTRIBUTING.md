@@ -10,6 +10,18 @@ NunuLauncherの変更は、human/AI Agentを問わずGitHub Issueから開始し
 
 詳細なsource of truth、label、Ready/Done条件は [GitHub workflow](./docs/project/github-workflow.md) を参照してください。AI Agentは作業前に [AGENTS.md](./AGENTS.md) を必ず読みます。
 
+## GitHub操作先
+
+このリポジトリのIssue/PRはfork `nunu1733/NunuLauncher`で管理します。checkoutの既定repositoryを信用せず、操作前に次を実行してください。
+
+```bash
+gh repo view -R nunu1733/NunuLauncher --json nameWithOwner,defaultBranchRef
+```
+
+以降の `gh issue`、`gh pr`、API操作でも対象forkを明示し、PRのbaseは `main` とします。Lawnchair上流への不具合・提案報告は、Issue chooserの[上流報告リンク](https://github.com/LawnchairLauncher/lawnchair/issues/new/choose)から上流へ直接送ります。上流報告をNunuLauncherのIssueとして起票し直すことはしません。
+
+Issue chooserのfork用フォームは、Bug、Feature、Documentation or maintenance、Research or decision、Upstream integrationです。forkに存在しない上流用labelや上流のnightly/FAQ案内を持つフォームは使用しません。
+
 ## Checkout and build
 
 submoduleを含めてcheckoutします。

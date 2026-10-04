@@ -17,6 +17,18 @@ GitHub Issueはすべての開発の入口であり、状態とcoordinationの�
 
 大きな成果はEpic Issueで追跡し、各sub-Issueを独立にmerge可能な縦切りにする。1 Issueへ複数の独立成果を詰め込まない。
 
+## Repository target and upstream boundary
+
+このworkflowのGitHub操作対象はfork `nunu1733/NunuLauncher`である。checkoutの既定repositoryは上流を指すことがあるため、Issue/PR操作を始める前に次のread-only確認を行う。
+
+```bash
+gh repo view -R nunu1733/NunuLauncher --json nameWithOwner,defaultBranchRef
+```
+
+出力が `nameWithOwner: nunu1733/NunuLauncher`、default branchが `main` であることを確認する。以降の `gh issue`、`gh pr` は必ず `-R nunu1733/NunuLauncher` を付け、GitHub APIでは `repos/nunu1733/NunuLauncher/...` を使う。PRのbaseも `main` とする。ユーザー全体のgh設定やcheckoutの既定値を変更してこの確認を省略しない。
+
+Lawnchair上流への同期・報告は、forkのIssue/PRとは別の意図的な操作である。上流への報告は[上流Issue chooser](https://github.com/LawnchairLauncher/lawnchair/issues/new/choose)へ直接送る。NunuLauncherのIssue chooserには上流由来のフォームを複製せず、fork固有のフォームと、この外部導線だけを置く。
+
 ## Lifecycle
 
 ```mermaid
@@ -150,9 +162,9 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 - 低リスク経路: [PR #63](https://github.com/nunu1733/NunuLauncher/pull/63)（docs/toolingのみ）はauditなしで [gateがpass](https://github.com/nunu1733/NunuLauncher/actions/runs/31801071856)。
 - 高リスク経路: 検証専用の [PR #64](https://github.com/nunu1733/NunuLauncher/pull/64)（close済み・非merge）に `risk: layout-data` labelを付与すると [gateがfail](https://github.com/nunu1733/NunuLauncher/actions/runs/31801210644)（audit記録欠如）し、`docs/assessment/pr-64-gate-demo.md` の追加（Head SHA・docs-only delta・[成功CI run参照](https://github.com/nunu1733/NunuLauncher/actions/runs/31801159754)）で [pass](https://github.com/nunu1733/NunuLauncher/actions/runs/31801306031) した。
 
-## Recommended labels
+## Fork label vocabulary
 
-GitHub repository作成後に以下を登録する。状態はProject boardと二重管理せず、どちらを正本にするかrepository設定時に決める。
+以下はNunuLauncher forkで使用するlabelである。Issue formはこの一覧にないlabelを自動付与してはならない。状態はProject boardと二重管理せず、どちらを正本にするかrepository設定時に決める。
 
 ```text
 type: feature
