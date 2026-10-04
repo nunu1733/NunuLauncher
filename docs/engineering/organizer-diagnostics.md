@@ -336,6 +336,17 @@ ADR またはspec の承認を必要とする。
 - 形式はmachine-readable な行区切りJSON（§13 のfixture 形式）とし、
   §7 の分類をそのまま満たす。user が第三者へ共有する選択をした場合も、
   含まれる情報は本契約のfield 集合に等しい。
+- 保存先filename の既定補完値（SAF `EXTRA_TITLE`、Issue #288）は
+  `organizer_diagnostics_yyyyMMdd_HHmmss_SSS.jsonl` とする。timestamp は
+  **UTC固定・millisecond精度**で、instant→filename の写像を単射に保つ
+  （device-local 描画はDST fall-back fold で衝突し得るため使用しない）。
+  filename は `[A-Za-z0-9_.]` のみを含み、generic なprefix とtimestamp 以外の
+  情報（package名、device/user識別子、layout内容、strategy名等）を含まない。
+  filename とheader `exportedAtWallMillis` はexport 開始時に1回だけ読んだ
+  同一の捕捉instant から導出する。SAF provider は補完名を変更し得るため、
+  書き出しは返却されたURI に対して行い、宛先filename への依存を持たない。
+  export はuser 選択の保存先へのみ書くため、app 所有のcache/export file は
+  生成・蓄積しない。
 - export の書き出しにnetwork を使わない。user 以外の宛先への送信経路を持たない。
 
 ## 10. Logcat behavior
