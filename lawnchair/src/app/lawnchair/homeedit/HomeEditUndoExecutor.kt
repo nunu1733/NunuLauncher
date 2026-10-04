@@ -198,7 +198,7 @@ class HomeEditUndoExecutor(
         }
         when {
             plan.container == Favorites.CONTAINER_DESKTOP && info != null -> {
-                launcher.bindItems(Collections.singletonList(info), true)
+                launcher.bindItemsAdapted(Collections.singletonList(info), true)
                 showDestinationPage(plan.screenId)
             }
 

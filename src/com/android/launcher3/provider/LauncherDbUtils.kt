@@ -303,12 +303,27 @@ object LauncherDbUtils {
 
     /** Utility class to simplify managing sqlite transactions */
     class SQLiteTransaction(val db: SQLiteDatabase) : AutoCloseable {
+        private var lease: AutoCloseable? = null
+
+        constructor(db: SQLiteDatabase, lease: AutoCloseable?) : this(db) {
+            // Issue #532 S2b (rebase of Issue #14): lease-owning transaction;
+            // close() releases the lease after endTransaction() so the lease
+            // lifetime equals the transaction lifetime including close exceptions.
+            this.lease = lease
+        }
+
         init {
             db.beginTransaction()
         }
 
         fun commit() = db.setTransactionSuccessful()
 
-        override fun close() = db.endTransaction()
+        override fun close() {
+            try {
+                db.endTransaction()
+            } finally {
+                lease?.close()
+            }
+        }
     }
 }

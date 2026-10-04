@@ -191,14 +191,18 @@ public class ModelDbController {
     @WorkerThread
     public int insert(ContentValues initialValues) {
         createDbIfNotExists();
-
-        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        addModifiedTime(initialValues);
-        int rowId = mOpenHelper.dbInsertAndCheck(db, TABLE_NAME, initialValues);
-        if (rowId >= 0) {
-            onAddOrDeleteOp(db);
+        // Issue #532 S2b (rebase of Issue #14 contract): favorites-table CRUD is
+        // mutation-admitted through the coordinator; the lease wraps only the DB
+        // operation and never blocks MODEL_EXECUTOR.
+        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
+            SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+            addModifiedTime(initialValues);
+            int rowId = mOpenHelper.dbInsertAndCheck(db, TABLE_NAME, initialValues);
+            if (rowId >= 0) {
+                onAddOrDeleteOp(db);
+            }
+            return rowId;
         }
-        return rowId;
     }
 
     /**
@@ -207,13 +211,14 @@ public class ModelDbController {
     @WorkerThread
     public int delete(String selection, String[] selectionArgs) {
         createDbIfNotExists();
-        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-
-        int count = db.delete(TABLE_NAME, selection, selectionArgs);
-        if (count > 0) {
-            onAddOrDeleteOp(db);
+        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
+            SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+            int count = db.delete(TABLE_NAME, selection, selectionArgs);
+            if (count > 0) {
+                onAddOrDeleteOp(db);
+            }
+            return count;
         }
-        return count;
     }
 
     /**
@@ -222,10 +227,11 @@ public class ModelDbController {
     @WorkerThread
     public int update(ContentValues values, String selection, String[] selectionArgs) {
         createDbIfNotExists();
-
-        addModifiedTime(values);
-        SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        return db.update(TABLE_NAME, values, selection, selectionArgs);
+        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
+            addModifiedTime(values);
+            SQLiteDatabase db = mOpenHelper.getWritableDatabase();
+            return db.update(TABLE_NAME, values, selection, selectionArgs);
+        }
     }
 
     /**
@@ -280,7 +286,76 @@ public class ModelDbController {
     @WorkerThread
     public SQLiteTransaction newTransaction() {
         createDbIfNotExists();
-        return new SQLiteTransaction(mOpenHelper.getWritableDatabase());
+        // Issue #532 S2b (rebase of Issue #14): hold the coordinator lease through
+        // the transaction close/endTransaction.
+        return new SQLiteTransaction(mOpenHelper.getWritableDatabase(),
+                getCoordinatorLease());
+    }
+
+    // Issue #532 S2b (rebase of Issue #14): organizer re-entry requires the exact
+    // outer capability token.
+    public SQLiteTransaction newTransaction(long organizerToken) {
+        createDbIfNotExists();
+        LayoutWriteCoordinator.Lease lease = LayoutWriteCoordinator.getInstance()
+                .tryAcquireOrganizerLease(organizerToken);
+        if (lease == null) {
+            throw new IllegalStateException("Organizer transaction lacks its exact writer lease");
+        }
+        return new SQLiteTransaction(mOpenHelper.getWritableDatabase(), lease);
+    }
+
+    // Issue #532 S2b (rebase of Issue #14): acquire the coordinator lease for
+    // organizer transactions; the lease is held only through close() — it does not
+    // block MODEL_EXECUTOR.
+    @Nullable
+    private LayoutWriteCoordinator.Lease getCoordinatorLease() {
+        LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
+        // The exact correlated loader holds a scoped organizer capability. Its
+        // cleanup mutations must not block MODEL_EXECUTOR behind the outer
+        // organizer lease.
+        LayoutWriteCoordinator.Lease organizerLease = coordinator.tryAcquireOrganizerCapability(
+                currentOrganizerToken());
+        if (organizerLease != null) {
+            return organizerLease;
+        }
+        // Issue #58: DB mutations issued by a restore (e.g. RestoreDbTask widget-id
+        // remap through ContentWriter) run on the thread that already holds a
+        // restore-family lease; they reenter it instead of blocking on MODEL_WRITER
+        // (self-deadlock).
+        LayoutWriteCoordinator.Lease restoreLease = coordinator.tryReenterRestoreFamily();
+        if (restoreLease != null) {
+            return restoreLease;
+        }
+        // Issue #113: mutations issued inside an open baseline transaction run on the
+        // thread that already owns its MODEL_WRITER lease (e.g. folder bind:
+        // UpdateItemsRunnable update within newTransaction); they reenter it instead
+        // of blocking on their own lease (self-deadlock / cold-start ANR).
+        LayoutWriteCoordinator.Lease writerLease = coordinator.tryReenterModelWriter();
+        if (writerLease != null) {
+            return writerLease;
+        }
+        return coordinator.acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
+    }
+
+    private long currentOrganizerToken() {
+        // A nonmatching value intentionally falls through to ordinary serialization.
+        // The coordinator validates the thread-scoped capability before returning a
+        // lease.
+        return LayoutWriteCoordinator.getInstance().getActiveOrganizerToken();
+    }
+
+    // Central gate for auto-transaction insert/update/delete calls.
+    @NonNull
+    private LayoutWriteCoordinator.Lease acquireMutationLease() {
+        return getCoordinatorLease();
+    }
+
+    // Issue #532 S2b: reinitialize the max-ID cache from committed rows after
+    // organizer transaction classification.
+    @WorkerThread
+    public void refreshMaxItemIdFromCommittedRows() {
+        createDbIfNotExists();
+        mOpenHelper.refreshMaxItemIdFromCommittedRows();
     }
 
     /**

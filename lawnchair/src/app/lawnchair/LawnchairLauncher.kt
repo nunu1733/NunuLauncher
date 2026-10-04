@@ -328,15 +328,13 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
     }
 
-    override fun bindItems(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
+    // Rebase Phase 2 adapt (Issue #532 S2b): anchor's Launcher binds added items
+    // via bindInflatedItems(List<Pair<ItemInfo, View>>, anim) with the
+    // Launcher-owned ItemInflater; the fork's former `bindItems` override point
+    // no longer exists.
+    fun bindItemsAdapted(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
         val inflatedItems = items.map { i ->
-            Pair.create(
-                i,
-                itemInflater?.inflateItem(
-                    i,
-                    modelWriter,
-                ),
-            )
+            Pair.create<ItemInfo, View>(i, getItemInflater().inflateItem(i))
         }.toList()
         bindInflatedItems(inflatedItems, if (forceAnimateIcons) AnimatorSet() else null)
     }
