@@ -2,11 +2,11 @@
 
 ---
 issue: "#332"
-status: accepted
+status: implemented
 updated: 2026-09-17
 ---
 
-> Status: **accepted** (2026-09-17) — specがreview **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/332#issuecomment-5706349675)、head `bccab1ca0d0d5609a1f80c612f8dc75191d53004` 基準) となったため、本planに従い実装を着手する。本planは baseline `9290afc2be80f8dc41a5defa14d7888619fadcad` (= `origin/main`。`45711f53dd40b5cc67013f4a4193d2c6d5b0dcc1` からの差分は #336 spec/plan status更新のみでruntime契約への影響なしを確認済み) の実装code調査に基づく。
+> Status: **implemented** (2026-09-17) — specがreview **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/332#issuecomment-5706349675)、head `bccab1ca0d0d5609a1f80c612f8dc75191d53004` 基準) となったため本planに従い実装し、実装review **Approved** ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/332#issuecomment-5707583713)、head `9d16111c20fa030fdea5a1aa4c0b23678e55e9d4` 基準) を経て [PR #344](https://github.com/nunu1733/NunuLauncher/pull/344) (merge commit `90f18294b25f346cf1d199d6855ee2a2303ff5d9`) でmainへ取り込まれた。独立監査: [docs/assessment/pr-332-import-input-ui.md](../../docs/assessment/pr-332-import-input-ui.md) (Approve)。本planは baseline `9290afc2be80f8dc41a5defa14d7888619fadcad` の実装code調査に基づく。Execution checklist 1〜7は実施済み (7のうちrepresentative app実copy・TalkBack通し確認のみ [Issue #345](https://github.com/nunu1733/NunuLauncher/issues/345) へ分離)。
 
 ## Re-entry status
 
