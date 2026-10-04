@@ -2,7 +2,7 @@
 
 > Issue: #422
 > Spec: [spec.md](./spec.md)
-> Status: accepted (PR #424 round-7 Approved, 2026-09-24)
+> Status: implemented (PR #425 merged at f1bec52471, 2026-09-24)
 
 ## Current evidence
 
