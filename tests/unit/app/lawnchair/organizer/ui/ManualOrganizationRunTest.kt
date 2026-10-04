@@ -102,6 +102,62 @@ class ManualOrganizationRunTest {
     }
 
     @Test
+    fun startWithValidatedIntentInjectsTheProjectionIntoTheComposedInput() {
+        // Issue #205 (spec 205 run connection): a run started from an imported
+        // intent composes through the same seam and hands the planner the pure
+        // preference projection; preview/confirmation are unchanged.
+        val validated = app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent(
+            intent = app.lawnchair.organizer.personalization.PersonalizedIntentV1(
+                exportId = "export-1",
+                itemIntents = emptyList(),
+            ),
+            export = app.lawnchair.organizer.personalization.PersonalizationContextExportV1(
+                exportId = "export-1",
+                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
+                grid = app.lawnchair.organizer.personalization.ExportGridContext(4, 5, 1),
+                items = emptyList(),
+                preservedConstraints = app.lawnchair.organizer.personalization.PreservedConstraints(
+                    reservedRegions = emptyList(),
+                    preservedCounts = emptyMap(),
+                ),
+                capabilities = app.lawnchair.organizer.personalization.ExportCapabilities(
+                    intentSchemaVersion = app.lawnchair.organizer.personalization.ContextExportContract.INTENT_SCHEMA_VERSION,
+                    functions = app.lawnchair.organizer.personalization.ContextExportContract.FIXED_CAPABILITIES,
+                ),
+                usageSignals = null,
+            ),
+            session = app.lawnchair.organizer.personalization.ExportSession(
+                exportId = "export-1",
+                itemRefs = emptyMap(),
+                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
+                sourceContextDigest = "digest",
+                signalProvenance = null,
+                createdAtEpochMs = 0L,
+                expiresAtEpochMs = 1L,
+            ),
+            identity = app.lawnchair.organizer.personalization.IntentIdentityCalculator.identity(
+                app.lawnchair.organizer.personalization.PersonalizedIntentV1(
+                    exportId = "export-1",
+                    itemIntents = emptyList(),
+                ),
+            ),
+        )
+        var plannedInput: OrganizationInput? = null
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(
+            application = application,
+            planner = OrganizationPlanner { input ->
+                plannedInput = input
+                planningResult(movingPlan())
+            },
+            operationGate = OrganizationOperationLease,
+        )
+        assertTrue(runner.start(intent = validated) is ManualOrganizationRun.StartOutcome.Started)
+        assertEquals(validated.identity, plannedInput?.intentPreferences?.identity)
+        runner.cancel()
+    }
+
+    @Test
     fun exceptionDuringConfirmationReleasesTheOrganizationOperationLease() {
         val application = FakeApplication(readyInput()).apply {
             inspectPlanOverride = { _, _ -> PlanPreviewResult.WriterBusy }
