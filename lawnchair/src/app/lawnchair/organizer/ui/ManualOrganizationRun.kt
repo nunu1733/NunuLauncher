@@ -42,6 +42,7 @@ import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.PreserveReason
 import app.lawnchair.organizer.planning.RejectionCode
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
 import java.util.concurrent.atomic.AtomicBoolean
@@ -160,6 +161,8 @@ class ManualOrganizationRun internal constructor(
         val preservedCount: Int,
         val newFolderCount: Int,
         val newPageCount: Int,
+        /** Spec 182: the effective strategy the preview was computed with. */
+        val organizationStrategy: StrategyId,
         val scope: Scope,
         val movedByReason: Map<PlacementCode, Int>,
         val preservedByReason: Map<PreserveReason, Int>,
@@ -632,6 +635,7 @@ class ManualOrganizationRun internal constructor(
             preservedCount = placements.count { it.disposition is Disposition.Preserved },
             newFolderCount = (planningOutcome as? Planned)?.newFolders?.size ?: 0,
             newPageCount = (planningOutcome as? Planned)?.newPages?.size ?: 0,
+            organizationStrategy = organizationStrategy,
             scope = input.summaryScope(),
             movedByReason = placements.mapNotNull { (it.disposition as? Disposition.Moved)?.rationale }.groupingBy { it }.eachCount(),
             preservedByReason = placements.mapNotNull { (it.disposition as? Disposition.Preserved)?.reason }.groupingBy { it }.eachCount(),
