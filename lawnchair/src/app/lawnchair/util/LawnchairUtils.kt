@@ -177,6 +177,40 @@ fun getFolderBackgroundAlpha(context: Context): Int {
     return (prefs2.folderBackgroundOpacity.firstBlocking() * 255).toInt()
 }
 
+/**
+ * Custom folder color from preferences, or `0` when the theme default should be used.
+ *
+ * Note: pure black (`#FF000000`) is a valid custom color and is not treated as default.
+ */
+fun getCustomFolderColor(context: Context): Int {
+    val prefs2 = PreferenceManager2.getInstance(context)
+    return prefs2.folderColor.firstCached().colorPreferenceEntry.lightColor.invoke(context)
+}
+
+/** Closed-folder preview circle color (includes preview opacity). */
+fun resolveFolderPreviewColor(context: Context): Int {
+    val custom = getCustomFolderColor(context)
+    val base = if (custom != 0) {
+        custom
+    } else {
+        ColorTokens.FolderPreviewColor.resolveColor(context)
+    }
+    return ColorUtils.setAlphaComponent(base, getFolderPreviewAlpha(context))
+}
+
+/**
+ * Open-folder background fill color.
+ * Opacity is applied separately via [getFolderBackgroundAlpha] on the drawable.
+ */
+fun resolveFolderBackgroundColor(context: Context): Int {
+    val custom = getCustomFolderColor(context)
+    return if (custom != 0) {
+        custom
+    } else {
+        ColorTokens.FolderBackgroundColor.resolveColor(context)
+    }
+}
+
 fun getAllAppsScrimColor(context: Context): Int {
     val opacity = PreferenceManager.getInstance(context).drawerOpacity.get()
     val prefs2 = PreferenceManager2.getInstance(context)

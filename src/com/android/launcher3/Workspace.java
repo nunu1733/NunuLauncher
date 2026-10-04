@@ -3850,6 +3850,14 @@ public class Workspace<T extends View & PageIndicator> extends PagedView<T>
     }
 
     /**
+     * LC bridge (#448/#497 callers): thin wrapper over {@link #getViewByItemId(int)} kept for
+     * fork code that refers to a homescreen icon by its model item id.
+     */
+    public View getHomescreenIconByItemId(int id) {
+        return getViewByItemId(id);
+    }
+
+    /**
      * Perform {param op} over all the items in the provided {param layouts} until a match is found
      */
     public static View mapOverCellLayouts(CellLayout[] layouts, ItemOperator op) {
