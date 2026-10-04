@@ -31,12 +31,8 @@ internal object FullRunExecution {
 
     fun execute(context: FullRunContext): PlacementOutput = when (context.strategy.unitOrder) {
         UnitOrdering.CANONICAL_TIE_BREAK -> executeCanonicalPageCompact(context)
-
         UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL -> executeStablePageTidy(context)
-
-        UnitOrdering.CAPTURED_VISUAL_GLOBAL -> throw IllegalStateException(
-            "UnitOrdering ${context.strategy.unitOrder} has no full-run executor yet (its child issue owns it)",
-        )
+        UnitOrdering.CAPTURED_VISUAL_GLOBAL -> executeGlobalCompact(context)
     }
 
     /** Shared tail: naturally preserved items keep their captured placement with their precedence reason. */
@@ -125,6 +121,131 @@ internal object FullRunExecution {
             preservationWarnings = context.preservationWarnings,
         )
     }
+
+    /**
+     * GLOBAL_COMPACT_V1 (spec 182): cross-page density compaction. Only
+     * movable `1×1` singletons compact, in global captured visual order
+     * `(PageOrder, PageId, cell.y, cell.x, ItemId)`, each taking the earliest
+     * free cell scanning all captured pages then already-created new pages
+     * (`PageScope.CAPTURED_THEN_NEW`). Otherwise-movable non-`1×1` units and
+     * all existing folder units are `STRATEGY_PRESERVED` fixed constraints.
+     * Formed folders (canonical P-04/P-05 grouping over the eligible `1×1`
+     * candidates only) are placed after the compacting units by
+     * `(preferred page key, NewFolderOrdinal)`. Idempotence: the compacting
+     * units occupy the earliest free cells in visual order and the folders
+     * take the tail, so on a replan the (now fixed) folders sit exactly where
+     * the singleton stream never reaches and every unit reclaims its cell.
+     */
+    private fun executeGlobalCompact(context: FullRunContext): PlacementOutput {
+        val input = context.input
+        val strategy = context.strategy
+        val taxonomy = input.taxonomy
+        val device = input.snapshot.device
+        val allocator = context.allocator
+
+        val strategyFixed = context.movableItems.filter { !strategy.eligibleUnitFilter(it) }
+        val eligible = context.movableItems.filter { strategy.eligibleUnitFilter(it) }
+
+        val placements = mutableListOf<PlannedPlacement>()
+        for (item in strategyFixed) {
+            val ws = item.placement as CapturedPlacement.Workspace
+            allocator.markOccupied(PageRef(ws.page.pageId), ws.cell, ws.span)
+            placements += PlannedPlacement(
+                item = item.id,
+                disposition = Disposition.Preserved(PreserveReason.STRATEGY_PRESERVED),
+                target = capturedToOutput(item.placement),
+            )
+        }
+
+        val capacity = device.folderMaxColumns.toLong() * device.folderMaxRows.toLong()
+        val minGroupSize = input.rules.folderPolicy.minGroupSize
+        val folderGroups = if (strategy.createsFolders) {
+            formFolderGroups(
+                candidates = eligible.map { item ->
+                    FolderCandidate(
+                        item.id,
+                        item.profile,
+                        context.classification.decisions[item.id]?.category ?: taxonomy.fallbackCategory,
+                    )
+                },
+                fallbackCategory = taxonomy.fallbackCategory,
+                capacity = capacity,
+                minGroupSize = minGroupSize,
+            )
+        } else {
+            emptyList()
+        }
+        val folderMemberIds = folderGroups.flatMapTo(mutableSetOf()) { it.members }
+
+        val workspaceUnits = eligible
+            .filter { it.id !in folderMemberIds }
+            .sortedWith(
+                compareBy(
+                    { pageOrderOf(context, (it.placement as CapturedPlacement.Workspace).page) },
+                    { (it.placement as CapturedPlacement.Workspace).page.pageId },
+                    { (it.placement as CapturedPlacement.Workspace).cell.y },
+                    { (it.placement as CapturedPlacement.Workspace).cell.x },
+                    { it.id },
+                ),
+            )
+        for (item in workspaceUnits) {
+            val ws = item.placement as CapturedPlacement.Workspace
+            val capturedTarget = PlacementTarget.WorkspaceTarget(PageRef(ws.page.pageId), ws.cell, ws.span)
+            val allocated = allocator.allocateCapturedThenNew(ws.span)
+                ?: error("Validated item ${item.id} could not be allocated")
+            val (pageRef, cell) = allocated
+            allocator.markOccupied(pageRef, cell, ws.span)
+            val newTarget = PlacementTarget.WorkspaceTarget(pageRef, cell, ws.span)
+            val disposition = if (newTarget != capturedTarget) {
+                Disposition.Moved(PlacementCode.SINGLE_PLACEMENT)
+            } else {
+                Disposition.Preserved(PreserveReason.ALREADY_CANONICAL)
+            }
+            placements += PlannedPlacement(item.id, disposition, newTarget)
+        }
+
+        val outputNewFolders = mutableListOf<NewFolder>()
+        for (group in folderGroups.sortedWith(
+            compareBy<FolderGroup>(
+                { pageOrderOf(context, preferredPageOf(context, it.members)) },
+                { it.ordinal.value },
+            ),
+        )) {
+            val allocated = allocator.allocateCapturedThenNew(GridSpan(1, 1))
+                ?: error("Validated folder ${group.ordinal} could not be allocated")
+            val (pageRef, cell) = allocated
+            allocator.markOccupied(pageRef, cell, GridSpan(1, 1))
+            outputNewFolders += NewFolder(
+                ordinal = group.ordinal,
+                profile = group.profile,
+                naming = FolderNaming.FromCategory(group.category),
+                workspacePlacement = PlacementTarget.WorkspaceTarget(pageRef, cell, GridSpan(1, 1)),
+                members = group.members,
+            )
+            for ((rank, memberId) in group.members.withIndex()) {
+                placements += PlannedPlacement(
+                    item = memberId,
+                    disposition = Disposition.Moved(PlacementCode.FOLDER_MEMBER),
+                    target = PlacementTarget.FolderMember(NewFolderRef(group.ordinal), rank),
+                )
+            }
+        }
+
+        appendPreservedPlacements(context, placements)
+
+        return PlacementOutput(
+            placements = placements.sortedBy { it.item },
+            newPages = allocator.buildNewPages(),
+            newFolders = outputNewFolders.sortedBy { it.ordinal },
+            preservationWarnings = context.preservationWarnings,
+        )
+    }
+
+    private fun pageOrderOf(context: FullRunContext, page: PageRef): PageOrder = context.pageOrderMap.getValue(page.pageId)
+
+    private fun preferredPageOf(context: FullRunContext, members: List<ItemId>): PageRef = members
+        .map { id -> (context.itemById.getValue(id).placement as CapturedPlacement.Workspace).page }
+        .minWith(pageRefComparator(context.pageOrderMap))
 
     private fun executeCanonicalPageCompact(context: FullRunContext): PlacementOutput {
         val input = context.input

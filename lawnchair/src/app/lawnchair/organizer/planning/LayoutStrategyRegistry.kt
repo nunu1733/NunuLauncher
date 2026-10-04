@@ -60,6 +60,17 @@ internal object LayoutStrategyRegistry {
      */
     val BOTTOM_FIRST_V1 = StrategyId("BOTTOM_FIRST_V1")
 
+    /**
+     * Spec 182 GLOBAL_COMPACT_V1: cross-page density compaction. Only movable
+     * `1×1` singletons compact (global captured visual order via
+     * `allocateCapturedThenNew`); otherwise-movable non-`1×1` units and all
+     * existing folder units are `STRATEGY_PRESERVED` fixed constraints; folder
+     * formation (canonical P-04/P-05 grouping) applies to the eligible `1×1`
+     * candidates only and the formed folders are placed after the compacting
+     * units. The heterogeneous-span variant was rejected (INV-8).
+     */
+    val GLOBAL_COMPACT_V1 = StrategyId("GLOBAL_COMPACT_V1")
+
     private val definitions: Map<StrategyId, StrategyDefinition> = mapOf(
         CANONICAL_PAGE_COMPACT_V1 to StrategyDefinition(
             identity = CANONICAL_PAGE_COMPACT_V1,
@@ -89,6 +100,18 @@ internal object LayoutStrategyRegistry {
             unitOrder = UnitOrdering.CANONICAL_TIE_BREAK,
             pageScope = PageScope.PREFERRED_THEN_NEW,
             cellTraversal = CellTraversal.BOTTOM_UP_ROW_MAJOR,
+            placeFullRun = FullRunExecution::execute,
+        ),
+        GLOBAL_COMPACT_V1 to StrategyDefinition(
+            identity = GLOBAL_COMPACT_V1,
+            createsFolders = true,
+            eligibleUnitFilter = { item ->
+                (item.kind == ItemKind.APPLICATION || item.kind == ItemKind.DEEP_SHORTCUT) &&
+                    (item.placement as? CapturedPlacement.Workspace)?.span == GridSpan(1, 1)
+            },
+            unitOrder = UnitOrdering.CAPTURED_VISUAL_GLOBAL,
+            pageScope = PageScope.CAPTURED_THEN_NEW,
+            cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
             placeFullRun = FullRunExecution::execute,
         ),
     )
