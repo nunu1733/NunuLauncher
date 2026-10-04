@@ -61,6 +61,13 @@ class FakeLayoutWriter(
     var nextTxOutcome: ApplyTxOutcome = ApplyTxOutcome.Committed
 
     /**
+     * Issue #270 deterministic failure injection: when set, the next
+     * `captureCurrent` calls throw this exception, proxying the production
+     * canonical capture rejecting an unrepresentable persisted row.
+     */
+    var captureFailure: RuntimeException? = null
+
+    /**
      * Issue #152: the reload outcome the fake reports. The default completes
      * with the model-verifiable projection of the current simulated state —
      * exactly what the production adapter captures at the terminal boundary —
@@ -146,6 +153,7 @@ class FakeLayoutWriter(
 
     override fun captureCurrent(captureId: CaptureId): CapturedSnapshot {
         capturedSnapshots += 1
+        captureFailure?.let { throw it }
         return dbSnapshot()
     }
 
