@@ -1,6 +1,6 @@
 ---
 issue: "#233"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-09-11
 ---

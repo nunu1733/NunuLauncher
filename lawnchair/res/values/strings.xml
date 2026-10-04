@@ -528,6 +528,14 @@
     <string name="restore_nova_subgrid_warning">This backup uses Nova\'s subgrid positioning. Lawnchair does not support subgrids, so any items placed in a subgrid will be aligned to the nearest grid position.</string>
     <string name="restore_nova_smartspace_conflict_toggle">Add extra row to show At a Glance</string>
 
+    <!-- Issue #233: page summary shown on the restore confirmation screen when
+         the single screenshot preview cannot cover all saved workspace pages.
+         Counts use label-style wording so singular/plural stays correct. -->
+    <string name="backup_preview_partial_caption">The preview image may not show all saved pages.</string>
+    <string name="backup_page_summary_title">Saved pages (%1$d)</string>
+    <string name="backup_page_summary_entry">Page %1$d (items: %2$d, folders: %3$d, widgets: %4$d)</string>
+    <string name="backup_page_summary_unavailable">Saved page details are not available.</string>
+
     <!--
 
     Gesture settings
