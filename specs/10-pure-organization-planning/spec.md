@@ -905,8 +905,8 @@ Issue #10 uses a small representative suite, not the downstream harness:
   migration.
 - **Empty-folder deletion ([Issue
   #24](https://github.com/nunu1733/NunuLauncher/issues/24)):** v1 preserves.
-- **Lock persistence ([Issue
-  #23](https://github.com/nunu1733/NunuLauncher/issues/23)):** behavior only.
+- **Lock persistence:** ADR-0004 owns storage; this planning seam remains
+  behavior-only and consumes typed lock state.
 - **Rule file format:** seam requires typed `RuleSemantics` + `TaxonomyContract`;
   format is Rule Management's concern.
 

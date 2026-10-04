@@ -80,9 +80,8 @@ rewriting the Launcher DB export path.
   `backupscheme.xml` allowlists only the named Launcher DB files. Tests must
   prove both exclusions.
 - The recovery record is a resource manifest, not an assumption that all state
-  lives in `favorites`. Issue #23 must define how lock state is captured and
-  restored; Issue #14 remains gated until every required resource has a safe
-  representation.
+  lives in `favorites`. [ADR-0004](./0004-organizer-lock-persistence.md) places
+  lock truth on each `favorites` row and requires it in capture and restore.
 - A recovery DB format newer than the running app is read-only and
   non-restorable. An older compatible format is migrated in the recovery DB or
   rejected without touching the Launcher layout.

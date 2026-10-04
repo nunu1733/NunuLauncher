@@ -138,7 +138,7 @@ stateDiagram-v2
 
 - Launcher DBが現在のホームレイアウトの正本である。
 - 整理ルール、category override、recovery metadataにはownershipとmigration方針を別途定義する。
-- lockを既存item tableの追加columnにする案は未決定である。全item type、backup/restore、schema migration、upstream conflictを比較する。
+- lock stateは各Launcher layout DBの`favorites`行が専用のtri-state columnで所有する。transaction、backup/restore、schema migration、grid migration、未知状態のfail-closed規則は[ADR-0004](./docs/adr/0004-organizer-lock-persistence.md)を正本とする。
 - planはrevisionを持つ一時artifactであり、古いsnapshotへ適用できない。
 - recovery pointは一般的なexport backupと分け、アプリ内で原子的に復旧できる形式を選ぶ。
 

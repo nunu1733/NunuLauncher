@@ -55,8 +55,8 @@ row-accounted transaction; it never replaces the Favorites table wholesale.
 - The concrete persistence adapter interface, SQL schema, hashing algorithm,
   ID allocator, locking primitive, or failure-injection implementation. These
   belong to the later implementation plan.
-- Lock storage and migration, owned by Issue #23. Until that decision is
-  accepted, implementation remains gated and missing lock state fails closed.
+- Lock storage and migration implementation. ADR-0004 defines the resource;
+  missing, unknown, or corrupt lock state fails closed through this contract.
 - Empty-folder deletion policy, owned by Issue #24. Apply v1 has no deletion
   action. Recovery deletions are explicit reversal actions, not organizer
   policy decisions.
@@ -154,7 +154,7 @@ RecoveryResult =
 
 RecoveryRejection =
   | MISSING | EXPIRED | CORRUPT | INCOMPATIBLE_VERSION
-  | STALE_REVISION | ALREADY_RESTORED
+  | STALE_REVISION | LOCK_STATE_UNAVAILABLE | ALREADY_RESTORED
 
 RecoveryFailure =
   | WRITE_FAILED | COMMIT_OUTCOME_UNKNOWN
@@ -368,7 +368,7 @@ success. The point remains unresolved and discoverable.
 | SA-12 | Death after checkpoint, before layout write | Record `READY`, Launcher pre-state; restart validates and prunes it without a layout write. |
 | SA-13 | Death during/around layout commit | Restart classifies pre/post/neither from persisted intent and acts accordingly. |
 | SA-14 | Death after layout commit, before verification | Restart verifies exact post-state or recovers; no new operation runs first. |
-| SA-15 | Lock metadata missing/unreadable | Fail closed before checkpoint/write. |
+| SA-15 | Lock metadata missing/unreadable | Apply returns `Rejected(LOCK_STATE_UNAVAILABLE)`; explicit recovery returns `NotRestorable(LOCK_STATE_UNAVAILABLE)`; no checkpoint/write. |
 | SA-16 | Explicit recovery with matching reviewed revision | Complete row-accounted recovery; `Restored` only after DB/model verification. |
 | SA-17 | Current revision differs from reviewed revision | `NotRestorable(STALE_REVISION)`; no mutation; new preview required. |
 | SA-18 | Row created after checkpoint | It is preserved or explicitly deleted according to the confirmed recovery write-set; never silently lost. |
@@ -405,8 +405,8 @@ The invariants themselves remain authoritative in `DESIGN.md` §5.
 - An incompatible recovery format is rejected without touching Launcher DB.
   Downgrade may discard recovery records but never changes the current layout.
 - The recovery manifest covers every persistent resource required to restore
-  the run; it must not assume lock state lives in `favorites`. Issue #23 must
-  provide the lock resource contract before implementation starts.
+  the run. ADR-0004 defines the tri-state `favorites` lock resource included in
+  its row manifests and exact preconditions.
 - No permission, network access, external storage, or external telemetry is
   introduced. Diagnostics use only privacy-safe typed categories and counts.
 
@@ -423,7 +423,7 @@ The invariants themselves remain authoritative in `DESIGN.md` §5.
 | AC-7 | Any post-commit reload/verification failure attempts recovery and never reports false success. | Failure injection at reload, recapture, verification, recovery write, recovery reload, and recovery verify. |
 | AC-8 | Recovery binds to the reviewed current revision and accounts for every current/checkpoint resource with exact preconditions. | Unchanged and subsequently changed layouts, including added rows and container references. |
 | AC-9 | Multiple new pages/folders are unique and overflow-safe; rollback exposes no reservation; no page row is written. | Boundary fixtures through `apply`. |
-| AC-10 | Lock state missing is fail-closed; profiles, widgets, folders, and app pairs round-trip exactly. | Resource matrix and negative lock fixture. |
+| AC-10 | Lock state missing is fail-closed with the seam-specific typed result; profiles, widgets, folders, and app pairs round-trip exactly. | Apply/recovery negative lock fixtures plus resource matrix. |
 | AC-11 | Recovery DB is absent from ZIP/Android backup and incompatible versions do not touch layout. | Backup-content inspection plus upgrade/downgrade tests. |
 | AC-12 | 24-hour/max-three retention is atomic and never removes an unresolved point. | Clock-controlled lifecycle tests. |
 | AC-13 | Production and failure-injection persistence adapters are exercised only through the same Layout Application interface. | Shared contract suite; no internal helper mocking. |
@@ -432,8 +432,8 @@ The invariants themselves remain authoritative in `DESIGN.md` §5.
 
 ## Downstream gates
 
-- Issue #23 must define capture, revision, checkpoint, and restore semantics for
-  lock state before Issue #14 can implement the complete resource manifest.
+- ADR-0004 defines capture, revision, checkpoint, and restore semantics for lock
+  state; Issue #14 must implement them with the complete resource manifest.
 - Issue #24 is required only before a future organizer plan can delete an empty
   folder. It does not block explicit row-accounted recovery.
 - Issue #16 owns diagnostic field encoding, retention, and export.

@@ -422,7 +422,7 @@ D-007 の提案: **device profile から region を導出し、固定 row 前提
 | Folder 内 grid の決定 | `FolderGridOrganizer` の規則と同等とする。詳細は planner 実装（Issue #12）で具体化する。ただし既存 folder の子 item 配置は保持する。 |
 | 新規 page の上限 | v1では空pageに収まる全move対象itemに必要なpageを追加する。page数のperformance budgetはIssue #15で定める。 |
 | Empty folder の削除 | Issue #24 の決定を待つ。本戦略では空 folder を保持する。 |
-| Lock の永続化 | Issue #23 の決定を待つ。本戦略では lock の振る舞いのみ定義する。 |
+| Lock の永続化 | [ADR-0004](../adr/0004-organizer-lock-persistence.md)がownershipとmigrationを定義する。本戦略はlockの振る舞いのみを定義する。 |
 | Dock action | 明示的 Dock action（rank 変更、workspace 退避等）は別 mode として本戦略では定義しない。将来の Issue で入力 mode を定義する。 |
 | Rule との統合 | 整理ルールの file format が決定後（Issue #10 の一部）、本戦略の規則を rule として表現可能にする。 |
 
