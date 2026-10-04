@@ -36,9 +36,21 @@ lanes:
     # Issue #461: GridMigrationFailureTest was appended to this lane's runner
     # class list (fail-closed on a corrupt durable recovery source). Edges are
     # unchanged; the lane already owned surface_db_schema.
+    # Issue #532 (plan specs/516-16-rebase-phase2 §7 G4): RestoreDbTaskSuccessPathTest
+    # (T4, performRestore success entry), RealZipRestoreE2E (T5, real ZIP32/33
+    # restore) and the device readback half of PrefsLegacyXmlMigrationTest (T7)
+    # were appended to the lane's runner class list. Edges are unchanged; the
+    # lane already owned surface_db_schema and the new test files are listed in
+    # the ci.yml surface_db_schema filter for self-triggering.
     surfaces:
       - surface_db_schema
   organizer-instrumentation-restore-capture-tests:
+    # Issue #532 (plan §7 G4 T8): NovaConverterBoundaryTest and
+    # NovaConverterBoundarySmartspaceOffTest were appended to
+    # tools/ci/run-restore-capture-instrumentation.sh as per-class independent
+    # invocations (one restore per process; the smartspace ON/OFF pair are
+    # separate processes). Edges are unchanged; the lane already owned
+    # surface_backup_restore.
     surfaces:
       - surface_backup_restore
   organizer-instrumentation-production-input-tests:

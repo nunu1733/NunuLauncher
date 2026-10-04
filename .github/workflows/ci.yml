@@ -175,6 +175,13 @@ jobs:
               # surface's broad test globs.
               - 'tests/organizer-instrumentation/com/android/launcher3/LauncherPrefsCommitTest.java'
               - 'tests/organizer-instrumentation/com/android/launcher3/organizer/RestoreProfileRemapTest.java'
+              # Issue #532 / plan §7 G4: the T4/T5/T7 added oracles joined the
+              # db-migration lane class list; list them explicitly so the lane
+              # self-triggers on their changes (overlap with surface_backup_restore
+              # and surface_layout_write is the safe direction).
+              - 'tests/organizer-instrumentation/com/android/launcher3/organizer/RestoreDbTaskSuccessPathTest.java'
+              - 'tests/organizer-instrumentation/app/lawnchair/backup/RealZipRestoreE2E.kt'
+              - 'tests/organizer-instrumentation/com/android/launcher3/PrefsLegacyXmlMigrationTest.kt'
             surface_backup_restore:
               # Old-backup restore capture (Nova) and the backup agent seam.
               - 'lawnchair/src/app/lawnchair/backup/**'
@@ -363,7 +370,9 @@ jobs:
         # Issue #443: -Pnunu.excludeAiExchangeUnitTests excludes the frozen AI
         # exchange UI suite (app.lawnchair.organizer.ui.exchange.*) from the
         # blocking merge gate; see build.gradle and specs/443-freeze-ai-exchange.
-        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.homeedit.*' --tests 'app.lawnchair.ui.popup.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
+        # Issue #532 / plan §7 G4 T7: the JVM half of the prefs legacy XML
+        # migration oracle joins the gate (device half in db-migration).
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.homeedit.*' --tests 'app.lawnchair.ui.popup.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest' --tests 'app.lawnchair.preferences2.SharedPreferencesLegacyKeyMigrationTest'
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -490,8 +499,12 @@ jobs:
           # Deck retirement startup migration idempotency (#57), and the restore
           # profile remap lock preservation (#58). #461 (fail-closed on corrupt
           # durable recovery source) resolved; GridMigrationFailureTest routed here.
+          # Issue #532 / plan §7 G4: the T4/T5/T7 added oracles join the lane —
+          # RestoreDbTaskSuccessPathTest (performRestore success entry),
+          # RealZipRestoreE2E (real ZIP32/33 restore), and the device readback
+          # half of PrefsLegacyXmlMigrationTest (JVM half in organizer-unit-tests).
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/db-migration-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest,com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest,com.android.launcher3.model.GridMigrationSuccessTest,com.android.launcher3.LauncherPrefsCommitTest,app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest,com.android.launcher3.organizer.RestoreProfileRemapTest,com.android.launcher3.model.GridMigrationFailureTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/db-migration-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest,com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest,com.android.launcher3.model.GridMigrationSuccessTest,com.android.launcher3.LauncherPrefsCommitTest,app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest,com.android.launcher3.organizer.RestoreProfileRemapTest,com.android.launcher3.model.GridMigrationFailureTest,com.android.launcher3.organizer.RestoreDbTaskSuccessPathTest,app.lawnchair.backup.RealZipRestoreE2E,com.android.launcher3.PrefsLegacyXmlMigrationTest
       - name: Upload DB migration instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
