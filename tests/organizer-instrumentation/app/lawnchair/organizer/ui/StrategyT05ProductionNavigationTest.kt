@@ -268,13 +268,13 @@ class StrategyT05ProductionNavigationTest {
         composeRule.waitForIdle()
 
         // The supported path leaves T-05 writable: a selection publishes.
-        val tidy = context.getString(R.string.organization_strategy_tidy_name)
+        val tidy = context.getString(R.string.organization_strategy_tidy_v2_name)
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
         composeRule.onNodeWithText(tidy).performClick()
         composeRule.waitUntil(5_000) {
             val read = LayoutStrategySelectionModule.store(context).read()
             read is app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult.Ready &&
-                read.snapshot.selection == StrategyId("STABLE_PAGE_TIDY_V1")
+                read.snapshot.selection == StrategyId("STABLE_PAGE_TIDY_V2")
         }
     }
 }

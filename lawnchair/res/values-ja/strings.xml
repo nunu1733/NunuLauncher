@@ -301,16 +301,16 @@
     <string name="organizer_strategy_retry_when_busy">他の整理の変更を実行中です。完了後に再度お試しください。</string>
     <string name="organization_strategy_canonical_name">標準コンパクト</string>
     <string name="organization_strategy_canonical_description">各ページを左上から詰めます。</string>
-    <string name="organization_strategy_tidy_name">ページ内で隙間を詰める</string>
+    <string name="organization_strategy_tidy_name">ページ内で隙間を詰める（ウィジェットは移動しません）</string>
     <string name="organization_strategy_tidy_description">アプリを別のページへ移動せずに、各ページの隙間を閉じます。ウィジェットは移動しません。</string>
-    <string name="organization_strategy_tidy_v2_name">ページ内で隙間を詰める（ウィジェット対応）</string>
-    <string name="organization_strategy_tidy_v2_description">アプリの隙間を埋め、ウィジェットは今ある範囲の中にまとめて配置します。</string>
+    <string name="organization_strategy_tidy_v2_name">ページごとに整える</string>
+    <string name="organization_strategy_tidy_v2_description">アプリを別のページへ移動せず、各ページのすき間を詰めます。ウィジェットも同じページ内で整えます。</string>
     <string name="organization_strategy_bottom_first_name">下段から詰める</string>
     <string name="organization_strategy_bottom_first_description">アプリを各ページの下段から順に配置します。ウィジェットは移動しません。</string>
     <string name="organization_strategy_bottom_first_v2_name">下段から詰める（ウィジェット対応）</string>
     <string name="organization_strategy_bottom_first_v2_description">アプリを画面下部に配置し、ウィジェットをその上に配置します。</string>
     <!-- Issue #398 BOTTOM_REGION_V1: lower-preferred-region sweep. -->
-    <string name="organization_strategy_bottom_region_name">下側半分にまとめる</string>
+    <string name="organization_strategy_bottom_region_name">下半分に集める</string>
     <string name="organization_strategy_bottom_region_description">各ページの下側半分を主な場所として使い、上側は余白として残します。ページが増えることがあります。ウィジェットは移動しません。</string>
     <string name="organization_strategy_global_name">ページ間でコンパクト（アプリのみ）</string>
     <string name="organization_strategy_global_description">後ろのページのアプリを、前のページの空きスペースへ移動します。既存のフォルダは移動しません。</string>
