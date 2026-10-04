@@ -31,23 +31,11 @@ import java.util.function.Function;
 public class DaggerSingletonObject<T> {
     private final Function<LauncherAppComponent, T> mFunction;
 
-    // Rebase Phase 2 bridge (fork adaptation): best-effort creation tracking so
-    // fork-era executeIfCreated call sites keep working.
-    private T mCreated;
-
     public DaggerSingletonObject(Function<LauncherAppComponent, T> function) {
         mFunction = function;
     }
 
     public T get(Context context) {
-        T result = mFunction.apply(LauncherComponentProvider.get(context));
-        mCreated = result;
-        return result;
-    }
-
-    public void executeIfCreated(java.util.function.Consumer<T> action) {
-        if (mCreated != null) {
-            action.accept(mCreated);
-        }
+        return mFunction.apply(LauncherComponentProvider.get(context));
     }
 }

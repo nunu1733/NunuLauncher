@@ -15,70 +15,137 @@
  */
 package com.android.launcher3.model;
 
+import static com.android.launcher3.LauncherSettings.Favorites.CONTAINER_DESKTOP;
+import static com.android.launcher3.LauncherSettings.Favorites.CONTAINER_HOTSEAT;
+import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPWIDGET;
+import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_CUSTOM_APPWIDGET;
+import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
+
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.os.BadParcelableException;
+import android.os.Process;
+import android.text.TextUtils;
+import android.util.Log;
+
+import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherSettings;
+import com.android.launcher3.Utilities;
+import com.android.launcher3.icons.BitmapInfo;
+import com.android.launcher3.icons.IconCache;
+import com.android.launcher3.icons.LauncherIcons;
 import com.android.launcher3.model.data.ItemInfo;
-import com.android.launcher3.util.IntArray;
+import com.android.launcher3.model.data.WorkspaceItemInfo;
 import com.android.launcher3.util.IntSet;
 
 import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-import java.util.stream.IntStream;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.function.Predicate;
 
 /**
  * Utils class for {@link com.android.launcher3.LauncherModel}.
  */
 public class ModelUtils {
 
+    private static final String TAG = "ModelUtils";
+
     /**
-     * Filters the set of items who are directly or indirectly (via another container) on the
-     * specified screen.
+     * Returns a filter for items on hotseat or current screens
      */
-    public static <T extends ItemInfo> void filterCurrentWorkspaceItems(
-            final IntSet currentScreenIds,
-            List<? extends T> allWorkspaceItems,
-            List<T> currentScreenItems,
-            List<T> otherScreenItems) {
-        // Purge any null ItemInfos
-        allWorkspaceItems.removeIf(Objects::isNull);
-        // Order the set of items by their containers first, this allows use to walk through the
-        // list sequentially, build up a list of containers that are in the specified screen,
-        // as well as all items in those containers.
-        IntSet itemsOnScreen = new IntSet();
-        Collections.sort(allWorkspaceItems,
-                (lhs, rhs) -> Integer.compare(lhs.container, rhs.container));
-        for (T info : allWorkspaceItems) {
-            if (info.container == LauncherSettings.Favorites.CONTAINER_DESKTOP) {
-                if (currentScreenIds.contains(info.screenId)) {
-                    currentScreenItems.add(info);
-                    itemsOnScreen.add(info.id);
-                } else {
-                    otherScreenItems.add(info);
-                }
-            } else if (info.container == LauncherSettings.Favorites.CONTAINER_HOTSEAT) {
-                currentScreenItems.add(info);
-                itemsOnScreen.add(info.id);
-            } else {
-                if (itemsOnScreen.contains(info.container)) {
-                    currentScreenItems.add(info);
-                    itemsOnScreen.add(info.id);
-                } else {
-                    otherScreenItems.add(info);
-                }
-            }
-        }
+    public static Predicate<ItemInfo> currentScreenContentFilter(IntSet currentScreenIds) {
+        return item -> item.container == CONTAINER_HOTSEAT
+                || (item.container == CONTAINER_DESKTOP
+                        && currentScreenIds.contains(item.screenId));
     }
 
     /**
-     * Iterates though current workspace items and returns available hotseat ranks for prediction.
+     * Returns a filter for widget items
      */
-    public static IntArray getMissingHotseatRanks(List<ItemInfo> items, int len) {
-        IntSet seen = new IntSet();
-        items.stream().filter(
-                info -> info.container == LauncherSettings.Favorites.CONTAINER_HOTSEAT)
-                .forEach(i -> seen.add(i.screenId));
-        IntArray result = new IntArray(len);
-        IntStream.range(0, len).filter(i -> !seen.contains(i)).forEach(result::add);
-        return result;
+    public static final Predicate<ItemInfo> WIDGET_FILTER = item ->
+            item.itemType == ITEM_TYPE_APPWIDGET || item.itemType == ITEM_TYPE_CUSTOM_APPWIDGET;
+
+    /**
+     * Creates a workspace item from the result of an ACTION_CREATE_SHORTCUT activity.
+     * <p> 
+     * LC-Note: We still use this to support legacy shortcut for non-root.
+     */
+    @SuppressWarnings("deprecation")
+    public static WorkspaceItemInfo fromLegacyShortcutIntent(Context context, Intent data) {
+        if (data == null) {
+            return null;
+        }
+        Object shortcutIntent;
+        Object iconResource;
+        Object icon;
+        String label;
+        try {
+            shortcutIntent = data.getParcelableExtra(Intent.EXTRA_SHORTCUT_INTENT);
+            iconResource = data.getParcelableExtra(Intent.EXTRA_SHORTCUT_ICON_RESOURCE);
+            icon = data.getParcelableExtra(Intent.EXTRA_SHORTCUT_ICON);
+            label = data.getStringExtra(Intent.EXTRA_SHORTCUT_NAME);
+        } catch (BadParcelableException | ClassCastException e) {
+            Log.e(TAG, "Unable to read legacy shortcut intent", e);
+            return null;
+        }
+
+        if ((shortcutIntent != null && !(shortcutIntent instanceof Intent))
+                || (iconResource != null
+                        && !(iconResource instanceof Intent.ShortcutIconResource))
+                || (icon != null && !(icon instanceof Bitmap))) {
+            Log.e(TAG, "Invalid install shortcut intent");
+            return null;
+        }
+
+        Intent launchIntent = (Intent) shortcutIntent;
+        if (launchIntent == null || label == null) {
+            Log.e(TAG, "Invalid install shortcut intent");
+            return null;
+        }
+
+        BitmapInfo iconInfo = null;
+        try (LauncherIcons li = LauncherIcons.obtain(context)) {
+            Bitmap bitmap = (Bitmap) icon;
+            if (bitmap != null) {
+                iconInfo = li.createIconBitmap(bitmap);
+            } else {
+                Intent.ShortcutIconResource resource =
+                        (Intent.ShortcutIconResource) iconResource;
+                if (resource != null) {
+                    iconInfo = li.createIconBitmap(resource);
+                }
+            }
+        }
+
+        if (iconInfo == null) {
+            Log.e(TAG, "Invalid icon by the app");
+            return null;
+        }
+
+        String launchPackage = launchIntent.getComponent() == null
+                ? launchIntent.getPackage() : launchIntent.getComponent().getPackageName();
+        if (!TextUtils.isEmpty(launchPackage)) {
+            IconCache iconCache = LauncherAppState.getInstance(context).getIconCache();
+            BitmapInfo baseIconInfo = iconInfo;
+            try {
+                iconInfo = MODEL_EXECUTOR.submit(() -> baseIconInfo.withBadgeInfo(
+                        iconCache.getShortcutInfoBadge(launchPackage, Process.myUserHandle())))
+                        .get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Log.e("LC-ModelUtils", "Interrupted while loading legacy shortcut badge", e);
+            } catch (ExecutionException e) {
+                Log.e("LC-ModelUtils", "Failed to load legacy shortcut badge", e);
+            }
+        }
+
+        WorkspaceItemInfo info = new WorkspaceItemInfo();
+        info.itemType = LauncherSettings.Favorites.ITEM_TYPE_SHORTCUT;
+        info.user = Process.myUserHandle();
+        info.bitmap = iconInfo;
+        info.contentDescription = info.title = Utilities.trim(label);
+        info.intent = launchIntent;
+        return info;
     }
 }
