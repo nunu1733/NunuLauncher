@@ -1,0 +1,310 @@
+package app.lawnchair.organizer.ui.exchange
+
+import android.content.Context
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.Density
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.lawnchair.organizer.integration.exchange.ExchangeFlowController
+import app.lawnchair.organizer.integration.exchange.ExchangeInputResult
+import app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult
+import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
+import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
+import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
+import app.lawnchair.organizer.personalization.ExportInputs
+import app.lawnchair.organizer.personalization.ExportSessionStore
+import app.lawnchair.organizer.personalization.IntentCodec
+import app.lawnchair.organizer.personalization.ItemIntent
+import app.lawnchair.organizer.personalization.PersonalizedIntentV1
+import app.lawnchair.organizer.personalization.PrivacyTier
+import app.lawnchair.organizer.personalization.SequentialIdAllocator
+import app.lawnchair.organizer.personalization.exchange.ExchangeContract
+import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CapturedItem
+import app.lawnchair.organizer.planning.CapturedPlacement
+import app.lawnchair.organizer.planning.ComponentKey
+import app.lawnchair.organizer.planning.DeviceCapabilities
+import app.lawnchair.organizer.planning.ExistingRole
+import app.lawnchair.organizer.planning.ExistingTargetMembership
+import app.lawnchair.organizer.planning.GridCell
+import app.lawnchair.organizer.planning.GridSpan
+import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.ItemKind
+import app.lawnchair.organizer.planning.LayoutSnapshot
+import app.lawnchair.organizer.planning.Orientation
+import app.lawnchair.organizer.planning.Page
+import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.organizer.planning.PageOrder
+import app.lawnchair.organizer.planning.PageRef
+import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.RevisionId
+import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.ui.theme.LawnchairTheme
+import com.android.launcher3.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * Issue #332 (spec AC-3/AC-4/AC-10 + AC-8 structure): the import surface runs
+ * in a real Compose host so the bounded manual editor, the parse-first
+ * outcome, and the default-collapsed raw detail are asserted as rendered UI —
+ * not just state. The clipboard/file leads are distinct labelled actions and
+ * the huge-reply case never stretches the surface.
+ */
+@RunWith(AndroidJUnit4::class)
+class ExchangeImportSurfaceInstrumentationTest {
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    private class FakeStore : ExportSessionStore {
+        override fun save(session: app.lawnchair.organizer.personalization.ExportSession) = true
+        override fun load(exportId: String): app.lawnchair.organizer.personalization.ExportSession? = null
+        override fun active(nowEpochMs: Long): app.lawnchair.organizer.personalization.ExportSession? = null
+        override fun invalidate(exportId: String) = Unit
+    }
+
+    private fun structural(): CanonicalStructuralInputs {
+        fun app(id: String, x: Int = 0) = CapturedItem(
+            id = ItemId(id),
+            profile = ProfileId("p0"),
+            kind = ItemKind.APPLICATION,
+            target = TargetKey.AppKey(ComponentKey("com.example.$id"), ProfileId("p0")),
+            placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(x, 0), GridSpan(1, 1)),
+            locked = false,
+            availability = Availability.AVAILABLE,
+        )
+        val items = listOf(app("a"), app("b", x = 1))
+        val snapshot = LayoutSnapshot(
+            RevisionId("rev"),
+            DeviceCapabilities(4, 6, 5, 3, 5, Orientation.PORTRAIT),
+            listOf(Page(PageId("p0"), PageOrder(0))),
+            items,
+        )
+        val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
+        return CanonicalStructuralInputs(snapshot, targets, emptyMap())
+    }
+
+    private fun newHolder(): ExchangeFlowStateHolder {
+        val controller = ExchangeFlowController(
+            composeExportInputs = {
+                val s = structural()
+                ExchangeInputResult.ExportReady(
+                    ExportInputs(snapshot = s.snapshot, targets = s.targets, nowEpochMs = 1_000_000L),
+                )
+            },
+            currentStructuralInputs = { ExchangeStructuralResult.Ready(structural()) },
+            store = FakeStore(),
+            allocator = SequentialIdAllocator(),
+            clock = { 1_000_000L },
+        )
+        return ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = InertRun.get(),
+            scope = CoroutineScope(Dispatchers.Main),
+        )
+    }
+
+    private fun setContent(holder: ExchangeFlowStateHolder, fontScale: Float = 1f) {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = fontScale)) {
+                LawnchairTheme {
+                    LazyColumn {
+                        exchangeFlowItems(
+                            holder = holder,
+                            clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
+                            shareTransport = { _, _ -> ExchangeTransportResult.Success },
+                            fileTransport = FileExchangeTransport(context),
+                        )
+                    }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+    }
+
+    private fun openImportSurface(holder: ExchangeFlowStateHolder) {
+        composeRule.runOnUiThread { holder.openImport() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-import-clipboard").assertIsDisplayed().assertHasClickAction()
+        composeRule.onNodeWithTag("exchange-import-file").assertIsDisplayed().assertHasClickAction()
+    }
+
+    /** AC-3/AC-4: the fallback editor is collapsed, bounds its content, and clears. */
+    @Test
+    fun hugeManualPasteStaysBoundedWithInternalScrollAndClearsInOneAction() {
+        val holder = newHolder()
+        setContent(holder)
+        openImportSurface(holder)
+
+        // D-2 (a): the manual editor is NOT composed until requested.
+        composeRule.onNodeWithTag("exchange-import-field").assertDoesNotExist()
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
+
+        val field = composeRule.onNodeWithTag("exchange-import-field")
+        field.performTextClearance()
+        field.performTextInput(buildString { repeat(4_000) { append("line $it\n") } })
+        composeRule.waitForIdle()
+
+        // Density(1f): the heightIn(max = 200.dp) cap reads back in ~px.
+        val height = composeRule.onNodeWithTag("exchange-import-field").fetchSemanticsNode().boundsInRoot.height
+        check(height < 400f) { "the manual editor must stay bounded, was $height px" }
+
+        composeRule.onNodeWithTag("exchange-import-clear").assertHasClickAction().performClick()
+        composeRule.waitForIdle()
+        val cleared = runCatching {
+            composeRule.onNodeWithTag("exchange-import-field").fetchSemanticsNode()
+                .config[SemanticsProperties.EditableText]
+        }.getOrNull()
+        check(cleared?.isEmpty() == true) { "clear must empty the editor, was $cleared" }
+    }
+
+    /** AC-10: the parse-first outcome leads with recognition facts; raw is collapsed. */
+    @Test
+    fun parseFirstOutcomeShowsRecognitionAndKeepsRawCollapsedByDefault() {
+        val holder = newHolder()
+        setContent(holder)
+        openImportSurface(holder)
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
+
+        val intent = PersonalizedIntentV1(
+            exportId = "instrumentation-no-session",
+            itemIntents = listOf(ItemIntent(ref = "r1", preserve = true), ItemIntent(ref = "r2")),
+        )
+        val reply = buildString {
+            append(ExchangeContract.INTENT_BEGIN_MARKER)
+            append('\n')
+            append(IntentCodec.encode(intent).decodeToString())
+            append('\n')
+            append(ExchangeContract.INTENT_END_MARKER)
+        }
+        composeRule.onNodeWithTag("exchange-import-field").performTextInput(reply)
+        composeRule.onNodeWithTag("exchange-import-action").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("exchange-import-raw-toggle").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        // Recognition facts lead the display: recognized framing, accepted
+        // version, authored entry count (bare `r2` counts → 2).
+        composeRule.onNodeWithTag("exchange-import-outcome-framing").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-outcome-version").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-outcome-entries").assertIsDisplayed()
+
+        // The raw detail is default-closed and, once opened, bounded.
+        composeRule.onAllNodesWithTag("exchange-import-raw-detail").fetchSemanticsNodes().isEmpty()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_import_raw_show)).performClick()
+        composeRule.waitForIdle()
+        val detailHeight = composeRule.onNodeWithTag("exchange-import-raw-detail").fetchSemanticsNode().boundsInRoot.height
+        check(detailHeight <= 260f) { "the raw detail must stay bounded, was $detailHeight px" }
+
+        // AC-7: retry replaces the surface, discarding the raw text.
+        composeRule.onNodeWithText(context.getString(R.string.exchange_import_retry)).performClick()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithTag("exchange-import-raw-toggle").fetchSemanticsNodes().isEmpty()
+    }
+
+    /** AC-8 (structure): 200% font keeps the primary actions on screen, editor bounded. */
+    @Test
+    fun primaryActionsStayDisplayedAndEditorStaysBoundedAtTwoHundredPercentFont() {
+        val holder = newHolder()
+        setContent(holder, fontScale = 2f)
+        openImportSurface(holder)
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
+        val field = composeRule.onNodeWithTag("exchange-import-field")
+        field.performTextInput(buildString { repeat(2_000) { append("あ" + it + "\n") } })
+        composeRule.waitForIdle()
+        val height = composeRule.onNodeWithTag("exchange-import-field").fetchSemanticsNode().boundsInRoot.height
+        check(height < 400f) { "the manual editor must stay bounded at 200% font, was $height px" }
+        composeRule.onNodeWithTag("exchange-import-clipboard").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-import-file").assertIsDisplayed()
+    }
+}
+
+/**
+ * The inert run double of `ManualOrganizationRunTestSupport` (tests/unit),
+ * replicated here because the instrumentation source set cannot see the unit
+ * test sources. The planner must never run — a bug surfaces as its error.
+ */
+private object InertRun {
+    fun get(): app.lawnchair.organizer.ui.ManualOrganizationRun = app.lawnchair.organizer.ui.ManualOrganizationRun(
+        application = NotReadyApplication(),
+        planner = app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
+    )
+
+    private class NotReadyApplication : app.lawnchair.organizer.ui.ManualOrganizationApplication {
+        override val diagnostics = object : app.lawnchair.organizer.diagnostics.DiagnosticsPort {
+            override fun emit(event: app.lawnchair.organizer.diagnostics.model.RunEvent) = Unit
+            override fun snapshot() = emptyList<app.lawnchair.organizer.diagnostics.model.RunEvent>()
+        }
+
+        override fun newRunId() = app.lawnchair.organizer.application.public.RunId("0123456789abcdef0123456789abcdef")
+
+        override fun detectMissingAppCandidates() = app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+            app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+
+        override fun composeFullOrganization(): app.lawnchair.organizer.integration.OrganizationInputComposition = notReady()
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): app.lawnchair.organizer.integration.OrganizationInputComposition = notReady()
+
+        override fun inspectPlan(
+            input: app.lawnchair.organizer.planning.OrganizationInput,
+            result: app.lawnchair.organizer.planning.PlanningResult,
+        ) = notReadyPreview()
+
+        override fun materialize(
+            input: app.lawnchair.organizer.planning.OrganizationInput,
+            result: app.lawnchair.organizer.planning.PlanningResult,
+        ) = error("not reached in exchange instrumentation tests")
+
+        override fun apply(
+            plan: app.lawnchair.organizer.application.public.ValidatedLayoutPlan,
+            runId: app.lawnchair.organizer.application.public.RunId,
+        ) = error("not reached in exchange instrumentation tests")
+
+        override fun inspectRecovery(pointId: app.lawnchair.organizer.application.public.RecoveryPointId) =
+            error("not reached in exchange instrumentation tests")
+
+        override fun confirmRecovery(
+            pointId: app.lawnchair.organizer.application.public.RecoveryPointId,
+            confirmation: app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation,
+        ) = error("not reached in exchange instrumentation tests")
+
+        override fun readDurableOrganizerStatus() = error("not reached in exchange instrumentation tests")
+
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
+            kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
+
+        private fun notReady() = app.lawnchair.organizer.integration.OrganizationInputComposition.NotReady(
+            app.lawnchair.organizer.integration.InputReadinessReason.InvalidCanonicalCapture(
+                app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
+            ),
+            app.lawnchair.organizer.integration.CompositionDiagnostic(app.lawnchair.organizer.integration.InputCompositionCode.CAPTURE_INVALID),
+        )
+
+        private fun notReadyPreview(): app.lawnchair.organizer.application.public.PlanPreviewResult =
+            app.lawnchair.organizer.application.public.PlanPreviewResult.WriterBusy
+    }
+}

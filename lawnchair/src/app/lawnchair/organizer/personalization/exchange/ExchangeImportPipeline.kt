@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.personalization.exchange
 
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
+import app.lawnchair.organizer.personalization.ContextExportContract
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.IntentCodec
 import app.lawnchair.organizer.personalization.IntentDecodeResult
@@ -46,10 +47,15 @@ object ExchangeImportPipeline {
                 return ExchangeImportResult.Failure(ExchangeImportFailure.Normalization(normalization.failure))
 
             // Marker form: the #205 parser keeps owning extraction and its
-            // typed framing failures (spec 329 D-1 priority 1).
+            // typed framing failures (spec 329 D-1 priority 1). The framing
+            // failure still knows a full-line marker exists — the recognized
+            // metadata records MARKER without decode facts (spec 332 D-6).
             is ImportNormalization.MarkedFraming -> when (val framing = IntentImportParser.parse(importText)) {
                 is IntentFramingResult.Failure ->
-                    return ExchangeImportResult.Failure(ExchangeImportFailure.Envelope(framing.failure))
+                    return ExchangeImportResult.Failure(
+                        ExchangeImportFailure.Envelope(framing.failure),
+                        RecognizedImportInfo(framing = RecognizedImportFraming.MARKER, intentSchemaVersion = null, authoredEntryCount = null),
+                    )
 
                 is IntentFramingResult.Extracted -> FramedPayload(framing.payload, RecognizedImportFraming.MARKER)
             }
@@ -60,7 +66,10 @@ object ExchangeImportPipeline {
         }
         val intent = when (val decoded = IntentCodec.decode(framed.text.toByteArray(Charsets.UTF_8))) {
             is IntentDecodeResult.Failure ->
-                return ExchangeImportResult.Failure(ExchangeImportFailure.Contract(decoded.failure))
+                return ExchangeImportResult.Failure(
+                    ExchangeImportFailure.Contract(decoded.failure),
+                    RecognizedImportInfo(framing = framed.framing, intentSchemaVersion = null, authoredEntryCount = null),
+                )
 
             is IntentDecodeResult.Success -> decoded.intent
         }
@@ -104,22 +113,26 @@ object ExchangeImportPipeline {
         val activeSession = session
             ?: return ExchangeImportResult.Failure(
                 ExchangeImportFailure.Contract(IntentValidationFailure.ExportMismatch),
+                prepared.recognizedInfo(),
             )
         if (activeSession.isExpired(nowEpochMs)) {
             return ExchangeImportResult.Failure(
                 ExchangeImportFailure.Contract(IntentValidationFailure.SessionExpired),
+                prepared.recognizedInfo(),
             )
         }
         val currentDigest = SourceContextIdentity.digest(currentStructural)
         if (currentDigest != activeSession.sourceContextDigest) {
             return ExchangeImportResult.Failure(
                 ExchangeImportFailure.Contract(IntentValidationFailure.ContextStale),
+                prepared.recognizedInfo(),
             )
         }
         val exportView = when (val reconstructed = SessionExportReconstructor.rebuild(activeSession, currentStructural)) {
             is ReconstructionResult.Diverged ->
                 return ExchangeImportResult.Failure(
                     ExchangeImportFailure.Contract(IntentValidationFailure.ContextStale),
+                    prepared.recognizedInfo(),
                 )
 
             is ReconstructionResult.Rebuilt -> reconstructed.export
@@ -136,7 +149,7 @@ object ExchangeImportPipeline {
             is IntentValidation.Validated -> ExchangeImportResult.Validated(validation.validated)
 
             is IntentValidation.Failure ->
-                ExchangeImportResult.Failure(ExchangeImportFailure.Contract(validation.failure))
+                ExchangeImportResult.Failure(ExchangeImportFailure.Contract(validation.failure), prepared.recognizedInfo())
         }
     }
 }
@@ -144,8 +157,39 @@ object ExchangeImportPipeline {
 sealed interface ExchangeImportResult {
     data class Validated(val validated: ValidatedPersonalizedIntent) : ExchangeImportResult
 
-    data class Failure(val failure: ExchangeImportFailure) : ExchangeImportResult
+    /**
+     * Issue #332 (spec D-6): the recognized metadata travels additively on
+     * the failure value for the parse-first outcome display; the 19-kind
+     * failure enumeration itself is unchanged.
+     */
+    data class Failure(
+        val failure: ExchangeImportFailure,
+        val recognized: RecognizedImportInfo? = null,
+    ) : ExchangeImportResult
 }
+
+/**
+ * Issue #332 (spec D-5/D-6): parse-stage recognition metadata. All values are
+ * seam-derived — [framing] is the recognized framing (null when the failure
+ * settled before recognition), [intentSchemaVersion] is the codec-accepted
+ * schema version (null until decode succeeds), and [authoredEntryCount] is
+ * the authored document entry count (`itemIntents.size`: a bare
+ * `{ "ref": ... }` entry counts, a ref absent from the document — canonical
+ * `UnresolvedByOmission` — does not). No user content (labels, refs,
+ * rationale, confidence) is exposed.
+ */
+data class RecognizedImportInfo(
+    val framing: RecognizedImportFraming?,
+    val intentSchemaVersion: String?,
+    val authoredEntryCount: Int?,
+)
+
+/** The recognition facts of a decoded, framed reply (spec 332 D-6). */
+fun ExchangeImportPipeline.Prepared.recognizedInfo(): RecognizedImportInfo = RecognizedImportInfo(
+    framing = framing,
+    intentSchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
+    authoredEntryCount = intent.itemIntents.size,
+)
 
 /**
  * The unified failure surface of the import path (spec 205 AC-5, spec 331
