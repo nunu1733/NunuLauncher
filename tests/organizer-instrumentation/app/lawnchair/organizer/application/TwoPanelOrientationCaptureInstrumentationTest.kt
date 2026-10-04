@@ -133,7 +133,6 @@ class TwoPanelOrientationCaptureInstrumentationTest {
 
     @Test
     fun orientationChangeRejectsPreChangePlanAsStaleWithoutDbWrite() {
-        val plannedRowId = ensureLauncherRow(context, launcher)
         val writer = realWriter()
         val originalAccelerometer = systemSetting(Settings.System.ACCELEROMETER_ROTATION)
         val originalUserRotation = systemSetting(Settings.System.USER_ROTATION)
@@ -143,6 +142,14 @@ class TwoPanelOrientationCaptureInstrumentationTest {
             // (TestProtocol REQUEST_ENABLE_ROTATION) lifts that for testing.
             enableLauncherTestRotation()
             lockRotationTo(android.content.res.Configuration.ORIENTATION_PORTRAIT)
+            // Issue #292: pin the plan row only after the launcher's first model
+            // load. Until that load ran, the pending EMPTY_DATABASE_CREATED flag
+            // lets the next loader task delete every favorites row and re-insert
+            // the default layout with fresh ids, so a row planned before it could
+            // be wiped or its id could collide with a default-layout folder child
+            // that the rotation's folder relayout legitimately rewrites.
+            awaitLauncherModelLoaded()
+            val plannedRowId = ensureLauncherRow(context, launcher)
 
             val capture = writer.captureCurrent(CaptureId("orientation-stale"))
             assertTrue(capture.layoutState.items.isNotEmpty())
@@ -203,6 +210,27 @@ class TwoPanelOrientationCaptureInstrumentationTest {
     }
 
     private fun realWriter() = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
+
+    /**
+     * Issue #292: waits until the launcher model has completed a loader task.
+     * [isModelLoaded][com.android.launcher3.LauncherModel.isModelLoaded] flips
+     * only after a loader task commits, and every loader task consumes the
+     * pending default-workspace load, so returning means no further load can
+     * delete or renumber favorites rows. Callers may pin row identities after
+     * this returns.
+     */
+    private fun awaitLauncherModelLoaded() {
+        val deadline = System.currentTimeMillis() + 20_000L
+        while (!launcher.model.isModelLoaded && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100)
+        }
+        assertTrue(
+            "Launcher model did not complete its first load within timeout; " +
+                "row identities cannot be pinned safely against the pending " +
+                "default-workspace load",
+            launcher.model.isModelLoaded,
+        )
+    }
 
     /** Enables launcher rotation for testing on the live activity, as upstream TestProtocol does. */
     private fun enableLauncherTestRotation() {
@@ -301,7 +329,13 @@ class TwoPanelOrientationCaptureInstrumentationTest {
         null
     }
 
-    /** Returns the _ID of an existing or freshly inserted stable launcher row. */
+    /**
+     * Returns the _ID of an existing or freshly inserted stable launcher row.
+     * Callers that later compare this row by id (no-write assertions) must call
+     * this only after the launcher model has loaded ([awaitLauncherModelLoaded]):
+     * the pending default-workspace load deletes and renumbers favorites rows,
+     * so a row planned before it cannot be compared by id (Issue #292).
+     */
     private fun ensureLauncherRow(
         context: android.content.Context,
         launcher: LauncherAppState,
