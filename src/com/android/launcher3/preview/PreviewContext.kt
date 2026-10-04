@@ -160,6 +160,8 @@ constructor(
                 PluginManagerWrapperModule::class,
                 StaticObjectModule::class,
                 AppModule::class,
+                app.lawnchair.preferences.PreferenceManagerModule::class,
+                app.lawnchair.dagger.ForkServiceModule::class,
                 PerDisplayModule::class,
                 LauncherConcurrencyModule::class,
                 ExecutorsModule::class,

@@ -14,7 +14,7 @@ import app.lawnchair.data.iconoverride.IconOverride
 import app.lawnchair.data.iconoverride.IconOverrideDao
 import app.lawnchair.data.wallpaper.Wallpaper
 import app.lawnchair.data.wallpaper.service.WallpaperDao
-import app.lawnchair.util.MainThreadInitializedObject
+import android.content.Context
 import kotlinx.coroutines.runBlocking
 
 @Database(entities = [IconOverride::class, Wallpaper::class, FolderInfoEntity::class, FolderItemEntity::class], version = 3)
@@ -89,12 +89,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val INSTANCE = MainThreadInitializedObject { context ->
-            Room.databaseBuilder(
-                context,
-                AppDatabase::class.java,
-                "preferences",
-            ).addMigrations(MIGRATION_1_3).addMigrations(MIGRATION_2_3).build()
+        // S1(532) minimal adaptation: the anchor MainThreadInitializedObject is
+        // SafeCloseable-bounded and cannot host AppDatabase, so a plain lazy
+        // holder keeps the INSTANCE.get(context) call-site shape. Room defers
+        // I/O until first use.
+        class InstanceHolder {
+            private var value: AppDatabase? = null
+
+            fun get(context: Context): AppDatabase =
+                value ?: synchronized(this) {
+                    value ?: Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        "preferences",
+                    ).addMigrations(MIGRATION_1_3).addMigrations(MIGRATION_2_3).build()
+                        .also { value = it }
+                }
         }
+
+        @JvmField
+        val INSTANCE = InstanceHolder()
     }
 }
