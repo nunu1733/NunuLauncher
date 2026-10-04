@@ -83,7 +83,10 @@ public class OrganizerReloadCompletionOrderingTest {
             model.forceReloadForOrganizer(
                     1L,
                     lease.token(),
-                    () -> {
+                    // Issue #152: the completion carries the model snapshot
+                    // captured at the terminal boundary; this oracle only
+                    // observes that the terminal signal fires.
+                    (snapshot) -> {
                         completionFired.set(true);
                         completion.countDown();
                     },

@@ -59,3 +59,15 @@ _Avoid_: Backup（長期保存用バックアップと混同する場合）、Un
 **有効プリセット (enabled preset)**:
 宣言カタログのうち、現在の端末種別に対してプラットフォーム宣言上有効と判定されたグリッドプリセット。
 _Avoid_: 利用可能グリッド（設定UIの表示と混同する場合）、サポート対象（NFR-007のsupport範囲と混同する場合）
+
+**モデルスナップショット (Model Snapshot)**:
+相関リロード生成の完了時に読み取った、メモリ上のホームレイアウト状態のcanonical表現。検証ではmodel-verifiable projectionとして比較され、DB再取得の同じprojectionと突き合わされる。検証専用の一時データであり、永続化しない。
+_Avoid_: Backup（永続データと混同）、Layout Snapshot（入力captureと混同）
+
+**モデル検証可能projection (Model-verifiable Projection)**:
+メモリ上のmodelが忠実に表現するレイアウト状態のフィールド部分集合(配置アイテムのidentity、container、配置、種別、folder構成、widget identityとbind状態、profile identity、種別ごとの意味的起動対象identity)。modelが表現しないフィールドはDB側の検証だけで担保する。
+_Avoid_: Model LayoutState（完全なcanonical stateと混同）
+
+**相関リロード生成 (Correlated Reload Generation)**:
+適用後の検証のために要求された1回のmodel reloadが生んだloader生成。要求と完了が同一tokenで結ばれ、loader transactionのcommit/close後の因果的完了境界でのみ完了する生成を指す。
+_Avoid_: Load ID（診断値であり相関の正本ではない）

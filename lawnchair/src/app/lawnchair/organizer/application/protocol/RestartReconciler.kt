@@ -382,10 +382,19 @@ internal class RestartReconciler(
         ) {
             return unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
         }
-        if (writer.requestCorrelatedReload(lease) != ReloadResult.Completed) {
+        // Issue #152: the completed reload carries the model snapshot; staleness
+        // is excluded inside the adapter, never here.
+        val completed = writer.requestCorrelatedReload(lease) as? ReloadResult.Completed
+        if (completed == null) {
             return recover(session, record, lease, ApplyFailure.MODEL_RELOAD_FAILED)
         }
-        if (writer.recaptureDb().manifest != record.intendedManifest) {
+        val db = writer.recaptureDb()
+        if (db.manifest != record.intendedManifest) {
+            return recover(session, record, lease, ApplyFailure.VERIFICATION_FAILED)
+        }
+        // Issue #152: DB/model convergence on the model-verifiable projection
+        // before the resumed Applied is returned.
+        if (db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items != completed.modelSnapshot.items) {
             return recover(session, record, lease, ApplyFailure.VERIFICATION_FAILED)
         }
         if (!session.advance(record.pointId, LifecycleState.VERIFIED)) {
@@ -399,7 +408,10 @@ internal class RestartReconciler(
         record: RecoveryStorePort.StoredRecord,
         lease: LeaseHandle,
     ): ReconciliationPublicResult {
-        if (writer.requestCorrelatedReload(lease) != ReloadResult.Completed) {
+        // Issue #152: the completed reload carries the model snapshot; staleness
+        // is excluded inside the adapter, never here.
+        val completed = writer.requestCorrelatedReload(lease) as? ReloadResult.Completed
+        if (completed == null) {
             return ReconciliationPublicResult.ResumeRecovery(
                 RecoveryResult.RestoreFailed(
                     record.pointId,
@@ -408,7 +420,19 @@ internal class RestartReconciler(
                 ),
             )
         }
-        if (writer.recaptureDb().manifest != record.preManifest) {
+        val db = writer.recaptureDb()
+        if (db.manifest != record.preManifest) {
+            return ReconciliationPublicResult.ResumeRecovery(
+                RecoveryResult.RestoreFailed(
+                    record.pointId,
+                    RecoveryFailure.VERIFICATION_FAILED,
+                    AuthoritativeState.PRE_APPLY_DB_MODEL_UNVERIFIED,
+                ),
+            )
+        }
+        // Issue #152: DB/model convergence on the model-verifiable projection
+        // before the resumed Restored is returned.
+        if (db.layoutState.projectedToModelVerifiable(writer::legacyLaunchIdentityOf).items != completed.modelSnapshot.items) {
             return ReconciliationPublicResult.ResumeRecovery(
                 RecoveryResult.RestoreFailed(
                     record.pointId,
