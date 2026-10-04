@@ -1,46 +1,52 @@
 package app.lawnchair.ui.preferences.components
 
 import android.R as AndroidR
-import android.content.Intent
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.ResultReceiver
+import android.app.Activity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.lawnchair.gestures.config.GestureHandlerConfig
 import app.lawnchair.gestures.config.GestureHandlerOption
-import app.lawnchair.gestures.config.buildConfigFrom
-import app.lawnchair.gestures.config.filterGestureHandlerOptions
 import app.lawnchair.gestures.type.GestureType
-import app.lawnchair.gestures.ui.LawnchairShortcutActivity
 import app.lawnchair.preferences.PreferenceAdapter
-import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences2.preferenceManager2
 import app.lawnchair.ui.ModalBottomSheetContent
 import app.lawnchair.ui.preferences.components.layout.PreferenceDivider
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import app.lawnchair.ui.util.LocalBottomSheetHandler
 import com.android.launcher3.util.ComponentKey
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 import kotlinx.coroutines.launch
+
+val options = listOf(
+    GestureHandlerOption.NoOp,
+    GestureHandlerOption.Sleep,
+    GestureHandlerOption.Recents,
+    GestureHandlerOption.OpenNotifications,
+    GestureHandlerOption.OpenAppDrawer,
+    GestureHandlerOption.OpenAppSearch,
+    GestureHandlerOption.OpenSearch,
+    GestureHandlerOption.OpenApp,
+    GestureHandlerOption.OpenAssistant,
+)
 
 @Composable
 fun GestureHandlerPreference(
@@ -51,50 +57,39 @@ fun GestureHandlerPreference(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val bottomSheetHandler = LocalBottomSheetHandler.current
-    val prefs2 = preferenceManager2()
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(context)
 
     val currentConfig = adapter.state.value
 
     fun onSelect(option: GestureHandlerOption) {
         scope.launch {
-            val config = option.buildConfigFrom(context) ?: return@launch
+            val config = option.buildConfig(context as Activity) ?: return@launch
             adapter.onChange(config)
         }
     }
 
-    val newOptions =
-        filterGestureHandlerOptions(deckLayoutEnabled = prefs2.deckLayout.getAdapter().state.value)
-
     PreferenceTemplate(
         title = { Text(text = label) },
-        modifier = modifier,
         description = { Text(text = currentConfig.getLabel(context)) },
-        onClick = {
-            mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
+        modifier = modifier.clickable {
             bottomSheetHandler.show {
                 ModalBottomSheetContent(
                     title = { Text(label) },
                     buttons = {
-                        OutlinedButton(
-                            onClick = { bottomSheetHandler.hide() },
-                            shapes = ButtonDefaults.shapes(),
-                        ) {
+                        OutlinedButton(onClick = { bottomSheetHandler.hide() }) {
                             Text(text = stringResource(id = AndroidR.string.cancel))
                         }
                     },
                 ) {
                     LazyColumn {
-                        itemsIndexed(newOptions) { index, option ->
+                        itemsIndexed(options) { index, option ->
                             if (index > 0) {
                                 PreferenceDivider(startIndent = 40.dp)
                             }
                             val selected = currentConfig::class.java == option.configClass
                             PreferenceTemplate(
                                 title = { Text(option.getLabel(context)) },
-                                onClick = {
+                                modifier = Modifier.clickable {
                                     bottomSheetHandler.hide()
-                                    mMSDLPlayerWrapper.playToken(MSDLToken.TAP_LOW_EMPHASIS)
                                     onSelect(option)
                                 },
                                 startWidget = {
@@ -103,7 +98,6 @@ fun GestureHandlerPreference(
                                         onClick = null,
                                     )
                                 },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
                         }
                     }
@@ -123,38 +117,59 @@ fun AppGesturePreference(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = preferenceManager2()
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(context)
+
+    var isExpanded by remember { mutableStateOf(false) }
 
     val currentConfig by produceState<GestureHandlerConfig>(initialValue = GestureHandlerConfig.NoOp) {
         prefs.getGestureForApp(cmp, gestureType).collect { value = it }
     }
 
-    val resultReceiver = remember {
-        object : ResultReceiver(Handler(Looper.getMainLooper())) {
-            override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
-                if (resultCode == android.app.Activity.RESULT_OK) {
-                    val handlerString = resultData?.getString(LawnchairShortcutActivity.EXTRA_HANDLER)
-                    if (handlerString != null) {
-                        val config = GestureHandlerConfig.fromString(handlerString)
-                        scope.launch {
-                            prefs.setGestureForApp(cmp, gestureType, config)
+    fun onSelect(option: GestureHandlerOption) {
+        scope.launch {
+            val config = option.buildConfig(context as Activity) ?: return@launch
+            prefs.setGestureForApp(cmp, gestureType, config)
+            isExpanded = false
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        PreferenceTemplate(
+            title = { Text(text = label) },
+            description = { Text(text = currentConfig.getLabel(context)) },
+            modifier = Modifier
+                .clickable { isExpanded = !isExpanded }
+                .fillMaxWidth(),
+        )
+
+        AnimatedVisibility(visible = isExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 100.dp, max = 300.dp),
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    itemsIndexed(options) { index, option ->
+                        if (index > 0) {
+                            PreferenceDivider(startIndent = 40.dp)
                         }
+                        val selected = currentConfig::class.java == option.configClass
+                        PreferenceTemplate(
+                            title = { Text(option.getLabel(context)) },
+                            modifier = Modifier.clickable {
+                                onSelect(option)
+                            },
+                            startWidget = {
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = null,
+                                )
+                            },
+                        )
                     }
                 }
             }
         }
     }
-
-    PreferenceTemplate(
-        title = { Text(text = label) },
-        description = { Text(text = currentConfig.getLabel(context)) },
-        modifier = modifier.fillMaxWidth(),
-        onClick = {
-            mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-            val intent = Intent(context, LawnchairShortcutActivity::class.java).apply {
-                putExtra(LawnchairShortcutActivity.EXTRA_RESULT_RECEIVER, resultReceiver)
-            }
-            context.startActivity(intent)
-        },
-    )
 }

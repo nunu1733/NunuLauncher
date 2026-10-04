@@ -76,7 +76,7 @@ interface LayoutWriterPort {
     ): AuthoritativeClass
 }
 
-enum class WriterKind { ORGANIZER, MODEL_WRITER, GRID_MIGRATION, RESTORE, BACKUP_RESTORE, DECK_FILE_RESTORE }
+enum class WriterKind { ORGANIZER, MODEL_WRITER, GRID_MIGRATION, RESTORE, BACKUP_RESTORE }
 
 interface LeaseHandle {
     val kind: WriterKind

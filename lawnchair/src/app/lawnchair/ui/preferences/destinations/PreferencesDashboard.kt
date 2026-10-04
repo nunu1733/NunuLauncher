@@ -1,19 +1,3 @@
-/*
- * Copyright 2021, Lawnchair
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package app.lawnchair.ui.preferences.destinations
 
 import android.app.Activity
@@ -31,16 +15,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.outlined.SettingsBackupRestore
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material.icons.rounded.TipsAndUpdates
-import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.surfaceColorAtElevation
@@ -55,25 +41,24 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
 import app.lawnchair.LawnchairApp
 import app.lawnchair.LawnchairLauncher
-import app.lawnchair.preferences.getAdapter
+import app.lawnchair.backup.ui.restoreBackupOpener
+import app.lawnchair.backup.ui.restoreNovaBackupOpener
 import app.lawnchair.preferences.observeAsState
 import app.lawnchair.preferences.preferenceManager
-import app.lawnchair.preferences2.firstCached
-import app.lawnchair.preferences2.preferenceManager2
-import app.lawnchair.ui.OverflowMenuGrouped
+import app.lawnchair.ui.OverflowMenu
+import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.AnnouncementPreference
 import app.lawnchair.ui.preferences.components.controls.PreferenceCategory
 import app.lawnchair.ui.preferences.components.controls.WarningPreference
 import app.lawnchair.ui.preferences.components.layout.ClickableIcon
-import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
-import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
+import app.lawnchair.ui.preferences.components.layout.DividerColumn
+import app.lawnchair.ui.preferences.components.layout.PreferenceDivider
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
-import app.lawnchair.ui.preferences.components.layout.ProvideDescriptionTextStyle
 import app.lawnchair.ui.preferences.data.liveinfo.SyncLiveInformation
 import app.lawnchair.ui.preferences.navigation.About
 import app.lawnchair.ui.preferences.navigation.AppDrawer
-import app.lawnchair.ui.preferences.navigation.BackupAndRestore
+import app.lawnchair.ui.preferences.navigation.CreateBackup
 import app.lawnchair.ui.preferences.navigation.DebugMenu
 import app.lawnchair.ui.preferences.navigation.Dock
 import app.lawnchair.ui.preferences.navigation.ExperimentalFeatures
@@ -85,13 +70,13 @@ import app.lawnchair.ui.preferences.navigation.PreferenceRootRoute
 import app.lawnchair.ui.preferences.navigation.Quickstep
 import app.lawnchair.ui.preferences.navigation.Search
 import app.lawnchair.ui.preferences.navigation.Smartspace
+import app.lawnchair.ui.theme.isSelectedThemeDark
+import app.lawnchair.ui.theme.preferenceGroupColor
 import app.lawnchair.ui.util.addIf
 import app.lawnchair.util.isDefaultLauncher
 import app.lawnchair.util.restartLauncher
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 
 @Composable
 fun PreferencesDashboard(
@@ -101,14 +86,6 @@ fun PreferencesDashboard(
 ) {
     val context = LocalContext.current
     SyncLiveInformation()
-    val prefs = preferenceManager()
-    val prefs2 = preferenceManager2()
-
-    val aboutDescrption = if (prefs.hideVersionInfo.get()) {
-        prefs.pseudonymVersion.get()
-    } else {
-        "${context.getString(R.string.derived_app_name)} ${BuildConfig.MAJOR_VERSION}"
-    }
 
     PreferenceLayout(
         label = stringResource(id = R.string.settings),
@@ -129,8 +106,7 @@ fun PreferencesDashboard(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        val deckLayout = prefs2.deckLayout.getAdapter()
-        PreferenceGroup {
+        PreferenceCategoryGroup {
             PreferenceCategory(
                 label = stringResource(R.string.general_label),
                 description = stringResource(R.string.general_description),
@@ -147,11 +123,10 @@ fun PreferencesDashboard(
                 isSelected = currentRoute is HomeScreen,
             )
 
-            val isSmartspaceEnabled = prefs2.enableSmartspace.firstCached()
             PreferenceCategory(
                 label = stringResource(id = R.string.smartspace_widget),
                 description = stringResource(R.string.smartspace_widget_description),
-                iconResource = if (isSmartspaceEnabled) R.drawable.ic_smartspace else R.drawable.ic_smartspace_off,
+                iconResource = R.drawable.ic_smartspace,
                 onNavigate = { onNavigate(Smartspace) },
                 isSelected = currentRoute is Smartspace,
             )
@@ -164,17 +139,13 @@ fun PreferencesDashboard(
                 isSelected = currentRoute is Dock,
             )
 
-            ExpandAndShrink(
-                visible = !deckLayout.state.value,
-            ) {
-                PreferenceCategory(
-                    label = stringResource(R.string.app_drawer_label),
-                    description = stringResource(R.string.app_drawer_description),
-                    iconResource = R.drawable.ic_apps,
-                    onNavigate = { onNavigate(AppDrawer) },
-                    isSelected = currentRoute is AppDrawer,
-                )
-            }
+            PreferenceCategory(
+                label = stringResource(R.string.app_drawer_label),
+                description = stringResource(R.string.app_drawer_description),
+                iconResource = R.drawable.ic_app_drawer,
+                onNavigate = { onNavigate(AppDrawer) },
+                isSelected = currentRoute is AppDrawer,
+            )
 
             PreferenceCategory(
                 label = stringResource(R.string.search_bar_label),
@@ -200,9 +171,7 @@ fun PreferencesDashboard(
                 isSelected = currentRoute is Gestures,
             )
 
-            ExpandAndShrink(
-                visible = LawnchairApp.isRecentsEnabled || BuildConfig.DEBUG,
-            ) {
+            if (LawnchairApp.isRecentsEnabled || BuildConfig.DEBUG) {
                 PreferenceCategory(
                     label = stringResource(id = R.string.quickstep_label),
                     description = stringResource(id = R.string.quickstep_description),
@@ -213,21 +182,36 @@ fun PreferencesDashboard(
             }
 
             PreferenceCategory(
-                label = stringResource(R.string.backup_and_restore_label),
-                description = stringResource(R.string.backup_and_restore_description),
-                iconResource = R.drawable.backup_restore,
-                onNavigate = { onNavigate(BackupAndRestore) },
-                isSelected = currentRoute is BackupAndRestore,
-            )
-
-            PreferenceCategory(
                 label = stringResource(R.string.about_label),
-                description = aboutDescrption,
+                description = "${context.getString(R.string.derived_app_name)} ${BuildConfig.MAJOR_VERSION}",
                 iconResource = R.drawable.ic_about,
                 onNavigate = { onNavigate(About) },
                 isSelected = currentRoute is About,
             )
         }
+    }
+}
+
+@Composable
+fun PreferenceCategoryGroup(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val color = preferenceGroupColor()
+
+    Surface(
+        modifier = modifier.padding(horizontal = 16.dp),
+        shape = MaterialTheme.shapes.large,
+        color = color,
+        tonalElevation = if (isSelectedThemeDark) 1.dp else 0.dp,
+    ) {
+        DividerColumn(
+            content = content,
+            startIndent = (-16).dp,
+            endIndent = (-16).dp,
+            color = MaterialTheme.colorScheme.surface,
+            thickness = 2.dp,
+        )
     }
 }
 
@@ -252,9 +236,11 @@ fun RowScope.PreferencesOverflowMenu(
             },
         )
     }
-    val context = LocalContext.current
-
-    OverflowMenuGrouped(
+    val navController = LocalNavController.current
+    val openCreateBackup = { navController.navigate(CreateBackup) }
+    val openRestoreBackup = restoreBackupOpener()
+    val openRestoreNovaBackup = restoreNovaBackupOpener()
+    OverflowMenu(
         modifier = modifier.addIf(
             listOf(ExperimentalFeatures).any {
                 currentRoute == it
@@ -265,60 +251,104 @@ fun RowScope.PreferencesOverflowMenu(
                 .background(highlightColor)
         },
     ) {
-        DropdownMenuGroup(
-            shapes = MenuDefaults.groupShape(0, 1),
-        ) {
-            DropdownMenuItem(
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_about),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                onClick = {
-                    openAppInfo(context)
-                    hideMenu()
-                },
-                text = {
-                    Text(text = stringResource(id = R.string.app_info_drop_target_label))
-                },
-            )
-            DropdownMenuItem(
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Rounded.Refresh,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                onClick = {
-                    restartLauncher(context)
-                    hideMenu()
-                },
-                text = {
-                    Text(text = stringResource(id = R.string.debug_restart_launcher))
-                },
-            )
-            DropdownMenuItem(
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Rounded.Science,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                onClick = {
-                    onNavigate(ExperimentalFeatures)
-                    hideMenu()
-                },
-                text = {
-                    Text(text = stringResource(id = R.string.experimental_features_label))
-                },
-            )
-        }
-
-        Spacer(Modifier.height(MenuDefaults.GroupSpacing))
+        val context = LocalContext.current
+        DropdownMenuItem(
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_about),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            onClick = {
+                openAppInfo(context)
+                hideMenu()
+            },
+            text = {
+                Text(text = stringResource(id = R.string.app_info_drop_target_label))
+            },
+        )
+        DropdownMenuItem(
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            onClick = {
+                restartLauncher(context)
+                hideMenu()
+            },
+            text = {
+                Text(text = stringResource(id = R.string.debug_restart_launcher))
+            },
+        )
+        DropdownMenuItem(
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Science,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            onClick = {
+                onNavigate(ExperimentalFeatures)
+                hideMenu()
+            },
+            text = {
+                Text(text = stringResource(id = R.string.experimental_features_label))
+            },
+        )
+        PreferenceDivider(modifier = Modifier.padding(vertical = 8.dp))
+        DropdownMenuItem(
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Backup,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            onClick = {
+                openCreateBackup()
+                hideMenu()
+            },
+            text = {
+                Text(text = stringResource(id = R.string.create_backup))
+            },
+        )
+        DropdownMenuItem(
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Rounded.SettingsBackupRestore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            onClick = {
+                openRestoreBackup()
+                hideMenu()
+            },
+            text = {
+                Text(text = stringResource(id = R.string.restore_backup))
+            },
+        )
+        DropdownMenuItem(
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Rounded.SettingsBackupRestore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            onClick = {
+                openRestoreNovaBackup()
+                hideMenu()
+            },
+            text = {
+                Text(text = stringResource(id = R.string.restore_nova_backup))
+            },
+        )
     }
 }
 
@@ -326,15 +356,16 @@ fun RowScope.PreferencesOverflowMenu(
 fun PreferencesDebugWarning(
     modifier: Modifier = Modifier,
 ) {
-    WarningPreference(
-        // Don't move to strings.xml, no need to translate this warning
-        text = "You are using a development build, which may contain bugs and broken features. Use at your own risk!",
+    Surface(
         modifier = modifier.padding(horizontal = 16.dp),
-        standalone = true,
-        colors = ListItemDefaults.segmentedColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-        ),
-    )
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.errorContainer,
+    ) {
+        WarningPreference(
+            // Don't move to strings.xml, no need to translate this warning
+            text = "You are using a development build, which may contain bugs and broken features. Use at your own risk!",
+        )
+    }
 }
 
 @Composable
@@ -342,28 +373,24 @@ fun PreferencesSetDefaultLauncherWarning(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(context)
     Surface(
         modifier = modifier.padding(horizontal = 16.dp),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         PreferenceTemplate(
-            modifier = Modifier,
-            onClick = {
-                mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
+            modifier = Modifier.clickable {
                 Intent(Settings.ACTION_HOME_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     .let { context.startActivity(it) }
                 (context as? Activity)?.finish()
             },
-            title = {
-                ProvideDescriptionTextStyle {
-                    Text(
-                        text = stringResource(id = R.string.set_default_launcher_tip),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            title = {},
+            description = {
+                Text(
+                    text = stringResource(id = R.string.set_default_launcher_tip),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             },
             startWidget = {
                 Icon(

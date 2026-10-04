@@ -15,20 +15,16 @@ import app.lawnchair.preferences.preferenceManager
 import app.lawnchair.preferences2.preferenceManager2
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.WallpaperAccessPermissionDialog
-import app.lawnchair.ui.preferences.components.controls.ListPreference
-import app.lawnchair.ui.preferences.components.controls.ListPreferenceEntry
 import app.lawnchair.ui.preferences.components.controls.SliderPreference
 import app.lawnchair.ui.preferences.components.controls.SwitchPreference
-import app.lawnchair.ui.preferences.components.controls.WarningPreference
+import app.lawnchair.ui.preferences.components.layout.DividerColumn
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.util.FileAccessManager
 import app.lawnchair.util.FileAccessState
-import app.lawnchair.util.isGestureNavContractCompatible
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
-import com.google.android.msdl.data.model.FeedbackLevel
 
 @Composable
 fun ExperimentalFeaturesPreferences(
@@ -36,34 +32,27 @@ fun ExperimentalFeaturesPreferences(
 ) {
     val prefs = preferenceManager()
     val prefs2 = preferenceManager2()
-
     PreferenceLayout(
         label = stringResource(id = R.string.experimental_features_label),
         backArrowVisible = !LocalIsExpandedScreen.current,
         modifier = modifier,
     ) {
-        val enableWallpaperBlur = prefs.enableWallpaperBlur.getAdapter()
-        val context = LocalContext.current
-        val fileAccessManager = remember { FileAccessManager.getInstance(context) }
-        val allFilesAccessState by fileAccessManager.allFilesAccessState.collectAsStateWithLifecycle()
-        val wallpaperAccessState by fileAccessManager.wallpaperAccessState.collectAsStateWithLifecycle()
-        val hasPermission = wallpaperAccessState != FileAccessState.Denied
-        var showPermissionDialog by remember { mutableStateOf(false) }
-
-        val folderIconShapeAdapter = prefs2.folderShape.getAdapter()
-        val folderIconShapeSubtitle = iconShapeEntries(context)
-            .firstOrNull { it.value == folderIconShapeAdapter.state.value }
-            ?.label?.invoke()
-            ?: stringResource(id = R.string.custom)
-
-        PreferenceGroup(
-            modifier = Modifier,
-            heading = stringResource(R.string.workspace_label),
-        ) {
+        PreferenceGroup {
+            SwitchPreference(
+                adapter = prefs.enableGnc.getAdapter(),
+                label = stringResource(id = R.string.gesturenavcontract_label),
+                description = stringResource(id = R.string.gesturenavcontract_description),
+                enabled = Utilities.ATLEAST_Q,
+            )
             SwitchPreference(
                 adapter = prefs2.enableFontSelection.getAdapter(),
                 label = stringResource(id = R.string.font_picker_label),
                 description = stringResource(id = R.string.font_picker_description),
+            )
+            SwitchPreference(
+                adapter = prefs2.enableSmartspaceCalendarSelection.getAdapter(),
+                label = stringResource(id = R.string.smartspace_calendar_label),
+                description = stringResource(id = R.string.smartspace_calendar_description),
             )
             SwitchPreference(
                 adapter = prefs.workspaceIncreaseMaxGridSize.getAdapter(),
@@ -71,10 +60,24 @@ fun ExperimentalFeaturesPreferences(
                 description = stringResource(id = R.string.workspace_increase_max_grid_size_description),
             )
             SwitchPreference(
-                adapter = prefs2.showDeckLayout.getAdapter(),
-                label = stringResource(R.string.show_deck_layout),
-                description = stringResource(R.string.show_deck_layout_description),
+                adapter = prefs2.alwaysReloadIcons.getAdapter(),
+                label = stringResource(id = R.string.always_reload_icons_label),
+                description = stringResource(id = R.string.always_reload_icons_description),
             )
+            SwitchPreference(
+                adapter = prefs2.iconSwipeGestures.getAdapter(),
+                label = stringResource(R.string.icon_swipe_gestures),
+                description = stringResource(R.string.icon_swipe_gestures_description),
+            )
+
+            val context = LocalContext.current
+            val enableWallpaperBlur = prefs.enableWallpaperBlur.getAdapter()
+            val fileAccessManager = remember { FileAccessManager.getInstance(context) }
+            val allFilesAccessState by fileAccessManager.allFilesAccessState.collectAsStateWithLifecycle()
+            val wallpaperAccessState by fileAccessManager.wallpaperAccessState.collectAsStateWithLifecycle()
+            val hasPermission = wallpaperAccessState != FileAccessState.Denied
+            var showPermissionDialog by remember { mutableStateOf(false) }
+
             SwitchPreference(
                 checked = hasPermission && enableWallpaperBlur.state.value,
                 onCheckedChange = {
@@ -86,86 +89,37 @@ fun ExperimentalFeaturesPreferences(
                 },
                 label = stringResource(id = R.string.wallpaper_blur),
             )
-
-            val canBlur = hasPermission && enableWallpaperBlur.state.value
-            ExpandAndShrink(visible = canBlur) {
-                SliderPreference(
-                    label = stringResource(id = R.string.wallpaper_background_blur),
-                    adapter = prefs.wallpaperBlur.getAdapter(),
-                    step = 5,
-                    valueRange = 0..100,
-                    showUnit = "%",
+            ExpandAndShrink(visible = hasPermission && enableWallpaperBlur.state.value) {
+                DividerColumn {
+                    SliderPreference(
+                        label = stringResource(id = R.string.wallpaper_background_blur),
+                        adapter = prefs.wallpaperBlur.getAdapter(),
+                        step = 5,
+                        valueRange = 0..100,
+                        showUnit = "%",
+                    )
+                    SliderPreference(
+                        label = stringResource(id = R.string.wallpaper_background_blur_factor),
+                        adapter = prefs.wallpaperBlurFactorThreshold.getAdapter(),
+                        step = 1F,
+                        valueRange = 0F..10F,
+                    )
+                }
+            }
+            if (showPermissionDialog) {
+                WallpaperAccessPermissionDialog(
+                    managedFilesChecked = allFilesAccessState != FileAccessState.Denied,
+                    onDismiss = {
+                        showPermissionDialog = false
+                    },
+                    onPermissionRequest = { fileAccessManager.refresh() },
                 )
             }
-            ExpandAndShrink(visible = canBlur) {
-                SliderPreference(
-                    label = stringResource(id = R.string.wallpaper_background_blur_factor),
-                    adapter = prefs.wallpaperBlurFactorThreshold.getAdapter(),
-                    step = 1F,
-                    valueRange = 0F..10F,
-                )
+            LifecycleResumeEffect(Unit) {
+                showPermissionDialog = false
+                fileAccessManager.refresh()
+                onPauseOrDispose { }
             }
-        }
-        if (showPermissionDialog) {
-            WallpaperAccessPermissionDialog(
-                managedFilesChecked = allFilesAccessState != FileAccessState.Denied,
-                onDismiss = {
-                    showPermissionDialog = false
-                },
-                onPermissionRequest = { fileAccessManager.refresh() },
-            )
-        }
-        LifecycleResumeEffect(Unit) {
-            showPermissionDialog = false
-            fileAccessManager.refresh()
-            onPauseOrDispose { }
-        }
-
-        val alwaysReloadIconsAdapter = prefs2.alwaysReloadIcons.getAdapter()
-        val enableGncAdapter = prefs.enableGnc.getAdapter()
-        val vibrationFeedbackLevelAdapter = prefs.vibrationFeedbackLevel.getAdapter()
-
-        PreferenceGroup(
-            modifier = Modifier,
-            heading = stringResource(R.string.internal_label),
-            description = stringResource(R.string.internal_description),
-        ) {
-            SwitchPreference(
-                adapter = alwaysReloadIconsAdapter,
-                label = stringResource(id = R.string.always_reload_icons_label),
-                description = stringResource(id = R.string.always_reload_icons_description),
-            )
-            ExpandAndShrink(visible = alwaysReloadIconsAdapter.state.value) {
-                WarningPreference(stringResource(R.string.always_reload_icons_warning))
-            }
-
-            SwitchPreference(
-                adapter = enableGncAdapter,
-                label = stringResource(id = R.string.gesturenavcontract_label),
-                description = stringResource(id = R.string.gesturenavcontract_description),
-                enabled = Utilities.ATLEAST_Q,
-            )
-            ExpandAndShrink(visible = enableGncAdapter.state.value && !isGestureNavContractCompatible) {
-                WarningPreference(stringResource(R.string.gesturenavcontract_warning_incompatibility))
-            }
-            ListPreference(
-                adapter = vibrationFeedbackLevelAdapter,
-                entries = listOf(
-                    ListPreferenceEntry(FeedbackLevel.NO_FEEDBACK.ordinal) {
-                        stringResource(R.string.vibration_feedback_no_feedback_choice)
-                    },
-                    ListPreferenceEntry(FeedbackLevel.MINIMAL.ordinal) {
-                        stringResource(R.string.vibration_feedback_minimal_choice)
-                    },
-                    ListPreferenceEntry(FeedbackLevel.DEFAULT.ordinal) {
-                        stringResource(R.string.vibration_feedback_default_choice)
-                    },
-                    ListPreferenceEntry(FeedbackLevel.EXPRESSIVE.ordinal) {
-                        stringResource(R.string.vibration_feedback_expressive_choice)
-                    },
-                ),
-                label = stringResource(R.string.vibration_feedback_level_label),
-            )
         }
     }
 }

@@ -16,7 +16,6 @@
 
 package com.android.launcher3.dragndrop;
 
-import static com.android.launcher3.Flags.removeAppsRefreshOnRightClick;
 import static com.android.launcher3.model.data.ItemInfoWithIcon.FLAG_NOT_PINNABLE;
 
 import android.graphics.Point;
@@ -28,14 +27,12 @@ import android.view.MotionEvent;
 import android.view.View;
 
 import androidx.annotation.Nullable;
-import androidx.annotation.VisibleForTesting;
 
 import com.android.app.animation.Interpolators;
 import com.android.launcher3.DeleteDropTarget;
 import com.android.launcher3.DragSource;
 import com.android.launcher3.DropTarget;
 import com.android.launcher3.Flags;
-import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.logging.InstanceId;
 import com.android.launcher3.model.data.AppPairInfo;
@@ -44,15 +41,12 @@ import com.android.launcher3.model.data.ItemInfoWithIcon;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
 import com.android.launcher3.util.TouchController;
 import com.android.launcher3.views.ActivityContext;
-import app.lawnchair.preferences2.PreferenceCacheExtensionsKt;
 
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.function.Predicate;
 
-import app.lawnchair.LawnchairApp;
 import app.lawnchair.preferences.PreferenceManager;
-import app.lawnchair.preferences2.PreferenceManager2;
 
 /**
  * Class for initiating a drag within a view or across multiple views.
@@ -79,9 +73,8 @@ public abstract class DragController<T extends ActivityContext>
      */
     protected DragDriver mDragDriver = null;
 
-    @VisibleForTesting
     /** Options controlling the drag behavior. */
-    public DragOptions mOptions;
+    protected DragOptions mOptions;
 
     /** Coordinate for motion down event */
     protected final Point mMotionDown = new Point();
@@ -90,8 +83,7 @@ public abstract class DragController<T extends ActivityContext>
 
     protected final Point mTmpPoint = new Point();
 
-    @VisibleForTesting
-    public DropTarget.DragObject mDragObject;
+    protected DropTarget.DragObject mDragObject;
 
     /** Who can receive drop events */
     private final ArrayList<DropTarget> mDropTargets = new ArrayList<>();
@@ -128,14 +120,11 @@ public abstract class DragController<T extends ActivityContext>
         void onDragEnd();
     }
 
-    private PreferenceManager2 pref2;
-
     /**
      * Used to create a new DragLayer from XML.
      */
     public DragController(T activity) {
         mActivity = activity;
-        pref2 = PreferenceManager2.getInstance(LawnchairApp.getInstance());
     }
 
     /**
@@ -537,46 +526,33 @@ public abstract class DragController<T extends ActivityContext>
 
         mDragObject.dragComplete = true;
         if (mIsInPreDrag) {
-            if (removeAppsRefreshOnRightClick()) {
-                mDragObject.cancelled = true;
-            } else {
-                if (dropTarget != null) {
-                    dropTarget.onDragExit(mDragObject);
-                }
-                return;
+            if (dropTarget != null) {
+                dropTarget.onDragExit(mDragObject);
             }
+            return;
         }
 
         // Drop onto the target.
         boolean accepted = false;
         if (dropTarget != null) {
             dropTarget.onDragExit(mDragObject);
-            if (!mIsInPreDrag && dropTarget.acceptDrop(mDragObject)) {
+            if (dropTarget.acceptDrop(mDragObject)) {
                 if (flingAnimation != null) {
                     flingAnimation.run();
                 } else {
                     dropTarget.onDrop(mDragObject, mOptions);
                 }
                 accepted = true;
-                if (PreferenceCacheExtensionsKt.firstCached(pref2.getDeckLayout()) && dropTarget instanceof DeleteDropTarget &&
-                        isNeedCancelDrag(mDragObject.dragInfo)) {
-                    cancelDrag();
-                }
             }
-
-            final View dropTargetAsView = dropTarget.getDropView();
-            dispatchDropComplete(dropTargetAsView, accepted);
         }
-    }
-
-    private boolean isNeedCancelDrag(ItemInfo item){
-        return (item.itemType == LauncherSettings.Favorites.ITEM_TYPE_APPLICATION ||
-                item.itemType == LauncherSettings.Favorites.ITEM_TYPE_FOLDER);
+        final View dropTargetAsView = dropTarget instanceof View ? (View) dropTarget : null;
+        dispatchDropComplete(dropTargetAsView, accepted);
     }
 
     private DropTarget findDropTarget(final int x, final int y) {
         mCoordinatesTemp[0] = x;
         mCoordinatesTemp[1] = y;
+
         final Rect r = mRectTemp;
         final ArrayList<DropTarget> dropTargets = mDropTargets;
         final int count = dropTargets.size();
@@ -587,11 +563,8 @@ public abstract class DragController<T extends ActivityContext>
 
             target.getHitRectRelativeToDragLayer(r);
             if (r.contains(x, y)) {
-                View dropTargetView = target.getDropView();
-                if (dropTargetView != null) {
-                    mActivity.getDragLayer().mapCoordInSelfToDescendant(dropTargetView,
-                            mCoordinatesTemp);
-                }
+                mActivity.getDragLayer().mapCoordInSelfToDescendant((View) target,
+                        mCoordinatesTemp);
                 mDragObject.x = mCoordinatesTemp[0];
                 mDragObject.y = mCoordinatesTemp[1];
                 return target;

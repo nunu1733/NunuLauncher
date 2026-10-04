@@ -120,6 +120,11 @@ class PreferenceManager2 @Inject constructor(
 
     private val reloadHelper = ReloadHelper(context)
 
+    // Retired Deck tombstone keys — kept alive so old backup restores can be
+    // normalized to false. These are not exposed as public Preference properties.
+    private val deckLayoutTombstoneKey = booleanPreferencesKey(name = "enable_lawn_deck")
+    private val showDeckLayoutTombstoneKey = booleanPreferencesKey(name = "show_deck_layout")
+
     val darkStatusBar = preference(
         key = booleanPreferencesKey(name = "dark_status_bar"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_dark_status_bar),
@@ -794,17 +799,6 @@ class PreferenceManager2 @Inject constructor(
         onSet = { reloadHelper.recreate() },
     )
 
-    val deckLayout = preference(
-        key = booleanPreferencesKey(name = "enable_lawn_deck"),
-        defaultValue = false,
-        onSet = { reloadHelper.reloadIcons() },
-    )
-
-    val showDeckLayout = preference(
-        key = booleanPreferencesKey(name = "show_deck_layout"),
-        defaultValue = false,
-    )
-
     val enableLabelInDock = preference(
         key = booleanPreferencesKey(name = "enable_label_dock"),
         defaultValue = false,
@@ -970,6 +964,39 @@ class PreferenceManager2 @Inject constructor(
                 Log.d(TAG, "getRemoteDefault: $key -> $value")
             }
         }
+
+    /**
+     * Atomically sets both retired Deck tombstone preferences to false.
+     * Returns true on success, false on any exception (caller will skip
+     * artifact cleanup if normalization fails).
+     */
+    internal suspend fun normalizeDeckTombstones(): Boolean {
+        return try {
+            preferencesDataStore.edit { prefs ->
+                prefs[deckLayoutTombstoneKey] = false
+                prefs[showDeckLayoutTombstoneKey] = false
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to normalize deck tombstones", e)
+            false
+        }
+    }
+
+    /**
+     * Returns true only when both retired Deck tombstones currently read as
+     * false. Instrumentation evidence uses this to prove paired normalization
+     * after startup or an old-backup restore; production never calls it.
+     */
+    internal suspend fun areDeckTombstonesNormalized(): Boolean {
+        return try {
+            val prefs = preferencesDataStore.data.first()
+            prefs[deckLayoutTombstoneKey] == false && prefs[showDeckLayoutTombstoneKey] == false
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read deck tombstones", e)
+            false
+        }
+    }
 
     companion object {
         private val Context.preferencesDataStore by preferencesDataStore(
