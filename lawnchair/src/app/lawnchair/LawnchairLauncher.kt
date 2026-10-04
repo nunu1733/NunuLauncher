@@ -43,6 +43,7 @@ import app.lawnchair.gestures.GestureController
 import app.lawnchair.gestures.VerticalSwipeTouchController
 import app.lawnchair.gestures.config.GestureHandlerConfig
 import app.lawnchair.nexuslauncher.OverlayCallbackImpl
+import app.lawnchair.organizer.ui.OrganizationOnboardingProposal
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.root.RootHelperManager
@@ -73,6 +74,7 @@ import com.android.launcher3.uioverrides.states.BackgroundAppState
 import com.android.launcher3.uioverrides.states.OverviewState
 import com.android.launcher3.util.ActivityOptionsWrapper
 import com.android.launcher3.util.Executors
+import com.android.launcher3.util.IntSet
 import com.android.launcher3.util.RunnableList
 import com.android.launcher3.util.SystemUiController.UI_STATE_BASE_WINDOW
 import com.android.launcher3.util.Themes
@@ -151,6 +153,17 @@ class LawnchairLauncher : QuickstepLauncher() {
     private var hasBackGesture = false
 
     val gestureController by unsafeLazy { GestureController(this) }
+    private val organizationOnboardingProposal by unsafeLazy { OrganizationOnboardingProposal(this) }
+
+    override fun finishBindingItems(pagesBoundFirst: IntSet) {
+        super.finishBindingItems(pagesBoundFirst)
+        organizationOnboardingProposal.onInitialWorkspaceBound()
+    }
+
+    override fun onDeferredResumed() {
+        super.onDeferredResumed()
+        organizationOnboardingProposal.onLauncherResumed()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (!Utilities.ATLEAST_Q) {
@@ -163,6 +176,9 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
         layoutInflater.factory2 = LawnchairLayoutFactory(this)
         super.onCreate(savedInstanceState)
+
+        // Issue #53: capture restore/fresh-install provenance here, but never present or start a run from onCreate.
+        organizationOnboardingProposal.captureProvenance()
 
         prefs.launcherTheme.subscribeChanges(this, ::updateTheme)
         prefs.feedProvider.subscribeChanges(this, defaultOverlay::reconnect)

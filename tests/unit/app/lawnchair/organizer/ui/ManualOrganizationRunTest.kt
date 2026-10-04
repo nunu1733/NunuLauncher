@@ -13,6 +13,7 @@ import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.integration.CompositionDiagnostic
 import app.lawnchair.organizer.integration.InputProvenance
 import app.lawnchair.organizer.integration.InputReadinessReason
@@ -137,6 +138,117 @@ class ManualOrganizationRunTest {
                 app.lawnchair.organizer.diagnostics.model.PhaseCode.USER_CONFIRMED,
             ),
             application.events.map { it.phase },
+        )
+    }
+
+    @Test
+    fun onboardingTriggerIsRetainedThroughPreviewConfirmationAndStaleRejection() {
+        val application = FakeApplication(readyInput())
+        application.materializeOverride = { _, _ -> OrganizationPlanMaterializer.Result.Invalid }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.start(Trigger.ONBOARDING_PROPOSAL)
+        runner.confirm()
+
+        assertEquals(ManualOrganizationRun.State.Stale, runner.state)
+        assertEquals(
+            setOf(Trigger.ONBOARDING_PROPOSAL),
+            application.events.mapNotNull { it.trigger }.toSet(),
+        )
+        assertEquals(
+            listOf(
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED,
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.CAPTURED,
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.PLANNED,
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.PREVIEWED,
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.USER_CONFIRMED,
+                app.lawnchair.organizer.diagnostics.model.PhaseCode.APPLY_REJECTED,
+            ),
+            application.events.map { it.phase },
+        )
+    }
+
+    @Test
+    fun defaultStartRetainsManualTrigger() {
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        assertEquals(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)), runner.start())
+
+        assertEquals(
+            setOf(Trigger.MANUAL_FULL),
+            application.events.mapNotNull { it.trigger }.toSet(),
+        )
+    }
+
+    @Test
+    fun busyOnboardingStartDoesNotAttachToAnActiveManualRun() {
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        val manualStart = runner.start()
+        val onboardingStart = runner.start(Trigger.ONBOARDING_PROPOSAL)
+
+        assertEquals(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)), manualStart)
+        assertEquals(ManualOrganizationRun.StartOutcome.Busy, onboardingStart)
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(
+            listOf(RUN_ID),
+            application.events.filter { it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED }.map { it.runId },
+        )
+        assertEquals(setOf(Trigger.MANUAL_FULL), application.events.mapNotNull { it.trigger }.toSet())
+    }
+
+    @Test
+    fun busyManualStartDoesNotAttachToAnActiveOnboardingRun() {
+        val application = FakeApplication(readyInput())
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        val onboardingStart = runner.start(Trigger.ONBOARDING_PROPOSAL)
+        val manualStart = runner.start()
+
+        assertEquals(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)), onboardingStart)
+        assertEquals(ManualOrganizationRun.StartOutcome.Busy, manualStart)
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(setOf(Trigger.ONBOARDING_PROPOSAL), application.events.mapNotNull { it.trigger }.toSet())
+    }
+
+    @Test
+    fun retryStartsAFreshRunAndRetainsOnboardingTrigger() {
+        val application = FakeApplication(readyInput())
+        application.nextRunIds = listOf(RUN_ID, SECOND_RUN_ID)
+        var attempts = 0
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner {
+                attempts++
+                if (attempts == 1) {
+                    planningResult(
+                        app.lawnchair.organizer.planning.Rejected.Invalid(
+                            reasons = emptyList(),
+                            warnings = emptyList(),
+                        ),
+                    )
+                } else {
+                    planningResult(movingPlan())
+                }
+            },
+        )
+
+        val firstStart = runner.start(Trigger.ONBOARDING_PROPOSAL)
+        assertEquals(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)), firstStart)
+        assertTrue(runner.state is ManualOrganizationRun.State.PlanningRejected)
+        val retryStart = runner.start(Trigger.ONBOARDING_PROPOSAL)
+
+        assertEquals(ManualOrganizationRun.StartOutcome.Started(RunId(SECOND_RUN_ID)), retryStart)
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(
+            listOf(RUN_ID, SECOND_RUN_ID),
+            application.events.filter { it.phase == app.lawnchair.organizer.diagnostics.model.PhaseCode.RUN_STARTED }.map { it.runId },
+        )
+        assertEquals(
+            setOf(Trigger.ONBOARDING_PROPOSAL),
+            application.events.mapNotNull { it.trigger }.toSet(),
         )
     }
 
@@ -484,6 +596,8 @@ class ManualOrganizationRunTest {
         override val diagnostics = RecordingDiagnostics()
         val events: List<RunEvent>
             get() = diagnostics.events
+        var nextRunIds = listOf(RUN_ID)
+        private var nextRunIdIndex = 0
         var materializeCalls = 0
         var applyCalls = 0
         var appliedRunId: RunId? = null
@@ -500,7 +614,7 @@ class ManualOrganizationRunTest {
             app.lawnchair.organizer.application.public.RecoveryPreviewRejection.MISSING,
         )
 
-        override fun newRunId() = RunId(RUN_ID)
+        override fun newRunId() = RunId(nextRunIds.getOrElse(nextRunIdIndex++) { RUN_ID })
         override fun composeFullOrganization(): OrganizationInputComposition {
             composeStarted?.countDown()
             composeRelease?.await(5, TimeUnit.SECONDS)
@@ -548,6 +662,7 @@ class ManualOrganizationRunTest {
     private companion object {
         const val RUN_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        const val SECOND_RUN_ID = "cccccccccccccccccccccccccccccccc"
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
 }

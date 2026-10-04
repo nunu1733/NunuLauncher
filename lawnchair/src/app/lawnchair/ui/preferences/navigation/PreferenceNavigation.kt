@@ -111,8 +111,10 @@ fun PreferenceNavigation(
         composable<HomeScreenGrid> { HomeScreenGridPreferences() }
         composable<HomeScreenPopupEditor> { LauncherPopupPreference() }
         composable<HomeScreenPlacementLocks> { PlacementLockPreferences() }
-        composable<HomeScreenManualOrganization> {
+        composable<HomeScreenManualOrganization> { backStackEntry ->
+            val route: HomeScreenManualOrganization = backStackEntry.toRoute()
             ManualOrganizationPreferences(
+                trigger = route.trigger,
                 onOpenDiagnostics = { navController.navigate(DebugMenu) },
             )
         }

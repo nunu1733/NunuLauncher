@@ -116,6 +116,12 @@ class ManualOrganizationRun internal constructor(
         ApplicationInProgress,
     }
 
+    sealed interface StartOutcome {
+        data class Started(val runId: RunId) : StartOutcome
+
+        data object Busy : StartOutcome
+    }
+
     sealed interface State {
         data object Idle : State
         data object Capturing : State
@@ -184,14 +190,15 @@ class ManualOrganizationRun internal constructor(
     private var pendingRecovery: RecoveryPreviewResult.Restorable? = null
     private var lastVerifiedApply: State.Applied? = null
 
-    fun start() {
-        val operation = beginOperation() ?: return
+    fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome {
+        val operation = beginOperation(trigger) ?: return StartOutcome.Busy
         val runId = operation.runId
+        val started = StartOutcome.Started(runId)
         emit(
             RunEvent(
                 journalSequence = 0L,
                 runId = runId.value,
-                trigger = Trigger.MANUAL_FULL,
+                trigger = operation.trigger,
                 runMode = RunMode.FULL_ORGANIZATION,
                 phase = PhaseCode.RUN_STARTED,
             ),
@@ -203,22 +210,22 @@ class ManualOrganizationRun internal constructor(
             }
 
             is OrganizationInputComposition.Ready -> {
-                if (!isActive(operation)) return
+                if (!isActive(operation)) return started
                 val input = composition.input
                 emit(
                     RunEvent(
                         journalSequence = 0L,
                         runId = runId.value,
-                        trigger = Trigger.MANUAL_FULL,
+                        trigger = operation.trigger,
                         runMode = RunMode.FULL_ORGANIZATION,
                         phase = PhaseCode.CAPTURED,
                         deviceProfile = deviceSummary(input),
                     ),
                 )
                 setIfActive(operation, State.Planning)
-                if (!isActive(operation)) return
+                if (!isActive(operation)) return started
                 val result = planner.plan(input)
-                if (!isActive(operation)) return
+                if (!isActive(operation)) return started
                 emit(
                     PlanningProjection.project(
                         result = result,
@@ -226,7 +233,7 @@ class ManualOrganizationRun internal constructor(
                         capturedItemCount = input.snapshot.items.size,
                     ).copy(
                         runId = runId.value,
-                        trigger = Trigger.MANUAL_FULL,
+                        trigger = operation.trigger,
                         runMode = RunMode.FULL_ORGANIZATION,
                     ),
                 )
@@ -237,7 +244,7 @@ class ManualOrganizationRun internal constructor(
                             finish(operation, State.NoChanges)
                         } else {
                             synchronized(lock) {
-                                if (!isActiveLocked(operation)) return
+                                if (!isActiveLocked(operation)) return started
                                 pending = PendingPlan(operation, input, result, summary)
                                 stateHolder.value = State.Preview(summary)
                             }
@@ -245,7 +252,7 @@ class ManualOrganizationRun internal constructor(
                                 RunEvent(
                                     journalSequence = 0L,
                                     runId = runId.value,
-                                    trigger = Trigger.MANUAL_FULL,
+                                    trigger = operation.trigger,
                                     runMode = RunMode.FULL_ORGANIZATION,
                                     phase = PhaseCode.PREVIEWED,
                                 ),
@@ -265,6 +272,7 @@ class ManualOrganizationRun internal constructor(
                 }
             }
         }
+        return started
     }
 
     fun cancel() {
@@ -282,7 +290,7 @@ class ManualOrganizationRun internal constructor(
             RunEvent(
                 journalSequence = 0L,
                 runId = operation.runId.value,
-                trigger = Trigger.MANUAL_FULL,
+                trigger = operation.trigger,
                 runMode = RunMode.FULL_ORGANIZATION,
                 phase = PhaseCode.USER_CANCELLED,
             ),
@@ -301,7 +309,7 @@ class ManualOrganizationRun internal constructor(
             RunEvent(
                 journalSequence = 0L,
                 runId = operation.runId.value,
-                trigger = Trigger.MANUAL_FULL,
+                trigger = operation.trigger,
                 runMode = RunMode.FULL_ORGANIZATION,
                 phase = PhaseCode.USER_CONFIRMED,
             ),
@@ -316,7 +324,7 @@ class ManualOrganizationRun internal constructor(
                 stateHolder.value = State.Stale
                 true
             }
-            if (stale) emitStaleRejection(pendingPlan.runId)
+            if (stale) emitStaleRejection(operation)
             return
         }
         val admitted = synchronized(lock) {
@@ -409,7 +417,7 @@ class ManualOrganizationRun internal constructor(
                 RunEvent(
                     journalSequence = 0L,
                     runId = it.runId.value,
-                    trigger = Trigger.MANUAL_FULL,
+                    trigger = it.trigger,
                     runMode = RunMode.FULL_ORGANIZATION,
                     phase = PhaseCode.USER_CANCELLED,
                 ),
@@ -418,9 +426,9 @@ class ManualOrganizationRun internal constructor(
         return operation.first
     }
 
-    private fun beginOperation(): Operation? = synchronized(lock) {
+    private fun beginOperation(trigger: Trigger): Operation? = synchronized(lock) {
         if (activeOperation != null) return@synchronized null
-        val operation = Operation(application.newRunId())
+        val operation = Operation(application.newRunId(), trigger)
         activeOperation = operation
         pending = null
         pendingRecovery = null
@@ -527,12 +535,12 @@ class ManualOrganizationRun internal constructor(
         },
     )
 
-    private fun emitStaleRejection(runId: RunId) {
+    private fun emitStaleRejection(operation: Operation) {
         emit(
             RunEvent(
                 journalSequence = 0L,
-                runId = runId.value,
-                trigger = Trigger.MANUAL_FULL,
+                runId = operation.runId.value,
+                trigger = operation.trigger,
                 runMode = RunMode.FULL_ORGANIZATION,
                 phase = PhaseCode.APPLY_REJECTED,
                 applyStage = ApplyStage.A2,
@@ -561,6 +569,7 @@ class ManualOrganizationRun internal constructor(
 
     private data class Operation(
         val runId: RunId,
+        val trigger: Trigger,
         val cancelled: AtomicBoolean = AtomicBoolean(false),
         val applicationAdmitted: AtomicBoolean = AtomicBoolean(false),
     )

@@ -79,6 +79,7 @@ import com.android.launcher3.util.ApiWrapper;
 import com.android.launcher3.util.ContentWriter;
 import com.android.launcher3.util.IntArray;
 import com.android.launcher3.util.LogConfig;
+import com.android.launcher3.util.OnboardingPrefs;
 
 import java.io.File;
 import java.io.InvalidObjectException;
@@ -507,6 +508,9 @@ public class RestoreDbTask {
         FileLog.d(TAG, "restore initiated from backup: DeviceGridState=" + deviceGridState);
         LauncherPrefs.get(context).putSync(RESTORE_DEVICE.to(deviceGridState.getDeviceType()));
         LauncherPrefs.get(context).putSync(IS_FIRST_LOAD_AFTER_RESTORE.to(true));
+        // Issue #53: preserve a non-restorable restore provenance snapshot before any later
+        // Launcher model load can consume RESTORE_DEVICE / IS_FIRST_LOAD_AFTER_RESTORE.
+        LauncherPrefs.get(context).putSync(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN.to(true));
     }
 
     @WorkerThread
