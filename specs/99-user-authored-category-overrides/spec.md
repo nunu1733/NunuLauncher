@@ -1,6 +1,6 @@
 ---
 issue: "#99"
-status: accepted
+status: implemented
 requirements:
   - FR-010
   - FR-011
@@ -11,7 +11,7 @@ requirements:
   - NFR-009
   - NFR-011
   - NFR-012
-updated: 2026-08-22
+updated: 2026-09-08
 ---
 
 # User-authored category overrides for Organizer v1

@@ -1,6 +1,6 @@
 ---
 issue: "#52"
-status: accepted
+status: implemented
 requirements:
   - FR-002
   - FR-003
@@ -16,7 +16,7 @@ requirements:
   - NFR-011
 risk:
   - layout-data
-updated: 2026-08-20
+updated: 2026-09-08
 ---
 
 # Manual full-organization vertical slice

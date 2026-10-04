@@ -1,6 +1,6 @@
 ---
 issue: "#237"
-status: accepted
+status: implemented
 requirements:
   - FR-003
   - FR-016
@@ -10,7 +10,7 @@ requirements:
   - NFR-010
   - NFR-011
   - NFR-012
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Compact existing 1×1 folders across pages under a new GLOBAL_COMPACT_V2 strategy

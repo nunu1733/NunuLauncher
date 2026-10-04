@@ -1,6 +1,6 @@
 ---
 issue: "#166"
-status: accepted
+status: implemented
 requirements:
   - TOMBSTONE-ADMISSION-DECISION
   - CAPACITY-ERROR-OBSERVABLE
@@ -9,7 +9,7 @@ requirements:
   - RECOVERY-GUARANTEES-PRESERVED
 risk:
   - layout-data
-updated: 2026-08-31
+updated: 2026-09-08
 ---
 
 # Recovery tombstones do not lock out the next apply

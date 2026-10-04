@@ -1,11 +1,11 @@
 ---
 issue: "#67"
-status: accepted
+status: implemented
 requirements:
   - FR-015
   - NFR-008
   - NFR-011
-updated: 2026-08-18
+updated: 2026-09-08
 ---
 
 # Privacy-safe organizer diagnostics journal and export

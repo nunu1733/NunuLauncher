@@ -1,9 +1,9 @@
 ---
 issue: "#195"
-status: accepted
+status: implemented
 requirements: []
 risk: []
-updated: 2026-09-03
+updated: 2026-09-08
 ---
 
 # Organizer confirmation UI renders the concrete change list

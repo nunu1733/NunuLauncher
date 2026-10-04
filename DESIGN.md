@@ -83,6 +83,14 @@ recover(RecoveryRequest) -> RecoveryResult
 
 このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。生成フォルダのuser-facing title解決 (`FolderTitleResolver`) はmaterializer内の単一点で行われ、production adapterはouter composition (`LawnchairApp`) が注入する。適用後検証は、相関リロード生成のモデルスナップショットをmodel-verifiable projectionで独立DB再取得と突き合わせ、DB/model収束を証明してから初めて成功結果を返す([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。読み取り専用の preview seam (recovery preview `inspectRecovery` [spec 84](./specs/84-recovery-preview-seam/spec.md)、plan preview `inspectPlan` [spec 194](./specs/194-plan-preview-seam/spec.md)) もこのmoduleが所有し、いずれも書込み・lifecycle遷移・diagnostics発行を行わない。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
 
+#### Post-apply verification vocabulary
+
+これらはdomain用語ではなく、Layout Application moduleが隠す検証実装の用語である。
+
+- **Model Snapshot**: 相関リロード完了時に得られるメモリ上のlayout状態のcanonical表現。永続化せず、検証専用に扱う。
+- **Model-verifiable Projection**: Model SnapshotとDB再取得を比較できるフィールド集合。item identity、container、placement、kind、folder構成、widget bind、profile identity等を含み、modelが表現しないDB専用フィールドはDB側で検証する。
+- **Correlated Reload Generation**: 1回のreload要求と完了を同じcorrelation tokenで結び、loader transactionのcommit/close後にのみ完了と扱う検証単位。単なるLoad IDや遅延時間を成功条件にしない。
+
 ### 4.3 Rule Management module
 
 version付き整理ルールの読込、validation、migration、exportを担当する。ファイル構文はこのmoduleのimplementation detailとし、計画moduleはtyped modelだけを受け取る。XML、JSONなどの選定はIssueで決める。

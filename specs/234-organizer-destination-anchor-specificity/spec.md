@@ -1,9 +1,9 @@
 ---
 issue: "#234"
-status: accepted
+status: implemented
 requirements: [R1-ANCHOR-UNIQUENESS, R2-EQUALITY-NONREGRESSION, R3-BRANCH-STABILITY, R4-SINGLE-DERIVATION, R5-LOCALE-COPY, R6-A11Y-AND-PRIVACY]
 risk: []
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Organizer proposal card の destination 表示を resolved anchor を一意に識別できる具体性へ更新

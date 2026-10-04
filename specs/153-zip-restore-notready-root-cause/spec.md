@@ -1,9 +1,9 @@
 ---
 issue: "#153"
-status: accepted
+status: implemented
 requirements:
   - ZIP-NOTREADY-FOLLOWUP
-updated: 2026-09-01
+updated: 2026-09-08
 ---
 
 # ZIP restore後のmanual organization NotReadyの根因特定と観測の確定

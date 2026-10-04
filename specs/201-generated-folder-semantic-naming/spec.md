@@ -1,10 +1,10 @@
 ---
 issue: "#201"
-status: accepted
+status: implemented
 requirements: []
 risk:
   - layout-data
-updated: 2026-09-04
+updated: 2026-09-08
 ---
 
 # Semantic naming for Organizer-generated folders

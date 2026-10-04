@@ -1,8 +1,8 @@
 ---
 issue: "#58"
-status: accepted
+status: implemented
 requirements: []
-updated: 2026-08-17
+updated: 2026-09-08
 ---
 
 # Serialize runtime raw-file restores and reopen Launcher DB helpers

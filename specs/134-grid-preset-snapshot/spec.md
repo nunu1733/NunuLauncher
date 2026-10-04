@@ -1,8 +1,8 @@
 ---
 issue: "#134"
-status: accepted
+status: implemented
 requirements: [NFR-007]
-updated: 2026-08-25
+updated: 2026-09-08
 ---
 
 # 端末種別に整合するグリッドプリセット目録
