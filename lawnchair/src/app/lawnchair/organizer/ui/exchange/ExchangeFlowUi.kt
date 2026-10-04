@@ -47,6 +47,7 @@ import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.exchange.ExchangeEnvelopeFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
+import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
 import app.lawnchair.organizer.personalization.exchange.acceptsExchangeImportEnvelope
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import com.android.launcher3.R
@@ -955,6 +956,16 @@ private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (
         ExchangeEnvelopeFailure.FramingMissing -> stringResource(R.string.exchange_failure_framing_missing)
         ExchangeEnvelopeFailure.FramingAmbiguous -> stringResource(R.string.exchange_failure_framing_ambiguous)
         ExchangeEnvelopeFailure.FramingEmpty -> stringResource(R.string.exchange_failure_framing_empty)
+    }
+
+    // Spec 329: normalizer failures settle before the codec — their guidance
+    // is about the recognizable import formats, not the intent content.
+    is ExchangeImportFailure.Normalization -> when (failure.failure) {
+        ImportNormalizationFailure.AmbiguousBlocks ->
+            stringResource(R.string.exchange_failure_normalization_ambiguous)
+
+        ImportNormalizationFailure.UnrecognizedFormat ->
+            stringResource(R.string.exchange_failure_normalization_unrecognized)
     }
 
     is ExchangeImportFailure.Contract -> exchangeContractFailureText(failure.failure)

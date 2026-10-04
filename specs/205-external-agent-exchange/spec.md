@@ -315,6 +315,8 @@ Then 確認画面・失敗表示はaccessibility対応され (focus順、読み�
 
 - 2026-09-16 (6th): **intent schema v3対応 ([spec 330](../330-partial-intent-authoring/spec.md) 所有)** — Issue #330のaccepted specにより、instruction部のcoverage要求 "Cover every \"ref\" exactly once across \"itemIntents\" and \"unresolvedRefs\"" を部分authoring契約 ("Author only what you actually judged" / "you do not have to cover every ref, and anything you leave out is treated as \"no judgment\" and is never guessed") へ置換し、response format表記を `personalized-intent-v3` へ更新。framing・envelope上限・Pre-send Disclosure・17種失敗表示 (種類数) は無変更。`INCOMPLETE_COVERAGE` 表示文言のみv3条件 (重複列挙) へ更新。拡張の設計・契約の正本はspec 330である。
 
+- 2026-09-17 (7th): **framing受理枠拡張 ([spec 329](../329-import-normalizer/spec.md) 所有)** — Issue #329 (accepted spec) により、import pathの #205 envelope gate (1 MiB) とmarker規則の間に Import Normalizer (外形認識層) が挿入された。marker形式の抽出規則・#205 typed失敗4種 (`INPUT_OVERSIZE` / `FRAMING_*`) の意味・envelope上限は **すべて不変** で、marker形式はcanonical formのまま。新たに単一fenced `json` code blockとstandalone JSON objectが受理外形として追加され、marker行を含まないplain proseは `FRAMING_MISSING` ではなく #329 normalizerのtyped失敗 (認識不能) となる。認識framing種別は `Prepared` へadditive fieldで伝播する。
+
 ## References
 
 - [Issue #205](https://github.com/nunu1733/NunuLauncher/issues/205)

@@ -21,7 +21,9 @@ import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.RandomIdAllocator
 import app.lawnchair.organizer.personalization.SequentialIdAllocator
 import app.lawnchair.organizer.personalization.exchange.ExchangeContract
+import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
+import app.lawnchair.organizer.personalization.exchange.ImportNormalizationFailure
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
@@ -477,6 +479,30 @@ class ExchangeFlowStateHolderTest {
         assertTrue(sentB!!.sent)
         assertFalse(sentB.cancelable)
         assertEquals(b.session.exportId, store.active(now.toLong())?.exportId)
+    }
+
+    @Test
+    fun normalizationFailuresReachTheImportOutcomeScreen() {
+        // Issue #329: the two new typed normalizer failures must surface
+        // through the same controller outcome the failure screen consumes
+        // (`ExchangeScreen.ImportOutcomeScreen` maps the 19-kind exhaustive
+        // `when`). The holder's `import` failure branch routes any
+        // non-validated pipeline outcome there; this asserts the typed
+        // failures survive the controller seam, and `holder.import` itself
+        // pins `Dispatchers.Main` (not injectable, so the display hop is
+        // exercised by the compile-time exhaustive mapping instead).
+        val store = FakeStore()
+        val (_, controller) = newHolder(store, now = 1_000_000L)
+        val ambiguous = controller.importReply("```json\n{}\n```\nprose\n```json\n{}\n```") as ExchangeImportOutcome.Pipeline
+        assertEquals(
+            ExchangeImportFailure.Normalization(ImportNormalizationFailure.AmbiguousBlocks),
+            (ambiguous.result as ExchangeImportResult.Failure).failure,
+        )
+        val unrecognized = controller.importReply("no recognizable shape at all") as ExchangeImportOutcome.Pipeline
+        assertEquals(
+            ExchangeImportFailure.Normalization(ImportNormalizationFailure.UnrecognizedFormat),
+            (unrecognized.result as ExchangeImportResult.Failure).failure,
+        )
     }
 
     /**
