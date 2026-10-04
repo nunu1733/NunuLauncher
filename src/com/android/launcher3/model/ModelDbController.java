@@ -332,6 +332,14 @@ public class ModelDbController {
         if (restoreLease != null) {
             return restoreLease;
         }
+        // Issue #113: mutations issued inside an open baseline transaction run on the
+        // thread that already owns its MODEL_WRITER lease (e.g. folder bind:
+        // UpdateItemsRunnable update within newTransaction); they reenter it instead of
+        // blocking on their own lease (deterministic self-deadlock / cold-start ANR).
+        LayoutWriteCoordinator.Lease writerLease = coordinator.tryReenterModelWriter();
+        if (writerLease != null) {
+            return writerLease;
+        }
         return coordinator.acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
     }
 

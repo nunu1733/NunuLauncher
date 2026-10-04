@@ -133,6 +133,27 @@ public final class LayoutWriteCoordinator {
     }
 
     /**
+     * Reentrant acquisition for baseline {@link OwnerKind#MODEL_WRITER}
+     * ownership (Issue #113). Succeeds when the current lease is MODEL_WRITER
+     * held by the calling thread; the returned view keeps the outer kind and
+     * token so nested closes decrement recursion and only the outermost lease
+     * unlocks and releases deferred work. Other kinds and other threads are
+     * still excluded.
+     */
+    @Nullable
+    public Lease tryReenterModelWriter() {
+        synchronized (lock) {
+            Holder h = current;
+            if (h != null && h.thread == Thread.currentThread()
+                    && h.kind == OwnerKind.MODEL_WRITER) {
+                h.recursionCount += 1;
+                return new LeaseImpl(h.kind, h.token);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Reentrant acquisition of the current lease by the owning thread with the
      * exact token. Used by the organizer protocol to re-enter its own lease
      * from the same thread during the A5/A6 transaction.

@@ -31,6 +31,56 @@ public class LayoutWriteCoordinatorTest {
         assertNotNull(inner); inner.close(); outer.close();
     }
 
+    // --- Issue #113: bounded same-thread MODEL_WRITER re-entry ---
+
+    @Test public void modelWriterLeaseIsSameThreadReentrantWithSameToken() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        LayoutWriteCoordinator.Lease outer = c.tryAcquire(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
+        assertNotNull(outer);
+        try {
+            LayoutWriteCoordinator.Lease inner = c.tryReenterModelWriter();
+            assertNotNull("owning thread re-enters its MODEL_WRITER lease", inner);
+            assertEquals(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER, inner.kind());
+            assertEquals("re-entry view keeps the logical outer token",
+                    outer.token(), inner.token());
+            // Nested close decrements recursion only; the lease stays held.
+            inner.close();
+            assertNull("lease still held after nested close",
+                    c.tryAcquire(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER));
+        } finally {
+            outer.close();
+        }
+        // The outermost close unlocked exactly once.
+        try (LayoutWriteCoordinator.Lease post =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER)) {
+            assertNotNull(post);
+        }
+    }
+
+    @Test public void modelWriterReentryIsDeniedToOtherKindsAndThreads() throws Exception {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+
+        // A different owner kind must not obtain MODEL_WRITER re-entry.
+        LayoutWriteCoordinator.Lease restore = c.tryAcquire(LayoutWriteCoordinator.OwnerKind.RESTORE);
+        assertNotNull(restore);
+        assertNull(c.tryReenterModelWriter());
+        restore.close();
+
+        // A different thread must not re-enter a MODEL_WRITER holder's lease.
+        LayoutWriteCoordinator.Lease outer = c.tryAcquire(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
+        assertNotNull(outer);
+        AtomicBoolean foreignEntered = new AtomicBoolean(false);
+        Thread foreign = new Thread(() -> {
+            LayoutWriteCoordinator.Lease stolen = c.tryReenterModelWriter();
+            foreignEntered.set(stolen != null);
+            if (stolen != null) stolen.close();
+        });
+        foreign.start();
+        foreign.join(5_000);
+        assertFalse("cross-thread re-entry must stay denied", foreignEntered.get());
+        outer.close();
+    }
+
     @Test public void exactCorrelatedLoaderGetsScopedCapabilityAndTokenlessWorkDefers()
             throws Exception {
         LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
