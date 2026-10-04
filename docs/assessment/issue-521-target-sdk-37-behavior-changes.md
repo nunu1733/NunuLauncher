@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # targetSdk 37移行時のAndroid 16/17 behavior changes（Issue #521）
 
-> Status: Proposed（研究成果。実装完了・runtime互換性の証明ではない）
+> Status: Accepted（研究成果。独立review承認を受けた遷移、受入完了はPR #529 merge。実装完了・runtime互換性の証明ではない）
 > 確認日: 2026-10-04
 > 対応: [#521](https://github.com/nunu1733/NunuLauncher/issues/521) / Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) Phase 1
 > 前提: [ADR-0018](../adr/0018-lawnchair-16-rebase.md) Decision 1/6/8、[Phase 0 §6.3](./issue-516-16-rebase-phase0-research.md#6-主要な発見)
@@ -31,7 +31,7 @@ API37 Quickstep/recentsは[#520](https://github.com/nunu1733/NunuLauncher/issues
 | fork | `a65a1d169c743ef28e7f07c4717b5efc08c9e1b1`（#523 merge後のmain） |
 | 現baseline | `505dbc40e6154c05158b5d0271c45f6a885a411b`（15 beta 3） |
 | 採用upstream候補 | `43a21b43d7cc7850ab54e14b1a57dc9646685f35`（ADR-0018固定16-dev） |
-| SDK | fork `build.gradle:34-37`: compile36.1 / target35 / min26。候補 `build.gradle:25-34`: compile37 minor2 / target37 / min26、buildTools37.0.0 |
+| SDK | fork `build.gradle:28-37`: compile36.1 / target35 / min26。候補 `build.gradle:25-34`: compile37 minor2 / target37 / min26、buildTools37.0.0 |
 | 正本 | #521本文と全コメント（取得2026-10-04T03:29Z、OPEN、コメント0、type: research / phase: mvp）。#516 Phase 1/3、#442 §6.3、ADR-0018、CONTEXT、DESIGN、workflow、quality strategyを確認 |
 | 公式資料 | Android Developersのtarget16/17、all-app16/17、17 release notesと関連API文書をHTTPS取得して本文確認。**全URLの確認日は2026-10-04**。公開資料の当日snapshotに対する評価であり、release notesのbeta修正履歴を最終OSの実測と扱わない |
 | コード照合 | `git show <SHA>:<path>` / `git grep -n -E '<API>' <SHA> -- <paths>` / `git diff <fork> <candidate> -- <path>`。Lunaはread-onlyでsurface棚卸し、Workerは公式条件と差分を照合 |
@@ -44,13 +44,13 @@ forkのorganizer/homeeditは候補upstreamに存在しない（`git ls-tree -r <
 
 | ID | 固定コードと観測 |
 |---|---|
-| C1 | F/U `lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt:37` / `:40`、`ui/theme/Theme.kt:81` / `:84`: `enableEdgeToEdge()`。F/U `lawnchair/AndroidManifest.xml:67` / `:72`: PreferenceActivityはback callback有効。root manifestは向きunspecified、resizeable、configuration changes処理 |
-| C2 | F `lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt:118-122`: super→setContent→reloadCapture。`:96-105`にcapture/session/selection等のActivity field、`:172-210`でcaptureとEMPTY sessionを再初期化。`EditSurfaceScreen.kt:109-113`: fillMaxSizeのColumnと固定padding、system bars/cutout inset処理なし。F manifest `:84-90`:独立・非exported Activity。Uにこのsurfaceなし |
+| C1 | F/U `lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt:37` / `:40`、`ui/theme/Theme.kt:81` / `:84`: `enableEdgeToEdge()`。F/U `lawnchair/AndroidManifest.xml:67` / `:72`: PreferenceActivityはback callback有効。F `AndroidManifest.xml:55-58`のroot Activityは向きunspecified、resizeable、configuration changes処理 |
+| C2 | F `lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt:108-112`: super→setContent→reloadCapture。`:86-105`にcapture/session/selection等のActivity field、`:151-190`でcaptureとEMPTY sessionを再初期化。`EditSurfaceScreen.kt:109-113`: fillMaxSizeのColumnと固定padding、system bars/cutout inset処理なし。F manifest `:84-90`:独立・非exported Activity。Uにこのsurfaceなし |
 | C3 | F `organizer/ui/exchange/ExchangeFlowUi.kt:3490-3496,3624-3625`: Compose BackHandler。F `backup/ui/CreateBackupScreen.kt:78`、`RestoreBackupScreen.kt:131`、`RestoreNovaBackupScreen.kt:100`: BackHandler。F/U `src/com/android/launcher3/BaseActivity.java:288` / `:365`: registerOnBackInvokedCallbackがonBackPressedへ明示委譲。U `Launcher.java:611,2108`: animation callback |
 | C4 | F `lawnchair/src/app/lawnchair/backup/ui/CreateBackupScreen.kt:64,101-114`、`RestoreBackupScreen.kt:85,290-295`: 向き別UIとSAF。F `organizer/diagnostics/export/ExportUi.kt:84-109`、`ExportWriter.kt:60-70`: IO dispatcherからcontent URIへ書出し。F `organizer/integration/exchange/ExchangeTransports.kt:55-83`: ユーザー起点chooser/SAF、独自PendingIntentなし |
 | C5 | U `src/com/android/launcher3/Utilities.java:741-745`: allowBGLaunchは旧`MODE_BACKGROUND_ACTIVITY_START_ALLOWED`。U `util/StartActivityParams.java:103-107`: callback送信も同helper。F `bugreport/BugReportReceiver.kt:89-157`: immutable PendingIntentで通知action/URI grantを構成 |
 | C6 | F/U `lawnchair/src/app/lawnchair/search/algorithms/engine/provider/ContactsSearchProvider.kt:64-76` / `:64-73`: FはData projectionに`account_type/account_name`等を持つがUは削除済み。F `:96-108`にread、U `:86-99`は当該readなし。両側 `:50-52`はREAD_CONTACTS gate |
-| C7 | F/U `lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/CustomWebSearchProvider.kt:45,50-53,70-77`: 任意suggestion URLをOkHttpで実行、例外は空候補。UもLAN permission対応なし。F `bugreport/KatbinService.kt:19`、`UploaderUtils.kt:3-11`: public HTTPS upload。`gradle/libs.versions.toml`: OkHttp F5.3.2/U5.5.0、Espresso両側3.7.0 |
+| C7 | F/U `lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/CustomWebSearchProvider.kt:45,49-53,63-80`: 任意suggestion URLをOkHttpで実行、例外は空候補。UもLAN permission対応なし。F `bugreport/KatbinService.kt:19`、`UploaderUtils.kt:3-11`: public HTTPS upload。`gradle/libs.versions.toml`: OkHttp F5.3.2/U5.5.0、Espresso両側3.7.0 |
 | C8 | F `src/com/android/launcher3/util/LooperIdleLock.java:25`: public MessageQueue.IdleHandlerを使用（private queue reflectionではない）。Gradle側Espresso3.7.0。AOSP BPのRobolectric runnerはあるが本PRはその更新/実行を行わない |
 | C9 | F `lawnchair/src/app/lawnchair/HeadlessWidgetsManager.kt:74-75`、`LawnchairAppWidgetHostView.kt:42-44`、`src/com/android/launcher3/widget/LauncherAppWidgetHostView.java:136-151`: **AppWidgetHostView.updateAppWidget**（受信表示）。providerの**AppWidgetManager.updateAppWidget**送信とは別API。source内で大量bitmap/iconを生成してprovider送信する経路は確認されない |
 | C10 | F `organizer/application/store/RecoveryDbHelper.kt:17-46`、`RecoveryStore.kt:132-135`、`backup/NovaBackupConverter.kt:450,491-499`: Android SQLite。F `NovaBackupConverter.kt:731`、`organizer/application/adapter/LauncherLayoutAdapter.kt:471`、`RowManifestCodec.kt:411-412`: serialized Intent parse。received Intent extraから取り出して直ちに起動する経路とは別 |
@@ -67,7 +67,7 @@ forkのorganizer/homeeditは候補upstreamに存在しない（`git ls-tree -r <
 |---|---|---|---|
 | T01 / OS36+、target36+ | [edge-to-edge opt-out廃止](https://developer.android.com/about/versions/16/behavior-changes-16#edge-to-edge)。OS35上はopt-out属性が引き続き有効 | 共通設定 **(a)** / 編集Activity **(b)** | C1は対応コードあり。C2にはinset消費なし。#526でbar/cutout/IMEと確認・キャンセルCTAを確認修正。opt-out属性はF/U resourceに見つからないが、これだけでinset対応済みとしない |
 | T02 / OS36+、target36+ | [predictive back既定有効](https://developer.android.com/about/versions/16/behavior-changes-16#predictive-back)。framework onBackPressed/KEYCODE_BACKに依存不可 | launcher/設定 **(a)** / forkの中断・破棄・編集busy **(b)** | C1/C3のOnBackInvokedDispatcher/AndroidX BackHandlerは対応経路。callback内部でonBackPressedを呼ぶこととOSからの旧callback配送を区別。#526で既存zero-write/cancel/confirm契約を再検証。Quickstepは#520/#524 |
-| T03 / OS36、target36+ | [elegantTextHeight無効化](https://developer.android.com/about/versions/16/behavior-changes-16#elegant-text-height) | organizer/edit/backup等のtext layout **(b)** | 明示的false指定のconsumerなしでもArabic/Thai等の行高・clipの影響は否定できない。#526で対象言語・font scalingを確認、実測不備を修正。日本語のみの確認で完了にしない |
+| T03 / OS36+、target36+ | [elegantTextHeight無効化](https://developer.android.com/about/versions/16/behavior-changes-16#elegant-text-height) | organizer/edit/backup等のtext layout **(b)** | 明示的false指定のconsumerなしでもArabic/Thai等の行高・clipの影響は否定できない。#526で対象言語・font scalingを確認、実測不備を修正。日本語のみの確認で完了にしない |
 | T04 / OS36、target36+ | [scheduleAtFixedRateのmissed実行を最大1回へ](https://developer.android.com/about/versions/16/behavior-changes-16#schedule-at-fixed-rate) | planner/queue/diagnostics **(c)** | C12で該当schedulerなし。coroutine/Handlerと同じAPIとは扱わない |
 | T05 / OS36+、target36+、sw>=600dp | [向き・resizability・aspect ratio制限を無視](https://developer.android.com/about/versions/16/behavior-changes-16#ignore-orientation) | 共通launcher/DeviceProfile＋fork UI **(b)** | rootはresizeableだがC2のsession再初期化とC4の向き別UIは別問題。#526。Pixel 9aだけではsw600dp面を検証できない |
 | T06 / OS36、target36+ | [health granular permissions](https://developer.android.com/about/versions/16/behavior-changes-16#health-fitness-permissions) | organizer usage hints **(c)** | C12。UsageStatsはBODY_SENSORS/Health Connectではなく、permissionを置換する必要なし |
@@ -91,7 +91,7 @@ forkのorganizer/homeeditは候補upstreamに存在しない（`git ls-tree -r <
 | T24 / OS37、target37+、sw>=600dp | [向き/resize制限opt-out不可](https://developer.android.com/about/versions/17/behavior-changes-17#large-screen-ignore-constraints) | fork UI **(b)** | T05と同じ#526。PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITYに依存した解決はtarget37で不可。tablet/foldable/desktop windowをmatrixへ入れる |
 | T25 / OS37、target37、Bluetooth RFCOMM | [read EOFが-1](https://developer.android.com/about/versions/17/behavior-changes-17#bluetooth-rfcomm-socket-change) | 全fork固有面 **(c)** | C12にBluetoothSocket consumerなし。InputStreamでのSAF読込とは別 |
 | T26 / OS37、target37+、非system app | [Keystore上限50,000・ERROR_TOO_MANY_KEYS](https://developer.android.com/about/versions/17/behavior-changes-all#per-app-keystore-limits) | recovery/backup/signing **(c)** | C12: runtimeのAndroidKeyStore大量生成なし。APK署名keyと端末内runtime key生成は別。all-app文書に載るが50k/200k・numeric errorはtarget分岐なのでここにも列挙 |
-| T27 / OS37、target17・直接NPUアクセス | [FEATURE_NEURAL_PROCESSING_UNIT宣言](https://developer.android.com/about/versions/17/release-notes#core_functionality_privacy_performance) | external agent exchange **(c)** | C12に直接NPU consumerなし。external exchangeはclipboard/SAFであり推論runtimeではない。未実装managed AI #206に要件を移す場合はそのspecで再調査 |
+| T27 / OS37、target37+・直接NPUアクセス | [FEATURE_NEURAL_PROCESSING_UNIT宣言](https://developer.android.com/about/versions/17/release-notes#core_functionality_privacy_performance) | external agent exchange **(c)** | C12に直接NPU consumerなし。external exchangeはclipboard/SAFであり推論runtimeではない。未実装managed AI #206に要件を移す場合はそのspecで再調査 |
 
 ## 4. target引上げだけでは発火しない項目
 
@@ -148,3 +148,5 @@ External reference scanはAndroid/platform扱いのresearchとして実施。
 | [Lawnchair固定candidate](https://github.com/LawnchairLauncher/lawnchair/tree/43a21b43d7cc7850ab54e14b1a57dc9646685f35) | C1/C3/C6の取込み可能対応とC5/C7の残存を分離。Nunu固有UIへ自動的に波及するとは扱わない |
 
 - 2026-10-04: 初版。#521の研究成果として固定SHAと公式条件を照合、後続実装#526/#527/#528を起票、Phase3入力を記録。production code/SDK変更なし。研究の受入状態はPRの独立Review・Owner decision・mergeで確定する。
+
+- 2026-10-04（revision 2）: [独立review round 1](https://github.com/nunu1733/NunuLauncher/pull/529#issuecomment-5976263150)（head `654323e07c79440c098e0c5c6628b63f909f33a7`、blocking findingなし）を受けacceptedへ遷移。Luna/Workerの固定コード再照合によりC1/C2/C7の引用行番号を修正、T03/T27の条件表記を統一。後続実装は#526/#527/#528の所有、#521は研究成果の完了としてcloseする。最終headの再reviewとOwner decisionは[PR #529](https://github.com/nunu1733/NunuLauncher/pull/529)のpacketへ記録し、mergeで受入完了。
