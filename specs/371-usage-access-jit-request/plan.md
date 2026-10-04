@@ -2,7 +2,8 @@
 
 > Issue: #371
 > Spec: [spec.md](./spec.md)
-> Status: accepted（2026-09-21。4th再レビューNo findingsを受入）
+> Status: implemented（2026-09-21。PR #391 merge（`8b78ebc131`）により受入条件を満たし
+> implementedへ遷移）
 
 ## Current evidence
 

@@ -1,6 +1,6 @@
 ---
 issue: "#371"
-status: accepted
+status: implemented
 requirements: [FR-013, D-010]
 risk: []
 updated: 2026-09-21
@@ -553,6 +553,13 @@ And hub材料面（#366/#367）からT-06へ到達できる導線は不変であ
 - 2026-09-21: Accepted（`cb70344d42` への4th再レビューで [No findings](https://github.com/nunu1733/NunuLauncher/issues/371#issuecomment-5753010154) を確認し、statusを `accepted` へ更新）。
   実装PRでの契約確定事項（JIT-AC-02/03/06のcontract commitにおける具体値・文言確定と
   PR evidence記録）を受入条件として維持する。
+- 2026-09-21: Implemented（[PR #391](https://github.com/nunu1733/NunuLauncher/pull/391)
+  merge（`8b78ebc131`）により受入条件を満たし `implemented` へ遷移。実装PRで
+  JIT-AC-02/06の最終EN/ja文言と意味要素checklist、JIT-AC-03のbounded re-read上限
+  （1500ms・0.5〜2秒レンジ内）をcontract commitとして確定・記録済み。実装review loop
+  （4回）とCI修正loop（3回、[独立監査](../../docs/assessment/pr-391-usage-access-jit.md)
+  付き）を経てCI `final-status` green）。
+
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/371
 [2]: https://github.com/nunu1733/NunuLauncher/issues/365
