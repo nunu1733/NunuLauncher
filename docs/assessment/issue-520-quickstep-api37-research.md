@@ -1,6 +1,6 @@
 # API 37 (Android 17) のQuickstep/recents対応評価 — QUICKSTEP_MAX_SDK引き上げとcompat前提（Issue #520、Epic #516 Phase 1）
 
-> Status: accepted（2026-10-04 revision 2で遷移。PR #525 review round 1のblocking指摘を解消したうえでの遷移であり、PR #525 review round 2の再確認をmergeの条件とする）
+> Status: accepted（2026-10-04 revision 2で遷移。PR #525 review round 2（[review](https://github.com/nunu1733/NunuLauncher/pull/525#issuecomment-5976327622)）でblocking findingsなしを確認。round 2の残指摘（用語整合）をrevision 3で対応し、round 3の最終確認をmergeの条件とする）
 > Research date: 2026-10-04
 > Agent session: ZCode（GLM-5.3-flash）
 > Issue: Phase 1子Issue [#520](https://github.com/nunu1733/NunuLauncher/issues/520)。Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516)、兄弟Issue [#521](https://github.com/nunu1733/NunuLauncher/issues/521) / [#522](https://github.com/nunu1733/NunuLauncher/issues/522)、Phase 0 [#519](https://github.com/nunu1733/NunuLauncher/issues/519)
@@ -77,16 +77,16 @@ minSdk 29→35の引き上げは、upstream commit `f8164291da`「chore: Prepare
 | 端末構成 | baseline（29..35。debug blockにoverrideなし） | 16-dev追随後（35..36。debug blockのみ0..100000へoverride） | 影響 |
 |---|---|---|---|
 | 通常構成（config_recentsComponentNameがLawnchairを指さない。Pixel、OEM端末等） | recents無効（`isRecentsComponent=false`） | 同一 | 変化なし。SDK範囲は到達しないgateである |
-| QuickSwitch構成済み（rooted。configがLawnchairを指す）で API 29〜34 | Lawnchairがprovider | `recentsEnabled=false` + `quickstep_incompatible` sheet表示 | **provider機能を失う**（minSdk 29→35の後退効果）。system構成の切替（QuickSwitchで戻す）が必要 |
-| QuickSwitch構成済みで API 35 | Lawnchairがprovider（29..35内） | 同一（35..36内） | 変化なし |
-| QuickSwitch構成済みで API 36 | **providerではない**（36は29..35外で`compatible=false`） | **Lawnchairがprovider**（35..36内） | **provider対応が新たに追加される**（16-devのmaxSdk 36の効果。baselineに存在しない機能の追加） |
+| QuickSwitch構成済み（rooted。configがLawnchairを指す）で API 29〜34 | Lawnchairがrecents UIを提供（29..35内で`compatible=true`） | `compatible=false` → `recentsEnabled=false` + `quickstep_incompatible` sheet表示 | **Lawnchair側recents機能を失う**（minSdk 29→35の後退効果。構成はLawnchairのままLawnchair側gateが無効化される）。system構成の切替（QuickSwitchで戻す）が必要 |
+| QuickSwitch構成済みで API 35 | Lawnchairがrecents UIを提供（29..35内で`compatible=true`） | 同一（35..36内で`compatible=true`） | 変化なし |
+| QuickSwitch構成済みで API 36 | Lawnchairがrecents componentとして構成済み（`isRecentsComponent=true`）だが `compatible=false` → `recentsEnabled=false` + `quickstep_incompatible`（§3.2の「構成済みだが非対応」状態） | `compatible=true` → `recentsEnabled=true`（Lawnchairがrecents UIを提供） | **compatible範囲へのAPI 36追加によりprovider機能が新たに有効化される**（16-devのmaxSdk 36の効果。baselineに存在しない機能の追加） |
 | debug build | 29..35のまま（debug blockにoverrideなし。API 36以上では`compatible=false`） | 0..100000へoverrideされ常にcompatible | **debugのSDK gateが全域へ拡張**（16-devの変更。API 36以上のdebug環境でquickstep内蔵機能の可視性が変わる） |
 
-つまり、baseline→16-dev全体の比較としては効果が次の3系統に分かれる。**(1) minSdk 29→35の後退効果**: QuickSwitch構成済みrooted環境のAPI 29〜34でprovider機能を失う。**(2) API 36 provider対応の追加効果**: baselineのmaxSdk 35に対して16-devはmaxSdk 36であり、release buildのAPI 36でprovider対応が新たに有効になる。**(3) debugのSDK gate全域化**: debugはbaselineでは29..35のままだったが、16-devでは全域対応になる。app自体のinstall下限は `minSdk 26`（`build.gradle:31`）であり、API 26〜34端末でもappとしての利用は継続する（launcher機能・organizer機能はquickstep rangeと独立）。
+つまり、baseline→16-dev全体の比較としては効果が次の3系統に分かれる。**(1) minSdk 29→35の後退効果**: QuickSwitch構成済みrooted環境のAPI 29〜34でLawnchair側recents機能を失う。**(2) API 36のcompatible範囲追加の効果**: baselineのmaxSdk 35に対して16-devはmaxSdk 36であり、release buildのAPI 36でprovider機能が新たに有効になる（端末のprovider構成はそのまま、Lawnchair側gateの有効化）。**(3) debugのSDK gate全域化**: debugはbaselineでは29..35のままだったが、16-devでは全域対応になる。app自体のinstall下限は `minSdk 26`（`build.gradle:31`）であり、API 26〜34端末でもappとしての利用は継続する（launcher機能・organizer機能はquickstep rangeと独立）。
 
 ### 5.3 owner decisionの材料（ADR-0018 Decision 7のdevice test matrix上で確定すべき論点）
 
-1. **選択肢**: (a) 16-dev（35..36）に追随する — upstreamのrelease意図と一致。API 36のprovider対応追加が得られる一方で、API ≤34のQuickSwitch構成ユーザーは切り捨てる。検証対象はAPI 35/36のみ。(b) 下限を29へ戻す（例: 29..36 / 29..37）— API 29〜34のprovider対応を維持しつつAPI 36の追加と両立できる（上限を36以上に保つ場合）。ただしcompatLib chain VQ..VUは現行16-dev treeに実装ごと残存しているものの、forkがその範囲の動作検証を所有することになる（upstreamは35+でのみ検証している状態）。(c) 暫定35..36でrebaseし、実測需要（QuickSwitch構成ユーザーの有無）を根拠に後日再判定。
+1. **選択肢**: (a) 16-dev（35..36）に追随する — upstreamのrelease意図と一致。API 36のcompatible範囲追加（provider機能の有効化）が得られる一方で、API ≤34のQuickSwitch構成ユーザーは切り捨てる。検証対象はAPI 35/36のみ。(b) 下限を29へ戻す（例: 29..36 / 29..37）— API 29〜34のprovider対応を維持しつつAPI 36の追加と両立できる（上限を36以上に保つ場合）。ただしcompatLib chain VQ..VUは現行16-dev treeに実装ごと残存しているものの、forkがその範囲の動作検証を所有することになる（upstreamは35+でのみ検証している状態）。(c) 暫定35..36でrebaseし、実測需要（QuickSwitch構成ユーザーの有無）を根拠に後日再判定。
 2. **エコシステム制約**: QuickSwitch公式docsによれば、QuickSwitch companion app自体はAndroid 14以降をサポートせず（Android 14+はterminal方式）、moduleのroot解決依存（Magisk/KernelSU/APatch）とROM依存がある。API 29〜34向けのprovider対応を維持しても、エコシステム側の制約がforkの外にある点はowner判断の前提として明記すべきである。
 3. **テストmatrix上の記載**: 現行CI lanes（API 36）と保守者実機（API 37）では、provider構成環境での動作は機械検証されていない（`isRecentsComponent` が常にfalseのため）。**API 36の通常CI lanesがgreenでもprovider経路のruntime証跡にはならず、この境界は[実装Issue #524](https://github.com/nunu1733/NunuLauncher/issues/524)のprovider検証範囲と混同しない。**(b)を採る場合、API 29〜34のうちどのlevelを検証対象にするか（例: 最も低いVQのみ、または連続範囲）をmatrixに明記する必要がある。
 
@@ -96,7 +96,7 @@ minSdk 29→35の引き上げは、upstream commit `f8164291da`「chore: Prepare
 
 | 機能 | 場所（43a21b43固定） | recents無効時の状態 |
 |---|---|---|
-| overview UI（task cards・task切替・RecentsView host） | `quickstep/AndroidManifest.xml` の `RecentsActivity`、quickstep module全体 | SystemUIは構成上のprovider（OEM launcher等）へ委譲。Lawnchairのoverview UIは出ない |
+| overview UI（task cards・task切替・RecentsView host） | `quickstep/AndroidManifest.xml` の `RecentsActivity`、quickstep module全体 | 通常構成（`isRecentsComponent=false`）: SystemUIは構成上のprovider（OEM launcher等）へ委譲し、Lawnchairのoverview UIは出ない。QuickSwitch構成済みで非対応SDK（`isRecentsComponent=true && compatible=false`）: 構成上はLawnchairがrecents componentのままのため、overviewが破綻し得る（§3.2） |
 | drawer内ASI（global）検索 | `lawnchair/src/app/lawnchair/search/algorithms/LawnchairSearchAlgorithm.kt:229`（`isASISearchEnabled` が `!isRecentsEnabled` でfalse） | local searchのみ |
 | PAUSE_APPS shortcut（アプリ一時停止） | `LawnchairLauncher.kt:286` | 非表示 |
 | taskbar recents button / taskbar pinning | `quickstep/src/com/android/launcher3/taskbar/customization/TaskbarFeatureEvaluator.kt:31-35`、`TaskbarManagerImpl.java:1180` | recents buttonなし。pinning系の一部は残り得る |
@@ -124,7 +124,7 @@ minSdk 29→35の引き上げは、upstream commit `f8164291da`「chore: Prepare
 
 1. **問い1**: 引き上げの根拠は「API 34以降のcompat chain差分ゼロの実績」「Android 17にrecents関連のannounced変更なし」「API 37固有分岐が16-devに存在しない」ことであり、妥当性はruntime検証とQuickSwitchエコシステム確認を経て初めて確立される。単純な定数引き上げは「Android 17でprovider構成可能」の宣言を検証に先行させるため、Epic Non-goalsどおり先に採用しない。compat面の列挙は§3.3。
 2. **問い2**: V37 factoryは機能上は不要（VBaklavaが `>=` 分岐で成立）だが、pattern整合の受け皿として `framework-17.jar` 追加＋空subclass moduleの形で実装Issueの判断対象にする。追加の実効的意味は「検証で差分が出た場合の先置き」である（§4）。
-3. **問い3**: minSdk 35化はAPI差分ではなくrelease前の製品サポート境界決定（upstream PR #7262）である。baseline→16-dev追随の正味効果は「(1) API 29〜34のprovider後退（minSdk 29→35）」「(2) API 36のprovider対応追加（maxSdk 36）」「(3) debugのSDK gate全域化」の3系統に分かれる（§5.2）。サポート境界の判断材料は§5.3のとおりADR-0018 device test matrix上のowner decisionへ提示する。
+3. **問い3**: minSdk 35化はAPI差分ではなくrelease前の製品サポート境界決定（upstream PR #7262）である。baseline→16-dev追随の正味効果は「(1) API 29〜34のLawnchair側recents後退（minSdk 29→35）」「(2) API 36のcompatible範囲追加（maxSdk 36。provider機能の有効化）」「(3) debugのSDK gate全域化」の3系統に分かれる（§5.2）。サポート境界の判断材料は§5.3のとおりADR-0018 device test matrix上のowner decisionへ提示する。
 4. **問い4**: launcher側recentsの価値はQuickSwitch構成環境に集中し、stock端末ではsystem overviewで日常利用が成立している。owner decisionは「検証込みで37対応を実施するか、需要観測まで先送りするか」の2択（§6.3）。
 5. **実装Issue**: §6.3の選択肢(a)が採られた場合に備え、[実装Issue #524](https://github.com/nunu1733/NunuLauncher/issues/524)「[Phase 2][Implementation]: API 37 (Android 17) Quickstep provider対応の検証と有効化 — rebase後の新baseline上で実施」を起票した。内容: runtime検証（QuickSwitch構成可能なAPI 37環境でのoverview動作）、検証結果に応じた `QUICKSTEP_MAX_SDK` 変更とV37 module追加の判断、サポート境界のADR-0018 matrix反映。**本Issue（#520）自体は実装を含まない。**
 6. 製品判断が必要な項目（サポート境界、37対応の先送り可否）は、本書§5.3/§6.3を材料としてowner decisionに付される。判断が確定した時点でADR-0018のdevice test matrix更新を行う（ADR-0018 Decision 7の規定どおり#520の結論を待つ運用）。
@@ -154,3 +154,4 @@ minSdk 29→35の引き上げは、upstream commit `f8164291da`「chore: Prepare
 
 - 2026-10-04: 初版。機構確認（§2）、問い1〜4の回答（§3〜§6）、結論と実装Issue起票（§7）、未確認範囲（§8）、Prior art（§9）を記録。対象: 16-dev `43a21b43d7cc7850ab54e14b1a57dc9646685f35`、fork main `a65a1d169c743ef28e7f07c4717b5efc08c9e1b1`。
 - 2026-10-04（revision 2）: PR #525 review round 1（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/525#pullrequestreview-5404107501)）指摘対応: (1) §5.2の影響表をAPI 35/36とdebugで行分割し、baseline→16-dev全体比較を「API 29〜34のprovider後退（minSdk 29→35）」「API 36 provider対応の追加（maxSdk 36）」「debug SDK gate全域化」の3系統へ分離（§5.3と§7問い3も同期。API 36のCI greenはprovider経路のruntime証跡にならない境界を明記）。baseline debug blockにquickstep rangeのoverrideがないこと（`505dbc40` の `build.gradle:245-248`）と、API 36がbaselineの29..35外であることを実装で再確認したうえでの修正、(2) §6.1の見出しを「主なユーザー可視影響」へ変更して網羅性の主張を撤回し、指摘のあった追加消費者2件（`GestureController.kt:69`、`TaskUtils.java:120-121`）を追記（§6.2も同期。#524の検証scopeを膨張させない限定の意図を明記）、(3) §5.2末尾のapp利用範囲をAPI 26〜34へ修正、(4) Statusをacceptedへ遷移（round 2 re-reviewの確認をmerge条件とする）。
+- 2026-10-04（revision 3）: PR #525 review round 2（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/525#issuecomment-5976327622)）でround 1の3指摘の解消と **blocking findingsなし** を確認。同reviewの残指摘（中。用語整合）に対応: provider構成（端末system構成 `config_recentsComponentName`）とLawnchair側の機能有効化（`recentsEnabled`）の混同を解消し、§5.2のAPI 36 baselineセルを「構成済みだが `compatible=false` → `recentsEnabled=false`」へ、§6.1のoverview行を通常構成と構成済み非対応SDKの2系統へ分離、§5.2/§5.3/§7の表記を「compatible範囲へのAPI 36追加（provider機能の有効化）」へ統一。round 3の最終確認をmerge条件とする。
