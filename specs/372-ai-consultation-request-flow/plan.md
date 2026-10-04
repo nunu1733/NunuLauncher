@@ -2,7 +2,9 @@
 
 > Issue: #372
 > Spec: [spec.md](./spec.md)
-> Status: accepted（2026-09-21。Phase1 review最終 [Approved](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5752909266)）
+> Status: implemented（2026-09-21。Phase1最終 [Approved](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5752909266)、
+> 実装レビュー5回の最終 [Approved](https://github.com/nunu1733/NunuLauncher/issues/372#issuecomment-5754076419) を経て
+> 実装PR [#393](https://github.com/nunu1733/NunuLauncher/pull/393) mergeで完了）
 
 ## Current evidence
 
