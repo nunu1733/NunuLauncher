@@ -333,7 +333,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest,com.android.launcher3.organizer.NestedTransactionTest
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest,com.android.launcher3.organizer.NestedTransactionTest,app.lawnchair.organizer.application.TwoPanelOrientationCaptureInstrumentationTest
             ./gradlew installLawnWithQuickstepGithubDebug installLawnWithQuickstepGithubDebugAndroidTest
             adb shell am force-stop app.lawnchair.debug.test
             adb shell am force-stop app.lawnchair.debug
