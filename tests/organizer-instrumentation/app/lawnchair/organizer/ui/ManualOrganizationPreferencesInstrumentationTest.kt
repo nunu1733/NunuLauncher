@@ -508,15 +508,15 @@ class ManualOrganizationPreferencesInstrumentationTest {
     }
 
     /**
-     * Issue #212 R1/R3 evidence: two moves whose resolved anchors differ only
-     * inside one coarse band render the SAME destination text on the actual
-     * Organizer card. The rendered destination ("top left, page 2") alone
-     * cannot tell the two rows apart — the F-03 display ambiguity reproduced
-     * at the UI surface, so a coarse region label alone does not satisfy the
-     * destination-specificity contract.
+     * Issue #212 R1/R3 evidence, inverted by Issue #234: two moves whose
+     * resolved anchors differ only inside one coarse band (page 2, (0,0) vs
+     * (1,0)) now render DIFFERENT destination texts on the actual Organizer
+     * card — each identifies its resolved anchor exactly ("top left, page 2,
+     * row 1, column 1" / "… column 2"). The R1 FAIL state (identical
+     * "top left, page 2" for both rows) no longer reproduces.
      */
     @Test
-    fun distinctAnchorsInsideOneBandRenderIdenticalDestinationTextOnTheCard() {
+    fun distinctAnchorsInsideOneBandRenderDistinctDestinationTextOnTheCard() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
@@ -527,13 +527,13 @@ class ManualOrganizationPreferencesInstrumentationTest {
                                 "game",
                                 sourceRowOrdinal = 1,
                                 destinationRowOrdinal = 1,
-                                destination = workspace(2, RowBand.TOP, ColumnBand.LEFT, 1),
+                                destination = workspace(2, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 1),
                             ),
                             move(
                                 "maps",
                                 sourceRowOrdinal = 1,
                                 destinationRowOrdinal = 1,
-                                destination = workspace(2, RowBand.TOP, ColumnBand.LEFT, 1),
+                                destination = workspace(2, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal = 2),
                             ),
                         ),
                         counts = PreviewCounts(movedCount = 2, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
@@ -550,36 +550,23 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
         awaitPreview(runner, context)
 
-        // Both rows render; the destination part of each row is the identical
-        // "top left, page 2" wording while the resolved anchors differ.
-        val destination = workspacePosition(context, 2, RowBand.TOP, ColumnBand.LEFT)
+        // Both rows render with anchor-specific destinations: the F-03
+        // identical "top left, page 2" wording is gone, and each destination
+        // narrows the candidate anchors to exactly one.
         val kind = context.getString(R.string.manual_organization_preview_kind_application)
-        composeRule.onNodeWithText(
+        fun moveRow(label: String, columnOrdinal: Int) = context.getString(
+            R.string.manual_organization_preview_move_row,
             context.getString(
-                R.string.manual_organization_preview_move_row,
-                context.getString(
-                    R.string.manual_organization_preview_item_descriptor,
-                    "game",
-                    kind,
-                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
-                ),
-                destination,
-                context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+                R.string.manual_organization_preview_item_descriptor,
+                label,
+                kind,
+                workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
             ),
-        ).assertIsDisplayed()
-        composeRule.onNodeWithText(
-            context.getString(
-                R.string.manual_organization_preview_move_row,
-                context.getString(
-                    R.string.manual_organization_preview_item_descriptor,
-                    "maps",
-                    kind,
-                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
-                ),
-                destination,
-                context.getString(R.string.manual_organization_preview_move_reason_single_placement),
-            ),
-        ).assertIsDisplayed()
+            workspaceDestination(context, 2, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal),
+            context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+        )
+        composeRule.onNodeWithText(moveRow("game", 1)).assertIsDisplayed()
+        composeRule.onNodeWithText(moveRow("maps", 2)).assertIsDisplayed()
         assertEquals(0, application.applyCalls)
     }
 
@@ -695,7 +682,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 appKind,
                 workspacePosition(context, 2, RowBand.BOTTOM, ColumnBand.LEFT),
             ),
-            workspacePosition(context, 2, RowBand.TOP, ColumnBand.LEFT),
+            workspaceDestination(context, 2, RowBand.TOP, ColumnBand.LEFT, 1),
             context.getString(R.string.manual_organization_preview_move_reason_single_placement),
         )
         val folderChildRow = context.getString(
@@ -796,7 +783,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
                     context.getString(R.string.manual_organization_preview_kind_application),
                     workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
                 ),
-                context.getString(R.string.manual_organization_preview_region_top_center),
+                workspaceDestination(context, 1, RowBand.TOP, ColumnBand.CENTER, 1),
                 "",
             ),
         ).assertIsDisplayed()
@@ -809,7 +796,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
                     context.getString(R.string.manual_organization_preview_kind_application),
                     workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
                 ),
-                context.getString(R.string.manual_organization_preview_region_top_center),
+                workspaceDestination(context, 1, RowBand.TOP, ColumnBand.CENTER, 1),
                 context.getString(R.string.manual_organization_preview_row_ordinal_note, 2, 1),
             ),
         ).assertIsDisplayed()
@@ -1241,6 +1228,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             R.string.manual_organization_preview_collapsed_state,
             R.string.manual_organization_preview_move_row,
             R.string.manual_organization_preview_same_band_move_row,
+            R.string.manual_organization_preview_workspace_destination,
             R.string.manual_organization_preview_row_ordinal_note,
             R.string.manual_organization_preview_item_row,
             R.string.manual_organization_preview_item_descriptor,
@@ -1717,12 +1705,35 @@ class ManualOrganizationPreferencesInstrumentationTest {
         reason = reason,
     )
 
-    private fun workspace(page: Int, rowBand: RowBand, columnBand: ColumnBand, rowOrdinal: Int) = PreviewPosition.Workspace(
+    private fun workspace(
+        page: Int,
+        rowBand: RowBand,
+        columnBand: ColumnBand,
+        rowOrdinal: Int,
+        columnOrdinal: Int = 1,
+    ) = PreviewPosition.Workspace(
         pageDisplayOrdinal = page,
         isNewPage = false,
         rowBand = rowBand,
         columnBand = columnBand,
         rowOrdinal = rowOrdinal,
+        columnOrdinal = columnOrdinal,
+    )
+
+    /** Issue #234: the anchor-specific destination text of a move row. */
+    private fun workspaceDestination(
+        context: Context,
+        page: Int,
+        rowBand: RowBand,
+        columnBand: ColumnBand,
+        rowOrdinal: Int,
+        columnOrdinal: Int = 1,
+    ): String = context.getString(
+        R.string.manual_organization_preview_workspace_destination,
+        context.getString(regionString(rowBand, columnBand)),
+        context.getString(R.string.manual_organization_preview_page, page),
+        rowOrdinal,
+        columnOrdinal,
     )
 
     /** Expected render of a move whose source and destination are plain workspaces. */
@@ -1734,7 +1745,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             context.getString(R.string.manual_organization_preview_kind_application),
             workspacePosition(context, 1, RowBand.TOP, ColumnBand.LEFT),
         ),
-        workspacePosition(context, 1, RowBand.TOP, ColumnBand.RIGHT),
+        workspaceDestination(context, 1, RowBand.TOP, ColumnBand.RIGHT, 1),
         context.getString(R.string.manual_organization_preview_move_reason_single_placement),
     )
 
@@ -1747,7 +1758,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
             context.getString(R.string.manual_organization_preview_kind_application),
             workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
         ),
-        workspacePosition(context, 1, RowBand.TOP, ColumnBand.LEFT) +
+        workspaceDestination(context, 1, RowBand.TOP, ColumnBand.LEFT, 1) +
             context.getString(R.string.manual_organization_preview_row_ordinal_note, 2, 1),
         context.getString(R.string.manual_organization_preview_move_reason_single_placement),
     )

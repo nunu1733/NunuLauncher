@@ -224,6 +224,10 @@
          領域内調整の文言へ置き換える。 -->
     <string name="manual_organization_preview_move_row">%1$s → %2$s（%3$s）</string>
     <string name="manual_organization_preview_same_band_move_row">%1$s → %2$s内で位置を調整%3$s</string>
+    <!-- Issue #234: workspace destination of both move branches (%2 = 領域,
+         %1 = page, %3 = row ordinal, %4 = column ordinal)。4 要素を常に表示し、
+         resolved anchor をどの grid でも一意に特定できるようにする。 -->
+    <string name="manual_organization_preview_workspace_destination">%2$s・%1$s・%3$d行目・%4$d列目</string>
     <string name="manual_organization_preview_row_ordinal_note">（%1$d段目から%2$d段目）</string>
     <string name="manual_organization_preview_item_row">%1$s：%2$s</string>
     <string name="manual_organization_preview_item_descriptor">「%1$s」(%2$s)・%3$s</string>

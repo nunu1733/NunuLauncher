@@ -448,6 +448,10 @@ object PlanPreviewProjector {
                 rowBand = band(position.cellY, device.rows, RowBand.entries),
                 columnBand = band(position.cellX, device.columns, ColumnBand.entries),
                 rowOrdinal = position.cellY + 1,
+                // Issue #234: the column display ordinal travels with the
+                // projection so the destination formatter never re-derives
+                // coordinates (single derivation path).
+                columnOrdinal = position.cellX + 1,
             )
         }
 

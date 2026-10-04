@@ -198,6 +198,13 @@ sealed interface PreviewPosition {
         val rowBand: RowBand,
         val columnBand: ColumnBand,
         val rowOrdinal: Int,
+        /**
+         * Issue #234: 1-based column display ordinal (`cellX + 1`). The band
+         * wording alone cannot uniquely identify the anchor on grids where a
+         * band spans multiple columns; the destination formatter weaves this
+         * into the destination copy so the resolved anchor is identifiable.
+         */
+        val columnOrdinal: Int,
     ) : PreviewPosition
 
     data class DockRank(val rank: Int) : PreviewPosition

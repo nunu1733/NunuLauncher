@@ -61,6 +61,7 @@ import app.lawnchair.organizer.planning.Warning
 import app.lawnchair.organizer.planning.WarningCode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -92,16 +93,16 @@ class PlanPreviewProjectorTest {
         val moves = result.details.changes.filterIsInstance<MoveChange>()
         assertEquals(2, moves.size)
         assertEquals(
-            PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1),
+            PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 1),
             moves.first { it.item.value == "a" }.source,
         )
         assertEquals(
-            PreviewPosition.Workspace(2, false, RowBand.BOTTOM, ColumnBand.RIGHT, 5),
+            PreviewPosition.Workspace(2, false, RowBand.BOTTOM, ColumnBand.RIGHT, 5, 5),
             moves.first { it.item.value == "a" }.destination,
         )
         assertEquals(PlacementCode.SINGLE_PLACEMENT, moves.first { it.item.value == "a" }.rationale)
         assertEquals(
-            PreviewPosition.Workspace(2, false, RowBand.BOTTOM, ColumnBand.RIGHT, 6),
+            PreviewPosition.Workspace(2, false, RowBand.BOTTOM, ColumnBand.RIGHT, 6, 6),
             moves.first { it.item.value == "b" }.destination,
         )
         assertFalse(moves.any { it.sameBandAdjustment })
@@ -121,8 +122,8 @@ class PlanPreviewProjectorTest {
 
         val move = result.details.changes.single() as MoveChange
         assertTrue(move.sameBandAdjustment)
-        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1), move.source)
-        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 2), move.destination)
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 1), move.source)
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 2, 2), move.destination)
     }
 
     @Test
@@ -177,7 +178,7 @@ class PlanPreviewProjectorTest {
         // position is the identity's presentation, and the kind is restored.
         assertEquals(PreviewPlacementIdentity.Workspace(1, false, 0, 0), row.identity)
         assertEquals(CanonicalItemKind.AppWidget, row.kind)
-        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1), row.current)
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 1), row.current)
         assertEquals(1, result.details.counts.preservedCount)
     }
 
@@ -225,7 +226,7 @@ class PlanPreviewProjectorTest {
         val row = result.details.changes.single() as NewFolderChange
         assertEquals(NewFolderOrdinal(0), row.ordinal)
         assertEquals(PreviewLabel.Named("Folder"), row.name)
-        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.CENTER, 1), row.placement)
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.CENTER, 1, 3), row.placement)
         assertEquals(listOf(PreviewLabel.Named("Ta"), PreviewLabel.Named("Tb")), row.memberLabels)
         assertEquals(1, result.details.counts.newFolderCount)
     }
@@ -337,7 +338,7 @@ class PlanPreviewProjectorTest {
         assertEquals(NewPageOrdinal(0), pageRow.ordinal)
         assertEquals(3, pageRow.displayPosition)
         val move = result.details.changes.filterIsInstance<MoveChange>().single()
-        assertEquals(PreviewPosition.Workspace(3, true, RowBand.TOP, ColumnBand.LEFT, 1), move.destination)
+        assertEquals(PreviewPosition.Workspace(3, true, RowBand.TOP, ColumnBand.LEFT, 1, 1), move.destination)
         assertEquals(1, result.details.counts.newPageCount)
     }
 
@@ -363,9 +364,9 @@ class PlanPreviewProjectorTest {
         val result = PlanPreviewProjector.project(plan, planned(moved("a"), moved("b"))) as PlanPreviewProjector.Result.Ready
 
         val move = result.details.changes.filterIsInstance<MoveChange>().first { it.item.value == "a" }
-        assertEquals(PreviewPosition.Workspace(2, true, RowBand.TOP, ColumnBand.LEFT, 1), move.destination)
+        assertEquals(PreviewPosition.Workspace(2, true, RowBand.TOP, ColumnBand.LEFT, 1, 1), move.destination)
         val persistedMove = result.details.changes.filterIsInstance<MoveChange>().first { it.item.value == "b" }
-        assertEquals(PreviewPosition.Workspace(3, false, RowBand.TOP, ColumnBand.LEFT, 1), persistedMove.destination)
+        assertEquals(PreviewPosition.Workspace(3, false, RowBand.TOP, ColumnBand.LEFT, 1, 2), persistedMove.destination)
         val pageRow = result.details.changes.filterIsInstance<NewPageChange>().single()
         assertEquals(2, pageRow.displayPosition)
     }
@@ -404,7 +405,7 @@ class PlanPreviewProjectorTest {
         // presentation contract as preserve rows.
         assertEquals(PreviewPlacementIdentity.Workspace(1, false, 0, 0), warningRows.single().identity)
         assertEquals(CanonicalItemKind.Application, warningRows.single().kind)
-        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1), warningRows.single().current)
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 1), warningRows.single().current)
         assertEquals(
             mapOf(
                 WarningCode.LEGACY_SHORTCUT_REVIEW to 1,
@@ -604,8 +605,8 @@ class PlanPreviewProjectorTest {
         val result = PlanPreviewProjector.project(plan, planned(moved("span"))) as PlanPreviewProjector.Result.Ready
 
         val move = result.details.changes.single() as MoveChange
-        assertEquals(PreviewPosition.Workspace(1, false, RowBand.CENTER, ColumnBand.LEFT, 3), move.source)
-        assertEquals(PreviewPosition.Workspace(2, false, RowBand.BOTTOM, ColumnBand.RIGHT, 5), move.destination)
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.CENTER, ColumnBand.LEFT, 3, 2), move.source)
+        assertEquals(PreviewPosition.Workspace(2, false, RowBand.BOTTOM, ColumnBand.RIGHT, 5, 5), move.destination)
     }
 
     // Issue #208 identity-invariant fixtures (F1-F5, F9, F10).
@@ -660,8 +661,10 @@ class PlanPreviewProjectorTest {
         ) as PlanPreviewProjector.Result.Ready
 
         val rows = result.details.changes.filterIsInstance<PreservedChange>()
-        // Distinct anchors, and both band to the same coarse region — the
-        // descriptor supplement (row/column) is what keeps the rows apart.
+        // Distinct anchors, and — since Issue #234 — the projection itself
+        // keeps them apart (row AND column ordinals); the rendered coarse
+        // text still collides, so the descriptor supplement is what separates
+        // the rendered rows.
         assertEquals(
             listOf(
                 PreviewPlacementIdentity.Workspace(1, false, 0, 0),
@@ -669,7 +672,7 @@ class PlanPreviewProjectorTest {
             ),
             rows.map { it.identity },
         )
-        assertEquals(rows[0].current, rows[1].current)
+        assertNotEquals(rows[0].current, rows[1].current)
     }
 
     @Test

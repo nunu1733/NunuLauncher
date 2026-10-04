@@ -103,10 +103,14 @@ class PreviewApplyPlacementEqualityTest {
             .filterIsInstance<MoveChange>()
             .associate { it.item.value to it.destination as PreviewPosition.Workspace }
         // Both anchors sit inside the same coarse band on the same page: the
-        // rendered destination labels collide (F-03 display), yet each derives
-        // from its own intended cell — band TOP/LEFT, row ordinals 1 and 2.
-        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1), destinations.getValue("a"))
-        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 2), destinations.getValue("b"))
+        // F-03 display. Issue #234 keeps the projection lossless (row AND
+        // column ordinals), so the distinct anchors now differ in the
+        // projection itself — while the cell-exact equality chain is
+        // unchanged.
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 1, 2), destinations.getValue("a"))
+        assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.LEFT, 2, 2), destinations.getValue("b"))
+        // Same column, different row: the two anchors differ only by row
+        // ordinal, so copying it makes the projections coincide.
         assertEquals(destinations.getValue("a").copy(rowOrdinal = destinations.getValue("b").rowOrdinal), destinations.getValue("b"))
 
         // Persisted placement: the write-set input resolves identities only —
