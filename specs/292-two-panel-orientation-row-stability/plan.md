@@ -2,7 +2,7 @@
 
 > Issue: #292
 > Spec: [spec.md](./spec.md)
-> Status: accepted
+> Status: implemented
 
 ## Current evidence
 
