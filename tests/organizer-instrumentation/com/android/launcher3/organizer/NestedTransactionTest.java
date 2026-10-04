@@ -38,18 +38,18 @@ import org.junit.runner.RunWith;
  * holds a coordinator lease; inner transactions (plain or reentrant-lease)
  * nest within the same SQLite transaction.
  *
- * <p>Android's {@link SQLiteDatabase} implements nested transactions as
- * named savepoints. A nested transaction that ends without
+ * <p>Android's {@link SQLiteDatabase} implements nested transactions as one
+ * whole unit. A nested transaction that ends without
  * {@link SQLiteTransaction#commit()} (i.e., without
- * {@link SQLiteDatabase#setTransactionSuccessful()}) rolls back to the
- * savepoint, preserving the parent transaction's writes. The parent can
- * then commit or roll back independently ("savepoint semantics").
+ * {@link SQLiteDatabase#setTransactionSuccessful()}) marks the enclosing unit
+ * unsuccessful. The outer transaction rolls back all writes when it closes,
+ * even if it later calls {@link SQLiteTransaction#commit()}; no SAVEPOINT
+ * isolation is provided by this API.
  *
- * <p>AC-06 acceptance: (1) outer+inner commit as one unit, (2) inner
- * failure does not commit inner writes while the outer preserves its own
- * scope, (3) the coordinator lease is held until the outer close, (4) an
- * exception inside the inner propagates and the outer close still releases
- * the lease.
+ * <p>AC-06 acceptance: (1) all successful nested scopes commit as one unit,
+ * (2) any unsuccessful nested scope rolls back the whole unit, (3) the
+ * coordinator lease is held until the outer close, (4) an exception inside
+ * the inner propagates and the outer close still releases the lease.
  */
 @SmallTest
 @RunWith(AndroidJUnit4.class)
@@ -96,10 +96,10 @@ public class NestedTransactionTest {
     }
 
     @Test
-    public void innerCloseWithoutCommitRollsBackInnerWrites() {
-        // AC-06: a nested transaction closed without commit rolls back its
-        // own writes (savepoint rollback) while the outer transaction's
-        // writes are unaffected and can still commit.
+    public void innerCloseWithoutCommitRollsBackWholeUnit() {
+        // AC-06: an unsuccessful nested transaction poisons the whole unit;
+        // closing the outer transaction rolls back both its and the inner
+        // transaction's writes even if the outer calls commit().
         SQLiteDatabase db = mController.getDb();
         final long idA = 9003;
         final long idB = 9004;
@@ -107,14 +107,13 @@ public class NestedTransactionTest {
             insertFavorite(db, idA, "outer-keep");
             try (SQLiteTransaction inner = new SQLiteTransaction(db)) {
                 insertFavorite(db, idB, "inner-rollback");
-                // close() without commit() -> SQLite rolls back to the
-                // savepoint, preserving the outer-level writes.
+                // close() without commit() -> SQLite marks the enclosing
+                // transaction unsuccessful; there is no savepoint rollback.
             }
             outer.commit();
         }
-        // Outer writes are committed.
-        assertTitleEquals(db, idA, "outer-keep");
-        // Inner writes are rolled back.
+        // The unsuccessful inner scope rolls back the whole transaction.
+        assertTitleAbsent(db, idA);
         assertTitleAbsent(db, idB);
     }
 

@@ -1,7 +1,7 @@
 ---
 issue: "#60"
 status: implemented
-updated: 2026-08-18
+updated: 2026-08-24
 ---
 
 # Plan: executor and shared-writer admission audit follow-ups
@@ -21,8 +21,9 @@ Baseline for evidence: main `3663f3157d`. Spec: `spec.md` in this directory.
   TIMEOUT, 10s timeout). No tests cover A-then-B, stale completion,
   cancellation, timeout, or exactly-one-terminal.
 - `SQLiteTransaction` (`LauncherDbUtils.java:217-254`): close releases the
-  lease in `finally`; nesting relies on SQLite's own begin/end nesting.
-  Untested through `ModelDbController.newTransaction`.
+  lease in `finally`; Android's `beginTransaction`/`endTransaction` nesting is
+  whole-unit atomic and does not provide SAVEPOINT isolation. The #117 erratum
+  corrects the prior test/spec expectation while preserving lease lifetime.
 - `LauncherProvider.executeControllerTask` (lines 156-191): Binder thread
   `future.get()` while supplier does `MODEL_EXECUTOR.submit(...).get()`;
   release-thread self-wait hazard has no producer and no test.
@@ -46,8 +47,9 @@ Baseline for evidence: main `3663f3157d`. Spec: `spec.md` in this directory.
    `LauncherProvider.executeControllerTask` deferral under an organizer
    lease (release happens on the deferred-callback executor thread, not
    `MODEL_EXECUTOR`, proving no self-wait); nested `SQLiteTransaction` test
-   through `ModelDbController.newTransaction` including inner close/failure
-   and lease lifetime.
+   through `ModelDbController.newTransaction` proving all-success commit,
+   whole-unit rollback after an unsuccessful inner close, and lease lifetime
+   across inner close/failure.
 4. **Executable writer-inventory allowlist** — source-scan check (python in
    `tools/repo-contract/`, wired into CI `ci.yml`) enumerating every
    `favorites` mutation / raw DB-file writer / tokenless `MODEL_EXECUTOR`
@@ -67,6 +69,8 @@ git submodule update --init --recursive
 ./gradlew assembleLawnWithQuickstepGithubDebug
 ./gradlew testLawnWithQuickstepGithubDebugUnitTest --rerun-tasks
 ./gradlew compileLawnWithQuickstepGithubDebugAndroidTestJavaWithJavac
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \\
+  -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.NestedTransactionTest
 python3 tools/repo-contract/<new scan script>
 ```
 

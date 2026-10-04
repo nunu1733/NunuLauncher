@@ -200,10 +200,11 @@ jobs:
   # serial critical path; the jobs start together after the shared changes gate.
   #
   # Shared-writer / coordinator seam lane: the Issue #113 MODEL_WRITER
-  # self-deadlock regression and the lease admission/FIFO/Binder suites run
-  # permanently here on their own clean API 36 emulator. They exercise the
-  # model DB write seam only (isolated fixture DBs) and stay independent from
-  # the app-state-heavy UI lanes below.
+  # self-deadlock regression, lease admission/FIFO/Binder suites, and the
+  # whole-unit nested SQLiteTransaction contract run permanently here on their
+  # own clean API 36 emulator. They exercise the model DB write seam only
+  # (isolated fixture DBs) and stay independent from the app-state-heavy UI
+  # lanes below.
   organizer-instrumentation-shared-writer-tests:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
@@ -236,7 +237,7 @@ jobs:
           emulator-boot-timeout: 900
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest
+            -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest
       - name: Upload shared-writer instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -297,6 +298,10 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # API 35 also runs the nested transaction contract so the project does not
+  # reintroduce an API-version-dependent SAVEPOINT expectation. The remaining
+  # classes in this lane own the Issue #83 production-input compatibility
+  # evidence.
   organizer-instrumentation-api35-tests:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
@@ -328,7 +333,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           script: |
-            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.integration.ProductionOrganizationInputInstrumentationTest,app.lawnchair.organizer.rules.CategoryOverrideAtomicFileInstrumentationTest,com.android.launcher3.organizer.NestedTransactionTest
             ./gradlew installLawnWithQuickstepGithubDebug installLawnWithQuickstepGithubDebugAndroidTest
             adb shell am force-stop app.lawnchair.debug.test
             adb shell am force-stop app.lawnchair.debug

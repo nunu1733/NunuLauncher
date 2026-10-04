@@ -191,10 +191,10 @@ public class ModelWriterTransactionReentryTest {
         // transaction unwinds that inner lease view exactly once; the outer
         // close afterwards unlocks without leaking recursion.
         //
-        // Persistence across a failed nested scope is intentionally not
-        // asserted: since API 36 SQLiteDatabase propagates a failed child to
-        // the whole outer transaction (no savepoint isolation), so the visible
-        // outcome is platform-version dependent and owned by the framework.
+        // A failed nested SQLiteTransaction poisons the whole transaction on
+        // every supported platform; this test focuses on the separate lease
+        // unwind contract rather than duplicating the data rollback oracle in
+        // NestedTransactionTest.
         SQLiteDatabase db = mController.getDb();
         final long id = 9106;
         insertFavorite(db, id, "initial");
@@ -223,9 +223,9 @@ public class ModelWriterTransactionReentryTest {
         });
 
         assertNull("nested close/failure path did not unwind cleanly", failure.get());
-        // Both possible platform outcomes (savepoint isolation on older APIs,
-        // whole-transaction rollback on API 36+) restore/preserve the pre-test
-        // value; the row must remain present and untouched by partial writes.
+        // The row was seeded before the transaction, so whole-unit rollback
+        // leaves the pre-test value intact; no partial inner rollback is
+        // implied by this lease-unwind test.
         assertEquals("initial", queryTitle(db, id));
         try (LayoutWriteCoordinator.Lease post =
                      mCoordinator.tryAcquire(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER)) {
