@@ -1,6 +1,6 @@
 ---
 issue: "#150"
-status: accepted
+status: implemented
 requirements:
   - A7-COMPLETION-BARRIER
   - A7-FAILURE-SEAM
@@ -291,3 +291,8 @@ raw user-facing exception.
   the root-cause oracle inspects the existing completion runnable's flag
   synchronously at a latch/barrier-held loader transaction boundary with no
   timed non-return or scheduling assertion (commit `38d33a622a`).
+- 2026-08-28: Implemented and verified via PR #160 (merged at `8740f8c136`).
+  Causal completion barrier, canonical capture ordering, and post-close
+  supersession terminalization; all AC-150 criteria met with an accepted
+  independent audit (`docs/assessment/pr-160-manual-organization-a7-verification.md`)
+  and redacted device evidence (`docs/assessment/evidence/issue-150-device-verification.md`).
