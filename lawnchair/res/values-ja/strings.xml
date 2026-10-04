@@ -17,6 +17,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools" xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="generic_smartspace_concatenated_desc">%1$s、%2$s</string>
     <string name="accessibility_smartspace_page">%1$d/%2$d ページ</string>
+    <!-- Issue #138: supported release Settings route for the diagnostics journal export -->
+    <string name="organizer_diagnostics_title">オーガナイザー診断</string>
+    <string name="organizer_diagnostics_description">プライバシーに配慮したオーガナイザー診断ジャーナルをサポート用にファイルへ書き出します。</string>
     <string name="organizer_diagnostics_export_label">オーガナイザー診断データを書き出す</string>
     <string name="organizer_diagnostics_export_subtitle">オーガナイザー診断ジャーナルをファイルに出力します</string>
     <string name="organizer_diagnostics_export_success">診断データを書き出しました</string>
