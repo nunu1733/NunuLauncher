@@ -2,7 +2,7 @@
 
 > Issue: [#38](https://github.com/nunu1733/NunuLauncher/issues/38)
 > Spec: [spec.md](./spec.md)
-> Status: in progress
+> Status: implemented (PR #73)
 > Updated: 2026-08-16
 
 ## Current-code basis
@@ -52,7 +52,7 @@
 | `lawnchair/src/app/lawnchair/ui/popup/OrganizerLockShortcut.kt` | New. `SystemShortcut.Factory` + state-aware confirmation `AlertDialog` for application/deep-shortcut rows. |
 | `lawnchair/src/app/lawnchair/LauncherLauncher.kt` (`LawnchairLauncher.kt`) | Append the lock factory to `getSupportedShortcuts()`. |
 | `.../ui/preferences/destinations/OrganizerLockPreferences.kt` | New. Management/review screen (list, state chips, confirm dialogs, batch review). |
-| `.../ui/preferences/navigation/PreferenceRoutes.kt` / `PreferenceNavigation.kt` / `PreferencesDashboard.kt` | Route + registration + entry. |
+| `.../ui/preferences/navigation/PreferenceRoutes.kt` / `PreferenceNavigation.kt` + `HomeScreenPreferences.kt` | Route + registration + entry row in the Home screen `layout` group (audit note: implemented there rather than the dashboard root). |
 | `lawnchair/res/values/strings.xml` | New localized strings (default locale). |
 | `tests/unit/app/lawnchair/organizer/locks/**` | New JVM tests. |
 | `tests/organizer-instrumentation/app/lawnchair/organizer/locks/**` | New instrumentation tests (real DB + Compose UI). |
