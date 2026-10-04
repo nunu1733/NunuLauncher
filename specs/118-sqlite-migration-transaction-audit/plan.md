@@ -115,5 +115,8 @@ fresh database deterministically.
       downgrade; API 36 emulator).
 - [x] Minimal implementation completed.
 - [x] Existing fixtures re-run green (10/10 across the four suites).
-- [ ] Full verification commands recorded in the PR.
-- [ ] PR evidence and remaining risks recorded.
+- [x] Full verification commands recorded in the PR.
+- [x] PR evidence and remaining risks recorded (independent audit under
+      `docs/assessment/pr-122-sqlite-migration-transaction-ownership.md`;
+      residual risk of pre-#118 rollback binaries pinned by
+      `rollback32.Schema32RollbackBinaryTest`).

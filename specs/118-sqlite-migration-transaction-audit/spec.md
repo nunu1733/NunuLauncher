@@ -1,6 +1,6 @@
 ---
 issue: "#118"
-status: accepted
+status: implemented
 requirements:
   - NFR-001
   - NFR-002
@@ -277,3 +277,4 @@ Not applicable; no UI surface.
   `866d231ffdfe2dcc8b0e550e65ea6f1301b6674c`) and proves committed version,
   table shape, and data outcome for the successful field rollback and its
   non-recovering recipe-failure behavior (residual risk, kept in Non-goals).
+- 2026-08-23: Implemented by PR #122 (squash commit `93889336e7`).
