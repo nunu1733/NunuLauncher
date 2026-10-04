@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -220,6 +222,56 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule.onNodeWithText(context.getString(R.string.exchange_import_retry)).performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("exchange-import-raw-toggle").fetchSemanticsNodes().isEmpty()
+    }
+
+    /**
+     * AC-8 (semantics): each source operation carries its own label, and a typed
+     * failure is announced verbatim on a polite live region. This is the
+     * machine-checked part of the accessibility coverage; a real-AT walkthrough
+     * (spoken order/words) is recorded separately in docs/assessment.
+     */
+    @Test
+    fun sourceLabelsAndTypedFailureAnnouncementAreExposed() {
+        val holder = newHolder()
+        setContent(holder)
+        openImportSurface(holder)
+
+        composeRule.onNodeWithTag("exchange-import-clipboard")
+            .assertTextContains(context.getString(R.string.exchange_import_from_clipboard))
+        composeRule.onNodeWithTag("exchange-import-file")
+            .assertTextContains(context.getString(R.string.exchange_import_from_file))
+
+        composeRule.onNodeWithTag("exchange-import-fallback-toggle").performClick()
+        composeRule.waitForIdle()
+        // A marked block whose JSON carries a contract-external key: the codec
+        // rejects it, so the surface must announce the typed failure text.
+        val malformed = buildString {
+            append(ExchangeContract.INTENT_BEGIN_MARKER)
+            append('\n')
+            append(
+                """{"schemaVersion":"personalized-intent-v3",""" +
+                    """"exportId":"instrumentation-no-session",""" +
+                    """"itemIntents":[{"ref":"r1","preserve":true}],"unexpectedKey":1}""",
+            )
+            append('\n')
+            append(ExchangeContract.INTENT_END_MARKER)
+        }
+        composeRule.onNodeWithTag("exchange-import-field").performTextInput(malformed)
+        composeRule.onNodeWithTag("exchange-import-action").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithTag("exchange-import-outcome-message").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        val message = composeRule.onNodeWithTag("exchange-import-outcome-message").fetchSemanticsNode()
+        val liveRegion = runCatching { message.config[SemanticsProperties.LiveRegion] }.getOrNull()
+        check(liveRegion == LiveRegionMode.Polite) {
+            "the typed failure must be announced politely, was $liveRegion"
+        }
+        val expected = context.getString(R.string.exchange_failure_schema_mismatch)
+        val announced = runCatching {
+            message.config[SemanticsProperties.Text].map { it.text }
+        }.getOrNull().orEmpty()
+        check(announced.contains(expected)) { "the typed failure must be announced verbatim, was $announced" }
     }
 
     /** AC-8 (structure): 200% font keeps the primary actions on screen, editor bounded. */
