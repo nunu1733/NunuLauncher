@@ -225,6 +225,28 @@ class ManualOrganizationRun internal constructor(
         data object Busy : StartOutcome
     }
 
+    /**
+     * Issue #369 (spec RD-7): the user-visible preparation phase behind T-09's
+     * phase row (検出 → capture → plan). The [State] enumeration cannot serve
+     * this purpose: the legacy admission publish and the real composed capture
+     * are the same `State.Capturing`, and StateFlow conflation does not hide
+     * intermediate values from a main collector. Updates happen under [lock],
+     * always *before* the state publish they describe (phase-before-state
+     * ordering), so no collector ever observes the new state with the previous
+     * phase and the visible column stays canonical (検出 → [選択] → capture →
+     * plan) including the return path from the selection surface.
+     */
+    enum class PreparationPhase {
+        /** Admission through detection, including the legacy admission `Capturing`. */
+        DETECTION,
+
+        /** The composed phase (capture + plan projection window until planning). */
+        CAPTURE,
+
+        /** Plan execution after a successful composition. */
+        PLAN,
+    }
+
     sealed interface State {
         data object Idle : State
         data object Capturing : State
@@ -234,11 +256,19 @@ class ManualOrganizationRun internal constructor(
 
         /**
          * Issue #228: explicit selection of missing apps. [candidates] is the
-         * detection-time cut (deterministic display order); an empty list
-         * renders the zero-candidates notice and a plain continue. [runId]
+         * detection-time cut (deterministic display order). [runId]
          * identifies the owning run so the selection surface resets its
          * process-local state for every new run (D-1). Selection state never
          * persists.
+         *
+         * Issue #369 (TO-BE D-06): an empty [candidates] list with no
+         * [intentScopeCount] candidates and no [scopeRejection] is the internal
+         * zero-candidate pass-through — the machine enters this state but
+         * `continueWithEmptySelection` immediately continues the composed
+         * phase, and the face mapping renders it as the T-09 preparation face,
+         * never as the selection surface. The surface only shows for a
+         * non-empty cut, or for an empty cut under an intent-bound run whose
+         * export scope still holds candidates (the spec 331 mismatch path).
          *
          * Issue #331: [intentScopeCount] is the export scope's candidate
          * count when a validated intent is bound to this run (guidance only —
@@ -377,6 +407,14 @@ class ManualOrganizationRun internal constructor(
     /** True while a run or recovery operation is alive (spec #368). */
     val operationActive: StateFlow<Boolean> = operationActiveHolder.asStateFlow()
 
+    // Issue #369 (spec RD-7): deterministic user-visible preparation phase for
+    // T-09. Reset to DETECTION on every admission and only advanced under the
+    // lock, before the state publish it describes.
+    private val preparationPhaseHolder = MutableStateFlow(PreparationPhase.DETECTION)
+
+    /** Issue #369 (spec RD-7): the visible 検出 → capture → plan progression. */
+    val preparationPhase: StateFlow<PreparationPhase> = preparationPhaseHolder.asStateFlow()
+
     private val lock = Any()
     private var activeOperation: Operation? = null
     private var pending: PendingPlan? = null
@@ -421,26 +459,89 @@ class ManualOrganizationRun internal constructor(
             setIfActive(operation, State.CandidateDetection)
             when (val detection = application.detectMissingAppCandidates()) {
                 is CandidateDetectionResult.Ready -> {
-                    // Issue #331: retain the detection cut so a scope binding
-                    // rejection can restore the selection surface.
-                    operation.detectedCandidates = detection.candidates
-                    setIfActive(
-                        operation,
-                        State.Selecting(
-                            runId,
-                            detection.candidates,
-                            intentScopeCount = operation.intent?.session?.scopeCandidates?.size ?: 0,
-                        ),
-                    )
+                    // Issue #369 (RD-6): the detection cut is accepted under
+                    // the lock with an active re-check, so a cancel during
+                    // detection can never publish a selection surface for a
+                    // dead operation.
+                    if (!acceptDetection(operation, detection)) return started
+                    val exportedScopeCandidates = operation.intent?.session?.scopeCandidates
+                    if (detection.candidates.isEmpty() && exportedScopeCandidates.isNullOrEmpty()) {
+                        // Issue #369 (TO-BE D-06, spec RD-3): an empty cut
+                        // never shows the selection surface. The machine still
+                        // enters `Selecting` (transition contract unchanged —
+                        // disposition §3.3) and the coordinator itself drives
+                        // the continuation an explicit empty confirmation
+                        // would take; the composed-phase gate below re-checks
+                        // cancellation.
+                        setIfActive(operation, State.Selecting(runId, detection.candidates, intentScopeCount = 0))
+                        continueWithEmptySelection(operation)
+                    } else {
+                        setIfActive(
+                            operation,
+                            State.Selecting(
+                                runId,
+                                detection.candidates,
+                                intentScopeCount = operation.intent?.session?.scopeCandidates?.size ?: 0,
+                            ),
+                        )
+                    }
                 }
 
-                is CandidateDetectionResult.Unavailable -> runComposedPhase(operation, selection = null)
+                is CandidateDetectionResult.Unavailable -> {
+                    if (!acceptDetection(operation, detection)) return started
+                    runComposedPhase(operation, selection = null)
+                }
             }
         } catch (failure: Throwable) {
             abort(operation)
             throw failure
         }
         return started
+    }
+
+    /**
+     * Issue #369 (spec RD-6): accepts the detection result under the lock with
+     * an active re-check. Returns false when the operation was cancelled while
+     * the detector ran — the caller must then return without publishing any
+     * state or touching the journal (a cancelled run keeps its journal empty
+     * and its lease released exactly once by [cancel]).
+     */
+    private fun acceptDetection(operation: Operation, detection: CandidateDetectionResult): Boolean = synchronized(lock) {
+        if (!isActiveLocked(operation)) return false
+        when (detection) {
+            // Issue #331: retain the detection cut so a scope binding
+            // rejection can restore the selection surface.
+            is CandidateDetectionResult.Ready -> operation.detectedCandidates = detection.candidates
+
+            is CandidateDetectionResult.Unavailable -> Unit
+        }
+        true
+    }
+
+    /**
+     * Issue #369 (TO-BE D-06, spec RD-3): continues an empty detection cut
+     * into the composed phase. The state machine already entered
+     * [State.Selecting]; this internal continuation takes the same path an
+     * explicit empty confirmation would — without faking a user action, since
+     * there is nothing to select (spec 228 D-1 covers candidates). The
+     * composed-phase gate re-checks cancellation, so a cancel during detection
+     * still wins; a cancel after the gate sees a started journal and emits
+     * `USER_CANCELLED` per the existing contract.
+     */
+    private fun continueWithEmptySelection(operation: Operation) {
+        synchronized(lock) {
+            if (!isActiveLocked(operation)) return
+            // Issue #369 (RD-7): the visible phase commits before the state
+            // publish that makes T-09 visible, in the same lock section.
+            preparationPhaseHolder.value = PreparationPhase.CAPTURE
+            stateHolder.value = State.Capturing
+        }
+        try {
+            runComposedPhase(operation, selection = null)
+        } catch (failure: Throwable) {
+            abort(operation)
+            throw failure
+        }
     }
 
     /**
@@ -484,6 +585,12 @@ class ManualOrganizationRun internal constructor(
                 )
                 null
             } else {
+                // Issue #369 (RD-7): the visible phase commits before the state
+                // publish that makes T-09 visible again after the selection
+                // surface, in the same lock section — a collector therefore
+                // never sees (Capturing, DETECTION) and the visible column
+                // never re-announces detection after T-08.
+                preparationPhaseHolder.value = PreparationPhase.CAPTURE
                 stateHolder.value = State.Capturing
                 current
             }
@@ -589,17 +696,31 @@ class ManualOrganizationRun internal constructor(
         // runId — and stays constant for every event that follows
         // (RUN_STARTED through terminal).
         val diagnosticsRunMode = if (selection != null) RunMode.SCOPE_COMPOSED_ORGANIZATION else RunMode.FULL_ORGANIZATION
-        operation.diagnosticsRunMode = diagnosticsRunMode
-        emit(
-            RunEvent(
-                journalSequence = 0L,
-                runId = runId.value,
-                trigger = operation.trigger,
-                runMode = diagnosticsRunMode,
-                phase = PhaseCode.RUN_STARTED,
-            ),
-        )
-        operation.journalStarted = true
+        // Issue #369 (spec RD-6): the entry gate decides start-vs-abandon
+        // atomically with the RUN_STARTED emission. T-09's interruption
+        // affordance makes cancel during detection user-reachable; a cancelled
+        // operation must never open its journal or run a composition. Either
+        // the cancel wins first (the gate returns, journal stays empty, lease
+        // already closed exactly once) or the gate commits first
+        // (USER_CANCELLED follows RUN_STARTED per the existing contract).
+        synchronized(lock) {
+            if (!isActiveLocked(operation)) return
+            operation.diagnosticsRunMode = diagnosticsRunMode
+            // Issue #369 (RD-7): idempotent on the paths that already committed
+            // CAPTURE with their Capturing publish; authoritative for the
+            // detection-unavailable continuation that enters through the gate.
+            preparationPhaseHolder.value = PreparationPhase.CAPTURE
+            operation.journalStarted = true
+            emit(
+                RunEvent(
+                    journalSequence = 0L,
+                    runId = runId.value,
+                    trigger = operation.trigger,
+                    runMode = diagnosticsRunMode,
+                    phase = PhaseCode.RUN_STARTED,
+                ),
+            )
+        }
         // The composition performs its own canonical capture (plan §5), so the
         // run re-enters the capturing phase after the selection surface.
         setIfActive(operation, State.Capturing)
@@ -686,7 +807,14 @@ class ManualOrganizationRun internal constructor(
                         deviceProfile = deviceSummary(input),
                     ),
                 )
-                setIfActive(operation, State.Planning)
+                // Issue #369 (RD-7): the visible phase commits before the
+                // Planning publish, in the same lock section.
+                synchronized(lock) {
+                    if (isActiveLocked(operation)) {
+                        preparationPhaseHolder.value = PreparationPhase.PLAN
+                        stateHolder.value = State.Planning
+                    }
+                }
                 if (!isActive(operation)) return
                 val result = planner.plan(input)
                 if (!isActive(operation)) return
@@ -1141,6 +1269,10 @@ class ManualOrganizationRun internal constructor(
             pendingRecovery = null
             appliedPoint = null
             lastVerifiedApply = null
+            // Issue #369 (RD-7): a fresh run always starts the visible
+            // progression at detection — the legacy admission Capturing below
+            // projects as 検出, so the first visible phase is never capture.
+            preparationPhaseHolder.value = PreparationPhase.DETECTION
             stateHolder.value = State.Capturing
             updateOperationActiveLocked()
             operation
