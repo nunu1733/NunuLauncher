@@ -193,6 +193,7 @@ None。spec 時点で確定した判断は §Design decisions (D1–D6) のと�
 - 2026-09-03: Drafted for Issue #195。#194 spec が委ねた 4 項目の契約判断 (D1–D4) と assessment §6.1 の residual risk 判定 (D5)、truncation 規約 (D6) を確定して作成。Issue owner の実施指示に基づき受理し、owner review は実装 PR で継続する。
 - 2026-09-03: Review revision (owner review @ PR #198): warning group の見出し / 展開件数の truth を `ItemWarningChange` 行数へ分離し、global / multi-item warning は header count のみへ明確化 (Medium, §D2/§D6)。a11y 契約へ展開後の展開 action focus 保持を明記し、AC-5 の traversal evidence を実際の keyboard focus 移動で検証するよう更新 (Blocking)。
 - 2026-09-03: Re-review fix (owner re-review @ PR #198): docs-only の整合性修正 — §D6 の展開件数 N の記述、spec 52 の Preview and details / MFO-17 を §D2 の warning 例外と揃えた。実装・test への変更はない。
+- 2026-09-06: [Issue #208](https://github.com/nunu1733/NunuLauncher/issues/208) による行表現の拡張 ([spec 208](../208-organizer-proposal-placement-identity/spec.md) を正本とする): 移動・保持・警告行の先頭が source descriptor (「名前 (kind) — 現在位置」) になり、同名 placement 行が descriptor で区別できる。保持・警告行は `current: PreviewPosition` を消費し、folder 位置語は folder 内 position (1-based) を含む。descriptor が衝突する同名行には identity 由来の補助語 (cell 序数・split stage) が付く。grouping / counts truth / truncation (§D2 / §D6) の契約は無変更。
 
 ## References
 

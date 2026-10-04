@@ -18,6 +18,7 @@ import app.lawnchair.organizer.application.public.PreviewChange
 import app.lawnchair.organizer.application.public.PreviewCounts
 import app.lawnchair.organizer.application.public.PreviewFolderRef
 import app.lawnchair.organizer.application.public.PreviewLabel
+import app.lawnchair.organizer.application.public.PreviewPlacementIdentity
 import app.lawnchair.organizer.application.public.PreviewPosition
 import app.lawnchair.organizer.application.public.RowBand
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
@@ -59,7 +60,10 @@ object PlanPreviewProjector {
         // (the same value the new-folder row and the apply writer use). A join
         // miss is a contract violation and fails closed.
         val plannedFolderNames = plannedFolderNames(plan) ?: return Result.Invalid
-        val context = PositionContext(plan, sourceItemByItemId, plannedFolderNames)
+        val warningItemIds = planned.warnings.flatMap { warning ->
+            warning.params.filterIsInstance<DiagnosticParam.ItemParam>().map { it.item }
+        }
+        val context = PositionContext(plan, sourceItemByItemId, plannedFolderNames, warningItemIds)
         val changes = mutableListOf<PreviewChange>()
 
         plan.actions.forEach { action ->
@@ -82,8 +86,11 @@ object PlanPreviewProjector {
                 ?: return Result.Invalid
             // Issue #201: the folder name is the same resolved title the apply
             // writer persists — read from the intended state, never re-derived.
+            // Issue #208: the placement goes through the single identity ->
+            // position path like every other row.
             val name = plannedFolderNames[folder.ordinal] ?: return Result.Invalid
-            val placement = context.workspacePosition(insert.intended) ?: return Result.Invalid
+            val folderIdentity = context.identity(insert.intended) ?: return Result.Invalid
+            val placement = context.position(folderIdentity) ?: return Result.Invalid
             val memberLabels = folder.members.map { memberId ->
                 sourceItemByItemId[memberId]?.let(::itemLabel) ?: return Result.Invalid
             }
@@ -106,10 +113,17 @@ object PlanPreviewProjector {
             val itemParams = warning.params.filterIsInstance<DiagnosticParam.ItemParam>()
             if (itemParams.size == 1) {
                 val state = sourceItemByItemId[itemParams.single().item] ?: return Result.Invalid
+                // Issue #208: the same source item keeps one identity across
+                // its preserve and warning rows (source-item-keyed
+                // discriminators), so a warned item never splits identities.
+                val identity = context.identity(state) ?: return Result.Invalid
                 changes.add(
                     ItemWarningChange(
                         item = itemParams.single().item,
                         label = itemLabel(state),
+                        identity = identity,
+                        kind = state.kind,
+                        current = context.position(identity) ?: return Result.Invalid,
                         code = warning.code,
                     ),
                 )
@@ -157,10 +171,16 @@ object PlanPreviewProjector {
         return when (action) {
             is ApplyAction.Preserve -> {
                 val reason = (disposition as? Disposition.Preserved)?.reason ?: return null
+                val identity = context.identity(action.expected) ?: return null
                 listOf(
                     PreservedChange(
                         item = itemId,
                         label = context.label(action.expected),
+                        identity = identity,
+                        kind = action.expected.kind,
+                        // `current == position(identity)` by construction; a
+                        // miss here is a parent-title contract violation.
+                        current = context.position(identity) ?: return null,
                         reason = reason,
                     ),
                 )
@@ -168,12 +188,24 @@ object PlanPreviewProjector {
 
             is ApplyAction.Update -> {
                 if (action.expected.placement == action.intended.placement) return emptyList()
+                val sourceIdentity = context.identity(action.expected) ?: return null
+                val destinationIdentity = context.identity(action.intended) ?: return null
+                // A move row never speaks about an undescribed container: the
+                // planner targets supported placements only (fail-closed,
+                // matching the pre-#208 null-position behavior).
+                if (sourceIdentity is PreviewPlacementIdentity.Unidentified ||
+                    destinationIdentity is PreviewPlacementIdentity.Unidentified
+                ) {
+                    return null
+                }
                 listOf(
                     MoveChange(
                         item = itemId,
                         label = context.label(action.expected),
-                        source = context.position(action.expected) ?: return null,
-                        destination = context.position(action.intended) ?: return null,
+                        identity = sourceIdentity,
+                        kind = action.expected.kind,
+                        source = context.position(sourceIdentity) ?: return null,
+                        destination = context.position(destinationIdentity) ?: return null,
                         rationale = (disposition as? Disposition.Moved)?.rationale,
                     ),
                 )
@@ -212,16 +244,44 @@ object PlanPreviewProjector {
     }
 
     /**
-     * Shared position normalization: 1-based page display ordinal over the
-     * combined `PageOrder` sort, 3x3 bands from the start cell
-     * (`floor(coord * 3 / dimension)`, clamped), and a 1-based row ordinal.
+     * Shared identity + position normalization (Issue #208): 1-based page
+     * display ordinal over the combined `PageOrder` sort, identity anchors at
+     * the exact start cell, and the presentation bands it into 3x3 regions
+     * (`floor(coord * 3 / dimension)`, clamped) with a 1-based row ordinal.
+     * Identity is generated once from the capture placement; every
+     * `PreviewPosition` derives from an identity, never from a second capture
+     * lookup (single derivation path).
      */
     private class PositionContext(
         private val plan: ValidatedLayoutPlan,
         private val sourceItemByItemId: Map<ItemId, CanonicalItemState>,
         private val plannedFolderNames: Map<NewFolderOrdinal, PreviewLabel>,
+        warningItemIds: List<ItemId>,
     ) {
         private val plannedFolderOrdinals: Set<NewFolderOrdinal> = plan.newFolders.map { it.ordinal }.toSet()
+
+        /**
+         * Issue #208: `Unidentified` discriminators keyed by source item and
+         * assigned once per proposal — the same item keeps one identity
+         * across its move / preserve / warning rows regardless of how many
+         * times identity() is called.
+         */
+        private val unidentifiedDiscriminatorByItemId: Map<ItemId, Int> = buildMap {
+            var next = 1
+            fun claim(state: CanonicalItemState?) {
+                (state?.ref as? ApplicationItemRef.PersistentItem)?.let { ref ->
+                    if (state.placement is PlacementState.UnsupportedContainer) putIfAbsent(ref.itemId, next++)
+                }
+            }
+            plan.actions.forEach { action ->
+                when (action) {
+                    is ApplyAction.Update -> claim(action.expected)
+                    is ApplyAction.Preserve -> claim(action.expected)
+                    is ApplyAction.Insert -> Unit
+                }
+            }
+            warningItemIds.forEach { id -> claim(sourceItemByItemId[id]) }
+        }
 
         /**
          * Combined `PageOrder` sequence: persistent and planned pages share one
@@ -254,40 +314,67 @@ object PlanPreviewProjector {
 
         fun label(state: CanonicalItemState): PreviewLabel = itemLabel(state)
 
-        fun position(state: CanonicalItemState): PreviewPosition? = when (val placement = state.placement) {
-            is PlacementState.Workspace -> workspacePosition(state)
+        /**
+         * Issue #208: canonical identity of a capture placement. `null` means
+         * a parent-title contract violation (fail-closed); unsupported
+         * containers resolve to [PreviewPlacementIdentity.Unidentified] with
+         * the source-item-keyed discriminator, so unsupported placements keep
+         * unique identities too.
+         */
+        fun identity(state: CanonicalItemState): PreviewPlacementIdentity? = when (val placement = state.placement) {
+            is PlacementState.Workspace -> workspaceIdentity(state)
 
-            is PlacementState.Dock -> PreviewPosition.DockRank(placement.rank)
+            is PlacementState.Dock -> PreviewPlacementIdentity.Dock(placement.rank)
 
             is PlacementState.FolderChild -> when (val parent = placement.parent) {
                 is ApplicationItemRef.PersistentItem -> sourceItemByItemId[parent.itemId]
                     ?.takeIf { it.kind is CanonicalItemKind.Folder }
-                    ?.let { PreviewPosition.InFolder(PreviewFolderRef.Existing(itemLabel(it))) }
+                    ?.let { parentState ->
+                        val parentIdentity = identity(parentState)
+                        parentIdentity?.let { PreviewPlacementIdentity.FolderChild(parentIdentity, placement.rank) }
+                    }
 
                 is ApplicationItemRef.PlannedFolder ->
                     parent.ordinal
                         .takeIf { it in plannedFolderOrdinals }
-                        ?.let { ord ->
-                            plannedFolderNames[ord]
-                                ?.let { PreviewPosition.InFolder(PreviewFolderRef.Planned(ord, it)) }
-                        }
+                        ?.takeIf { plannedFolderNames.containsKey(it) }
+                        ?.let { PreviewPlacementIdentity.FolderChild(PreviewPlacementIdentity.PlannedFolder(it), placement.rank) }
 
                 is ApplicationItemRef.PlannedCandidate -> null
             }
 
             is PlacementState.AppPairChild -> when (val parent = placement.parent) {
-                is ApplicationItemRef.PersistentItem -> sourceItemByItemId[parent.itemId]
-                    ?.let { PreviewPosition.InAppPair(itemLabel(it)) }
+                is ApplicationItemRef.PersistentItem -> sourceItemByItemId[parent.itemId]?.let { parentState ->
+                    val parentIdentity = identity(parentState)
+                    parentIdentity?.let { PreviewPlacementIdentity.AppPairChild(parentIdentity, placement.stage) }
+                }
 
                 else -> null
             }
 
-            is PlacementState.UnsupportedContainer -> null
+            is PlacementState.UnsupportedContainer -> {
+                val itemId = (state.ref as? ApplicationItemRef.PersistentItem)?.itemId ?: return null
+                unidentifiedDiscriminatorByItemId[itemId]?.let {
+                    PreviewPlacementIdentity.Unidentified(code = placement.code, proposalLocalDiscriminator = it)
+                }
+            }
         }
 
-        fun workspacePosition(state: CanonicalItemState): PreviewPosition.Workspace? {
+        /**
+         * Identity anchors carry no display titles, so folder / app-pair
+         * presentation resolves the parent's title through this map, keyed by
+         * the parent item's own identity. Source identities are unique (no
+         * two source items share a placement), so the map is collision-free.
+         */
+        private val labelByIdentity: Map<PreviewPlacementIdentity, PreviewLabel> = buildMap {
+            sourceItemByItemId.values.forEach { state ->
+                val id = identity(state) ?: return@buildMap
+                put(id, itemLabel(state))
+            }
+        }
+
+        fun workspaceIdentity(state: CanonicalItemState): PreviewPlacementIdentity.Workspace? {
             val placement = state.placement as? PlacementState.Workspace ?: return null
-            val device = plan.sourceState.deviceCapabilities
             val ordinal: Int
             val isNewPage: Boolean
             when (val page = placement.page) {
@@ -301,12 +388,66 @@ object PlanPreviewProjector {
                     isNewPage = true
                 }
             }
-            return PreviewPosition.Workspace(
+            return PreviewPlacementIdentity.Workspace(
                 pageDisplayOrdinal = ordinal,
                 isNewPage = isNewPage,
-                rowBand = band(placement.cell.y, device.rows, RowBand.entries),
-                columnBand = band(placement.cell.x, device.columns, ColumnBand.entries),
-                rowOrdinal = placement.cell.y + 1,
+                cellX = placement.cell.x,
+                cellY = placement.cell.y,
+            )
+        }
+
+        /**
+         * Issue #208: the single identity -> presentation path. Total over
+         * every well-formed identity: `PlannedFolder` resolves through the
+         * same workspace-identity map the insert row used, so no identity
+         * variant is unrepresentable.
+         */
+        fun position(identity: PreviewPlacementIdentity): PreviewPosition? = when (identity) {
+            is PreviewPlacementIdentity.Workspace -> workspacePosition(identity)
+
+            is PreviewPlacementIdentity.Dock -> PreviewPosition.DockRank(identity.rank)
+
+            is PreviewPlacementIdentity.FolderChild -> when (val parent = identity.parent) {
+                is PreviewPlacementIdentity.PlannedFolder -> plannedFolderNames[parent.ordinal]?.let {
+                    PreviewPosition.InFolder(PreviewFolderRef.Planned(parent.ordinal, it), identity.rank + 1)
+                }
+
+                else -> labelByIdentity[parent]?.let {
+                    PreviewPosition.InFolder(PreviewFolderRef.Existing(it), identity.rank + 1)
+                }
+            }
+
+            is PreviewPlacementIdentity.AppPairChild -> labelByIdentity[identity.parent]?.let {
+                PreviewPosition.InAppPair(it)
+            }
+
+            is PreviewPlacementIdentity.Unidentified -> PreviewPosition.Unidentified(identity.proposalLocalDiscriminator)
+
+            is PreviewPlacementIdentity.PlannedFolder ->
+                plannedFolderWorkspaceIdentity[identity.ordinal]?.let { workspacePosition(it) }
+        }
+
+        /**
+         * Issue #208 (review Medium): each planned folder's intended workspace
+         * identity, so a `PlannedFolder` identity resolves to the same
+         * presentation as its insert row instead of mapping to `null`.
+         */
+        private val plannedFolderWorkspaceIdentity: Map<NewFolderOrdinal, PreviewPlacementIdentity.Workspace> =
+            plan.actions.filterIsInstance<ApplyAction.Insert>()
+                .mapNotNull { insert ->
+                    val ordinal = (insert.ref as? ApplicationItemRef.PlannedFolder)?.ordinal ?: return@mapNotNull null
+                    workspaceIdentity(insert.intended)?.let { ordinal to it }
+                }
+                .toMap()
+
+        fun workspacePosition(position: PreviewPlacementIdentity.Workspace): PreviewPosition.Workspace {
+            val device = plan.sourceState.deviceCapabilities
+            return PreviewPosition.Workspace(
+                pageDisplayOrdinal = position.pageDisplayOrdinal,
+                isNewPage = position.isNewPage,
+                rowBand = band(position.cellY, device.rows, RowBand.entries),
+                columnBand = band(position.cellX, device.columns, ColumnBand.entries),
+                rowOrdinal = position.cellY + 1,
             )
         }
 

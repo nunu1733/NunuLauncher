@@ -1,10 +1,12 @@
 package app.lawnchair.organizer.application.public
 
+import app.lawnchair.organizer.planning.ContainerCode
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewPageOrdinal
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.WarningCode
 
 /**
@@ -53,13 +55,21 @@ data class PlanPreviewDetails(
  * actions / before-after from the [ValidatedLayoutPlan] and rationale /
  * reasons / warnings from the planner's `Planned` outcome; [ItemId] is an
  * opaque correlation key only. No raw package, component, page id, cell
- * coordinate, digest, or profile identity is carried.
+ * coordinate, digest, or profile identity is carried — except that
+ * [PreviewPlacementIdentity] (Issue #208) carries the proposal-local page
+ * display ordinal, anchor cell, and container ranks strictly as identity
+ * components; they are never rendered and are derivable only through the
+ * presentation path (`PreviewPosition`).
  */
 sealed interface PreviewChange
 
 data class MoveChange(
     val item: ItemId,
     val label: PreviewLabel,
+    /** Issue #208: canonical identity of the source placement. */
+    val identity: PreviewPlacementIdentity,
+    /** Issue #208: source item kind, restored for rows whose label is a name. */
+    val kind: CanonicalItemKind,
     val source: PreviewPosition,
     val destination: PreviewPosition,
     val rationale: PlacementCode?,
@@ -80,6 +90,14 @@ data class MoveChange(
 data class PreservedChange(
     val item: ItemId,
     val label: PreviewLabel,
+    /** Issue #208: canonical identity of the preserved placement. */
+    val identity: PreviewPlacementIdentity,
+    /** Issue #208: source item kind, restored for rows whose label is a name. */
+    val kind: CanonicalItemKind,
+    /** Issue #208: current-position presentation derived from [identity]
+     *  (`current == position(identity)`); the only position source for the
+     *  rendered row — the UI never re-derives placement from the identity. */
+    val current: PreviewPosition,
     val reason: PreserveReason,
 ) : PreviewChange
 
@@ -103,6 +121,12 @@ data class NewPageChange(
 data class ItemWarningChange(
     val item: ItemId,
     val label: PreviewLabel,
+    /** Issue #208: canonical identity of the warned placement. */
+    val identity: PreviewPlacementIdentity,
+    /** Issue #208: source item kind, restored for rows whose label is a name. */
+    val kind: CanonicalItemKind,
+    /** Issue #208: current-position presentation derived from [identity]. */
+    val current: PreviewPosition,
     val code: WarningCode,
 ) : PreviewChange
 
@@ -116,6 +140,57 @@ sealed interface PreviewLabel {
     data class KindFallback(val kind: CanonicalItemKind) : PreviewLabel
 }
 
+/**
+ * Canonical placement identity (Issue #208): uniquely identifies the
+ * placement a row speaks about within one projected proposal, so same-named
+ * placements never collapse into indistinguishable rows. Invariant: within
+ * one proposal, distinct source placements yield distinct identities —
+ * including the same item appearing as both a preserve row and a warning
+ * row. Unique and stable within a single `PlanPreviewDetails`; not a
+ * persistent launcher item id; never serialized, journaled, or rendered in
+ * raw form. The user-facing position wording is derived from it by the
+ * projector (identity -> `PreviewPosition` -> descriptor -> copy).
+ */
+sealed interface PreviewPlacementIdentity {
+    /** Anchor cell on a page. The page display ordinal follows the same
+     *  combined `PageOrder` sort as [PreviewPosition.Workspace] and is unique
+     *  within the proposal, so no raw page id is carried. */
+    data class Workspace(
+        val pageDisplayOrdinal: Int,
+        val isNewPage: Boolean,
+        val cellX: Int,
+        val cellY: Int,
+    ) : PreviewPlacementIdentity
+
+    data class Dock(val rank: Int) : PreviewPlacementIdentity
+
+    /** Parent is the container item's own placement identity (structural,
+     *  never a display name), so duplicate folder titles stay distinct. */
+    data class FolderChild(val parent: PreviewPlacementIdentity, val rank: Int) : PreviewPlacementIdentity
+
+    data class AppPairChild(val parent: PreviewPlacementIdentity, val stage: SplitStage) : PreviewPlacementIdentity
+
+    /**
+     * A folder this plan creates. Identified by its proposal-local ordinal —
+     * unique within the proposal and stable for its rows — because its
+     * workspace cell is only fixed by the plan's insert and may coincide with
+     * a source item's current cell. Not a persistent id.
+     */
+    data class PlannedFolder(val ordinal: NewFolderOrdinal) : PreviewPlacementIdentity
+
+    /**
+     * Containers the capture cannot describe. [proposalLocalDiscriminator]
+     * disambiguates items that share an unsupported container code: assigned
+     * once per source item when the proposal is projected (never per call
+     * site), so the same item keeps one identity across its move / preserve
+     * / warning rows. Not rendered.
+     */
+    data class Unidentified(
+        val code: ContainerCode,
+        val proposalLocalDiscriminator: Int,
+    ) : PreviewPlacementIdentity
+}
+
 sealed interface PreviewPosition {
     data class Workspace(
         val pageDisplayOrdinal: Int,
@@ -126,8 +201,16 @@ sealed interface PreviewPosition {
     ) : PreviewPosition
 
     data class DockRank(val rank: Int) : PreviewPosition
-    data class InFolder(val folder: PreviewFolderRef) : PreviewPosition
+    data class InFolder(val folder: PreviewFolderRef, val rank: Int) : PreviewPosition
     data class InAppPair(val pair: PreviewLabel) : PreviewPosition
+
+    /**
+     * Issue #208: presentation for placements the capture cannot describe;
+     * [proposalLocalOrdinal] is the same value as the identity's
+     * discriminator and renders only as a generic ordinal word (never a raw
+     * identifier), keeping same-named unsupported rows distinguishable.
+     */
+    data class Unidentified(val proposalLocalOrdinal: Int) : PreviewPosition
 }
 
 sealed interface PreviewFolderRef {

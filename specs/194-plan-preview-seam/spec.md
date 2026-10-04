@@ -374,6 +374,7 @@ None。Stage A で決定済み:
 - 2026-09-02: Second review revision (owner review @ `6f4037ea4e`): `OUTCOME_NOT_PLANNED` を compatibility fallback から fail-closed 側へ移動 (Medium)。`PlanningRejected(IMPOSSIBLE)` 写像を presentation alias として明記 (Low)。protocol ordering に serialization contention check (P2) を追加し PP-AC-13 を新設 (Low)。#195 本文への引き継ぎ追記は follow-up として実施 (issue tracker 側)。
 - 2026-09-02: Third review revision (owner review @ `7f254e5763`): Scope の旧 fallback 記述を環境的失敗 / 契約違反の分離へ揃え、presentation alias の説明に defensive path としての位置づけを追記 (Medium)。test oracle の重複した PP-AC-13 行を統合 (Low)。
 - 2026-09-02: Accepted by the Issue #194 owner at head `8ac2dec402`; implementation may begin within this specification and plan.
+- 2026-09-06: [Issue #208](https://github.com/nunu1733/NunuLauncher/issues/208) による additive 拡張 ([spec 208](../208-organizer-proposal-placement-identity/spec.md) を正本とする): `PreviewPlacementIdentity` を新設し、`MoveChange` / `PreservedChange` / `ItemWarningChange` に `identity` / `kind` を、保持・警告行に identity 導出の `current: PreviewPosition` を追加。`PreviewPosition` に `Unidentified` variant と folder 内 position を追加。契約文言の限定的更新: identity は proposal 内の placement 同定のための構成要素として、page 表示序数 / anchor cell / container rank / proposal-local discriminator を保持してよい (表示には現れず、位置表示は identity からの導出に限る)。引き続き禁止する要素は package / component / page id 生値 / digest / profile identity である。一意性 invariant「同一 proposal 内で distinct source placements ⇒ distinct identities」も spec 208 を正本とする。
 
 ## References
 
