@@ -91,6 +91,13 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.infinite_scrolling_label),
                 description = stringResource(id = R.string.infinite_scrolling_description),
             )
+            // Issue #232: promoted above the Layout section so the persistent organizer entry
+            // is re-discoverable without scrolling after the onboarding proposal's `Later`.
+            NavigationActionPreference(
+                label = stringResource(id = R.string.manual_organization_title),
+                destination = HomeScreenManualOrganization(),
+                subtitle = stringResource(id = R.string.manual_organization_summary),
+            )
         }
         PreferenceGroup(heading = stringResource(id = R.string.home_screen_actions)) {
             ClickablePreference(
@@ -153,11 +160,6 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.organizer_lock_screen_title),
                 destination = HomeScreenPlacementLocks,
                 subtitle = stringResource(id = R.string.organizer_lock_screen_summary),
-            )
-            NavigationActionPreference(
-                label = stringResource(id = R.string.manual_organization_title),
-                destination = HomeScreenManualOrganization(),
-                subtitle = stringResource(id = R.string.manual_organization_summary),
             )
             // Issue #138: supported release Settings route for diagnostics export.
             NavigationActionPreference(
