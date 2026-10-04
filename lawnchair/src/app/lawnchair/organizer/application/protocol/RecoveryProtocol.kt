@@ -1,0 +1,190 @@
+package app.lawnchair.organizer.application.protocol
+
+import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
+import app.lawnchair.organizer.application.lifecycle.LifecycleState
+import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
+import app.lawnchair.organizer.application.public.AuthoritativeState
+import app.lawnchair.organizer.application.public.OrganizerLockState
+import app.lawnchair.organizer.application.public.RecoveryFailure
+import app.lawnchair.organizer.application.public.RecoveryRejection
+import app.lawnchair.organizer.application.public.RecoveryRequest
+import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.application.public.RunId
+
+/** Implements explicit, revision-bound recovery while holding one outer writer lease. */
+class RecoveryProtocol(
+    private val writer: LayoutWriterPort,
+    private val store: RecoveryStorePort,
+    private val clock: Clock,
+    private val operationIds: OperationIdSource,
+    private val faults: FaultInjector,
+    private val mutex: RunMutex,
+) {
+    fun recover(request: RecoveryRequest): RecoveryResult {
+        val runId = operationIds.newRunId()
+        if (!mutex.tryAcquire(runId)) return RecoveryResult.ConcurrentRun
+        return try {
+            recoverWithRunMutex(runId, request)
+        } finally {
+            mutex.release(runId)
+        }
+    }
+
+    private fun recoverWithRunMutex(runId: RunId, request: RecoveryRequest): RecoveryResult {
+        when (store.availability()) {
+            RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION ->
+                return RecoveryResult.NotRestorable(request.pointId, RecoveryRejection.INCOMPATIBLE_VERSION)
+
+            RecoveryStorePort.StoreAvailability.READ_FAILED ->
+                return RecoveryResult.RestoreFailed(
+                    request.pointId,
+                    RecoveryFailure.RECOVERY_STORE_FAILED,
+                    AuthoritativeState.UNKNOWN,
+                )
+
+            RecoveryStorePort.StoreAvailability.READY -> Unit
+        }
+        val stored = store.readRecord(request.pointId)
+            ?: return RecoveryResult.NotRestorable(request.pointId, tombstoneRejection(request.pointId))
+        preflight(stored)?.let { return RecoveryResult.NotRestorable(request.pointId, it) }
+        if (faults.serializationContention()) return RecoveryResult.WriterBusy
+        val lease = writer.tryAcquireLease(WriterKind.ORGANIZER, runId.value.hashCode().toLong())
+            ?: return RecoveryResult.WriterBusy
+        return try {
+            recoverWithOuterLease(request, stored, lease)
+        } finally {
+            lease.close()
+        }
+    }
+
+    private fun tombstoneRejection(pointId: app.lawnchair.organizer.application.public.RecoveryPointId): RecoveryRejection = when (store.readTombstone(pointId)?.reason) {
+        RecoveryStorePort.TombstoneReason.EXPIRED -> RecoveryRejection.EXPIRED
+        RecoveryStorePort.TombstoneReason.CORRUPT -> RecoveryRejection.CORRUPT
+        RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION -> RecoveryRejection.INCOMPATIBLE_VERSION
+        RecoveryStorePort.TombstoneReason.ALREADY_RESTORED -> RecoveryRejection.ALREADY_RESTORED
+        RecoveryStorePort.TombstoneReason.PRUNED_UNUSED, null -> RecoveryRejection.MISSING
+    }
+
+    private fun recoverWithOuterLease(
+        request: RecoveryRequest,
+        stored: RecoveryStorePort.StoredRecord,
+        lease: LeaseHandle,
+    ): RecoveryResult {
+        val pointId = request.pointId
+        val reviewed = writer.captureCurrent(CaptureId(pointId.value))
+        if (reviewed.revision != request.expectedCurrentRevision) {
+            return RecoveryResult.NotRestorable(pointId, RecoveryRejection.STALE_REVISION)
+        }
+        if (faults.lockStateColumnReadFailure() ||
+            reviewed.layoutState.items.any { it.lockState == OrganizerLockState.UNKNOWN }
+        ) {
+            return RecoveryResult.NotRestorable(pointId, RecoveryRejection.LOCK_STATE_UNAVAILABLE)
+        }
+        val recoverySet = when (
+            val prepared =
+                writer.prepareRecoveryWriteSet(stored.preManifest, reviewed)
+        ) {
+            is WriteSetPreparation.Ready -> prepared.writeSet
+
+            WriteSetPreparation.ContextMismatch ->
+                return RecoveryResult.NotRestorable(pointId, RecoveryRejection.STALE_REVISION)
+
+            WriteSetPreparation.InvalidPlan, WriteSetPreparation.IdentityExhausted ->
+                return RecoveryResult.RestoreFailed(
+                    pointId,
+                    RecoveryFailure.WRITE_FAILED,
+                    AuthoritativeState.REVIEWED_CURRENT_DB_MODEL_UNVERIFIED,
+                )
+        }
+        faults.beforeRecoveryLifecycleCommit(FaultInjector.RecoveryLifecyclePhase.RESTORING, pointId)
+        if (!store.markRestoring(
+                pointId = pointId,
+                reviewedManifest = reviewed.manifest,
+                reviewedDigest = reviewed.digest,
+                recoveryActionDigest = recoverySet.actionSetDigest,
+            )
+        ) {
+            return RecoveryResult.RestoreFailed(
+                pointId,
+                RecoveryFailure.RECOVERY_STORE_FAILED,
+                AuthoritativeState.REVIEWED_CURRENT_DB_MODEL_UNVERIFIED,
+            )
+        }
+        faults.afterRecoveryLifecycleCommit(FaultInjector.RecoveryLifecyclePhase.RESTORING, pointId)
+        val outcome = try {
+            writer.applyWriteSet(lease, recoverySet, pointId, faults)
+        } catch (error: Throwable) {
+            ApplyTxOutcome.Failed(error)
+        }
+        if (outcome is ApplyTxOutcome.PreconditionFailed) {
+            return RecoveryResult.RestoreFailed(
+                pointId,
+                RecoveryFailure.WRITE_FAILED,
+                AuthoritativeState.UNKNOWN,
+            )
+        }
+        val authoritative = writer.classifyAuthoritativeState(
+            preDigest = stored.preDigest,
+            intendedPostDigest = stored.intendedDigest,
+            recoveryTargetDigest = stored.preDigest,
+            reviewedCurrentDigest = reviewed.digest,
+        )
+        if (authoritative != AuthoritativeClass.PRE_STATE &&
+            authoritative != AuthoritativeClass.RECOVERY_TARGET
+        ) {
+            val failure = if (outcome is ApplyTxOutcome.Failed) {
+                RecoveryFailure.WRITE_FAILED
+            } else {
+                RecoveryFailure.COMMIT_OUTCOME_UNKNOWN
+            }
+            val state = when (authoritative) {
+                AuthoritativeClass.REVIEWED_CURRENT_STATE ->
+                    AuthoritativeState.REVIEWED_CURRENT_DB_MODEL_UNVERIFIED
+
+                AuthoritativeClass.INTENDED_POST_STATE ->
+                    AuthoritativeState.POST_APPLY_DB_MODEL_UNVERIFIED
+
+                else -> AuthoritativeState.UNKNOWN
+            }
+            return RecoveryResult.RestoreFailed(pointId, failure, state)
+        }
+        if (writer.requestCorrelatedReload(lease) != ReloadResult.Completed) {
+            return RecoveryResult.RestoreFailed(
+                pointId,
+                RecoveryFailure.MODEL_RELOAD_FAILED,
+                AuthoritativeState.PRE_APPLY_DB_MODEL_UNVERIFIED,
+            )
+        }
+        val verified = writer.recaptureDb().manifest == stored.preManifest
+        if (!verified) {
+            return RecoveryResult.RestoreFailed(
+                pointId,
+                RecoveryFailure.VERIFICATION_FAILED,
+                AuthoritativeState.PRE_APPLY_DB_MODEL_UNVERIFIED,
+            )
+        }
+        if (!store.advance(pointId, LifecycleState.RESTORED)) {
+            return RecoveryResult.RestoreFailed(
+                pointId,
+                RecoveryFailure.RECOVERY_STORE_FAILED,
+                AuthoritativeState.PRE_APPLY_DB_AND_MODEL,
+            )
+        }
+        return RecoveryResult.Restored(pointId)
+    }
+
+    private fun preflight(stored: RecoveryStorePort.StoredRecord): RecoveryRejection? {
+        if (!stored.checksumValid) return RecoveryRejection.CORRUPT
+        if (stored.formatVersion != LifecycleReconciler.SUPPORTED_FORMAT) {
+            return RecoveryRejection.INCOMPATIBLE_VERSION
+        }
+        if (stored.lifecycle == LifecycleState.RESTORED) return RecoveryRejection.ALREADY_RESTORED
+        if (LifecycleTransitions.isRestorable(stored.lifecycle)) return null
+        return when (stored.lifecycle) {
+            LifecycleState.EXPIRED -> RecoveryRejection.EXPIRED
+            LifecycleState.CORRUPT -> RecoveryRejection.CORRUPT
+            LifecycleState.INCOMPATIBLE -> RecoveryRejection.INCOMPATIBLE_VERSION
+            else -> RecoveryRejection.MISSING
+        }
+    }
+}

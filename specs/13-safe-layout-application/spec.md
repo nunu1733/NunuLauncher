@@ -262,12 +262,12 @@ in-memory plan:
 | Data | Purpose |
 |---|---|
 | Recovery format version, ID, run ID, creation time | Discovery and compatibility. |
-| Complete canonical pre-state resource manifest | Row-accounted restoration, including every resource required by #23. |
+| Complete canonical pre-state persistence manifest | Exact restoration of every schema-33 `favorites` row, including lock state. It also deterministically records profile inventory/availability and device capabilities as externally owned, Preserve-only context. Persistent desktop page membership/order is reconstructed from rows; model-only empty pages are excluded. |
 | Pre-state `RevisionId` and integrity digest | Detect unchanged/rolled-back layout and checkpoint corruption. |
 | Complete intended canonical post-state or equivalent lossless write intent | Reconstruct intended placements after process death. |
 | Intended post-state digest and action-set digest | Distinguish exact post-state from an unrecognized state. |
 | During recovery, the reviewed current-state manifest/digest, complete recovery action-set digest, and prior lifecycle state | Reconcile a death or uncertain commit while `RESTORING` without relying on process memory. |
-| Row/resource count and checksum | Read-after-write validation. |
+| Row/context-resource count and checksum | Read-after-write validation. Context resources are exact precondition and verification inputs, never mutation targets. |
 | Lifecycle state | Total restart reconciliation. |
 
 Lifecycle states are:
@@ -339,6 +339,12 @@ instances and participates in the Launcher layout-writer serialization selected
 by the implementation plan. Even with that serialization, correctness never
 depends on an early check alone.
 
+Before any apply or recover operation is accepted, the module completes
+startup reconciliation for the current store generation. Reconciliation owns
+the existing writer serialization while in progress. A recovery-store failure
+keeps the seam fail-closed and is reported through the existing seam-specific
+store-failure result; a subsequent successful reconciliation opens the seam.
+
 | Phase | Normative behavior | Failure result |
 |---|---|---|
 | A0 | Reject a concurrent apply/recover. | `ConcurrentRun` |
@@ -407,8 +413,9 @@ Recovery is an explicit, revision-bound application operation:
    an external layout writer returns `WriterBusy`; no recovery state changes.
 3. Start a Launcher DB write transaction. Inside it, re-read the full current
    `RevisionId`; it must equal `RecoveryRequest.expectedCurrentRevision`.
-4. Compare the current canonical resource manifest with the checkpoint and
-   compute a complete recovery write-set. Every current item/resource is
+4. Compare the current canonical row/context manifest with the checkpoint. Context resources
+   must match exactly and produce Preserve-only actions; otherwise reject before `RESTORING`.
+   Then compute the mutable recovery write-set. Every current `favorites` row is
    explicitly preserved, updated, inserted, or deleted. Deletion is allowed
    only because the confirmed recovery request accounts for that exact current
    revision; it is not an Issue #24 organizer deletion.
@@ -468,7 +475,7 @@ specific reload requested after commit. It proves:
 - bounds, no overlap, and referential integrity;
 - unchanged lock placement/occupancy and profile identity;
 - exact folder/app-pair membership and widget identity/bind state; and
-- byte-equivalent canonical DB/model representations for all layout resources.
+- byte-equivalent canonical DB/model representations for all organizer-owned `favorites` rows.
 
 The invariants themselves remain authoritative in `DESIGN.md` §5.
 
@@ -482,9 +489,10 @@ The invariants themselves remain authoritative in `DESIGN.md` §5.
   that a backup/restore cycle contains no recovery record.
 - An incompatible recovery format is rejected without touching Launcher DB.
   Downgrade may discard recovery records but never changes the current layout.
-- The recovery manifest covers every persistent resource required to restore
-  the run. ADR-0004 defines the tri-state `favorites` lock resource included in
-  its row manifests and exact preconditions.
+- The recovery manifest covers complete schema-33 `favorites` rows plus deterministic
+  Preserve-only profile/device context. ADR-0004's tri-state lock is a row column. Persistent
+  workspace pages are reconstructed from rows and model-only empty pages are excluded. A
+  profile/device mismatch is rejected before `RESTORING` and is never mutated by recovery.
 - No permission, network access, external storage, or external telemetry is
   introduced. Diagnostics use only privacy-safe typed categories and counts.
 
@@ -499,13 +507,13 @@ The invariants themselves remain authoritative in `DESIGN.md` §5.
 | AC-5 | Pre/post/neither and all lifecycle states reconcile without in-memory plan state. | Reopen both DBs after every crash boundary and assert state/result. |
 | AC-6 | Model reload is correlated; DB/model/intended state and all DESIGN invariants are verified. | Reload-generation and independent-recapture tests. |
 | AC-7 | Any post-commit reload/verification failure attempts recovery and never reports false success. | Failure injection at reload, recapture, verification, recovery write, recovery reload, and recovery verify. |
-| AC-8 | Recovery binds to the reviewed current revision and accounts for every current/checkpoint resource with exact preconditions. | Unchanged and subsequently changed layouts, including added rows and container references. |
+| AC-8 | Recovery binds to the reviewed current revision and accounts for every current/checkpoint `favorites` row with exact preconditions. | Unchanged and subsequently changed layouts, including added rows and container references. |
 | AC-9 | Multiple new pages/folders are unique and overflow-safe; rollback exposes no reservation; no page row is written. | Boundary fixtures through `apply`. |
 | AC-10 | Lock state missing is fail-closed with the seam-specific typed result; profiles, widgets, folders, and app pairs round-trip exactly. | Apply/recovery negative lock fixtures plus resource matrix. |
 | AC-11 | Recovery DB is absent from ZIP/Android backup and incompatible versions do not touch layout. | Backup-content inspection plus upgrade/downgrade tests. |
 | AC-12 | 24-hour/max-three retention is atomic and never removes an unresolved point. | Clock-controlled lifecycle tests. |
 | AC-13 | Production and failure-injection persistence adapters are exercised only through the same Layout Application interface. | Shared contract suite; no internal helper mocking. |
-| AC-14 | Every recovery-store/lifecycle write failure and `CREATING` crash boundary has a typed, restart-reconcilable outcome. | Fail each lifecycle transition before/after commit, reopen both DBs, and assert result/state. |
+| AC-14 | Every recovery-store/lifecycle write failure and `CREATING` crash boundary has a typed, restart-reconcilable outcome. | Combined evidence: the production RecoveryStore matrix fails every lifecycle transition before/after commit and reopens the recovery DB; public-seam fault tests assert typed results and unchanged/reopened Launcher state; API 36.1 process-death smoke reopens both DBs across `READY`, commit ambiguity, `COMMITTED_UNVERIFIED`, and `RESTORING`. |
 | AC-15 | Recovery rollback preserves and reports the exact reviewed-current state; writer contention is typed as `WRITER_BUSY`/`WriterBusy` on the respective public result. | Public-seam rollback, restart, and external-writer contention tests. |
 
 ## Downstream gates

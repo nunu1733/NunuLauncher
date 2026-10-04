@@ -2,9 +2,9 @@
 
 > Issue: #14
 > Spec: [spec.md](./spec.md)
-> Status: accepted
+> Status: implemented
 > Baseline: `main` at `8788cb7f97440096b47dfb1efc10ebf5509504fd`; upstream `505dbc40e6154c05158b5d0271c45f6a885a411b`.
-> Stage: A accepted (implementation plan plus the authorized public-shape clarification). No production code, tests, schema resources, DESIGN, ADRs, Gradle files, planner types, UI, or Issue state is changed.
+> Stage: B implemented and verified on the API 36.1 `nunu_qpr2_api36_1` AVD.
 > Scope correction: Issue #14 comment `#issuecomment-5248038572` authorizes only this public-shape clarification after review identified the Stage B API stop condition.
 
 ## Current evidence
@@ -88,7 +88,7 @@ and is not mixed with the repository's currently unwired `tests/src` tree.
 | `application/public/RecoveryRequest.kt` | Public recover input: `{ pointId: RecoveryPointId, expectedCurrentRevision: RevisionId }`. | Spec §“Recovery input”. |
 | `application/public/Results.kt` | `ApplyResult`, `RecoveryResult`, `PreWriteRejection`, `ApplyFailure`, `RecoveryRejection`, `RecoveryFailure`, `AuthoritativeState` — exactly the variants in spec.md §§“Results”. Sealed hierarchies; no raw exception text or row bytes leak. | Spec fixes every variant. |
 | `application/canonical/CanonicalMarshalling.kt` | Deterministic serialization of public `LayoutState` for revision/action digests and, separately, internal `PersistenceManifest` for recovery payloads. Pure, allocation-explicit, no platform types. | The two encodings have distinct domain tags; the private manifest wire format is versioned by the recovery format version. |
-| `application/canonical/PersistenceManifest.kt` | Internal immutable lossless schema-33 row/resource values, including exact nullable columns and raw unsupported-container placement. Never returned by the public seam. | Sole recovery-payload state; distinct from public `LayoutState`. |
+| `application/canonical/PersistenceManifest.kt` | Internal immutable lossless schema-33 `favorites` rows plus deterministic profile/device context resources. Context resources are Preserve-only; persistent page order is row-derived and model-only empty pages are excluded. Never returned by the public seam. | Sole recovery-payload state; distinct from public `LayoutState`. |
 | `application/canonical/Digest.kt` | SHA-256 over canonical bytes, with domain-separated tags per digest kind (`pre-state`, `intended-post-state`, `action-set`, `recovery-action-set`, `reviewed-current-state`). Pure wrapper over `java.security.MessageDigest`. | Used for `RevisionId` derivation, checkpoint digests, and read-after-write checksums. |
 | `application/revision/RevisionCalculator.kt` | Derives `RevisionId` from `LayoutState`, covering every spec revision dimension. | `getLastLoadId()` is never used here. |
 | `application/actions/ActionMaterializer.kt` | Validates and consumes the planner-issued page/folder ordinals and creates exactly one action per represented item. It never recomputes ordinals. | Persistent IDs are allocated only inside the Launcher transaction. |
@@ -147,7 +147,7 @@ CREATE TABLE recovery_points (
   reviewed_digest BLOB,
   recovery_action_digest BLOB,
   item_count INTEGER NOT NULL,
-  resource_count INTEGER NOT NULL,
+  resource_count INTEGER NOT NULL, -- deterministic Preserve-only profile/device context count
   payload_checksum BLOB NOT NULL
 );
 CREATE TABLE recovery_tombstones (
@@ -307,7 +307,7 @@ This plan does **not** require changing any accepted public result, any DESIGN s
 2. A1 `ActionMaterializer` validates planner-issued ordinals and canonical actions without allocating persistent IDs; malformed/duplicate ordinals return `Rejected(INVALID_PLAN)`.
 3. A2 `LauncherLayoutAdapter.captureCurrent()` under the writer lease computes `RevisionId` and every exact precondition; mismatch returns `Rejected(STALE_REVISION/EXACT_PRECONDITION_FAILED/LOCK_STATE_UNAVAILABLE)`. Lease contention returns `Rejected(WRITER_BUSY)`.
 4. A3 if `MaterializedWriteSet` is empty, returns `NoChanges` with no DB write and no reload.
-5. A4 `RecoveryStore` reads every checkpoint resource through the same snapshot, requires its digest to equal the plan source state, commits the complete record (`CREATING` -> `READY`) in its own recovery-DB transaction, then reads it back and validates version/count/digest. Failure returns the typed checkpoint rejection.
+5. A4 `RecoveryStore` reads every checkpoint row and deterministic profile/device context resource through the same snapshot, requires its digest to equal the plan source state, commits the complete record (`CREATING` -> `READY`) in its own recovery-DB transaction, then reads it back and validates version/count/digest. Page order is row-derived; model-only empty pages are excluded. Failure returns the typed checkpoint rejection.
 6. A5 `RecoveryStore` marks the record `APPLYING` with complete post intent. `LauncherLayoutAdapter` opens `ModelDbController.newTransaction()` and, after the writer lock is effective, re-reads the full `RevisionId` and every exact precondition. Stale/precondition failure rolls the Launcher transaction back, prunes the unused record (or leaves it `READY` for restart reconciliation), and returns `Rejected`.
 7. A6 inserts/updates execute using the plan-local ID map; no page row, no apply deletion. Outcome classification re-reads the authoritative Launcher digest and dispatches to `RolledBack`/continue/automatic-recovery per spec §“Transaction outcome classification”.
 8. A7 `RecoveryStore` marks `COMMITTED_UNVERIFIED`; `ModelReloadAdapter` requests a correlated reload and waits for the matching generation; `LauncherLayoutAdapter` independently recaptures the DB. Reload/convergence failure triggers automatic recovery.
@@ -463,7 +463,7 @@ Each injection asserts the exact typed public result and the resulting (Launcher
 | AC-11 recovery DB absent from ZIP/Android backup; incompatible version does not touch layout | `BackupExclusionTest`; `RecoveryStoreLifecycleTest` “INCOMPATIBLE”. | Instrumented. |
 | AC-12 24 h / max-three retention atomic; never removes unresolved | `RetentionPolicyTest` with fake clock. | Unit. |
 | AC-13 production + fault-injection adapters exercised only through the same seam | Shared fakes driven by `ApplyProtocolTest`/`RecoveryProtocolTest`, `PublicSeamShapeTest`, and instrumented `OrganizerRecoveryInstrumentationTest` through public `apply`/`recover`. | Unit + instrumentation. |
-| AC-14 every recovery-store/lifecycle write failure and `CREATING` crash boundary typed and restart-reconcilable | Instrumented `RecoveryStoreLifecycleTest` fails each transition and reopens both DBs. | Instrumentation. |
+| AC-14 every recovery-store/lifecycle write failure and `CREATING` crash boundary typed and restart-reconcilable | `RecoveryStoreLifecycleTest` owns the complete production-store before/after matrix and recovery-DB reopen; public-seam fault tests own typed results and Launcher-state preservation; the API 36.1 smoke owns real process death and both-DB reopen for `READY`, commit ambiguity, `COMMITTED_UNVERIFIED`, and `RESTORING`. Do not duplicate the lifecycle matrix in each layer. | Unit + instrumentation + API 36.1 smoke. |
 | AC-15 recovery rollback preserves/reports reviewed-current; contention typed | `RecoveryProtocolTest` plus instrumented coordinator contention. | Unit + instrumentation. |
 
 ### SA-01–SA-25 coverage (no normative text duplicated)
@@ -495,24 +495,25 @@ The sequence is intentionally vertical and incremental; no single monolithic com
    commands and observed DB/recovery lifecycle evidence in the PR. No new test
    source set or runtime-only production hook is introduced.
 
-Each step’s tests are committed before its implementation; each step is independently reviewable and the repository builds and passes `spotlessCheck` after every step.
+The implementation follows these vertical responsibility boundaries. The final
+change is reviewed and verified as one Issue #14 delivery.
 
 ## Documentation updates
 
 - [x] amended spec and this plan are accepted after renewed Spec/Standards review; Stage B must not invent API.
-- [ ] CONTEXT.md — no domain-language change.
-- [ ] DESIGN.md — no structural change; `LayoutWriteCoordinator` is the implementation of the §4.4 “model write adapter”, not a new seam.
-- [ ] ADR — no new ADR triggered; ADR-0003/ADR-0004 are implemented, not changed.
-- [ ] AGENTS.md — no new verified command in Stage A.
+- [x] CONTEXT.md — no domain-language change required.
+- [x] DESIGN.md — no structural change required; `LayoutWriteCoordinator` implements the existing §4.4 model-write adapter seam.
+- [x] ADR — ADR-0003 was aligned with the accepted resource-model correction; no new ADR was triggered.
+- [x] AGENTS.md — no repository-wide instruction change required.
 
 ## Execution checklist
 
-- [ ] Current behavior reproduced (baseline evidence above).
-- [ ] Tests fail for the missing behavior (step 1 tests first).
-- [ ] Minimal implementation completed per vertical step.
-- [ ] Migration/recovery verified (schema 33, downgrade, grid, restore, backup exclusion).
-- [ ] Full relevant verification completed (`spotlessCheck`, debug APK, pure unit suites, dedicated instrumentation suites, repo-contract validator, recorded emulator smoke).
-- [ ] PR evidence and remaining risks recorded; `Closes #14` against the AC table.
+- [x] Current behavior reproduced (baseline evidence above).
+- [x] Regression tests cover the missing behavior and reviewed failure paths.
+- [x] Minimal implementation completed per vertical responsibility.
+- [x] Migration/recovery verified (schema 33, downgrade, grid, restore, backup exclusion).
+- [x] Full relevant verification completed (`spotlessCheck`, debug APK, pure unit suites, dedicated instrumentation suites, repo-contract validator, recorded emulator smoke).
+- [x] PR evidence prepared with `Closes #14` against the AC table.
 
 ## Commands
 
@@ -564,4 +565,7 @@ network use, UI, trigger, or planner change. Any such need is a stop condition.
 
 ## Change history
 
+- 2026-08-14: Stage B implemented. Production correctness and repository
+  standards reviews passed; unit/build/contract gates, API 36.1 instrumentation,
+  and four-phase process-death recovery smoke passed.
 - 2026-08-11: Stage A `proposed` plan. Closed shared writer serialization, correlated reload, recovery DB format/lifecycle, schema-33 non-wiping migration, portable downgrade, 33->32->33 unknown-state behavior, grid normalization, grid-migration `UNKNOWN` marking, row-accounted apply/recovery, complete failure injection, AC/SA evidence mapping, vertical implementation sequence, exact commands, and rollback. No accepted public result, DESIGN seam, or ADR is changed; no destructive fallback is required; no stop condition is triggered.

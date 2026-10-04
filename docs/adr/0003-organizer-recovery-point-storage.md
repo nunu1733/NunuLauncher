@@ -82,6 +82,11 @@ rewriting the Launcher DB export path.
 - The recovery record is a resource manifest, not an assumption that all state
   lives in `favorites`. [ADR-0004](./0004-organizer-lock-persistence.md) places
   lock truth on each `favorites` row and requires it in capture and restore.
+- Lawnchair schema 33 has no persistent workspace-screen table. The manifest therefore
+  includes only desktop pages referenced by persistent rows; model-only empty pages are
+  transient. Profile inventory/availability and device capabilities are encoded
+  deterministically as externally owned, Preserve-only context. Any context mismatch is
+  rejected before `RESTORING`; recovery never mutates that context.
 - A recovery DB format newer than the running app is read-only and
   non-restorable. An older compatible format is migrated in the recovery DB or
   rejected without touching the Launcher layout.

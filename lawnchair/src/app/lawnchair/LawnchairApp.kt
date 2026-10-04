@@ -18,20 +18,19 @@ package app.lawnchair
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.Application
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
@@ -40,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.flowerpot.Flowerpot
+import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.ui.ModalBottomSheetContent
 import app.lawnchair.ui.preferences.destinations.openAppInfo
@@ -49,14 +49,17 @@ import app.lawnchair.views.ComposeBottomSheet
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.Launcher
-import com.android.launcher3.LauncherApplication
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.quickstep.RecentsActivity
 import com.android.systemui.shared.system.QuickStepContract
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
-class LawnchairApp : LauncherApplication() {
+class LawnchairApp : Application() {
+    lateinit var layoutApplicationModule: LayoutApplicationModule
+        private set
     private val compatible = Build.VERSION.SDK_INT in BuildConfig.QUICKSTEP_MIN_SDK..BuildConfig.QUICKSTEP_MAX_SDK
     private val isRecentsComponent: Boolean by unsafeLazy { checkRecentsComponent() }
     private val recentsEnabled: Boolean get() = compatible && isRecentsComponent
@@ -69,7 +72,6 @@ class LawnchairApp : LauncherApplication() {
         instance = this
         QuickStepContract.sRecentsDisabled = !recentsEnabled
         Flowerpot.Manager.getInstance(this)
-        registerActivityLifecycleCallbacks(activityHandler)
     }
 
     fun hideClockInStatusBar() {
@@ -95,6 +97,12 @@ class LawnchairApp : LauncherApplication() {
             Settings.Secure.putString(contentResolver, "icon_blacklist", newBlacklist)
         } catch (_: Exception) {
         }
+    }
+
+    fun onLauncherAppStateCreated() {
+        registerActivityLifecycleCallbacks(activityHandler)
+        // Issue #14: make restart reconciliation reachable before organizer requests are accepted.
+        layoutApplicationModule = LayoutApplicationModule.production(this)
     }
 
     fun restart(recreateLauncher: Boolean = true) {
@@ -157,11 +165,8 @@ class LawnchairApp : LauncherApplication() {
 
     private val activityHandler = object : ActivityLifecycleCallbacks {
         private val activities = HashSet<Activity>()
-        var foregroundActivity: Activity? = null
-            private set
-
-        val launcher: LawnchairLauncher?
-            get() = activities.filterIsInstance<LawnchairLauncher>().firstOrNull()
+        private var foregroundActivity: Activity? = null
+        private val organizerReconciliationStarted = AtomicBoolean(false)
 
         fun finishAll() {
             HashSet(activities).forEach { it.finish() }
@@ -171,6 +176,26 @@ class LawnchairApp : LauncherApplication() {
 
         override fun onActivityResumed(activity: Activity) {
             foregroundActivity = activity
+            if (activity is Launcher && organizerReconciliationStarted.compareAndSet(false, true)) {
+                thread(name = "organizer-startup-reconciliation") {
+                    val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
+                    val deadline = SystemClock.elapsedRealtime() + ORGANIZER_MODEL_LOAD_TIMEOUT_MS
+                    while (!model.isModelLoaded && SystemClock.elapsedRealtime() < deadline) {
+                        try {
+                            Thread.sleep(50)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+                    }
+                    if (!model.isModelLoaded) {
+                        Log.e(TAG, "Organizer startup reconciliation began without a completed model load")
+                        layoutApplicationModule.failStartupReconciliation()
+                        return@thread
+                    }
+                    layoutApplicationModule.reconcileAtStart()
+                }
+            }
         }
 
         override fun onActivityStarted(activity: Activity) {}
@@ -226,6 +251,7 @@ class LawnchairApp : LauncherApplication() {
 
     companion object {
         private const val TAG = "LawnchairApp"
+        private const val ORGANIZER_MODEL_LOAD_TIMEOUT_MS = 30_000L
 
         @JvmStatic
         lateinit var instance: LawnchairApp
@@ -237,10 +263,6 @@ class LawnchairApp : LauncherApplication() {
         @JvmStatic
         val isAtleastT: Boolean get() = instance.isAtleastT
 
-        @JvmStatic
-        val launcher: LawnchairLauncher? get() = instance.activityHandler.launcher
-
-        @OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
         fun Launcher.showQuickstepWarningIfNecessary() {
             val launcher = this
             if (!lawnchairApp.isRecentsComponent || isRecentsEnabled) return
@@ -261,14 +283,12 @@ class LawnchairApp : LauncherApplication() {
                                 openAppInfo(launcher)
                                 close(true)
                             },
-                            shapes = ButtonDefaults.shapes(),
                         ) {
                             Text(text = stringResource(id = R.string.app_info_drop_target_label))
                         }
                         Spacer(modifier = Modifier.requiredWidth(8.dp))
                         Button(
                             onClick = { close(true) },
-                            shapes = ButtonDefaults.shapes(),
                         ) {
                             Text(text = stringResource(id = android.R.string.ok))
                         }

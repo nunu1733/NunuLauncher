@@ -18,6 +18,7 @@ import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherFiles
 import com.android.launcher3.R
 import com.android.launcher3.model.DeviceGridState
+import com.android.launcher3.model.LayoutWriteCoordinator
 import com.android.launcher3.model.ModelDbController
 import com.android.launcher3.provider.RestoreDbTask
 import com.google.protobuf.Timestamp
@@ -77,11 +78,16 @@ class LawnchairBackup(
                 wallpaperManager.setBitmap(BitmapFactory.decodeStream(it))
             }
         }
-        context.getDatabasePath(LAUNCHER_DB_FILE_NAME).parentFile?.deleteRecursively()
-        DeviceGridState(info.gridState).writeToPrefs(context, true)
-        readZip(handlers)
+        // Issue #14: serialize the raw directory replacement with every Launcher writer.
+        // RestoreDbTask takes its own RESTORE lease after this raw-file lease is released.
+        LayoutWriteCoordinator.getInstance()
+            .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE).use {
+                context.getDatabasePath(LAUNCHER_DB_FILE_NAME).parentFile?.deleteRecursively()
+                DeviceGridState(info.gridState).writeToPrefs(context, true)
+                readZip(handlers)
+            }
 
-        var dbController = ModelDbController(context)
+        val dbController = ModelDbController(context)
         RestoreDbTask.performRestore(context, dbController)
     }
 
