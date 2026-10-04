@@ -1,7 +1,7 @@
 # Item Preservation Policy
 
 > Status: Proposed (research output of Issue #3)
-> Related: [Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24) empty-folder policy, [ADR-0004](../adr/0004-organizer-lock-persistence.md) lock storage
+> Related: [spec 24](../../specs/24-empty-folder-policy/spec.md) empty-folder behavior ([Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24) decision), [ADR-0004](../adr/0004-organizer-lock-persistence.md) lock storage
 > Reviewed: 2026-08-09
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: FR-002, FR-003, FR-008, NFR-002, NFR-007, NFR-012
@@ -129,10 +129,12 @@ Deck-style all-app insertion the default.
   child placement are **preserved** unless a later accepted folder-layout policy
   says otherwise. `Folder.willAcceptItemType` permits APPLICATION,
   DEEP_SHORTCUT, and APP_PAIR children only.
-- An empty folder is **preserved** by default. Whether an explicit user request
-  may delete it is tracked by [Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24).
-  Until that decision is accepted, this policy authorizes no empty-folder
-  deletion.
+- An empty folder is **preserved** by default. Default behavior, the
+  malformed/dangling reject branch, and the closed conditions for any future
+  explicit deletion are owned by
+  [spec 24](../../specs/24-empty-folder-policy/spec.md); the decision
+  rationale and baseline evidence are in
+  [empty-folder policy](empty-folder-policy.md).
 - A locked folder preserves its own cell and all child placements. The exact
   lock behavior is in §4; default preservation is not itself a user lock.
 
@@ -330,8 +332,8 @@ Fixtures use synthetic identities and no user data.
 | F-07 | Dock items | default Dock ranks remain unchanged. |
 | F-08 | same package across profiles, plus duplicate rows within one profile | cross-profile component/package values produce distinct target keys and instances because profile serial is part of the key; same-profile duplicate rows may share a target key but remain distinct instances. |
 | F-09 | unavailable private profile | item is preserved and diagnosed; this is not a placement-lock fixture. |
-| F-10a | empty folder | preserved pending [Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24). |
-| F-10b | explicit empty-folder deletion request | not eligible until Issue #24 and safe-application conditions are accepted. |
+| F-10a | empty folder | preserved at its captured placement with a count diagnostic; no move, no deletion (spec 24 M-01). |
+| F-10b | explicit empty-folder deletion request | v1: not offered; future eligibility only through the spec 24 explicit-deletion gate. |
 | F-11a | full grid without overflow | reject with capacity diagnostic and no write. |
 | F-11b | full grid with candidate overflow | fixture only; no overflow result is implied before Issue #5/D-007. |
 | F-12 | unknown persisted type | preflight reject, diagnostic includes type and row identity, DB unchanged. |

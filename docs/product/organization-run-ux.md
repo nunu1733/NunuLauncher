@@ -163,8 +163,11 @@ preview、必要な separate confirmation を全て満たす場合だけ可能�
 reject/no write とする。lock persistence は
 [ADR-0004](../adr/0004-organizer-lock-persistence.md)、lock authoring/reviewは
 [Issue #38](https://github.com/nunu1733/NunuLauncher/issues/38)に従う。
-empty-folder deletion は [Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24)
-の decision を待つ。
+empty-folder deletion の振る舞いは
+[spec 24](../../specs/24-empty-folder-policy/spec.md)
+（[Issue #24](https://github.com/nunu1733/NunuLauncher/issues/24)）が所有する。
+v1 は削除を提案しない。将来の削除を含む surface は本節の destructive-effects 規則と
+§6 の accessibility 規則に従う。
 
 reject の場合は confirm を表示せず、原因、retry 可否、何も変更せず終了する選択を
 示す。warnings/unplaced は generic confirmation の背後へ隠さない。
