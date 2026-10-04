@@ -134,7 +134,7 @@ internal object FullRunExecution {
                 val capturedTarget = PlacementTarget.WorkspaceTarget(PageRef(ws.page.pageId), ws.cell, ws.span)
                 val allocated = allocator.allocateOnPageOnly(ws.span, PageRef(ws.page.pageId))
                 val (pageRef, cell) = allocated ?: error(
-                    "STABLE_PAGE_TIDY_V1 could not place eligible unit ${item.id} on its captured page " +
+                    "${strategy.identity.value} could not place eligible unit ${item.id} on its captured page " +
                         "(lift-then-place placeability invariant violated)",
                 )
                 allocator.markOccupied(pageRef, cell, ws.span)
