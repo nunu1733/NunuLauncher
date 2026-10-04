@@ -26,9 +26,7 @@ import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import app.lawnchair.LawnchairLauncher
-import com.android.launcher3.uioverrides.QuickstepLauncher
 import app.lawnchair.launcher
-import com.android.launcher3.util.window.RefreshRateTracker.Companion.getSingleFrameMs
 import com.android.app.animation.Interpolators
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.CellLayout
@@ -36,11 +34,13 @@ import com.android.launcher3.GestureNavContract
 import com.android.launcher3.Insettable
 import com.android.launcher3.LauncherAnimUtils
 import com.android.launcher3.QuickstepTransitionManager.CONTENT_SCALE_DURATION
-import com.android.launcher3.statehandlers.DepthController
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
+import com.android.launcher3.statehandlers.DepthController
+import com.android.launcher3.uioverrides.QuickstepLauncher
 import com.android.launcher3.util.Executors
 import com.android.launcher3.util.MultiPropertyFactory
+import com.android.launcher3.util.window.RefreshRateTracker.Companion.getSingleFrameMs
 import com.android.launcher3.views.FloatingIconView.getLocationBoundsForView
 import com.android.launcher3.views.FloatingIconViewCompanion.setPropertiesVisible
 import java.util.function.Consumer

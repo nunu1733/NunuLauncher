@@ -17,6 +17,5 @@ import dagger.Provides
 class PreferenceManagerModule {
     @Provides
     @LauncherAppSingleton
-    fun providePreferenceManager(@ApplicationContext context: Context): PreferenceManager =
-        PreferenceManager.getInstance(context)
+    fun providePreferenceManager(@ApplicationContext context: Context): PreferenceManager = PreferenceManager.getInstance(context)
 }

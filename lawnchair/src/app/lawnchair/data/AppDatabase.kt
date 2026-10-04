@@ -1,5 +1,6 @@
 package app.lawnchair.data
 
+import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -14,7 +15,6 @@ import app.lawnchair.data.iconoverride.IconOverride
 import app.lawnchair.data.iconoverride.IconOverrideDao
 import app.lawnchair.data.wallpaper.Wallpaper
 import app.lawnchair.data.wallpaper.service.WallpaperDao
-import android.content.Context
 import kotlinx.coroutines.runBlocking
 
 @Database(entities = [IconOverride::class, Wallpaper::class, FolderInfoEntity::class, FolderItemEntity::class], version = 3)
@@ -96,15 +96,14 @@ abstract class AppDatabase : RoomDatabase() {
         class InstanceHolder {
             private var value: AppDatabase? = null
 
-            fun get(context: Context): AppDatabase =
-                value ?: synchronized(this) {
-                    value ?: Room.databaseBuilder(
-                        context.applicationContext,
-                        AppDatabase::class.java,
-                        "preferences",
-                    ).addMigrations(MIGRATION_1_3).addMigrations(MIGRATION_2_3).build()
-                        .also { value = it }
-                }
+            fun get(context: Context): AppDatabase = value ?: synchronized(this) {
+                value ?: Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "preferences",
+                ).addMigrations(MIGRATION_1_3).addMigrations(MIGRATION_2_3).build()
+                    .also { value = it }
+            }
         }
 
         @JvmField
