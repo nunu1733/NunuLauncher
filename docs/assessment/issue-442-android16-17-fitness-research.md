@@ -1,6 +1,6 @@
 # Android 16/17 での日常利用の適性確認と upstream 同期判断（Issue #442、暫定結論まで）
 
-> Status: accepted（暫定結論まで。最終結論は保守者の実機観測記録とともに本書へ追記する。spec [specs/442-android16-17-fitness-upstream-sync/spec.md](../../specs/442-android16-17-fitness-upstream-sync/spec.md) AC-8）
+> Status: accepted（最終結論まで確定。2026-09-28に保守者の実機観測記録とともに最終結論Cを§6.2へ追記した。spec [specs/442-android16-17-fitness-upstream-sync/spec.md](../../specs/442-android16-17-fitness-upstream-sync/spec.md) AC-8）
 > Research date: 2026-09-26
 > Agent session: ZCode（GLM-5.3-flash）。対象spec/plan: Revision 2（accepted、head `a441eba228bfcda94bd044905df8381fdfa6c790`）
 > Issue: https://github.com/nunu1733/NunuLauncher/issues/442（Epic #439、再焦点化方針メモ 2026-09-24承認 Revision 5）
@@ -132,24 +132,26 @@ Issue単位の要約: #304（OPEN、root cause未確定）と #418（OPEN）の�
 
 ### 5.2 保守者実機分（Pixel 9a / API 37）の記録枠
 
-> **この節は保守者が記録する。agentは記録しない。**
+> **この節は保守者が記録する。agentは記録しない。** 以下の記録は、保守者が2026-09-28に作業sessionへ提供した観測結果の転記である（観測の実施と結果の提供は保守者、転記はagent。保守者の記録指示による）。
 
-- 端末: Pixel 9a（tegu）、Android 17 / API 37。build fingerprint:
-- 対象commit SHA（保守者がinstallするbuild）:
-- 観測期間: 開始日 / 終了日（提案: 7日。**保守者確定欄**: 日数＝＿＿、crash収集方法＝＿＿（提案: `adb bugreport` または `logcat -b crash` の手動収集。Play Consoleなし））
-- チェックリスト（emulatorで未確認に終わった項目を含む）:
-  - [ ] ページswipe、アイコンdrag（同ページ/隣ページ/フォルダへのdrop、Remove drop target、undo snackbar 4秒窓）
-  - [ ] フォルダ作成・開閉
-  - [ ] アプリ起動・終了の体感と、異常があれば記録
-  - [ ] ウィジェット追加・リサイズ・動作
-  - [ ] 通知ドットの表示
-  - [ ] 検索（drawer検索、QSB）
-  - [ ] 回転・2 panel（`isTwoPanelEnabled` 関連。Pixel 9aは非2 panel端末なので「崩れないこと」の確認）
-  - [ ] work profileの表示と操作（P2相当。emulatorでは非対象とした）
-  - [ ] recents: launcher提供recentsが無効であることの確認と、GestureNavのsystem recentsで日常利用が成立するかの評価
-  - [ ] 7日間のcrash/ANR（`logcat -b crash`、`dumpsys dropbox` 等。件数とsignatureを記録）
-- 記録範囲の注意: public repositoryへcommitしてよい範囲（個別アプリ名等を含むscreenshotの可否）は保守者が判断する。
-- **最終結論の確定条件**: 上記の実機観測結果が本書に記録され、§6の判断基準適用表が全証拠（agent実行分+実機観測）で更新されたとき、保守者がA/B/Cの最終結論を確定する。最終PRだけが `Closes #442` を使う（spec AC-8）。
+**記録（2026-09-28転記）**
+
+- 端末: Pixel 9a（tegu）、Android 17 / API 37。build fingerprint: `google/tegu/tegu:17/CP3A.260905.009/16091614:user/release-keys`（2026-09-28の実機収集で `getprop ro.build.fingerprint` により記録）
+- 対象commit SHA（保守者がinstallしたbuild）: `d3b5aba550503c6023224e64452426d8a1b32353`（当時の`main` HEAD。release APK。build run [36321884894](https://github.com/nunu1733/NunuLauncher/actions/runs/36321884894)、2026-09-27T13:17Z開始、成功、artifact「Release APK」。実機install `versionName=15.Dev.(#44)`、`firstInstallTime=2026-09-28 09:52:26` JST）
+- 観測期間: 2026-09-28 09:52:26 JST（install）〜 12:5x JST（収集時点。約3時間の利用。**保守者確定欄**: 日数＝単発確認（数時間）、crash収集方法＝`dumpsys dropbox`（entries全量）＋`logcat -b crash`（agentがUSB接続実機で収集。2026-09-28保守者指示による））
+- チェックリスト結果（保守者提供データの転記。各行 実施/未実施）:
+  - [x] ページswipe、アイコンdrag（同ページ/隣ページ/フォルダへのdrop、Remove drop target、undo snackbar 4秒窓）→ **OK**
+  - [x] フォルダ作成・開閉 → **OK**
+  - [x] アプリ起動・終了の体感と、異常があれば記録 → **OK**（異常の報告なし）
+  - [x] ウィジェット追加・リサイズ・動作 → **OK**
+  - [x] 通知ドットの表示 → **OK**（2026-09-28。NotificationListener許可をadbで付与（`cmd notification allow_listener app.lawnchair/com.android.launcher3.notification.NotificationListener`。解除は `deny_listener`）したうえで、保守者が実通知の受信時にホームアイコンのドット表示を視認確認。listenerの許可・登録は `dumpsys notification` のallowed/enabled listenersで確認）
+  - [x] 検索（drawer検索、QSB）→ **OK**
+  - [x] 回転・2 panel（`isTwoPanelEnabled` 関連。Pixel 9aは非2 panel端末なので「崩れないこと」の確認）→ **OK**
+  - [x] work profileの表示と操作（P2相当）→ **観測対象なし**（`pm list users` でUser 0のみ。端末にwork profileが構成されていないため確認不能。N/A）
+  - [x] recents: launcher提供recentsが無効であることの確認と、GestureNavのsystem recentsで日常利用が成立するかの評価 → **確認済み・成立**（2026-09-28、agentがUSB接続実機で収集: launcher側recentsは無効（`QUICKSTEP_MAX_SDK=35`の期待どおり。GestureNav上スワイプ&ホールドを`input motionevent`で再現、および`KEYCODE_APP_SWITCH`の両方で検証）。いずれの経路でも端末標本のPixel Launcherコンポーネント（`com.google.android.apps.nexuslauncher`。logcatの`OverviewCommandHelper`/`RecentsView`が当該プロセスから出力）のrecents overviewが表示され、タスクカード・スクリーンショット/選択アクション含めて機能した。ホームロールは `app.lawnchair` を確認（`dumpsys role`: HOME holders=app.lawnchair）。つまり本buildをホームとしても、GestureNav経由のrecentsはsystem側で日常利用として成立する。§5.1の「未確認 / API 37実機観測へ引継ぎ」を解消）
+  - [x] 7日間のcrash/ANR（`logcat -b crash`、`dumpsys dropbox` 等。件数とsignatureを記録）→ **実施（観測窓は7日ではなく数時間。2026-09-28収集）**: 観測窓内（install 09:52:26以降）のcrash **0件**・ANR **0件**（`dumpsys dropbox` 全353エントリの型一覧からcrash/anr型を抽出、`logcat -b crash -d -t '09-28 09:52:00.000'` は空）。dropbox全体では`data_app_crash` 1件のみ（2026-09-26 13:49:38 = **観測build導入前**。launcher外のサードパーティアプリ自身の`onStop`中`NullPointerException`であり本調査対象外。アプリ名は公開recordに含めない）。選択肢Aの判断基準「7日間crashなし」は7日間としては未実施（最終結論はCのため適用外。§6.2参照）
+- 記録範囲の注意: public repositoryへcommitしてよい範囲（個別アプリ名等を含むscreenshotの可否）は保守者が判断する。→ 今回はチェックリスト結果の記録のみで、screenshot・アプリ名等はcommitしない（実機screencapはagentの分析用に使用したのみ）。
+- **最終結論の確定条件**: 上記の実機観測結果が本書に記録され、§6の判断基準適用表が全証拠（agent実行分+実機観測）で更新されたとき、保守者がA/B/Cの最終結論を確定する。最終PRだけが `Closes #442` を使う（spec AC-8）。→ **確定条件を満たした（2026-09-28。§6.2最終結論）**
 
 ## 6. 暫定結論（AC-5）
 
@@ -157,12 +159,12 @@ Issue単位の要約: #304（OPEN、root cause未確定）と #418（OPEN）の�
 
 | 基準 | 証拠 | 適用結果 |
 |---|---|---|
-| A: quickstep無効以外の重大な日常利用の欠陥なし | §5.1のagent実行分: 欠陥なし（未確認項目はgesture制約によるもので、欠陥の証拠ではない）。ただし7日観測は未実施 | **条件付き成立**（7日観測の完了が残る） |
+| A: quickstep無効以外の重大な日常利用の欠陥なし | §5.1のagent実行分: 欠陥なし（未確認項目はgesture制約によるもので、欠陥の証拠ではない）。§5.2の実機分（2026-09-28転記＋USB接続収集）: 実施した項目はすべてOK（ページswipe/drag、フォルダ、アプリ起動、ウィジェット、検索、回転、通知ドット、recents=system側で成立）、work profileは端末に構成なし（N/A）、crash/ANRは観測窓内0件（§5.2）。欠陥の報告なし。ただし観測窓は数時間であり、7日間の継続観測は実施されず | **部分確認**（実施範囲では欠陥の証拠なし。crash/ANR 0件。7日観測は未実施） |
 | A: 編集負担の改善が15 baseline上で完結できる | メモ §4.3: 視覚的編集画面（ADR-0014案B）は上流変更0〜1ファイルで15上で実装可能 | **成立** |
 | B: 15系にbaseline以降の実質commitが存在する | §2.4: `15-beta`/`15-dev` はbaselineで停止。対象が存在しない | **不成立**（Bは除外） |
-| C-(1): quickstep無効以外の重大な欠陥があり15系で修正されない見込み | §5.1: 欠陥の証拠なし | **不成立** |
+| C-(1): quickstep無効以外の重大な欠陥があり15系で修正されない見込み | §5.1: 欠陥の証拠なし。§5.2実機分も欠陥の報告なし | **不成立** |
 | C-(2): ADR-0014の操作面方式が16-devで既に解決されている領域に依存するか | ADR-0014の対象（workspace/選択状態の操作面）は視覚的編集画面案が上流変更0〜1ファイルであり、15上で作ってもrebaseコストは小さい（メモ §4.3基準2）。**操作面の方式そのものは16-devで解決済みの領域に依存しない** | **不成立** |
-| C-(3): 保守者がtargetSdk引き上げ等を製品要件とする | 保守者指示（2026-09-26、[issuecomment-5844023268](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268)）「原則方針C（Rebaseを視野に入れる）を想定」。これはinvestigation directionであり、最終判断は保守者が行う | **保守者の最終判断に委ねる**（指示の存在は記録済み。成立条件の確定はAC-8の実機証拠と保守者判断を待つ） |
+| C-(3): 保守者がtargetSdk引き上げ等を製品要件とする | 2026-09-26の保守者指示（[issuecomment-5844023268](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268)）「原則方針C（Rebaseを視野に入れる）を想定」はinvestigation directionであった。**2026-09-28に保守者が最終判断として製品要件を確定**（[owner record: issuecomment-5863040551](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)。「現バージョンでの動作が問題ないとしても、本プロジェクトは整理機能の追加がメインであり、ホームアプリ根幹機能については上流に頼りきりな構造上、今後のOS更新への耐性が15では見込めないため」） | **成立**（2026-09-28に保守者が製品要件として確定。owner record参照） |
 
 ### 6.1.1 rebase計画時のsupport/patch材料（判断基準外の事実。Cの成立条件には数えない）
 
@@ -181,6 +183,16 @@ Cの判断基準外だが、結論がC方向になった場合のrebase計画の
 4. 保守者の作業指示（方針C想定）はinvestigation directionであり、Cの成立条件を先取りしない（§1、[issuecomment-5844023268](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5844023268)）。
 5. **暫定結論は「C-(3)の製品要件確定またはAC-8の実機証拠が入るまでA/C未確定」とし、A/Cのいずれに転んでも計画に使える材料（§2、§3、§4、§6.1.1）を本書に記録する。** 最終結論は保守者がAC-8の実機観測と判断基準の適用で確定する（§7）。
 
+#### 最終結論（2026-09-28確定。AC-8）
+
+**選択肢C（Lawnchair 16へのrebaseを専用Epic+ADRで計画する）とする。** 根拠:
+
+1. **C-(3)が保守者により製品要件として確定した**（§6.1。owner record: [issuecomment-5863040551](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)。2026-09-28。「ホームアプリ根幹機能は上流依存であり、今後のOS更新への耐性が15では見込めない」ことを根拠に、rebaseを製品要件とする判断。同owner recordは§5.2へ転記した実機観測データの確認・承認も含む）。
+2. Bは不成立（§2.4）のためA/Cの2択であり、C-(1)/C-(2)は不成立だが、C-(3)の成立によりCの成立条件を満たす。
+3. 実機観測（§5.2）の実施分（ページswipe/drag、フォルダ、アプリ起動、ウィジェット、検索、回転、通知ドットがOK。work profileは端末に構成なし、crash/ANRは観測窓内0件。recentsはlauncher側無効のまま、GestureNav経由でsystem側のoverviewが機能し日常利用として成立）は、15 baselineが短期間の日常利用で機能することを補強する。ただし本結論の決め手はC-(3)であり、7日間の継続観測は実施されず（保守者確定欄に記録）。A（15のまま進む）の判断基準「7日間crashなし」は未確認であり、Aを採る根拠にはならない。
+4. **rebaseの着手は専用Epic+ADRを経てから行う**（§6.3の起票範囲と起草要件。AGENTS.md、メモ§6）。本結論は即時のrebase着手を意味しない。#448/#449（ADR-0014の実装対象）は15 baseline上での実装を継続し、rebase後の再検証（#445〜#450）をEpic側で計画する（§6.3-4）。
+5. #447（ADR-0014）の受入条件が満たされた: ADR-0014の受入は本最終結論を前提とする契約（spec Revision 2、メモ§5）であり、本節の確定により受入可能となる。C確定に伴うADR-0014側の再確認（実装順序とpatch surfaceの追加許容）はADR-0014の受入PRで記録する。
+
 ### 6.3 結論がC方向に確定した場合の専用Epic起票範囲とADR起草要件（暫定時点での整理）
 
 - **専用Epicの起票範囲**（AGENTS.md「Lawnchair 16への変更は通常updateとして扱わず、専用EpicとADRを要求する」）:
@@ -196,8 +208,11 @@ Cの判断基準外だが、結論がC方向になった場合のrebase計画の
 - 実機観測の記録枠と確定条件は §5.2 に定めた。
 - 保守者が実機観測を完了し本書へ記録した後、最終結論（A/B/Cの確定）を本書の §6.2 の追記として確定する。その最終PRが `Closes #442` を使う。
 - #447（ADR-0014）は暫定結論（本§6）を前提に起草を開始できるが、**受入は最終結論を前提とする**（spec Revision 2で確定。メモ §5）。
+- **確定済み（2026-09-28）**: 実機観測の記録（§5.2）と最終結論C（§6.2）を確定した。本Issueは最終PRで完了し、#447はADR-0014を受入可能となる。rebaseの着手は専用Epic+ADRを経てから（§6.3）。
 
 ## 8. Change history
 
 - 2026-09-26: agent実行分（調査1〜4と暫定結論）を記録。対象commit `a441eba228bfcda94bd044905df8381fdfa6c790`。upstream観察（ls-remote、Releases/tags API、compare API、16-dev上のraw file参照）は2026-09-26T07:22:59Z前後。emulatorセッションはAVD `nunu_qpr2_api36_1`（API 36.1）で2026-09-26 16:45–17:32 JSTに実施。実機観測（§5.2）と最終結論は保守者の記録を待つ。
 - 2026-09-26: PR #466 review（[判定](https://github.com/nunu1733/NunuLauncher/pull/466#issuecomment-5844712515)）のFindings 1〜4に対応: (1) C-(2)をoracleどおり「不成立」へ修正し、quickstep/compat事実を§6.1.1「rebase計画時のsupport/patch材料（判断基準外）」へ分離、暫定結論を「A/C未確定」へ変更（Cの成立条件は現時点で1つも確定していないため）、(2) §5.1 recents行の「GestureNavのsystem側操作での日常利用は成立する」を「未確認 / API 37実機観測へ引継ぎ」へ修正し暫定判断の根拠から除外、(3) §2.3にAPI応答の引用とimmutable link、§3にcommit固定のraw linkと行引用、§4にrun/job/artifact linkと最小signature行を追加、(4) §5.1 drag&drop行の座標表記をDB `favorites` の `screen/cellX/cellY` 値に統一し、UI視覚行との対応を明記。
+- 2026-09-28: 保守者の実機観測結果（§5.2。Pixel 9a / API 37、main `d3b5aba550503c6023224e64452426d8a1b32353` のrelease APK）を保守者の提供データから転記して記録した。§6.1の判断基準適用表を全証拠（agent実行分+実機観測）で更新し、**最終結論C**（§6.2。C-(3)の製品要件確定に基づく）を確定。観測日数は単発確認、crash収集は未実施（保守者確定欄に記録）。通知ドット/work profile/recentsの実機確認とcrash収集は未実施のまま残り、recentsの成立性評価はrebase Epicの計画材料として引き継ぐ。
+- 2026-09-28（第2回）: 保守者のUSB接続実機（同一端末・同一build）でagentが観測を補完した（保守者指示による）: build fingerprint記録、crash/ANR収集（観測窓内0件/0件。dropbox全量と`logcat -b crash`で確認）、NotificationListener許可と接続確認（許可はadbで付与、解除方法を記録）、work profileの構成なし確認（N/A）、recentsの実機検証（launcher側無効・system側overviewがGestureNav経由で機能）。§5.2を更新（未実施項目をすべて結果へ変更）。通知ドットの視認は保守者が実通知の受信時に確認（OK）。§6.1/§6.2の該当行を更新。7日観測は引き続き未実施（最終結論Cのため適用外）。
