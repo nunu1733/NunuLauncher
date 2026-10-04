@@ -1,35 +1,25 @@
 package app.lawnchair.ui.preferences.components.controls
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedListItem
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.lawnchair.preferences.PreferenceAdapter
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
-import app.lawnchair.ui.theme.LawnchairTheme
-import app.lawnchair.ui.util.preview.PreferenceGroupPreviewContainer
-import app.lawnchair.ui.util.preview.PreviewLawnchair
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
+import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 
 /**
  * A toggle to enable a list of preferences.
@@ -102,102 +92,46 @@ fun MainSwitchPreference(
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    val contentPadding = 16.dp // This must match [PreferenceGroup]'s padding
-    val interactionSource = remember { MutableInteractionSource() }
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
-
-    val wrappedOnCheckedChange: (Boolean) -> Unit = { newValue ->
-        mMSDLPlayerWrapper.playToken(if (newValue) MSDLToken.SWITCH_ON else MSDLToken.SWITCH_OFF)
-        onCheckedChange(newValue)
-    }
-
-    Column(
-        modifier.padding(horizontal = contentPadding),
+    Surface(
+        modifier = modifier.padding(horizontal = 16.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = if (checked && enabled) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else if (enabled) {
+            MaterialTheme.colorScheme.surfaceVariant
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        },
     ) {
-        SegmentedListItem(
-            onClick = { wrappedOnCheckedChange(!checked) },
-            selected = checked,
-            shapes = ListItemDefaults.shapes().copy(
-                shape = MaterialTheme.shapes.medium,
-                selectedShape = MaterialTheme.shapes.extraLarge,
-                pressedShape = CircleShape,
-                focusedShape = CircleShape,
-                hoveredShape = CircleShape,
-            ),
-            enabled = enabled,
-            trailingContent = {
+        val interactionSource = remember { MutableInteractionSource() }
+
+        PreferenceTemplate(
+            modifier = Modifier
+                .clickable(
+                    enabled = enabled,
+                    indication = ripple(),
+                    interactionSource = interactionSource,
+                ) {
+                    onCheckedChange(!checked)
+                },
+            contentModifier = Modifier
+                .fillMaxHeight()
+                .padding(vertical = 24.dp)
+                .padding(start = 16.dp),
+            title = { Text(text = label, style = MaterialTheme.typography.titleMedium) },
+            endWidget = {
                 Switch(
                     modifier = Modifier
-                        .padding(top = contentPadding, bottom = contentPadding, start = contentPadding)
+                        .padding(all = 16.dp)
                         .height(24.dp),
                     checked = checked,
-                    onCheckedChange = wrappedOnCheckedChange,
+                    onCheckedChange = onCheckedChange,
                     enabled = enabled,
                     interactionSource = interactionSource,
-                    thumbContent = {
-                        if (checked) {
-                            Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(SwitchDefaults.IconSize),
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = null,
-                                modifier = Modifier.size(SwitchDefaults.IconSize),
-                            )
-                        }
-                    },
                 )
             },
-            colors = ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-            ),
-        ) {
-            Text(text = label, style = MaterialTheme.typography.titleMedium)
-        }
-    }
-}
-
-@PreviewLawnchair
-@Composable
-private fun MainSwitchPreferenceCheckedPreview() {
-    LawnchairTheme {
-        PreferenceGroupPreviewContainer {
-            MainSwitchPreference(
-                checked = true,
-                onCheckedChange = {},
-                label = "Main Switch Preference",
-                description = "Description of the main switch preference",
-            ) {
-                Text(
-                    text = "Expanded content",
-                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp),
-                )
-            }
-        }
-    }
-}
-
-@PreviewLawnchair
-@Composable
-private fun MainSwitchPreferenceUncheckedPreview() {
-    LawnchairTheme {
-        PreferenceGroupPreviewContainer {
-            MainSwitchPreference(
-                checked = false,
-                onCheckedChange = {},
-                label = "Main Switch Preference",
-                description = "Description of the main switch preference",
-            ) {
-                Text(
-                    text = "Expanded content",
-                    modifier = Modifier.padding(horizontal = 32.dp, vertical = 16.dp),
-                )
-            }
-        }
+            enabled = enabled,
+            applyPaddings = false,
+        )
     }
 }

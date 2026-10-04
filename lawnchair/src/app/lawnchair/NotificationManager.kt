@@ -4,31 +4,22 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.service.notification.StatusBarNotification
 import app.lawnchair.util.checkPackagePermission
-import com.android.launcher3.dagger.ApplicationContext
-import com.android.launcher3.dagger.LauncherAppComponent
-import com.android.launcher3.dagger.LauncherAppSingleton
 import com.android.launcher3.notification.NotificationListener
-import com.android.launcher3.util.DaggerSingletonObject
+import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
-import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@LauncherAppSingleton
-class NotificationManager @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : SafeCloseable {
+class NotificationManager(@Suppress("UNUSED_PARAMETER") context: Context) : SafeCloseable {
 
     private val scope = MainScope()
     private val notificationsMap = mutableMapOf<String, StatusBarNotification>()
-
-    val notifications: StateFlow<List<StatusBarNotification>>
-        field = MutableStateFlow(emptyList<StatusBarNotification>())
+    private val _notifications = MutableStateFlow(emptyList<StatusBarNotification>())
+    val notifications: Flow<List<StatusBarNotification>> get() = _notifications
 
     fun onNotificationPosted(sbn: StatusBarNotification) {
         notificationsMap[sbn.key] = sbn
@@ -56,7 +47,7 @@ class NotificationManager @Inject constructor(
     }
 
     private fun onChange() {
-        notifications.value = notificationsMap.values.toList()
+        _notifications.value = notificationsMap.values.toList()
     }
 
     override fun close() {
@@ -64,7 +55,7 @@ class NotificationManager @Inject constructor(
     }
 
     companion object {
-        @JvmField val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getNotificationManager)
+        @JvmField val INSTANCE = MainThreadInitializedObject(::NotificationManager)
     }
 }
 

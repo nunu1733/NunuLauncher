@@ -3,15 +3,12 @@ package app.lawnchair.ui.preferences.about
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import app.lawnchair.preferences.PreferenceManager
-import app.lawnchair.preferences2.PreferenceManager2
-import app.lawnchair.preferences2.firstCached
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.create
@@ -21,27 +18,20 @@ class AboutViewModel(
 ) : AndroidViewModel(application) {
 
     private val api: GitHubService = gitHubApiRetrofit.create()
-    private val prefs: PreferenceManager = PreferenceManager.getInstance(application)
-    private val prefs2: PreferenceManager2 = PreferenceManager2.getInstance(application)
 
     private val nightlyBuildsRepository = NightlyBuildsRepository(
         applicationContext = application,
         api = api,
     )
 
-    val uiState: StateFlow<AboutUiState>
-        field = MutableStateFlow(AboutUiState())
-
+    private val _uiState = MutableStateFlow(AboutUiState())
+    val uiState = _uiState.asStateFlow()
     val updateState = nightlyBuildsRepository.updateState
 
     init {
-        uiState.update {
+        _uiState.update {
             it.copy(
-                versionName = if (prefs.hideVersionInfo.get()) {
-                    prefs.pseudonymVersion.get() + " (pseudonym)"
-                } else {
-                    BuildConfig.VERSION_NAME
-                },
+                versionName = BuildConfig.VERSION_NAME,
                 commitHash = BuildConfig.COMMIT_HASH,
                 coreTeam = team,
                 supportAndPr = supportAndPr,
@@ -52,21 +42,18 @@ class AboutViewModel(
 
         viewModelScope.launch(Dispatchers.Default) {
             val activeContributors = fetchActiveContributors()
-            val updatedCoreTeam = uiState.value.coreTeam.map { member ->
+            val updatedCoreTeam = _uiState.value.coreTeam.map { member ->
                 val status = if (member.githubUsername != null && activeContributors.contains(member.githubUsername.lowercase())) ContributorStatus.Active else ContributorStatus.Idle
                 member.copy(status = status)
             }
-            uiState.update { it.copy(coreTeam = updatedCoreTeam) }
+            _uiState.update { it.copy(coreTeam = updatedCoreTeam) }
         }
 
-        // Check if the build variant is Nightly
-        // AND check if user has enabled auto updater (available to Nightly variant)
-        // OR check if user has overridden it in debug flags (available to All variant)
-        if (BuildConfig.APPLICATION_ID.contains("nightly") && prefs2.autoUpdaterNightly.firstCached()) {
+        if (BuildConfig.APPLICATION_ID.contains("nightly")) {
             nightlyBuildsRepository.checkForUpdate()
             viewModelScope.launch {
                 nightlyBuildsRepository.updateState.collect { state ->
-                    uiState.update { it.copy(updateState = state) }
+                    _uiState.update { it.copy(updateState = state) }
                 }
             }
         }
@@ -76,12 +63,8 @@ class AboutViewModel(
         nightlyBuildsRepository.downloadUpdate()
     }
 
-    fun installUpdate(file: File, forceInstall: Boolean = false) {
-        nightlyBuildsRepository.installUpdate(file, forceInstall)
-    }
-
-    fun resetToDownloaded(file: File) {
-        nightlyBuildsRepository.resetToDownloaded(file)
+    fun installUpdate(file: File) {
+        nightlyBuildsRepository.installUpdate(file)
     }
 
     private suspend fun fetchActiveContributors(): Set<String> {
@@ -98,7 +81,7 @@ class AboutViewModel(
                 name = "Amogh Lele",
                 role = Role.Development,
                 photoUrl = "https://avatars.githubusercontent.com/u/31761843",
-                socialUrl = "https://github.com/sphericalkat",
+                socialUrl = "https://www.linkedin.com/in/amogh-lele/",
             ),
             TeamMember(
                 name = "Antonio J. Roa Valverde",
@@ -206,7 +189,7 @@ class AboutViewModel(
                 url = "https://lawnchair.crowdin.com/lawnchair",
             ),
             Link(
-                iconResId = R.drawable.ic_open_collective,
+                iconResId = R.drawable.ic_donate,
                 labelResId = R.string.donate,
                 url = "https://opencollective.com/lawnchair",
             ),
@@ -235,7 +218,7 @@ class AboutViewModel(
                 name = "Daniel Souza",
                 role = Role.Support,
                 photoUrl = "https://avatars.githubusercontent.com/u/32078304",
-                socialUrl = "https://github.com/DanGLVK",
+                socialUrl = "https://github.com/DanGLES3",
             ),
             TeamMember(
                 name = "Giuseppe Longobardo",
@@ -247,7 +230,7 @@ class AboutViewModel(
                 name = "Rik Koedoot",
                 role = Role.SupportAndPr,
                 photoUrl = "https://avatars.githubusercontent.com/u/29402532",
-                socialUrl = "https://github.com/RikKoedoot",
+                socialUrl = "https://x.com/rikkoedoot",
             ),
         )
     }

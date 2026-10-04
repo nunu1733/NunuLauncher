@@ -30,7 +30,8 @@ import dagger.Component;
     modules = {
         LauncherAppModule.class,
         ThemeManagerModule.class,
-        app.lawnchair.preferences.PreferenceManagerModule.class
+        app.lawnchair.preferences.PreferenceManagerModule.class,
+        app.lawnchair.dagger.ForkBridgeModule.class
     }
 )
 public interface LauncherAppComponent extends QuickstepBaseAppComponent {

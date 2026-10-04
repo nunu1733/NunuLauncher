@@ -24,7 +24,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -57,8 +56,6 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceSearchScaffold
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import app.lawnchair.ui.preferences.components.layout.preferenceGroupItems
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 
 private enum class ContentType {
     ADD_BUTTON,
@@ -71,19 +68,18 @@ fun FontSelection(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(context)
     val customFonts by remember { FontCache.INSTANCE.get(context).customFonts }.collectAsStateWithLifecycle(initialValue = emptyList())
     val items by produceState(initialValue = emptyList<FontCache.Family>()) {
         val list = mutableListOf<FontCache.Family>()
         list.add(FontCache.Family(FontCache.SystemFont("sans-serif")))
         list.add(FontCache.Family(FontCache.SystemFont("sans-serif-medium")))
         list.add(FontCache.Family(FontCache.SystemFont("sans-serif-condensed")))
-        val googleSansFlexVariants = HashMap<String, FontCache.Font>()
-        googleSansFlexVariants["regular"] = FontCache.ResourceFont(context, R.font.googlesansflex_variable, "Google Sans Flex " + context.getString(R.string.font_weight_regular))
-        googleSansFlexVariants["500"] = FontCache.ResourceFont(context, R.font.googlesansflex_variable, "Google Sans Flex " + context.getString(R.string.font_weight_medium))
-        googleSansFlexVariants["600"] = FontCache.ResourceFont(context, R.font.googlesansflex_variable, "Google Sans Flex " + context.getString(R.string.font_weight_semi_bold))
-        googleSansFlexVariants["700"] = FontCache.ResourceFont(context, R.font.googlesansflex_variable, "Google Sans Flex " + context.getString(R.string.font_weight_bold))
-        list.add(FontCache.Family("Google Sans Flex", googleSansFlexVariants))
+        val interVariants = HashMap<String, FontCache.Font>()
+        interVariants["regular"] = FontCache.ResourceFont(context, R.font.inter_regular, "Inter v3 " + context.getString(R.string.font_weight_regular))
+        interVariants["500"] = FontCache.ResourceFont(context, R.font.inter_medium, "Inter v3 " + context.getString(R.string.font_weight_medium))
+        interVariants["600"] = FontCache.ResourceFont(context, R.font.inter_semi_bold, "Inter v3 " + context.getString(R.string.font_weight_semi_bold))
+        interVariants["700"] = FontCache.ResourceFont(context, R.font.inter_bold, "Inter v3 " + context.getString(R.string.font_weight_bold))
+        list.add(FontCache.Family("Inter v3", interVariants))
         GoogleFontsListing.INSTANCE.get(context).getFonts().mapTo(list) { font ->
             val variantsMap = HashMap<String, FontCache.Font>()
             val variants = font.variants.toTypedArray()
@@ -134,7 +130,6 @@ fun FontSelection(
             OverflowMenu {
                 DropdownMenuItem(
                     onClick = {
-                        mMSDLPlayerWrapper.playToken(MSDLToken.SUCCESS)
                         fontPref.set(fontPref.defaultValue)
                         hideMenu()
                     },
@@ -153,8 +148,7 @@ fun FontSelection(
                         cutBottom = customFonts.isNotEmpty(),
                     ) {
                         PreferenceTemplate(
-                            onClick = {
-                                mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
+                            modifier = Modifier.clickable {
                                 val intent = Intent(Intent.ACTION_GET_CONTENT)
                                 intent.addCategory(Intent.CATEGORY_OPENABLE)
                                 intent.type = "*/*"
@@ -197,6 +191,7 @@ fun FontSelection(
                 isFirstChild = false,
                 key = { _, family -> family.toString() },
                 contentType = { ContentType.FONT },
+                dividerStartIndent = 40.dp,
             ) { _, family ->
                 FontSelectionItem(
                     adapter = adapter,
@@ -214,16 +209,12 @@ private fun FontSelectionItem(
     modifier: Modifier = Modifier,
     onDelete: (() -> Unit)? = null,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     val selected = family.variants.any { it.value == adapter.state.value }
     PreferenceTemplate(
-        modifier = modifier,
-        onClick = {
-            adapter.onChange(family.default)
-            mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-        },
+        modifier = modifier
+            .clickable { adapter.onChange(family.default) },
         title = {
-            Box {
+            Box(modifier = Modifier.height(52.dp)) {
                 Text(
                     text = family.displayName,
                     modifier = Modifier
@@ -237,6 +228,8 @@ private fun FontSelectionItem(
             RadioButton(
                 selected = selected,
                 onClick = null,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp),
             )
         },
         endWidget = when {
@@ -249,11 +242,8 @@ private fun FontSelectionItem(
             onDelete != null -> {
                 {
                     IconButton(
-                        onClick = {
-                            onDelete()
-                            mMSDLPlayerWrapper.playToken(MSDLToken.SUCCESS)
-                        },
-                        shapes = IconButtonDefaults.shapes(),
+                        onClick = onDelete,
+                        modifier = Modifier.padding(end = 8.dp),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Delete,
@@ -266,8 +256,17 @@ private fun FontSelectionItem(
 
             else -> null
         },
+        applyPaddings = false,
+        verticalPadding = 0.dp,
     )
 }
+
+private val VariantButtonContentPadding = PaddingValues(
+    start = 8.dp,
+    top = 8.dp,
+    end = 0.dp,
+    bottom = 8.dp,
+)
 
 private fun removeFamilyPrefix(
     familyName: CharSequence,
@@ -282,12 +281,12 @@ private fun VariantDropdown(
     family: FontCache.Family,
     modifier: Modifier = Modifier,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     Row(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .wrapContentWidth(),
+            .wrapContentWidth()
+            .padding(end = 16.dp),
     ) {
         val selectedFont = adapter.state.value
         var showVariants by remember { mutableStateOf(false) }
@@ -302,7 +301,7 @@ private fun VariantDropdown(
         TextButton(
             onClick = { showVariants = true },
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-            shapes = ButtonDefaults.shapes(),
+            contentPadding = VariantButtonContentPadding,
         ) {
             AndroidText(
                 modifier = Modifier.wrapContentWidth(),
@@ -325,7 +324,6 @@ private fun VariantDropdown(
                     onClick = {
                         adapter.onChange(font)
                         showVariants = false
-                        mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
                     },
                     text = {
                         Text(

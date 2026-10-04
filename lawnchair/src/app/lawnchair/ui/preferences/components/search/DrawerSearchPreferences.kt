@@ -21,7 +21,7 @@ import app.lawnchair.ui.preferences.components.controls.ListPreference
 import app.lawnchair.ui.preferences.components.controls.ListPreferenceEntry
 import app.lawnchair.ui.preferences.components.controls.MainSwitchPreference
 import app.lawnchair.ui.preferences.components.controls.SwitchPreference
-import app.lawnchair.ui.preferences.components.controls.TwoTargetSwitchPreference
+import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.navigation.SearchProviderPreference
 import app.lawnchair.util.FileAccessManager
@@ -47,7 +47,7 @@ fun DrawerSearchPreference(
         modifier = modifier,
     ) {
         PreferenceGroup(heading = stringResource(R.string.general_label)) {
-            if (hiddenApps.isNotEmpty()) {
+            ExpandAndShrink(visible = hiddenApps.isNotEmpty()) {
                 HiddenAppsInSearchPreference()
             }
             SwitchPreference(
@@ -64,10 +64,10 @@ fun DrawerSearchPreference(
             )
         }
 
-        val searchAlgorithm = preferenceManager2().searchAlgorithm.getAdapter().state.value
-        val navController = LocalNavController.current
         PreferenceGroup(heading = stringResource(id = R.string.show_search_result_types)) {
+            val searchAlgorithm = preferenceManager2().searchAlgorithm.getAdapter().state.value
             if (searchAlgorithm != LawnchairSearchAlgorithm.ASI_SEARCH) {
+                val navController = LocalNavController.current
                 val canDisable = searchAlgorithm != LawnchairSearchAlgorithm.APP_SEARCH
                 val adapter = prefs.searchResultApps.getAdapter()
 
@@ -156,7 +156,7 @@ private fun LocalSearchSettings(
     val webSuggestionProvider =
         stringResource(prefs2.webSuggestionProvider.getAdapter().state.value.label)
 
-    TwoTargetSwitchPreference(
+    SearchProviderPreferenceItem(
         adapter = prefs.searchResultStartPageSuggestion.getAdapter(),
         label = stringResource(id = R.string.search_pref_result_web_title),
         description = if (webSuggestionProvider == stringResource(CustomWebSearchProvider.label)) {
@@ -171,38 +171,32 @@ private fun LocalSearchSettings(
             navController.navigate(SearchProviderPreference(SearchProviderId.WEB))
         },
     )
-    val peopleAdapter = prefs.searchResultPeople.getAdapter()
-    val peopleEnabled = rememberPermissionState(android.Manifest.permission.READ_CONTACTS).status.isGranted
-    TwoTargetSwitchPreference(
-        checked = peopleEnabled && peopleAdapter.state.value,
-        onCheckedChange = peopleAdapter::onChange,
-        switchEnabled = peopleEnabled,
+    SearchProviderPreferenceItem(
+        adapter = prefs.searchResultPeople.getAdapter(),
         label = stringResource(id = R.string.search_pref_result_people_title),
         description = stringResource(id = R.string.search_pref_result_contacts_description),
         onClick = {
             navController.navigate(SearchProviderPreference(SearchProviderId.CONTACTS))
         },
+        enabled = rememberPermissionState(android.Manifest.permission.READ_CONTACTS).status.isGranted,
     )
-    val filesAdapter = prefs.searchResultFilesToggle.getAdapter()
-    val filesEnabled = remember { FileAccessManager.getInstance(context) }.hasAnyPermission.collectAsStateWithLifecycle().value
-    TwoTargetSwitchPreference(
-        checked = filesEnabled && filesAdapter.state.value,
-        onCheckedChange = filesAdapter::onChange,
-        switchEnabled = filesEnabled,
+    SearchProviderPreferenceItem(
+        adapter = prefs.searchResultFilesToggle.getAdapter(),
         label = stringResource(R.string.search_pref_result_files_title),
         description = stringResource(R.string.search_pref_result_files_description),
         onClick = {
             navController.navigate(SearchProviderPreference(SearchProviderId.FILES))
         },
+        enabled = remember { FileAccessManager.getInstance(context) }.hasAnyPermission.collectAsStateWithLifecycle().value,
     )
-    TwoTargetSwitchPreference(
+    SearchProviderPreferenceItem(
         adapter = prefs.searchResultSettingsEntry.getAdapter(),
         label = stringResource(id = R.string.search_pref_result_settings_title),
         onClick = {
             navController.navigate(SearchProviderPreference(SearchProviderId.SETTINGS))
         },
     )
-    TwoTargetSwitchPreference(
+    SearchProviderPreferenceItem(
         adapter = prefs.searchResulRecentSuggestion.getAdapter(),
         label = stringResource(id = R.string.search_pref_result_history_title),
         onClick = {

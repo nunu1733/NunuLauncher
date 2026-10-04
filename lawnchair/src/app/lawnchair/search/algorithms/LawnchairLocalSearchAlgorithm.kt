@@ -3,7 +3,6 @@ package app.lawnchair.search.algorithms
 import android.content.Context
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
-import app.lawnchair.preferences2.firstCached
 import app.lawnchair.search.adapter.SearchLinksTarget
 import app.lawnchair.search.adapter.SearchTargetCompat
 import app.lawnchair.search.adapter.SearchTargetFactory
@@ -33,13 +32,13 @@ import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
 import com.android.launcher3.allapps.BaseAllAppsAdapter
 import com.android.launcher3.search.SearchCallback
+import com.patrykmichalik.opto.core.firstBlocking
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -49,7 +48,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var currentJob: Job? = null
-    private var modelRetryJob: Job? = null
 
     private val appSearchProvider = AppSearchProvider
     private val shortcutSearchProvider = ShortcutSearchProvider
@@ -63,23 +61,14 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
     )
 
     override fun doSearch(query: String, callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
-        modelRetryJob?.cancel()
-        modelRetryJob = appState.model.runWhenModelLoaded(coroutineScope) { apps ->
+        appState.model.enqueueModelUpdateTask { _, _, apps ->
             val appResults = appSearchProvider.search(context, query, apps)
             val shortcutResults = shortcutSearchProvider.search(context, appResults)
 
             currentJob?.cancel()
             currentJob = coroutineScope.launch {
-                // Each provider flow starts by emitting an empty list so that combine() can
-                // produce a first value without waiting for the slowest provider (e.g. web
-                // suggestions blocked on a network roundtrip, or contacts/files with no
-                // timeout). App and shortcut matches are computed synchronously above, so this
-                // lets them appear immediately and then be augmented as providers complete.
-                // See issue #7325 (symptom 1: results gated behind the slowest provider).
                 val nonAppProvidersFlow = combine(
-                    searchProviders.map { provider ->
-                        provider.search(context, query).onStart { emit(emptyList()) }
-                    },
+                    searchProviders.map { it.search(context, query) },
                 ) { resultsArray ->
                     resultsArray.toList().flatten()
                 }
@@ -91,7 +80,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
                     val allResults = appResults + shortcutResults + (calcResult ?: emptyList()) + nonAppResults + generateActionResults(query)
 
                     val searchTargets = translateToSearchTargets(allResults)
-                    setFirstItemQuickLaunch(searchTargets)
                     val adapterItems = transformSearchResults(searchTargets)
                     withContext(Dispatchers.Main) {
                         callback.onSearchResult(query, ArrayList(adapterItems))
@@ -102,7 +90,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
     }
 
     override fun doZeroStateSearch(callback: SearchCallback<BaseAllAppsAdapter.AdapterItem>) {
-        modelRetryJob?.cancel()
         currentJob?.cancel()
 
         val prefs = PreferenceManager.getInstance(context)
@@ -113,7 +100,7 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         } else {
             currentJob = coroutineScope.launch {
                 val prefs2 = PreferenceManager2.getInstance(context)
-                val maxHistory = prefs2.maxRecentResultCount.firstCached()
+                val maxHistory = prefs2.maxRecentResultCount.firstBlocking()
 
                 val historyResults = historySearchProvider.getRecentKeywords(context, maxHistory)
 
@@ -139,7 +126,6 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
     }
 
     override fun cancel(interruptActiveRequests: Boolean) {
-        modelRetryJob?.cancel()
         currentJob?.cancel()
     }
 
@@ -149,7 +135,7 @@ class LawnchairLocalSearchAlgorithm(context: Context) : LawnchairSearchAlgorithm
         val prefs2 = PreferenceManager2.getInstance(context)
 
         if (prefs.searchResultStartPageSuggestion.get()) {
-            val provider = prefs2.webSuggestionProvider.firstCached()
+            val provider = prefs2.webSuggestionProvider.firstBlocking()
             val webProvider = provider.configure(context)
 
             val providerName = if (webProvider is CustomWebSearchProvider) {

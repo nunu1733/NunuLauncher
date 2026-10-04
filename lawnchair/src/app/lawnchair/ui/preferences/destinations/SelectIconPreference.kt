@@ -3,7 +3,6 @@ package app.lawnchair.ui.preferences.destinations
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.LauncherApps
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -13,7 +12,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.data.iconoverride.IconOverrideRepository
-import app.lawnchair.icons.picker.IconPickerItem
+import app.lawnchair.icons.IconPickerItem
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.LocalPreferenceInteractor
 import app.lawnchair.ui.preferences.components.AppItem
@@ -26,20 +25,16 @@ import app.lawnchair.util.requireSystemService
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
 import com.android.launcher3.util.ComponentKey
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-private const val TAG = "SelectIconPreference"
 
 @Composable
 fun SelectIconPreference(componentKey: ComponentKey) {
     val context = LocalContext.current
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(context)
     val label = remember(componentKey) {
-        resolveAppLabel(context.requireSystemService(), componentKey)
+        val launcherApps: LauncherApps = context.requireSystemService()
+        val intent = Intent().setComponent(componentKey.componentName)
+        val activity = launcherApps.resolveActivity(intent, componentKey.user)
+        activity.label.toString()
     }
     val iconPacks by LocalPreferenceInteractor.current.iconPacks.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
@@ -51,15 +46,11 @@ fun SelectIconPreference(componentKey: ComponentKey) {
     OnResult<IconPickerItem> { item ->
         scope.launch {
             repo.setOverride(componentKey, item)
-            // Refresh package icons while the model is still loaded; forceReload alone can
-            // skip PackageUpdatedTask and leave icon-cache entries that look "fresh".
-            // onAppIconChanged is @WorkerThread (blocking ShortcutManager query).
-            withContext(Dispatchers.IO) {
-                model.onAppIconChanged(componentKey.componentName.packageName, componentKey.user)
-            }
             (context as Activity).let {
                 it.setResult(Activity.RESULT_OK)
                 it.finish()
+                model.onAppIconChanged(componentKey.componentName.packageName, componentKey.user)
+                launcherAppState.reloadIcons()
             }
         }
     }
@@ -75,15 +66,11 @@ fun SelectIconPreference(componentKey: ComponentKey) {
                     onClick = {
                         scope.launch {
                             repo.deleteOverride(componentKey)
-                            withContext(Dispatchers.IO) {
-                                model.onAppIconChanged(
-                                    componentKey.componentName.packageName,
-                                    componentKey.user,
-                                )
-                            }
                             (context as Activity).let {
                                 it.setResult(Activity.RESULT_OK)
                                 it.finish()
+                                model.onAppIconChanged(componentKey.componentName.packageName, componentKey.user)
+                                launcherAppState.reloadIcons()
                             }
                         }
                     },
@@ -91,15 +78,14 @@ fun SelectIconPreference(componentKey: ComponentKey) {
             }
         }
         preferenceGroupItems(
+            heading = { stringResource(id = R.string.pick_icon_from_label) },
             items = iconPacks,
             isFirstChild = !hasOverride,
-            heading = { stringResource(id = R.string.pick_icon_from_label) },
         ) { _, iconPack ->
             AppItem(
                 label = iconPack.name,
                 icon = remember(iconPack) { iconPack.icon.toBitmap() },
                 onClick = {
-                    mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
                     if (iconPack.packageName.isEmpty()) {
                         navController.navigate(IconPicker())
                     } else {
@@ -109,37 +95,4 @@ fun SelectIconPreference(componentKey: ComponentKey) {
             )
         }
     }
-}
-
-/**
- * Resolves a display label for [componentKey], including work/private profiles.
- *
- * [LauncherApps.resolveActivity] can return null or throw for non-current users; fall back to
- * [LauncherApps.getActivityList] and finally the activity class name.
- */
-private fun resolveAppLabel(launcherApps: LauncherApps, componentKey: ComponentKey): String {
-    val componentName = componentKey.componentName
-    val user = componentKey.user
-    try {
-        val intent = Intent().setComponent(componentName)
-        launcherApps.resolveActivity(intent, user)?.label?.toString()?.let { return it }
-    } catch (t: Throwable) {
-        Log.w(TAG, "resolveActivity failed for $componentKey", t)
-    }
-    try {
-        val activities = launcherApps.getActivityList(componentName.packageName, user)
-        activities
-            .firstOrNull { it.componentName == componentName }
-            ?.label
-            ?.toString()
-            ?.let { return it }
-        activities
-            .firstOrNull()
-            ?.label
-            ?.toString()
-            ?.let { return it }
-    } catch (t: Throwable) {
-        Log.w(TAG, "getActivityList failed for $componentKey", t)
-    }
-    return componentName.shortClassName?.trimStart('.') ?: componentName.packageName
 }

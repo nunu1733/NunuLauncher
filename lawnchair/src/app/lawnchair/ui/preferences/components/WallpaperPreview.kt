@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -68,7 +67,6 @@ fun ColumnScope.WithWallpaper(
         ) {
             FilledTonalButton(
                 onClick = { showPermissionDialog = true },
-                shapes = ButtonDefaults.shapes(),
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Wallpaper,

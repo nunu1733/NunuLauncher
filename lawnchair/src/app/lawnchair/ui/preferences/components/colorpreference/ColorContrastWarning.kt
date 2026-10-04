@@ -56,8 +56,8 @@ fun ColorContrastWarning(
 
     if (!enoughContrast) {
         WarningPreference(
-            text = text,
             modifier = modifier,
+            text = text,
         )
     }
 }

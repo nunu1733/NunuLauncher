@@ -2,9 +2,6 @@ package app.lawnchair.ui.preferences.components
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,8 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Launch
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
@@ -29,7 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,14 +34,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import app.lawnchair.preferences2.asState
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
@@ -55,8 +46,6 @@ import app.lawnchair.ui.preferences.data.liveinfo.liveInformationManager
 import app.lawnchair.ui.preferences.data.liveinfo.model.Announcement
 import app.lawnchair.ui.util.addIf
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 import kotlinx.coroutines.launch
 
 @Composable
@@ -69,9 +58,7 @@ fun AnnouncementPreference() {
     val dismissedAnnouncementIds by liveInformationManager.dismissedAnnouncementIds.asState()
     val liveInformation by liveInformationManager.liveInformation.asState()
 
-    val announcements = remember(liveInformation, dismissedAnnouncementIds) {
-        liveInformation.announcements.filter { it.id !in dismissedAnnouncementIds }
-    }
+    val announcements = remember { liveInformation.announcements.filter { it.id !in dismissedAnnouncementIds } }
 
     if (enabled && showAnnouncements) {
         AnnouncementPreference(
@@ -90,15 +77,8 @@ fun AnnouncementPreference(
     onDismiss: (Announcement) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 1. Add animateContentSize with a spring spec to the Column
-    // This makes the list "spring" into place when an item is removed.
     Column(
-        modifier = modifier.animateContentSize(
-            animationSpec = spring(
-                stiffness = Spring.StiffnessMediumLow,
-                dampingRatio = Spring.DampingRatioLowBouncy,
-            ),
-        ),
+        modifier = modifier,
     ) {
         announcements.forEachIndexed { index, announcement ->
             var dismissed by rememberSaveable { mutableStateOf(false) }
@@ -143,13 +123,10 @@ private fun AnnouncementItemContent(
     modifier: Modifier = Modifier,
     onClose: () -> Unit,
 ) {
-    val haptic = LocalHapticFeedback.current
-
     val state = rememberSwipeToDismissBoxState(
         confirmValueChange = {
             when (it) {
                 SwipeToDismissBoxValue.StartToEnd -> {
-                    haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                     onClose()
                 }
 
@@ -161,19 +138,15 @@ private fun AnnouncementItemContent(
         },
     )
 
-    val alpha = if (state.targetValue == SwipeToDismissBoxValue.Settled) {
-        1f
-    } else {
-        calculateAlpha(state.progress)
-    }
-
     SwipeToDismissBox(
         state = state,
         enableDismissFromEndToStart = false,
         backgroundContent = {
             Surface(
                 modifier = modifier
-                    .alpha(alpha)
+                    .alpha(
+                        if (state.dismissDirection != SwipeToDismissBoxValue.StartToEnd) 1f else calculateAlpha(state.progress),
+                    )
                     .fillMaxSize()
                     .padding(16.dp, 0.dp, 16.dp, 0.dp),
                 shape = MaterialTheme.shapes.large,
@@ -190,7 +163,9 @@ private fun AnnouncementItemContent(
     ) {
         Surface(
             modifier = modifier
-                .alpha(alpha)
+                .alpha(
+                    if (state.dismissDirection != SwipeToDismissBoxValue.StartToEnd) 1f else calculateAlpha(state.progress),
+                )
                 .padding(16.dp, 0.dp, 16.dp, 0.dp),
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -222,31 +197,27 @@ private fun AnnouncementPreferenceItemContent(
 ) {
     val context = LocalContext.current
     val hasLink = !url.isNullOrBlank()
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(context)
 
     PreferenceTemplate(
-        modifier = modifier.fillMaxWidth(),
-        onClick = {
-            if (hasLink) {
-                mMSDLPlayerWrapper.playToken(MSDLToken.TAP_LOW_EMPHASIS)
-                val webpage = url.toUri()
-                val intent = Intent(Intent.ACTION_VIEW, webpage)
-                if (intent.resolveActivity(context.packageManager) != null) {
-                    context.startActivity(intent)
+        modifier = modifier
+            .fillMaxWidth()
+            .addIf(hasLink) {
+                clickable {
+                    val webpage = Uri.parse(url)
+                    val intent = Intent(Intent.ACTION_VIEW, webpage)
+                    if (intent.resolveActivity(context.packageManager) != null) {
+                        context.startActivity(intent)
+                    }
                 }
-            }
-        },
-        title = {
-            CompositionLocalProvider(
-                LocalContentColor provides MaterialTheme.colorScheme.primary,
-                LocalTextStyle provides MaterialTheme.typography.bodyMedium,
-            ) {
-                Text(
-                    modifier = Modifier.fillMaxWidth(),
-                    text = text,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            },
+        title = {},
+        description = {
+            Text(
+                modifier = Modifier.fillMaxWidth(),
+                text = text,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center,
+            )
         },
         startWidget = {
             Icon(

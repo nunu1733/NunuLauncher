@@ -15,10 +15,14 @@ import app.lawnchair.util.broadcastReceiverFlow
 import app.lawnchair.util.repeatOnAttached
 import app.lawnchair.util.subscribeBlocking
 import com.android.launcher3.R
+import com.patrykmichalik.opto.core.firstBlocking
 import java.util.Locale
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import saman.zamani.persiandate.PersianDate
+import saman.zamani.persiandate.PersianDateFormat
 
 typealias FormatterFunction = (Long) -> String
 
@@ -35,7 +39,13 @@ class IcuDateTextView @JvmOverloads constructor(
 
     init {
         repeatOnAttached {
-            val calendarFlow = prefs.smartspaceCalendar.get()
+            val calendarSelectionEnabled = prefs.enableSmartspaceCalendarSelection.firstBlocking()
+            val calendarFlow =
+                if (calendarSelectionEnabled) {
+                    prefs.smartspaceCalendar.get()
+                } else {
+                    flowOf(prefs.smartspaceCalendar.defaultValue)
+                }
             val optionsFlow = DateTimeOptions.fromPrefs(prefs)
             combine(calendarFlow, optionsFlow) { calendar, options -> calendar to options }
                 .subscribeBlocking(this) {
@@ -85,37 +95,10 @@ class IcuDateTextView @JvmOverloads constructor(
         }
         val formatter = when (calendar) {
             SmartspaceCalendar.Persian -> createPersianFormatter()
-            SmartspaceCalendar.Lunar -> createLunarFormatter()
             else -> createGregorianFormatter()
         }
         formatterFunction = formatter
         return formatter
-    }
-
-    private fun createLunarFormatter(): FormatterFunction {
-        var format: String
-        if (dateTimeOptions.showTime) {
-            format = context.getString(
-                when {
-                    dateTimeOptions.timeFormat is SmartspaceTimeFormat.TwelveHourFormat -> R.string.smartspace_icu_date_pattern_gregorian_time_12h
-                    dateTimeOptions.timeFormat is SmartspaceTimeFormat.TwentyFourHourFormat -> R.string.smartspace_icu_date_pattern_gregorian_time
-                    is24HourFormat(context) -> R.string.smartspace_icu_date_pattern_gregorian_time
-                    else -> R.string.smartspace_icu_date_pattern_gregorian_time_12h
-                },
-            )
-            if (dateTimeOptions.showDate) format += context.getString(R.string.smartspace_icu_date_pattern_gregorian_date)
-        } else {
-            format = context.getString(R.string.smartspace_icu_date_pattern_gregorian_wday_month_day_no_year)
-        }
-
-        val chineseLocale = Locale.Builder()
-            .setLocale(Locale.CHINESE)
-            .setUnicodeLocaleKeyword("ca", "chinese")
-            .build()
-
-        val formatter = DateFormat.getInstanceForSkeleton(format, chineseLocale)
-        formatter.setContext(DisplayContext.CAPITALIZATION_FOR_STANDALONE)
-        return { formatter.format(it) }
     }
 
     private fun createPersianFormatter(): FormatterFunction {
@@ -123,23 +106,18 @@ class IcuDateTextView @JvmOverloads constructor(
         if (dateTimeOptions.showTime) {
             format = context.getString(
                 when {
-                    dateTimeOptions.timeFormat is SmartspaceTimeFormat.TwelveHourFormat -> R.string.smartspace_icu_date_pattern_gregorian_time_12h
-                    dateTimeOptions.timeFormat is SmartspaceTimeFormat.TwentyFourHourFormat -> R.string.smartspace_icu_date_pattern_gregorian_time
-                    is24HourFormat(context) -> R.string.smartspace_icu_date_pattern_gregorian_time
-                    else -> R.string.smartspace_icu_date_pattern_gregorian_time_12h
+                    dateTimeOptions.timeFormat is SmartspaceTimeFormat.TwelveHourFormat -> R.string.smartspace_icu_date_pattern_persian_time_12h
+                    dateTimeOptions.timeFormat is SmartspaceTimeFormat.TwentyFourHourFormat -> R.string.smartspace_icu_date_pattern_persian_time
+                    is24HourFormat(context) -> R.string.smartspace_icu_date_pattern_persian_time
+                    else -> R.string.smartspace_icu_date_pattern_persian_time_12h
                 },
             )
-            if (dateTimeOptions.showDate) format = context.getString(R.string.smartspace_icu_date_pattern_gregorian_date) + format
+            if (dateTimeOptions.showDate) format = context.getString(R.string.smartspace_icu_date_pattern_persian_date) + format
         } else {
-            format = context.getString(R.string.smartspace_icu_date_pattern_gregorian_wday_month_day_no_year)
+            format = context.getString(R.string.smartspace_icu_date_pattern_persian_wday_month_day_no_year)
         }
-        val persianLocale = Locale.Builder()
-            .setLanguage("fa") // Mimic old Solar Hijri behaviour using Farsi script
-            .setExtension('u', "ca-persian")
-            .build()
-
-        val formatter = DateFormat.getInstanceForSkeleton(format, persianLocale)
-        return { formatter.format(it) }
+        val formatter = PersianDateFormat(format, PersianDateFormat.PersianDateNumberCharacter.FARSI)
+        return { formatter.format(PersianDate(it)) }
     }
 
     private fun createGregorianFormatter(): FormatterFunction {

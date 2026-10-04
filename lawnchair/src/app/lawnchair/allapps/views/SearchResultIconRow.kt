@@ -31,6 +31,7 @@ class SearchResultIconRow(context: Context, attrs: AttributeSet?) :
     private var delimiter: View? = null
     private lateinit var shortcutIcons: Array<SearchResultIcon>
 
+    private var boundId = ""
     private var flags = 0
 
     override fun onFinishInflate() {
@@ -77,6 +78,8 @@ class SearchResultIconRow(context: Context, attrs: AttributeSet?) :
     }
 
     override fun bind(target: SearchTargetCompat, shortcuts: List<SearchTargetCompat>) {
+        if (boundId == target.id) return
+        boundId = target.id
         flags = getFlags(target.extras)
 
         icon.bind(target) {

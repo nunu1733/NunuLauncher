@@ -22,13 +22,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.theme.preferenceGroupColor
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 
@@ -44,7 +41,6 @@ fun TwoTabPreferenceLayout(
     isExpandedScreen: Boolean = LocalIsExpandedScreen.current,
     defaultPage: Int = 0,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     PreferenceLayout(
         label = label,
         modifier = modifier,
@@ -69,19 +65,13 @@ fun TwoTabPreferenceLayout(
         ) {
             Tab(
                 label = firstPageLabel,
-                onClick = {
-                    mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                    scrollToPage(0)
-                },
+                onClick = { scrollToPage(0) },
                 currentOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                 page = 0,
             )
             Tab(
                 label = secondPageLabel,
-                onClick = {
-                    mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                    scrollToPage(1)
-                },
+                onClick = { scrollToPage(1) },
                 currentOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                 page = 1,
             )

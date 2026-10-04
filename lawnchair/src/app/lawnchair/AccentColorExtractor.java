@@ -49,12 +49,7 @@ public class AccentColorExtractor extends LocalColorExtractor implements ThemePr
     @Override
     public void setListener(@Nullable Listener listener) {
         mListener = listener;
-        if (listener != null) {
-            mThemeProvider.addListener(this);
-            notifyListener();
-        } else {
-            mThemeProvider.removeListener(this);
-        }
+        notifyListener();
     }
 
     @Nullable

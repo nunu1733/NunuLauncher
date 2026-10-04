@@ -10,10 +10,10 @@ import android.view.View
 import android.widget.FrameLayout
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.launcher
+import app.lawnchair.launcherNullable
 import app.lawnchair.ui.preferences.PreferenceActivity
 import app.lawnchair.ui.preferences.navigation.Smartspace
 import com.android.launcher3.CheckLongPressHelper
-import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.R
 import com.android.launcher3.logging.StatsLogManager
 import com.android.launcher3.views.OptionsPopupView
@@ -31,10 +31,10 @@ class SmartspaceViewContainer @JvmOverloads constructor(
         val inflater = LayoutInflater.from(context)
         smartspaceView = inflater.inflate(R.layout.smartspace_enhanced, this, false) as BcSmartspaceView
         smartspaceView.previewMode = previewMode
-        val dp = InvariantDeviceProfile.INSTANCE.get(context).getDeviceProfile(context)
-        val leftPadding = dp.widgetPadding.left
-        val rightPadding = dp.widgetPadding.right
-        smartspaceView.setPadding(leftPadding, top, rightPadding, bottom)
+        val ctx = LawnchairLauncher.instance?.launcherNullable
+        val dp = ctx?.deviceProfile
+        val leftPadding = dp?.widgetPadding?.left
+        smartspaceView.setPadding(leftPadding ?: (left + 16), top, right, bottom)
         setOnLongClickListener {
             openOptions()
             true

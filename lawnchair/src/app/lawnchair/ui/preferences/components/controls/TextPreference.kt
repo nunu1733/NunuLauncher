@@ -1,10 +1,10 @@
 package app.lawnchair.ui.preferences.components.controls
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -14,7 +14,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.lawnchair.preferences.PreferenceAdapter
@@ -24,8 +23,6 @@ import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.ui.util.bottomSheetHandler
 import app.lawnchair.ui.util.preview.PreferenceGroupPreviewContainer
 import app.lawnchair.ui.util.preview.PreviewLawnchair
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 
 @Composable
 fun TextPreference(
@@ -55,16 +52,12 @@ fun TextPreference(
     enabled: Boolean = true,
     description: (String) -> String? = { it },
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     val bottomSheetHandler = bottomSheetHandler
     PreferenceTemplate(
         title = { Text(text = label) },
-        modifier = modifier,
-        enabled = enabled,
-        description = description(value)?.let { { Text(text = it) } },
-        onClick = if (enabled) {
-            {
-                mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
+        description = { description(value)?.let { Text(text = it) } },
+        modifier = modifier
+            .clickable(enabled) {
                 bottomSheetHandler.show {
                     TextPreferenceDialog(
                         title = label,
@@ -73,10 +66,8 @@ fun TextPreference(
                         onConfirm = onChange,
                     )
                 }
-            }
-        } else {
-            null
-        },
+            },
+        enabled = enabled,
     )
 }
 
@@ -103,7 +94,6 @@ fun TextPreferenceDialog(
         buttons = {
             OutlinedButton(
                 onClick = onDismissRequest,
-                shapes = ButtonDefaults.shapes(),
             ) {
                 Text(text = stringResource(id = android.R.string.cancel))
             }
@@ -113,7 +103,6 @@ fun TextPreferenceDialog(
                     onDismissRequest()
                     onConfirm(value)
                 },
-                shapes = ButtonDefaults.shapes(),
             ) {
                 Text(text = stringResource(id = android.R.string.ok))
             }

@@ -16,8 +16,6 @@ data object AppSearch : QsbSearchProvider(
 ) {
     override suspend fun launch(launcher: Launcher, forceWebsite: Boolean) {
         launcher.animateToAllApps()
-        val searchUiManager = launcher.appsView.searchUiManager
-        searchUiManager.setDirectFocus(true)
-        searchUiManager.editText?.showKeyboard()
+        launcher.appsView.searchUiManager.editText?.showKeyboard()
     }
 }

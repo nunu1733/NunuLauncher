@@ -41,12 +41,7 @@ class LawnchairSearchAdapterProvider(
     private var quickLaunchItem: SearchResultView? = null
         set(value) {
             field = value
-            appsView.searchUiManager.setFocusedResultTitle(
-                field?.titleText,
-                field?.titleText,
-                field != null,
-            )
-            appsView.mSearchRecyclerView.invalidate()
+            appsView.searchUiManager.setFocusedResultTitle(field?.titleText, field?.titleText, true)
         }
 
     override fun isViewSupported(viewType: Int): Boolean = layoutIdMap.contains(viewType)
@@ -71,19 +66,18 @@ class LawnchairSearchAdapterProvider(
     ): BaseAllAppsAdapter.ViewHolder {
         val view = layoutInflater.inflate(layoutIdMap[viewType], parent, false)
         val grid: DeviceProfile = mLauncher.deviceProfile
-        val leftMargin = grid.allAppsPadding.left
-        val rightMargin = grid.allAppsPadding.right
+        val horizontalMargin = grid.allAppsPadding.left + grid.allAppsPadding.right
 
         if (viewType != SEARCH_RESULT_ICON) {
             val layoutParams = ViewGroup.MarginLayoutParams(view.layoutParams)
-            layoutParams.leftMargin = 0
-            layoutParams.rightMargin = 0
+            layoutParams.leftMargin = horizontalMargin
+            layoutParams.rightMargin = horizontalMargin
             view.layoutParams = layoutParams
         }
         if (viewType == SEARCH_TEXT_HEADER) {
             val layoutParams: ViewGroup.MarginLayoutParams = ViewGroup.MarginLayoutParams(0, 0)
-            layoutParams.leftMargin = 0
-            layoutParams.rightMargin = 0
+            layoutParams.leftMargin = horizontalMargin
+            layoutParams.rightMargin = horizontalMargin
             view.layoutParams = layoutParams
         }
 
@@ -95,11 +89,6 @@ class LawnchairSearchAdapterProvider(
     override fun launchHighlightedItem(): Boolean = quickLaunchItem?.launch() ?: false
 
     override fun getHighlightedItem() = quickLaunchItem as View?
-
-    override fun clearHighlightedItem() {
-        super.clearHighlightedItem()
-        quickLaunchItem = null
-    }
 
     override fun getDecorator() = decorator
 

@@ -4,10 +4,10 @@ import android.content.res.ColorStateList
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
 import android.graphics.drawable.StateListDrawable
 import androidx.appcompat.content.res.AppCompatResources
-import app.lawnchair.theme.color.tokens.AllAppsTabColors
 import app.lawnchair.theme.color.tokens.ColorTokens
 import com.android.launcher3.R
 
@@ -17,9 +17,8 @@ object DrawableTokens {
     val BgCellLayout = ResourceDrawableToken<Drawable>(R.drawable.bg_celllayout)
         .setTint(ColorTokens.ColorAccent)
 
-    // pE-TODO(QPR1): Investigate
     @JvmField
-    val BgOverviewClearAllButton = ResourceDrawableToken<RippleDrawable>(R.drawable.overview_action_button_background)
+    val BgOverviewClearAllButton = ResourceDrawableToken<RippleDrawable>(R.drawable.bg_overview_clear_all_button)
         .mutate { context, scheme, uiColorMode ->
             val background = getDrawable(0) as GradientDrawable
             background.setColor(ColorTokens.ColorBackground.resolveColor(context, scheme, uiColorMode))
@@ -57,6 +56,13 @@ object DrawableTokens {
     @JvmField
     val RoundRectPrimary = ResourceDrawableToken<GradientDrawable>(R.drawable.round_rect_primary)
         .setColor(ColorTokens.ColorPrimary)
+
+    @JvmField
+    val SearchInputFg = ResourceDrawableToken<LayerDrawable>(R.drawable.search_input_fg)
+        .mutate { context, scheme, darkTheme ->
+            val shape = getDrawable(0) as GradientDrawable
+            shape.setColor(ColorTokens.SearchboxHighlight.resolveColor(context, scheme, darkTheme))
+        }
 
     @JvmField
     val SingleItemPrimary = ResourceDrawableToken<GradientDrawable>(R.drawable.single_item_primary)
@@ -139,11 +145,7 @@ object DrawableTokens {
             context,
             R.drawable.all_apps_tabs_background,
         )
-
-        // Prefer the user-selected tab color when set; otherwise the themed default.
-        val selectedColor = AllAppsTabColors.selectedBackground(context, scheme, uiColorMode)
-
-        selected?.setTint(selectedColor)
+        selected?.setTint(ColorTokens.AllAppsTabBackgroundSelected.resolveColor(context, scheme, uiColorMode))
 
         list.addState(intArrayOf(-android.R.attr.state_selected), unselected)
         list.addState(intArrayOf(android.R.attr.state_selected), selected)
@@ -184,30 +186,7 @@ object DrawableTokens {
 
     @JvmField
     val WorkCard = ResourceDrawableToken<GradientDrawable>(R.drawable.work_card)
-        .setColor(ColorTokens.SurfaceContainerHighest)
-
-    @JvmField
-    val WorkFabBackground = ResourceDrawableToken<RippleDrawable>(R.drawable.work_mode_fab_background)
-        .mutate { context, scheme, uiColorMode ->
-            val background = getDrawable(0) as? GradientDrawable
-            background?.setColor(ColorTokens.PrimaryButton.resolveColor(context, scheme, uiColorMode))
-        }
-
-    @JvmField
-    val WorkSchedulerBackground = ResourceDrawableToken<RippleDrawable>(R.drawable.work_scheduler_background)
-        .mutate { context, scheme, uiColorMode ->
-            val background = getDrawable(0) as? GradientDrawable
-            background?.setColor(ColorTokens.PrimaryButton.resolveColor(context, scheme, uiColorMode))
-        }
-
-    @JvmField
-    val WorkAppsPausedActionButton = ResourceDrawableToken<RippleDrawable>(R.drawable.bg_work_apps_paused_action_button)
-        .mutate { context, scheme, uiColorMode ->
-            val strokeWidth = context.resources.getDimensionPixelSize(R.dimen.work_apps_paused_button_stroke)
-            val strokeColor = ColorTokens.PrimaryButton.resolveColor(context, scheme, uiColorMode)
-            val background = findDrawableByLayerId(android.R.id.background) as? GradientDrawable
-            background?.setStroke(strokeWidth, strokeColor)
-        }
+        .setColor(ColorTokens.Surface)
 
     @JvmField
     val WidgetAddButtonBackground = ResourceDrawableToken<InsetDrawable>(R.drawable.widget_cell_add_button_background)

@@ -1,12 +1,9 @@
 package app.lawnchair.ui.preferences.destinations
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -48,9 +45,7 @@ fun SearchProviderPreferences(
         label = stringResource(R.string.search_provider),
         modifier = modifier,
     ) {
-        PreferenceGroup(
-            itemSpacing = 0.dp,
-        ) {
+        PreferenceGroup {
             QsbSearchProvider.values().forEach { qsbSearchProvider ->
                 val appInstalled = qsbSearchProvider.isDownloaded(context)
                 val selected = adapter.state.value == qsbSearchProvider
@@ -88,7 +83,6 @@ fun SearchProviderPreferences(
                             showAppDownloadButton = !appInstalled,
                         )
                     }
-                    Spacer(Modifier.height(ListItemDefaults.SegmentedGap))
                 }
             }
         }
@@ -112,12 +106,11 @@ private fun ListItem(
     ) {
         PreferenceTemplate(
             title = { Text(text = title) },
+            verticalPadding = if (showDownloadButton) 12.dp else 16.dp,
+            horizontalPadding = 0.dp,
             enabled = enabled,
-            description = if (description != null) {
-                { Text(text = description) }
-            } else {
-                null
-            },
+            modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+            description = { if (description != null) Text(text = description) },
             startWidget = {
                 RadioButton(
                     selected = selected,
@@ -146,7 +139,6 @@ private fun ListItem(
                     }
                 }
             },
-            onClick = if (enabled) onClick else null,
         )
     }
 }
@@ -169,6 +161,12 @@ private fun Options(
         PreferenceTemplate(
             title = { Text(stringResource(id = R.string.app_label)) },
             enabled = appEnabled,
+            verticalPadding = if (!appEnabled) 4.dp else 16.dp,
+            horizontalPadding = 0.dp,
+            modifier = Modifier.clickable(
+                enabled = appEnabled,
+                onClick = onAppClick,
+            ),
             startWidget = {
                 RadioButton(
                     selected = appSelected,
@@ -187,10 +185,11 @@ private fun Options(
                     )
                 }
             },
-            onClick = if (appEnabled) onAppClick else null,
         )
         PreferenceTemplate(
             title = { Text(text = stringResource(id = R.string.website_label)) },
+            modifier = Modifier.clickable(onClick = onWebsiteClick),
+            horizontalPadding = 0.dp,
             startWidget = {
                 RadioButton(
                     selected = !appSelected,
@@ -198,7 +197,6 @@ private fun Options(
                     modifier = Modifier.padding(start = 56.dp),
                 )
             },
-            onClick = onWebsiteClick,
         )
     }
 }
@@ -211,10 +209,7 @@ private fun SponsorDisclaimer(
 ) {
     ModalBottomSheetContent(
         buttons = {
-            OutlinedButton(
-                onClick = onAcknowledge,
-                shapes = ButtonDefaults.shapes(),
-            ) {
+            OutlinedButton(onClick = onAcknowledge) {
                 Text(text = stringResource(id = android.R.string.ok))
             }
         },

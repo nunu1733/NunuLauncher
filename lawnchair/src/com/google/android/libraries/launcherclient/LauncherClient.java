@@ -44,7 +44,7 @@ public class LauncherClient {
     };
 
     private int mActivityState = 0;
-    int mServiceState = 0;
+    private int mServiceState = 0;
     public int mFlags;
 
     public LayoutParams mLayoutParams;
@@ -54,20 +54,13 @@ public class LauncherClient {
     public boolean mDestroyed = false;
     private Bundle mLayoutBundle;
 
-    public static class OverlayCallback extends ILauncherOverlayCallback.Stub implements Callback {
+    public class OverlayCallback extends ILauncherOverlayCallback.Stub implements Callback {
         public LauncherClient mClient;
         private final Handler mUIHandler = new Handler(Looper.getMainLooper(), this);
         public Window mWindow;
         private boolean mWindowHidden = false;
         public WindowManager mWindowManager;
         int mWindowShift;
-
-        public void destroy() {
-            mClient = null;
-            mWindow = null;
-            mWindowManager = null;
-            mUIHandler.removeCallbacksAndMessages(null);
-        }
 
         @Override
         public final void overlayScrollChanged(float f) {
@@ -229,20 +222,7 @@ public class LauncherClient {
     }
 
     public void onDestroy() {
-        mDestroyed = true;
-        try {
-            mActivity.unregisterReceiver(googleInstallListener);
-        } catch (Exception ignored) {
-            // LC-Ignored
-        }
-        if (mOverlayCallback != null) {
-            mOverlayCallback.destroy();
-            mOverlayCallback = null;
-        }
-        if (mLauncherService.mClient != null && mLauncherService.mClient.get() == this) {
-            mLauncherService.mClient = null;
-        }
-        mBaseService.disconnect();
+        mActivity.unregisterReceiver(googleInstallListener);
     }
 
     private void connect() {
@@ -411,7 +391,7 @@ public class LauncherClient {
         }
     }
 
-    void setServiceState(int serviceState) {
+    private void setServiceState(int serviceState) {
         if (mServiceState != serviceState) {
             mServiceState = serviceState;
             mScrollCallback.onServiceStateChanged((serviceState & 1) != 0);

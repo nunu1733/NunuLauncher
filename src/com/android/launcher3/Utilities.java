@@ -30,6 +30,8 @@ import android.app.ActivityOptions;
 import android.app.Person;
 import android.app.WallpaperManager;
 import android.content.Context;
+import android.content.SharedPreferences;
+import com.android.launcher3.LauncherFiles;
 import android.content.pm.LauncherActivityInfo;
 import android.content.pm.LauncherApps;
 import android.content.pm.ResolveInfo;
@@ -114,6 +116,12 @@ import app.lawnchair.preferences.PreferenceManager;
  * Various utilities shared amongst the Launcher's classes.
  */
 public final class Utilities {
+
+    // Rebase Phase 2 bridge (fork adaptation): DatabaseHelper reads this to decide
+    // whether the first page reserves a widget slot.
+    public static final boolean SHOULD_SHOW_FIRST_PAGE_WIDGET =
+            com.android.launcher3.BuildConfigs.WIDGET_ON_FIRST_SCREEN;
+
 
     private static final String TAG = "Launcher.Utilities";
 
@@ -1124,5 +1132,12 @@ public final class Utilities {
     public static boolean shouldEnableMouseInteractionChanges(Context context) {
         return enableMouseInteractionChanges() && context.getResources().getBoolean(
                 R.bool.desktop_form_factor);
+    }
+
+    // Rebase Phase 2 bridge (fork adaptation): fork-era prefs accessor used by
+    // homeedit code; delegates to the launcher shared preferences file.
+    public static SharedPreferences getPrefs(Context context) {
+        return context.getApplicationContext().getSharedPreferences(
+                LauncherFiles.SHARED_PREFERENCES_KEY, Context.MODE_PRIVATE);
     }
 }

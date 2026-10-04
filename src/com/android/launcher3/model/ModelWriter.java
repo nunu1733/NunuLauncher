@@ -25,7 +25,6 @@ import android.content.Context;
 import android.os.UserManager;
 import android.text.TextUtils;
 import android.util.Log;
-import android.util.SparseIntArray;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -33,7 +32,6 @@ import androidx.annotation.Nullable;
 import com.android.launcher3.InvariantDeviceProfile;
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherModel;
-import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.LauncherModel.CallbackTask;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.Utilities;
@@ -59,7 +57,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -100,14 +97,15 @@ public class ModelWriter {
         mUiExecutor = Executors.MAIN_EXECUTOR;
     }
 
-    /** Updates the location properties of the item */
-    public void updateItemInfoProps(
+    private void updateItemInfoProps(
             ItemInfo item, int container, int screenId, int cellX, int cellY) {
         CellPos modelPos = mCellPosMapper.mapPresenterToModel(cellX, cellY, screenId, container);
+
         item.container = container;
         item.cellX = modelPos.cellX;
         item.cellY = modelPos.cellY;
         item.screenId = modelPos.screenId;
+
     }
 
     /**
@@ -167,11 +165,10 @@ public class ModelWriter {
      */
     public boolean clearAllHomeScreenViewsByType(int type) {
         final ArrayList<ItemInfo> itemsToRemove = new ArrayList<>();
-        synchronized (mBgDataModel) {
-            for (ItemInfo item : mBgDataModel.itemsIdMap) {
-                if (item.container == type) {
-                    itemsToRemove.add(item);
-                }
+
+        for (ItemInfo item : mBgDataModel.itemsIdMap) {
+            if (item.container == type) {
+                itemsToRemove.add(item);
             }
         }
 
@@ -179,7 +176,16 @@ public class ModelWriter {
             return false;
         }
 
-        deleteItemsFromDatabase(itemsToRemove, "clearAllHomeScreenViewsByType");
+        enqueueDeleteRunnable(newModelTask(() -> {
+            final ModelDbController db = mModel.getModelDbController();
+
+            for (ItemInfo item : itemsToRemove) {
+                db.delete(TABLE_NAME, itemIdMatch(item.id), null);
+                mBgDataModel.removeItem(mContext, item);
+            }
+        }));
+
+        mModel.forceReload();
         return true;
     }
 
@@ -226,7 +232,7 @@ public class ModelWriter {
     public void moveItemsInDatabase(final ArrayList<ItemInfo> items, int container, int screen) {
         ArrayList<ContentValues> contentValues = new ArrayList<>();
         int count = items.size();
-        notifyOtherCallbacks(c -> c.bindItemsUpdated(new HashSet<>(items)));
+        notifyOtherCallbacks(c -> c.bindItemsModified(items));
 
         for (int i = 0; i < count; i++) {
             ItemInfo item = items.get(i);
@@ -242,105 +248,6 @@ public class ModelWriter {
             contentValues.add(values);
         }
         enqueueDeleteRunnable(new UpdateItemsRunnable(items, contentValues));
-    }
-
-    /**
-     * Remaps workspace screen ids for all desktop items using the provided mapping.
-     */
-    public void moveWorkspaceScreensInDatabase(SparseIntArray screenIdMap) {
-        moveWorkspaceScreensInDatabase(screenIdMap, null);
-    }
-
-    /**
-     * Remaps workspace screen ids for all desktop items using the provided mapping.
-     *
-     * @param onComplete optional runnable executed on the main thread after item callbacks are
-     *                   dispatched (always runs, including when there are no item updates).
-     */
-    public void moveWorkspaceScreensInDatabase(SparseIntArray screenIdMap, Runnable onComplete) {
-        if (screenIdMap == null || screenIdMap.size() == 0) {
-            if (onComplete != null) {
-                mUiExecutor.execute(onComplete);
-            }
-            return;
-        }
-        ModelVerifier verifier = new ModelVerifier();
-        enqueueDeleteRunnable(newModelTask(() -> {
-            try (SQLiteTransaction t = mModel.getModelDbController().newTransaction()) {
-                // First pass to temporary ids to avoid collisions in cycles.
-                for (int i = 0; i < screenIdMap.size(); i++) {
-                    int fromScreenId = screenIdMap.keyAt(i);
-                    int tempScreenId = Integer.MIN_VALUE + i;
-                    ContentValues tempValues = new ContentValues();
-                    tempValues.put(Favorites.SCREEN, tempScreenId);
-                    mModel.getModelDbController().update(
-                            tempValues,
-                            Favorites.CONTAINER + "=" + Favorites.CONTAINER_DESKTOP + " AND "
-                                    + Favorites.SCREEN + "=" + fromScreenId,
-                            null);
-                }
-                // Second pass to final ids.
-                for (int i = 0; i < screenIdMap.size(); i++) {
-                    int toScreenId = screenIdMap.valueAt(i);
-                    int tempScreenId = Integer.MIN_VALUE + i;
-                    ContentValues finalValues = new ContentValues();
-                    finalValues.put(Favorites.SCREEN, toScreenId);
-                    mModel.getModelDbController().update(
-                            finalValues,
-                            Favorites.CONTAINER + "=" + Favorites.CONTAINER_DESKTOP + " AND "
-                                    + Favorites.SCREEN + "=" + tempScreenId,
-                            null);
-                }
-                t.commit();
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to remap workspace screens", e);
-                if (onComplete != null) {
-                    mUiExecutor.execute(onComplete);
-                }
-                return;
-            }
-
-            ArrayList<ItemInfo> updatedItems = new ArrayList<>();
-            synchronized (mBgDataModel) {
-                for (ItemInfo item : mBgDataModel.itemsIdMap) {
-                    if (item.container != Favorites.CONTAINER_DESKTOP) {
-                        continue;
-                    }
-                    int newScreenId = screenIdMap.get(item.screenId, item.screenId);
-                    if (newScreenId != item.screenId) {
-                        item.screenId = newScreenId;
-                        updatedItems.add(item);
-                    }
-                }
-                if (!updatedItems.isEmpty()) {
-                    mBgDataModel.updateItems(updatedItems, mOwner);
-                }
-                verifier.verifyModel();
-            }
-            final HashSet<ItemInfo> updates = new HashSet<>(updatedItems);
-            mUiExecutor.execute(() -> {
-                if (!updates.isEmpty()) {
-                    if (mOwner != null) {
-                        mOwner.bindItemsUpdated(updates);
-                    }
-                    notifyOtherCallbacks(c -> c.bindItemsUpdated(updates));
-                }
-                if (onComplete != null) {
-                    onComplete.run();
-                }
-            });
-        }));
-    }
-
-    /**
-     * Persists explicit workspace screen order synchronously.
-     */
-    public void persistWorkspaceScreenOrderSync(IntArray screenOrder) {
-        if (screenOrder == null || screenOrder.isEmpty()) {
-            return;
-        }
-        String serialized = screenOrder.toConcatString();
-        LauncherPrefs.get(mContext).putSync(LauncherPrefs.WORKSPACE_SCREEN_ORDER.to(serialized));
     }
 
     /**
@@ -376,8 +283,8 @@ public class ModelWriter {
         }).executeOnModelThread();
     }
 
-    public void notifyItemModified(ItemInfo item) {
-        notifyOtherCallbacks(c -> c.bindItemsUpdated(Collections.singleton(item)));
+    private void notifyItemModified(ItemInfo item) {
+        notifyOtherCallbacks(c -> c.bindItemsModified(Collections.singletonList(item)));
     }
 
     /**
@@ -388,15 +295,9 @@ public class ModelWriter {
     public void addItemToDatabase(final ItemInfo item,
             int container, int screenId, int cellX, int cellY) {
         updateItemInfoProps(item, container, screenId, cellX, cellY);
-        addItemsToDatabase(Collections.singletonList(item));
-    }
 
-    /**
-     * Add provided items to the database. Also assigns an ID to each item.
-     */
-    public void addItemsToDatabase(final List<ItemInfo> items) {
-        items.forEach(info -> info.id = mModel.getModelDbController().generateNewItemId());
-        notifyOtherCallbacks(c -> c.bindItemsAdded(items));
+        item.id = mModel.getModelDbController().generateNewItemId();
+        notifyOtherCallbacks(c -> c.bindItems(Collections.singletonList(item), false));
 
         ModelVerifier verifier = new ModelVerifier();
         final StackTraceElement[] stackTrace = new Throwable().getStackTrace();
@@ -404,18 +305,14 @@ public class ModelWriter {
             // Write the item on background thread, as some properties might have been
             // updated in
             // the background.
-            for (ItemInfo item: items) {
-                final ContentWriter writer = new ContentWriter(mContext);
-                item.onAddToDatabase(writer);
-                writer.put(Favorites._ID, item.id);
-                mModel.getModelDbController().insert(writer.getValues(mContext));
-            }
+            final ContentWriter writer = new ContentWriter(mContext);
+            item.onAddToDatabase(writer);
+            writer.put(Favorites._ID, item.id);
 
+            mModel.getModelDbController().insert(Favorites.TABLE_NAME, writer.getValues(mContext));
             synchronized (mBgDataModel) {
-                for (ItemInfo item: items) {
-                    checkItemInfoLocked(item.id, item, stackTrace);
-                }
-                mBgDataModel.addItems(mContext, items, mOwner);
+                checkItemInfoLocked(item.id, item, stackTrace);
+                mBgDataModel.addItem(mContext, item, true);
                 verifier.verifyModel();
             }
         }).executeOnModelThread();
@@ -452,10 +349,10 @@ public class ModelWriter {
         notifyDelete(items);
         enqueueDeleteRunnable(newModelTask(() -> {
             for (ItemInfo item : items) {
-                mModel.getModelDbController().delete(itemIdMatch(item.id), null);
+                mModel.getModelDbController().delete(TABLE_NAME, itemIdMatch(item.id), null);
+                mBgDataModel.removeItem(mContext, item);
+                verifier.verifyModel();
             }
-            mBgDataModel.removeItem(mContext, items, mOwner);
-            verifier.verifyModel();
         }));
     }
 
@@ -467,15 +364,14 @@ public class ModelWriter {
         notifyDelete(Collections.singleton(info));
 
         enqueueDeleteRunnable(newModelTask(() -> {
-            mModel.getModelDbController().delete(
+            mModel.getModelDbController().delete(Favorites.TABLE_NAME,
                     Favorites.CONTAINER + "=" + info.id, null);
+            mBgDataModel.removeItem(mContext, info.getContents());
+            info.getContents().clear();
 
-            mModel.getModelDbController().delete(
+            mModel.getModelDbController().delete(Favorites.TABLE_NAME,
                     Favorites._ID + "=" + info.id, null);
-
-            List<ItemInfo> itemsToDelete = new ArrayList<>(info.getContents());
-            itemsToDelete.add(info);
-            mBgDataModel.removeItem(mContext, itemsToDelete, mOwner);
+            mBgDataModel.removeItem(mContext, info);
             verifier.verifyModel();
         }));
     }
@@ -579,9 +475,8 @@ public class ModelWriter {
         @Override
         public void runImpl() {
             mModel.getModelDbController().update(
-                    mWriter.get().getValues(mContext), itemIdMatch(mItemId), null);
+                    TABLE_NAME, mWriter.get().getValues(mContext), itemIdMatch(mItemId), null);
             updateItemArrays(mItem, mItemId);
-            mBgDataModel.updateItems(Collections.singletonList(mItem), mOwner);
         }
     }
 
@@ -602,11 +497,10 @@ public class ModelWriter {
                     ItemInfo item = mItems.get(i);
                     final int itemId = item.id;
                     mModel.getModelDbController().update(
-                            mValues.get(i), itemIdMatch(itemId), null);
+                            TABLE_NAME, mValues.get(i), itemIdMatch(itemId), null);
                     updateItemArrays(item, itemId);
                 }
                 t.commit();
-                mBgDataModel.updateItems(mItems, mOwner);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -629,13 +523,36 @@ public class ModelWriter {
                 if (item.container != Favorites.CONTAINER_DESKTOP &&
                         item.container != Favorites.CONTAINER_HOTSEAT) {
                     // Item is in a collection, make sure this collection exists
-                    if (!(mBgDataModel.itemsIdMap.get(item.container) instanceof CollectionInfo)) {
+                    if (!mBgDataModel.collections.containsKey(item.container)) {
                         // An items container is being set to a that of an item which is not in
-                        // the list of collections.
+                        // the list of Folders.
                         String msg = "item: " + item + " container being set to: " +
                                 item.container + ", not in the list of collections";
                         Log.e(TAG, msg);
                     }
+                }
+
+                // Items are added/removed from the corresponding FolderInfo elsewhere, such
+                // as in Workspace.onDrop. Here, we just add/remove them from the list of items
+                // that are on the desktop, as appropriate
+                ItemInfo modelItem = mBgDataModel.itemsIdMap.get(itemId);
+                if (modelItem != null &&
+                        (modelItem.container == Favorites.CONTAINER_DESKTOP ||
+                                modelItem.container == Favorites.CONTAINER_HOTSEAT)) {
+                    switch (modelItem.itemType) {
+                        case Favorites.ITEM_TYPE_APPLICATION:
+                        case Favorites.ITEM_TYPE_DEEP_SHORTCUT:
+                        case Favorites.ITEM_TYPE_FOLDER:
+                        case Favorites.ITEM_TYPE_APP_PAIR:
+                            if (!mBgDataModel.workspaceItems.contains(modelItem)) {
+                                mBgDataModel.workspaceItems.add(modelItem);
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                } else {
+                    mBgDataModel.workspaceItems.remove(modelItem);
                 }
                 mVerifier.verifyModel();
             }

@@ -1,5 +1,6 @@
-﻿package app.lawnchair.ui.preferences.destinations
+package app.lawnchair.ui.preferences.destinations
 
+import android.content.Context
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,17 +13,17 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import app.lawnchair.data.folder.FolderEntry
 import app.lawnchair.data.folder.model.FolderViewModel
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.AppItem
@@ -30,13 +31,14 @@ import app.lawnchair.ui.preferences.components.AppItemPlaceholder
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import app.lawnchair.ui.preferences.components.layout.preferenceGroupItems
-import app.lawnchair.ui.preferences.components.reorderable.PositionalList
-import app.lawnchair.ui.preferences.components.reorderable.PositionalListOverflowMenu
-import app.lawnchair.ui.preferences.components.reorderable.PositionalListState
-import app.lawnchair.ui.preferences.components.reorderable.rememberPositionalListState
+import app.lawnchair.ui.preferences.components.reorderable.PositionalListItem
+import app.lawnchair.ui.preferences.components.reorderable.PositionalMapper
+import app.lawnchair.ui.preferences.components.reorderable.PositionalOrderMenu
+import app.lawnchair.ui.preferences.components.reorderable.PositionalReorderer
 import app.lawnchair.util.App
 import app.lawnchair.util.appsState
 import com.android.launcher3.R
+import com.android.launcher3.util.ComponentKey
 
 @Composable
 fun SelectAppsForDrawerFolder(
@@ -50,100 +52,86 @@ fun SelectAppsForDrawerFolder(
         return
     }
 
+    val context = LocalContext.current
     val apps by appsState()
-    val folderEntry by viewModel.getFolderFlowForId(folderInfoId).collectAsStateWithLifecycle(null)
-    val allFolderPackages by viewModel.allFolderPackages.collectAsStateWithLifecycle()
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val folderInfo by viewModel.folderInfo.collectAsStateWithLifecycle()
 
-    SelectAppsForDrawerFolder(
-        folderEntry = folderEntry,
-        apps = apps,
-        allFolderPackages = allFolderPackages,
-        onUpdate = { title, componentKeys ->
-            viewModel.updateFolderItems(folderInfoId, title, componentKeys)
-        },
-        modifier = modifier,
-    )
-}
-
-@Composable
-fun SelectAppsForDrawerFolder(
-    folderEntry: FolderEntry?,
-    apps: List<App>,
-    allFolderPackages: Set<String>?,
-    onUpdate: (title: String, componentKeys: List<String>) -> Unit,
-    modifier: Modifier = Modifier,
-) {
+    var allFolderPackages by remember { mutableStateOf(emptySet<String>()) }
     var filterNonUniqueItems by remember { mutableStateOf(true) }
 
-    val activeIds = remember(folderEntry) {
-        folderEntry?.itemComponentKeys ?: emptyList()
+    val activeIds = remember(folderInfo) {
+        folderInfo?.getContents()?.map { ComponentKey(it.targetComponent, it.user).toString() } ?: emptyList()
     }
 
     val (positionalItems, activeCount) = remember(apps, activeIds, filterNonUniqueItems, allFolderPackages) {
         val filtered = apps.filter { app ->
             if (filterNonUniqueItems) {
-                val packages = allFolderPackages ?: emptySet()
-                !packages.contains(app.key.componentName.packageName) ||
+                !allFolderPackages.contains(app.key.componentName.packageName) ||
                     activeIds.contains(app.key.toString())
             } else {
                 true
             }
         }
-        PositionalListState.prepareCategorizedItems(
+        PositionalMapper.prepareCategorizedItems(
             allItems = filtered,
             enabledIds = activeIds,
             idSelector = { it.key.toString() },
         )
     }
 
-    val loading = folderEntry == null || apps.isEmpty()
-
-    val state = key(loading) {
-        rememberPositionalListState(
-            items = positionalItems,
-            activeCount = activeCount,
-            onOrderChange = { newList, newCount ->
-                val sorted = PositionalListState.sortInactiveItems(newList, newCount) { it.label }
-                val activeKeys = PositionalListState.getEnabledKeys(sorted, newCount)
-                onUpdate(folderEntry?.title.toString(), activeKeys)
-            },
-            labelSelector = { it.label },
-        )
+    LaunchedEffect(folders) {
+        allFolderPackages = folders.flatMap { it.getContents() }
+            .mapNotNull { it.targetPackage }
+            .toSet()
     }
+
+    LaunchedEffect(folderInfoId) {
+        viewModel.setFolderInfo(folderInfoId, false)
+    }
+
+    val loading = folderInfo == null && apps.isEmpty()
 
     PreferenceScaffold(
         label = if (loading) {
             stringResource(R.string.loading)
         } else {
-            stringResource(R.string.x_with_y_count, folderEntry.title, state.activeCount)
+            stringResource(R.string.x_with_y_count, folderInfo?.title.toString(), activeCount)
         },
         modifier = modifier,
         actions = {
             if (!loading) {
-                PositionalListOverflowMenu(
-                    state = state,
-                ) { hideMenu ->
-                    DropdownMenuItem(
-                        onClick = {
-                            filterNonUniqueItems = !filterNonUniqueItems
-                            hideMenu()
-                        },
-                        trailingIcon = {
-                            if (filterNonUniqueItems) Icon(Icons.Rounded.Check, null)
-                        },
-                        text = { Text(stringResource(R.string.folders_filter_duplicates)) },
-                    )
-                }
+                PositionalOrderMenu(
+                    items = positionalItems,
+                    activeCount = activeCount,
+                    onUpdate = { newList, newCount ->
+                        val sorted = PositionalMapper.sortInactiveItems(newList, newCount) { it.label }
+                        updateViewModel(sorted, newCount, apps, context, viewModel, folderInfoId, folderInfo?.title.toString())
+                    },
+                    additionalContent = { hideMenu ->
+                        DropdownMenuItem(
+                            onClick = {
+                                filterNonUniqueItems = !filterNonUniqueItems
+                                hideMenu()
+                            },
+                            trailingIcon = {
+                                if (filterNonUniqueItems) Icon(Icons.Rounded.Check, null)
+                            },
+                            text = { Text(stringResource(R.string.folders_filter_duplicates)) },
+                        )
+                    },
+                )
             }
         },
         isExpandedScreen = LocalIsExpandedScreen.current,
-    ) { contentPadding ->
+    ) {
         Crossfade(targetState = loading, label = "") { isLoading ->
             if (isLoading) {
-                PreferenceLazyColumn(contentPadding, enabled = false, state = rememberLazyListState()) {
+                PreferenceLazyColumn(it, enabled = false, state = rememberLazyListState()) {
                     preferenceGroupItems(
                         count = 20,
                         isFirstChild = true,
+                        dividerStartIndent = 40.dp,
                     ) {
                         AppItemPlaceholder {
                             Spacer(Modifier.width(24.dp))
@@ -152,8 +140,13 @@ fun SelectAppsForDrawerFolder(
                 }
             } else {
                 PositionalAppListPreference(
-                    state = state,
-                    contentPadding = contentPadding,
+                    items = positionalItems,
+                    activeCount = activeCount,
+                    onOrderChange = { newList, newCount ->
+                        val sorted = PositionalMapper.sortInactiveItems(newList, newCount) { it.label }
+                        updateViewModel(sorted, newCount, apps, context, viewModel, folderInfoId, folderInfo?.title.toString())
+                    },
+                    contentPadding = it,
                 )
             }
         }
@@ -162,12 +155,16 @@ fun SelectAppsForDrawerFolder(
 
 @Composable
 private fun PositionalAppListPreference(
-    state: PositionalListState<App, String>,
+    items: List<PositionalListItem<App>>,
+    activeCount: Int,
+    onOrderChange: (newList: List<PositionalListItem<App>>, newEnabledCount: Int) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
-    PositionalList(
-        state = state,
+    PositionalReorderer(
+        items = items,
+        activeCount = activeCount,
+        onOrderChange = onOrderChange,
         itemContent = { app, dragHandle, toggle ->
             AppItem(
                 app = app,
@@ -176,7 +173,29 @@ private fun PositionalAppListPreference(
                 endWidget = toggle,
             )
         },
+        labelSelector = { it.label },
         contentPadding = contentPadding,
         modifier = modifier,
     )
+}
+
+private fun updateViewModel(
+    newList: List<PositionalListItem<App>>,
+    newCount: Int,
+    apps: List<App>,
+    context: Context,
+    viewModel: FolderViewModel,
+    folderId: Int,
+    title: String,
+) {
+    val activePackageNames = PositionalMapper.getEnabledKeys(newList, newCount).toSet()
+
+    val newSelection = activePackageNames.mapNotNull { keyString ->
+        val app = apps.find { it.key.toString() == keyString }
+        app?.toAppInfo(context)?.apply {
+            rank = activePackageNames.indexOf(keyString)
+        }
+    }
+
+    viewModel.updateFolderItems(folderId, title, newSelection)
 }

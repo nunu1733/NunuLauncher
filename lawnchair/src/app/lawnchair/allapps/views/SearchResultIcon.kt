@@ -21,7 +21,6 @@ import com.android.launcher3.icons.BaseIconFactory
 import com.android.launcher3.icons.BitmapInfo
 import com.android.launcher3.icons.IconProvider
 import com.android.launcher3.icons.LauncherIcons
-import com.android.launcher3.icons.cache.CacheLookupFlag.Companion.DEFAULT_LOOKUP_FLAG
 import com.android.launcher3.model.data.ItemInfoWithIcon
 import com.android.launcher3.model.data.PackageItemInfo
 import com.android.launcher3.model.data.SearchActionItemInfo
@@ -30,7 +29,6 @@ import com.android.launcher3.touch.ItemClickHandler
 import com.android.launcher3.touch.ItemLongClickListener
 import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.util.Executors
-import com.android.systemui.util.dpToPx
 
 class SearchResultIcon(context: Context, attrs: AttributeSet?) :
     BubbleTextView(context, attrs),
@@ -45,8 +43,6 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
     private var callback: ((info: ItemInfoWithIcon) -> Unit)? = null
 
     private val searchResultMargin = resources.getDimensionPixelSize(R.dimen.search_result_margin)
-    private var defaultPaddingLeft = -1
-    private var defaultPaddingRight = -1
 
     override fun onFinishInflate() {
         super.onFinishInflate()
@@ -56,37 +52,8 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
         setOnLongClickListener(this)
         layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            launcher.deviceProfile.allAppsProfile.cellHeightPx,
+            launcher.deviceProfile.allAppsCellHeightPx,
         )
-        defaultPaddingLeft = paddingLeft
-        defaultPaddingRight = paddingRight
-    }
-
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val width = MeasureSpec.getSize(widthMeasureSpec)
-        if (defaultPaddingLeft == -1) {
-            defaultPaddingLeft = paddingLeft
-            defaultPaddingRight = paddingRight
-        }
-        val isLayoutHorizontal = compoundDrawablesRelative[0] != null || compoundDrawablesRelative[2] != null
-        if (isLayoutHorizontal) {
-            if (paddingLeft != defaultPaddingLeft || paddingRight != defaultPaddingRight) {
-                setPadding(defaultPaddingLeft, paddingTop, defaultPaddingRight, paddingBottom)
-            }
-        } else if (width > 0) {
-            val desiredWidth = iconSize + 48.dpToPx(resources)
-            if (desiredWidth < width) {
-                val inset = ((width - desiredWidth) / 2).toInt()
-                if (paddingLeft != inset || paddingRight != inset) {
-                    setPadding(inset, paddingTop, inset, paddingBottom)
-                }
-            } else {
-                if (paddingLeft != defaultPaddingLeft || paddingRight != defaultPaddingRight) {
-                    setPadding(defaultPaddingLeft, paddingTop, defaultPaddingRight, paddingBottom)
-                }
-            }
-        }
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     override val isQuickLaunch get() = hasFlag(flags, SearchResultView.FLAG_QUICK_LAUNCH)
@@ -98,6 +65,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
     }
 
     override fun bind(target: SearchTargetCompat, shortcuts: List<SearchTargetCompat>) {
+        if (boundId == target.id) return
         boundId = target.id
         flags = getFlags(target.extras)
         reset()
@@ -114,7 +82,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
 
             target.shortcutInfo != null -> {
                 allowLongClick = true
-                bindFromShortcutInfo(target.id, target.shortcutInfo)
+                bindFromShortcutInfo(target.shortcutInfo)
             }
 
             else -> {
@@ -181,14 +149,9 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
         }
         notifyApplied(info)
         if (bindIcon) {
-            val targetId = boundId
             Executors.MODEL_EXECUTOR.handler.postAtFrontOfQueue {
                 populateSearchActionItemInfo(target, info)
-                runOnMainThread {
-                    if (boundId == targetId) {
-                        applyFromItemInfoWithIcon(info)
-                    }
-                }
+                runOnMainThread { applyFromItemInfoWithIcon(info) }
             }
         }
     }
@@ -199,7 +162,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
             isVisible = false
             return
         }
-        icon = appInfo.newIcon(context, 0)
+        icon = appInfo.newIcon(context, false)
     }
 
     private fun bindFromApp(componentName: ComponentName, user: UserHandle) {
@@ -212,7 +175,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
         notifyApplied(appInfo)
     }
 
-    private fun bindFromShortcutInfo(targetId: String, shortcutInfo: ShortcutInfo) {
+    private fun bindFromShortcutInfo(shortcutInfo: ShortcutInfo) {
         val si = WorkspaceItemInfo(shortcutInfo, launcher)
         si.container = LauncherSettings.Favorites.CONTAINER_ALL_APPS
         applyFromWorkspaceItem(si)
@@ -220,11 +183,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
         val cache = LauncherAppState.getInstance(launcher).iconCache
         Executors.MODEL_EXECUTOR.handler.postAtFrontOfQueue {
             cache.getShortcutIcon(si, shortcutInfo)
-            runOnMainThread {
-                if (boundId == targetId) {
-                    applyFromWorkspaceItem(si)
-                }
-            }
+            runOnMainThread { applyFromWorkspaceItem(si) }
         }
     }
 
@@ -253,7 +212,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
 
                 icon == null -> packageIcon
 
-                else -> icon.loadDrawable(context)?.let { li.createBadgedIconBitmap(it, BaseIconFactory.IconOptions().setUser(info.user)) } ?: packageIcon
+                else -> icon.loadDrawable(context)?.let { li.createBadgedIconBitmap(it, BaseIconFactory.IconOptions().setUser(info.user)) }
             }
             if (info.hasFlags(SearchActionItemInfo.FLAG_BADGE_WITH_COMPONENT_NAME) && target.extras.containsKey("class")) {
                 try {
@@ -264,12 +223,11 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
                     val activityIcon = iconProvider.getIcon(activityInfo)
                     val bitmap = li.createIconBitmap(activityIcon, 1f)
                     val bitmapInfo = BitmapInfo.of(bitmap, packageIcon.color)
-                    // Lawnchair-TODO-Postmerge: AOSP removed it -- 393bc59246f0f88f62b9879000d57fde36cdb214
-//                    info.bitmap = li.badgeBitmap(info.bitmap.icon, bitmapInfo)
+                    info.bitmap = li.badgeBitmap(info.bitmap.icon, bitmapInfo)
                 } catch (_: PackageManager.NameNotFoundException) {
                 }
             } else if (info.hasFlags(SearchActionItemInfo.FLAG_BADGE_WITH_PACKAGE) && info.bitmap != packageIcon) {
-//                info.bitmap = li.badgeBitmap(info.bitmap.icon, packageIcon)
+                info.bitmap = li.badgeBitmap(info.bitmap.icon, packageIcon)
             }
         }
     }
@@ -278,7 +236,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
         val las = LauncherAppState.getInstance(context)
         val info = PackageItemInfo(packageName, user)
         info.user = user
-        las.iconCache.getTitleAndIcon(info, DEFAULT_LOOKUP_FLAG)
+        las.iconCache.getTitleAndIcon(info, false)
         return info.bitmap
     }
 

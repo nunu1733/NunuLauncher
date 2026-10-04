@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -184,7 +183,6 @@ fun CreateBackupScreen(
                     .align(Alignment.CenterEnd)
                     .fillMaxWidth(),
                 enabled = contents != 0 && screenshotDone && !creatingBackup,
-                shapes = ButtonDefaults.shapes(),
             ) {
                 Text(text = stringResource(id = R.string.action_create))
             }

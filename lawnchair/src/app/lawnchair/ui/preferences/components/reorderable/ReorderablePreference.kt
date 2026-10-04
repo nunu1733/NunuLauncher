@@ -1,15 +1,11 @@
 package app.lawnchair.ui.preferences.components.reorderable
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -20,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -33,10 +28,9 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroupHeading
 import app.lawnchair.ui.theme.preferenceGroupColor
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
+import com.android.launcher3.Utilities
 import sh.calvin.reorderable.ReorderableColumn
-import sh.calvin.reorderable.ReorderableListItemScope
+import sh.calvin.reorderable.ReorderableScope
 
 @Composable
 fun <T> ReorderablePreferenceGroup(
@@ -46,13 +40,13 @@ fun <T> ReorderablePreferenceGroup(
     onOrderChange: (List<T>) -> Unit,
     modifier: Modifier = Modifier,
     onSettle: ((List<T>) -> Unit)? = null,
-    itemContent: @Composable ReorderableListItemScope.(
+    itemContent: @Composable ReorderableScope.(
         item: T,
         index: Int,
         isDragging: Boolean,
+        onDraggingChange: (Boolean) -> Unit,
     ) -> Unit,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     var localItems by remember { mutableStateOf(items) }
 
     LaunchedEffect(items) {
@@ -60,6 +54,13 @@ fun <T> ReorderablePreferenceGroup(
             localItems = items
         }
     }
+
+    var isAnyDragging by remember { mutableStateOf(false) }
+
+    val color by animateColorAsState(
+        targetValue = if (!isAnyDragging) preferenceGroupColor() else MaterialTheme.colorScheme.surface,
+        label = "card background animation",
+    )
 
     val view = LocalView.current
 
@@ -70,8 +71,10 @@ fun <T> ReorderablePreferenceGroup(
         Surface(
             modifier = Modifier.padding(horizontal = 16.dp),
             shape = MaterialTheme.shapes.large,
+            color = color,
         ) {
             ReorderableColumn(
+                modifier = Modifier,
                 list = localItems,
                 onSettle = { fromIndex, toIndex ->
                     val newItems = localItems.toMutableList().apply {
@@ -82,50 +85,51 @@ fun <T> ReorderablePreferenceGroup(
                     if (onSettle != null) {
                         onSettle(newItems)
                     }
+                    isAnyDragging = false
                 },
                 onMove = {
-                    mMSDLPlayerWrapper.playToken(MSDLToken.DRAG_INDICATOR_DISCRETE)
+                    isAnyDragging = true
+                    if (Utilities.ATLEAST_U) {
+                        view.performHapticFeedback(HapticFeedbackConstants.SEGMENT_FREQUENT_TICK)
+                    }
                 },
             ) { index, item, isDragging ->
-                key(item.hashCode()) {
-                    ReorderableItem {
-                        Column {
-                            ReorderablePreferenceItem(
-                                isDragging = isDragging,
-                                modifier = Modifier
-                                    .a11yDrag(
-                                        index = index,
-                                        items = items,
-                                        onMoveUp = {
-                                            localItems = it
-                                            onOrderChange(it)
-                                            if (onSettle != null) {
-                                                onSettle(it)
-                                            }
-                                        },
-                                        onMoveDown = {
-                                            localItems = it
-                                            onOrderChange(it)
-                                            if (onSettle != null) {
-                                                onSettle(it)
-                                            }
-                                        },
-                                    ),
+                key(item) {
+                    Column {
+                        ReorderablePreferenceItem(
+                            isDragging = isDragging,
+                            modifier = Modifier
+                                .a11yDrag(
+                                    index = index,
+                                    items = items,
+                                    onMoveUp = {
+                                        localItems = it
+                                        onOrderChange(it)
+                                        if (onSettle != null) {
+                                            onSettle(it)
+                                        }
+                                    },
+                                    onMoveDown = {
+                                        localItems = it
+                                        onOrderChange(it)
+                                        if (onSettle != null) {
+                                            onSettle(it)
+                                        }
+                                    },
+                                ),
+                        ) {
+                            itemContent(
+                                item,
+                                index,
+                                isDragging,
                             ) {
-                                itemContent(
-                                    item,
-                                    index,
-                                    isDragging,
-                                )
+                                isAnyDragging = it
                             }
-
-                            AnimatedVisibility(index != localItems.lastIndex) {
-                                Box(
-                                    Modifier
-                                        .background(MaterialTheme.colorScheme.surface)
-                                        .height(ListItemDefaults.SegmentedGap),
-                                )
-                            }
+                        }
+                        AnimatedVisibility(!isAnyDragging && index != localItems.lastIndex) {
+                            HorizontalDivider(
+                                Modifier.padding(start = 50.dp, end = 16.dp),
+                            )
                         }
                     }
                 }

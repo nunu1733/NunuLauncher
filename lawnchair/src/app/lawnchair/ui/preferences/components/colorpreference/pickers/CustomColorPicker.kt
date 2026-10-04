@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.requiredWidth
@@ -26,7 +25,6 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,8 +67,6 @@ import app.lawnchair.ui.preferences.components.layout.DividerColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.util.requireSystemService
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 import kotlinx.coroutines.launch
 
 /**
@@ -86,7 +82,6 @@ fun CustomColorPicker(
     modifier: Modifier = Modifier,
     onSelect: (Int) -> Unit,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     val focusManager = LocalFocusManager.current
 
     val selectedColorCompose = Color(selectedColor)
@@ -107,10 +102,7 @@ fun CustomColorPicker(
             modifier = Modifier.padding(top = 8.dp),
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(color = MaterialTheme.colorScheme.surfaceContainer)
-                    .padding(16.dp),
+                modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
@@ -154,23 +146,17 @@ fun CustomColorPicker(
                     horizontalArrangement = Arrangement.spacedBy(space = 8.dp),
                     modifier = Modifier
                         .padding(horizontal = 16.dp)
-                        .padding(top = 8.dp, bottom = 16.dp),
+                        .padding(top = 16.dp),
                 ) {
                     Chip(
                         label = stringResource(id = R.string.hsb),
-                        onClick = {
-                            mMSDLPlayerWrapper.playToken(MSDLToken.TAP_LOW_EMPHASIS)
-                            scrollToPage(0)
-                        },
+                        onClick = { scrollToPage(0) },
                         currentOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                         page = 0,
                     )
                     Chip(
                         label = stringResource(id = R.string.rgb),
-                        onClick = {
-                            mMSDLPlayerWrapper.playToken(MSDLToken.TAP_LOW_EMPHASIS)
-                            scrollToPage(1)
-                        },
+                        onClick = { scrollToPage(1) },
                         currentOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                         page = 1,
                     )
@@ -229,7 +215,6 @@ private fun HexColorPicker(
     onTextFieldValueChange: (TextFieldValue) -> Unit,
 ) {
     val context = LocalContext.current
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(context)
     val focusManager = LocalFocusManager.current
     val clipboardManager: ClipboardManager = context.requireSystemService()
 
@@ -277,7 +262,6 @@ private fun HexColorPicker(
         ClickableIcon(
             imageVector = Icons.Rounded.ContentCopy,
             onClick = {
-                mMSDLPlayerWrapper.playToken(MSDLToken.TAP_LOW_EMPHASIS)
                 val clip =
                     ClipData.newPlainText(context.getString(R.string.hex), textFieldValue.text)
                 clipboardManager.setPrimaryClip(clip)
@@ -292,7 +276,6 @@ private fun HexColorPicker(
         ClickableIcon(
             imageVector = Icons.Rounded.ContentPaste,
             onClick = {
-                mMSDLPlayerWrapper.playToken(MSDLToken.TAP_LOW_EMPHASIS)
                 clipboardManager.primaryClip?.getItemAt(0)?.text?.let {
                     onTextFieldValueChange(textFieldValue.copy(text = it.toString()))
                     focusManager.clearFocus()
@@ -336,9 +319,7 @@ private fun HsvColorPicker(
     }
 
     DividerColumn(
-        modifier = modifier
-            .clip(MaterialTheme.shapes.large)
-            .background(color = MaterialTheme.colorScheme.surfaceContainer),
+        modifier = modifier,
     ) {
         HsbColorSlider(
             type = HsbSliderType.HUE,
@@ -410,9 +391,7 @@ private fun RgbColorPicker(
     }
 
     DividerColumn(
-        modifier = modifier
-            .clip(MaterialTheme.shapes.large)
-            .background(color = MaterialTheme.colorScheme.surfaceContainer),
+        modifier = modifier,
     ) {
         RgbColorSlider(
             label = stringResource(id = R.string.rgb_red),

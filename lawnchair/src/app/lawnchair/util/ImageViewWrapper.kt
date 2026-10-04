@@ -9,7 +9,6 @@ import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatImageView
 import app.lawnchair.theme.color.tokens.ColorTokens
 import com.android.launcher3.R
-import com.android.systemui.shared.system.BlurUtils
 
 class ImageViewWrapper(context: Context, attrs: AttributeSet?) : AppCompatImageView(context, attrs) {
 
@@ -17,13 +16,6 @@ class ImageViewWrapper(context: Context, attrs: AttributeSet?) : AppCompatImageV
     private val path = Path()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rect = RectF()
-
-    val supportBlur = BlurUtils.supportsBlursOnWindows()
-    val groupHighlight = if (supportBlur) {
-        ColorTokens.GroupHighlightBlur.resolveColor(context)
-    } else {
-        ColorTokens.GroupHighlight.resolveColor(context)
-    }
 
     init {
         scaleType = ScaleType.CENTER_CROP
@@ -43,7 +35,7 @@ class ImageViewWrapper(context: Context, attrs: AttributeSet?) : AppCompatImageV
         )
         path.addRoundRect(rect, corners, Path.Direction.CW)
 
-        paint.color = groupHighlight
+        paint.color = ColorTokens.GroupHighlight.resolveColor(context)
         canvas.clipPath(path)
         canvas.drawPath(path, paint)
         super.onDraw(canvas)

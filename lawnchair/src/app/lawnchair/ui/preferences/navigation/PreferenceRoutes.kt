@@ -4,10 +4,7 @@ import androidx.annotation.Keep
 import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.ui.preferences.components.search.SearchProviderId
 import app.lawnchair.ui.preferences.destinations.SearchRoute
-import app.lawnchair.ui.preferences.destinations.ShapeRoute
 import kotlinx.serialization.Serializable
-
-private const val URI = "lawnchair://settings"
 
 /**
  * Represents a route in the Lawnchair preferences navigation graph.
@@ -27,11 +24,6 @@ sealed interface PreferenceRoute
 @Serializable
 sealed interface PreferenceRootRoute : PreferenceRoute
 
-@Serializable
-sealed interface PreferenceDeepLink {
-    val deepLink: String
-}
-
 // Misc routes
 
 @Serializable
@@ -42,75 +34,38 @@ data object Dummy : PreferenceRootRoute
 
 // Top-level destinations
 @Serializable
-data object General : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/general"
-}
+data object General : PreferenceRootRoute
 
 @Serializable
-data object HomeScreen : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/home-screen"
-}
+data object HomeScreen : PreferenceRootRoute
 
 @Serializable
-data object Dock : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/dock"
-}
+data object Dock : PreferenceRootRoute
 
 @Serializable
-data object AppDrawer : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/app-drawer"
-}
+data object AppDrawer : PreferenceRootRoute
 
 // technically the search screen, selectedId selects the default tab inside this
 @Serializable
-data class Search(val selectedId: SearchRoute = SearchRoute.DOCK_SEARCH) :
-    PreferenceRootRoute,
-    PreferenceDeepLink {
-    override val deepLink = "$URI/search"
-}
+data class Search(val selectedId: SearchRoute = SearchRoute.DOCK_SEARCH) : PreferenceRootRoute
 
 @Serializable
-data object Folders : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/folders"
-}
+data object Folders : PreferenceRootRoute
 
 @Serializable
-data object Quickstep : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/quickstep"
-}
+data object Quickstep : PreferenceRootRoute
 
 @Serializable
-data object BackupAndRestore : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/backup-restore"
-}
+data object Gestures : PreferenceRootRoute
 
 @Serializable
-data object Gestures : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/gestures"
-}
+data object Smartspace : PreferenceRootRoute
 
 @Serializable
-data object Smartspace : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/smartspace"
-}
+data object About : PreferenceRootRoute
 
 @Serializable
-data object About : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/about"
-}
-
-@Serializable
-data object ExperimentalFeatures : PreferenceRootRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/experimental-features"
-}
-
-@Serializable
-data object Predictions : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/predictions"
-}
-
-@Serializable
-data object DismissedPredictionApps : PreferenceRoute
+data object ExperimentalFeatures : PreferenceRootRoute
 
 @Serializable
 data object DebugMenu : PreferenceRootRoute
@@ -123,30 +78,20 @@ data object FeatureFlags : PreferenceRoute
 data class GeneralFontSelection(val prefKey: String) : PreferenceRoute
 
 @Serializable
-data object GeneralIconPack : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/general-iconpack"
-}
+data object GeneralIconPack : PreferenceRoute
 
 @Serializable
-data class GeneralIconShape(val selectedId: ShapeRoute = ShapeRoute.APP_SHAPE) : PreferenceRoute
+data object GeneralIconShape : PreferenceRoute
 
 @Serializable
-data class GeneralCustomIconShapeCreator(val selectedId: ShapeRoute = ShapeRoute.APP_SHAPE) :
-    PreferenceRoute,
-    PreferenceDeepLink {
-    override val deepLink = "$URI/general-icon-shape-creator"
-}
+data object GeneralCustomIconShapeCreator : PreferenceRoute
 
 // Home Screen section routes
 @Serializable
-data object HomeScreenGrid : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/home-screen-grid"
-}
+data object HomeScreenGrid : PreferenceRoute
 
 @Serializable
-data object HomeScreenPopupEditor : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/home-screen-popup-editor"
-}
+data object HomeScreenPopupEditor : PreferenceRoute
 
 // Issue #38: placement lock management and unknown-state review.
 @Serializable
@@ -225,31 +170,21 @@ data class HomeScreenManualOrganization(
 
 // Dock section routes
 @Serializable
-data object DockSearchProvider : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/dock-search-provider"
-}
+data object DockSearchProvider : PreferenceRoute
 
 // App Drawer section routes
 @Serializable
-data object AppDrawerHiddenApps : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/app-drawer-hidden-apps"
-}
+data object AppDrawerHiddenApps : PreferenceRoute
 
 @Serializable
-data object AppDrawerFolder : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/app-drawer-folder"
-}
+data object AppDrawerFolder : PreferenceRoute
 
 @Serializable
 data class AppDrawerAppListToFolder(val id: Int) : PreferenceRoute
 
 // Search section routes
 @Serializable
-data class SearchProviderPreference(val id: SearchProviderId) :
-    PreferenceRoute,
-    PreferenceDeepLink {
-    override val deepLink = "$URI/search-provider"
-}
+data class SearchProviderPreference(val id: SearchProviderId) : PreferenceRoute
 
 // Smartspace section routes
 @Serializable
@@ -261,9 +196,7 @@ data object GesturesPickApp : PreferenceRoute
 
 // About section routes
 @Serializable
-data object AboutLicenses : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/about-licenses"
-}
+data object AboutLicenses : PreferenceRoute
 
 // Data/Action oriented routes (might be used across sections or are specific actions)
 // These are intentionally not prefixed as per your instruction,
@@ -282,9 +215,7 @@ data class IconPicker(val packageName: String = "") : PreferenceRoute
 data class ColorSelection(val prefKey: String) : PreferenceRoute
 
 @Serializable
-data object CreateBackup : PreferenceRoute, PreferenceDeepLink {
-    override val deepLink = "$URI/create-backup"
-}
+data object CreateBackup : PreferenceRoute
 
 @Serializable
 data class RestoreBackup(val base64Uri: String) : PreferenceRoute

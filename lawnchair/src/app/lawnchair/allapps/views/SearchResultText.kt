@@ -12,7 +12,6 @@ import app.lawnchair.search.adapter.SPACE_MINI
 import app.lawnchair.search.adapter.SearchTargetCompat
 import app.lawnchair.theme.color.tokens.ColorTokens
 import com.android.launcher3.R
-import com.android.systemui.shared.system.BlurUtils
 
 class SearchResultText(context: Context, attrs: AttributeSet?) :
     LinearLayout(context, attrs),
@@ -25,11 +24,7 @@ class SearchResultText(context: Context, attrs: AttributeSet?) :
         super.onFinishInflate()
         onFocusChangeListener = launcher.focusHandler
         title = ViewCompat.requireViewById(this, R.id.title)
-        if (BlurUtils.supportsBlursOnWindows()) {
-            title.setTextColor(ColorTokens.TextColorPrimary.resolveColor(context))
-        } else {
-            title.setTextColor(ColorTokens.ColorAccent.resolveColor(context))
-        }
+        title.setTextColor(ColorTokens.ColorAccent.resolveColor(context))
         FontManager.INSTANCE.get(context).setCustomFont(title, R.id.font_heading)
     }
 
@@ -39,21 +34,12 @@ class SearchResultText(context: Context, attrs: AttributeSet?) :
 
     override fun bind(target: SearchTargetCompat, shortcuts: List<SearchTargetCompat>) {
         title.text = target.searchAction?.title
-        val titleText = title.text
-        val res = when (titleText) {
+        val res = when (title.text) {
             SPACE -> resources.getDimensionPixelSize(R.dimen.space_layout_height)
             SPACE_MINI -> resources.getDimensionPixelSize(R.dimen.space_layout_mini_height)
             else -> resources.getDimensionPixelSize(R.dimen.search_result_text_height)
         }
-        val params = this.layoutParams
-        params.width = LayoutParams.MATCH_PARENT
-        if (titleText == SPACE || titleText == SPACE_MINI) {
-            params.height = res
-            minimumHeight = 0
-        } else {
-            params.height = LayoutParams.WRAP_CONTENT
-            minimumHeight = res
-        }
-        this.layoutParams = params
+        val layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, res)
+        this.layoutParams = layoutParams
     }
 }

@@ -32,7 +32,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 
-internal val iconPackIntents = listOf(
+private val iconPackIntents = listOf(
     Intent("com.novalauncher.THEME"),
     Intent("org.adw.launcher.icons.ACTION_PICK_ICON"),
     Intent("com.dlto.atom.launcher.THEME"),

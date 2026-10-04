@@ -2,17 +2,10 @@ package app.lawnchair.ui.preferences.components.colorpreference
 
 import android.content.Context
 import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.util.MainThreadInitializedObject
 import com.android.launcher3.R
-import com.android.launcher3.dagger.ApplicationContext
-import com.android.launcher3.dagger.LauncherAppComponent
-import com.android.launcher3.dagger.LauncherAppSingleton
-import com.android.launcher3.util.DaggerSingletonObject
-import javax.inject.Inject
 
-@LauncherAppSingleton
-class ColorPreferenceModelList @Inject constructor(
-    @ApplicationContext private val context: Context,
-) {
+class ColorPreferenceModelList(context: Context) {
     private val models = mutableMapOf<String, ColorPreferenceModel>()
 
     init {
@@ -47,13 +40,6 @@ class ColorPreferenceModelList @Inject constructor(
         )
         registerModel(
             ColorPreferenceModel(
-                prefObject = prefs.workProfileTabBackgroundColor,
-                labelRes = R.string.work_profile_tab_background_label,
-                dynamicEntries = dynamicColors,
-            ),
-        )
-        registerModel(
-            ColorPreferenceModel(
                 prefObject = prefs.notificationDotColor,
                 labelRes = R.string.notification_dots_color,
                 dynamicEntries = dynamicColorsWithDefault,
@@ -82,6 +68,6 @@ class ColorPreferenceModelList @Inject constructor(
     }
 
     companion object {
-        val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getColorPreferenceModelList)
+        val INSTANCE = MainThreadInitializedObject(::ColorPreferenceModelList)
     }
 }

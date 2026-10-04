@@ -3,11 +3,9 @@ package app.lawnchair.util
 import android.content.Context
 import android.content.res.Resources
 import android.graphics.Insets
-import android.graphics.Point
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.util.ArrayMap
-import android.util.Log
 import android.view.Display
 import android.view.Display.DEFAULT_DISPLAY
 import android.view.DisplayCutout
@@ -17,62 +15,36 @@ import android.view.WindowManager
 import androidx.annotation.Keep
 import androidx.annotation.VisibleForTesting
 import com.android.launcher3.Utilities
-import com.android.launcher3.dagger.LauncherAppSingleton
 import com.android.launcher3.testing.shared.ResourceUtils
 import com.android.launcher3.util.RotationUtils.deltaRotation
 import com.android.launcher3.util.RotationUtils.rotateRect
 import com.android.launcher3.util.WindowBounds
 import com.android.launcher3.util.window.CachedDisplayInfo
 import com.android.launcher3.util.window.WindowManagerProxy
-import javax.inject.Inject
 import kotlin.math.max
 
 @Keep
-@LauncherAppSingleton
-class LawnchairWindowManagerProxy @Inject constructor() : WindowManagerProxy(Utilities.ATLEAST_T) {
-
-    @Suppress("PropertyName")
-    val TAG = "LC-WindowManagerProxy"
+class LawnchairWindowManagerProxy(context: Context) : WindowManagerProxy(Utilities.ATLEAST_T) {
 
     override fun estimateInternalDisplayBounds(displayInfoContext: Context): ArrayMap<CachedDisplayInfo, List<WindowBounds>> {
-        val result = ArrayMap<CachedDisplayInfo, List<WindowBounds>>()
-        val displayManager = displayInfoContext.getSystemService(DisplayManager::class.java) ?: return result
-
-        val displays = displayManager.displays
-
-        for (display in displays) {
-            try {
-                val contextForDisplay = displayInfoContext.createDisplayContext(display)
-                val wm = contextForDisplay.getSystemService(WindowManager::class.java)
-                val metrics = if (Utilities.ATLEAST_R) wm.maximumWindowMetrics else null
-
-                if (metrics != null) {
-                    val info = getDisplayInfo(metrics, display.rotation).normalize(this)
-                    val bounds = estimateWindowBounds(contextForDisplay, info)
-
-                    result[info] = bounds
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error estimating bounds for display ${display.displayId}", e)
-            }
-        }
-
-        return result
+        val info = getDisplayInfo(displayInfoContext).normalize(this)
+        val bounds = estimateWindowBounds(displayInfoContext, info)
+        return ArrayMap<CachedDisplayInfo, List<WindowBounds>>().apply { put(info, bounds) }
     }
 
     override fun getRealBounds(displayInfoContext: Context, info: CachedDisplayInfo): WindowBounds {
-        if (Utilities.ATLEAST_R) {
-            val windowMetrics = displayInfoContext.getSystemService(WindowManager::class.java)?.maximumWindowMetrics
-            if (windowMetrics != null) {
-                val insets = Rect()
-                normalizeWindowInsets(displayInfoContext, windowMetrics.windowInsets, insets)
-                return WindowBounds(windowMetrics.bounds, insets, info.rotation)
-            }
+        val windowMetrics = if (Utilities.ATLEAST_R) {
+            displayInfoContext.getSystemService(WindowManager::class.java)?.maximumWindowMetrics
+        } else {
+            null
         }
-
-        val estimateBounds = estimateWindowBounds(displayInfoContext, info)
-        return estimateBounds.getOrNull(info.rotation)
-            ?: estimateBounds.first()
+        return if (windowMetrics != null) {
+            val insets = Rect()
+            normalizeWindowInsets(displayInfoContext, windowMetrics.windowInsets, insets)
+            WindowBounds(windowMetrics.bounds, insets, info.rotation)
+        } else {
+            WindowBounds(Rect(), Rect(), info.rotation)
+        }
     }
 
     override fun normalizeWindowInsets(context: Context, oldInsets: WindowInsets, outInsets: Rect): WindowInsets {

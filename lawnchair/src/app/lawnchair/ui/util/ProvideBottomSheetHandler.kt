@@ -16,17 +16,9 @@
 
 package app.lawnchair.ui.util
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -39,13 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.dp
-import com.android.launcher3.R
-import com.android.systemui.shared.system.BlurUtils
 import kotlinx.coroutines.launch
 
 internal val LocalBottomSheetHandler = staticCompositionLocalOf { BottomSheetHandler() }
@@ -61,7 +47,6 @@ val bottomSheetHandler: BottomSheetHandler
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProvideBottomSheetHandler(
-    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -93,57 +78,21 @@ fun ProvideBottomSheetHandler(
     }
 
     CompositionLocalProvider(LocalBottomSheetHandler provides bottomSheetHandler) {
+        content()
+
         val windowInsets = if (bottomSheetState.isVisible) WindowInsets.navigationBars else WindowInsets(0.dp)
 
-        val animatedFraction by animateFloatAsState(
-            targetValue = if (
-                bottomSheetState.targetValue == SheetValue.PartiallyExpanded ||
-                bottomSheetState.targetValue == SheetValue.Expanded
+        if (showBottomSheet) {
+            ModalBottomSheet(
+                sheetState = bottomSheetState,
+                onDismissRequest = {
+                    showBottomSheet = false
+                },
+                contentWindowInsets = {
+                    windowInsets
+                },
             ) {
-                1f
-            } else {
-                0f
-            },
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-            label = "BottomSheetBlurFraction",
-        )
-
-        val supportsBlur = BlurUtils.supportsBlursOnWindows()
-        val blur = dimensionResource(R.dimen.max_depth_blur_radius_enhanced) * animatedFraction
-        val scrimAlpha = 0.32f * animatedFraction
-
-        Box(modifier = modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .addIf(supportsBlur) {
-                        blur(blur)
-                    },
-            ) {
-                content()
-            }
-
-            if (showBottomSheet) {
-                if (supportsBlur) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = scrimAlpha)),
-                    )
-                }
-
-                ModalBottomSheet(
-                    sheetState = bottomSheetState,
-                    onDismissRequest = {
-                        showBottomSheet = false
-                    },
-                    contentWindowInsets = {
-                        windowInsets
-                    },
-                    scrimColor = if (supportsBlur) Color.Transparent else BottomSheetDefaults.ScrimColor,
-                ) {
-                    bottomSheetContent.content()
-                }
+                bottomSheetContent.content()
             }
         }
     }

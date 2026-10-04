@@ -10,9 +10,6 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.content.pm.SuspendDialogInfo
-import android.graphics.Rect
-import android.graphics.RectF
-import android.graphics.drawable.AdaptiveIconDrawable
 import android.net.Uri
 import android.os.UserHandle
 import android.util.Log
@@ -23,74 +20,29 @@ import androidx.compose.ui.unit.dp
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.override.CustomizeAppDialog
 import app.lawnchair.preferences2.PreferenceManager2
-import app.lawnchair.preferences2.firstCached
-import app.lawnchair.ui.preferences.PreferenceActivity
-import app.lawnchair.ui.preferences.navigation.AppDrawerAppListToFolder
 import app.lawnchair.views.ComposeBottomSheet
 import com.android.launcher3.AbstractFloatingView
+import com.android.launcher3.BaseDraggingActivity
 import com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPLICATION
 import com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_TASK
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
-import com.android.launcher3.folder.FolderIcon
-import com.android.launcher3.graphics.ThemeManager
-import com.android.launcher3.icons.LauncherIcons
-import com.android.launcher3.logging.StatsLogManager
+import com.android.launcher3.icons.BitmapInfo
 import com.android.launcher3.model.data.AppInfo as ModelAppInfo
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.popup.SystemShortcut
-import com.android.launcher3.util.ApplicationInfoWrapper
 import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.util.PackageManagerHelper
-import com.android.launcher3.views.ActivityContext
-import com.android.launcher3.views.OptionsPopupView
+import com.patrykmichalik.opto.core.firstBlocking
 import java.net.URISyntaxException
 
 class LawnchairShortcut {
 
     companion object {
 
-        fun showAppDrawerFolderPopup(
-            launcher: LawnchairLauncher,
-            folderIcon: FolderIcon,
-        ): Boolean {
-            val folderId = folderIcon.mInfo.id
-            if (folderId == ItemInfo.NO_ID) return false
-
-            val bounds = Rect()
-            launcher.dragLayer.getDescendantRectRelativeToSelf(folderIcon, bounds)
-            // Unlike regular app, folder does not have any code that would allow it to be showing
-            // any popup we have to create our own.
-            //
-            // In the future we should perhaps move this entire code to a dedicated file like
-            // LawnchairFolderShortcut.kt
-            return OptionsPopupView.show<LawnchairLauncher>(
-                launcher,
-                RectF(bounds),
-                listOf(
-                    OptionsPopupView.OptionItem(
-                        launcher,
-                        R.string.edit_folder,
-                        R.drawable.ic_edit,
-                        StatsLogManager.LauncherEvent.IGNORE,
-                    ) {
-                        launcher.startActivity(
-                            PreferenceActivity.createIntent(
-                                launcher,
-                                AppDrawerAppListToFolder(folderId),
-                            ),
-                        )
-                        true
-                    },
-                ),
-                true,
-            ) != null
-        }
-
         val CUSTOMIZE =
             SystemShortcut.Factory { activity: LawnchairLauncher, itemInfo, originalView ->
-                val prefs2 = PreferenceManager2.getInstance(activity)
-                if (prefs2.lockHomeScreen.firstCached()) {
+                if (PreferenceManager2.getInstance(activity).lockHomeScreen.firstBlocking()) {
                     null
                 } else {
                     getAppInfo(activity, itemInfo)?.let { Customize(activity, it, itemInfo, originalView) }
@@ -105,57 +57,25 @@ class LawnchairShortcut {
         }
 
         val UNINSTALL =
-            SystemShortcut.Factory { activity: ActivityContext, itemInfo: ItemInfo, view: View ->
-                val prefs2 = PreferenceManager2.INSTANCE.get(activity.asContext())
-                if (prefs2.lockHomeScreen.firstCached()) {
-                    return@Factory null
-                }
+            SystemShortcut.Factory { activity: BaseDraggingActivity, itemInfo: ItemInfo, view: View ->
                 if (itemInfo.targetComponent == null) {
                     return@Factory null
                 }
-                if (ApplicationInfoWrapper(
-                        activity.asContext(),
+                if (PackageManagerHelper.isSystemApp(
+                        activity,
                         itemInfo.targetComponent!!.packageName,
-                        itemInfo.user,
-                    ).isSystem()
+                    )
                 ) {
                     return@Factory null
                 }
                 UnInstall(activity, itemInfo, view)
             }
 
-        private val SUPPORTED_STORES = setOf(
-            "com.android.vending",
-            "com.aurora.store",
-            "org.fdroid.fdroid",
-            "org.gdroid.gdroid",
-            "com.looker.droidify",
-            "com.github.librecaptcha.apps.fdroidclient",
-        )
-
-        val OPEN_IN_STORE =
-            SystemShortcut.Factory { activity: ActivityContext, itemInfo: ItemInfo, originalView: View ->
-                if (itemInfo.itemType != ITEM_TYPE_APPLICATION) return@Factory null
-                val packageName = itemInfo.targetComponent?.packageName ?: return@Factory null
-                val context = activity.asContext()
-                val installer = PackageManagerHelper.INSTANCE.get(context)
-                    .getAppInstallerPackage(packageName) ?: return@Factory null
-                if (installer !in SUPPORTED_STORES) return@Factory null
-                OpenInStore(activity, itemInfo, originalView, packageName, installer)
-            }
-
         val PAUSE_APPS = SystemShortcut.Factory { activity: LawnchairLauncher, itemInfo: ItemInfo, originalView: View ->
             val targetCmp = itemInfo.targetComponent
             val packageName = targetCmp?.packageName ?: return@Factory null
 
-            if (ApplicationInfoWrapper(
-                    activity.asContext(),
-                    packageName,
-                    itemInfo.user,
-                ).isSuspended()
-            ) {
-                return@Factory null
-            }
+            if (PackageManagerHelper(activity).isAppSuspended(packageName, itemInfo.user)) return@Factory null
 
             PauseApps(activity, itemInfo, originalView)
         }
@@ -171,19 +91,8 @@ class LawnchairShortcut {
         override fun onClick(v: View) {
             val outObj = Array<Any?>(1) { null }
             var icon = Utilities.loadFullDrawableWithoutTheme(launcher, appInfo, 0, 0, outObj)
-            if (mItemInfo.screenId != NO_ID && Utilities.ATLEAST_T) {
-                val adaptiveIcon = icon as? AdaptiveIconDrawable
-                    ?: LauncherIcons.obtain(launcher).use { it.wrapToAdaptiveIcon(icon) }
-                if (adaptiveIcon != null) {
-                    val themeController = ThemeManager.INSTANCE.get(launcher).themeController
-                    themeController?.createThemedAdaptiveIcon(
-                        launcher,
-                        adaptiveIcon,
-                        appInfo.bitmap,
-                    )?.let {
-                        icon = it
-                    }
-                }
+            if (mItemInfo.screenId != NO_ID && icon is BitmapInfo.Extender) {
+                icon = icon.getThemedDrawable(launcher)
             }
             val launcherActivityInfo = outObj[0] as LauncherActivityInfo?
             if (launcherActivityInfo != null) {
@@ -221,11 +130,15 @@ class LawnchairShortcut {
         @SuppressLint("NewApi")
         override fun onClick(view: View) {
             val context = view.context
-            val appLabel = ApplicationInfoWrapper(
-                context,
+            val appLabel = PackageManagerHelper(context).getApplicationInfo(
                 mItemInfo.targetComponent?.packageName ?: "",
                 mItemInfo.user,
-            ).toString()
+                0,
+            )?.let {
+                context.packageManager.getApplicationLabel(
+                    it,
+                )
+            }
             AlertDialog.Builder(context)
                 .setIcon(R.drawable.ic_hourglass_top)
                 .setTitle(context.getString(R.string.pause_apps_dialog_title, appLabel))
@@ -256,8 +169,8 @@ class LawnchairShortcut {
         }
     }
 
-    class UnInstall(private var target: ActivityContext?, private var itemInfo: ItemInfo?, originalView: View?) :
-        SystemShortcut<ActivityContext>(
+    class UnInstall(private var target: BaseDraggingActivity?, private var itemInfo: ItemInfo?, originalView: View?) :
+        SystemShortcut<BaseDraggingActivity>(
             R.drawable.ic_uninstall_no_shadow,
             R.string.uninstall_drop_target_label,
             target,
@@ -318,44 +231,6 @@ class LawnchairShortcut {
             } catch (e: URISyntaxException) {
                 // Do nothing.
             }
-        }
-    }
-
-    class OpenInStore(
-        target: ActivityContext,
-        itemInfo: ItemInfo,
-        originalView: View,
-        private val packageName: String,
-        private val installerPackage: String,
-    ) : SystemShortcut<ActivityContext>(
-        R.drawable.ic_open_in_store,
-        R.string.open_in_store_drop_target_label,
-        target,
-        itemInfo,
-        originalView,
-    ) {
-        override fun onClick(v: View) {
-            dismissTaskMenuView()
-            val intent = buildIntent() ?: return
-            mTarget.startActivitySafely(v, intent, mItemInfo)
-        }
-
-        private fun buildIntent(): Intent? {
-            val uri = when (installerPackage) {
-                "com.android.vending",
-                "org.gdroid.gdroid",
-                "com.aurora.store",
-                -> "market://details?id=$packageName"
-
-                "org.fdroid.fdroid" -> "https://f-droid.org/packages/$packageName/"
-
-                "com.github.librecaptcha.apps.fdroidclient",
-                "com.looker.droidify",
-                -> "droidify://details?id=$packageName"
-
-                else -> return null
-            }
-            return Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(installerPackage)
         }
     }
 }

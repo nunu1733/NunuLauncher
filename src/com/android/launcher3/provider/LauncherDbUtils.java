@@ -276,31 +276,4 @@ public class LauncherDbUtils {
         // Rename the new table to the old table's name
         db.execSQL("ALTER TABLE " + newTable + " RENAME TO " + tableName);
     }
-
-    // Rebase Phase 2 adapt (anchor API, kept for preview + grid migration code):
-    public static String selectionForWorkspaceScreen(int... screens) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(Favorites.SCREEN + " in (");
-        for (int i = 0; i < screens.length; i++) {
-            if (i > 0) sb.append(",");
-            sb.append(screens[i]);
-        }
-        sb.append(") or ").append(Favorites.CONTAINER).append(" = ")
-          .append(Favorites.CONTAINER_HOTSEAT)
-          .append(" or ").append(Favorites.CONTAINER).append(" in (select ")
-          .append(Favorites._ID).append(" from ").append(Favorites.TABLE_NAME)
-          .append(" where ").append(Favorites.SCREEN).append(" in (");
-        for (int i = 0; i < screens.length; i++) {
-            if (i > 0) sb.append(",");
-            sb.append(screens[i]);
-        }
-        sb.append(") or ").append(Favorites.CONTAINER).append(" = ")
-          .append(Favorites.CONTAINER_HOTSEAT).append(")");
-        return sb.toString();
-    }
-
-    public static void shiftWorkspaceByXCells(SQLiteDatabase db, int x, String toTable) {
-        db.execSQL("UPDATE " + toTable + " SET cellY = cellY + " + x
-                + " WHERE container = " + Favorites.CONTAINER_DESKTOP);
-    }
 }

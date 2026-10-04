@@ -24,12 +24,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
-import androidx.core.content.edit
-import app.lawnchair.smartspace.provider.OnboardingProvider
 import app.lawnchair.ui.preferences.navigation.PreferenceRoute
 import app.lawnchair.ui.theme.EdgeToEdge
 import app.lawnchair.ui.theme.LawnchairTheme
-import com.android.launcher3.LauncherPrefs
 import com.google.accompanist.adaptive.calculateDisplayFeatures
 import kotlinx.serialization.json.Json
 
@@ -54,15 +51,8 @@ class PreferenceActivity : ComponentActivity() {
                     windowSizeClass = calculateWindowSizeClass(this),
                     displayFeatures = calculateDisplayFeatures(this),
                     startDestination = initialRoute,
-                    intent = intent,
                 )
             }
-        }
-        LauncherPrefs.getPrefs(this).edit {
-            putBoolean(
-                OnboardingProvider.PREF_HAS_OPENED_SETTINGS,
-                true,
-            )
         }
     }
 
@@ -70,7 +60,6 @@ class PreferenceActivity : ComponentActivity() {
 
         private const val EXTRA_DESTINATION_ROUTE = "app.lawnchair.ui.preferences.DESTINATION_ROUTE"
 
-        @JvmStatic
         fun createIntent(context: Context, destination: PreferenceRoute): Intent {
             val intent = Intent(context, PreferenceActivity::class.java)
             val routeString = Json.encodeToString(destination)

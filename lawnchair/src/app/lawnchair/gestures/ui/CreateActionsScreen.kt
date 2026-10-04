@@ -28,7 +28,9 @@ fun CreateActionsScreen(
 
     val prefs2 = preferenceManager2()
     val newOptions =
-        filterGestureHandlerOptions(deckLayoutEnabled = prefs2.deckLayout.getAdapter().state.value)
+        // Rebase Phase 2 adapt: the deck layout surface was retired (deck retirement
+        // contract); the gesture filter keeps its API shape, so pass retired=false.
+        filterGestureHandlerOptions(deckLayoutEnabled = false)
 
     fun onClick(option: GestureHandlerOption) {
         scope.launch {

@@ -125,6 +125,16 @@ public class DeviceProfile {
     public boolean isPredictiveBackSwipe;
     public final boolean isQsbInline;
 
+    // Rebase Phase 2 bridges (fork adaptation): accessors the fork's
+    // homeedit/organizer code expects on DeviceProfile.
+    public boolean isTwoPanels() {
+        return mDeviceProperties.isTwoPanels();
+    }
+
+    public boolean topQsbOnFirstScreenEnabled() {
+        return isQsbInline;
+    }
+
     // Device properties in current orientation
 
     public final boolean isLeftRightSplit;

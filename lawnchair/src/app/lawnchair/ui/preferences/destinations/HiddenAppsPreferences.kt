@@ -18,27 +18,25 @@ package app.lawnchair.ui.preferences.destinations
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenuGroup
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences2.preferenceManager2
-import app.lawnchair.ui.OverflowMenuGrouped
+import app.lawnchair.ui.OverflowMenu
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.AppItem
 import app.lawnchair.ui.preferences.components.AppItemPlaceholder
+import app.lawnchair.ui.preferences.components.layout.PreferenceDivider
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
 import app.lawnchair.ui.preferences.components.layout.preferenceGroupItems
@@ -46,15 +44,12 @@ import app.lawnchair.util.App
 import app.lawnchair.util.appComparator
 import app.lawnchair.util.appsState
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 import java.util.Comparator.comparing
 
 @Composable
 fun HiddenAppsPreferences(
     modifier: Modifier = Modifier,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     val adapter = preferenceManager2().hiddenApps.getAdapter()
     val hiddenApps by adapter.state
     val pageTitle =
@@ -97,13 +92,11 @@ fun HiddenAppsPreferences(
                     preferenceGroupItems(
                         items = apps,
                         isFirstChild = true,
+                        dividerStartIndent = 40.dp,
                     ) { _, app ->
                         AppItem(
                             app = app,
-                            onClick = {
-                                mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                                toggleHiddenApp(app)
-                            },
+                            onClick = toggleHiddenApp,
                         ) {
                             Checkbox(
                                 checked = hiddenApps.contains(app.key.toString()),
@@ -117,6 +110,7 @@ fun HiddenAppsPreferences(
                     preferenceGroupItems(
                         count = 20,
                         isFirstChild = true,
+                        dividerStartIndent = 40.dp,
                     ) {
                         AppItemPlaceholder {
                             Spacer(Modifier.width(24.dp))
@@ -135,68 +129,54 @@ private fun ListSortingOptions(
     onUpdateList: (Set<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
-    OverflowMenuGrouped(modifier) {
-        DropdownMenuGroup(
-            shapes = MenuDefaults.groupShape(0, 2),
-        ) {
-            DropdownMenuItem(
-                onClick = {
-                    mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                    val inverseSelection = originalList
-                        .map { it.key.toString() }
-                        .filter { !filteredList.contains(it) }
-                        .toSet()
-                    onUpdateList(inverseSelection)
-                    hideMenu()
-                },
-                text = {
-                    Text(stringResource(R.string.inverse_selection))
-                },
-            )
-            val originalKeys = originalList
-                .map { it.key.toString() }
-                .toSet()
-            val selectedAll = originalKeys == filteredList
-            DropdownMenuItem(
-                onClick = {
-                    onUpdateList(
-                        if (selectedAll) {
-                            emptySet()
-                        } else {
-                            originalList
-                                .map { it.key.toString() }
-                                .toSet()
-                        },
-                    )
-                    mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                    hideMenu()
-                },
-                text = {
-                    Text(
-                        stringResource(if (selectedAll) R.string.deselect_all else R.string.select_all),
-                    )
-                },
-            )
-        }
-
-        Spacer(Modifier.height(MenuDefaults.GroupSpacing))
-
-        DropdownMenuGroup(
-            shapes = MenuDefaults.groupShape(1, 2),
-        ) {
-            DropdownMenuItem(
-                onClick = {
-                    mMSDLPlayerWrapper.playToken(MSDLToken.SUCCESS)
-                    onUpdateList(
-                        emptySet(),
-                    )
-                },
-                text = {
-                    Text(stringResource(R.string.action_reset))
-                },
-            )
-        }
+    OverflowMenu(modifier) {
+        DropdownMenuItem(
+            onClick = {
+                val inverseSelection = originalList
+                    .map { it.key.toString() }
+                    .filter { !filteredList.contains(it) }
+                    .toSet()
+                onUpdateList(inverseSelection)
+                hideMenu()
+            },
+            text = {
+                Text(stringResource(R.string.inverse_selection))
+            },
+        )
+        val originalKeys = originalList
+            .map { it.key.toString() }
+            .toSet()
+        val selectedAll = originalKeys == filteredList
+        DropdownMenuItem(
+            onClick = {
+                onUpdateList(
+                    if (selectedAll) {
+                        emptySet()
+                    } else {
+                        originalList
+                            .map { it.key.toString() }
+                            .toSet()
+                    },
+                )
+                hideMenu()
+            },
+            text = {
+                Text(
+                    stringResource(if (selectedAll) R.string.deselect_all else R.string.select_all),
+                )
+            },
+        )
+        PreferenceDivider(modifier = Modifier.padding(vertical = 8.dp))
+        DropdownMenuItem(
+            onClick = {
+                onUpdateList(
+                    emptySet(),
+                )
+            },
+            text = {
+                Text(stringResource(R.string.action_reset))
+            },
+        )
     }
 }
 

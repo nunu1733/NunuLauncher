@@ -4,15 +4,23 @@ import android.Manifest
 import android.app.Application
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,7 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,10 +43,10 @@ import app.lawnchair.ui.preferences.components.PermissionDialog
 import app.lawnchair.ui.preferences.components.controls.MainSwitchPreference
 import app.lawnchair.ui.preferences.components.controls.SliderPreference
 import app.lawnchair.ui.preferences.components.controls.SwitchPreference
-import app.lawnchair.ui.preferences.components.controls.TwoTargetSwitchPreference
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
-import app.lawnchair.ui.theme.LawnchairTheme
+import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
+import app.lawnchair.ui.theme.dividerColor
 import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.util.FileAccessManager
 import app.lawnchair.util.FileAccessState
@@ -127,6 +135,7 @@ fun FileSearchProvider(
                 onPermissionRequest = viewModel::refreshAccessStates,
                 alwaysEnabled = allFilesAccessAdapter.state.value && allFilesAccessState == FileAccessState.Full,
             )
+
             GenericAccessSetting(
                 adapter = prefs.searchResultAudio.getAdapter(),
                 requiredPermission = android.Manifest.permission.READ_MEDIA_AUDIO,
@@ -199,7 +208,7 @@ private fun ManageExternalStorageSetting(
 }
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 private fun VisualMediaSetting(
     accessState: FileAccessState,
@@ -274,7 +283,6 @@ private fun VisualMediaSetting(
                             showPartialAccessDialog = false
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        shapes = ButtonDefaults.shapes(),
                     ) { Text(stringResource(R.string.permissions_photos_videos_grant_full)) }
 
                     TextButton(
@@ -283,13 +291,11 @@ private fun VisualMediaSetting(
                             showPartialAccessDialog = false
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        shapes = ButtonDefaults.shapes(),
                     ) { Text(stringResource(R.string.permissions_photos_videos_manage_selected)) }
 
                     TextButton(
                         onClick = { showPartialAccessDialog = false },
                         modifier = Modifier.fillMaxWidth(),
-                        shapes = ButtonDefaults.shapes(),
                     ) { Text(stringResource(android.R.string.cancel)) }
                 }
             },
@@ -348,6 +354,62 @@ private fun GenericAccessSetting(
     }
 }
 
+@Composable
+internal fun TwoTargetSwitchPreference(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    enabled: Boolean = true,
+    switchEnabled: Boolean = enabled,
+    onClick: (() -> Unit)? = null,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+
+    PreferenceTemplate(
+        modifier = modifier.clickable(
+            enabled = enabled,
+            indication = ripple(),
+            interactionSource = interactionSource,
+        ) {
+            if (onClick != null) {
+                onClick()
+            } else {
+                onCheckedChange(!checked)
+            }
+        },
+        contentModifier = Modifier
+            .fillMaxHeight()
+            .padding(vertical = 16.dp)
+            .padding(start = 16.dp),
+        title = { Text(text = label) },
+        description = { description?.let { Text(text = it) } },
+        endWidget = {
+            if (onClick != null) {
+                Spacer(
+                    modifier = Modifier
+                        .height(32.dp)
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(dividerColor()),
+                )
+            }
+            Switch(
+                modifier = Modifier
+                    .padding(all = 16.dp)
+                    .height(24.dp),
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = switchEnabled,
+                interactionSource = interactionSource,
+            )
+        },
+        enabled = enabled,
+        applyPaddings = false,
+    )
+}
+
 /**
  * A dialog that requests file access permission.
  *
@@ -360,7 +422,7 @@ private fun GenericAccessSetting(
  * @param rationale The rationale to show to the user.
  * @param onPermissionRequest Called when the permission is requested.
  */
-@OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 private fun FileAccessPermissionDialog(
     onDismiss: () -> Unit,
@@ -395,10 +457,7 @@ private fun FileAccessPermissionDialog(
                     Text(stringResource(R.string.manage_storage_access_denied_description, stringResource(id = R.string.derived_app_name)))
                 },
                 confirmButton = {
-                    FilledTonalButton(
-                        onClick = onDismiss,
-                        shapes = ButtonDefaults.shapes(),
-                    ) { Text(stringResource(R.string.dismiss)) }
+                    FilledTonalButton(onClick = onDismiss) { Text(stringResource(R.string.dismiss)) }
                 },
             )
         }
@@ -417,29 +476,5 @@ private fun FileAccessPermissionDialog(
             onDismiss = onDismiss,
             onGoToSettings = { context.openAppPermissionSettings() },
         )
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun TwoTargetSwitchPreferencePreview() {
-    LawnchairTheme {
-        Column {
-            var checked1 by remember { mutableStateOf(false) }
-            TwoTargetSwitchPreference(
-                checked = checked1,
-                onCheckedChange = { checked1 = it },
-                label = "Search files",
-                description = "Simple switch",
-            )
-            var checked2 by remember { mutableStateOf(true) }
-            TwoTargetSwitchPreference(
-                checked = checked2,
-                onCheckedChange = { checked2 = it },
-                label = "Search files with onClick",
-                description = "Has a divider and separate click target",
-                onClick = { /* Handle click */ },
-            )
-        }
     }
 }

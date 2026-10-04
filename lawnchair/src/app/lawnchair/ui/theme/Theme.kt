@@ -22,11 +22,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.expressiveLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -53,12 +51,11 @@ fun LawnchairTheme(
     content: @Composable () -> Unit,
 ) {
     val colorScheme = getColorScheme(darkTheme = darkTheme)
-    MaterialExpressiveTheme(
+    MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
         content = content,
         shapes = Shapes,
-        motionScheme = MotionScheme.expressive(),
     )
 }
 
@@ -107,7 +104,7 @@ fun getColorScheme(darkTheme: Boolean): ColorScheme {
 private fun getPreviewColorScheme(darkTheme: Boolean) = if (darkTheme) {
     darkColorScheme()
 } else {
-    expressiveLightColorScheme()
+    lightColorScheme()
 }
 
 val isSelectedThemeDark: Boolean
@@ -122,12 +119,10 @@ val isSelectedThemeDark: Boolean
         }
     }
 
-val isAutoThemeDark: Boolean @Composable get() =
-    if (LocalInspectionMode.current || Utilities.ATLEAST_P) {
-        isSystemInDarkTheme()
-    } else {
-        wallpaperSupportsDarkTheme
-    }
+val isAutoThemeDark: Boolean @Composable get() = when {
+    Utilities.ATLEAST_P -> isSystemInDarkTheme()
+    else -> wallpaperSupportsDarkTheme
+}
 
 val wallpaperSupportsDarkTheme: Boolean
     @Composable get() {

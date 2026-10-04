@@ -1,8 +1,8 @@
 package app.lawnchair.ui.preferences.destinations
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -23,8 +23,6 @@ import app.lawnchair.ui.preferences.components.controls.WarningPreference
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
-import app.lawnchair.ui.theme.LawnchairTheme
-import app.lawnchair.ui.util.preview.PreferenceGroupPreviewContainer
 import app.lawnchair.ui.util.preview.PreviewLawnchair
 import app.lawnchair.util.isOnePlusStock
 import com.android.launcher3.R
@@ -75,12 +73,12 @@ fun QuickstepPreferences(
         modifier = modifier,
     ) {
         if (!LawnchairApp.isRecentsEnabled) QuickSwitchIgnoredWarning()
-        val recentsTranslucentBackground by prefs.recentsTranslucentBackground.observeAsState()
         PreferenceGroup(heading = stringResource(id = R.string.general_label)) {
             SwitchPreference(
                 adapter = prefs.recentsTranslucentBackground.getAdapter(),
                 label = stringResource(id = R.string.translucent_background),
             )
+            val recentsTranslucentBackground by prefs.recentsTranslucentBackground.observeAsState()
             ExpandAndShrink(visible = recentsTranslucentBackground) {
                 SliderPreference(
                     adapter = prefs.recentsTranslucentBackgroundAlpha.getAdapter(),
@@ -135,14 +133,13 @@ fun QuickstepPreferences(
 private fun QuickSwitchIgnoredWarning(
     modifier: Modifier = Modifier,
 ) {
-    LawnchairTheme {
+    Surface(
+        modifier = modifier.padding(horizontal = 16.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.errorContainer,
+    ) {
         WarningPreference(
             text = stringResource(id = R.string.quickswitch_ignored_warning),
-            modifier = modifier.padding(horizontal = 16.dp),
-            standalone = true,
-            colors = ListItemDefaults.segmentedColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-            ),
         )
     }
 }

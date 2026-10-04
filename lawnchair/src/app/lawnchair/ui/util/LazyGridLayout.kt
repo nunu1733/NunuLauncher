@@ -13,8 +13,8 @@ class LazyGridLayout(
     private val gapWidth: Dp,
     private val density: Density,
 ) {
-    val numColumns: State<Int>
-        field = mutableIntStateOf(0)
+    private val _numColumns = mutableIntStateOf(0)
+    val numColumns: State<Int> = _numColumns
 
     @Composable
     fun onSizeChanged() = Modifier.onSizeChanged {
@@ -23,7 +23,7 @@ class LazyGridLayout(
             val gapWidth = gapWidth.roundToPx()
             val availableWidth = (it.width - minWidth).coerceAtLeast(0)
             val additionalCols = availableWidth / (minWidth + gapWidth)
-            numColumns.intValue = 1 + additionalCols
+            _numColumns.intValue = 1 + additionalCols
         }
     }
 }

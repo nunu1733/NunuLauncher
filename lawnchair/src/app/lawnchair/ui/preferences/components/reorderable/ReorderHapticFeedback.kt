@@ -1,19 +1,16 @@
 package app.lawnchair.ui.preferences.components.reorderable
 
-import androidx.compose.foundation.interaction.DragInteraction
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.HapticFeedbackConstantsCompat
+import androidx.core.view.ViewCompat
+import com.android.launcher3.Utilities
 
 enum class ReorderHapticFeedbackType {
     START,
     MOVE,
     END,
-    CANCEL,
 }
 
 interface ReorderHapticFeedback {
@@ -22,41 +19,35 @@ interface ReorderHapticFeedback {
 
 @Composable
 fun rememberReorderHapticFeedback(): ReorderHapticFeedback {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
+    val view = LocalView.current
 
     val reorderHapticFeedback = remember {
         object : ReorderHapticFeedback {
             override fun performHapticFeedback(type: ReorderHapticFeedbackType) {
-                mMSDLPlayerWrapper.playToken(
+                if (Utilities.ATLEAST_U) {
                     when (type) {
-                        ReorderHapticFeedbackType.START -> MSDLToken.START
-                        ReorderHapticFeedbackType.MOVE -> MSDLToken.DRAG_INDICATOR_DISCRETE
-                        ReorderHapticFeedbackType.END -> MSDLToken.STOP
-                        ReorderHapticFeedbackType.CANCEL -> MSDLToken.CANCEL
-                    },
-                )
+                        ReorderHapticFeedbackType.START ->
+                            ViewCompat.performHapticFeedback(
+                                view,
+                                HapticFeedbackConstantsCompat.GESTURE_START,
+                            )
+
+                        ReorderHapticFeedbackType.MOVE ->
+                            ViewCompat.performHapticFeedback(
+                                view,
+                                HapticFeedbackConstantsCompat.SEGMENT_FREQUENT_TICK,
+                            )
+
+                        ReorderHapticFeedbackType.END ->
+                            ViewCompat.performHapticFeedback(
+                                view,
+                                HapticFeedbackConstantsCompat.GESTURE_END,
+                            )
+                    }
+                }
             }
         }
     }
 
     return reorderHapticFeedback
-}
-
-@Composable
-internal fun ObserveReorderHapticFeedback(interactionSource: MutableInteractionSource) {
-    val haptic = rememberReorderHapticFeedback()
-    LaunchedEffect(interactionSource) {
-        interactionSource.interactions.collect { interaction ->
-            when (interaction) {
-                is DragInteraction.Start ->
-                    haptic.performHapticFeedback(ReorderHapticFeedbackType.START)
-
-                is DragInteraction.Stop ->
-                    haptic.performHapticFeedback(ReorderHapticFeedbackType.END)
-
-                is DragInteraction.Cancel ->
-                    haptic.performHapticFeedback(ReorderHapticFeedbackType.CANCEL)
-            }
-        }
-    }
 }

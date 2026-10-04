@@ -8,19 +8,13 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.lawnchair.ui.preferences.data.liveinfo.model.AnnouncementId
 import app.lawnchair.ui.preferences.data.liveinfo.model.LiveInformation
+import app.lawnchair.util.MainThreadInitializedObject
 import com.android.launcher3.R
-import com.android.launcher3.dagger.ApplicationContext
-import com.android.launcher3.dagger.LauncherAppComponent
-import com.android.launcher3.dagger.LauncherAppSingleton
-import com.android.launcher3.util.DaggerSingletonObject
 import com.patrykmichalik.opto.core.PreferenceManager
-import javax.inject.Inject
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-@LauncherAppSingleton
-class LiveInformationManager@Inject constructor(
-    @ApplicationContext private val context: Context,
-) : PreferenceManager {
+class LiveInformationManager private constructor(context: Context) : PreferenceManager {
 
     companion object {
         private val Context.preferencesDataStore by preferencesDataStore(
@@ -28,7 +22,7 @@ class LiveInformationManager@Inject constructor(
         )
 
         @JvmField
-        val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getLiveInformationManager)
+        val INSTANCE = MainThreadInitializedObject(::LiveInformationManager)
 
         @JvmStatic
         fun getInstance(context: Context) = INSTANCE.get(context)!!
@@ -39,11 +33,6 @@ class LiveInformationManager@Inject constructor(
     val enabled = preference(
         key = booleanPreferencesKey(name = "enabled"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_live_information_enabled),
-    )
-
-    val endpoint = preference(
-        key = stringPreferencesKey(name = "endpoint"),
-        defaultValue = context.resources.getString(R.string.config_default_live_information_endpoint),
     )
 
     val showAnnouncements = preference(

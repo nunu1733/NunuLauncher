@@ -28,9 +28,8 @@ import android.os.UserHandle
 import androidx.annotation.FloatRange
 import androidx.annotation.IntDef
 import app.lawnchair.search.adapter.SearchTargetCompat.SearchResultType
+import com.android.app.search.LayoutType.SearchLayoutType
 import kotlinx.parcelize.Parcelize
-
-// import com.android.app.search.LayoutType.SearchLayoutType
 
 /**
  * A representation of a search result. Search result can be expressed in one of the following:
@@ -70,7 +69,7 @@ data class SearchTargetCompat(
      * Constant to express how the group of [SearchTargetCompat] should be rendered on
      * the client side. (e.g., "icon", "icon_row", "short_icon_row")
      */
-    @get:SearchTarget.SearchLayoutType
+    @get:SearchLayoutType
     val layoutType: String,
     /**
      * Retrieves the id of the target.
@@ -153,7 +152,7 @@ data class SearchTargetCompat(
      */
     class Builder(
         @SearchResultType private val resultType: Int,
-        @SearchTarget.SearchLayoutType private val layoutType: String,
+        @SearchLayoutType private val layoutType: String,
         private val id: String,
     ) {
         private var parentId: String? = null

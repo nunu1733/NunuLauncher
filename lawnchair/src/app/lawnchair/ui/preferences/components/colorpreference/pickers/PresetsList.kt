@@ -1,23 +1,21 @@
 package app.lawnchair.ui.preferences.components.colorpreference.pickers
 
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.lawnchair.theme.color.ColorOption
 import app.lawnchair.ui.preferences.components.colorpreference.ColorDot
 import app.lawnchair.ui.preferences.components.colorpreference.ColorPreferenceEntry
+import app.lawnchair.ui.preferences.components.layout.PreferenceDivider
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 
 @Composable
 fun PresetsList(
@@ -26,16 +24,21 @@ fun PresetsList(
     isPresetSelected: (ColorOption) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     PreferenceGroup(
         heading = stringResource(id = R.string.dynamic),
         modifier = modifier.padding(top = 12.dp),
+        showDividers = false,
     ) {
-        dynamicEntries.forEach { entry ->
-            PreferenceTemplate(
-                title = { Text(text = entry.label()) },
-                startWidget = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+        dynamicEntries.mapIndexed { index, entry ->
+            key(entry) {
+                if (index > 0) {
+                    PreferenceDivider(startIndent = 40.dp)
+                }
+                PreferenceTemplate(
+                    title = { Text(text = entry.label()) },
+                    verticalPadding = 12.dp,
+                    modifier = Modifier.clickable { onPresetClick(entry.value) },
+                    startWidget = {
                         RadioButton(
                             selected = isPresetSelected(entry.value),
                             onClick = null,
@@ -44,13 +47,9 @@ fun PresetsList(
                             entry = entry,
                             modifier = Modifier.padding(start = 16.dp),
                         )
-                    }
-                },
-                onClick = {
-                    mMSDLPlayerWrapper.playToken(MSDLToken.TAP_LOW_EMPHASIS)
-                    onPresetClick(entry.value)
-                },
-            )
+                    },
+                )
+            }
         }
     }
 }

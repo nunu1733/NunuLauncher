@@ -43,24 +43,22 @@ import app.lawnchair.ui.preferences.components.controls.ListPreferenceEntry
 import app.lawnchair.ui.preferences.components.controls.SliderPreference
 import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.controls.WarningPreference
+import app.lawnchair.ui.preferences.components.layout.DividerColumn
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.components.notificationDotsEnabled
 import app.lawnchair.ui.preferences.components.notificationServiceEnabled
-import app.lawnchair.ui.preferences.data.liveinfo.liveInformationManager
 import app.lawnchair.ui.preferences.navigation.GeneralIconPack
 import app.lawnchair.ui.preferences.navigation.GeneralIconShape
-import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 
 @Composable
-fun GeneralPreferences(modifier: Modifier = Modifier) {
+fun GeneralPreferences() {
     val context = LocalContext.current
     val prefs = preferenceManager()
     val prefs2 = preferenceManager2()
-    val liveInfoManager = liveInformationManager()
     val iconPacks by LocalPreferenceInteractor.current.iconPacks.collectAsStateWithLifecycle()
     val themedIconsAdapter = prefs.themedIcons.getAdapter()
     val drawerThemedIconsAdapter = prefs.drawerThemedIcons.getAdapter()
@@ -90,27 +88,12 @@ fun GeneralPreferences(modifier: Modifier = Modifier) {
     PreferenceLayout(
         backArrowVisible = !LocalIsExpandedScreen.current,
         label = stringResource(id = R.string.general_label),
-        modifier = modifier,
     ) {
         PreferenceGroup {
             SwitchPreference(
                 adapter = prefs.allowRotation.getAdapter(),
                 label = stringResource(id = R.string.home_screen_rotation_label),
                 description = stringResource(id = R.string.home_screen_rotation_description),
-            )
-        }
-        PreferenceGroup(heading = stringResource(id = R.string.updater)) {
-            if (BuildConfig.APPLICATION_ID.contains("nightly")) {
-                SwitchPreference(
-                    adapter = prefs2.autoUpdaterNightly.getAdapter(),
-                    label = stringResource(id = R.string.auto_updater_label),
-                    description = stringResource(id = R.string.auto_updater_description),
-                )
-            }
-            SwitchPreference(
-                adapter = liveInfoManager.enabled.getAdapter(),
-                label = stringResource(id = R.string.live_information_label),
-                description = stringResource(id = R.string.live_information_description),
             )
         }
         ExpandAndShrink(visible = prefs2.enableFontSelection.asState().value) {
@@ -138,10 +121,8 @@ fun GeneralPreferences(modifier: Modifier = Modifier) {
             }
         }
         val wrapAdaptiveIcons = prefs.wrapAdaptiveIcons.getAdapter()
-        val transparentIconBackground = prefs.transparentIconBackground.getAdapter()
 
         PreferenceGroup(
-            modifier = Modifier,
             heading = stringResource(id = R.string.icons),
             description = stringResource(id = (R.string.adaptive_icon_background_description)),
             showDescription = wrapAdaptiveIcons.state.value,
@@ -153,14 +134,14 @@ fun GeneralPreferences(modifier: Modifier = Modifier) {
             )
             ExpandAndShrink(visible = themedIconsEnabled) {
                 SwitchPreference(
-                    adapter = transparentIconBackground,
+                    adapter = prefs.transparentIconBackground.getAdapter(),
                     label = stringResource(id = R.string.transparent_background_icons_label),
                     description = stringResource(id = R.string.transparent_background_icons_description),
                 )
             }
             NavigationActionPreference(
                 label = stringResource(id = R.string.icon_shape_label),
-                destination = GeneralIconShape(ShapeRoute.APP_SHAPE),
+                destination = GeneralIconShape,
                 subtitle = iconShapeSubtitle,
                 endWidget = {
                     IconShapePreview(iconShape = iconShapeAdapter.state.value)
@@ -175,7 +156,8 @@ fun GeneralPreferences(modifier: Modifier = Modifier) {
                 adapter = prefs.shadowBGIcons.getAdapter(),
                 label = stringResource(id = R.string.shadow_bg_icons_label),
             )
-            ExpandAndShrink(visible = wrapAdaptiveIcons.state.value && !transparentIconBackground.state.value) {
+
+            ExpandAndShrink(visible = wrapAdaptiveIcons.state.value) {
                 SliderPreference(
                     label = stringResource(id = R.string.background_lightness_label),
                     adapter = prefs.coloredBackgroundLightness.getAdapter(),
@@ -186,45 +168,38 @@ fun GeneralPreferences(modifier: Modifier = Modifier) {
             }
         }
 
-        val accentColorAdapter = prefs2.accentColor.getAdapter()
-        val showColorStyle = !(Utilities.ATLEAST_S && accentColorAdapter.state.value == ColorOption.SystemAccent) ||
-            !Utilities.ATLEAST_S
-
         PreferenceGroup(heading = stringResource(id = R.string.colors)) {
             ThemePreference()
             ColorPreference(preference = prefs2.accentColor)
-            ExpandAndShrink(visible = showColorStyle) {
+            if (Utilities.ATLEAST_S && prefs2.accentColor.getAdapter().state.value == ColorOption.SystemAccent) {
+                if (!Utilities.ATLEAST_S) {
+                    ColorStylePreference(prefs2.colorStyle.getAdapter())
+                }
+            } else {
                 ColorStylePreference(prefs2.colorStyle.getAdapter())
             }
         }
 
-        val notificationEnabled by remember { notificationDotsEnabled(context) }.collectAsStateWithLifecycle(initialValue = false)
-        val serviceEnabled = notificationServiceEnabled()
-        val showNotificationCountAdapter = prefs2.showNotificationCount.getAdapter()
-        val showNotificationCount = showNotificationCountAdapter.state.value
-        val dotColor = prefs2.notificationDotColor.asState().value
-        val dotTextColor = prefs2.notificationDotTextColor.asState().value
-
         PreferenceGroup(heading = stringResource(id = R.string.notification_dots)) {
-            NotificationDotsPreference(enabled = notificationEnabled, serviceEnabled = serviceEnabled)
-            val canDisplayNotificationDot = notificationEnabled && serviceEnabled
-            ExpandAndShrink(visible = canDisplayNotificationDot) {
+            val enabled by remember { notificationDotsEnabled(context) }.collectAsStateWithLifecycle(initialValue = false)
+            val serviceEnabled = notificationServiceEnabled()
+            NotificationDotsPreference(enabled = enabled, serviceEnabled = serviceEnabled)
+            if (enabled && serviceEnabled) {
+                val showNotificationCountAdapter = prefs2.showNotificationCount.getAdapter()
                 ColorPreference(preference = prefs2.notificationDotColor)
-            }
-            ExpandAndShrink(visible = canDisplayNotificationDot) {
                 SwitchPreference(
                     adapter = showNotificationCountAdapter,
                     label = stringResource(id = R.string.show_notification_count),
                 )
-            }
-            ExpandAndShrink(visible = canDisplayNotificationDot && showNotificationCount) {
-                ColorPreference(preference = prefs2.notificationDotTextColor)
-            }
-            ExpandAndShrink(visible = canDisplayNotificationDot && showNotificationCount) {
-                NotificationDotColorContrastWarnings(
-                    dotColor = dotColor,
-                    dotTextColor = dotTextColor,
-                )
+                ExpandAndShrink(visible = showNotificationCountAdapter.state.value) {
+                    DividerColumn {
+                        ColorPreference(preference = prefs2.notificationDotTextColor)
+                        NotificationDotColorContrastWarnings(
+                            dotColor = prefs2.notificationDotColor.asState().value,
+                            dotTextColor = prefs2.notificationDotTextColor.asState().value,
+                        )
+                    }
+                }
             }
         }
     }

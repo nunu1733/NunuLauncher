@@ -6,7 +6,6 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
-import app.lawnchair.util.getApkVersionComparison
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.Utilities
 import java.io.File
@@ -18,7 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -28,8 +27,8 @@ class NightlyBuildsRepository(
 ) {
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    val updateState: StateFlow<UpdateState>
-        field = MutableStateFlow<UpdateState>(UpdateState.UpToDate)
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.UpToDate)
+    val updateState = _updateState.asStateFlow()
 
     private var currentBuildNumber: Int = 0
     private var latestBuildNumber: Int = 0
@@ -37,20 +36,11 @@ class NightlyBuildsRepository(
 
     fun checkForUpdate() {
         coroutineScope.launch(Dispatchers.Default) {
-            updateState.update { UpdateState.Checking }
+            _updateState.update { UpdateState.Checking }
             try {
                 val releases = api.getReleases()
                 val nightly = releases.firstOrNull { it.tagName == "nightly" }
                 val asset = nightly?.assets?.firstOrNull()
-
-                val majorVersion = applicationContext.getApkVersionComparison().first[0]
-                val expectedBranch = "$majorVersion-dev"
-
-                if (nightly != null && nightly.targetCommitish != expectedBranch) {
-                    Log.d(TAG, "Skipping update from branch ${nightly.targetCommitish}, expected $expectedBranch")
-                    updateState.update { UpdateState.Disabled(UpdateDisabledReason.MAJOR_IS_NEWER) }
-                    return@launch
-                }
 
                 // As of now the version string looks like this (CI builds only):
                 // <major>.<branch>.(#<CI build number>)
@@ -66,7 +56,7 @@ class NightlyBuildsRepository(
                 if (asset != null && latestBuildNumber > currentBuildNumber) {
                     val commitList = getCommitsSinceCurrentVersion()
 
-                    updateState.update {
+                    _updateState.update {
                         UpdateState.Available(
                             asset.name,
                             asset.browserDownloadUrl,
@@ -79,11 +69,10 @@ class NightlyBuildsRepository(
                             } else {
                                 null
                             },
-                            expectedSha256 = asset.sha256Hash,
                         )
                     }
                 } else {
-                    updateState.update { UpdateState.UpToDate }
+                    _updateState.update { UpdateState.UpToDate }
                 }
             } catch (e: Exception) {
                 when (e) {
@@ -95,39 +84,35 @@ class NightlyBuildsRepository(
                         Log.e(TAG, "Failed to check for update", e)
                     }
                 }
-                updateState.update { UpdateState.Failed }
+                _updateState.update { UpdateState.Failed }
             }
         }
     }
 
     fun downloadUpdate() {
-        val currentState = updateState.value
+        val currentState = _updateState.value
         if (currentState !is UpdateState.Available) return
 
         coroutineScope.launch(Dispatchers.IO) {
-            updateState.update { UpdateState.Downloading(0f) }
+            _updateState.update { UpdateState.Downloading(0f) }
             try {
-                val file = downloadApk(currentState.url, currentState.expectedSha256) { progress ->
-                    updateState.update { UpdateState.Downloading(progress) }
+                val file = downloadApk(currentState.url) { progress ->
+                    _updateState.update { UpdateState.Downloading(progress) }
                 }
                 if (file != null) {
-                    updateState.update { UpdateState.Downloaded(file) }
+                    _updateState.update { UpdateState.Downloaded(file) }
                 } else {
                     Log.e(TAG, "Downloaded file is null")
-                    updateState.update { UpdateState.Failed }
+                    _updateState.update { UpdateState.Failed }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)
-                updateState.update { UpdateState.Failed }
+                _updateState.update { UpdateState.Failed }
             }
         }
     }
 
-    fun installUpdate(file: File, forceInstall: Boolean = false) {
-        if (!forceInstall && applicationContext.isApkMajorVersionNewer(file)) {
-            updateState.update { UpdateState.MajorUpdate(file) }
-            return
-        }
+    fun installUpdate(file: File) {
         if (!applicationContext.hasInstallPermission()) {
             // todo expose proper permission UI instead of requesting immediately on click
             applicationContext.requestInstallPermission()
@@ -145,17 +130,10 @@ class NightlyBuildsRepository(
         applicationContext.startActivity(intent)
     }
 
-    fun resetToDownloaded(file: File) {
-        updateState.update { UpdateState.Downloaded(file) }
-    }
-
     private suspend fun getCommitsSinceCurrentVersion(): List<GitHubCommit>? {
         return try {
-            val majorVersion = applicationContext.getApkVersionComparison().first[0]
-            val branch = "$majorVersion-dev"
-
             // Get the latest commits (last 100)
-            val commits = api.getRepositoryCommits("LawnchairLauncher", "lawnchair", branch)
+            val commits = api.getRepositoryCommits("LawnchairLauncher", "lawnchair")
 
             // Find the index of current commit
             val currentIndex = commits.indexOfFirst { it.sha.startsWith(currentCommitHash) }
@@ -173,7 +151,7 @@ class NightlyBuildsRepository(
         }
     }
 
-    private suspend fun downloadApk(url: String, expectedSha256: String?, onProgress: (Float) -> Unit): File? {
+    private suspend fun downloadApk(url: String, onProgress: (Float) -> Unit): File? {
         return try {
             val cacheDir = applicationContext.cacheDir
             val apkDirPath = cacheDir.toPath().resolve("updates").createDirectories()
@@ -186,8 +164,6 @@ class NightlyBuildsRepository(
                 return null
             }
 
-            val messageDigest = java.security.MessageDigest.getInstance("SHA-256")
-
             responseBody.byteStream().use { input ->
                 apkFilePath.outputStream().use { output ->
                     val buffer = ByteArray(8192)
@@ -195,22 +171,11 @@ class NightlyBuildsRepository(
                     var bytesRead: Int
                     while (input.read(buffer).also { bytesRead = it } != -1) {
                         output.write(buffer, 0, bytesRead)
-                        messageDigest.update(buffer, 0, bytesRead)
                         bytesDownloaded += bytesRead
                         onProgress(bytesDownloaded / totalBytes)
                     }
                 }
             }
-            if (expectedSha256 != null) {
-                val computedHash = messageDigest.digest().joinToString("") { "%02x".format(it) }
-                if (!computedHash.equals(expectedSha256, ignoreCase = true)) {
-                    Log.e(TAG, "SHA256 verification failed. Expected: $expectedSha256, Got: $computedHash")
-                    apkFilePath.deleteIfExists()
-                    return null
-                }
-                Log.d(TAG, "SHA256 verification passed: $computedHash")
-            }
-
             apkFilePath.toFile()
         } catch (e: Exception) {
             Log.e(TAG, "APK download failed", e)
@@ -241,21 +206,6 @@ private fun Context.requestInstallPermission() {
         }
         startActivity(intent)
     }
-}
-
-/**
- * Checks if the downloaded APK file has a higher Major (AA) version than the currently
- * installed build.
- */
-private fun Context.isApkMajorVersionNewer(apkFile: File): Boolean {
-    val (currentParsed, apkParsed) = getApkVersionComparison(apkFile) ?: return false
-
-    val apkMajor = apkParsed[0]
-    val currentMajor = currentParsed[0]
-
-    Log.d("UpdateCheck", "Current Major: $currentMajor, APK Major: $apkMajor")
-
-    return apkMajor > currentMajor
 }
 
 private const val MAX_FALLBACK_COMMITS = 30

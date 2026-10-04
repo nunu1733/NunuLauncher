@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,7 +25,6 @@ import app.lawnchair.preferences.PreferenceAdapter
 import app.lawnchair.search.algorithms.engine.provider.web.WebSearchProvider
 import app.lawnchair.ui.preferences.components.controls.ListPreference
 import app.lawnchair.ui.preferences.components.controls.ListPreferenceEntry
-import app.lawnchair.ui.preferences.components.layout.DividerColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import com.android.launcher3.R
 
@@ -47,7 +45,7 @@ fun WebSearchProvider(
         }
     }
 
-    DividerColumn(modifier) {
+    Column(modifier) {
         ListPreference(
             adapter = adapter,
             entries = entries,
@@ -103,7 +101,6 @@ fun SearchPopupPreference(
                         showPopup = false
                         onConfirm(value.text)
                     },
-                    shapes = ButtonDefaults.shapes(),
                 ) {
                     Text(text = stringResource(id = android.R.string.ok))
                 }
@@ -113,7 +110,6 @@ fun SearchPopupPreference(
                     onClick = {
                         showPopup = false
                     },
-                    shapes = ButtonDefaults.shapes(),
                 ) {
                     Text(text = stringResource(id = android.R.string.cancel))
                 }
@@ -143,17 +139,15 @@ fun SearchPopupPreference(
     }
 
     PreferenceTemplate(
-        modifier = modifier,
-        onClick = {
+        modifier = modifier.clickable {
             showPopup = true
         },
         contentModifier = Modifier
-            .fillMaxHeight(),
+            .fillMaxHeight()
+            .padding(vertical = 16.dp)
+            .padding(start = 16.dp),
         title = { Text(text = title) },
-        description = if (value.text.isNotEmpty()) {
-            { Text(initialValue) }
-        } else {
-            null
-        },
+        description = { Text(initialValue) },
+        applyPaddings = false,
     )
 }

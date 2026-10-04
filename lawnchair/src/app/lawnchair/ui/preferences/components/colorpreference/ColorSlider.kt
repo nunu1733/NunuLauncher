@@ -24,15 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.lawnchair.ui.preferences.components.controls.getSteps
 import app.lawnchair.ui.preferences.components.controls.snapSliderValue
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 import kotlin.math.roundToInt
 
 @Composable
@@ -44,18 +41,20 @@ fun RgbColorSlider(
     modifier: Modifier = Modifier,
     onValueChange: (Float) -> Unit,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     val step = 0f
     val rgbRange = 0f..255f
 
     PreferenceTemplate(
-        modifier = modifier,
+        modifier = modifier
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 12.dp),
         title = {
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
             ) {
                 Text(text = label)
                 CompositionLocalProvider(
@@ -69,8 +68,7 @@ fun RgbColorSlider(
         },
         description = {
             Row(
-                modifier = Modifier
-                    .padding(top = 4.dp, bottom = 4.dp),
+                modifier = Modifier.padding(top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
@@ -81,10 +79,7 @@ fun RgbColorSlider(
                 )
                 Slider(
                     value = value.toFloat(),
-                    onValueChange = {
-                        mMSDLPlayerWrapper.playToken(MSDLToken.DRAG_INDICATOR_CONTINUOUS)
-                        onValueChange(it)
-                    },
+                    onValueChange = onValueChange,
                     valueRange = rgbRange,
                     steps = getSteps(rgbRange, step),
                     modifier = Modifier
@@ -100,6 +95,7 @@ fun RgbColorSlider(
                 )
             }
         },
+        applyPaddings = false,
     )
 }
 
@@ -110,7 +106,6 @@ fun HsbColorSlider(
     modifier: Modifier = Modifier,
     onValueChange: (Float) -> Unit,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     val step = 0f
 
     val range = when (type) {
@@ -135,7 +130,9 @@ fun HsbColorSlider(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .fillMaxWidth(),
+                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
             ) {
                 Text(text = label)
                 CompositionLocalProvider(
@@ -157,7 +154,7 @@ fun HsbColorSlider(
         },
         description = {
             Column(
-                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
             ) {
                 if (type == HsbSliderType.HUE) {
                     val brushColors = arrayListOf<Color>()
@@ -174,6 +171,7 @@ fun HsbColorSlider(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp)
+                            .padding(horizontal = 16.dp)
                             .requiredHeight(24.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(brush = Brush.horizontalGradient(brushColors)),
@@ -181,20 +179,19 @@ fun HsbColorSlider(
                 }
                 Slider(
                     value = value,
-                    onValueChange = {
-                        mMSDLPlayerWrapper.playToken(MSDLToken.DRAG_INDICATOR_CONTINUOUS)
-                        onValueChange(it)
-                    },
+                    onValueChange = onValueChange,
                     onValueChangeFinished = { },
                     valueRange = range,
                     steps = getSteps(range, step),
                     colors = SliderDefaults.colors(),
                     modifier = Modifier
                         .height(24.dp)
+                        .padding(horizontal = 8.dp)
                         .fillMaxWidth(),
                 )
             }
         },
+        applyPaddings = false,
         modifier = modifier,
     )
 }

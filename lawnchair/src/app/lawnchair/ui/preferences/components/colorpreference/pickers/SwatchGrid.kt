@@ -29,8 +29,6 @@ import app.lawnchair.ui.preferences.components.colorpreference.ColorPreferenceEn
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.theme.isSelectedThemeDark
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 
 object SwatchGridDefaults {
     val GutterSize = 12.dp
@@ -46,7 +44,6 @@ fun <T> SwatchGrid(
     modifier: Modifier = Modifier,
     contentModifier: Modifier = Modifier,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     val columnCount = SwatchGridDefaults.COLUMN_COUNT
     val rowCount = (entries.size - 1) / columnCount + 1
     val gutter = SwatchGridDefaults.GutterSize
@@ -54,12 +51,9 @@ fun <T> SwatchGrid(
     PreferenceGroup(
         heading = stringResource(id = R.string.swatches),
         modifier = modifier,
+        showDividers = false,
     ) {
-        Column(
-            modifier = Modifier
-                .background(color = MaterialTheme.colorScheme.surfaceContainer)
-                .then(contentModifier),
-        ) {
+        Column(modifier = contentModifier) {
             for (rowNo in 1..rowCount) {
                 val firstIndex = (rowNo - 1) * columnCount
                 val lastIndex = firstIndex + columnCount - 1
@@ -73,10 +67,7 @@ fun <T> SwatchGrid(
                         ) {
                             ColorSwatch(
                                 entry = colorOption,
-                                onClick = {
-                                    mMSDLPlayerWrapper.playToken(MSDLToken.TAP_LOW_EMPHASIS)
-                                    onSwatchClick(colorOption.value)
-                                },
+                                onClick = { onSwatchClick(colorOption.value) },
                                 modifier = Modifier.widthIn(0.dp, SwatchGridDefaults.SwatchMaxWidth),
                                 selected = isSwatchSelected(colorOption.value),
                             )

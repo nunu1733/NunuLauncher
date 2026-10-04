@@ -17,7 +17,6 @@
 package app.lawnchair.ui.preferences.destinations
 
 import android.content.Context
-import androidx.annotation.Keep
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -38,7 +37,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,21 +53,13 @@ import app.lawnchair.preferences.PreferenceAdapter
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences2.asState
 import app.lawnchair.preferences2.preferenceManager2
-import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
-import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.controls.ListPreferenceEntry
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
+import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
-import app.lawnchair.ui.preferences.components.layout.TwoTabPreferenceLayout
 import app.lawnchair.ui.preferences.navigation.GeneralCustomIconShapeCreator
 import com.android.launcher3.R
-
-@Keep // This is refed by a Kotlin serializer, we must keep it's fully qualified name.
-enum class ShapeRoute {
-    APP_SHAPE,
-    FOLDER_SHAPE,
-}
 
 /**
  * @return The list of all [IconShape]s each wrapped inside a [ListPreferenceEntry].
@@ -92,95 +82,58 @@ fun iconShapeEntries(context: Context): List<ListPreferenceEntry<IconShape>> {
         ListPreferenceEntry(IconShape.Square) { stringResource(id = R.string.icon_shape_square) },
         ListPreferenceEntry(IconShape.Squircle) { stringResource(id = R.string.icon_shape_squircle) },
         ListPreferenceEntry(IconShape.Teardrop) { stringResource(id = R.string.icon_shape_teardrop) },
-        ListPreferenceEntry(IconShape.VerySunny) { stringResource(id = R.string.icon_shape_very_sunny) },
-        ListPreferenceEntry(IconShape.ComplexClover) { stringResource(id = R.string.icon_shape_complex_clover) },
         ListPreferenceEntry(IconShape.FourSidedCookie) { stringResource(id = R.string.icon_shape_four_sided_cookie) },
         ListPreferenceEntry(IconShape.SevenSidedCookie) { stringResource(id = R.string.icon_shape_seven_sided_cookie) },
         ListPreferenceEntry(IconShape.Arch) { stringResource(id = R.string.icon_shape_arch) },
-        ListPreferenceEntry(IconShape.Cloudy) { stringResource(id = R.string.icon_shape_cloudy) },
-        ListPreferenceEntry(IconShape.Flower) { stringResource(id = R.string.icon_shape_flower) },
-        ListPreferenceEntry(IconShape.Heart) { stringResource(id = R.string.icon_shape_heart) },
-        ListPreferenceEntry(IconShape.Leaf) { stringResource(id = R.string.icon_shape_leaf) },
-        ListPreferenceEntry(IconShape.Meow) { stringResource(id = R.string.icon_shape_meow) },
-        ListPreferenceEntry(IconShape.Pebble) { stringResource(id = R.string.icon_shape_pebble) },
-        ListPreferenceEntry(IconShape.RoundedHexagon) { stringResource(id = R.string.icon_shape_roundedhexagon) },
-        ListPreferenceEntry(IconShape.Stretched) { stringResource(id = R.string.icon_shape_stretched) },
-        ListPreferenceEntry(IconShape.Vessel) { stringResource(id = R.string.icon_shape_vessel) },
     )
 }
 
 @Composable
-fun ShapePreference(
+fun IconShapePreference(
     modifier: Modifier = Modifier,
-    currentTab: ShapeRoute = ShapeRoute.APP_SHAPE,
 ) {
-    TwoTabPreferenceLayout(
-        label = stringResource(id = R.string.icon_shape_label),
-        backArrowVisible = !LocalIsExpandedScreen.current,
-        defaultPage = currentTab.ordinal,
-        firstPageLabel = stringResource(id = R.string.app_icon_shape_label),
-        firstPageContent = {
-            ShapeTabContent(currentTab = ShapeRoute.APP_SHAPE)
-        },
-        secondPageLabel = stringResource(id = R.string.folder_label),
-        secondPageContent = {
-            ShapeTabContent(currentTab = ShapeRoute.FOLDER_SHAPE)
-        },
-        modifier = modifier,
-    )
-}
-
-@Composable
-private fun ShapeTabContent(currentTab: ShapeRoute) {
     val context = LocalContext.current
     val preferenceManager2 = preferenceManager2()
     val entries = remember { iconShapeEntries(context) }
-    val shapeAdapter = when (currentTab) {
-        ShapeRoute.APP_SHAPE -> preferenceManager2.iconShape.getAdapter()
-        ShapeRoute.FOLDER_SHAPE -> preferenceManager2.folderShape.getAdapter()
-    }
-    val customShape by when (currentTab) {
-        ShapeRoute.APP_SHAPE -> preferenceManager2.customIconShape.asState()
-        ShapeRoute.FOLDER_SHAPE -> preferenceManager2.customFolderShape.asState()
-    }
+    val iconShapeAdapter = preferenceManager2.iconShape.getAdapter()
+    val customIconShape = preferenceManager2.customIconShape.asState()
 
-    PreferenceGroup(
-        heading = stringResource(id = R.string.custom),
+    PreferenceLayout(
+        label = stringResource(id = R.string.icon_shape_label),
+        modifier = modifier,
     ) {
-        customShape?.let { shape ->
+        PreferenceGroup(
+            heading = stringResource(id = R.string.custom),
+        ) {
             CustomIconShapePreferenceOption(
-                iconShapeAdapter = shapeAdapter,
-                customIconShape = shape,
+                iconShapeAdapter = iconShapeAdapter,
+            )
+            ModifyCustomIconShapePreference(
+                customIconShape = customIconShape.value,
             )
         }
-        ModifyCustomIconShapePreference(
-            customIconShape = customShape,
-            currentTab = currentTab,
-        )
-    }
-    PreferenceGroup(
-        heading = stringResource(id = R.string.presets),
-    ) {
-        entries.forEach { item ->
-            PreferenceTemplate(
-                title = { Text(item.label()) },
-                enabled = item.enabled,
-                startWidget = {
-                    RadioButton(
-                        selected = item.value == shapeAdapter.state.value,
-                        onClick = null,
-                        enabled = item.enabled,
-                    )
-                },
-                endWidget = {
-                    IconShapePreview(iconShape = item.value)
-                },
-                onClick = if (item.enabled) {
-                    { shapeAdapter.onChange(newValue = item.value) }
-                } else {
-                    null
-                },
-            )
+        PreferenceGroup(
+            heading = stringResource(id = R.string.presets),
+        ) {
+            entries.forEach { item ->
+                PreferenceTemplate(
+                    enabled = item.enabled,
+                    title = { Text(item.label()) },
+                    modifier = Modifier.clickable(item.enabled) {
+                        iconShapeAdapter.onChange(newValue = item.value)
+                    },
+                    startWidget = {
+                        RadioButton(
+                            selected = item.value == iconShapeAdapter.state.value,
+                            onClick = null,
+                            enabled = item.enabled,
+                        )
+                    },
+                    endWidget = {
+                        IconShapePreview(iconShape = item.value)
+                    },
+                )
+            }
         }
     }
 }
@@ -188,60 +141,78 @@ private fun ShapeTabContent(currentTab: ShapeRoute) {
 @Composable
 private fun CustomIconShapePreferenceOption(
     iconShapeAdapter: PreferenceAdapter<IconShape>,
-    customIconShape: IconShape,
     modifier: Modifier = Modifier,
 ) {
-    PreferenceTemplate(
-        title = { Text(stringResource(id = R.string.custom)) },
-        modifier = modifier,
-        startWidget = {
-            RadioButton(
-                selected = IconShape.isCustomShape(iconShapeAdapter.state.value),
-                onClick = null,
-            )
-        },
-        endWidget = {
-            IconShapePreview(iconShape = customIconShape)
-        },
-        onClick = {
-            iconShapeAdapter.onChange(newValue = customIconShape)
-        },
-    )
+    val preferenceManager2 = preferenceManager2()
+
+    val customIconShapeAdapter = preferenceManager2.customIconShape.getAdapter()
+    val customIconShape = customIconShapeAdapter.state.value
+
+    customIconShape?.let {
+        PreferenceTemplate(
+            title = { Text(stringResource(id = R.string.custom)) },
+            modifier = modifier.clickable {
+                iconShapeAdapter.onChange(newValue = it)
+            },
+            startWidget = {
+                RadioButton(
+                    selected = IconShape.isCustomShape(iconShapeAdapter.state.value),
+                    onClick = null,
+                )
+            },
+            endWidget = {
+                IconShapePreview(iconShape = it)
+            },
+        )
+    }
 }
 
 @Composable
 private fun ModifyCustomIconShapePreference(
     customIconShape: IconShape?,
-    currentTab: ShapeRoute,
     modifier: Modifier = Modifier,
 ) {
     val navController = LocalNavController.current
-    val route = GeneralCustomIconShapeCreator(selectedId = currentTab)
+    val route = GeneralCustomIconShapeCreator
 
     val created = customIconShape != null
 
-    val text = stringResource(
-        when (currentTab) {
-            ShapeRoute.APP_SHAPE -> if (created) R.string.custom_icon_shape_edit else R.string.custom_icon_shape_create
-            ShapeRoute.FOLDER_SHAPE -> if (created) R.string.custom_folder_shape_edit else R.string.custom_folder_shape_create
-        },
-    )
+    val text = if (created) {
+        stringResource(id = R.string.custom_icon_shape_edit)
+    } else {
+        stringResource(id = R.string.custom_icon_shape_create)
+    }
 
     val icon = if (created) Icons.Rounded.Edit else Icons.Rounded.Add
 
-    PreferenceTemplate(
-        onClick = { navController.navigate(route = route) },
-        modifier = modifier,
-        title = {
-            Text(text = text)
-        },
-        startWidget = {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable {
+                navController.navigate(route = route)
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompositionLocalProvider(
+                LocalContentColor provides MaterialTheme.colorScheme.secondary,
+                LocalTextStyle provides MaterialTheme.typography.bodyMedium,
+            ) {
+                Text(
+                    text = text,
+                )
+            }
+            Spacer(modifier = Modifier.requiredWidth(12.dp))
             Icon(
                 imageVector = icon,
+                tint = MaterialTheme.colorScheme.secondary,
                 contentDescription = null,
             )
-        },
-    )
+        }
+    }
 }
 
 /**

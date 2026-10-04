@@ -19,7 +19,6 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -77,7 +76,6 @@ fun PermissionDialog(
                     if (isPermanentlyDenied) onGoToSettings() else onConfirm()
                     onDismiss()
                 },
-                shapes = ButtonDefaults.shapes(),
             ) {
                 Text(
                     stringResource(
@@ -87,10 +85,7 @@ fun PermissionDialog(
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = onDismiss,
-                shapes = ButtonDefaults.shapes(),
-            ) { Text(stringResource(android.R.string.cancel)) }
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
         },
     )
 }
@@ -124,10 +119,7 @@ fun WallpaperAccessPermissionDialog(
                     Text(stringResource(R.string.manage_storage_access_denied_description, stringResource(id = R.string.derived_app_name)))
                 },
                 confirmButton = {
-                    FilledTonalButton(
-                        onClick = onDismiss,
-                        shapes = ButtonDefaults.shapes(),
-                    ) { Text(stringResource(R.string.dismiss)) }
+                    FilledTonalButton(onClick = onDismiss) { Text(stringResource(R.string.dismiss)) }
                 },
             )
         } else {
@@ -172,10 +164,7 @@ fun WallpaperAccessPermissionDialog(
                         }
                     },
                     confirmButton = {
-                        TextButton(
-                            onClick = onDismiss,
-                            shapes = ButtonDefaults.shapes(),
-                        ) { Text(stringResource(android.R.string.cancel)) }
+                        TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
                     },
                 )
 

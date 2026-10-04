@@ -34,12 +34,12 @@ import com.android.launcher3.GestureNavContract
 import com.android.launcher3.Insettable
 import com.android.launcher3.LauncherAnimUtils
 import com.android.launcher3.QuickstepTransitionManager.CONTENT_SCALE_DURATION
+import com.android.launcher3.QuickstepTransitionManager.LaunchDepthController
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
-import com.android.launcher3.statehandlers.DepthController
 import com.android.launcher3.util.Executors
 import com.android.launcher3.util.MultiPropertyFactory
-import com.android.launcher3.util.window.RefreshRateTracker.Companion.getSingleFrameMs
+import com.android.launcher3.util.window.RefreshRateTracker
 import com.android.launcher3.views.FloatingIconView.getLocationBoundsForView
 import com.android.launcher3.views.FloatingIconViewCompanion.setPropertiesVisible
 import java.util.function.Consumer
@@ -89,7 +89,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
         // Remove after some time, to avoid flickering
         Executors.MAIN_EXECUTOR.handler.postDelayed(
             mRemoveViewRunnable,
-            mLauncher.getSingleFrameMs().toLong(),
+            RefreshRateTracker.getSingleFrameMs(mLauncher).toLong(),
         )
     }
 
@@ -167,7 +167,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
     }
 
     private fun getBackgroundAnimator(): ObjectAnimator {
-        val depthController = DepthController(mLauncher)
+        val depthController = LaunchDepthController(mLauncher)
         val targetDepth = mLauncher.stateManager.state.getDepth<LawnchairLauncher?>(mLauncher)
 
         val backgroundRadiusAnim = createDepthAnimator(
@@ -206,7 +206,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
     }
 
     private fun createDepthAnimator(
-        depthController: DepthController,
+        depthController: LaunchDepthController,
         targetDepth: Float,
         onEnd: (() -> Unit)? = null,
     ): ObjectAnimator {
@@ -218,13 +218,11 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
             duration = CONTENT_SCALE_DURATION.toLong() * 2
             interpolator = Interpolators.DECELERATE_2
             onEnd?.let {
-                addListener(
-                    object : AnimatorListenerAdapter() {
-                        override fun onAnimationEnd(animation: Animator) {
-                            it()
-                        }
-                    },
-                )
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        it()
+                    }
+                })
             }
         }
     }
@@ -240,10 +238,11 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
     }
 
     fun getIcon(): View? {
-        return mLauncher.getFirstHomeElementForAppClose(
+        return mLauncher.getFirstMatchForAppClose(
             null, /* StableViewInfo */
             mContract!!.componentName.packageName,
             mContract!!.user,
+            false, /* supportsAllAppsState */
         )
     }
 
@@ -397,7 +396,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
          */
         fun show(launcher: LawnchairLauncher, contract: GestureNavContract?) {
             val view: LawnchairFloatingSurfaceView =
-                launcher.viewCache.getView(
+                launcher.viewCache.getView<LawnchairFloatingSurfaceView?>(
                     R.layout.floating_surface_view,
                     launcher,
                     launcher.dragLayer,
@@ -406,17 +405,15 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
             view.mIsOpen = true
 
             val anim = AnimatorSet()
-            val startDelay = launcher.getSingleFrameMs()
+            val startDelay = RefreshRateTracker.getSingleFrameMs(launcher)
             val launcherContentAnimator: Pair<AnimatorSet?, Runnable?> =
                 view.getLauncherContentAnimator(startDelay)
             anim.playTogether(launcherContentAnimator.first, view.getBackgroundAnimator())
-            anim.addListener(
-                object : AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: Animator) {
-                        launcherContentAnimator.second!!.run()
-                    }
-                },
-            )
+            anim.addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    launcherContentAnimator.second!!.run()
+                }
+            })
 
             view.removeViewImmediate()
             launcher.dragLayer.addView(view)

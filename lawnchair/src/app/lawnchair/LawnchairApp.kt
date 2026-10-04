@@ -79,10 +79,6 @@ class LawnchairApp : Application() {
             DeckRetirementMigration.run(this)
         }
         Flowerpot.Manager.getInstance(this)
-        // Issue #14/#201 adapt (rebase Phase 2): anchor's LauncherAppState is a lazy
-        // Dagger singleton without the MainThreadInitializedObject onPostInit hook the
-        // fork relied on, so the app-state-created gate runs at the end of onCreate.
-        onLauncherAppStateCreated()
     }
 
     fun hideClockInStatusBar() {
@@ -150,12 +146,12 @@ class LawnchairApp : Application() {
             )
             val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
             com.android.launcher3.util.Executors.MAIN_EXECUTOR.execute {
-                if (!model.isModelLoaded() && model.hasCallbacks()) {
+                if (!model.isModelLoaded && !model.hasCallbacks()) {
                     model.startLoaderWithoutCallbacks()
                 }
             }
             val deadline = SystemClock.elapsedRealtime() + ORGANIZER_MODEL_LOAD_TIMEOUT_MS
-            while (!model.isModelLoaded() && SystemClock.elapsedRealtime() < deadline) {
+            while (!model.isModelLoaded && SystemClock.elapsedRealtime() < deadline) {
                 try {
                     Thread.sleep(50)
                 } catch (_: InterruptedException) {
@@ -163,7 +159,7 @@ class LawnchairApp : Application() {
                     break
                 }
             }
-            if (!model.isModelLoaded()) {
+            if (!model.isModelLoaded) {
                 Log.e(TAG, "Organizer startup reconciliation began without a completed model load")
                 layoutApplicationModule.failStartupReconciliation()
                 return@thread

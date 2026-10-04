@@ -1,7 +1,6 @@
 package app.lawnchair.allapps
 
 import android.animation.ValueAnimator
-import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Rect
@@ -13,24 +12,14 @@ import android.text.method.TextKeyListener
 import android.text.style.ForegroundColorSpan
 import android.util.AttributeSet
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.View
+import android.view.View.OnFocusChangeListener
 import android.view.ViewTreeObserver
-import android.view.ViewTreeObserver.OnGlobalFocusChangeListener
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.TextView
-import androidx.compose.animation.core.animateIntAsState
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.ViewCompat
-import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
@@ -39,23 +28,19 @@ import androidx.lifecycle.lifecycleScope
 import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
-import app.lawnchair.preferences2.asState
-import app.lawnchair.preferences2.firstCached
+import app.lawnchair.preferences2.subscribeBlocking
+import app.lawnchair.qsb.AssistantIconView
 import app.lawnchair.qsb.LawnQsbLayout.Companion.getLensIntent
 import app.lawnchair.qsb.LawnQsbLayout.Companion.getSearchProvider
-import app.lawnchair.qsb.LawnQsbLayout.Companion.getVoiceIntent
-import app.lawnchair.qsb.LawnQsbUi
-import app.lawnchair.qsb.QsbActions
-import app.lawnchair.qsb.QsbIconId
-import app.lawnchair.qsb.buildQsbStyle
+import app.lawnchair.qsb.ThemingMethod
 import app.lawnchair.qsb.providers.Google
+import app.lawnchair.qsb.providers.GoogleGo
 import app.lawnchair.qsb.providers.PixelSearch
-import app.lawnchair.qsb.rememberAllAppsQsbState
+import app.lawnchair.qsb.setThemedIconResource
 import app.lawnchair.search.LawnchairRecentSuggestionProvider
 import app.lawnchair.search.algorithms.LawnchairSearchAlgorithm
-import app.lawnchair.theme.color.tokens.ColorTokens
-import app.lawnchair.ui.theme.LawnchairTheme
-import app.lawnchair.util.ProvideLifecycleState
+import app.lawnchair.theme.drawable.DrawableTokens
+import app.lawnchair.util.viewAttachedScope
 import com.android.launcher3.Insettable
 import com.android.launcher3.InvariantDeviceProfile.OnIDPChangeListener
 import com.android.launcher3.LauncherState
@@ -68,7 +53,7 @@ import com.android.launcher3.allapps.SearchUiManager
 import com.android.launcher3.allapps.search.AllAppsSearchBarController
 import com.android.launcher3.search.SearchCallback
 import com.android.launcher3.util.Themes
-import com.android.systemui.shared.system.BlurUtils
+import com.patrykmichalik.opto.core.firstBlocking
 import java.util.Locale
 import kotlin.math.max
 import kotlinx.coroutines.launch
@@ -84,7 +69,11 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
     private lateinit var hint: TextView
     private lateinit var input: FallbackSearchInputView
-    private lateinit var qsbShell: ComposeView
+    private lateinit var actionButton: ImageButton
+    private lateinit var searchIcon: ImageButton
+
+    private lateinit var micIcon: AssistantIconView
+    private lateinit var lensIcon: ImageButton
 
     private val qsbMarginTopAdjusting = resources.getDimensionPixelSize(R.dimen.qsb_margin_top_adjusting)
     private val allAppsSearchVerticalOffset = resources.getDimensionPixelSize(R.dimen.all_apps_search_vertical_offset)
@@ -99,13 +88,10 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
     private lateinit var appsView: ActivityAllAppsContainerView<*>
     private var searchAlgorithm: LawnchairSearchAlgorithm? = null
 
-    private var isDirectFocus = false
     private var focusedResultTitle = ""
     private var canShowHint = false
-    private var queryEmpty by mutableStateOf(true)
 
-    private var bgAlphaState by mutableFloatStateOf(1f)
-    private val supportBlur = BlurUtils.supportsBlursOnWindows()
+    private val bg = DrawableTokens.SearchInputFg.resolve(context)
     private val bgAlphaAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 300
         interpolator = DecelerateInterpolator()
@@ -118,176 +104,104 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
     private var initialPaddingLeft: Int = 0
     private var initialPaddingRight: Int = 0
-    private var hideSearchBar = false
 
     override fun onFinishInflate() {
         super.onFinishInflate()
 
+        val wrapper = ViewCompat.requireViewById<View>(this, R.id.search_wrapper)
+        wrapper.background = bg
         setupPadding()
+        launcher.deviceProfile.inv.addOnChangeListener(this)
         bgAlphaAnimator.addUpdateListener { updateBgAlpha() }
 
         hint = ViewCompat.requireViewById(this, R.id.hint)
 
         input = ViewCompat.requireViewById(this, R.id.input)
 
-        qsbShell = ViewCompat.requireViewById(this, R.id.qsb_shell)
+        searchIcon = ViewCompat.requireViewById(this, R.id.search_icon)
+        micIcon = ViewCompat.requireViewById(this, R.id.mic_btn)
+        lensIcon = ViewCompat.requireViewById(this, R.id.lens_btn)
 
-        qsbShell.apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+        val shouldShowIcons = prefs2.matchHotseatQsbStyle.firstBlocking()
 
-            setContent {
-                var isFocused by remember(input) { mutableStateOf(input.hasFocus()) }
+        val searchProvider = getSearchProvider(context, prefs2)
+        val isGoogle = searchProvider == Google || searchProvider == GoogleGo || searchProvider == PixelSearch
+        val supportsLens = searchProvider == Google || searchProvider == PixelSearch
 
-                // Yes, this is a bit hacky, but it's the only way to ensure that
-                // we can check if the input has focus in Compose without wrestling
-                // with multiple global variables or state changes
-                DisposableEffect(input) {
-                    val focusListener = OnGlobalFocusChangeListener { _, _ ->
-                        isFocused = input.hasFocus()
+        val lensIntent = getLensIntent(context)
+        val voiceIntent = AssistantIconView.getVoiceIntent(searchProvider, context)
+
+        micIcon.isVisible = shouldShowIcons && voiceIntent != null
+        lensIcon.isVisible = shouldShowIcons && supportsLens && lensIntent != null
+
+        actionButton = ViewCompat.requireViewById(this, R.id.action_btn)
+        with(actionButton) {
+            isVisible = false
+            setOnClickListener {
+                input.reset()
+                searchAlgorithm?.doZeroStateSearch(this@AllAppsSearchInput)
+                updateHint()
+            }
+        }
+
+        prefs2.themedHotseatQsb.subscribeBlocking(scope = viewAttachedScope) { themed ->
+            with(searchIcon) {
+                isVisible = true
+
+                val iconRes = if (themed) searchProvider.themedIcon else searchProvider.icon
+                val resId = if (shouldShowIcons) iconRes else R.drawable.ic_qsb_search
+                val isThemed = themed || resId == R.drawable.ic_qsb_search
+                val method = if (shouldShowIcons) searchProvider.themingMethod else ThemingMethod.TINT
+
+                setThemedIconResource(
+                    resId = resId,
+                    themed = isThemed,
+                    method = method,
+                )
+
+                setOnClickListener {
+                    val launcher = context.launcher
+                    launcher.lifecycleScope.launch {
+                        searchProvider.launch(launcher)
                     }
-
-                    val observer = input.viewTreeObserver
-                    observer.addOnGlobalFocusChangeListener(focusListener)
-
-                    onDispose {
-                        if (observer.isAlive) {
-                            observer.removeOnGlobalFocusChangeListener(focusListener)
-                        }
-                    }
                 }
-
-                val searchProviderPref by prefs2.hotseatQsbProvider.asState()
-                val searchProvider = remember(searchProviderPref, context) {
-                    getSearchProvider(context, searchProviderPref)
+            }
+            with(micIcon) {
+                setIcon(isGoogle, themed)
+                setOnClickListener {
+                    context.startActivity(voiceIntent)
                 }
-                val themedQsb by prefs2.themedHotseatQsb.asState()
-                val shouldShowIcons by prefs2.matchHotseatQsbStyle.asState()
-
-                val supportsLens = searchProvider == Google || searchProvider == PixelSearch
-                val voiceIntent = remember(searchProvider, context) {
-                    getVoiceIntent(searchProvider, context)
-                }
-                val lensIntent = remember(supportsLens, context) {
-                    if (supportsLens) getLensIntent(context) else null
-                }
-
-                val state = rememberAllAppsQsbState(
-                    searchProvider = searchProvider,
-                    themed = themedQsb,
-                    shouldShowIcons = shouldShowIcons,
-                    queryEmpty = queryEmpty,
-                    showMic = voiceIntent != null,
-                    showLens = lensIntent != null,
-                )
-
-                val backgroundColor = if (supportBlur) {
-                    ColorTokens.SearchboxHighlightBlur.resolveColor(context)
-                } else {
-                    ColorTokens.SearchboxHighlight.resolveColor(context)
-                }
-
-                val backgroundAlpha by animateIntAsState(
-                    if (isFocused || !queryEmpty) 0 else 100,
-                )
-
-                // Ignore other theme attributes to preserve existing behavior
-                val style = buildQsbStyle(
-                    context = context,
-                    themed = themedQsb,
-                    backgroundColor = backgroundColor,
-                    backgroundAlpha = backgroundAlpha,
-                    cornerRadius = 1f,
-                    strokeColor = null,
-                    strokeWidth = 0f,
-                )
-
-                val actions = QsbActions(
-                    onQsbClick = {
-                        if (input.text.isNullOrEmpty()) {
-                            searchAlgorithm?.doZeroStateSearch(this@AllAppsSearchInput)
-                        }
-                        input.requestFocus()
-                        input.showKeyboard()
-                    },
-                    onStartIconClick = if (shouldShowIcons) {
-                        {
-                            val launcher = context.launcher
-                            launcher.lifecycleScope.launch {
-                                searchProvider.launch(launcher)
-                            }
-                        }
-                    } else {
-                        null
-                    },
-                    onEndIconClick = { id ->
-                        when (id) {
-                            QsbIconId.MIC -> voiceIntent?.let { context.startActivity(it) }
-
-                            QsbIconId.LENS -> lensIntent?.let { context.startActivity(it) }
-
-                            QsbIconId.CLEAR -> {
-                                input.reset()
-                                searchAlgorithm?.doZeroStateSearch(this@AllAppsSearchInput)
-                                updateHint()
-                            }
-
-                            else -> Unit
-                        }
-                    },
-                )
-
-                LawnchairTheme {
-                    ProvideLifecycleState {
-                        LawnQsbUi(
-                            state = state,
-                            style = style,
-                            actions = actions,
-                        )
+            }
+            with(lensIcon) {
+                if (lensIntent != null) {
+                    setThemedIconResource(R.drawable.ic_lens_color, themed)
+                    setOnClickListener {
+                        runCatching { context.startActivity(lensIntent) }
                     }
                 }
             }
         }
-
-        // Stop Compose QSB from disappearing
-        // https://stackoverflow.com/questions/72781705/jetpack-compose-view-not-drawing-when-coming-back-to-fragment/77496737#77496737
-        qsbShell.addOnAttachStateChangeListener(object : OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) {
-                requestLayout()
-                qsbShell.disposeComposition()
-            }
-            override fun onViewDetachedFromWindow(v: View) {
-                qsbShell.disposeComposition()
-            }
-        })
-
         val currentPaddingLeft = initialPaddingLeft
         val currentPaddingRight = initialPaddingRight
-
-        // Activate zero search on tap
-        @SuppressLint("ClickableViewAccessibility")
-        input.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN && !input.hasFocus()) {
-                setDirectFocus(true)
-            }
-            false
-        }
-
-        input.onFocusChangeListener = { _, hasFocus ->
+        input.onFocusChangeListener = OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
-                if (prefs2.searchAlgorithm.firstCached() != LawnchairSearchAlgorithm.APP_SEARCH) {
+                if (prefs2.searchAlgorithm.firstBlocking() != LawnchairSearchAlgorithm.APP_SEARCH) {
                     input.setHint(R.string.all_apps_device_search_hint)
                 } else {
                     input.setHint(R.string.all_apps_search_bar_hint)
                 }
 
-                if (input.text.toString().isEmpty() && isDirectFocus) {
+                if (input.text.toString().isEmpty()) {
                     searchAlgorithm?.doZeroStateSearch(this)
-                    setDirectFocus(false)
                 }
 
                 setBackgroundVisibility(false, 0f)
                 animateHintVisibility(true)
                 animatePadding(currentPaddingLeft / 2, currentPaddingRight / 2)
+
+                // Sometimes the user has to click the input bar one more time
+                // for the keyboard to show.
+                input.showKeyboard()
             } else {
                 setBackgroundVisibility(true, 1f)
                 animateHintVisibility(false)
@@ -296,16 +210,10 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                     suggestionsRecent.saveRecentQuery(query, null)
                 }
 
-                if (input.text.isNullOrEmpty()) {
-                    animatePadding(currentPaddingLeft, currentPaddingRight)
-                }
+                animatePadding(currentPaddingLeft, currentPaddingRight)
                 focusedResultTitle = ""
                 input.setHint("")
                 hint.text = ""
-            }
-
-            if (::appsView.isInitialized) {
-                appsView.mSearchRecyclerView.invalidate()
             }
         }
 
@@ -315,7 +223,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
             },
             afterTextChanged = {
                 updateHint()
-                if (input.text.isNullOrEmpty() && input.hasFocus() && !input.isResetting) {
+                if (input.text.isNullOrEmpty()) {
                     searchAlgorithm?.doZeroStateSearch(this)
                 }
                 if (input.text.toString() == "/lawnchairdebug") {
@@ -324,18 +232,15 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
                     launcher.stateManager.goToState(LauncherState.NORMAL)
                 }
 
-                val isEmpty = it.isNullOrEmpty()
-                if (isEmpty && !input.hasFocus()) {
-                    animatePadding(currentPaddingLeft, currentPaddingRight)
-                }
-                queryEmpty = isEmpty
+                actionButton.isVisible = !it.isNullOrEmpty()
+                micIcon.isVisible = shouldShowIcons && voiceIntent != null && it.isNullOrEmpty()
+                lensIcon.isVisible = shouldShowIcons && supportsLens && lensIntent != null && it.isNullOrEmpty()
             },
         )
 
-        hideSearchBar = prefs2.hideAppDrawerSearchBar.firstCached()
-        if (hideSearchBar) {
-            // GONE so top margin/height do not reserve empty space above the app list.
-            isGone = true
+        val hide = prefs2.hideAppDrawerSearchBar.firstBlocking()
+        if (hide) {
+            isInvisible = true
             layoutParams.height = 0
         }
     }
@@ -420,21 +325,14 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        launcher.deviceProfile.inv.addOnChangeListener(this)
-        if (::appsView.isInitialized) {
-            appsView.appsStore?.addUpdateListener(this)
-        }
+        appsView.appsStore?.addUpdateListener(this)
         input.viewTreeObserver.addOnGlobalLayoutListener(this)
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        launcher.deviceProfile.inv.removeOnChangeListener(this)
-        if (::appsView.isInitialized) {
-            appsView.appsStore?.removeUpdateListener(this)
-        }
+        appsView.appsStore?.removeUpdateListener(this)
         input.viewTreeObserver.removeOnGlobalLayoutListener(this)
-        setDirectFocus(false)
     }
 
     override fun onAppsUpdated() {
@@ -457,10 +355,6 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
     override fun resetSearch() {
         searchBarController.reset()
-    }
-
-    override fun setDirectFocus(directFocus: Boolean) {
-        isDirectFocus = directFocus
     }
 
     override fun preDispatchKeyEvent(event: KeyEvent) {
@@ -507,18 +401,18 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
     override fun setInsets(insets: Rect) {
         (layoutParams as MarginLayoutParams).apply {
-            topMargin = when {
-                hideSearchBar -> 0
-
-                // Sheet mode already pads the container with status-bar insets; only clear the
-                // drag handle. Re-applying insets.top here created the large empty band under it.
-                launcher.deviceProfile.shouldShowAllAppsOnSheet() ->
-                    resources.getDimensionPixelSize(R.dimen.bottom_sheet_handle_area_height)
-
-                else -> max(-allAppsSearchVerticalOffset, insets.top - qsbMarginTopAdjusting)
+            topMargin = if (isInvisible) {
+                insets.top - allAppsSearchVerticalOffset
+            } else {
+                max(-allAppsSearchVerticalOffset, insets.top - qsbMarginTopAdjusting)
             }
         }
         requestLayout()
+    }
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        super.onLayout(changed, l, t, r, b)
+        offsetTopAndBottom(allAppsSearchVerticalOffset)
     }
 
     override fun getEditText() = input
@@ -545,7 +439,7 @@ class AllAppsSearchInput(context: Context, attrs: AttributeSet?) :
 
     private fun updateBgAlpha() {
         val fraction = bgAlphaAnimator.animatedFraction
-        bgAlphaState = Utilities.mapRange(fraction, 0f, bgAlpha)
+        bg.alpha = (Utilities.mapRange(fraction, 0f, bgAlpha) * 255).toInt()
     }
 
     override fun onIdpChanged(modelPropertiesChanged: Boolean) {

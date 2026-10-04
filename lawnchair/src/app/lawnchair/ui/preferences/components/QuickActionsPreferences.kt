@@ -59,7 +59,7 @@ fun QuickActionsPreferences(
             )
         },
         modifier = modifier,
-    ) { item, _, _ ->
+    ) { item, _, _, onDraggingChange ->
         val interactionSource = remember { MutableInteractionSource() }
         val scope = this
 
@@ -73,6 +73,9 @@ fun QuickActionsPreferences(
                 ReorderableDragHandle(
                     interactionSource = interactionSource,
                     scope = scope,
+                    onDragStop = {
+                        onDraggingChange(false)
+                    },
                 )
             },
         )

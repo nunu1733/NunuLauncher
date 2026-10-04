@@ -161,6 +161,8 @@ constructor(
                 StaticObjectModule::class,
                 AppModule::class,
                 app.lawnchair.preferences.PreferenceManagerModule::class,
+                app.lawnchair.dagger.ForkBridgeModule::class,
+                app.lawnchair.dagger.PreviewContextModule::class,
                 PerDisplayModule::class,
                 LauncherConcurrencyModule::class,
                 ExecutorsModule::class,

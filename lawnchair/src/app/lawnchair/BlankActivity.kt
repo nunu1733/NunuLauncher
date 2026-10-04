@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,7 +35,7 @@ class BlankActivity : ComponentActivity() {
     private var firstResume = true
     private var targetStarted = false
 
-    @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -55,18 +53,12 @@ class BlankActivity : ComponentActivity() {
                     AlertDialog(
                         onDismissRequest = { if (!targetStarted) finish() },
                         confirmButton = {
-                            Button(
-                                onClick = { startTargetActivity() },
-                                shapes = ButtonDefaults.shapes(),
-                            ) {
+                            Button(onClick = { startTargetActivity() }) {
                                 Text(text = intent.getStringExtra("positiveButton")!!)
                             }
                         },
                         dismissButton = {
-                            OutlinedButton(
-                                onClick = { finish() },
-                                shapes = ButtonDefaults.shapes(),
-                            ) {
+                            OutlinedButton(onClick = { finish() }) {
                                 Text(text = stringResource(id = android.R.string.cancel))
                             }
                         },

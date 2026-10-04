@@ -93,8 +93,7 @@ fun HorizontalLawnchairLink(
     val context = LocalContext.current
 
     PreferenceTemplate(
-        modifier = modifier,
-        onClick = {
+        modifier = modifier.clickable {
             val webpage = url.toUri()
             val intent = Intent(Intent.ACTION_VIEW, webpage)
             if (intent.resolveActivity(context.packageManager) != null) {

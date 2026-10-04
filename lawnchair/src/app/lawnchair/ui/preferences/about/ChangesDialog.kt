@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -52,76 +51,66 @@ fun ChangesDialog(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
-        Column(
+        Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
+            Text(
+                text = stringResource(R.string.changes_dialog_title),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Text(
+                text = stringResource(
+                    R.string.changes_dialog_build_format,
+                    currentBuild,
+                    latestBuild,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+            )
+        }
+        LazyColumn(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 600.dp),
+                .heightIn(max = 600.dp)
+                .fillMaxWidth(),
         ) {
-            Column(
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.changes_dialog_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = stringResource(
-                        R.string.changes_dialog_build_format,
-                        currentBuild,
-                        latestBuild,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
-                )
-            }
-            LazyColumn(
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .fillMaxWidth(),
-            ) {
-                if (commits != null) {
-                    itemsIndexed(commits) { index, commit ->
-                        PreferenceGroupItem(
-                            cutTop = index != 0,
-                            cutBottom = index != commits.lastIndex,
-                        ) {
-                            CommitItem(commit = commit)
-                        }
-                        Spacer(Modifier.height(3.dp))
+            if (commits != null) {
+                itemsIndexed(commits) { index, commit ->
+                    PreferenceGroupItem(
+                        cutTop = index != 0,
+                        cutBottom = index != commits.lastIndex,
+                    ) {
+                        CommitItem(commit = commit)
                     }
-                } else {
-                    item {
-                        Text(
-                            text = stringResource(R.string.changes_dialog_error),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+                    Spacer(Modifier.height(3.dp))
+                }
+            } else {
+                item {
+                    Text(
+                        text = stringResource(R.string.changes_dialog_error),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
             }
-            Row(
-                horizontalArrangement = Arrangement.End,
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth(),
+        }
+        Row(
+            horizontalArrangement = Arrangement.End,
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .fillMaxWidth(),
+        ) {
+            OutlinedButton(
+                onClick = onDismiss,
             ) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        onDownload()
-                        onDismiss()
-                    },
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(text = stringResource(R.string.download_update))
-                }
+                Text(text = stringResource(android.R.string.cancel))
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    onDownload()
+                    onDismiss()
+                },
+            ) {
+                Text(text = stringResource(R.string.download_update))
             }
         }
     }
@@ -170,8 +159,7 @@ private fun CommitItem(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             )
         },
-        modifier = modifier,
-        onClick = {
+        modifier = modifier.clickable {
             openCommitInBrowser(context, commit.sha)
         },
     )

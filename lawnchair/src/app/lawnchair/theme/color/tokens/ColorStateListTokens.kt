@@ -11,7 +11,7 @@ object ColorStateListTokens {
             intArrayOf(),
         )
         val colors = intArrayOf(
-            AllAppsTabColors.selectedText(context, scheme, uiColorMode),
+            ColorTokens.TextColorPrimaryInverse.resolveColor(context, scheme, uiColorMode),
             ColorTokens.TextColorSecondary.resolveColor(context, scheme, uiColorMode),
         )
         ColorStateList(states, colors)
@@ -23,7 +23,7 @@ object ColorStateListTokens {
             intArrayOf(),
         )
         val colors = intArrayOf(
-            AllAppsTabColors.selectedText(context, scheme, uiColorMode),
+            ColorTokens.TextColorPrimaryInverse.resolveColor(context, scheme, uiColorMode),
             ColorTokens.TextColorSecondary.resolveColor(context, scheme, uiColorMode),
         )
         ColorStateList(states, colors)

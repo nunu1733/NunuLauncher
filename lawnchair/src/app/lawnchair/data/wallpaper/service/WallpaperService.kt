@@ -8,21 +8,14 @@ import androidx.core.graphics.drawable.toBitmap
 import app.lawnchair.data.AppDatabase
 import app.lawnchair.data.wallpaper.Wallpaper
 import app.lawnchair.util.bitmapToByteArray
-import com.android.launcher3.dagger.ApplicationContext
-import com.android.launcher3.dagger.LauncherAppComponent
-import com.android.launcher3.dagger.LauncherAppSingleton
-import com.android.launcher3.util.DaggerSingletonObject
+import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
-import javax.inject.Inject
 import kotlinx.coroutines.runBlocking
 
-@LauncherAppSingleton
-class WallpaperService @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : SafeCloseable {
+class WallpaperService(val context: Context) : SafeCloseable {
 
     val dao = AppDatabase.Companion.INSTANCE.get(context).wallpaperDao()
 
@@ -137,6 +130,6 @@ class WallpaperService @Inject constructor(
     }
     companion object {
         @JvmField
-        val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getWallpaperService)
+        val INSTANCE = MainThreadInitializedObject(::WallpaperService)
     }
 }

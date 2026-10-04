@@ -4,11 +4,14 @@ import android.Manifest
 import android.provider.SearchRecentSuggestions
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.annotation.Keep
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +36,7 @@ import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
+import app.lawnchair.ui.theme.dividerColor
 import app.lawnchair.util.openAppPermissionSettings
 import com.android.launcher3.R
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -63,6 +67,44 @@ fun getProviderName(provider: SearchProviderId): Int {
         SearchProviderId.SETTINGS -> R.string.search_pref_result_settings_title
         SearchProviderId.WEB -> R.string.search_pref_result_web_title
     }
+}
+
+@Composable
+fun SearchProviderPreferenceItem(
+    adapter: PreferenceAdapter<Boolean>,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    description: String? = null,
+) {
+    PreferenceTemplate(
+        modifier = modifier.clickable(onClick = onClick),
+        contentModifier = Modifier
+            .fillMaxHeight()
+            .padding(vertical = 16.dp)
+            .padding(start = 16.dp),
+        title = { Text(text = label) },
+        description = { description?.let { Text(text = it) } },
+        endWidget = {
+            Spacer(
+                modifier = Modifier
+                    .height(32.dp)
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(dividerColor()),
+            )
+            Switch(
+                modifier = Modifier
+                    .padding(all = 16.dp)
+                    .height(24.dp),
+                checked = enabled && adapter.state.value,
+                onCheckedChange = adapter::onChange,
+                enabled = enabled,
+            )
+        },
+        applyPaddings = false,
+    )
 }
 
 @Composable

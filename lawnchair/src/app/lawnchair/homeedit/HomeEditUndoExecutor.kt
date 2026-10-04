@@ -10,31 +10,18 @@
  */
 package app.lawnchair.homeedit
 
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import android.os.Handler
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import android.os.Looper
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import android.widget.Toast
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import app.lawnchair.LawnchairLauncher
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import app.lawnchair.homeedit.ui.HomeEditUndoSnackbar
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.LauncherAppState
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.LauncherSettings.Favorites
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.R
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.logging.StatsLogManager.LauncherEvent
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.model.DirectEditContract
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.model.data.ItemInfo
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.util.Executors
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import java.util.Collections
 
 class HomeEditUndoExecutor(
@@ -211,7 +198,7 @@ class HomeEditUndoExecutor(
         }
         when {
             plan.container == Favorites.CONTAINER_DESKTOP && info != null -> {
-                launcher.bindItemsAdapted(Collections.singletonList(info), true)
+                launcher.bindItems(Collections.singletonList(info), true)
                 showDestinationPage(plan.screenId)
             }
 

@@ -31,13 +31,11 @@ import androidx.datastore.preferences.preferencesDataStore
 import app.lawnchair.data.Converters
 import app.lawnchair.font.FontCache
 import app.lawnchair.gestures.config.GestureHandlerConfig
-import app.lawnchair.gestures.handlers.SleepMode
 import app.lawnchair.gestures.type.GestureType
 import app.lawnchair.hotseat.HotseatMode
 import app.lawnchair.icons.CustomAdaptiveIconDrawable
 import app.lawnchair.icons.shape.IconShape
 import app.lawnchair.icons.shape.IconShapeManager
-import app.lawnchair.predictions.PredictionMode
 import app.lawnchair.preferences.PreferenceManager as LawnchairPreferenceManager
 import app.lawnchair.qsb.providers.QsbSearchProvider
 import app.lawnchair.search.algorithms.LawnchairSearchAlgorithm
@@ -54,30 +52,19 @@ import app.lawnchair.ui.preferences.components.HiddenAppsInSearch
 import app.lawnchair.ui.preferences.data.liveinfo.LiveInformationManager
 import app.lawnchair.util.kotlinxJson
 import app.lawnchair.views.overlay.FullScreenOverlayMode
-import com.android.launcher3.BuildConfig
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.InvariantDeviceProfile.INDEX_DEFAULT
 import com.android.launcher3.LauncherAppState
-import com.android.launcher3.LauncherPrefs
-import com.android.launcher3.LauncherPrefs.Companion.ENABLE_TWOLINE_ALLAPPS_TOGGLE
 import com.android.launcher3.R
-import com.android.launcher3.Workspace
-import com.android.launcher3.dagger.ApplicationContext
-import com.android.launcher3.dagger.LauncherAppComponent
-import com.android.launcher3.dagger.LauncherAppSingleton
-import com.android.launcher3.graphics.ThemeManager as L3ThemeManager
+import com.android.launcher3.graphics.IconShape as L3IconShape
 import com.android.launcher3.util.ComponentKey
-import com.android.launcher3.util.DaggerSingletonObject
 import com.android.launcher3.util.DynamicResource
+import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
 import com.patrykmichalik.opto.core.PreferenceManager
 import com.patrykmichalik.opto.core.firstBlocking
 import com.patrykmichalik.opto.core.setBlocking
-import javax.inject.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -85,15 +72,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.runBlocking
 
-@LauncherAppSingleton
-class PreferenceManager2 @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : PreferenceManager,
+class PreferenceManager2 private constructor(private val context: Context) :
+    PreferenceManager,
     SafeCloseable {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = MainScope()
     private val resourceProvider = DynamicResource.provider(context)
     private var liveInformationManager: LiveInformationManager =
         LiveInformationManager.getInstance(context)
@@ -110,14 +94,6 @@ class PreferenceManager2 @Inject constructor(
     )
 
     override val preferencesDataStore = context.preferencesDataStore
-
-    @Volatile
-    private var cachedPreferences: Preferences = runBlocking {
-        preferencesDataStore.data.first()
-    }
-
-    fun getCachedPreferences(): Preferences = cachedPreferences
-
     private val reloadHelper = ReloadHelper(context)
 
     // Retired Deck tombstone keys — kept alive so old backup restores can be
@@ -130,33 +106,12 @@ class PreferenceManager2 @Inject constructor(
         defaultValue = context.resources.getBoolean(R.bool.config_default_dark_status_bar),
     )
 
-    val enableSmartspaceCalendarSelection = preference(
-        key = booleanPreferencesKey(name = "enable_smartspace_calendar_selection"),
-        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_smartspace_calendar_selection),
-    )
-
-    val enableDotPagination = preference(
-        key = booleanPreferencesKey(name = "enable_dot_pagination"),
-        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_dot_pagination),
-        onSet = { reloadHelper.recreate() },
-    )
-
-    val enableMaterialUPopUp = preference(
-        key = booleanPreferencesKey(name = "enable_material_u_popup"),
-        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_material_u_popup),
-        onSet = { reloadHelper.recreate() },
-    )
-
-    val iconSwipeGestures = preference(
-        key = booleanPreferencesKey(name = "icon_swipe_gestures"),
-        defaultValue = false,
-    )
-
     val hotseatMode = preference(
         key = stringPreferencesKey("hotseat_mode"),
         defaultValue = HotseatMode.fromString(context.getString(R.string.config_default_hotseat_mode)),
         parse = { HotseatMode.fromString(it) },
         save = { it.toString() },
+        onSet = { reloadHelper.restart() },
     )
 
     val iconShape = preference(
@@ -170,51 +125,17 @@ class PreferenceManager2 @Inject constructor(
                 ?: IconShapeManager.getSystemIconShape(context)
         },
         save = { it.toString() },
-        onSet = {
-            reloadHelper.reloadIcons()
-        },
-    )
-
-    val folderShape = preference(
-        key = stringPreferencesKey(name = "folder_shape"),
-        defaultValue = IconShape.fromString(
-            value = context.getString(R.string.config_default_folder_shape),
-            context = context,
-        ) ?: IconShape.Circle,
-        parse = {
-            IconShape.fromString(value = it, context = context)
-                ?: IconShapeManager.getSystemIconShape(context)
-        },
-        save = { it.toString() },
-        onSet = {
-            reloadHelper.reloadIcons()
-        },
     )
 
     val customIconShape = preference(
         key = stringPreferencesKey(name = "custom_icon_shape"),
         defaultValue = null,
         parse = {
-            IconShape.CustomCornerBased.fromStringOrNull(value = it)
-                ?: IconShape.CustomCornerBased(
-                    IconShapeManager.getSystemIconShape(context).findNearestShape(),
-                )
+            IconShape.fromString(value = it, context = context)
+                ?: IconShapeManager.getSystemIconShape(context)
         },
         save = { it.toString() },
         onSet = { it?.let(iconShape::setBlocking) },
-    )
-
-    val customFolderShape = preference(
-        key = stringPreferencesKey(name = "custom_folder_shape"),
-        defaultValue = null,
-        parse = {
-            IconShape.CustomCornerBased.fromStringOrNull(value = it)
-                ?: IconShape.CustomCornerBased(
-                    IconShapeManager.getSystemIconShape(context).findNearestShape(),
-                )
-        },
-        save = { it.toString() },
-        onSet = { it?.let(folderShape::setBlocking) },
     )
 
     val alwaysReloadIcons = preference(
@@ -246,13 +167,6 @@ class PreferenceManager2 @Inject constructor(
         defaultValue = ColorOption.fromString(context.getString(R.string.config_default_hotseat_bg_color)),
     )
 
-    val hotseatBackgroundCornerRadius = preference(
-        key = floatPreferencesKey(name = "hotseat_bg_corner_radius"),
-        defaultValue = context.resources.getDimension(R.dimen.bg_round_rect_radius) /
-            context.resources.displayMetrics.density, // This should hopefully match corner of all devices
-        onSet = { reloadHelper.recreate() },
-    )
-
     val appDrawerBackgroundColor = preference(
         key = stringPreferencesKey(name = "app_drawer_bg_color"),
         parse = ColorOption::fromString,
@@ -264,20 +178,6 @@ class PreferenceManager2 @Inject constructor(
     val appDrawerSearchBarBackground = preference(
         key = booleanPreferencesKey(name = "all_apps_search_bar_background"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_search_bar_background),
-        onSet = { reloadHelper.recreate() },
-    )
-
-    val workProfileTabBackgroundColor = preference(
-        key = stringPreferencesKey(name = "work_profile_tab_background_color"),
-        parse = ColorOption::fromString,
-        save = ColorOption::toString,
-        onSet = { reloadHelper.recreate() },
-        defaultValue = ColorOption.SystemAccent,
-    )
-
-    val workProfileTabContainerBackground = preference(
-        key = booleanPreferencesKey(name = "work_profile_tab_container_background"),
-        defaultValue = true,
         onSet = { reloadHelper.recreate() },
     )
 
@@ -319,6 +219,10 @@ class PreferenceManager2 @Inject constructor(
     val isHotseatEnabled = preference(
         key = booleanPreferencesKey(name = "pref_show_hotseat"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_show_hotseat),
+        onSet = {
+            reloadHelper.recreate()
+            reloadHelper.reloadGrid()
+        },
     )
 
     val hotseatQsbProvider = preference(
@@ -328,6 +232,7 @@ class PreferenceManager2 @Inject constructor(
         } ?: QsbSearchProvider.resolveDefault(context),
         parse = { QsbSearchProvider.fromId(it) },
         save = { it.id },
+        onSet = { reloadHelper.recreate() },
     )
 
     val hotseatQsbForceWebsite = preference(
@@ -346,6 +251,7 @@ class PreferenceManager2 @Inject constructor(
     val hiddenApps = preference(
         key = stringSetPreferencesKey(name = "hidden_apps"),
         defaultValue = setOf(),
+        onSet = { reloadHelper.reloadGrid() },
     )
 
     val roundedWidgets = preference(
@@ -434,30 +340,8 @@ class PreferenceManager2 @Inject constructor(
         defaultValue = context.resources.getBoolean(R.bool.config_default_lock_home_screen),
     )
 
-    val defaultHomePage = preference(
-        key = intPreferencesKey(name = "default_home_page"),
-        defaultValue = Workspace.DEFAULT_PAGE,
-    )
-
     val legacyPopupOptionsMigrated = preference(
         key = booleanPreferencesKey(name = "legacy_popup_options_migrated"),
-        defaultValue = false,
-    )
-
-    val enableGlobalPrediction = preference(
-        key = booleanPreferencesKey(name = "enable_global_prediction"),
-        defaultValue = true,
-    )
-
-    val predictionMode = preference(
-        key = stringPreferencesKey(name = "prediction_mode"),
-        defaultValue = PredictionMode.fromString(context.getString(R.string.config_default_prediction_mode)),
-        parse = { PredictionMode.fromString(it) },
-        save = { it.toString() },
-    )
-
-    val lawnchairPredictorUseWeightedUsageStats = preference(
-        key = booleanPreferencesKey(name = "lawnchair_prediction_use_weighted_usage"),
         defaultValue = false,
     )
 
@@ -491,9 +375,14 @@ class PreferenceManager2 @Inject constructor(
         onSet = { reloadHelper.recreate() },
     )
 
-    val appDrawerHapticFeedback = preference(
-        key = booleanPreferencesKey(name = "app_drawer_haptic_feedback"),
-        defaultValue = context.resources.getBoolean(R.bool.config_default_app_drawer_haptic_feedback),
+    val showHiddenAppsInSearch = preference(
+        key = booleanPreferencesKey(name = "show_hidden_apps_in_search"),
+        defaultValue = false,
+    )
+
+    val enableSmartHide = preference(
+        key = booleanPreferencesKey(name = "enable_smart_hide"),
+        defaultValue = false,
     )
 
     val hiddenAppsInSearch = preference(
@@ -523,6 +412,11 @@ class PreferenceManager2 @Inject constructor(
                 LawnchairPreferenceManager.getInstance(context).fontWorkspace.set(newValue = fontCache.uiText)
             }
         },
+    )
+
+    val enableSmartspaceCalendarSelection = preference(
+        key = booleanPreferencesKey(name = "enable_smartspace_calendar_selection"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_smartspace_calendar_selection),
     )
 
     val autoShowKeyboardInDrawer = preference(
@@ -622,30 +516,6 @@ class PreferenceManager2 @Inject constructor(
         onSet = { reloadHelper.reloadGrid() },
     )
 
-    val workspacePaddingHorizontalFactor = preference(
-        key = floatPreferencesKey(name = "workspace_padding_horizontal"),
-        defaultValue = resourceProvider.getFloat(R.dimen.config_default_workspace_padding_horizontal),
-        onSet = { reloadHelper.reloadGrid() },
-    )
-
-    val workspacePaddingVerticalFactor = preference(
-        key = floatPreferencesKey(name = "workspace_padding_vertical"),
-        defaultValue = resourceProvider.getFloat(R.dimen.config_default_workspace_padding_vertical),
-        onSet = { reloadHelper.reloadGrid() },
-    )
-
-    val widgetPaddingFactor = preference(
-        key = floatPreferencesKey(name = "widget_padding_factor"),
-        defaultValue = resourceProvider.getFloat(R.dimen.config_default_widget_padding_factor),
-        onSet = { reloadHelper.reloadGrid() },
-    )
-
-    val drawerPaddingTopFactor = preference(
-        key = floatPreferencesKey(name = "drawer_padding_top"),
-        defaultValue = resourceProvider.getFloat(R.dimen.config_default_drawer_padding_top),
-        onSet = { reloadHelper.reloadGrid() },
-    )
-
     val enableFuzzySearch = preference(
         key = booleanPreferencesKey(name = "enable_fuzzy_search"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_enable_fuzzy_search),
@@ -732,12 +602,22 @@ class PreferenceManager2 @Inject constructor(
         onSet = { reloadHelper.restart() },
     )
 
+    val enableDotPagination = preference(
+        key = booleanPreferencesKey(name = "enable_dot_pagination"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_dot_pagination),
+        onSet = { reloadHelper.recreate() },
+    )
+
+    val enableMaterialUPopUp = preference(
+        key = booleanPreferencesKey(name = "enable_material_u_popup"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_material_u_popup),
+        onSet = { reloadHelper.recreate() },
+    )
+
     val twoLineAllApps = preference(
         key = booleanPreferencesKey(name = "two_line_all_apps"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_enable_two_line_allapps),
-        onSet = { value ->
-            LauncherPrefs.get(context).put(ENABLE_TWOLINE_ALLAPPS_TOGGLE, value)
-        },
+        onSet = { reloadHelper.recreate() },
     )
 
     val enableFeed = preference(
@@ -753,12 +633,6 @@ class PreferenceManager2 @Inject constructor(
     val drawerColumns = idpPreference(
         key = intPreferencesKey(name = "drawer_columns"),
         defaultSelector = { numAllAppsColumns },
-        onSet = { reloadHelper.reloadGrid() },
-    )
-
-    val drawerColumnsUnfolded = idpPreference(
-        key = intPreferencesKey(name = "drawer_columns_unfolded"),
-        defaultSelector = { numAllAppsColumns + 2 },
         onSet = { reloadHelper.reloadGrid() },
     )
 
@@ -801,18 +675,8 @@ class PreferenceManager2 @Inject constructor(
         defaultValue = true,
     )
 
-    val smartspaceTorch = preference(
-        key = booleanPreferencesKey("enable_smartspace_torch"),
-        defaultValue = true,
-    )
-
     val smartspaceNowPlaying = preference(
         key = booleanPreferencesKey("enable_smartspace_now_playing"),
-        defaultValue = true,
-    )
-
-    val smartspaceOnboarding = preference(
-        key = booleanPreferencesKey("enable_smartspace_onboarding"),
         defaultValue = true,
     )
 
@@ -855,18 +719,17 @@ class PreferenceManager2 @Inject constructor(
     val enableLabelInDock = preference(
         key = booleanPreferencesKey(name = "enable_label_dock"),
         defaultValue = false,
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
+    val iconSwipeGestures = preference(
+        key = booleanPreferencesKey(name = "icon_swipe_gestures"),
+        defaultValue = false,
     )
 
     val doubleTapGestureHandler = serializablePreference<GestureHandlerConfig>(
         key = stringPreferencesKey("double_tap_gesture_handler"),
         defaultValue = GestureHandlerConfig.Sleep,
-    )
-
-    val sleepMode = preference(
-        key = stringPreferencesKey(name = "sleep_mode"),
-        defaultValue = SleepMode.AUTO,
-        parse = { SleepMode.fromString(it) ?: SleepMode.AUTO },
-        save = { it.toString() },
     )
 
     val swipeUpGestureHandler = serializablePreference<GestureHandlerConfig>(
@@ -879,16 +742,6 @@ class PreferenceManager2 @Inject constructor(
         defaultValue = GestureHandlerConfig.OpenNotifications,
     )
 
-    val twoFingerSwipeUpGestureHandler = serializablePreference<GestureHandlerConfig>(
-        key = stringPreferencesKey("two_finger_swipe_up_gesture_handler"),
-        defaultValue = GestureHandlerConfig.NoOp,
-    )
-
-    val twoFingerSwipeDownGestureHandler = serializablePreference<GestureHandlerConfig>(
-        key = stringPreferencesKey("two_finger_swipe_down_gesture_handler"),
-        defaultValue = GestureHandlerConfig.OpenQuickSettings,
-    )
-
     val homePressGestureHandler = serializablePreference<GestureHandlerConfig>(
         key = stringPreferencesKey("home_press_gesture_handler"),
         defaultValue = GestureHandlerConfig.NoOp,
@@ -897,15 +750,6 @@ class PreferenceManager2 @Inject constructor(
     val backPressGestureHandler = serializablePreference<GestureHandlerConfig>(
         key = stringPreferencesKey("back_press_gesture_handler"),
         defaultValue = GestureHandlerConfig.NoOp,
-    )
-
-    val autoUpdaterNightly = preference(
-        key = booleanPreferencesKey(name = "enable_nightly_auto_updater"),
-        defaultValue = if (BuildConfig.APPLICATION_ID.contains("nightly")) {
-            context.resources.getBoolean(R.bool.config_default_enable_nightly_auto_updater)
-        } else {
-            false
-        },
     )
 
     private inline fun <reified T> serializablePreference(
@@ -921,46 +765,15 @@ class PreferenceManager2 @Inject constructor(
     )
 
     init {
-        preferencesDataStore.data
-            .onEach { cachedPreferences = it }
-            .launchIn(scope)
-
-        initializeIconShape(iconShape.firstCached(this))
+        initializeIconShape(iconShape.firstBlocking())
         iconShape.get()
             .drop(1)
             .distinctUntilChanged()
             .onEach { shape ->
                 initializeIconShape(shape)
-                L3ThemeManager.INSTANCE.get(context)
-                LauncherAppState.getInstance(context).model.reloadIfActive()
+                L3IconShape.INSTANCE.get(context)
+                LauncherAppState.getInstance(context).reloadIcons()
             }
-            .launchIn(scope)
-
-        hotseatMode.get()
-            .drop(1)
-            .distinctUntilChanged()
-            .onEach { reloadHelper.restart() }
-            .launchIn(scope)
-
-        isHotseatEnabled.get()
-            .drop(1)
-            .distinctUntilChanged()
-            .onEach {
-                reloadHelper.recreate()
-                reloadHelper.reloadGrid()
-            }
-            .launchIn(scope)
-
-        hotseatQsbProvider.get()
-            .drop(1)
-            .distinctUntilChanged()
-            .onEach { reloadHelper.recreate() }
-            .launchIn(scope)
-
-        enableLabelInDock.get()
-            .drop(1)
-            .distinctUntilChanged()
-            .onEach { reloadHelper.reloadGrid() }
             .launchIn(scope)
     }
 
@@ -987,16 +800,6 @@ class PreferenceManager2 @Inject constructor(
         }
     }
 
-    fun getGestureForAppCached(key: ComponentKey, gestureType: GestureType): GestureHandlerConfig {
-        val cmp = Converters().fromComponentKey(key)
-        val key = stringPreferencesKey("$cmp:${gestureType.name}")
-        val prefs = getCachedPreferences()
-        return prefs[key]?.let {
-            runCatching { kotlinxJson.decodeFromString<GestureHandlerConfig>(it) }
-                .getOrDefault(GestureHandlerConfig.NoOp)
-        } ?: GestureHandlerConfig.NoOp
-    }
-
     private fun initializeIconShape(shape: IconShape) {
         CustomAdaptiveIconDrawable.sInitialized = true
         CustomAdaptiveIconDrawable.sMaskId = shape.getHashString()
@@ -1004,7 +807,6 @@ class PreferenceManager2 @Inject constructor(
     }
 
     override fun close() {
-        scope.cancel()
     }
 
     private fun getRemoteDefault(key: String): String? = liveInformationManager.liveInformation
@@ -1058,7 +860,7 @@ class PreferenceManager2 @Inject constructor(
         )
 
         @JvmField
-        val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getPreferenceManager2)
+        val INSTANCE = MainThreadInitializedObject(::PreferenceManager2)
 
         @JvmStatic
         fun getInstance(context: Context) = INSTANCE.get(context)!!

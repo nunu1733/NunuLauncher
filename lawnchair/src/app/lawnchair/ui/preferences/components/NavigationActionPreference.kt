@@ -16,60 +16,28 @@
 
 package app.lawnchair.ui.preferences.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import app.lawnchair.ui.preferences.navigation.PreferenceRoute
-import app.lawnchair.ui.theme.LawnchairTheme
-import app.lawnchair.ui.util.preview.PreferenceGroupPreviewContainer
-import app.lawnchair.ui.util.preview.PreviewLawnchair
-import com.android.launcher3.util.MSDLPlayerWrapper
-import com.google.android.msdl.data.model.MSDLToken
 
 @Composable
 fun NavigationActionPreference(
     label: String,
+    destination: PreferenceRoute,
     modifier: Modifier = Modifier,
-    destination: PreferenceRoute? = null,
     subtitle: String? = null,
     endWidget: (@Composable () -> Unit)? = null,
 ) {
-    val navController = if (destination != null) LocalNavController.current else null
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
+    val navController = LocalNavController.current
 
     PreferenceTemplate(
+        modifier = modifier.clickable { navController.navigate(route = destination) },
         title = { Text(text = label) },
-        modifier = modifier,
-        description = subtitle?.let { { Text(text = it) } },
+        description = { subtitle?.let { Text(text = it) } },
         endWidget = endWidget,
-        onClick = if (destination != null) {
-            {
-                mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                navController?.navigate(
-                    route = destination,
-                )
-            }
-        } else {
-            null
-        },
     )
-}
-
-@PreviewLawnchair
-@Composable
-private fun SliderPreferencePreview() {
-    LawnchairTheme {
-        PreferenceGroupPreviewContainer {
-            NavigationActionPreference(
-                label = "Label",
-                modifier = Modifier,
-                destination = null,
-                subtitle = "Subtitle",
-                endWidget = { Text("End") },
-            )
-        }
-    }
 }

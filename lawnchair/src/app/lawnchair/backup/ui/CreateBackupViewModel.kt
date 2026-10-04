@@ -74,8 +74,8 @@ class CreateBackupViewModel(
             continuation.invokeOnCancellation { previewView.destroy() }
             previewView.addOnReadyCallback {
                 val dp = idp.getDeviceProfile(context)
-                val width = dp.deviceProperties.widthPx
-                val height = dp.deviceProperties.heightPx
+                val width = dp.widthPx
+                val height = dp.heightPx
                 previewView.measure(
                     MeasureSpec.makeMeasureSpec(width, EXACTLY),
                     MeasureSpec.makeMeasureSpec(height, EXACTLY),

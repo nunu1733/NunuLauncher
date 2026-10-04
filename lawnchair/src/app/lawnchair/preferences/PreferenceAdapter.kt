@@ -28,8 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.preferences2.IdpPreference
 import app.lawnchair.preferences2.asState
-import app.lawnchair.preferences2.firstCached
-import app.lawnchair.preferences2.preferenceManager2
+import app.lawnchair.preferences2.firstBlocking
 import com.android.launcher3.InvariantDeviceProfile
 import com.patrykmichalik.opto.domain.Preference
 import kotlin.reflect.KProperty
@@ -128,8 +127,7 @@ fun IdpPreference.getAdapter(): PreferenceAdapter<Int> {
     val context = LocalContext.current
     val idp = remember { InvariantDeviceProfile.INSTANCE.get(context) }
     val defaultGrid = idp.closestProfile
-    val prefs2 = preferenceManager2()
-    val state = get(defaultGrid).collectAsStateWithLifecycle(initialValue = firstCached(defaultGrid, prefs2))
+    val state = get(defaultGrid).collectAsStateWithLifecycle(initialValue = firstBlocking(defaultGrid))
     return createStateAdapter(state = state, set = { set(it, defaultGrid) })
 }
 

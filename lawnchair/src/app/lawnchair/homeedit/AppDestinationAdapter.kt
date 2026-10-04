@@ -9,31 +9,18 @@
  */
 package app.lawnchair.homeedit
 
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import android.content.Context
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import android.os.UserHandle
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import app.lawnchair.LawnchairLauncher
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import app.lawnchair.preferences.PreferenceManager
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.Launcher
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.LauncherSettings.Favorites
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.folder.FolderIcon
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.logging.FileLog
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.model.DirectEditContract
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.model.data.FolderInfo
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.model.data.ItemInfo
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.pm.UserCache
-import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.util.Executors.MAIN_EXECUTOR
 
 /** Wire format変換（DirectEditContractのencodingと1:1。JVM testで往復を固定する）。 */

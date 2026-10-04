@@ -21,7 +21,6 @@ import android.content.pm.LauncherActivityInfo
 import android.content.pm.LauncherApps
 import android.graphics.Bitmap
 import android.os.Handler
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
@@ -31,7 +30,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.android.launcher3.AppFilter
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.Utilities
-import com.android.launcher3.icons.cache.CacheLookupFlag.Companion.DEFAULT_LOOKUP_FLAG
 import com.android.launcher3.model.data.AppInfo
 import com.android.launcher3.pm.UserCache
 import com.android.launcher3.util.ComponentKey
@@ -52,16 +50,7 @@ fun appsState(
 
             if (launcherApps != null) {
                 appsState.value = UserCache.INSTANCE.get(context).userProfiles.asSequence()
-                    .flatMap {
-                        try {
-                            launcherApps.getActivityList(null, it)
-                        } catch (e: SecurityException) {
-                            // Lawnchair-Note: Android 17 QPR2 Beta 3 crash when accessing activity list with null pkgName for non-Main user
-                            // Ref: https://issuetracker.google.com/issues/547643926
-                            Log.e("LC-AppsList", "Failed to get activity list for user $it", e)
-                            emptyList()
-                        }
-                    }
+                    .flatMap { launcherApps.getActivityList(null, it) }
                     .filter { filter.shouldShowApp(it.componentName) }
                     .map { App(context, it) }
                     .sortedWith(comparator)
@@ -81,7 +70,7 @@ class App(context: Context, private val info: LauncherActivityInfo) {
 
     init {
         val appInfo = AppInfo(context, info, info.user)
-        LauncherAppState.getInstance(context).iconCache.getTitleAndIcon(appInfo, DEFAULT_LOOKUP_FLAG)
+        LauncherAppState.getInstance(context).iconCache.getTitleAndIcon(appInfo, false)
         icon = appInfo.bitmap.icon
     }
 

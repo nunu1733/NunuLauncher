@@ -31,7 +31,6 @@ import android.view.ViewTreeObserver
 import android.window.SplashScreen
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
@@ -109,7 +108,7 @@ class LawnchairLauncher : QuickstepLauncher() {
             clockEpochDay = { java.time.LocalDate.now().toEpochDay() },
         )
     }
-    private val insetsController by unsafeLazy { WindowInsetsControllerCompat(launcher.window!!, rootView) }
+    private val insetsController by unsafeLazy { WindowInsetsControllerCompat(launcher.window, rootView) }
     private val themeProvider by unsafeLazy { ThemeProvider.INSTANCE.get(this) }
     private val noStatusBarStateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {
@@ -176,10 +175,12 @@ class LawnchairLauncher : QuickstepLauncher() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (!Utilities.ATLEAST_Q) {
-            // Rebase Phase 2 adapt: anchor's BaseActivity extends android.app.Activity,
-            // so androidx enableEdgeToEdge is unavailable; set edge-to-edge decor flags
-            // directly instead.
-            WindowCompat.setDecorFitsSystemWindows(window, false)
+            enableEdgeToEdge(
+                navigationBarStyle = SystemBarStyle.auto(
+                    Color.TRANSPARENT,
+                    Color.TRANSPARENT,
+                ),
+            )
         }
         layoutInflater.factory2 = LawnchairLayoutFactory(this)
         super.onCreate(savedInstanceState)
@@ -252,7 +253,7 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
         val isWorkspaceDarkText = Themes.getAttrBoolean(this, R.attr.isWorkspaceDarkText)
         preferenceManager2.darkStatusBar.onEach(launchIn = lifecycleScope) { darkStatusBar ->
-            systemUiController?.updateUiState(UI_STATE_BASE_WINDOW, isWorkspaceDarkText || darkStatusBar)
+            systemUiController.updateUiState(UI_STATE_BASE_WINDOW, isWorkspaceDarkText || darkStatusBar)
         }
         preferenceManager2.backPressGestureHandler.onEach(launchIn = lifecycleScope) { handler ->
             hasBackGesture = handler !is GestureHandlerConfig.NoOp
@@ -283,8 +284,8 @@ class LawnchairLauncher : QuickstepLauncher() {
         out.add(SearchBarStateHandler(this))
     }
 
-    override fun getSupportedShortcuts(container: Int): Stream<SystemShortcut.Factory<*>> = Stream.concat(
-        super.getSupportedShortcuts(container),
+    override fun getSupportedShortcuts(): Stream<SystemShortcut.Factory<*>> = Stream.concat(
+        super.getSupportedShortcuts(),
         Stream.concat(
             Stream.of(LawnchairShortcut.UNINSTALL, LawnchairShortcut.CUSTOMIZE),
             Stream.concat(
@@ -304,9 +305,11 @@ class LawnchairLauncher : QuickstepLauncher() {
         ),
     )
 
-    private fun updateTheme() {
+    override fun updateTheme() {
         if (themeProvider.colorScheme != colorScheme) {
             recreate()
+        } else {
+            super.updateTheme()
         }
     }
 
@@ -325,17 +328,20 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
     }
 
-    // Rebase Phase 2 adapt: anchor's Launcher binds added items via
-    // bindInflatedItems(List<Pair<ItemInfo, View>>, anim) with the Launcher-owned
-    // ItemInflater; the fork's former `bindItems` override point no longer exists.
-    fun bindItemsAdapted(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
+    override fun bindItems(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
         val inflatedItems = items.map { i ->
-            Pair.create<ItemInfo, View>(i, getItemInflater().inflateItem(i))
+            Pair.create(
+                i,
+                itemInflater?.inflateItem(
+                    i,
+                    modelWriter,
+                ),
+            )
         }.toList()
         bindInflatedItems(inflatedItems, if (forceAnimateIcons) AnimatorSet() else null)
     }
 
-    override fun handleGestureContract(intent: Intent) {
+    override fun handleGestureContract(intent: Intent?) {
         if (!LawnchairApp.isRecentsEnabled && prefs.enableGnc.get()) {
             val gnc = GestureNavContract.fromIntent(intent)
             if (gnc != null) {
@@ -399,6 +405,17 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         popup.show()
         return popup
+    }
+
+    override fun createAppWidgetHolder(): LauncherWidgetHolder {
+        val factory = LauncherWidgetHolder.HolderFactory.newFactory(this) as LawnchairWidgetHolder.LawnchairHolderFactory
+        return factory.newInstance(
+            this,
+        ) { appWidgetId: Int ->
+            workspace.removeWidget(
+                appWidgetId,
+            )
+        }
     }
 
     override fun makeDefaultActivityOptions(splashScreenStyle: Int): ActivityOptionsWrapper {
@@ -551,7 +568,7 @@ class LawnchairLauncher : QuickstepLauncher() {
         if (
             preferenceManager2.alwaysReloadIcons.firstBlocking()
         ) {
-            LauncherAppState.getInstance(this).model.forceReload()
+            LauncherAppState.getInstance(this).reloadIcons()
         }
     }
 
@@ -561,7 +578,7 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         var sRestartFlags = 0
 
-        val instance get() = null // Rebase Phase 2 adapt: anchor AppState has no getInstanceNoCreate; Launcher-instance back-reference removed
+        val instance get() = LauncherAppState.getInstanceNoCreate()?.launcher as? LawnchairLauncher
     }
 }
 

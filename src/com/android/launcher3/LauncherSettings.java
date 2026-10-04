@@ -374,6 +374,8 @@ public class LauncherSettings {
      * Launcher settings
      */
     public static final class Settings {
+        public static final String LAYOUT_DIGEST_KEY = "launcher3.layout.provider.blob";
+
         public static final String LAYOUT_PROVIDER_KEY = "launcher3.layout.provider";
         public static final String LAYOUT_DIGEST_LABEL = "launcher-layout";
         public static final String LAYOUT_DIGEST_TAG = "ignore";
@@ -387,4 +389,5 @@ public class LauncherSettings {
             return BLOB_KEY_PREFIX + Base64.encodeToString(digest, NO_WRAP | NO_PADDING);
         }
     }
+
 }

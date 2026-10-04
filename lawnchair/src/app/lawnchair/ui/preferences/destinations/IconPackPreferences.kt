@@ -71,7 +71,6 @@ import app.lawnchair.ui.preferences.components.controls.ListPreferenceEntry
 import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.invariantDeviceProfile
 import app.lawnchair.ui.preferences.components.layout.Chip
-import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.NestedScrollStretch
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
@@ -80,9 +79,7 @@ import app.lawnchair.util.Constants
 import app.lawnchair.util.getThemedIconPacksInstalled
 import app.lawnchair.util.isPackageInstalled
 import com.android.launcher3.R
-import com.android.launcher3.util.MSDLPlayerWrapper
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
-import com.google.android.msdl.data.model.MSDLToken
 import kotlinx.coroutines.launch
 
 data class IconPackInfo(
@@ -120,7 +117,6 @@ fun IconPackPreferences(
 ) {
     val prefs = preferenceManager()
     val context = LocalContext.current
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(context)
 
     val iconPackAdapter = prefs.iconPackPackage.getAdapter()
     val themedIconPackAdapter = prefs.themedIconPackPackage.getAdapter()
@@ -130,7 +126,6 @@ fun IconPackPreferences(
     val scrollState = rememberScrollState()
     val drawerThemedIconsEnabled = drawerThemedIconsAdapter.state.value
     val tintIconpack = prefs.tintIconPackBackgrounds.getAdapter()
-    val forceMonochromeAdapter = prefs.forceIconMonochrome.getAdapter()
 
     PreferenceLayout(
         label = stringResource(id = R.string.icon_style_label),
@@ -182,19 +177,13 @@ fun IconPackPreferences(
             ) {
                 Chip(
                     label = stringResource(id = R.string.icon_pack),
-                    onClick = {
-                        mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                        scrollToPage(0)
-                    },
+                    onClick = { scrollToPage(0) },
                     currentOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                     page = 0,
                 )
                 Chip(
                     label = stringResource(id = R.string.themed_icon_pack),
-                    onClick = {
-                        mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                        scrollToPage(1)
-                    },
+                    onClick = { scrollToPage(1) },
                     currentOffset = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                     page = 1,
                 )
@@ -214,6 +203,12 @@ fun IconPackPreferences(
                                 adapter = iconPackAdapter,
                                 false,
                             )
+                            PreferenceGroup {
+                                SwitchPreference(
+                                    adapter = prefs.tintIconPackBackgrounds.getAdapter(),
+                                    label = stringResource(id = R.string.themed_icon_pack_tint),
+                                )
+                            }
                         }
 
                         1 -> {
@@ -258,15 +253,6 @@ fun IconPackPreferences(
                                         null
                                     },
                                 )
-                                ExpandAndShrink(
-                                    visible = themedIconsAdapter.state.value,
-                                ) {
-                                    SwitchPreference(
-                                        label = stringResource(id = R.string.force_monochrome_label),
-                                        description = stringResource(id = R.string.force_monochrome_description),
-                                        adapter = forceMonochromeAdapter,
-                                    )
-                                }
                             }
                         }
                     }
@@ -282,7 +268,6 @@ fun IconPackGrid(
     isThemedIconPack: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val mMSDLPlayerWrapper = MSDLPlayerWrapper.INSTANCE.get(LocalContext.current)
     val preferenceInteractor = LocalPreferenceInteractor.current
 
     val iconPacks by preferenceInteractor.iconPacks.collectAsStateWithLifecycle()
@@ -291,7 +276,11 @@ fun IconPackGrid(
     val lazyListState = rememberLazyListState()
     val padding = 12.dp
 
-    val iconPacksLocal = iconPacks
+    val iconPacksLocal = if (isThemedIconPack) {
+        themedIconPacks.filter { it.packageName != "" }
+    } else {
+        iconPacks
+    }
 
     val selectedPack = adapter.state.value
     LaunchedEffect(selectedPack) {
@@ -322,7 +311,6 @@ fun IconPackGrid(
                         selected = item.packageName == adapter.state.value,
                         modifier = Modifier.width(iconPackItemWidth.dp),
                     ) {
-                        mMSDLPlayerWrapper.playToken(MSDLToken.TAP_HIGH_EMPHASIS)
                         adapter.onChange(item.packageName)
                     }
                 }

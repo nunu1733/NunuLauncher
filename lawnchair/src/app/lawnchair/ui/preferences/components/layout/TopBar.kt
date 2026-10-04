@@ -17,14 +17,10 @@
 package app.lawnchair.ui.preferences.components.layout
 
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,11 +29,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TopBar(
     backArrowVisible: Boolean,
@@ -48,7 +42,6 @@ fun TopBar(
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-    val buttonPadding = 4.dp
 
     if (isExpandedScreen) {
         TopAppBar(
@@ -56,24 +49,17 @@ fun TopBar(
             title = {
                 Text(
                     text = label,
-                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             },
-            actions = {
-                Row(modifier = Modifier.padding(horizontal = buttonPadding)) {
-                    actions()
-                }
-            },
+            actions = actions,
             navigationIcon = {
                 if (backArrowVisible) {
-                    Box(modifier = Modifier.padding(buttonPadding)) {
-                        ClickableIcon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            onClick = { backDispatcher?.onBackPressed() },
-                        )
-                    }
+                    ClickableIcon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        onClick = { backDispatcher?.onBackPressed() },
+                    )
                 }
             },
             scrollBehavior = scrollBehavior,
@@ -87,22 +73,15 @@ fun TopBar(
             title = {
                 Text(
                     text = label,
-                    fontWeight = FontWeight.Medium,
                 )
             },
-            actions = {
-                Row(modifier = Modifier.padding(horizontal = buttonPadding)) {
-                    actions()
-                }
-            },
+            actions = actions,
             navigationIcon = {
                 if (backArrowVisible) {
-                    Box(modifier = Modifier.padding(horizontal = buttonPadding)) {
-                        ClickableIcon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            onClick = { backDispatcher?.onBackPressed() },
-                        )
-                    }
+                    ClickableIcon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        onClick = { backDispatcher?.onBackPressed() },
+                    )
                 }
             },
             scrollBehavior = scrollBehavior,

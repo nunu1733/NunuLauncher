@@ -1,18 +1,15 @@
 package app.lawnchair.data.iconoverride
 
 import android.content.Context
-import android.os.UserHandle
 import app.lawnchair.data.AppDatabase
-import app.lawnchair.icons.picker.IconPickerItem
+import app.lawnchair.icons.IconPickerItem
 import com.android.launcher3.LauncherAppState
-import com.android.launcher3.dagger.ApplicationContext
-import com.android.launcher3.dagger.LauncherAppComponent
-import com.android.launcher3.dagger.LauncherAppSingleton
+import com.android.launcher3.pm.PackageInstallInfo
+import com.android.launcher3.pm.PackageInstallInfo.STATUS_INSTALLED
 import com.android.launcher3.util.ComponentKey
-import com.android.launcher3.util.DaggerSingletonObject
+import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
 import java.util.concurrent.ConcurrentLinkedQueue
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -20,15 +17,10 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 
-@LauncherAppSingleton
-class IconOverrideRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : SafeCloseable {
+class IconOverrideRepository(private val context: Context) : SafeCloseable {
 
     private val scope = MainScope() + CoroutineName("IconOverrideRepository")
     private val dao = AppDatabase.INSTANCE.get(context).iconOverrideDao()
-
-    @Volatile
     private var _overridesMap = mapOf<ComponentKey, IconPickerItem>()
     val overridesMap get() = _overridesMap
 
@@ -53,15 +45,11 @@ class IconOverrideRepository @Inject constructor(
 
     suspend fun setOverride(target: ComponentKey, item: IconPickerItem) {
         dao.insert(IconOverride(target, item))
-        // Keep the in-memory map in sync before any icon reload. The Room Flow update is
-        // async and can race with onAppIconChanged / forceReload, leaving stale icons cached.
-        _overridesMap = _overridesMap + (target to item)
         updatePackageQueue.offer(target)
     }
 
     suspend fun deleteOverride(target: ComponentKey) {
         dao.delete(target)
-        _overridesMap = _overridesMap - target
         updatePackageQueue.offer(target)
     }
 
@@ -69,31 +57,20 @@ class IconOverrideRepository @Inject constructor(
 
     fun observeCount() = dao.observeCount()
 
-    /**
-     * Returns a persistable fingerprint of per-app icon overrides for [packageName]/[user].
-     * Used as part of icon-cache freshness so clearing an override invalidates the cache entry.
-     */
-    fun getPackageOverrideState(packageName: String, user: UserHandle): String {
-        return overridesMap.asSequence()
-            .filter {
-                it.key.componentName.packageName == packageName && it.key.user == user
-            }
-            .sortedBy { it.key.componentName.className }
-            .joinToString(";") { (key, item) ->
-                "${key.componentName.className}:${item.packPackageName}/${item.drawableName}/${item.type}"
-            }
-    }
-
     suspend fun deleteAll() {
         dao.deleteAll()
-        _overridesMap = emptyMap()
-        LauncherAppState.getInstance(context).model.reloadIfActive()
+        LauncherAppState.getInstance(context).reloadIcons()
     }
 
     private fun updatePackageIcons(target: ComponentKey) {
-        val model = LauncherAppState.INSTANCE.get(context).model
-
-        model.onPackageIconsUpdated(hashSetOf(target.componentName.packageName), target.user)
+        val model = LauncherAppState.getInstance(context).model
+        model.onPackageStateChanged(
+            PackageInstallInfo.fromState(
+                STATUS_INSTALLED,
+                target.componentName.packageName,
+                target.user,
+            ),
+        )
     }
 
     override fun close() {
@@ -102,6 +79,6 @@ class IconOverrideRepository @Inject constructor(
 
     companion object {
         @JvmField
-        val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getIconOverrideRepository)
+        val INSTANCE = MainThreadInitializedObject(::IconOverrideRepository)
     }
 }

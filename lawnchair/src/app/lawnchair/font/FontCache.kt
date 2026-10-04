@@ -22,7 +22,6 @@ import android.content.res.AssetManager
 import android.graphics.Typeface
 import android.net.Uri
 import androidx.annotation.Keep
-import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font as ComposeFont
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -36,13 +35,9 @@ import app.lawnchair.util.getDisplayName
 import app.lawnchair.util.subscribeFiles
 import app.lawnchair.util.uiHelperHandler
 import com.android.launcher3.R
-import com.android.launcher3.dagger.ApplicationContext
-import com.android.launcher3.dagger.LauncherAppComponent
-import com.android.launcher3.dagger.LauncherAppSingleton
-import com.android.launcher3.util.DaggerSingletonObject
+import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
 import java.io.File
-import javax.inject.Inject
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CoroutineName
@@ -55,10 +50,7 @@ import kotlinx.coroutines.plus
 import org.json.JSONArray
 import org.json.JSONObject
 
-@LauncherAppSingleton
-class FontCache @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : SafeCloseable {
+class FontCache private constructor(private val context: Context) : SafeCloseable {
 
     private val scope = MainScope() + CoroutineName("FontCache")
 
@@ -76,61 +68,10 @@ class FontCache @Inject constructor(
                 .toList()
         }
 
-    val uiRegular = ResourceFont(
-        context,
-        R.font.googlesansflex_variable,
-        "Google Sans Flex " + context.getString(R.string.font_weight_medium),
-        mapOf(
-            FontAxes.WEIGHT to FontWeight.Normal.weight.toFloat(),
-            FontAxes.ROUNDNESS to 100f,
-            FontAxes.GRADE to 100f,
-        ),
-    )
-
-    val uiMedium = ResourceFont(
-        context,
-        R.font.googlesansflex_variable,
-        "Google Sans Flex " + context.getString(R.string.font_weight_medium),
-        mapOf(
-            FontAxes.WEIGHT to FontWeight.Medium.weight.toFloat(),
-            FontAxes.ROUNDNESS to 100f,
-            FontAxes.GRADE to 0f,
-        ),
-    )
-
-    val uiText = ResourceFont(
-        context,
-        R.font.googlesansflex_variable,
-        "Google Sans Flex " + context.getString(R.string.font_weight_medium),
-        mapOf(
-            FontAxes.WEIGHT to FontWeight.Normal.weight.toFloat(),
-            FontAxes.ROUNDNESS to 100f,
-            FontAxes.GRADE to 0f,
-        ),
-    )
-
-    val uiTextMedium = ResourceFont(
-        context,
-        R.font.googlesansflex_variable,
-        "Google Sans Flex " + context.getString(R.string.font_weight_medium),
-        mapOf(
-            FontAxes.WEIGHT to FontWeight.Medium.weight.toFloat(),
-            FontAxes.ROUNDNESS to 100f,
-            FontAxes.GRADE to 100f,
-        ),
-    )
-
-    /**
-     * A Google Sans Flex [ResourceFont] with the given variation [axes]. Used to back the AOSP
-     * Material 3 Expressive `variable-*` font family names, mirroring
-     * [app.lawnchair.ui.theme.GoogleSansFlex].
-     */
-    fun googleSansFlexVariable(axes: Map<String, Float>): ResourceFont = ResourceFont(
-        context,
-        R.font.googlesansflex_variable,
-        "Google Sans Flex",
-        axes,
-    )
+    val uiRegular = ResourceFont(context, R.font.inter_regular, "Inter v3 " + context.getString(R.string.font_weight_regular))
+    val uiMedium = ResourceFont(context, R.font.inter_medium, "Inter v3 " + context.getString(R.string.font_weight_medium))
+    val uiText = ResourceFont(context, R.font.inter_regular, "Inter v3 " + context.getString(R.string.font_weight_regular))
+    val uiTextMedium = ResourceFont(context, R.font.inter_medium, "Inter v3 " + context.getString(R.string.font_weight_medium))
 
     suspend fun getTypeface(font: Font): Typeface? {
         return loadFontAsync(font).await()?.typeface
@@ -406,37 +347,21 @@ class FontCache @Inject constructor(
         context: Context,
         private val resId: Int,
         private val name: String,
-        private val axisSettings: Map<String, Float> = emptyMap(),
-    ) : TypefaceFont(createTypeface(context, resId, axisSettings)) {
+    ) : TypefaceFont(ResourcesCompat.getFont(context, resId)) {
 
-        private val hashCode = "ResourceFont|$name|$axisSettings".hashCode()
+        private val hashCode = "ResourceFont|$name".hashCode()
 
         override val fullDisplayName = name
-
-        @OptIn(ExperimentalTextApi::class)
-        override val composeFontFamily = FontFamily(
-            // Don't let it fool you, removing qualifier name makes everything 10x worse
-            androidx.compose.ui.text.font.Font(
-                resId = resId,
-                variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(
-                    *axisSettings.map {
-                        androidx.compose.ui.text.font.FontVariation.Setting(it.key, it.value)
-                    }.toTypedArray(),
-                ),
-            ),
-        )
+        override val composeFontFamily = FontFamily(ComposeFont(resId))
 
         override fun saveToJson(obj: JSONObject) {
             super.saveToJson(obj)
             obj.put(KEY_RESOURCE_ID, resId)
             obj.put(KEY_FAMILY_NAME, name)
-            val axesObj = JSONObject()
-            axisSettings.forEach { (k, v) -> axesObj.put(k, v) }
-            obj.put("axes", axesObj)
         }
 
         override fun equals(other: Any?): Boolean {
-            return other is ResourceFont && name == other.name && axisSettings == other.axisSettings
+            return other is ResourceFont && name == other.name
         }
 
         override fun hashCode(): Int {
@@ -444,46 +369,13 @@ class FontCache @Inject constructor(
         }
 
         companion object {
-            private val extractionLock = Any()
-
-            private fun createTypeface(context: Context, resId: Int, axes: Map<String, Float>): Typeface? {
-                if (axes.isEmpty()) {
-                    return ResourcesCompat.getFont(context, resId)
-                }
-                return try {
-                    // Our locally stored Google Sans Flex font is stored compressed (DEFLATED)
-                    // in the APK, so openRawResourceFd() throws and the variation settings would
-                    // be silently dropped, leaving the font at its default (non-expressive) axes.
-                    val cacheFile = File(context.cacheDir, "font_res_$resId.ttf")
-                    synchronized(extractionLock) {
-                        if (!cacheFile.exists() || cacheFile.length() == 0L) {
-                            val tmpFile = File(context.cacheDir, "${cacheFile.name}.tmp")
-                            context.resources.openRawResource(resId).use { input ->
-                                tmpFile.outputStream().use { output -> input.copyTo(output) }
-                            }
-                            tmpFile.renameTo(cacheFile)
-                        }
-                    }
-                    Typeface.Builder(cacheFile)
-                        .setFontVariationSettings(FontAxes.mapToString(axes))
-                        .build()
-                } catch (e: Exception) {
-                    ResourcesCompat.getFont(context, resId)
-                }
-            }
 
             @Keep
             @JvmStatic
             fun fromJson(context: Context, obj: JSONObject): Font {
                 val resId = obj.getInt(KEY_RESOURCE_ID)
                 val name = obj.getString(KEY_FAMILY_NAME)
-                val axesMap = mutableMapOf<String, Float>()
-                val axesObj = obj.optJSONObject("axes")
-                axesObj?.keys()?.forEach { key ->
-                    axesMap[key] = axesObj.getDouble(key).toFloat()
-                }
-
-                return ResourceFont(context, resId, name, axesMap)
+                return ResourceFont(context, resId, name)
             }
         }
     }
@@ -621,7 +513,7 @@ class FontCache @Inject constructor(
 
     companion object {
         @JvmField
-        val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getFontCache)
+        val INSTANCE = MainThreadInitializedObject(::FontCache)
 
         private const val KEY_CLASS_NAME = "className"
         private const val KEY_FAMILY_NAME = "family"

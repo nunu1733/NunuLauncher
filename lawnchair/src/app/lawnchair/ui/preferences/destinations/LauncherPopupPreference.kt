@@ -93,7 +93,7 @@ fun LauncherPopupPreference(
                 optionsList = it
                 optionsPref.onChange(it.toOptionOrderString())
             },
-        ) { item, index, _ ->
+        ) { item, index, _, onDraggingChange ->
             val metadata = LauncherOptionsPopup.getMetadataForOption(item.identifier)
 
             val enabled = when (item.identifier) {
@@ -117,6 +117,9 @@ fun LauncherPopupPreference(
                         scope = this,
                         interactionSource = if (!metadata.isCarousel) interactionSource else remember { MutableInteractionSource() },
                         isDraggable = !metadata.isCarousel,
+                        onDragStop = {
+                            onDraggingChange(false)
+                        },
                     )
                 },
                 enabled = enabled,

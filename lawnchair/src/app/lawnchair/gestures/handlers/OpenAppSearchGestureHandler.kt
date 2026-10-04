@@ -2,14 +2,11 @@ package app.lawnchair.gestures.handlers
 
 import android.content.Context
 import app.lawnchair.LawnchairLauncher
-import app.lawnchair.animateToAllApps
 
-class OpenAppSearchGestureHandler(context: Context) : GestureHandler(context) {
+class OpenAppSearchGestureHandler(context: Context) : OpenAppDrawerGestureHandler(context) {
 
     override suspend fun onTrigger(launcher: LawnchairLauncher) {
-        val searchUiManager = launcher.appsView.searchUiManager
-        searchUiManager.setDirectFocus(true)
-        searchUiManager.editText?.showKeyboard()
-        launcher.animateToAllApps()
+        super.onTrigger(launcher)
+        launcher.appsView.searchUiManager.editText?.showKeyboard()
     }
 }
