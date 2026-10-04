@@ -271,13 +271,29 @@ workload seed、generator版、cell定義
 
 ### 6.3 反復数
 
-- 標準: cellごとに **n = 100**。
-- budget固定やregression基準の更新にはreference cellのみ **n = 300**。
+- 標準: cell・**metricごと**に、有効なmeasurement iterationを **n = 100**
+  集める。1 iterationがあるmetricに有効でも、別metricの欠測を補うものではない。
+- budget固定やregression基準の更新にはreference cellの**各budget対象metricごと**に
+  **n = 300**の有効measurement iterationを集める。
+- harnessはwarmup後の試行に単調増加の`iterationOrdinal`を割り当て、metric値、
+  有効/無効、無効理由をartifactへ残す。crash、terminal event欠落、journal slice/phase
+  完備検査失敗はjournal由来のphase duration・end-to-end・run windowを使うmemory metricを
+  無効にする。memoryでは、境界値欠測は該当phaseのdeltaのみ、pre-run baseline欠測は
+  `addedPeak`のみを無効にする。これらの無効値は他metricの有効値を取り消さない。
+- 無効または欠測のmetric値は、その**同じmetric**の有効nを満たすまで後続iterationで
+  補充する。crash/欠測の試行回数と理由は別に報告する。測定環境・harnessが有効nを
+  到達不能にした場合、そのmetricは「測定不能」として報告し、必要な有効nなしに
+  budgetを固定・更新してはならない。
+- bootstrapを使うregression判定は、比較するmetricについて旧・新の各群が少なくとも
+  30件の有効measurement iterationを持つ場合だけに行う。この30件は記述統計の
+  minimumであって、標準n=100またはbudget固定n=300を置き換えない。
 - 根拠は§7の統計計算による。
 
 ### 6.4 統計量
 
-- p50: median。p95: k番目のorder statistic、k = ceil(0.95n)。補間は行わない
+- p50: median。値を昇順に並べ、nが奇数なら1-based `(n + 1) / 2`番目、nが偶数なら
+  1-based `n / 2`番目と`n / 2 + 1`番目の**算術平均**をmedianとする。
+  p95はk番目のorder statistic、k = ceil(0.95n)。補間は行わない
   (保守側の値を取る)。
 - 分散の報告: CVとIQRを必ず併記する。正規分布を仮定しない。
 - cellのCV > 0.5の場合、結果に要再測定のflagを付け、そのcellの値でbudgetや
@@ -310,7 +326,9 @@ journalを使わない。on-device測定では次を守る。
      `CHECKPOINTED`→`APPLY_COMMITTED`→`APPLY_VERIFIED`) から1つも欠落して
      いないことを確認する。欠落があればそのiterationを無効とし、再実行する。
 - terminal eventに到達しないrun (crash等) は試行として記録するが、
-  duration統計には含めない。
+  journal由来のduration/end-to-end統計、およびterminal eventで閉じるrun windowを
+  必要とするmemory統計には含めない。§6.3に従い、影響したmetricだけを後続iterationで
+  補充する。
 - 上記により、journalのretentionがn = 100/300の収集に影響しない
   (直近10 run分より前のeventは削除済みでも、計測artifactに全sampleが
   存在する)。
@@ -326,6 +344,12 @@ journalを使わない。on-device測定では次を守る。
   いない**場合はそのtickをskipしてmissとして記録し、遅延を次以降に
   持ち越さない (完了している場合は常に採取する)。採取は
   別process (adb shell) から行い、計測対象processに負荷を加えない。
+- **RUN_STARTED前のbaseline gate**: samplerを`RUN_STARTED`予定時刻の少なくとも
+  5秒前に起動する。`RUN_STARTED`は、直前の半開区間`[T - 5000ms, T)`
+  (`T` = `RUN_STARTED`時刻) にあるfixed-rate 250msの全20 tickが、skip/miss/overrun
+  なしの有効sampleを1件ずつ得た後にだけ発行してよい。すなわち5秒待ったという
+  任意の待機では足りず、5秒窓全体のcadence coverageと20件の有効sampleが必要である。
+  この条件を満たせない場合はrunを開始せず、欠測を記録してsampler baselineを取り直す。
 - **1 sampleの採り方 (bracket + midpoint)**: 1回の`adb shell`呼び出し内で
   次を実行し、sample時刻 = `(t0 + t1) / 2` (midpoint) とする。
   `dumpsys`の実行時間が可変のため、実行後に時刻を取る方式は観測点から
@@ -352,14 +376,16 @@ journalを使わない。on-device測定では次を守る。
   `delta(P) = V(b_out) - V(b_in)` とする。両端の境界値が揃わないphaseの
   deltaは報告しない。
 - **run中peak**: run window (最初のevent timestampから最後のevent timestamp
-  まで) 内のsampleの最大値 (`runPeak`) とする。peakは境界値の有無に依存
-  しない。
+  まで) 内の有効sampleの最大値 (`runPeak`) とする。peakは境界値の有無に依存
+  しないが、有効sampleが0件なら`runPeak`は欠測/無効とし、§6.3に従って
+  `runPeak`と`addedPeak`を後続iterationで補充する。
 - **追加peak PSS (budget判定値)**: budget (§9.1) の「追加peak PSS」は
   `addedPeak = runPeak - baseline`で判定する。baselineは、`RUN_STARTED`の
-  timestampから遡って**5秒間のpre-run window**内の有効sampleの**median**
-  とする。pre-run window内の有効sampleが5件未満の場合、baselineを算出
-  せず、そのiterationのaddedPeakを欠測として報告する (絶対peak
-  `runPeak`は常に報告する)。
+  timestampから遡る**5秒間のpre-run window**の、baseline gateで確認済みの
+  20有効sampleの**median (§6.4の偶数n規則)**とする。gate後にsampleの無効化が
+  判明した場合はbaselineを算出せず、また`runPeak`が欠測の場合も、
+  そのiterationの`addedPeak`を欠測として§6.3に従い補充する
+  (絶対peak `runPeak`は、run window内に有効sampleがある場合だけ報告する)。
 - **用語**: on-device memory metricの取得値は`dumpsys meminfo`の
   `TOTAL PSS`であり、本書では**PSS**とだけ呼ぶ。RSSという名称は使わない
   (§5、§9.1のmetric名もこれに合わせる)。
@@ -465,14 +491,18 @@ n = 565以上を要件として明示する。
 
   ```text
   対象    : 旧・新それぞれの、§6.5/§6.6で無効化されていないiterationの
-            測定値のみ。無効iterationは除外し、除外件数を結果に記録する。
-            有効nがどちらかの群で30未満の場合はbootstrap判定を行わず、
-            要再測定として記述統計のみ報告する。
+            **当該metricの**測定値のみ。無効iterationはmetricごとに除外し、
+            除外件数を結果に記録する。各群の値はresample前に
+            `iterationOrdinal`昇順（同一ordinalがあり得るartifactでは記録順を
+            第二key）でcanonical sortする。有効nがどちらかの群で30未満の場合は
+            bootstrap判定を行わず、要再測定として記述統計のみ報告する。
   統計量  : resampleごとにp95を計算。p95は§6.4と同じorder statistic
             (k = ceil(0.95n)、補間なし) を使う。
   resample: iid復元抽出。回数1000。RNGは java.util.Random(0x4E554E55L)。
             消費順は b = 1..1000 の各回で「旧群のn_old個 → 新群のn_new個」
-            の順に一様乱数でindexを選ぶ。
+            の順に `random.nextInt(n_old)`、`random.nextInt(n_new)` を各抽出に
+            1回ずつ呼び、一様乱数でindexを選ぶ。canonical sort後の配列indexを
+            そのまま使い、seed・群順・この消費順を変更しない。
   区間    : 各群の1000個のbootstrap p95を昇順に並べ、50番目と950番目の
             値を90% percentile区間 [下限, 上限] とする。
   判定    : 区間が重ならない = 旧上限 < 新下限、または新上限 < 旧下限。
@@ -511,7 +541,9 @@ n = 565以上を要件として明示する。
 
 次のいずれかが成立した時点で、該当行を測定値に基づいて更新する。
 暫定statusの解除には、§6の手順に沿った測定と、reference cellでの
-n = 300の実施を要件とする。
+各budget対象metricについてn = 300の**有効measurement iteration**を集めることを
+要件とする。欠測・crashを含む試行数だけでは満たさず、§6.3の必要有効nを欠く
+budget固定・更新は禁止する。
 
 1. on-device計測 (R-EMU-1) が最初に実施されたとき。
 2. 物理端末またはhardware-accelerated emulatorの環境が追加されたとき
