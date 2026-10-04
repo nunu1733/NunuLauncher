@@ -13,6 +13,7 @@
 | [DESIGN.md](../DESIGN.md) | system全体のmodule/interface/invariantは何か | 全体設計が変わるとき |
 | [product/product-brief.md](./product/product-brief.md) | 誰の何を解決し、何をしないか | product方針が変わるとき |
 | [product/requirements.md](./product/requirements.md) | 必要な振る舞いと品質は何か | 要件Issueが承認されたとき |
+| [product/mvp-release-readiness.md](./product/mvp-release-readiness.md) | MVP要件の実装根拠、制約、release blockerは何か | MVP要件のevidenceまたはblockerが変わるとき |
 | [assessment/initial-design-review.md](./assessment/initial-design-review.md) | 初期案の問題と根拠は何か | 原則固定。再調査は別文書にする |
 | `assessment/pr-<n>-<slug>.md`（形式は [assessment/_template.md](./assessment/_template.md)） | 高リスクPRの独立audit証拠は何か | `risk: layout-data` / `risk: migration` PRのmerge前。手順は [project/github-workflow.md](./project/github-workflow.md) |
 | [project/github-workflow.md](./project/github-workflow.md) | Issue/spec/PRをどう流すか | 開発processが変わるとき |

@@ -1,7 +1,7 @@
 # NunuLauncher System Design
 
-> Status: Proposed
-> Updated: 2026-08-21
+> Status: Implemented for the organizer MVP; Later capability seams remain proposed
+> Updated: 2026-08-23
 > Scope: 目標設計。baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定済み。Deck layoutは[ADR-0002](./docs/adr/0002-replace-deck-layout.md)でreplaceを採用した。正確なplatform seamは関連Issueで確定する。
 
 ## 1. Design goals
