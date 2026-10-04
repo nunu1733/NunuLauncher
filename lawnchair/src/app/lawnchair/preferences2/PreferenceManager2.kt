@@ -37,6 +37,7 @@ import app.lawnchair.hotseat.HotseatMode
 import app.lawnchair.icons.CustomAdaptiveIconDrawable
 import app.lawnchair.icons.shape.IconShape
 import app.lawnchair.icons.shape.IconShapeManager
+import app.lawnchair.predictions.PredictionMode
 import app.lawnchair.preferences.PreferenceManager as LawnchairPreferenceManager
 import app.lawnchair.qsb.providers.QsbSearchProvider
 import app.lawnchair.search.algorithms.LawnchairSearchAlgorithm
@@ -58,6 +59,7 @@ import com.android.launcher3.InvariantDeviceProfile.INDEX_DEFAULT
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
 import com.android.launcher3.graphics.IconShape as L3IconShape
+import com.android.launcher3.reloadIcons
 import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.util.DynamicResource
 import com.android.launcher3.util.MainThreadInitializedObject
@@ -67,12 +69,15 @@ import com.patrykmichalik.opto.core.firstBlocking
 import com.patrykmichalik.opto.core.setBlocking
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class PreferenceManager2 private constructor(private val context: Context) :
     PreferenceManager,
@@ -95,6 +100,15 @@ class PreferenceManager2 private constructor(private val context: Context) :
     )
 
     override val preferencesDataStore = context.preferencesDataStore
+
+    // Rebase Phase 2 adapt (#532): in-memory pref cache used by `firstCached` (anchor
+    // performance behavior); kept warm via the datastore collection in `init`.
+    @Volatile
+    private var cachedPreferences: Preferences = runBlocking {
+        preferencesDataStore.data.first()
+    }
+
+    fun getCachedPreferences(): Preferences = cachedPreferences
     private val reloadHelper = ReloadHelper(context)
 
     // Retired Deck tombstone keys — kept alive so old backup restores can be
@@ -155,6 +169,19 @@ class PreferenceManager2 private constructor(private val context: Context) :
         },
     )
 
+    // Rebase Phase 2 adapt (#532): anchor feature (folder shape customisation) using the
+    // fork's IconShape parse model, mirroring customIconShape above.
+    val customFolderShape = preference(
+        key = stringPreferencesKey(name = "custom_folder_shape"),
+        defaultValue = null,
+        parse = {
+            IconShape.fromString(value = it, context = context)
+                ?: IconShapeManager.getSystemIconShape(context)
+        },
+        save = { it.toString() },
+        onSet = { it?.let(folderShape::setBlocking) },
+    )
+
     val alwaysReloadIcons = preference(
         key = booleanPreferencesKey(name = "always_reload_icons"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_always_reload_icons),
@@ -196,6 +223,16 @@ class PreferenceManager2 private constructor(private val context: Context) :
         key = booleanPreferencesKey(name = "all_apps_search_bar_background"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_search_bar_background),
         onSet = { reloadHelper.recreate() },
+    )
+
+    // Rebase Phase 2 adapt (#532): work profile tab color pref referenced by the anchor
+    // AllAppsTabColors token.
+    val workProfileTabBackgroundColor = preference(
+        key = stringPreferencesKey(name = "work_profile_tab_background_color"),
+        parse = ColorOption::fromString,
+        save = ColorOption::toString,
+        onSet = { reloadHelper.recreate() },
+        defaultValue = ColorOption.SystemAccent,
     )
 
     val notificationDotColor = preference(
@@ -359,6 +396,25 @@ class PreferenceManager2 private constructor(private val context: Context) :
 
     val legacyPopupOptionsMigrated = preference(
         key = booleanPreferencesKey(name = "legacy_popup_options_migrated"),
+        defaultValue = false,
+    )
+
+    // Rebase Phase 2 adapt (#532): prediction prefs referenced by the anchor
+    // LawnchairModelDelegate / LawnchairPredictionEngine.
+    val enableGlobalPrediction = preference(
+        key = booleanPreferencesKey(name = "enable_global_prediction"),
+        defaultValue = true,
+    )
+
+    val predictionMode = preference(
+        key = stringPreferencesKey(name = "prediction_mode"),
+        defaultValue = PredictionMode.fromString(context.getString(R.string.config_default_prediction_mode)),
+        parse = { PredictionMode.fromString(it) },
+        save = { it.toString() },
+    )
+
+    val lawnchairPredictorUseWeightedUsageStats = preference(
+        key = booleanPreferencesKey(name = "lawnchair_prediction_use_weighted_usage"),
         defaultValue = false,
     )
 
@@ -697,6 +753,25 @@ class PreferenceManager2 private constructor(private val context: Context) :
         defaultValue = true,
     )
 
+    // Rebase Phase 2 adapt (#532): smartspace torch/onboarding prefs referenced by the
+    // anchor smartspace providers.
+    val smartspaceTorch = preference(
+        key = booleanPreferencesKey("enable_smartspace_torch"),
+        defaultValue = true,
+    )
+
+    val smartspaceOnboarding = preference(
+        key = booleanPreferencesKey("enable_smartspace_onboarding"),
+        defaultValue = true,
+    )
+
+    // Rebase Phase 2 adapt (#532): app drawer haptic feedback pref referenced by the
+    // anchor AppDrawerHapticFeedbackPreference.
+    val appDrawerHapticFeedback = preference(
+        key = booleanPreferencesKey(name = "app_drawer_haptic_feedback"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_app_drawer_haptic_feedback),
+    )
+
     val smartspaceShowDate = preference(
         key = booleanPreferencesKey("smartspace_show_date"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_smartspace_show_date),
@@ -789,6 +864,9 @@ class PreferenceManager2 private constructor(private val context: Context) :
     )
 
     init {
+        scope.launch {
+            preferencesDataStore.data.collect { cachedPreferences = it }
+        }
         initializeIconShape(iconShape.firstBlocking())
         iconShape.get()
             .drop(1)

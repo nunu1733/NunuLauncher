@@ -44,6 +44,10 @@ class PreferenceManager private constructor(private val context: Context) :
 
     val iconPackPackage = StringPref("pref_iconPackPackage", "", reloadIcons)
     val themedIconPackPackage = StringPref("pref_themedIconPackPackage", "", recreate)
+
+    // Rebase Phase 2 adapt (#532): anchor's LawnchairThemeManager (and the mono icon
+    // pipeline via pref_forceIconMonochrome) reads this pref; restored with the anchor key.
+    val forceIconMonochrome = BoolPref("pref_forceIconMonochrome", false)
     val allowRotation = BoolPref("pref_allowRotation", false)
     val wrapAdaptiveIcons = BoolPref("prefs_wrapAdaptive", false, recreate)
     val transparentIconBackground = BoolPref("prefs_transparentIconBackground", false, recreate)

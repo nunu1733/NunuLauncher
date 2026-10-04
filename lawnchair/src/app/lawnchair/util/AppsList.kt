@@ -70,7 +70,8 @@ class App(context: Context, private val info: LauncherActivityInfo) {
 
     init {
         val appInfo = AppInfo(context, info, info.user)
-        LauncherAppState.getInstance(context).iconCache.getTitleAndIcon(appInfo, false)
+        // Rebase Phase 2 adapt (#532): the boolean flag became CacheLookupFlag.
+        LauncherAppState.getInstance(context).iconCache.getTitleAndIcon(appInfo, appInfo.matchingLookupFlag)
         icon = appInfo.bitmap.icon
     }
 

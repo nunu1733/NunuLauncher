@@ -6,6 +6,7 @@ import app.lawnchair.icons.IconPickerItem
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.pm.PackageInstallInfo
 import com.android.launcher3.pm.PackageInstallInfo.STATUS_INSTALLED
+import com.android.launcher3.reloadIcons
 import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable

@@ -37,7 +37,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.LawnchairApp.Companion.showQuickstepWarningIfNecessary
 import app.lawnchair.compat.LawnchairQuickstepCompat
-import com.android.launcher3.reloadIcons
 import app.lawnchair.data.AppDatabase
 import app.lawnchair.data.wallpaper.service.WallpaperService
 import app.lawnchair.factory.LawnchairWidgetHolder
@@ -62,12 +61,14 @@ import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.BaseActivity
 import com.android.launcher3.BubbleTextView
 import com.android.launcher3.GestureNavContract
+import com.android.launcher3.Launcher
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherState
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.popup.SystemShortcut
+import com.android.launcher3.reloadIcons
 import com.android.launcher3.shortcuts.DeepShortcutView
 import com.android.launcher3.statemanager.StateManager
 import com.android.launcher3.statemanager.StateManager.StateHandler
@@ -82,7 +83,6 @@ import com.android.launcher3.util.RunnableList
 import com.android.launcher3.util.SystemUiController.UI_STATE_BASE_WINDOW
 import com.android.launcher3.util.Themes
 import com.android.launcher3.util.TouchController
-import com.android.launcher3.Launcher
 import com.android.launcher3.views.ActivityContext
 import com.android.launcher3.views.OptionsPopupView
 import com.android.launcher3.views.OptionsPopupView.OptionItem
@@ -177,6 +177,7 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        sCurrentInstance = this
         if (!Utilities.ATLEAST_Q) {
             // Rebase Phase 2 adapt: anchor's BaseActivity extends android.app.Activity,
             // so androidx enableEdgeToEdge is unavailable; set edge-to-edge decor flags
@@ -511,6 +512,9 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
 
     override fun onDestroy() {
+        if (sCurrentInstance === this) {
+            sCurrentInstance = null
+        }
         super.onDestroy()
         // Only actually closes if required, safe to call if not enabled
         SmartspacerClient.close()
@@ -583,8 +587,13 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         var sRestartFlags = 0
 
+        // Rebase Phase 2 adapt (#532): the anchor LauncherAppState no longer exposes the
+        // launcher; track the active instance through the activity lifecycle instead.
+        @Volatile
+        private var sCurrentInstance: LawnchairLauncher? = null
+
         val instance: LawnchairLauncher?
-            get() = LauncherAppState.getInstanceNoCreate(LawnchairApp.instance)?.launcher
+            get() = sCurrentInstance
     }
 }
 

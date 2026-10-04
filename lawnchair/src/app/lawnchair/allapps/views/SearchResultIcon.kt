@@ -4,6 +4,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Rect
 import android.os.UserHandle
 import android.util.AttributeSet
 import android.view.View
@@ -21,6 +24,7 @@ import com.android.launcher3.icons.BaseIconFactory
 import com.android.launcher3.icons.BitmapInfo
 import com.android.launcher3.icons.IconProvider
 import com.android.launcher3.icons.LauncherIcons
+import com.android.launcher3.icons.cache.CacheLookupFlag
 import com.android.launcher3.model.data.ItemInfoWithIcon
 import com.android.launcher3.model.data.PackageItemInfo
 import com.android.launcher3.model.data.SearchActionItemInfo
@@ -52,7 +56,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
         setOnLongClickListener(this)
         layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            launcher.deviceProfile.allAppsCellHeightPx,
+            launcher.deviceProfile.allAppsProfile.cellHeightPx,
         )
     }
 
@@ -162,7 +166,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
             isVisible = false
             return
         }
-        icon = appInfo.newIcon(context, false)
+        icon = appInfo.newIcon(context)
     }
 
     private fun bindFromApp(componentName: ComponentName, user: UserHandle) {
@@ -212,7 +216,7 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
 
                 icon == null -> packageIcon
 
-                else -> icon.loadDrawable(context)?.let { li.createBadgedIconBitmap(it, BaseIconFactory.IconOptions().setUser(info.user)) }
+                else -> icon.loadDrawable(context)?.let { li.createBadgedIconBitmap(it, BaseIconFactory.IconOptions().setUser(info.user)) } ?: packageIcon
             }
             if (info.hasFlags(SearchActionItemInfo.FLAG_BADGE_WITH_COMPONENT_NAME) && target.extras.containsKey("class")) {
                 try {
@@ -223,20 +227,38 @@ class SearchResultIcon(context: Context, attrs: AttributeSet?) :
                     val activityIcon = iconProvider.getIcon(activityInfo)
                     val bitmap = li.createIconBitmap(activityIcon, 1f)
                     val bitmapInfo = BitmapInfo.of(bitmap, packageIcon.color)
-                    info.bitmap = li.badgeBitmap(info.bitmap.icon, bitmapInfo)
+                    info.bitmap = badgeBitmap(context, info.bitmap.icon, bitmapInfo)
                 } catch (_: PackageManager.NameNotFoundException) {
                 }
             } else if (info.hasFlags(SearchActionItemInfo.FLAG_BADGE_WITH_PACKAGE) && info.bitmap != packageIcon) {
-                info.bitmap = li.badgeBitmap(info.bitmap.icon, packageIcon)
+                info.bitmap = badgeBitmap(context, info.bitmap.icon, packageIcon)
             }
         }
+    }
+
+    // Rebase Phase 2 adapt (#532): LauncherIcons.badgeBitmap was removed by the anchor
+    // iconloaderlib rework; draw the badge directly onto the source bitmap instead.
+    private fun badgeBitmap(context: Context, source: Bitmap, badge: BitmapInfo): BitmapInfo {
+        val iconSize = LauncherAppState.getIDP(context).iconBitmapSize
+        val badgeSize = BaseIconFactory.getBadgeSizeForIconSize(iconSize)
+        val out = Bitmap.createBitmap(iconSize, iconSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawBitmap(source, null, Rect(0, 0, iconSize, iconSize), null)
+        canvas.drawBitmap(
+            badge.icon,
+            null,
+            Rect(iconSize - badgeSize, iconSize - badgeSize, iconSize, iconSize),
+            null,
+        )
+        return BitmapInfo.of(out, badge.color)
     }
 
     private fun getPackageIcon(packageName: String, user: UserHandle): BitmapInfo {
         val las = LauncherAppState.getInstance(context)
         val info = PackageItemInfo(packageName, user)
         info.user = user
-        las.iconCache.getTitleAndIcon(info, false)
+        // Rebase Phase 2 adapt (#532): the boolean flag became CacheLookupFlag.
+        las.iconCache.getTitleAndIcon(info, CacheLookupFlag.DEFAULT_LOOKUP_FLAG)
         return info.bitmap
     }
 

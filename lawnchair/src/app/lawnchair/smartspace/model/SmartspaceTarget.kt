@@ -32,6 +32,9 @@ data class SmartspaceTarget(
         FEATURE_PACKAGE_TRACKING,
         FEATURE_TIMER,
         FEATURE_STOPWATCH,
+
+        // Rebase Phase 2 adapt (#532): restored for the smartspace torch provider.
+        FEATURE_FLASHLIGHT,
         FEATURE_UPCOMING_ALARM,
     }
 }

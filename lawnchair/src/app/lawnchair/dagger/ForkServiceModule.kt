@@ -41,91 +41,73 @@ class ForkServiceModule {
 
     @Provides
     @LauncherAppSingleton
-    fun provideIdp(@ApplicationContext context: Context): InvariantDeviceProfile =
-        InvariantDeviceProfile.INSTANCE.get(context)
+    fun provideIdp(@ApplicationContext context: Context): InvariantDeviceProfile = InvariantDeviceProfile.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideDeviceProfileOverrides(@ApplicationContext context: Context): DeviceProfileOverrides =
-        DeviceProfileOverrides.INSTANCE.get(context)
+    fun provideDeviceProfileOverrides(@ApplicationContext context: Context): DeviceProfileOverrides = DeviceProfileOverrides.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideHeadlessWidgetsManager(@ApplicationContext context: Context): HeadlessWidgetsManager =
-        HeadlessWidgetsManager.INSTANCE.get(context)
+    fun provideHeadlessWidgetsManager(@ApplicationContext context: Context): HeadlessWidgetsManager = HeadlessWidgetsManager.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideNotificationManager(@ApplicationContext context: Context): NotificationManager =
-        NotificationManager.INSTANCE.get(context)
+    fun provideNotificationManager(@ApplicationContext context: Context): NotificationManager = NotificationManager.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideFolderService(@ApplicationContext context: Context): FolderService =
-        FolderService.INSTANCE.get(context)
+    fun provideFolderService(@ApplicationContext context: Context): FolderService = FolderService.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideIconOverrideRepository(@ApplicationContext context: Context): IconOverrideRepository =
-        IconOverrideRepository.INSTANCE.get(context)
+    fun provideIconOverrideRepository(@ApplicationContext context: Context): IconOverrideRepository = IconOverrideRepository.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideWallpaperService(@ApplicationContext context: Context): WallpaperService =
-        WallpaperService.INSTANCE.get(context)
+    fun provideWallpaperService(@ApplicationContext context: Context): WallpaperService = WallpaperService.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideFontCache(@ApplicationContext context: Context): FontCache =
-        FontCache.INSTANCE.get(context)
+    fun provideFontCache(@ApplicationContext context: Context): FontCache = FontCache.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideFontManager(@ApplicationContext context: Context): FontManager =
-        FontManager.INSTANCE.get(context)
+    fun provideFontManager(@ApplicationContext context: Context): FontManager = FontManager.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideGoogleFontsListing(@ApplicationContext context: Context): GoogleFontsListing =
-        GoogleFontsListing.INSTANCE.get(context)
+    fun provideGoogleFontsListing(@ApplicationContext context: Context): GoogleFontsListing = GoogleFontsListing.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideLawnchairIconProvider(@ApplicationContext context: Context): LawnchairIconProvider =
-        LawnchairIconProvider(context)
+    fun provideLawnchairIconProvider(@ApplicationContext context: Context): LawnchairIconProvider = LawnchairIconProvider(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideIconShapeManager(@ApplicationContext context: Context): IconShapeManager =
-        IconShapeManager(context)
+    fun provideIconShapeManager(@ApplicationContext context: Context): IconShapeManager = IconShapeManager(context)
 
     @Provides
     @LauncherAppSingleton
-    fun providePreferenceManager2(@ApplicationContext context: Context): PreferenceManager2 =
-        PreferenceManager2.getInstance(context)
+    fun providePreferenceManager2(@ApplicationContext context: Context): PreferenceManager2 = PreferenceManager2.getInstance(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideSmartspaceProvider(@ApplicationContext context: Context): SmartspaceProvider =
-        SmartspaceProvider.INSTANCE.get(context)
+    fun provideSmartspaceProvider(@ApplicationContext context: Context): SmartspaceProvider = SmartspaceProvider.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideThemeProvider(@ApplicationContext context: Context): ThemeProvider =
-        ThemeProvider.INSTANCE.get(context)
+    fun provideThemeProvider(@ApplicationContext context: Context): ThemeProvider = ThemeProvider.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideColorPreferenceModelList(@ApplicationContext context: Context): ColorPreferenceModelList =
-        ColorPreferenceModelList(context)
+    fun provideColorPreferenceModelList(@ApplicationContext context: Context): ColorPreferenceModelList = ColorPreferenceModelList(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideLiveInformationManager(@ApplicationContext context: Context): LiveInformationManager =
-        LiveInformationManager.INSTANCE.get(context)
+    fun provideLiveInformationManager(@ApplicationContext context: Context): LiveInformationManager = LiveInformationManager.INSTANCE.get(context)
 
     @Provides
     @LauncherAppSingleton
-    fun provideLawnchairWindowManagerProxy(@ApplicationContext context: Context): LawnchairWindowManagerProxy =
-        LawnchairWindowManagerProxy.INSTANCE.get(context)
+    fun provideLawnchairWindowManagerProxy(): LawnchairWindowManagerProxy = LawnchairWindowManagerProxy()
 }

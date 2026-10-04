@@ -23,6 +23,7 @@ import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
 import com.android.launcher3.model.ModelWriter
+import com.android.launcher3.reloadIcons
 import com.android.quickstep.TouchInteractionService
 import com.android.quickstep.util.TISBindHelper
 
@@ -52,7 +53,9 @@ class ReloadHelper(private val context: Context) {
 
     fun reloadTaskbar() {
         tisBinder.runOnBindToTouchInteractionService {
-            tis?.taskbarManager?.recreateTaskbar()
+            // Rebase Phase 2 adapt (#532): TaskbarManager.recreateTaskbar was renamed to
+            // recreateTaskbars in the anchor taskbar rework.
+            tis?.taskbarManager?.recreateTaskbars()
         }
     }
 }

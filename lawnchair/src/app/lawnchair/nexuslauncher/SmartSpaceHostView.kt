@@ -122,11 +122,8 @@ sealed class SmartSpaceHostView(context: Context) :
     }
 }
 
-enum class NexusLauncherEnum(private val mId: Int) : EventEnum {
+// Rebase Phase 2 adapt (#532): EventEnum.id is now a constructor property, not a
+// getter override.
+enum class NexusLauncherEnum(override val id: Int) : EventEnum {
     SMARTSPACE_TAP_OR_LONGPRESS(520),
-    ;
-
-    override fun getId(): Int {
-        return mId
-    }
 }

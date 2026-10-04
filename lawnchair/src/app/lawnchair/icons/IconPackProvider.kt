@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Process
 import android.os.UserHandle
 import com.android.launcher3.icons.ClockDrawableWrapper
-import com.android.launcher3.icons.ThemedIconDrawable
 import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
 

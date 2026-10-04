@@ -38,6 +38,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.util.Log
 import android.util.Size
 import android.view.View
 import android.widget.TextView
@@ -46,8 +47,10 @@ import androidx.core.graphics.createBitmap
 import androidx.core.os.UserManagerCompat
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.preferences2.firstCached
 import app.lawnchair.theme.color.ColorOption
 import app.lawnchair.theme.color.tokens.ColorTokens
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.util.Executors.MAIN_EXECUTOR
@@ -357,3 +360,54 @@ inline fun <T> listWhileNotNull(generator: () -> T?): List<T> = mutableListOf<T>
 }
 
 fun String.toTitleCase(): String = splitToSequence(" ").map { replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() } }.joinToString(" ")
+
+// Rebase Phase 2 adapt (#532): versionParser/getApkVersionComparison were dropped during
+// the anchor rebase; OnboardingProvider and PreferenceManager still rely on them.
+
+/**
+ * Parses the Lawnchair version code into [Major, Minor, Stage, Release, Patch].
+ *
+ * Handles both 8-digit (AA_BB_CC_DD) and 10-digit (AA_BB_CC_DD_EE) formats.
+ *
+ * Lawnchair format has: [Major, Minor, Stage, Release]
+ *
+ * pE format has: [Major, Minor, Stage, Release, Patch]
+ */
+private fun versionParser(version: Long): List<Int> {
+    var ver = version
+
+    // If version is less than 1 Billion (1,000,000,000), it is likely the 8-digit format
+    // (AA_BB_CC_DD). Multiply by 100 to shift it to 10-digit format equivalent
+    // (AA_BB_CC_DD_00), so the math below works for both.
+    if (ver < 1_000_000_000L) {
+        ver *= 100
+    }
+
+    val patch = (ver % 100).toInt() // EE
+    val release = ((ver / 100) % 100).toInt() // DD
+    val stage = ((ver / 10000) % 100).toInt() // CC
+    val minor = ((ver / 1000000) % 100).toInt() // BB
+    val major = ((ver / 100000000)).toInt() // AA
+
+    return listOf(major, minor, stage, release, patch)
+}
+
+/**
+ * Get current version for the purpose of comparing them.
+ * Returns a [Pair] of (current build version, apk build version else null)
+ */
+fun Context.getApkVersionComparison(): Pair<List<Int>, Nothing?> {
+    val pm = packageManager
+
+    val currentVersionCode = if (Utilities.ATLEAST_P) {
+        pm.getPackageInfo(packageName, 0).longVersionCode
+    } else {
+        BuildConfig.VERSION_CODE.toLong()
+    }
+
+    val currentParsed = versionParser(currentVersionCode)
+
+    Log.d("UpdateCheck", "Current: $currentParsed")
+
+    return Pair(currentParsed, null)
+}

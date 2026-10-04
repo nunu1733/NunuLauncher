@@ -6,6 +6,7 @@ import android.os.UserHandle
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.launcher
 import com.android.launcher3.BuildConfig
+import com.android.quickstep.SystemUiProxy
 import com.android.quickstep.views.RecentsView
 import com.android.systemui.shared.recents.model.Task
 import com.android.systemui.shared.system.ActivityManagerWrapper
@@ -20,8 +21,11 @@ object RecentHelper {
             val currentUserId = Process.myUserHandle().identifier
             for (i in 0..taskViewCount) {
                 try {
-                    val rawTasks = ActivityManagerWrapper.getInstance()
+                    // Rebase Phase 2 adapt (#532): recent tasks now come from SystemUiProxy
+                    // as grouped entries; enumerate the individual tasks of each group.
+                    val rawGroups = SystemUiProxy.INSTANCE.get(context)
                         .getRecentTasks(i, currentUserId)
+                    val rawTasks = rawGroups.flatMap { it.taskInfoList }
                     for (recentTaskInfo in rawTasks) {
                         var packageName = recentTaskInfo.baseIntent.component?.packageName
                         val taskKey = Task.TaskKey(recentTaskInfo)
