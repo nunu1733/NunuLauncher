@@ -281,9 +281,16 @@ class ExchangeImportFailureDisplayTest {
         // IM-AC-04 lifecycle oracle (process-death side, structural): the
         // recording is process memory only — nothing serializable that a
         // system-initiated process death could restore through saved state.
+        // Issue #532 G2 enablement: Kotlin 2.4 rejects statically-impossible
+        // `is` checks (IMPOSSIBLE_IS_CHECK_ERROR), so the same runtime
+        // assertion is expressed through assignability instead.
         val row = RecentImportFailure("CONTEXT_STALE", "explanation")
-        assertTrue(row !is java.io.Serializable)
-        assertTrue(ExchangeImportFailureDiagnostics !is java.io.Serializable)
+        assertTrue(!java.io.Serializable::class.java.isAssignableFrom(row.javaClass))
+        assertTrue(
+            !java.io.Serializable::class.java.isAssignableFrom(
+                ExchangeImportFailureDiagnostics.javaClass,
+            ),
+        )
     }
 
     private fun resourceNames(ids: List<Int>): List<String> {

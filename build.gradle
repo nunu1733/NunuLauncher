@@ -384,6 +384,7 @@ android {
 
         test {
             java.srcDirs = ['tests/unit']
+            kotlin.directories.addAll('tests/unit')
         }
 
         androidTest {
