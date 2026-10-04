@@ -163,9 +163,8 @@ persistent state・DB書込経路・同意gate構造・validator/normalizer契�
 
 ## Domain language
 
-`CONTEXT.md` への追加用語（#365はmerge済み（PR #379）のため正本改訂の所有者は不存在であり、
-**本Issueが所有する**。実装PRで `CONTEXT.md` へ反映する）。CONTEXT.mdへの登録は下記の
-**手段別失敗投影** 1項目とし、primary remedy・面レベル手段はその定義内の概念として
+本specが **手段別失敗投影** の定義の正本である（#444で `CONTEXT.md` から移動。
+`CONTEXT.md` は参照を保持する）。primary remedy・面レベル手段はその定義内の概念として
 含める（用語の爆発を避ける）。
 
 **手段別失敗投影 (Failure Remedy Projection)**:

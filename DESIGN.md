@@ -91,6 +91,13 @@ recover(RecoveryRequest) -> RecoveryResult
 - **Model-verifiable Projection**: Model SnapshotとDB再取得を比較できるフィールド集合。item identity、container、placement、kind、folder構成、widget bind、profile identity等を含み、modelが表現しないDB専用フィールドはDB側で検証する。
 - **Correlated Reload Generation**: 1回のreload要求と完了を同じcorrelation tokenで結び、loader transactionのcommit/close後にのみ完了と扱う検証単位。単なるLoad IDや遅延時間を成功条件にしない。
 
+#### Durable status vocabulary
+
+これもdomain用語ではなく、Layout Application moduleが所有する読み取り専用の導出語彙である（#444で `CONTEXT.md` から移動。Organizer hub（D-15）のUXからも参照される）。
+
+- **organizer durable status (永続整理状態)**: application moduleがrecovery storeの永続recordとtombstoneから導出する、閉じた語彙の状態表示。永続化せず毎回導出するため、記述対象のrecordより長く生存しない。recordの中身、revision、digest、アイテム識別子を含まない。
+  _Avoid_: Organizer status（process-localなrun状態と混同する場合）、Backup state
+
 ### 4.3 Rule Management module
 
 version付き整理ルールの読込、validation、migration、exportを担当する。ファイル構文はこのmoduleのimplementation detailとし、計画moduleはtyped modelだけを受け取る。XML、JSONなどの選定はIssueで決める。
