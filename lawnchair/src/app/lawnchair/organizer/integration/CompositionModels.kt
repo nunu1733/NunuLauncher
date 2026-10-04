@@ -62,6 +62,14 @@ sealed interface InputReadinessReason {
     ) : InputReadinessReason
     data class ContradictorySource(val source: PolicySourceKind) : InputReadinessReason
     data class InvalidCanonicalCapture(val category: CaptureFailureCategory) : InputReadinessReason
+
+    /**
+     * Issue #228 (review P2 #4): at least one selected candidate is already
+     * represented in the composition-time capture — the layout changed
+     * between detection and confirm. Typed re-detect outcome; nothing was
+     * planned or written.
+     */
+    data object StaleCandidateSelection : InputReadinessReason
 }
 
 enum class CaptureFailureCategory {
@@ -118,6 +126,9 @@ enum class InputCompositionCode {
     SIGNAL_CONTRADICTION,
     TARGET_PARTITION,
     DYNAMIC_CUT_UNSTABLE,
+
+    /** Issue #228 (review P2 #4): selection overlaps the fresh capture's represented identities. */
+    CANDIDATE_SELECTION_STALE,
 }
 
 data class ClassificationEvidenceRequest(

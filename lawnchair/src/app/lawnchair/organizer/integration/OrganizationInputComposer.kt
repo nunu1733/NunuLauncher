@@ -18,6 +18,10 @@ import app.lawnchair.organizer.planning.AppPairMember
 import app.lawnchair.organizer.planning.AppPairMetadata
 import app.lawnchair.organizer.planning.AppPairRef
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CandidateItem
+import app.lawnchair.organizer.planning.CandidateKind
+import app.lawnchair.organizer.planning.CandidatePlanningIds
+import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.ClassificationSignal
@@ -26,6 +30,7 @@ import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.DeviceCapabilities
 import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.FolderRef
+import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.ItemKind
 import app.lawnchair.organizer.planning.LayoutSnapshot
@@ -56,6 +61,16 @@ import app.lawnchair.organizer.rules.sha256Canonical
 
 interface OrganizationInputComposer {
     fun composeFullOrganization(): OrganizationInputComposition
+
+    /**
+     * Issue #228 (D-2): composes a scope-composed organize input — the full
+     * re-organization of the current capture plus the explicitly selected
+     * missing-app candidates as `TargetSet.additions`. An empty selection is
+     * valid and behaves as the plain full organization (same input shape,
+     * `ScopeComposedOrganization` run mode). Duplicate identities in
+     * [selection] collapse deterministically (identity equality).
+     */
+    fun composeScopeComposedOrganization(selection: List<CandidateTarget.AppKey>): OrganizationInputComposition
 }
 
 /**
@@ -119,7 +134,13 @@ class DefaultOrganizationInputComposer(
     // captured; production wiring passes PreferenceWorkspaceOverlapToleranceSource.
     private val overlapTolerance: WorkspaceOverlapToleranceSource,
 ) : OrganizationInputComposer {
-    override fun composeFullOrganization(): OrganizationInputComposition {
+    override fun composeFullOrganization(): OrganizationInputComposition = composeInternal(selection = null)
+
+    override fun composeScopeComposedOrganization(selection: List<CandidateTarget.AppKey>): OrganizationInputComposition = composeInternal(
+        selection.distinct().sortedWith(compareBy({ it.component.value }, { it.profile.value })),
+    )
+
+    private fun composeInternal(selection: List<CandidateTarget.AppKey>?): OrganizationInputComposition {
         val capture = (captureSource.capture() as? CanonicalCaptureReadResult.Ready)?.snapshot
             ?: return notReady(
                 InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.CAPTURE_UNAVAILABLE),
@@ -182,7 +203,41 @@ class DefaultOrganizationInputComposer(
         bundle.validate()?.let {
             return notReady(incompatibleBundleReason(bundle), InputCompositionCode.BUNDLE_INVALID, bundle.identity.sha256)
         }
-        val requests = mapped.items.mapNotNull(::evidenceRequest)
+        // Issue #228: selected candidates join the input as explicit additions
+        // with deterministic planning IDs (spec AC-15) and the same 1x1
+        // application shape the incremental run consumes.
+        // Review P2 #4: the selection was cut against the detection capture,
+        // but this composition runs on a fresh capture. An app placed on Home
+        // between detection and confirm must never be planned as an Add on
+        // top of itself — re-verify the selection against the fresh snapshot's
+        // stable identities and fail closed (re-detect) on any overlap.
+        val representedIdentities = mapped.items.asSequence()
+            .mapNotNull { (it.target as? TargetKey.AppKey) }
+            .map { CandidateTarget.AppKey(it.component, it.profile) }
+            .toSet()
+        val selectionIdentities: List<CandidateTarget.AppKey> = selection.orEmpty()
+        if (selectionIdentities.any { it in representedIdentities }) {
+            return notReady(
+                InputReadinessReason.StaleCandidateSelection,
+                InputCompositionCode.CANDIDATE_SELECTION_STALE,
+            )
+        }
+        val additions = selection?.map { target ->
+            CandidateItem(
+                id = CandidatePlanningIds.planningId(target),
+                profile = target.profile,
+                kind = CandidateKind.APPLICATION,
+                target = target,
+                availability = Availability.AVAILABLE,
+                span = GridSpan(1, 1),
+            )
+        }.orEmpty()
+        val candidateRequests = selection.orEmpty().mapNotNull { target ->
+            appKeyPackage(target.component)?.let { packageName ->
+                ClassificationEvidenceRequest(CandidatePlanningIds.planningId(target), packageName, target.profile)
+            }
+        }
+        val requests = (mapped.items.mapNotNull(::evidenceRequest) + candidateRequests)
             .sortedWith(compareBy({ it.profile.value }, { it.packageName.value }, { it.item.value }))
         var expectedCut: app.lawnchair.organizer.rules.PolicyBundleIdentity? = null
         var observedCut: app.lawnchair.organizer.rules.PolicyBundleIdentity? = null
@@ -286,7 +341,7 @@ class DefaultOrganizationInputComposer(
                     bundle.identity.sha256,
                 )
             }
-            val signals = materializeSignals(mapped.items, bundle, firstOverrides, firstEvidence)
+            val signals = materializeSignals(requests, bundle, firstOverrides, firstEvidence)
                 ?: return notReady(
                     InputReadinessReason.ContradictorySource(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
                     InputCompositionCode.SIGNAL_CONTRADICTION,
@@ -304,6 +359,19 @@ class DefaultOrganizationInputComposer(
                     InputCompositionCode.TARGET_PARTITION,
                     bundle.identity.sha256,
                 )
+            // Issue #228 (spec AC-13): a scope-composed run carries the
+            // selection inside the target identity, so a different selection
+            // set can never reuse a stale provenance identity. An empty
+            // selection keeps the plain full-organization identity byte for
+            // byte.
+            val composedTargets = if (selection == null) {
+                targets
+            } else {
+                MaterializedTargetSet(
+                    targets.targets.copy(additions = additions),
+                    scopeComposedTargetsIdentity(targets.identity, additions),
+                )
+            }
             // Spec 182: effective RuleSemantics = bundle rules base with the
             // selected strategy substituted (absence means the bundle default).
             val effectiveStrategy = firstSelection.selection ?: bundle.layoutStrategies.default
@@ -311,13 +379,20 @@ class DefaultOrganizationInputComposer(
             val rulesIdentity = effectiveRulesIdentity(bundle.identity, firstSelection.identity, effectiveRules)
             val taxonomyIdentity = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.taxonomy.version.value, bundle.identity.sha256)
             return OrganizationInputComposition.Ready(
-                OrganizationInput(mapped.snapshot, effectiveRules, bundle.taxonomy, signals.signals, targets.targets, RunMode.FullOrganization),
+                OrganizationInput(
+                    mapped.snapshot,
+                    effectiveRules,
+                    bundle.taxonomy,
+                    signals.signals,
+                    composedTargets.targets,
+                    if (selection == null) RunMode.FullOrganization else RunMode.ScopeComposedOrganization,
+                ),
                 InputProvenance(
                     capture.revision,
                     rulesIdentity,
                     taxonomyIdentity,
                     signals.identity,
-                    targets.identity,
+                    composedTargets.identity,
                     bundle.identity,
                     firstSelection.identity,
                 ),
@@ -331,21 +406,20 @@ class DefaultOrganizationInputComposer(
     }
 
     private fun materializeSignals(
-        items: List<CapturedItem>,
+        requests: List<ClassificationEvidenceRequest>,
         bundle: OrganizerPolicyBundle,
         overrideSnapshot: CategoryOverrideSnapshot,
         evidence: PlatformClassificationEvidence,
     ): MaterializedSignals? {
         val signals = mutableListOf<ClassificationSignal>()
-        for (item in items) {
-            val request = evidenceRequest(item) ?: continue
+        for (request in requests) {
             val candidate = overrideSnapshot.assignments[CategoryOverrideKey(request.packageName, request.profile)]
                 ?.let { SignalSource.S1 to it }
-                ?: evidence.s2[item.id]?.let { SignalSource.S2 to it }
-                ?: evidence.s5[item.id]?.let { SignalSource.S5 to it }
+                ?: evidence.s2[request.item]?.let { SignalSource.S2 to it }
+                ?: evidence.s5[request.item]?.let { SignalSource.S5 to it }
                 ?: continue
             if (candidate.second !in bundle.taxonomy.allowedCategories) return null
-            signals += ClassificationSignal(item.id, candidate.first, candidate.second)
+            signals += ClassificationSignal(request.item, candidate.first, candidate.second)
         }
         val ordered = signals.sortedWith(compareBy({ it.item.value }, { it.source.ordinal }, { it.candidate.value }))
         val canonical = ordered.joinToString("\n") { "${it.item.value}:${it.source.name}:${it.candidate.value}" }
@@ -362,11 +436,35 @@ class DefaultOrganizationInputComposer(
     private fun evidenceRequest(item: CapturedItem): ClassificationEvidenceRequest? {
         if (item.availability != Availability.AVAILABLE) return null
         val packageName = when (val target = item.target) {
-            is TargetKey.AppKey -> target.component.value.substringBefore('/').takeIf { it.isNotBlank() }?.let(::PackageName)
+            is TargetKey.AppKey -> appKeyPackage(target.component)
             is TargetKey.ShortcutKey -> target.packageName
             else -> null
         } ?: return null
         return ClassificationEvidenceRequest(item.id, packageName, item.profile)
+    }
+
+    private fun appKeyPackage(component: app.lawnchair.organizer.planning.ComponentKey): app.lawnchair.organizer.planning.PackageName? = component.value.substringBefore('/').takeIf { it.isNotBlank() }?.let(::PackageName)
+
+    /**
+     * Issue #228 (spec AC-13): extends the materialized full-target identity
+     * with the canonical addition content. An empty selection returns the base
+     * identity unchanged, so the scope-composed composition with no additions
+     * is provenance-equivalent to the plain full organization.
+     */
+    private fun scopeComposedTargetsIdentity(
+        base: PolicyInputIdentity,
+        additions: List<CandidateItem>,
+    ): PolicyInputIdentity {
+        if (additions.isEmpty()) return base
+        val canonical = additions
+            .map { "${it.id.value}:${it.kind.name}:${it.span.width}x${it.span.height}:${it.availability.name}" }
+            .sorted()
+            .joinToString("\n")
+        return PolicyInputIdentity(
+            base.source,
+            base.versionOrGeneration,
+            sha256Canonical("${base.sha256}\n$canonical"),
+        )
     }
 
     private fun mapLayout(state: LayoutState, revision: app.lawnchair.organizer.planning.RevisionId): MappedLayout? {

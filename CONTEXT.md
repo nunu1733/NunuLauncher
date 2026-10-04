@@ -56,6 +56,10 @@ _Avoid_: Reset、洗い替え
 新しい配置アイテムを既存レイアウトへ加え、全体整理の規則と整合するplanを作る整理run。
 _Avoid_: Auto add
 
+**スコープ合成整理 (Scope-Composed Organization)**:
+既存配置の全体再整理と、ユーザーが明示的に選択したホーム未配置アプリを候補追加として、1つのplanで扱う整理run ([spec 228](./specs/228-organizer-missing-app-selection/spec.md))。未選択の候補はplanに現れない。
+_Avoid_: 全体整理＋追加 (別々のrunの連結と混同する場合)、自動追加 (選択は常に明示的)
+
 **ロック配置 (Locked Placement)**:
 整理runが変更してはならない配置。配置アイテム自体だけでなく、その占有領域も制約となる。
 _Avoid_: Locked item（何が固定されるか曖昧な場合）

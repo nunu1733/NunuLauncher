@@ -66,9 +66,11 @@ import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
 import app.lawnchair.organizer.rules.LayoutStrategySelectionWriteResult
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
+import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
@@ -123,6 +125,16 @@ fun ManualOrganizationPreferences(
             .orEmpty()
     }
     val expandedPreviewGroups = remember(previewDetails) { mutableStateOf(emptySet<Int>()) }
+
+    // Issue #228: the selection surface's process-local state, keyed by the
+    // owning run — a fresh detection cut always starts unchecked (D-1/AC-3),
+    // even when the previous run's Selecting state is structurally equal.
+    // Hoisted here because LazyListScope item builders are not composable
+    // contexts.
+    val selectingState = state as? ManualOrganizationRun.State.Selecting
+    var missingAppSelection by remember(selectingState?.runId) {
+        mutableStateOf(MissingAppSelectionState(selectingState?.candidates.orEmpty(), emptySet()))
+    }
 
     ManualOrganizationBackHandler(coordinator)
 
@@ -234,13 +246,52 @@ fun ManualOrganizationPreferences(
                     ProgressText(R.string.manual_organization_capturing, focusRequester)
                 }
 
+                ManualOrganizationRun.State.CandidateDetection -> item {
+                    // Issue #228: read-only detection between capture and the
+                    // selection surface; browsing writes nothing.
+                    ProgressText(R.string.manual_organization_detecting_missing_apps, focusRequester)
+                }
+
+                is ManualOrganizationRun.State.Selecting -> {
+                    // Issue #228: explicit scope selection (D-1: all
+                    // candidates start unchecked). Selection survives query
+                    // changes; Select all matches the filtered set, Clear all
+                    // clears the whole set (spec §2).
+                    missingAppSelectionItems(
+                        selection = missingAppSelection,
+                        onSelectionChange = { missingAppSelection = it },
+                        onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
+                        onCancel = { execute(coordinator::cancel) },
+                    )
+                }
+
                 ManualOrganizationRun.State.Planning -> item {
                     ProgressText(R.string.manual_organization_planning, focusRequester)
                 }
 
                 is ManualOrganizationRun.State.InputUnavailable -> item {
                     FocusTargetText(
-                        text = stringResource(currentState.reason.copyKind()),
+                        text = if (currentState.reason is app.lawnchair.organizer.integration.InputReadinessReason.StaleCandidateSelection) {
+                            // Issue #228 (review P2 #4): the selection was cut
+                            // against an older layout; re-detection resolves it.
+                            stringResource(R.string.manual_organization_selection_stale)
+                        } else {
+                            stringResource(currentState.reason.copyKind())
+                        },
+                        focusRequester = focusRequester,
+                    )
+                    ClickablePreference(
+                        label = stringResource(R.string.manual_organization_retry),
+                        onClick = { execute { coordinator.start(trigger) } },
+                    )
+                }
+
+                is ManualOrganizationRun.State.CandidateResolutionFailed -> item {
+                    // Issue #228 (review P2 #2): a selected app stopped
+                    // resolving; re-detection is the only recovery, and
+                    // nothing was written.
+                    FocusTargetText(
+                        text = stringResource(R.string.manual_organization_candidate_unresolved),
                         focusRequester = focusRequester,
                     )
                     ClickablePreference(
@@ -325,6 +376,36 @@ fun ManualOrganizationPreferences(
                             sections = previewSections,
                             expandedGroups = expandedPreviewGroups,
                         )
+                    }
+                }
+
+                is ManualOrganizationRun.State.PreviewUnavailable -> {
+                    // Issue #228 (spec AC-14): this run adds apps, so it cannot
+                    // be confirmed from a count-only fallback. Nothing has
+                    // been written; the only paths are re-preview (the layout
+                    // may simply have moved) or cancel back to Idle.
+                    item {
+                        FocusTargetText(
+                            text = stringResource(R.string.manual_organization_preview_unavailable_add),
+                            focusRequester = focusRequester,
+                        )
+                    }
+                    summaryItems(currentState.summary)
+                    item {
+                        DecisionActionsRow {
+                            Button(
+                                onClick = { execute(coordinator::retryPlanPreview) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(text = stringResource(R.string.manual_organization_preview_retry))
+                            }
+                            OutlinedButton(
+                                onClick = { execute(coordinator::cancel) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(text = stringResource(R.string.manual_organization_cancel))
+                            }
+                        }
                     }
                 }
 
@@ -825,6 +906,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.changeCountItems(
     summary.movedByReason.forEach { (reason, count) ->
         item { SummaryText(stringResource(movedReasonString(reason), count)) }
     }
+    if (summary.addedCount > 0) {
+        item { SummaryText(stringResource(R.string.manual_organization_added_count, summary.addedCount)) }
+    }
     item { SummaryText(stringResource(R.string.manual_organization_preserved_count, summary.preservedCount)) }
     summary.preservedByReason.forEach { (reason, count) ->
         item { SummaryText(stringResource(preservedReasonString(reason), count)) }
@@ -863,6 +947,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appliedResultItems(
                 summary.movedCount,
             ),
         )
+    }
+    if (summary.addedCount > 0) {
+        item {
+            SummaryText(
+                pluralStringResource(
+                    R.plurals.manual_organization_applied_added_count,
+                    summary.addedCount,
+                    summary.addedCount,
+                ),
+            )
+        }
     }
     summary.movedByReason.forEach { (reason, count) ->
         item { SummaryText(stringResource(movedReasonString(reason), count)) }
@@ -952,6 +1047,15 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
 ) {
     contextItems(summary)
     item { SummaryText(stringResource(R.string.manual_organization_moved_count, counts.movedCount)) }
+    if (counts.addedCount > 0) {
+        item { SummaryText(stringResource(R.string.manual_organization_added_count, counts.addedCount)) }
+    }
+    // Issue #228 (review P1 follow-up): scope-unplaced candidates ride the
+    // summary's unplaced vocabulary — informational context lines, like
+    // contextItems, so the placed Adds and the overflow stay visible together.
+    summary.unplacedByReason.forEach { (reason, count) ->
+        item { SummaryText(stringResource(unplacedReasonString(reason), count)) }
+    }
     item { SummaryText(stringResource(R.string.manual_organization_preserved_count, counts.preservedCount)) }
     item { SummaryText(stringResource(R.string.manual_organization_new_folders_count, counts.newFolderCount)) }
     item { SummaryText(stringResource(R.string.manual_organization_new_pages_count, counts.newPageCount)) }
@@ -1039,6 +1143,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
  */
 private fun organizationPreviewWording(context: Context): OrganizationPreviewWording = ResourceOrganizationPreviewWording(
     groupMoved = context.getString(R.string.manual_organization_group_moved),
+    groupAdded = context.getString(R.string.manual_organization_group_added),
+    addDescriptor = context.getString(R.string.manual_organization_preview_add_descriptor),
+    addRow = context.getString(R.string.manual_organization_preview_add_row),
     groupNewFolders = context.getString(R.string.manual_organization_group_new_folders),
     groupNewPages = context.getString(R.string.manual_organization_group_new_pages),
     groupPreserved = context.getString(R.string.manual_organization_group_preserved),
@@ -1105,6 +1212,9 @@ private fun organizationPreviewWording(context: Context): OrganizationPreviewWor
 /** Resource-backed [OrganizationPreviewWording]; all values resolved up front. */
 private class ResourceOrganizationPreviewWording(
     override val groupMoved: String,
+    override val groupAdded: String,
+    override val addDescriptor: String,
+    override val addRow: String,
     override val groupNewFolders: String,
     override val groupNewPages: String,
     override val groupPreserved: String,
@@ -1203,6 +1313,7 @@ private fun preservedReasonString(reason: PreserveReason): Int = when (reason) {
 private fun unplacedReasonString(reason: UnplacedReason): Int = when (reason) {
     UnplacedReason.EXCEEDS_GRID_DIMENSIONS -> R.string.manual_organization_unplaced_grid
     UnplacedReason.TARGET_UNAVAILABLE -> R.string.manual_organization_unplaced_target
+    UnplacedReason.STRATEGY_SCOPE_FULL -> R.string.manual_organization_unplaced_strategy_scope
 }
 
 private fun rejectionReasonString(reason: RejectionCode): Int = when (reason) {

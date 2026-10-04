@@ -38,6 +38,10 @@ class ApplyProtocol(
     private val faults: FaultInjector,
     private val mutex: RunMutexPort,
     private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
+    // Issue #228: apply-time candidate availability re-verification. Null in
+    // legacy test wiring; a plan that inserts candidates then fails closed
+    // (the port is mandatory whenever candidates can reach apply).
+    private val candidateAvailability: CandidateAvailabilityPort? = null,
 ) {
 
     fun apply(plan: ValidatedLayoutPlan, runId: RunId? = null): ApplyResult {
@@ -119,6 +123,26 @@ class ApplyProtocol(
             isNoChange(plan) -> {
                 ctx.terminalApplyStage = ApplyStage.A2
                 return ApplyResult.NoChanges(runId)
+            }
+        }
+
+        // Issue #228 (spec §6): fail-closed re-verification of the selected
+        // candidates' component availability, on the same pre-write boundary
+        // as the stale-revision recheck above. A disabled/suspended/
+        // uninstalled candidate — or a verification that itself failed —
+        // rejects the whole apply before any checkpoint or DB write.
+        val candidateIdentities = plan.actions.mapNotNull { action ->
+            val insert = action as? ApplyAction.Insert ?: return@mapNotNull null
+            if (insert.ref !is app.lawnchair.organizer.application.public.ApplicationItemRef.PlannedCandidate) return@mapNotNull null
+            (insert.intended.targetKey as? app.lawnchair.organizer.planning.TargetKey.AppKey)
+                ?.let { app.lawnchair.organizer.planning.CandidateTarget.AppKey(it.component, it.profile) }
+        }
+        if (candidateIdentities.isNotEmpty()) {
+            val port = candidateAvailability
+            val verified = port?.verifyLaunchable(candidateIdentities)
+            if (verified !is AvailabilityVerification.AllAvailable) {
+                ctx.terminalApplyStage = ApplyStage.A2
+                return ApplyResult.Rejected(runId, PreWriteRejection.CANDIDATE_UNAVAILABLE)
             }
         }
 
@@ -601,6 +625,7 @@ class ApplyProtocol(
             PreWriteRejection.LOCK_STATE_UNAVAILABLE,
             PreWriteRejection.IDENTITY_EXHAUSTED,
             PreWriteRejection.RECOVERY_STORE_UNAVAILABLE,
+            PreWriteRejection.CANDIDATE_UNAVAILABLE,
             -> ApplyStage.A2
 
             PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED,

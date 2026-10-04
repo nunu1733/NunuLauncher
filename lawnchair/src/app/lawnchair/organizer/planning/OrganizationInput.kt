@@ -12,6 +12,15 @@ data class OrganizationInput(
 enum class RunMode {
     FullOrganization,
     IncrementalPlacement,
+
+    /**
+     * Issue #228 (D-2): scope-composed organize — the full re-organization of
+     * the captured layout and the explicitly selected missing-app candidates
+     * are planned in one run. Unlike [FullOrganization], non-empty
+     * `TargetSet.additions` are valid here; unlike [IncrementalPlacement],
+     * existing items are re-organized rather than all preserved.
+     */
+    ScopeComposedOrganization,
 }
 
 data class LayoutSnapshot(

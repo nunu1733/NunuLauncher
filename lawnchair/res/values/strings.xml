@@ -1118,6 +1118,9 @@
     <string name="manual_organization_preserved_already_canonical">Already-canonical placements: %1$d</string>
     <string name="manual_organization_unplaced_grid">Unplaced because the item exceeds grid dimensions: %1$d</string>
     <string name="manual_organization_unplaced_target">Unplaced because the target is unavailable: %1$d</string>
+    <string name="manual_organization_unplaced_strategy_scope">Unplaced because the selected strategy keeps the current pages and folders: %1$d</string>
+    <string name="manual_organization_selection_stale">The Home layout changed since these apps were selected. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
+    <string name="manual_organization_candidate_unresolved">A selected app can no longer be added. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
     <string name="manual_organization_warning_legacy_shortcut">Legacy shortcuts require review: %1$d</string>
     <string name="manual_organization_warning_fallback_category">Fallback category used: %1$d</string>
     <string name="manual_organization_warning_unavailable">Unavailable placements were preserved: %1$d</string>
@@ -1154,8 +1157,32 @@
     <string name="manual_organization_empty_folder_constraint">Empty folders preserved: %1$d</string>
     <!-- Issue #195: concrete change list on the confirmation surface -->
     <string name="manual_organization_preview_details_unavailable">A detailed change list could not be prepared this time. Review the summary counts before applying.</string>
+    <!-- Issue #228: missing-app selection and Add rows -->
+    <string name="manual_organization_detecting_missing_apps">Checking for apps that are not on the Home screen…</string>
+    <string name="manual_organization_missing_apps_title">Select apps to organize</string>
+    <plurals name="manual_organization_missing_apps_selected_count">
+        <item quantity="one">%1$d app selected</item>
+        <item quantity="other">%1$d apps selected</item>
+    </plurals>
+    <string name="manual_organization_missing_apps_empty">All installed apps are already on the Home screen. Continue to organize the current layout.</string>
+    <string name="manual_organization_missing_apps_search_hint">Search apps</string>
+    <string name="manual_organization_missing_apps_select_all">Select all</string>
+    <string name="manual_organization_missing_apps_clear_all">Clear all</string>
+    <string name="manual_organization_missing_apps_continue">Continue</string>
+    <string name="manual_organization_missing_apps_state_checked">Selected</string>
+    <string name="manual_organization_missing_apps_state_unchecked">Not selected</string>
+    <string name="manual_organization_preview_unavailable_add">The detailed change list for this proposal, which adds new apps, could not be prepared. Nothing has been changed. New apps are only added after the full list is reviewed.</string>
+    <string name="manual_organization_preview_retry">Retry preview</string>
+    <string name="manual_organization_added_count">Apps to add: %1$d</string>
+    <plurals name="manual_organization_applied_added_count">
+        <item quantity="one">%1$d app added</item>
+        <item quantity="other">%1$d apps added</item>
+    </plurals>
     <string name="manual_organization_changes_heading">Proposed changes</string>
     <string name="manual_organization_group_moved">Move (%1$d)</string>
+    <string name="manual_organization_group_added">Add (%1$d)</string>
+    <string name="manual_organization_preview_add_descriptor">%1$s (%2$s)</string>
+    <string name="manual_organization_preview_add_row">Add %1$s → %2$s</string>
     <string name="manual_organization_group_new_folders">New folders (%1$d)</string>
     <string name="manual_organization_group_new_pages">New pages (%1$d)</string>
     <string name="manual_organization_group_preserved">Preserve (%1$d)</string>

@@ -1,8 +1,11 @@
 package app.lawnchair.organizer.application.actions
 
+import app.lawnchair.organizer.application.protocol.CandidateApplicationResolution
+import app.lawnchair.organizer.application.protocol.CandidateApplicationResolver
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
+import app.lawnchair.organizer.application.public.CandidateResolutionFailure
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.CanonicalItemState
 import app.lawnchair.organizer.application.public.FolderTitleResolver
@@ -19,6 +22,8 @@ import app.lawnchair.organizer.application.public.RankedMember
 import app.lawnchair.organizer.application.public.StructureState
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.public.WidgetState
+import app.lawnchair.organizer.planning.CandidateItem
+import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.FolderRef
@@ -29,19 +34,33 @@ import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.Planned
+import app.lawnchair.organizer.planning.PlannedPlacement
 import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.UnplacedReason
 
 /**
  * Bridges the exact planner artifact for one captured [OrganizationInput] to
  * the accepted layout-application input. The bridge is deliberately strict:
  * malformed, incomplete, stale, destructive, or structurally inconsistent
  * plans return [Result.Invalid] and never reach the application protocol.
+ *
+ * Issue #228: a `ScopeComposedOrganization` plan partitions into captured
+ * placements (Preserve/Update against the source state) and candidate
+ * placements (Insert through the application-owned [CandidateApplicationResolver]).
  */
 internal object OrganizationPlanMaterializer {
     sealed interface Result {
         data class Ready(val plan: ValidatedLayoutPlan) : Result
         data object Invalid : Result
+
+        /**
+         * Issue #228 (review P2 #2): a selected candidate could not be
+         * resolved to canonical application content. Distinct from
+         * [Invalid] so the run surfaces the typed failure as "re-detect and
+         * retry" instead of a generic plan rejection — nothing was written.
+         */
+        data class CandidateResolutionFailed(val failure: CandidateResolutionFailure) : Result
     }
 
     fun materialize(
@@ -49,6 +68,7 @@ internal object OrganizationPlanMaterializer {
         result: PlanningResult,
         sourceState: LayoutState,
         titleResolver: FolderTitleResolver,
+        candidateResolver: CandidateApplicationResolver? = null,
     ): Result {
         if (result.revision != input.snapshot.revision ||
             result.ruleVersion != input.rules.version ||
@@ -79,16 +99,63 @@ internal object OrganizationPlanMaterializer {
         if (sourceItems.size != sourceState.items.size) return Result.Invalid
         val snapshotIds = input.snapshot.items.map { it.id }.toSet()
         if (snapshotIds.size != input.snapshot.items.size || snapshotIds != sourceItems.keys.filterNotNull().toSet()) return Result.Invalid
-        if (planned.placements.map { it.item }.toSet() != snapshotIds || planned.placements.distinctBy { it.item }.size != planned.placements.size) {
+
+        // Issue #228: partition the planner's placements into captured-item
+        // placements (must cover the snapshot exactly) and candidate
+        // placements. Review P1 follow-up: the strategy's page/folder scope
+        // may legitimately leave selected candidates unplaced
+        // (`Planned.unplaced`, STRATEGY_SCOPE_FULL) — the accepted spec's
+        // overflow contract makes them a reported warning, never a failure
+        // and never a creation. The partition is therefore accepted when
+        // `placed ∪ unplaced == additions` and the two are disjoint.
+        val candidateById = input.targets.additions.associateBy { it.id }
+        val capturedPlacements = mutableListOf<PlannedPlacement>()
+        val candidatePlacements = mutableListOf<PlannedPlacement>()
+        for (placement in planned.placements) {
+            if (placement.item in snapshotIds) {
+                capturedPlacements += placement
+            } else if (placement.item in candidateById) {
+                candidatePlacements += placement
+            } else {
+                return Result.Invalid
+            }
+        }
+        if (capturedPlacements.map { it.item }.toSet() != snapshotIds || capturedPlacements.distinctBy { it.item }.size != capturedPlacements.size) {
             return Result.Invalid
         }
+        val placedCandidateIds = candidatePlacements.map { it.item }.toSet()
+        if (placedCandidateIds.size != candidatePlacements.size) return Result.Invalid
+        val unplacedCandidateIds = planned.unplaced.map { it.item }.toSet()
+        if (unplacedCandidateIds.size != planned.unplaced.size) return Result.Invalid
+        if (placedCandidateIds + unplacedCandidateIds != candidateById.keys) return Result.Invalid
+        if (placedCandidateIds.any { it in unplacedCandidateIds }) return Result.Invalid
+        // Unplaced entries are only ever scope-unplaced candidates; a
+        // captured item can never appear there in a Planned outcome.
+        if (planned.unplaced.any { it.reason != UnplacedReason.STRATEGY_SCOPE_FULL }) return Result.Invalid
+        if (candidatePlacements.isNotEmpty() && candidateResolver == null) return Result.Invalid
 
         val plannedPageOrdinals = planned.newPages.map { it.ordinal }.toSet()
         val originalItems = linkedMapOf<ApplicationItemRef, CanonicalItemState>()
-        for (placement in planned.placements) {
+        for (placement in capturedPlacements) {
             val original = sourceItems[placement.item] ?: return Result.Invalid
             val intendedPlacement = placementState(placement.target, original, plannedPageOrdinals) ?: return Result.Invalid
             originalItems[original.ref] = original.copy(placement = intendedPlacement)
+        }
+
+        // Issue #228: resolve every selected candidate exactly once through
+        // the application-owned port; one unresolvable candidate fails the
+        // whole materialization (no partial adoption, spec §6).
+        val profileAvailability = sourceState.profiles.associate { it.id to it.availability }
+        val candidateItems = mutableListOf<CanonicalItemState>()
+        for (placement in candidatePlacements.sortedBy { it.item }) {
+            val candidate = candidateById.getValue(placement.item)
+            val resolution = candidateResolver!!.resolve((candidate.target as? CandidateTarget.AppKey) ?: return Result.Invalid)
+            // Review P2 #2: keep the typed failure so the run can direct the
+            // user to re-detection instead of a generic invalid-plan result.
+            val ready = resolution as? CandidateApplicationResolution.Ready
+                ?: return Result.CandidateResolutionFailed((resolution as CandidateApplicationResolution.Unavailable).reason)
+            if (ready.title.isBlank()) return Result.CandidateResolutionFailed(CandidateResolutionFailure.LABEL_UNAVAILABLE)
+            candidateItems += candidateItemState(candidate, ready, placement.target, plannedPageOrdinals, profileAvailability) ?: return Result.Invalid
         }
 
         val folderItems = planned.newFolders.map { folder ->
@@ -99,7 +166,7 @@ internal object OrganizationPlanMaterializer {
             if (resolvedTitle.isBlank()) return Result.Invalid
             newFolder(folder, sourceState, plannedPageOrdinals, resolvedTitle) ?: return Result.Invalid
         }
-        val allItems = (originalItems.values + folderItems).toMutableList()
+        val allItems = (originalItems.values + candidateItems + folderItems).toMutableList()
         val parentMembers = allItems
             .mapNotNull { child ->
                 val placement = child.placement as? PlacementState.FolderChild ?: return@mapNotNull null
@@ -143,6 +210,12 @@ internal object OrganizationPlanMaterializer {
                     add(ApplyAction.Update(source.ref, source, intended))
                 }
             }
+            // Issue #228: candidates are pure creations — one Insert per
+            // selected, placed candidate; there is no source state to diff.
+            candidateItems.forEach { candidate ->
+                val intended = intendedByRef[candidate.ref] ?: return Result.Invalid
+                add(ApplyAction.Insert(candidate.ref, intended))
+            }
             folderItems.forEach { folder ->
                 val intended = intendedByRef[folder.ref] ?: return Result.Invalid
                 add(ApplyAction.Insert(folder.ref, intended))
@@ -162,6 +235,42 @@ internal object OrganizationPlanMaterializer {
                 taxonomyVersion = input.taxonomy.version,
             ),
         )
+    }
+
+    /**
+     * Issue #228: canonical intended state of one selected candidate. The
+     * placeholder placement is replaced through the shared [placementState]
+     * path; a non-AVAILABLE resolution or an unknown profile fails closed.
+     */
+    private fun candidateItemState(
+        candidate: app.lawnchair.organizer.planning.CandidateItem,
+        resolution: CandidateApplicationResolution.Ready,
+        target: PlacementTarget,
+        plannedPageOrdinals: Set<app.lawnchair.organizer.planning.NewPageOrdinal>,
+        profileAvailability: Map<app.lawnchair.organizer.planning.ProfileId, ProfileAvailability>,
+    ): CanonicalItemState? {
+        val appKey = candidate.target as? app.lawnchair.organizer.planning.CandidateTarget.AppKey ?: return null
+        val availability = profileAvailability[candidate.profile] ?: return null
+        if (availability != ProfileAvailability.AVAILABLE) return null
+        if (resolution.itemAvailability != ItemAvailability.AVAILABLE) return null
+        val base = CanonicalItemState(
+            ref = ApplicationItemRef.PlannedCandidate(candidate.id),
+            kind = CanonicalItemKind.Application,
+            targetKey = TargetKey.AppKey(appKey.component, appKey.profile),
+            profile = candidate.profile,
+            profileAvailability = availability,
+            itemAvailability = ItemAvailability.AVAILABLE,
+            placement = PlacementState.UnsupportedContainer(app.lawnchair.organizer.planning.ContainerCode(Int.MIN_VALUE)),
+            title = OptionalText.Present(resolution.title),
+            intent = OptionalText.Present(resolution.intentText),
+            icon = resolution.icon,
+            widget = WidgetState.NoWidget,
+            modified = ModifiedAtMillis(0),
+            lockState = OrganizerLockState.UNLOCKED,
+            structure = StructureState.Plain,
+        )
+        val intendedPlacement = placementState(target, base, plannedPageOrdinals) ?: return null
+        return base.copy(placement = intendedPlacement)
     }
 
     private fun overlapsReservation(

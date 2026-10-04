@@ -92,6 +92,9 @@ class PreviewApplyPersistedPlacementEqualityTest {
 
             is OrganizationPlanMaterializer.Result.Invalid ->
                 throw AssertionError("materializer rejected the fixture")
+
+            is OrganizationPlanMaterializer.Result.CandidateResolutionFailed ->
+                throw AssertionError("materializer reported candidate resolution failure: ${materialized.failure}")
         }
 
         // Preview destination: derived from the plan's intended placement.
