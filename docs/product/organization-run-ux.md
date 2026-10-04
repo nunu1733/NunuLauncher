@@ -92,9 +92,9 @@ OP_UNAVAILABLE etc. Callback 名だけでは genuinely new install を証明し�
 
 | Event assessment | Required UX behavior |
 |---|---|
-| (a) event 前の persisted package+profile presence observation が target の不在を示し、(b) trustworthy install/session provenance が completed fresh install を示して update/replacing/device restore/reinstall を除外し、(c) package+profile から launchable target が一意に解決でき、全証拠が current で矛盾しない | incremental **proposal** を表示できる。preview + explicit confirmation が必須。 |
-| update、replacing、availability return、restore、reinstall、existing target 再検出 | 新規配置しない。必要なら既存 item を保持した情報だけを非侵襲的に示す。 |
-| package/user/profile 未解決、quiet/locked、launcher activity が 0 件、または一意に解決できない複数 activity、duplicate target、event 由来が曖昧、または上記 presence/provenance/target evidence が missing/stale/contradictory/process-death で失われた | ambiguous と分類し、配置しない。user は後で manual flow を開始できる。 |
+| 現baselineのpackage event（session reasonがUSER、current targetが一意でも、event前の権威あるinstall履歴がない） | `Ambiguous(PRIOR_ABSENCE_UNPROVEN)`。incremental proposal/placementを開始しない。manual flowは利用可能。 |
+| update、replacing、availability return、restore、reinstall、existing target再検出 | 新規配置しない。必要なら既存 item を保持した情報だけを非侵襲的に示す。 |
+| package/user/profile未解決、quiet/locked、launcher activityが0件、または一意に解決できない複数activity、duplicate target、event由来が曖昧、presence/provenance/target evidenceがmissing/stale/contradictory/process-deathで失われた | ambiguous と分類し、配置しない。user は後で manual flow を開始できる。 |
 | remove/unavailable/suspend | incremental placement を開始しない。既存 layout は preservation policy に従う。 |
 
 ```mermaid
@@ -102,9 +102,10 @@ stateDiagram-v2
     [*] --> PackageEvent
     PackageEvent --> Classify: retain package and profile context
     Classify --> NoPlacement: update/restore/reinstall/remove/ambiguous
-    Classify --> IncrementalProposal: unambiguous new install
+    Classify --> NoPlacement: prior absence unproven
+    NoPlacement --> ManualFlow: user starts manual organization
     IncrementalProposal --> Dismissed
-    IncrementalProposal --> Capture: review
+    IncrementalProposal --> Capture: future approved provenance only
     Capture --> Plan: incremental scope
     Plan --> Rejected: invalid or impossible
     Plan --> Preview
@@ -123,10 +124,14 @@ stateDiagram-v2
     Recovering --> RecoveryFailed: recovery failure
 ```
 
-v1 は auto-incremental を許可しない。provenance 判定は fail-closed であり、証拠を
-保存する storage/API は選ばない。別 decision が将来 auto policy を提案する場合も、
-上の両証拠、complete な state/failure/recovery UX、Issue #13 の accepted criteria を
-満たすまでは proposal/confirmation から外せない。
+v1 は auto-incremental を許可しない。Issue #54の調査では、現baselineに過去install履歴を
+権威的に得るsourceがなく、reinstall除外を証明できないため、package eventによるincremental
+eligibility自体を有効化しない。証拠比較は
+[package-provenance](../engineering/package-provenance.md)、negative decisionの判断・理由は
+[ADR-0005](../adr/0005-fresh-install-presence-evidence.md)のみを正本とする。
+将来のproduct decisionがauthoritative historyとrace/crash protocolを承認し、#52/#57の
+依存成果物が揃うまでは、package eventはproposal/confirmationへ進まず、manual flowだけを
+利用可能とする。
 
 ## 3. D-005: preview, confirmation, and recovery proposal
 
@@ -233,14 +238,16 @@ redaction, local retention, export, and logcat behavior are owned by
 External transport is out of scope and default off. Developer diagnostics do not
 replace user-facing explanations.
 
-## 8. Coverage for later UI tests
+## 8. Coverage for baseline and future UI tests
 
 | Scenario | Acceptance evidence |
 |---|---|
 | manual full | explicit start → preview → confirm; stale checkpoint does not write; recovery action after success. |
 | onboarding | non-blocking; skip/defer mutate nothing; accepted route still previews/confirms. |
-| package event | new install proposes; update/restore/reinstall/ambiguous does not auto-place. |
-| launcher activity candidates | package/profile から launchable target が 0 件、または複数で一意に解決できなければ incremental proposal/placement を行わず、manual flow を許可する。 |
+| package event — new organizer path (current baseline) | Every package event, including a USER session with a unique current target, produces no **new organizer** incremental proposal or placement; manual organization remains available. |
+| package event — legacy Deck (until #57) | Deck is a separate legacy runtime path and may still call `addNewlyInstalledApp` while enabled. This is not evidence for, nor a permitted implementation of, the new organizer path. Device-wide zero-placement verification begins only after #57 removes that hook. |
+| package event (future only) | A future accepted product decision/spec that provides authoritative install history may test proposal → preview → explicit confirmation; that proposal path is not an acceptance condition for the current baseline. |
+| launcher activity candidates (current baseline) | package/profile から launchable target が 0 件、または複数で一意に解決できなくても、または一意でもprior absenceが証明できなくても、新organizer経路ではincremental proposal/placementを行わず、manual flowを許可する。 |
 | diff/warning/unplaced | counts, reason, and destructive effect visible; empty diff writes nothing. |
 | cancel/recreation | no partial state claimed; retry recaptures; atomic interval is safe. |
 | failure/recovery | checkpoint/apply/verify/recovery failures have distinct messages and safe next action. |
