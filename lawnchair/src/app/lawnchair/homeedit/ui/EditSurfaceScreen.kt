@@ -9,7 +9,6 @@
 package app.lawnchair.homeedit.ui
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,9 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -47,15 +44,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -68,6 +62,10 @@ import app.lawnchair.homeedit.HomeEditContainers
 import app.lawnchair.homeedit.HomeEditItemTypes
 import app.lawnchair.homeedit.SelectionEligibility
 import app.lawnchair.homeedit.isEditSurfaceNewFolderKey
+import app.lawnchair.ui.diagram.DiagramItemContent
+import app.lawnchair.ui.diagram.DiagramPageSurface
+import app.lawnchair.ui.diagram.DiagramReservedSurface
+import app.lawnchair.ui.diagram.diagramCellPlacement
 import com.android.launcher3.R
 
 /** ダイアログの種別（ページ移動/フォルダ追加の選択dialog。spec決定済み）。 */
@@ -547,21 +545,18 @@ private fun PageGrid(
     cellSize: Dp,
     onToggleSelection: (Int) -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .width(cellSize * diagram.columnCount)
-            .height(cellSize * diagram.rowCount)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-            .padding(2.dp),
-    ) {
+    // Issue #508: the page surface and cell placement are the shared read-only
+    // diagram parts; the edit surface keeps selection semantics per item.
+    DiagramPageSurface(columns = diagram.columnCount, rows = diagram.rowCount, cellSize = cellSize) {
         val reservedDescription = stringResource(R.string.edit_surface_a11y_reserved)
         diagram.reservedRegions
             .filter { it.screenId == screenId }
             .forEach { reserved ->
-                Box(
+                // Issue #508: the reserved-region visual is the shared read-only
+                // diagram part; the edit surface keeps its own semantics.
+                DiagramReservedSurface(
                     modifier = Modifier
                         .placeInGrid(reserved.cellX, reserved.cellY, cellSize, reserved.spanX, reserved.spanY)
-                        .background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp))
                         .semantics {
                             // Read in the composable scope; a fixed description
                             // here would break localization.
@@ -596,17 +591,14 @@ private fun PageGrid(
     }
 }
 
-/** セル座標 → 図上の配置（1セル分の枠差分を含む）。 */
+/** セル座標 → 図上の配置（1セル分の枠差分を含む）。共有部品と同一幾何。 */
 private fun Modifier.placeInGrid(
     cellX: Int,
     cellY: Int,
     cellSize: Dp,
     spanX: Int,
     spanY: Int,
-): Modifier = this
-    .offset(x = cellSize * cellX + 2.dp, y = cellSize * cellY + 2.dp)
-    .width(cellSize * spanX - 4.dp)
-    .height(cellSize * spanY - 4.dp)
+): Modifier = diagramCellPlacement(cellX, cellY, cellSize, spanX, spanY)
 
 @Composable
 private fun DockRow(
@@ -714,65 +706,19 @@ private fun DiagramItemView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        val iconSize = cellSize / 2
-        when {
-            item.itemType == HomeEditItemTypes.FOLDER -> {
-                Image(
-                    painter = painterResource(R.drawable.ic_folder),
-                    contentDescription = null,
-                    modifier = Modifier.size(iconSize),
-                )
-                Text(
-                    text = memberCount.toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                )
-            }
-
-            item.itemType == HomeEditItemTypes.APP_WIDGET ||
-                item.itemType == HomeEditItemTypes.CUSTOM_APP_WIDGET -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = stringResource(R.string.edit_surface_widget_label),
-                        style = MaterialTheme.typography.labelSmall,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-
-            else -> {
-                val painter: Painter? = icon?.let { BitmapPainter(it) }
-                if (painter != null) {
-                    Image(
-                        painter = painter,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(iconSize),
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(iconSize)
-                            .background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp)),
-                    )
-                }
-                item.label?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-        }
+        // Issue #508: the visual internals are the shared read-only diagram
+        // part; this wrapper keeps the edit surface's selection semantics.
+        DiagramItemContent(
+            isFolder = item.itemType == HomeEditItemTypes.FOLDER,
+            memberCount = memberCount,
+            isWidget = item.itemType == HomeEditItemTypes.APP_WIDGET ||
+                item.itemType == HomeEditItemTypes.CUSTOM_APP_WIDGET,
+            icon = icon?.let { BitmapPainter(it) },
+            label = item.label,
+            cellSize = cellSize,
+            folderIcon = painterResource(R.drawable.ic_folder),
+            widgetLabel = stringResource(R.string.edit_surface_widget_label),
+        )
     }
 }
 

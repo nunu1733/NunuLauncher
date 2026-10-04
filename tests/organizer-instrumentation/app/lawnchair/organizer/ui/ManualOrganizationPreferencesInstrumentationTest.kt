@@ -1109,7 +1109,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = listOf(
                             move("game", sourceRowOrdinal = 2, destinationRowOrdinal = 1),
                             widgetMove,
@@ -1139,6 +1139,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
 
         awaitPreview(runner, context)
+        // Issue #508: the diagrams precede the list — scroll the header into view.
+        scrollListToText(context.getString(R.string.manual_organization_widget_moved_count, 1))
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_count, 2)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_widget_moved_count, 1)).assertIsDisplayed()
         assertEquals(0, application.applyCalls)
@@ -1261,10 +1263,15 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
         awaitPreview(runner, context)
 
+        // Issue #508: the diagrams precede the list — scroll it into view.
+        scrollListToText(context.getString(R.string.manual_organization_changes_heading))
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_changes_heading)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_moved, 2)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_new_folders, 1)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_new_pages, 1)).assertIsDisplayed()
+        // Issue #508: the diagrams precede the list — scroll each lower group
+        // into view as it is asserted.
+        scrollListToText(context.getString(R.string.manual_organization_group_preserved, 1))
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_group_preserved, 1)).assertIsDisplayed()
         composeRule.onAllNodesWithText(context.getString(R.string.manual_organization_group_warnings, 0)).assertCountEquals(0)
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_moved_count, 2)).assertIsDisplayed()
@@ -1297,9 +1304,22 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 "game, maps",
             ),
         ).assertIsDisplayed()
+        scrollListToText(context.getString(R.string.manual_organization_preview_new_page_row, 3))
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_preview_new_page_row, 3),
         ).assertIsDisplayed()
+        scrollListToText(
+            context.getString(
+                R.string.manual_organization_preview_item_row,
+                context.getString(
+                    R.string.manual_organization_preview_item_descriptor,
+                    "clock",
+                    context.getString(R.string.manual_organization_preview_kind_application),
+                    context.getString(R.string.manual_organization_preview_position_dock, 3),
+                ),
+                context.getString(R.string.manual_organization_preview_preserved_reason_locked),
+            ),
+        )
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_item_row,
@@ -1329,7 +1349,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = listOf(
                             move(
                                 "game",
@@ -1373,8 +1393,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
             workspaceDestination(context, 2, RowBand.TOP, ColumnBand.LEFT, 1, columnOrdinal),
             context.getString(R.string.manual_organization_preview_move_reason_single_placement),
         )
-        composeRule.onNodeWithText(moveRow("game", 1)).assertIsDisplayed()
-        composeRule.onNodeWithText(moveRow("maps", 2)).assertIsDisplayed()
+        // Issue #508: the diagrams precede the list — scroll EACH row into
+        // view right before its assertion.
+        for (row in listOf(moveRow("game", 1), moveRow("maps", 2))) {
+            scrollListToText(row)
+            composeRule.onNodeWithText(row).assertIsDisplayed()
+        }
         assertEquals(0, application.applyCalls)
     }
 
@@ -1392,7 +1416,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = listOf(
                             // icon (home): moves as a single placement.
                             MoveChange(
@@ -1548,12 +1572,13 @@ class ManualOrganizationPreferencesInstrumentationTest {
         // the source descriptors (kind word + current position) actually
         // differ — the F-01 ambiguity is fixed at the rendered surface, not
         // just in the projection model.
-        composeRule.onNodeWithText(moveRow).assertIsDisplayed()
-        composeRule.onNodeWithText(folderChildRow).assertIsDisplayed()
-        composeRule.onNodeWithText(widgetRow).assertIsDisplayed()
-        composeRule.onNodeWithText(folderUnitRow).assertIsDisplayed()
-        composeRule.onNodeWithText(dockRow).assertIsDisplayed()
-        composeRule.onNodeWithText(appPairRow).assertIsDisplayed()
+        // Issue #508: the diagrams precede the list — scroll EACH row into
+        // view right before its assertion (the CI viewport is shorter than
+        // the diagrams plus six rows).
+        for (row in listOf(moveRow, folderChildRow, widgetRow, folderUnitRow, dockRow, appPairRow)) {
+            scrollListToText(row)
+            composeRule.onNodeWithText(row).assertIsDisplayed()
+        }
         assertEquals(6, setOf(moveRow, folderChildRow, widgetRow, folderUnitRow, dockRow, appPairRow).size)
         assertEquals(0, application.applyCalls)
     }
@@ -1563,7 +1588,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = listOf(
                             move("game", 1, 1),
                             move("maps", 2, 1),
@@ -1582,6 +1607,20 @@ class ManualOrganizationPreferencesInstrumentationTest {
         }
         awaitPreview(runner, context)
 
+        // Issue #508: the diagrams precede the list — scroll the rows into view.
+        scrollListToText(
+            context.getString(
+                R.string.manual_organization_preview_same_band_move_row,
+                context.getString(
+                    R.string.manual_organization_preview_item_descriptor,
+                    "game",
+                    context.getString(R.string.manual_organization_preview_kind_application),
+                    workspacePosition(context, 1, RowBand.TOP, ColumnBand.CENTER),
+                ),
+                workspaceDestination(context, 1, RowBand.TOP, ColumnBand.CENTER, 1),
+                "",
+            ),
+        )
         composeRule.onNodeWithText(
             context.getString(
                 R.string.manual_organization_preview_same_band_move_row,
@@ -1616,7 +1655,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = (1..6).map { index -> crossBandMove("app$index") },
                         counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
@@ -1634,7 +1673,12 @@ class ManualOrganizationPreferencesInstrumentationTest {
 
         // Truncated to the first five rows; the group total stays in the action.
         composeRule.onAllNodesWithText(concreteMoveRow(context, "app6")).assertCountEquals(0)
+        // Issue #508: the diagrams precede the list — scroll row 5 into view.
+        scrollListToText(concreteMoveRow(context, "app5"))
         composeRule.onNodeWithText(concreteMoveRow(context, "app5")).assertExists()
+        // ...and the expand action itself sits below row 5 — scroll it into
+        // view before clicking.
+        scrollListToText(context.getString(R.string.manual_organization_preview_show_all, 6))
         val expand = composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 6))
         expand.assert(
             SemanticsMatcher.expectValue(
@@ -1668,7 +1712,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = (1..6).map { index -> crossBandMove("app$index") },
                         counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
@@ -1698,7 +1742,11 @@ class ManualOrganizationPreferencesInstrumentationTest {
         pressDownUntilFocused(context.getString(R.string.manual_organization_confirm))
         // Issue #369 (D-13): the cancel side of the proposal pair is 中断.
         pressDownUntilFocused(context.getString(R.string.manual_organization_interrupt))
-        pressDownUntilFocused(context.getString(R.string.manual_organization_preview_show_all, 6))
+        // Issue #508: the diagrams precede the list, so the expand action can
+        // sit uncomposed below the fold — scroll it into view first, then let
+        // DPAD walk down to it inside the now-visible region.
+        scrollListToText(context.getString(R.string.manual_organization_preview_show_all, 6))
+        pressDownUntilFocused(context.getString(R.string.manual_organization_preview_show_all, 6), maxPresses = 20)
         // Activating it with a keyboard action expands the group...
         // Issue #300: same focused-window premise for the ENTER activation.
         ensureWindowFocusedForComposeHost()
@@ -1873,7 +1921,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         val application = FakeApplication().apply {
             inspectPlanOverride = { _, _ ->
                 previewed(
-                    PlanPreviewDetails(
+                    planPreviewDetailsWithDiagrams(
                         changes = (1..6).map { index -> crossBandMove("app$index") },
                         counts = PreviewCounts(movedCount = 6, preservedCount = 0, newFolderCount = 0, newPageCount = 0, warningCounts = emptyMap()),
                     ),
@@ -1897,6 +1945,9 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.onNodeWithText(cancel).assertIsDisplayed()
 
         // Expanded: extra rows join the list; the pair must not be pushed out.
+        // Issue #508: the diagrams precede the list — scroll the action into
+        // view before clicking it.
+        scrollListToText(context.getString(R.string.manual_organization_preview_show_all, 6))
         composeRule.onNodeWithText(context.getString(R.string.manual_organization_preview_show_all, 6))
             .clickVisibleCenter()
         composeRule.waitUntil(5_000) {
@@ -2087,6 +2138,8 @@ class ManualOrganizationPreferencesInstrumentationTest {
             ),
             context.getString(R.string.manual_organization_preview_preserved_reason_locked),
         )
+        // Issue #508: the diagrams precede the list — scroll the row into view.
+        scrollListToText(preservedRow)
         composeRule.onNodeWithText(preservedRow).assertIsDisplayed().assert(
             SemanticsMatcher("change rows are not live regions") { node ->
                 node.config.getOrNull(SemanticsProperties.LiveRegion) == null
@@ -3257,7 +3310,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
      * inside the same row band, a move into the Dock, a preserved item, a new
      * folder with two members, and a new page.
      */
-    private fun concreteChangeListDetails() = PlanPreviewDetails(
+    private fun concreteChangeListDetails() = planPreviewDetailsWithDiagrams(
         changes = listOf(
             move("game", sourceRowOrdinal = 2, destinationRowOrdinal = 1, destination = workspace(1, RowBand.TOP, ColumnBand.LEFT, 1)),
             move("maps", sourceRowOrdinal = 1, destinationRowOrdinal = 1, destination = PreviewPosition.DockRank(1)),
@@ -3403,6 +3456,19 @@ class ManualOrganizationPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onNodeWithText(text).isDisplayed()
         }
+    }
+
+    /**
+     * Issue #508: the before/after diagrams precede the change list (spec
+     * D-8), so list rows can sit below the fold (or uncomposed) on the test
+     * viewport. Scroll the screen's list until [text] is composed and
+     * visible. The diagram projection itself has dedicated unit tests.
+     */
+    private fun scrollListToText(text: String) {
+        composeRule.onNode(hasScrollAction()).performScrollToNode(
+            androidx.compose.ui.test.hasText(text),
+        )
+        awaitDisplayed(text)
     }
 
     /**
@@ -3803,3 +3869,32 @@ class ManualOrganizationPreferencesInstrumentationTest {
         fun policyIdentity(source: PolicySourceKind) = PolicyInputIdentity(source, "v1", SHA_256)
     }
 }
+
+/**
+ * Issue #508 fixture: `PlanPreviewDetails` requires the before/after diagrams
+ * (a details value is only ever built complete). These UI tests exercise the
+ * change list and faces, not the diagram projection (which has its own unit
+ * tests), so a minimal empty diagram pair is supplied here.
+ */
+private fun testDiagrams(): app.lawnchair.organizer.application.public.PlanPreviewDiagrams {
+    // Issue #508: page-less diagrams keep these change-list tests about the
+    // list itself (the diagrams add only their two headings above it); the
+    // diagram projection and geometry have dedicated unit tests.
+    fun empty() = app.lawnchair.organizer.application.public.PreviewDiagram(
+        columns = 4,
+        rows = 5,
+        pages = emptyList(),
+        dockItems = emptyList(),
+        reservedRegions = emptyList(),
+    )
+    return app.lawnchair.organizer.application.public.PlanPreviewDiagrams(before = empty(), after = empty())
+}
+
+private fun planPreviewDetailsWithDiagrams(
+    changes: List<app.lawnchair.organizer.application.public.PreviewChange>,
+    counts: PreviewCounts,
+): PlanPreviewDetails = PlanPreviewDetails(
+    changes = changes,
+    counts = counts,
+    diagrams = testDiagrams(),
+)

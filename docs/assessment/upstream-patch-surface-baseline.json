@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "status": "accepted",
-  "captured_on": "2026-10-03",
+  "captured_on": "2026-10-04",
   "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "4e770fb196058a9da3a5c4ed24f301b24609dca8",
+  "main_commit": "8af117b6fc7ce074f9ac32df416e74d697953e8d",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -444,7 +444,7 @@
     },
     {
       "id": "homeedit-edit-surface",
-      "responsibility": "Visual multi-select edit surface (Issue #449, ADR-0014 case B): pure session/planning layers, thin organizer-access window, full-screen UI, and the two entries. Since Issue #452 this file also hosts the fork's added popup entries generally (organize_home for #452, alongside edit_surface for #449) plus the DEFAULT_ORDER-relative order restoration and the no-op write guard; #452's share of this file's growth is adopted with #452 rationale. The one-shot apply goes through the existing organizer apply path (ORGANIZER lease, one recovery point, 1 transaction, correlated reload + verification); no direct DB writes. Includes the plan-coupled minimal extension of the apply path: the manifest-absence delete pass in LauncherLayoutAdapter (plan 結合点7) that materializes intended-row removals, and the read-only inspectCapture seam in LayoutApplicationModule. Since Issue #507 it also hosts the duplicate-group projection (EditSurfaceDuplicateGroups) over the session-applied working diagram; the #451 detection rule is generalized in place (planning/DuplicateLaunchTargets.kt, behavior-invariant delegation) and the last-one guard runs only at the duplicate-dialog boundaries.",
+      "responsibility": "Visual multi-select edit surface (Issue #449, ADR-0014 case B): pure session/planning layers, thin organizer-access window, full-screen UI, and the two entries. Since Issue #452 this file also hosts the fork's added popup entries generally (organize_home for #452, alongside edit_surface for #449) plus the DEFAULT_ORDER-relative order restoration and the no-op write guard; #452's share of this file's growth is adopted with #452 rationale. The one-shot apply goes through the existing organizer apply path (ORGANIZER lease, one recovery point, 1 transaction, correlated reload + verification); no direct DB writes. Includes the plan-coupled minimal extension of the apply path: the manifest-absence delete pass in LauncherLayoutAdapter (plan 結合点7) that materializes intended-row removals, and the read-only inspectCapture seam in LayoutApplicationModule. Since Issue #507 it also hosts the duplicate-group projection (EditSurfaceDuplicateGroups) over the session-applied working diagram; the #451 detection rule is generalized in place (planning/DuplicateLaunchTargets.kt, behavior-invariant delegation) and the last-one guard runs only at the duplicate-dialog boundaries. Since Issue #508 the shared read-only diagram parts (page surface, cell placement, item visuals) extracted from EditSurfaceScreen live in ui/diagram/HomeDiagramParts.kt and are counted here; the organizer confirmation's before/after diagrams consume the same parts (#508 rationale: minimal extraction, no selection/session/icon logic shared).",
       "evidence": [
         "specs/449-multi-select-surface/spec.md",
         "docs/adr/0014-edit-surface.md",
@@ -470,6 +470,7 @@
         "lawnchair/src/app/lawnchair/organizer/planning/PlanningResult.kt",
         "lawnchair/src/app/lawnchair/organizer/ui/GeneratedFolderTitles.kt",
         "lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt",
+        "lawnchair/src/app/lawnchair/ui/diagram/HomeDiagramParts.kt",
         "lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt"
       ]
@@ -546,14 +547,14 @@
     }
   ],
   "expected_measurement": {
-    "counted_additions": 22506,
+    "counted_additions": 23314,
     "counted_deletions": 1098,
-    "counted_files": 104,
-    "counted_paths_sha256": "3ee06c0fde3143a0c134a7a5892563ae7a66d670855fef92b701d09449a565f9",
-    "excluded_additions": 219668,
+    "counted_files": 105,
+    "counted_paths_sha256": "765f6f5389cfa743eebdce1ceb684d9f9d938f0a6ce3ef4335bc251c0dbc187c",
+    "excluded_additions": 221797,
     "excluded_deletions": 863,
-    "excluded_files": 1273,
-    "excluded_paths_sha256": "844f96c04f64e36bae35904428e7e040580137289ee9c7e12dfbf912d7a34477",
+    "excluded_files": 1299,
+    "excluded_paths_sha256": "67150535d856416aa7e53c58e37191d30a80dba4fc2b27329b71d908922dabba",
     "groups": {
       "deck-retirement": {
         "additions": 765,
@@ -568,10 +569,10 @@
         "paths_sha256": "727291c82bd7181e70278f6926a041ce86c3fb2e54b8efeedcab771586d51dbd"
       },
       "homeedit-edit-surface": {
-        "additions": 9225,
+        "additions": 9546,
         "deletions": 18,
-        "files": 21,
-        "paths_sha256": "27d6191912c4c6c1621aa516cfd1ad6c85e5ce14fafe10345525f2ed17b9dc7c"
+        "files": 22,
+        "paths_sha256": "936a5d090cfedd18e33f8c1207c0c0bad4d83d47c3585ef961135d9f8ea80eea"
       },
       "homeedit-edit-undo": {
         "additions": 932,
@@ -604,15 +605,15 @@
         "paths_sha256": "6482bd763964e08a8ba115731819355cae35ec183124ed363bc6ec10e3e299f0"
       },
       "organizer-ui-and-lock-authoring": {
-        "additions": 5901,
+        "additions": 6388,
         "deletions": 9,
         "files": 13,
         "paths_sha256": "7f9dc79c4f97a2456a48e23a6fcfbc218dd0bf3c2148ebd65d194d361403004f"
       }
     },
-    "project_owned_additions": 37032,
+    "project_owned_additions": 37601,
     "project_owned_deletions": 0,
-    "project_owned_files": 176,
-    "project_owned_paths_sha256": "18377239a0470b3a055ca7924bea9b715c6c0b2291742e284962a833d2d7f145"
+    "project_owned_files": 179,
+    "project_owned_paths_sha256": "d3d709c352f15794adf698fa3a87a8f45334fac0739a4d1b6a5a35b30f2b440f"
   }
 }

@@ -102,7 +102,7 @@ class PreviewApplyPlacementEqualityTest {
         val ready = first as PlanPreviewProjector.Result.Ready
         assertEquals("projection is deterministic", ready, second)
 
-        val destinations = ready.details.changes
+        val destinations = ready.changes
             .filterIsInstance<MoveChange>()
             .associate { it.item.value to it.destination as PreviewPosition.Workspace }
         // Both anchors sit inside the same coarse band on the same page: the

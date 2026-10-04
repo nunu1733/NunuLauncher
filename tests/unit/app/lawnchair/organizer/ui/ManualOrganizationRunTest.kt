@@ -542,7 +542,7 @@ class ManualOrganizationRunTest {
     fun previewedPlanIsAppliedDirectlyWithoutConfirmTimeMaterialization() {
         val application = FakeApplication(readyInput())
         val previewedPlan = minimalPlan(readyInput().input)
-        val details = app.lawnchair.organizer.application.public.PlanPreviewDetails(
+        val details = planPreviewDetails(
             changes = emptyList(),
             counts = app.lawnchair.organizer.application.public.PreviewCounts(1, 0, 0, 0, emptyMap()),
         )
@@ -3357,7 +3357,7 @@ class ManualOrganizationRunTest {
                 ?: PlanPreviewResult.Previewed(
                     app.lawnchair.organizer.application.public.PlanPreview(
                         plan = minimalPlan(input),
-                        details = app.lawnchair.organizer.application.public.PlanPreviewDetails(
+                        details = planPreviewDetails(
                             changes = emptyList(),
                             counts = app.lawnchair.organizer.application.public.PreviewCounts(0, 0, 0, 0, emptyMap()),
                         ),

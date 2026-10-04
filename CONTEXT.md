@@ -295,3 +295,11 @@ _Avoid_: recovery point（organizerの適用前状態の永続復旧手段。別
 **逆操作 (Inverse Operation)**:
 項目単位のアクションを戻すための、ADR-0013契約に従う直接の編集書込み（逆UPDATE / 逆INSERT+逆DELETEの組 / 逆INSERT）。実行前に現在状態との照合（配置・availability込み）を必ず通る。
 _Avoid_: abort（上流の遅延commit取消との混同）
+
+**図プレビュー (visual plan preview)**:
+materialize 済み `ValidatedLayoutPlan` のsource/intended stateから、確認面のために純粋投影が作る変更前後のページ図。読み取り専用・process-localで、書込み・チェックポイント・recovery操作を行わない（[spec 508](./specs/508-visual-preview-item-exclusion/spec.md)）。
+_Avoid_: 編集画面の図（#449の編集セッションが所有する作業投影）、plan preview（一覧を含む上位概念。spec 194）
+
+**提案除外 (proposal exclusion)**:
+1回の整理提案に限って、既存項目を対象から外してcaptured配置のまま保持する、または追加候補を今回の追加から外す明示操作。run限り・process-localであり、永続lock・次回runの対象には影響しない（[spec 508](./specs/508-visual-preview-item-exclusion/spec.md)）。
+_Avoid_: lock（永続的な整理対象固定）、削除（ホームから外す操作）

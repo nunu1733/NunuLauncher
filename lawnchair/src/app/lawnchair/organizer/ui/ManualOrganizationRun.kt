@@ -60,6 +60,8 @@ import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.ProposalExclusionDerivation
+import app.lawnchair.organizer.planning.ProposalExclusionKey
 import app.lawnchair.organizer.planning.RejectionCode
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.StrategyId
@@ -634,7 +636,33 @@ class ManualOrganizationRun internal constructor(
 
         data class PlanningRejected(val kind: PlanningFailureKind, val summary: Summary) : State
         data object NoChanges : State
-        data class Preview(val summary: Summary, val details: PlanPreviewDetails?) : State
+
+        /**
+         * Issue #194: the confirmation surface. [details] is null only for the
+         * pre-existing environmental count-only fallback. [exclusions] is the
+         * run's current exclusion set (Issue #508) — empty for a proposal the
+         * user has not excluded anything from.
+         */
+        data class Preview(
+            val summary: Summary,
+            val details: PlanPreviewDetails?,
+            val exclusions: Set<ProposalExclusionKey> = emptySet(),
+        ) : State
+
+        /**
+         * Issue #508: a proposal replan (exclusion change) is in flight.
+         * Zero-write waiting: [summary]/[stableDetails] are the last stable
+         * preview's values — still accurate for what they describe (the
+         * pre-exclusion proposal, which the progress notice makes explicit) —
+         * and [exclusions] is the requested set the replan is computing for.
+         * Confirm is structurally impossible here (`confirm` only accepts
+         * [Preview]).
+         */
+        data class Replanning(
+            val summary: Summary,
+            val stableDetails: PlanPreviewDetails?,
+            val exclusions: Set<ProposalExclusionKey>,
+        ) : State
 
         /**
          * Issue #228 (spec AC-14): a run whose plan contains Add rows cannot
@@ -1694,6 +1722,11 @@ class ManualOrganizationRun internal constructor(
      * Add-run whose concrete preview was unavailable. The layout may have
      * moved since planning — staleness surfaces through the same inspect
      * seam as the first attempt.
+     *
+     * Issue #508: the same seam re-runs a failed replan's preview. A retained
+     * replan (generation > 0) keeps the sticky count-only prohibition and
+     * restores `exclusions = currentExclusions` (updated at request admission)
+     * on success; the journal stays unchanged for replan retries.
      */
     fun retryPlanPreview() {
         publicationThread.assertNotPublicationThread()
@@ -1701,13 +1734,125 @@ class ManualOrganizationRun internal constructor(
             if (state !is State.PreviewUnavailable) return
             val operation = activeOperation ?: return
             val plan = pending ?: return
-            operation to plan
+            Triple(operation, plan, operation.replanGeneration)
+        }
+        val (operation, plan, generation) = retained
+        try {
+            handlePlanPreview(
+                operation,
+                plan.input,
+                plan.result,
+                plan.summary,
+                expectedGeneration = generation.takeIf { it > 0 },
+                emitPreviewed = generation == 0,
+            )
+        } catch (failure: Throwable) {
+            abort(operation)
+            throw failure
+        }
+    }
+
+    /**
+     * Issue #508: applies the user's exclusion set as an absolute set and
+     * replans the proposal. Accepted on the confirmation surfaces
+     * ([State.Preview] / [State.Replanning]) while a stable proposal exists;
+     * every key must belong to the run's base excludable surface and the set
+     * must differ from the current one — anything else is a no-op (the UI
+     * only sends validated keys). Admission advances the replan generation
+     * and updates `currentExclusions` (the latest REQUESTED set — the retry
+     * restoration key), publishes [State.Replanning] with the last stable
+     * summary/details, and the worker then derives the input directly from
+     * the immutable base, replans with the pure planner, and completes through
+     * the existing preview handling (generation-gated: a superseded result is
+     * discarded zero-write; an empty diff ends as [State.NoChanges]).
+     */
+    fun applyProposalExclusions(next: Set<ProposalExclusionKey>) {
+        publicationThread.assertNotPublicationThread()
+        val claimed = synchronized(lock) {
+            if (state !is State.Preview && state !is State.Replanning) return
+            val operation = activeOperation ?: return
+            val plan = pending ?: return
+            if (!isActiveLocked(operation)) return
+            val base = operation.baseInput ?: return
+            val excludable = operation.baseExcludable ?: return
+            if (next == operation.currentExclusions) return
+            if (!excludable.containsAll(next)) return
+            operation.replanGeneration += 1
+            operation.currentExclusions = next
+            // Phase-before-worker: the progress surface commits under the same
+            // lock section as the generation claim, so a collector never sees
+            // the request unacknowledged and confirm is blocked immediately.
+            publishState(State.Replanning(plan.summary, plan.details, next))
+            ClaimedReplan(operation, plan.summary, plan.details, base, operation.replanGeneration)
         }
         try {
-            handlePlanPreview(retained.first, retained.second.input, retained.second.result, retained.second.summary)
+            replanProposal(claimed.operation, claimed.base, next, claimed.generation, claimed.summary)
         } catch (failure: Throwable) {
-            abort(retained.first)
+            abort(claimed.operation)
             throw failure
+        }
+    }
+
+    private data class ClaimedReplan(
+        val operation: Operation,
+        val summary: Summary,
+        val details: PlanPreviewDetails?,
+        val base: OrganizationInput,
+        val generation: Int,
+    )
+
+    /**
+     * The replan worker: base-derived input → pure planner → the shared
+     * preview handling with the claiming generation. Every terminal publish
+     * (finish / stale / preview) is generation-gated, so a result arriving
+     * after a newer exclusion request can neither surface nor end the run.
+     */
+    private fun replanProposal(
+        operation: Operation,
+        base: OrganizationInput,
+        exclusions: Set<ProposalExclusionKey>,
+        generation: Int,
+        claimedSummary: Summary,
+    ) {
+        val derived = when (val derivation = ProposalExclusionDerivation.derive(base, exclusions)) {
+            is ProposalExclusionDerivation.Result.Ready -> derivation.input
+
+            // Defensive: keys were validated against the base surface at
+            // admission, so the derivation cannot fail here. Treat a failure
+            // as a contract violation, fail closed like a materialization
+            // violation, and never guess an input.
+            ProposalExclusionDerivation.Result.Invalid -> {
+                finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, claimedSummary), generation)
+                return
+            }
+        }
+        val result = planner.plan(derived)
+        when (val outcome = result.outcome) {
+            is Planned -> {
+                val summary = outcome.summary(derived)
+                if (summary.movedCount == 0 && summary.newFolderCount == 0 && summary.newPageCount == 0 && summary.addedCount == 0) {
+                    if (outcome.unplaced.isEmpty()) {
+                        finish(operation, State.NoChanges, generation)
+                    } else {
+                        finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary), generation)
+                    }
+                } else {
+                    handlePlanPreview(
+                        operation,
+                        derived,
+                        result,
+                        summary,
+                        expectedGeneration = generation,
+                        emitPreviewed = false,
+                    )
+                }
+            }
+
+            is app.lawnchair.organizer.planning.Rejected.Invalid ->
+                finish(operation, State.PlanningRejected(PlanningFailureKind.INVALID, result.summary(derived)), generation)
+
+            is app.lawnchair.organizer.planning.Rejected.Impossible ->
+                finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, result.summary(derived)), generation)
         }
     }
 
@@ -1972,57 +2117,70 @@ class ManualOrganizationRun internal constructor(
     }
 
     /**
-     * Issue #194 + #228: obtains (or re-obtains) the read-only preview. A run
-     * without Add rows keeps the count-only compatibility fallback for
+     * Issue #194 + #228 + #508: obtains (or re-obtains) the read-only preview.
+     * A run without Add rows keeps the count-only compatibility fallback for
      * environmental preview failures; a run with Add rows must never be
      * confirmable without the concrete change list, so the same failures stop
      * at [State.PreviewUnavailable] with a re-preview action instead (spec
-     * AC-14).
+     * AC-14). Once a proposal replan has been requested ([Operation.replanGeneration]
+     * > 0 — the sticky "exclusions were changed" state, still true after the
+     * set returns to empty), the count-only fallback is unreachable for that
+     * run: the same environmental failures stop at [State.PreviewUnavailable]
+     * too (spec D-7).
+     *
+     * [expectedGeneration] gates replan completions: a result whose generation
+     * was superseded is discarded zero-write. [emitPreviewed] stays true for
+     * the initial flow (one PREVIEWED per run journal); replan completions
+     * keep the journal unchanged.
      */
     private fun handlePlanPreview(
         operation: Operation,
         input: OrganizationInput,
         result: PlanningResult,
         summary: Summary,
+        expectedGeneration: Int? = null,
+        emitPreviewed: Boolean = true,
     ) {
         val includesAdditions = input.targets.additions.isNotEmpty()
+        val stickyReplan = operation.replanGeneration > 0
         when (val preview = application.inspectPlan(input, result)) {
-            is PlanPreviewResult.Previewed -> enterPreview(operation, input, result, summary, preview.preview)
+            is PlanPreviewResult.Previewed -> enterPreview(operation, input, result, summary, preview.preview, expectedGeneration)
 
             is PlanPreviewResult.Stale -> transitionToStale(
                 operation,
                 emitRejection = true,
                 origin = StaleOrigin.DETECTED_BEFORE_REVIEW,
+                expectedGeneration = expectedGeneration,
             )
 
             // Review P2: the typed candidate-resolution failure from the
             // preview seam keeps its identity — re-detect outcome, zero-write.
             is PlanPreviewResult.CandidateResolutionFailed ->
-                finish(operation, State.CandidateResolutionFailed(preview.failure))
+                finish(operation, State.CandidateResolutionFailed(preview.failure), expectedGeneration)
 
             is PlanPreviewResult.NotPlannable -> when (preview.reason) {
                 PlanPreviewRejection.CAPTURE_FAILED ->
-                    if (includesAdditions) {
-                        enterPreviewUnavailable(operation, input, result, summary)
+                    if (includesAdditions || stickyReplan) {
+                        enterPreviewUnavailable(operation, input, result, summary, expectedGeneration)
                     } else {
                         enterPreview(operation, input, result, summary, null)
                     }
 
                 PlanPreviewRejection.OUTCOME_NOT_PLANNED,
                 PlanPreviewRejection.MATERIALIZATION_INVALID,
-                -> finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary))
+                -> finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary), expectedGeneration)
             }
 
             is PlanPreviewResult.Unavailable,
             PlanPreviewResult.WriterBusy,
             PlanPreviewResult.Concurrent,
-            -> if (includesAdditions) {
-                enterPreviewUnavailable(operation, input, result, summary)
+            -> if (includesAdditions || stickyReplan) {
+                enterPreviewUnavailable(operation, input, result, summary, expectedGeneration)
             } else {
                 enterPreview(operation, input, result, summary, null)
             }
         }
-        if (state is State.Preview) {
+        if (emitPreviewed && state is State.Preview) {
             emit(
                 RunEvent(
                     journalSequence = 0L,
@@ -2045,9 +2203,12 @@ class ManualOrganizationRun internal constructor(
         input: OrganizationInput,
         result: PlanningResult,
         summary: Summary,
+        expectedGeneration: Int? = null,
     ) {
         synchronized(lock) {
             if (!isActiveLocked(operation)) return
+            // Issue #508: same stale-generation discard as [enterPreview].
+            if (expectedGeneration != null && operation.replanGeneration != expectedGeneration) return
             pending = PendingPlan(operation, input, result, summary, previewPlan = null)
             publishState(State.PreviewUnavailable(summary))
         }
@@ -2064,7 +2225,10 @@ class ManualOrganizationRun internal constructor(
                 state !is State.ResumingUsageAccessJit &&
                 // Issue #417: the method-choice face is interruptible — an
                 // empty-cut run's Back is an interruption (zero-write).
-                state !is State.ScopeConfirmed
+                state !is State.ScopeConfirmed &&
+                // Issue #508: a replan in flight is zero-write waiting and
+                // stays interruptible like the preview it replaces.
+                state !is State.Replanning
             ) {
                 return
             }
@@ -2474,11 +2638,21 @@ class ManualOrganizationRun internal constructor(
         result: PlanningResult,
         summary: Summary,
         preview: PlanPreview?,
+        expectedGeneration: Int? = null,
     ) {
         synchronized(lock) {
             if (!isActiveLocked(operation)) return
-            pending = PendingPlan(operation, input, result, summary, preview?.plan)
-            publishState(State.Preview(summary, preview?.details))
+            // Issue #508: a replan completion whose generation was superseded
+            // by a newer exclusion request is discarded zero-write — an older
+            // async result never overwrites the newer request's surface.
+            if (expectedGeneration != null && operation.replanGeneration != expectedGeneration) return
+            if (operation.baseInput == null) {
+                operation.baseInput = input
+                operation.baseExcludable = ProposalExclusionDerivation.excludableKeys(input)
+                operation.currentExclusions = emptySet()
+            }
+            pending = PendingPlan(operation, input, result, summary, preview?.plan, preview?.details)
+            publishState(State.Preview(summary, preview?.details, operation.currentExclusions))
         }
     }
 
@@ -2486,10 +2660,19 @@ class ManualOrganizationRun internal constructor(
      * Ends the active run in [State.Stale]. [emitRejection] reproduces the
      * existing A2 stale-rejection run event for materialize-time staleness.
      * [origin] records whether the user had attempted to apply (Issue #210).
+     * [expectedGeneration] gates replan completions (Issue #508) — a stale
+     * detected by a superseded replan is discarded zero-write.
      */
-    private fun transitionToStale(operation: Operation, emitRejection: Boolean, origin: StaleOrigin) {
+    private fun transitionToStale(
+        operation: Operation,
+        emitRejection: Boolean,
+        origin: StaleOrigin,
+        expectedGeneration: Int? = null,
+    ) {
         val stale = synchronized(lock) {
-            if (!isActiveLocked(operation)) {
+            if (!isActiveLocked(operation) ||
+                (expectedGeneration != null && operation.replanGeneration != expectedGeneration)
+            ) {
                 false
             } else {
                 pending = null
@@ -2515,9 +2698,11 @@ class ManualOrganizationRun internal constructor(
         }
     }
 
-    private fun finish(operation: Operation, nextState: State) {
+    private fun finish(operation: Operation, nextState: State, expectedGeneration: Int? = null) {
         val completed = synchronized(lock) {
-            if (!isActiveLocked(operation)) {
+            if (!isActiveLocked(operation) ||
+                (expectedGeneration != null && operation.replanGeneration != expectedGeneration)
+            ) {
                 false
             } else {
                 activeOperation = null
@@ -2684,6 +2869,12 @@ class ManualOrganizationRun internal constructor(
         val summary: Summary,
         /** Previewed executable plan; null means the count-only compatibility fallback. */
         val previewPlan: ValidatedLayoutPlan?,
+        /**
+         * Issue #508: the details published with this pending plan, kept so a
+         * replan (exclusion change) can keep showing the last stable change
+         * list while it computes. Null for count-only fallbacks.
+         */
+        val details: PlanPreviewDetails? = null,
     ) {
         val runId: RunId
             get() = operation.runId
@@ -2700,6 +2891,21 @@ class ManualOrganizationRun internal constructor(
          * single-shot (see [attachIntent]).
          */
         var intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent? = null,
+        /**
+         * Issue #508: the immutable base of this run's proposal — the first
+         * successful preview's composed input — plus its excludable key
+         * surface and the replan bookkeeping. Every exclusion replan derives
+         * directly from [baseInput] (never from a previously derived input),
+         * so an exclusion followed by its reversal reproduces the original
+         * proposal. `currentExclusions` is the LATEST REQUESTED set (updated
+         * when a request is admitted, not when it succeeds) so a failed
+         * replan's retry re-derives the same set. All process-local; never
+         * serialized. Null base fields mean no stable preview yet.
+         */
+        var baseInput: OrganizationInput? = null,
+        var baseExcludable: Set<ProposalExclusionKey>? = null,
+        var currentExclusions: Set<ProposalExclusionKey> = emptySet(),
+        var replanGeneration: Int = 0,
         /**
          * Issue #331: the detection-time candidate cut this run surfaced, kept
          * so a scope binding rejection can restore the selection surface.

@@ -149,7 +149,7 @@ class PlanPreviewCountsCorpusContractTest {
                 val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
                     ?: error("materializer rejected a planner-produced plan")
                 val projection = PlanPreviewProjector.project(plan, planned)
-                val details = (projection as? PlanPreviewProjector.Result.Ready)?.details
+                val details = (projection as? PlanPreviewProjector.Result.Ready)
                     ?: error("projection rejected a materializer-valid plan")
                 assertEquals("[$label] movedCount", summary.movedCount, details.counts.movedCount)
                 assertEquals("[$label] preservedCount", summary.preservedCount, details.counts.preservedCount)

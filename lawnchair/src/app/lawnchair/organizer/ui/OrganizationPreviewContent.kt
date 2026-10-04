@@ -10,6 +10,7 @@ import app.lawnchair.organizer.application.public.NewPageChange
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PreservedChange
 import app.lawnchair.organizer.application.public.PreviewChange
+import app.lawnchair.organizer.application.public.PreviewExcludableItem
 import app.lawnchair.organizer.application.public.PreviewFolderRef
 import app.lawnchair.organizer.application.public.PreviewLabel
 import app.lawnchair.organizer.application.public.PreviewPlacementIdentity
@@ -17,6 +18,7 @@ import app.lawnchair.organizer.application.public.PreviewPosition
 import app.lawnchair.organizer.application.public.RowBand
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.ProposalExclusionKey
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.WarningCode
 import java.util.Locale
@@ -142,14 +144,48 @@ interface OrganizationPreviewWording {
 }
 
 /**
+ * Issue #508: one row's exclusion affordance state. Excludable rows carry the
+ * neutral key; every other row carries a typed reason so the UI can supply
+ * the "why not" through accessibility instead of leaving the absence of an
+ * action unexplained (spec D-3 / AC-10).
+ */
+sealed interface PreviewRowExclusion {
+    /** The row's item is on the proposal's exclusion surface. */
+    data class Excludable(val key: ProposalExclusionKey) : PreviewRowExclusion
+
+    /** The row has no exclusion action; [reason] says why (a11y). */
+    data class NotExcludable(val reason: PreviewExclusionBlockReason) : PreviewRowExclusion
+}
+
+/** Closed reasons a change-list row carries no exclusion action. */
+enum class PreviewExclusionBlockReason {
+    /** Folder/app-pair/legacy-shortcut/widget item kinds are never targets. */
+    KIND_NOT_EXCLUDABLE,
+
+    /** Dock, folder-member, pair-member, and unsupported placements. */
+    PLACEMENT_NOT_EXCLUDABLE,
+
+    /** A workspace item a stronger preservation rule keeps (locked, …). */
+    PRESERVED_NOT_EXCLUDABLE,
+
+    /** Generated folders/pages and warning rows — replan outcomes, not targets. */
+    STRUCTURAL_ROW,
+}
+
+/**
  * One grouped change list section: a heading with the [PreviewCounts]-derived
  * total (rows and header always agree, even while truncated) and the
  * deterministic row texts for that group.
+ *
+ * Issue #508: [rowExclusions] is parallel to [rows] — the exclusion state of
+ * each row (key or typed not-excludable reason). The UI truncates rows for
+ * display but indexes [rowExclusions] with the same visible-row positions.
  */
 data class OrganizationPreviewSection(
     val heading: String,
     val totalCount: Int,
     val rows: List<String>,
+    val rowExclusions: List<PreviewRowExclusion> = emptyList(),
 )
 
 /**
@@ -169,20 +205,97 @@ object OrganizationPreviewContent {
         val changes = details.changes
         val counts = details.counts
         val supplements = descriptorSupplements(changes, wording)
+        // Issue #508: item id -> exclusion key for the rows that carry an
+        // action. Warnings and folder/page rows never map to a key.
+        val keyByItem = details.excludableItems.associate { entry ->
+            when (val key = entry.key) {
+                is ProposalExclusionKey.Existing -> key.item to key
+                is ProposalExclusionKey.Candidate -> key.item to key
+            }
+        }
+
+        /** Only top-level apps and deep shortcuts are exclusion targets. */
+        fun excludableKind(change: PreviewChange): Boolean = when (change) {
+            is MoveChange -> change.kind is CanonicalItemKind.Application || change.kind is CanonicalItemKind.DeepShortcut
+            is PreservedChange -> change.kind is CanonicalItemKind.Application || change.kind is CanonicalItemKind.DeepShortcut
+            is AddChange -> true
+            else -> false
+        }
+
+        /** A row whose spoken-about placement lives inside a container or on
+         *  the dock can never be a top-level exclusion target. */
+        fun placementSpeaksForContainer(change: PreviewChange): Boolean = when (change) {
+            is MoveChange -> change.source !is PreviewPosition.Workspace
+            is PreservedChange -> change.current !is PreviewPosition.Workspace
+            else -> false
+        }
+
+        fun rowExclusionOf(change: PreviewChange): PreviewRowExclusion {
+            // Warnings and generated folders/pages are replan outcomes, never
+            // exclusion targets — their "why" is structural, independent of
+            // what the underlying item is.
+            if (change is ItemWarningChange || change is NewFolderChange || change is NewPageChange) {
+                return PreviewRowExclusion.NotExcludable(PreviewExclusionBlockReason.STRUCTURAL_ROW)
+            }
+            val item = when (change) {
+                is MoveChange -> change.item
+                is PreservedChange -> change.item
+                is AddChange -> change.item
+                else -> return PreviewRowExclusion.NotExcludable(PreviewExclusionBlockReason.STRUCTURAL_ROW)
+            }
+            keyByItem[item]?.let { return PreviewRowExclusion.Excludable(it) }
+            return PreviewRowExclusion.NotExcludable(
+                when {
+                    !excludableKind(change) -> PreviewExclusionBlockReason.KIND_NOT_EXCLUDABLE
+                    placementSpeaksForContainer(change) -> PreviewExclusionBlockReason.PLACEMENT_NOT_EXCLUDABLE
+                    else -> PreviewExclusionBlockReason.PRESERVED_NOT_EXCLUDABLE
+                },
+            )
+        }
+
         val sections = mutableListOf<OrganizationPreviewSection>()
-        val moves = changes.filterIsInstance<MoveChange>().map { moveRowText(it, wording, supplements[it]) }
-        if (moves.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupMoved, counts.movedCount), counts.movedCount, moves)
+        val moveChanges = changes.filterIsInstance<MoveChange>()
+        val moves = moveChanges.map { moveRowText(it, wording, supplements[it]) }
+        val moveKeys = moveChanges.map { rowExclusionOf(it) }
+        if (moves.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupMoved, counts.movedCount), counts.movedCount, moves, moveKeys)
         // Issue #228 (spec AC-5): one Add row per selected candidate, directly
         // after the move group — both are placement changes the user reviews.
-        val adds = changes.filterIsInstance<AddChange>().map { addRowText(it, wording) }
-        if (adds.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupAdded, counts.addedCount), counts.addedCount, adds)
-        val folders = changes.filterIsInstance<NewFolderChange>().map { newFolderRowText(it, wording) }
-        if (folders.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupNewFolders, counts.newFolderCount), counts.newFolderCount, folders)
-        val pages = changes.filterIsInstance<NewPageChange>().map { newPageRowText(it, wording) }
-        if (pages.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupNewPages, counts.newPageCount), counts.newPageCount, pages)
-        val preserved = changes.filterIsInstance<PreservedChange>().map { preservedRowText(it, wording, supplements[it]) }
-        if (preserved.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupPreserved, counts.preservedCount), counts.preservedCount, preserved)
-        val warnings = changes.filterIsInstance<ItemWarningChange>().map { warningRowText(it, wording, supplements[it]) }
+        val addChanges = changes.filterIsInstance<AddChange>()
+        val adds = addChanges.map { addRowText(it, wording) }
+        val addKeys = addChanges.map { rowExclusionOf(it) }
+        if (adds.isNotEmpty()) sections += OrganizationPreviewSection(format(wording.groupAdded, counts.addedCount), counts.addedCount, adds, addKeys)
+        val folderChanges = changes.filterIsInstance<NewFolderChange>()
+        val folders = folderChanges.map { newFolderRowText(it, wording) }
+        if (folders.isNotEmpty()) {
+            sections += OrganizationPreviewSection(
+                format(wording.groupNewFolders, counts.newFolderCount),
+                counts.newFolderCount,
+                folders,
+                folderChanges.map { rowExclusionOf(it) },
+            )
+        }
+        val pageChanges = changes.filterIsInstance<NewPageChange>()
+        val pages = pageChanges.map { newPageRowText(it, wording) }
+        if (pages.isNotEmpty()) {
+            sections += OrganizationPreviewSection(
+                format(wording.groupNewPages, counts.newPageCount),
+                counts.newPageCount,
+                pages,
+                pageChanges.map { rowExclusionOf(it) },
+            )
+        }
+        val preservedChanges = changes.filterIsInstance<PreservedChange>()
+        val preserved = preservedChanges.map { preservedRowText(it, wording, supplements[it]) }
+        if (preserved.isNotEmpty()) {
+            sections += OrganizationPreviewSection(
+                format(wording.groupPreserved, counts.preservedCount),
+                counts.preservedCount,
+                preserved,
+                preservedChanges.map { rowExclusionOf(it) },
+            )
+        }
+        val warningChanges = changes.filterIsInstance<ItemWarningChange>()
+        val warnings = warningChanges.map { warningRowText(it, wording, supplements[it]) }
         if (warnings.isNotEmpty()) {
             // Spec §D2 exception: this group speaks for its concrete rows only.
             // Global / multi-item warnings stay header-count-only (PreviewCounts
@@ -191,9 +304,26 @@ object OrganizationPreviewContent {
                 format(wording.groupWarnings, warnings.size),
                 warnings.size,
                 warnings,
+                warningChanges.map { rowExclusionOf(it) },
             )
         }
         return sections
+    }
+
+    /**
+     * Issue #508 (Phase 2 re-review round 2): candidates on the exclusion
+     * surface that this plan never places (overflow etc.) have no `AddChange`
+     * row of their own, so the row-level action cannot reach them. The
+     * confirmation surface renders these entries as an explicit supplementary
+     * group with the same exclude action — the key must always have a user
+     * path into `applyProposalExclusions`. Deterministic: surface order.
+     */
+    fun unplacedCandidateExclusions(details: PlanPreviewDetails): List<PreviewExcludableItem> {
+        val placedCandidateItems = details.changes.filterIsInstance<AddChange>().mapTo(mutableSetOf()) { it.item }
+        return details.excludableItems.filter { entry ->
+            val candidateItem = (entry.key as? ProposalExclusionKey.Candidate)?.item
+            candidateItem != null && candidateItem !in placedCandidateItems
+        }
     }
 
     /**
@@ -454,7 +584,7 @@ object OrganizationPreviewContent {
         WarningCode.DUPLICATE_LAUNCH_TARGET -> wording.warningDuplicateLaunchTarget
     }
 
-    private fun kindText(kind: CanonicalItemKind, wording: OrganizationPreviewWording): String = when (kind) {
+    fun kindText(kind: CanonicalItemKind, wording: OrganizationPreviewWording): String = when (kind) {
         CanonicalItemKind.Application -> wording.kindApplication
         CanonicalItemKind.DeepShortcut -> wording.kindDeepShortcut
         CanonicalItemKind.ShortcutLegacy -> wording.kindShortcutLegacy
