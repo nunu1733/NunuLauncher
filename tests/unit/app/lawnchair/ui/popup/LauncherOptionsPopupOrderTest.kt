@@ -24,6 +24,12 @@ import org.junit.Test
  *   while the home screen is locked.
  * - [LauncherOptionsPopup.getMetadataForOption] maps `organize_home` to its
  *   finalized label/icon resources (spec Revision 3).
+ *
+ * Rebase Phase 2 (#532): the anchor's `all_apps` entry (upstream commit
+ * 0f3830e379) joined DEFAULT_ORDER between `widgets` and `home_settings`,
+ * so every literal list below carries it; the #452 contracts (organize_home
+ * placement, positional merge, lock-time hiding of the editing/organizing
+ * entries) are unchanged.
  */
 class LauncherOptionsPopupOrderTest {
     private fun identifiers(items: List<LauncherOptionPopupItem>) = items.map { it.identifier }
@@ -41,6 +47,7 @@ class LauncherOptionsPopupOrderTest {
                 "edit_surface",
                 "wallpaper",
                 "widgets",
+                "all_apps",
                 "home_settings",
                 "sys_settings",
             ),
@@ -74,6 +81,7 @@ class LauncherOptionsPopupOrderTest {
                 "edit_surface",
                 "wallpaper",
                 "widgets",
+                "all_apps",
                 "home_settings",
                 "sys_settings",
             ),
@@ -81,7 +89,7 @@ class LauncherOptionsPopupOrderTest {
         )
         // Existing rows keep their saved enabled state; inserted rows use the default one.
         assertEquals(
-            listOf(true, false, false, true, true, true, true, true, false),
+            listOf(true, false, false, true, true, true, true, true, true, false),
             enabledFlags(merged),
         )
     }
@@ -104,6 +112,7 @@ class LauncherOptionsPopupOrderTest {
                 "edit_mode",
                 "wallpaper",
                 "widgets",
+                "all_apps",
                 "home_settings",
                 "sys_settings",
             ),
@@ -125,6 +134,7 @@ class LauncherOptionsPopupOrderTest {
                 "wallpaper",
                 "edit_mode",
                 "carousel",
+                "all_apps",
                 "sys_settings",
                 "widgets",
                 "lock",
@@ -164,6 +174,7 @@ class LauncherOptionsPopupOrderTest {
                 "edit_surface",
                 "wallpaper",
                 "widgets",
+                "all_apps",
                 "home_settings",
                 "sys_settings",
             ),
@@ -179,9 +190,10 @@ class LauncherOptionsPopupOrderTest {
 
         // carousel never shows; edit_mode/edit_surface/organize_home/widgets
         // hide while locked; lock and sys_settings are disabled in the default
-        // order, leaving wallpaper and home_settings visible.
+        // order, leaving wallpaper, the anchor all_apps entry (#532; not an
+        // editing/organizing entry) and home_settings visible.
         assertEquals(
-            listOf("wallpaper", "home_settings"),
+            listOf("wallpaper", "all_apps", "home_settings"),
             identifiers(visible),
         )
     }
