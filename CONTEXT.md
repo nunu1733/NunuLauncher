@@ -152,6 +152,10 @@ _Avoid_: schema (payload本体の契約は #204)、system prompt (instruction部
 activityなexport sessionが存在する状態で新規exchange package生成を開始するとき、#204 single-active-session規則により既存exchangeが無効化されることを明示し、userの承認を得る確認step。承認なしには生成を開始しない。
 _Avoid_: 上書き保存 (既存exchange宛回答が以降import不可となる破壊的操作であることの表示を省く呼称)
 
+**整理方針確認 (policy confirmation)**:
+interview-firstなExternal Agent Exchangeにおいて、外部AIがヒアリング結果から理解した整理方針を短く要約してuserに提示し、了承を得るstep ([spec 327](./specs/327-agent-exchange-interview-first/spec.md))。了承 (またはuserによる明示的なskip宣言) 後にのみ最終 `PersonalizedIntent` の生成が行われる。確認のやり取りは外部AIアプリ内の会話であり、Launcher ↔ AI間のartifact交換 (request package 1回・final artifact 1回) には数えられない。launcher側はこの会話順序を検証しない (安全性はframing抽出・#204 validator・preview/confirmが所有する)。
+_Avoid_: 承認画面 (launcher内UIとの混同。確認は外部AIアプリ内で行われる)、system prompt
+
 **候補subject (candidate subject)**:
 External Agent Exchangeのexportにおいて、現在Homeに配置されていない未配置アプリ候補を表すexchange subject ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。placed itemと同一の乱数seamによるexport-scoped `ref` を持ち、`subject: CANDIDATE` とmobility `CANDIDATE` で区別される。内部対応先はcandidate安定identity (`ComponentKey` + `ProfileId`) であり、raw identifierはexport文書に現れない。
 _Avoid_: 仮配置 (配置の作成を示唆する)、新規アイテム (Add行というplan表現と混同)

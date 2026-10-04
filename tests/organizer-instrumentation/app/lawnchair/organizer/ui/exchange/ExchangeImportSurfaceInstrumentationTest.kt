@@ -34,6 +34,7 @@ import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.SequentialIdAllocator
 import app.lawnchair.organizer.personalization.exchange.ExchangeContract
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.ComponentKey
@@ -68,6 +69,11 @@ import org.junit.runner.RunWith
  * outcome, and the default-collapsed raw detail are asserted as rendered UI —
  * not just state. The clipboard/file leads are distinct labelled actions and
  * the huge-reply case never stretches the surface.
+ *
+ * Issue #327 (AC-4/AC-5): both exchange entry rows (idle and run-in scoped)
+ * are asserted to render the capability notes — concrete user-language
+ * examples, the "no direct change" statement, and the one-request /
+ * one-proposal conversation flow — under their own test tags.
  */
 @RunWith(AndroidJUnit4::class)
 class ExchangeImportSurfaceInstrumentationTest {
@@ -147,6 +153,65 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("exchange-import-clipboard").assertIsDisplayed().assertHasClickAction()
         composeRule.onNodeWithTag("exchange-import-file").assertIsDisplayed().assertHasClickAction()
+    }
+
+    /**
+     * Issue #327 AC-4/AC-5 (rendered-UI oracle): the idle entry row surfaces
+     * the capability notes under the `exchange-entry-capability` tag — the
+     * title, the five concrete user-language examples, the "no direct
+     * change" statement, and the one-request/one-proposal conversation flow.
+     */
+    @Test
+    fun idleEntrySurfacesTheCapabilityNotes() {
+        val holder = newHolder()
+        setContent(holder)
+        composeRule.onNodeWithTag("exchange-entry-capability").assertIsDisplayed()
+        for (res in listOf(
+            R.string.exchange_capability_title,
+            R.string.exchange_capability_example_frequent,
+            R.string.exchange_capability_example_group,
+            R.string.exchange_capability_example_keep,
+            R.string.exchange_capability_example_front,
+            R.string.exchange_capability_example_minimal_change,
+            R.string.exchange_capability_no_direct_change,
+            R.string.exchange_capability_flow,
+        )) {
+            composeRule
+                .onNodeWithText(context.getString(res), substring = true)
+                .assertIsDisplayed()
+        }
+    }
+
+    /**
+     * Issue #327 AC-4/AC-5: the run-in (scoped) entry row carries the same
+     * capability notes under its own test tag.
+     */
+    @Test
+    fun scopedEntrySurfacesTheCapabilityNotes() {
+        val holder = newHolder()
+        val scoped = CandidateTarget.AppKey(ComponentKey("com.example.scoped"), ProfileId("p0"))
+        composeRule.setContent {
+            LawnchairTheme {
+                LazyColumn {
+                    exchangeFlowItems(
+                        holder = holder,
+                        scopedSelection = listOf(scoped),
+                        scopedLabels = mapOf(scoped to "Scoped app"),
+                        clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
+                        shareTransport = { _, _ -> ExchangeTransportResult.Success },
+                        fileTransport = FileExchangeTransport(context),
+                    )
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("exchange-scoped-entry-capability").assertIsDisplayed()
+        composeRule
+            .onNodeWithText(context.getString(R.string.exchange_capability_no_direct_change), substring = true)
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithText(context.getString(R.string.exchange_capability_flow), substring = true)
+            .assertIsDisplayed()
     }
 
     /**
