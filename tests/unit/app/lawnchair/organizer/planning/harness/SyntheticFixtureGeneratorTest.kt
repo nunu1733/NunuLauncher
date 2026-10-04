@@ -53,6 +53,17 @@ class SyntheticFixtureGeneratorTest {
         val full = SyntheticFixtureGenerator.generate(seed = 0x4E554E55L, count = 64)
         val partial = SyntheticFixtureGenerator.generate(seed = 0x4E554E55L, count = 10)
         assertEquals(full.take(10), partial)
+        assertNotEquals(full.first().reproduction, partial.first().reproduction)
+    }
+
+    @Test
+    fun fixtureEqualitySeparatesReproductionCoordinatesFromCorpusCount() {
+        val fixture = SyntheticFixtureGenerator.generate(seed = 42, count = 10).first()
+        val differentCount = fixture.copy(reproduction = Reproduction(seed = 42, caseIndex = 0, corpusCount = 64))
+        val differentCase = fixture.copy(reproduction = Reproduction(seed = 42, caseIndex = 1, corpusCount = 64))
+
+        assertEquals(fixture, differentCount)
+        assertNotEquals(fixture, differentCase)
     }
 
     @Test
@@ -153,6 +164,30 @@ class SyntheticFixtureGeneratorTest {
                 "-Dplanner.seed=1314213461 -Dplanner.case=0",
             text,
         )
+    }
+
+    @Test
+    fun nonDefaultReproductionIncludesCorpusCount() {
+        val r = Reproduction(seed = 42, caseIndex = 511, corpusCount = 512)
+        assertEquals(
+            "./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests '*PlannerGeneratedPropertyTest*' " +
+                "-Dplanner.seed=42 -Dplanner.case=511 -Dplanner.count=512",
+            r.toString(),
+        )
+    }
+
+    @Test
+    fun extendedCorpusSelectsHighCaseWithMatchingReproduction() {
+        val fixtures = SyntheticFixtureGenerator.generate(seed = 42, count = 512)
+        val selected = SyntheticFixtureGenerator.selectCase(fixtures, seed = 42, caseIndex = 511)
+        assertEquals(Reproduction(42, 511, 512), selected.reproduction)
+        assertNotEquals(Reproduction(42, 511, 513), selected.reproduction)
+
+        val wrongMetadata = fixtures.toMutableList()
+        wrongMetadata[511] = selected.copy(reproduction = Reproduction(42, 511, 513))
+        assertThrows(IllegalArgumentException::class.java) {
+            SyntheticFixtureGenerator.selectCase(wrongMetadata, seed = 42, caseIndex = 511)
+        }
     }
 
     @Test

@@ -54,6 +54,42 @@ build-tools;36.1.0
 ./gradlew assembleLawnWithQuickstepGithubDebug
 ```
 
+## Planner generated-property runs
+
+The normal planner property run is intentionally bounded and deterministic:
+
+```bash
+./gradlew testLawnWithQuickstepGithubDebugUnitTest \
+  --tests '*PlannerGeneratedPropertyTest*'
+```
+
+To explore a larger reproducible corpus locally, provide a fixed seed and a
+positive test-only count:
+
+```bash
+./gradlew testLawnWithQuickstepGithubDebugUnitTest \
+  --tests '*PlannerGeneratedPropertyTest*' \
+  -Dplanner.seed=1314213461 \
+  -Dplanner.count=512
+```
+
+To rerun one failure, add its zero-based case index. For a non-default count,
+retain the count in the command so the selected case exists in the same
+corpus:
+
+```bash
+./gradlew testLawnWithQuickstepGithubDebugUnitTest \
+  --tests '*PlannerGeneratedPropertyTest*' \
+  -Dplanner.seed=1314213461 \
+  -Dplanner.case=511 \
+  -Dplanner.count=512
+```
+
+The dedicated `Planner stress` workflow runs the fixed 8 × 512 matrix (4,096
+cases) weekly and through manual dispatch. It complements, but does not
+replace, the fast 64-case PR evidence. The complete matrix and its seeds are
+defined in [Issue #46's spec](../../specs/46-reproducible-planner-stress-coverage/spec.md).
+
 Repository documentation、Issue form、required project filesを変更した場合は、同じcheckoutで次も実行する。
 
 ```bash

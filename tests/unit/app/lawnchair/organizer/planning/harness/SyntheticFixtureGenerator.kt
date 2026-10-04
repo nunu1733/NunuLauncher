@@ -61,18 +61,23 @@ import java.util.Random
 internal object SyntheticFixtureGenerator {
     const val DEFAULT_SEED: Long = 0x4E554E55L
 
-    fun generate(seed: Long = DEFAULT_SEED, count: Int = 64): List<PlannerFixture> {
+    fun generate(seed: Long = DEFAULT_SEED, count: Int = DEFAULT_PLANNER_CASE_COUNT): List<PlannerFixture> {
         require(count > 0)
         val random = Random(seed)
-        return List(count) { index -> generateOne(seed, index, Random(random.nextLong())) }
+        return List(count) { index -> generateOne(seed, index, count, Random(random.nextLong())) }
     }
 
     fun selectCase(fixtures: List<PlannerFixture>, seed: Long, caseIndex: Int): PlannerFixture {
         require(caseIndex in fixtures.indices)
-        return fixtures[caseIndex].also { require(it.reproduction == Reproduction(seed, caseIndex)) }
+        return fixtures[caseIndex].also {
+            val reproduction = requireNotNull(it.reproduction)
+            require(reproduction.seed == seed)
+            require(reproduction.caseIndex == caseIndex)
+            require(reproduction.corpusCount == fixtures.size)
+        }
     }
 
-    private fun generateOne(seed: Long, index: Int, random: Random): PlannerFixture {
+    private fun generateOne(seed: Long, index: Int, count: Int, random: Random): PlannerFixture {
         val columns = random.nextInt(3, 9)
         val rows = random.nextInt(3, 9)
         val orientation = Orientation.entries[index % Orientation.entries.size]
@@ -302,7 +307,7 @@ internal object SyntheticFixtureGenerator {
             input,
             expectation,
             if (runMode == RunMode.FullOrganization) structural + ContractCheck.IDEMPOTENCE else structural,
-            Reproduction(seed, index),
+            Reproduction(seed, index, count),
         )
     }
 }

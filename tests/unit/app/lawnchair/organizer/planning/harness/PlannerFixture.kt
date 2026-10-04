@@ -22,7 +22,29 @@ internal data class PlannerFixture(
     val expectation: FixtureExpectation,
     val checks: Set<ContractCheck>,
     val reproduction: Reproduction? = null,
-)
+) {
+    // The corpus count describes the surrounding generated corpus, not this
+    // fixture's value. Keep it out of fixture equality so Issue #11 prefix
+    // stability remains true while reproductions retain complete commands.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PlannerFixture) return false
+        return id == other.id &&
+            input == other.input &&
+            expectation == other.expectation &&
+            checks == other.checks &&
+            reproduction.fixtureValue() == other.reproduction.fixtureValue()
+    }
+
+    override fun hashCode(): Int {
+        var result = id.hashCode()
+        result = 31 * result + input.hashCode()
+        result = 31 * result + expectation.hashCode()
+        result = 31 * result + checks.hashCode()
+        result = 31 * result + (reproduction.fixtureValue()?.hashCode() ?: 0)
+        return result
+    }
+}
 
 internal data class FixtureExpectation(
     val outcome: ExpectedOutcome,
@@ -92,13 +114,34 @@ internal data class VerificationReport(
 internal data class Reproduction(
     val seed: Long,
     val caseIndex: Int,
+    val corpusCount: Int = DEFAULT_PLANNER_CASE_COUNT,
 ) {
     init {
         require(caseIndex >= 0)
+        require(corpusCount > caseIndex)
     }
 
-    override fun toString(): String = "./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests '*PlannerGeneratedPropertyTest*' -Dplanner.seed=$seed -Dplanner.case=$caseIndex"
+    override fun toString(): String {
+        val command = "./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests '*PlannerGeneratedPropertyTest*' " +
+            "-Dplanner.seed=$seed -Dplanner.case=$caseIndex"
+        return if (corpusCount == DEFAULT_PLANNER_CASE_COUNT) {
+            command
+        } else {
+            "$command -Dplanner.count=$corpusCount"
+        }
+    }
 }
+
+private data class FixtureReproductionValue(
+    val seed: Long,
+    val caseIndex: Int,
+)
+
+private fun Reproduction?.fixtureValue(): FixtureReproductionValue? = this?.let {
+    FixtureReproductionValue(seed = it.seed, caseIndex = it.caseIndex)
+}
+
+internal const val DEFAULT_PLANNER_CASE_COUNT: Int = 64
 
 internal data class ValidationRuleId(val value: String) {
     init {
