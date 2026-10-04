@@ -261,6 +261,18 @@ class ParseAuditTests(unittest.TestCase):
         self.assertEqual(doc.findings, [], f"prefixed IDs flagged: {doc.findings}")
         self.assertEqual(doc.criteria_entries, [(spec, ["CW-AC-01", "CW-AC-10"])])
 
+    def test_composite_issue_acceptance_ids_are_parsed(self) -> None:
+        spec = "specs/269-folder-workspace-representability/spec.md"
+        doc = self._parse(VALID_AUDIT.replace(
+            self._CRITERIA_LINE,
+            f"- Criteria: {spec} AC-269-01, AC-269-02, AC-269-03, AC-269-04\n",
+        ))
+        self.assertEqual(doc.findings, [], f"composite IDs flagged: {doc.findings}")
+        self.assertEqual(
+            doc.criteria_entries,
+            [(spec, ["AC-269-01", "AC-269-02", "AC-269-03", "AC-269-04"])],
+        )
+
     def test_malformed_prefixed_ids_cannot_be_partially_parsed(self) -> None:
         # Whole-token boundaries apply to prefixed families too: a malformed
         # citation must not be reduced to the defined CW-AC-01.

@@ -89,13 +89,14 @@ _CRITERIA_RE = re.compile(r"(specs/[\w.-]+/spec\.md|docs/adr/[\w.-]+\.md)")
 # Scope/Findings cannot satisfy (or smuggle) criteria references.
 _CRITERIA_LINE_RE = re.compile(_FIELD_PREFIX + r"Criteria:\s*(.*)$", re.MULTILINE)
 # Requirement identifiers used by specs and ADRs: bare families (FR-004,
-# NFR-001, AC-3) and hyphen-prefixed per-spec families (CW-AC-01, as used by
-# the #174 spec), plus ADR-0004.  A citation must be a whole token: a
+# NFR-001, AC-3), composite issue-scoped acceptance IDs (AC-269-01), and
+# hyphen-prefixed per-spec families (CW-AC-01, as used by the #174 spec), plus
+# ADR-0004. A citation must be a whole token: a
 # malformed value such as ``FR-004-extra`` must not be silently parsed as a
 # citation of ``FR-004``, and ``CW-AC-01`` is never extracted from inside a
 # longer token such as ``XCW-AC-01``.
 _REQUIREMENT_ID_RE = re.compile(
-    r"(?<![A-Za-z0-9_-])(?:(?:[A-Z]+-)?(?:FR|NFR|AC)-\d+|ADR-\d{4})(?![A-Za-z0-9_-])"
+    r"(?<![A-Za-z0-9_-])(?:(?:[A-Z]+-)?(?:FR|NFR|AC)-\d+(?:-\d+)?|ADR-\d{4})(?![A-Za-z0-9_-])"
 )
 # A concrete executed command: a gradle/python/gh/adb/git invocation, so prose
 # like "tests pass" cannot satisfy the executed-test-surface requirement.

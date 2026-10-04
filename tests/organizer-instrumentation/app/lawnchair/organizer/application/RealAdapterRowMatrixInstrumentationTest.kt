@@ -44,6 +44,44 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RealAdapterRowMatrixInstrumentationTest {
     @Test
+    fun desktopApplicationWithNullSpanIsRejectedByCanonicalCapture() {
+        val source = SQLiteDatabase.create(null)
+        try {
+            Favorites.addTableToDb(source, 10L, false)
+            source.insertOrThrow(
+                Favorites.TABLE_NAME,
+                null,
+                RowManifestCodec.values(
+                    row(
+                        1,
+                        Favorites.ITEM_TYPE_APPLICATION,
+                        10,
+                        Favorites.CONTAINER_DESKTOP,
+                        0,
+                        0,
+                        1,
+                        OrganizerLockState.UNLOCKED,
+                        intent = "#Intent;component=com.example/.Malformed;end",
+                        spanX = null,
+                        spanY = null,
+                    ),
+                ),
+            )
+
+            assertThrows(IllegalArgumentException::class.java) {
+                RowManifestCodec.capture(
+                    source,
+                    DeviceCapabilities(4, 5, 5, 4, 4, DeviceOrientation.PORTRAIT),
+                    listOf(PageId("0")),
+                    listOf(ProfileState(ProfileId("10"), ProfileAvailability.AVAILABLE)),
+                )
+            }
+        } finally {
+            source.close()
+        }
+    }
+
+    @Test
     fun folderWidgetProfileAndLockRoundTripExactly() {
         val source = SQLiteDatabase.create(null)
         val restored = SQLiteDatabase.create(null)
@@ -420,6 +458,8 @@ class RealAdapterRowMatrixInstrumentationTest {
         intent: String? = null,
         widgetId: Int? = null,
         provider: String? = null,
+        spanX: Int? = 1,
+        spanY: Int? = 1,
     ) = PersistentRow(
         id,
         ItemId(id.toString()),
@@ -428,8 +468,8 @@ class RealAdapterRowMatrixInstrumentationTest {
         screen?.let { PageId(it.toString()) },
         cellX,
         cellY,
-        1,
-        1,
+        spanX,
+        spanY,
         rank,
         KindCode(type),
         widgetId?.let(::AppWidgetId),
@@ -443,6 +483,6 @@ class RealAdapterRowMatrixInstrumentationTest {
         id,
         lock,
         if (cellX != null && cellY != null) GridCell(cellX, cellY) else null,
-        GridSpan(1, 1),
+        if (spanX != null && spanY != null) GridSpan(spanX, spanY) else null,
     )
 }
