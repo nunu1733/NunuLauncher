@@ -16,6 +16,14 @@
 -->
 
 <resources xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- By default all grid types are enabled (defined at resources scope; see
+         the GridDisplayOption reference below). -->
+    <attr name="gridType" format="integer">
+        <!-- Enable on phone only -->
+        <flag name="one_grid" value="1" />
+        <!-- Enable on tablets only -->
+        <flag name="non_one_grid" value="2" />
+    </attr>
 
     <!-- Attributes used for launcher theme -->
     <attr name="allAppsScrimColor" format="color" />
@@ -296,13 +304,12 @@
         <attr name="allAppsCellSpecsTwoPanelId" format="reference" />
         <!-- defaults to false, if not specified -->
         <attr name="isFixedLandscape" format="boolean" />
-        <!-- By default all grid types are enabled -->
-        <attr name="gridType" format="integer">
-            <!-- Enable on phone only -->
-            <flag name="one_grid" value="1" />
-            <!-- Enable on tablets only -->
-            <flag name="non_one_grid" value="2" />
-        </attr>
+        <!-- Issue #532 G4 boot bridge: gridType is defined at <resources> scope
+             (AGP 9.4.1 values-merge drops a flag-carrying attr defined inside a
+             declare-styleable from the runtime styleable array, which made the
+             launcher crash on boot; replay-log §6.5). The reference here keeps
+             the GridDisplayOption styleable contract identical. -->
+        <attr name="gridType" />
 
         <!-- By default all categories are enabled -->
         <attr name="deviceCategory" format="integer">
