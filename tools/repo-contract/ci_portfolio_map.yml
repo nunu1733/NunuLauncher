@@ -16,6 +16,15 @@
 # instrumentation_enabled / permanent_run) are not surfaces and are excluded
 # from the edge comparison.
 #
+# Issue #532 G4 (replay-log specs/516-16-rebase-phase2 §6.4): the anchor
+# build's Gradle test runner parses -Pandroid.testInstrumentationRunnerArguments
+# as k=v,k=v pairs, so a comma-separated multi-class runner filter dispatches
+# only its first class. The multi-class lanes (shared-writer, db-migration,
+# reservation-recovery, category-override, onboarding-proposal) therefore run
+# one connected invocation per class via tools/ci/run-instrumentation-per-class.sh
+# (fail-fast, same live wrapper as before). Lane set, surface edges and the
+# class set of every lane are unchanged; no lane was added.
+#
 # Surface meaning (path filters live in ci.yml's `changes` job):
 #   surface_layout_write      - layout write coordinator / ModelWriter / DB
 #                               controller seam + organizer application module

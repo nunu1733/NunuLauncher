@@ -433,9 +433,12 @@ jobs:
           emulator-boot-timeout: 900
           # Issue #438: the wrapper captures failure-time evidence while the
           # runner still owns the live emulator and returns the original
-          # command status.
+          # command status. Issue #532 G4: classes run one per connected
+          # invocation (run-instrumentation-per-class.sh) because the anchor
+          # Gradle test runner parses runner arguments as k=v,k=v pairs and a
+          # comma-separated class filter dispatches only its first class.
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/shared-writer-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.DirectEditModelWriterTest,com.android.launcher3.InstallDestinationModelWriterTest,com.android.launcher3.model.InstallDestinationQueueTest,com.android.launcher3.organizer.DirectEditWriteShapeTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.OrganizerReloadCompletionOrderingTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest,com.android.launcher3.organizer.RestoreLeaseSerializationTest,com.android.launcher3.organizer.RestoreLeaseDeferredLoaderThreadAffinityTest,com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest,app.lawnchair.homeedit.EditSurfaceApplyInstrumentationTest,com.android.launcher3.DirectEditUndoModelWriterTest,app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest,app.lawnchair.homeedit.HomeEditUndoAvailabilityInstrumentationTest,app.lawnchair.homeedit.AppDestinationNoticeTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/shared-writer-failure-time-evidence -- bash tools/ci/run-instrumentation-per-class.sh com.android.launcher3.organizer.ModelWriterTransactionReentryTest com.android.launcher3.DirectEditModelWriterTest com.android.launcher3.InstallDestinationModelWriterTest com.android.launcher3.model.InstallDestinationQueueTest com.android.launcher3.organizer.DirectEditWriteShapeTest com.android.launcher3.organizer.LayoutWriteCoordinatorTest com.android.launcher3.organizer.BinderOperationFutureTest com.android.launcher3.organizer.NestedTransactionTest com.android.launcher3.OrganizerReloadCompletionOrderingTest com.android.launcher3.organizer.OrganizerReloadSupersessionTest com.android.launcher3.organizer.RestoreLeaseSerializationTest com.android.launcher3.organizer.RestoreLeaseDeferredLoaderThreadAffinityTest com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest app.lawnchair.homeedit.EditSurfaceApplyInstrumentationTest com.android.launcher3.DirectEditUndoModelWriterTest app.lawnchair.homeedit.EditSurfaceUndoInstrumentationTest app.lawnchair.homeedit.HomeEditUndoAvailabilityInstrumentationTest app.lawnchair.homeedit.AppDestinationNoticeTest
       - name: Upload shared-writer instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -503,8 +506,10 @@ jobs:
           # RestoreDbTaskSuccessPathTest (performRestore success entry),
           # RealZipRestoreE2E (real ZIP32/33 restore), and the device readback
           # half of PrefsLegacyXmlMigrationTest (JVM half in organizer-unit-tests).
+          # Issue #532 G4: per-class invocations via
+          # run-instrumentation-per-class.sh (see shared-writer comment).
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/db-migration-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest,com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest,com.android.launcher3.model.GridMigrationSuccessTest,com.android.launcher3.LauncherPrefsCommitTest,app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest,com.android.launcher3.organizer.RestoreProfileRemapTest,com.android.launcher3.model.GridMigrationFailureTest,com.android.launcher3.organizer.RestoreDbTaskSuccessPathTest,app.lawnchair.backup.RealZipRestoreE2E,com.android.launcher3.PrefsLegacyXmlMigrationTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/db-migration-failure-time-evidence -- bash tools/ci/run-instrumentation-per-class.sh com.android.launcher3.organizer.MigrationTransactionOwnershipTest com.android.launcher3.organizer.DatabaseHelperSchema33Test com.android.launcher3.organizer.DowngradeSchema33Test com.android.launcher3.organizer.InactiveGridDbNormalizationTest com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest com.android.launcher3.model.GridMigrationSuccessTest com.android.launcher3.LauncherPrefsCommitTest app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest com.android.launcher3.organizer.RestoreProfileRemapTest com.android.launcher3.model.GridMigrationFailureTest com.android.launcher3.organizer.RestoreDbTaskSuccessPathTest app.lawnchair.backup.RealZipRestoreE2E com.android.launcher3.PrefsLegacyXmlMigrationTest
       - name: Upload DB migration instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -767,9 +772,10 @@ jobs:
           # (#84/#89/#271/#174), the #265 gate-FAILED fail-closed routes, page
           # capture ordering, and the real-DB lock authoring matrix (#38),
           # which focused local validation showed to be order-independent in
-          # this co-occupancy.
+          # this co-occupancy. Issue #532 G4: per-class invocations via
+          # run-instrumentation-per-class.sh (see shared-writer comment).
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/reservation-recovery-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.application.ProductionPublicSeamInstrumentationTest,app.lawnchair.organizer.application.RealAdapterRowMatrixInstrumentationTest,app.lawnchair.organizer.application.SanitizerInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreLifecycleTest,app.lawnchair.organizer.application.OverlapAcceptanceGateSeamInstrumentationTest,app.lawnchair.organizer.planning.LoaderCursorOverlapAcceptanceContractTest,app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest,app.lawnchair.organizer.application.store.RecoveryStoreInspectionInstrumentationTest,app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotPublicationInstrumentationTest,app.lawnchair.organizer.application.store.OrganizerDurableStatusInstrumentationTest,com.android.launcher3.organizer.RecoveryStoreChunkedManifestInstrumentationTest,app.lawnchair.organizer.application.Issue265GateFailedRouteInstrumentationTest,app.lawnchair.organizer.application.PageCaptureInstrumentationTest,app.lawnchair.organizer.locks.LockAuthoringInstrumentationTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/reservation-recovery-failure-time-evidence -- bash tools/ci/run-instrumentation-per-class.sh app.lawnchair.organizer.application.ProductionPublicSeamInstrumentationTest app.lawnchair.organizer.application.RealAdapterRowMatrixInstrumentationTest app.lawnchair.organizer.application.SanitizerInstrumentationTest com.android.launcher3.organizer.RecoveryStoreLifecycleTest app.lawnchair.organizer.application.OverlapAcceptanceGateSeamInstrumentationTest app.lawnchair.organizer.planning.LoaderCursorOverlapAcceptanceContractTest app.lawnchair.organizer.application.Issue265ManualEditRecoveryInstrumentationTest app.lawnchair.organizer.application.store.RecoveryStoreInspectionInstrumentationTest app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotPublicationInstrumentationTest app.lawnchair.organizer.application.store.OrganizerDurableStatusInstrumentationTest com.android.launcher3.organizer.RecoveryStoreChunkedManifestInstrumentationTest app.lawnchair.organizer.application.Issue265GateFailedRouteInstrumentationTest app.lawnchair.organizer.application.PageCaptureInstrumentationTest app.lawnchair.organizer.locks.LockAuthoringInstrumentationTest
       - name: Upload reservation-recovery instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -830,8 +836,10 @@ jobs:
           # Issue #458: OrganizerLockScreenTest (#38/#211 lock UI semantics, focus,
           # font-scale) joins as a co-occupant under the #342 co-occupant
           # precedent; it runs against a fake module and shares no fixture state.
+          # Issue #532 G4: per-class invocations via
+          # run-instrumentation-per-class.sh (see shared-writer comment).
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/category-override-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest,app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest,app.lawnchair.organizer.locks.OrganizerLockScreenTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/category-override-failure-time-evidence -- bash tools/ci/run-instrumentation-per-class.sh app.lawnchair.organizer.ui.CategoryOverridePreferencesInstrumentationTest app.lawnchair.organizer.ui.CustomCategoryPreferencesInstrumentationTest app.lawnchair.organizer.locks.OrganizerLockScreenTest
       - name: Upload category-override instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
@@ -1008,8 +1016,10 @@ jobs:
           profile: pixel_7_pro
           disable-animations: true
           emulator-boot-timeout: 900
+          # Issue #532 G4: per-class invocations via
+          # run-instrumentation-per-class.sh (see shared-writer comment).
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/onboarding-proposal-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest,app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/onboarding-proposal-failure-time-evidence -- bash tools/ci/run-instrumentation-per-class.sh app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
       - name: Upload onboarding-proposal instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
