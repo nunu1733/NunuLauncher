@@ -19,8 +19,10 @@ package app.lawnchair.ui.preferences.destinations
 import android.content.Context
 import android.os.Process
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
@@ -55,6 +57,8 @@ import app.lawnchair.organizer.locks.LockStateEntry
 import app.lawnchair.organizer.locks.LockTargetState
 import app.lawnchair.organizer.locks.OrganizerLocks
 import app.lawnchair.organizer.locks.UserReviewedIntent
+import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.ui.LockMessages
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
@@ -228,9 +232,13 @@ fun PlacementLockPreferences(
     val entry = dialogEntry
     val explanation = dialogExplanation
     if (entry != null && explanation != null) {
+        val listing = entries.orEmpty()
         LockChangeDialog(
             entry = entry,
             explanation = explanation,
+            profileLabel = profileLabels[entry.profile.value],
+            parentTitle = parentTitleOf(entry, listing),
+            parentPlacement = parentPlacementOf(entry, listing),
             onDismiss = {
                 dialogEntry = null
                 dialogExplanation = null
@@ -305,6 +313,9 @@ private fun StateBadge(stateLabel: String, contentDescription: String) {
 private fun LockChangeDialog(
     entry: LockStateEntry,
     explanation: LockExplanation,
+    profileLabel: String?,
+    parentTitle: String?,
+    parentPlacement: LockPlacementSummary?,
     onDismiss: () -> Unit,
     onConfirm: (LockTargetState, UserReviewedIntent) -> Unit,
 ) {
@@ -346,7 +357,27 @@ private fun LockChangeDialog(
                     )
                 },
                 text = {
-                    Text(if (entry.stored == OrganizerLockState.UNKNOWN) "$reviewIntro\n\n$body" else body)
+                    // Issue #211: the dialog names the tapped row with the same
+                    // title and placement description the list row renders, so
+                    // same-named placements are distinguishable while the row
+                    // itself is covered. The disambiguator line (PR #264 review
+                    // P1) adds the detail the row description abstracts away —
+                    // cell for desktop rows, parent title plus the parent's own
+                    // placement for folder and app pair rows (second review P1:
+                    // parent titles are user-editable and not unique) — so
+                    // colliding descriptions still resolve.
+                    Column {
+                        Text(
+                            stringResource(
+                                R.string.organizer_lock_dialog_target_title,
+                                entry.title.textOrFallback(entry),
+                            ),
+                        )
+                        Text(placementDescription(entry, profileLabel))
+                        dialogTargetDisambiguator(entry, parentTitle, parentPlacement)?.let { Text(it) }
+                        Spacer(Modifier.height(8.dp))
+                        Text(if (entry.stored == OrganizerLockState.UNKNOWN) "$reviewIntro\n\n$body" else body)
+                    }
                 },
                 confirmButton = {
                     when (entry.stored) {
@@ -436,6 +467,101 @@ private fun placementDescription(entry: LockStateEntry, profileLabel: String?): 
 
         else -> placement
     }
+}
+
+/**
+ * PR #264 review P1: the row placement description collapses Desktop to the
+ * page number, folder children to the rank, and app pair members to a fixed
+ * phrase, so same-named rows in different cells, different folders at the
+ * same position, or different app pairs share one description. The dialog
+ * therefore appends this disambiguator line, always shown for the affected
+ * placements, from the detail [LockPlacementSummary] already carries.
+ */
+@Composable
+private fun dialogTargetDisambiguator(
+    entry: LockStateEntry,
+    parentTitle: String?,
+    parentPlacement: LockPlacementSummary?,
+): String? = when (val p = entry.placement) {
+    is LockPlacementSummary.Desktop -> stringResource(
+        R.string.organizer_lock_dialog_target_position,
+        p.cell.y + 1,
+        p.cell.x + 1,
+    )
+
+    is LockPlacementSummary.InFolder -> listOfNotNull(
+        stringResource(
+            R.string.organizer_lock_dialog_target_folder,
+            parentTitle ?: p.parent.value,
+        ),
+        // Second review P1: parent titles are user-editable and not unique,
+        // so the parent's own placement is appended when it is resolvable.
+        parentPlacement?.let { shortParentLocation(it) },
+    ).joinToString(" · ")
+
+    is LockPlacementSummary.InAppPair -> listOfNotNull(
+        stringResource(
+            R.string.organizer_lock_dialog_target_app_pair,
+            parentTitle ?: p.parent.value,
+        ),
+        parentPlacement?.let { shortParentLocation(it) },
+        // Third review P1: a valid pair may hold two same-named members, so
+        // the split stage is the within-pair discriminator.
+        memberStageLabel(p.stage),
+    ).joinToString(" · ")
+
+    is LockPlacementSummary.DockSlot, is LockPlacementSummary.Unsupported -> null
+}
+
+@Composable
+private fun memberStageLabel(stage: SplitStage): String = when (stage) {
+    SplitStage.TOP_OR_LEFT -> stringResource(R.string.organizer_lock_dialog_split_top_left)
+    SplitStage.BOTTOM_OR_RIGHT -> stringResource(R.string.organizer_lock_dialog_split_bottom_right)
+}
+
+/** Short user-facing location of a parent row (desktop page + cell, or dock slot). */
+@Composable
+private fun shortParentLocation(parent: LockPlacementSummary): String? = when (parent) {
+    is LockPlacementSummary.Desktop -> stringResource(
+        R.string.organizer_lock_screen_placement_desktop,
+        (parent.pageOrder ?: 0) + 1,
+    ) + " · " + stringResource(
+        R.string.organizer_lock_dialog_target_position,
+        parent.cell.y + 1,
+        parent.cell.x + 1,
+    )
+
+    is LockPlacementSummary.DockSlot -> stringResource(
+        R.string.organizer_lock_screen_placement_dock,
+        parent.rank + 1,
+    )
+
+    else -> null
+}
+
+/** Parent row title for folder / app pair placements, resolved from the already-loaded listing. */
+private fun parentTitleOf(entry: LockStateEntry, listing: List<LockStateEntry>): String? {
+    val parentId = when (val p = entry.placement) {
+        is LockPlacementSummary.InFolder -> p.parent
+        is LockPlacementSummary.InAppPair -> p.parent
+        else -> return null
+    }
+    val parent = listing.firstOrNull { it.item == parentId } ?: return null
+    val title = when (val t = parent.title) {
+        is OptionalText.Present -> t.value
+        OptionalText.Absent -> ""
+    }
+    return title.ifBlank { null }
+}
+
+/** Parent row's own placement for folder / app pair placements, resolved from the already-loaded listing. */
+private fun parentPlacementOf(entry: LockStateEntry, listing: List<LockStateEntry>): LockPlacementSummary? {
+    val parentId = when (val p = entry.placement) {
+        is LockPlacementSummary.InFolder -> p.parent
+        is LockPlacementSummary.InAppPair -> p.parent
+        else -> return null
+    }
+    return listing.firstOrNull { it.item == parentId }?.placement
 }
 
 private fun OptionalText.textOrFallback(entry: LockStateEntry): String = when (this) {
