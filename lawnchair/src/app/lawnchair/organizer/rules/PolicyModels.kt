@@ -148,10 +148,12 @@ data class OrganizerPolicyBundle(
     }
 
     companion object {
-        // child 2 shipped organization-policy-v2 (CANONICAL only). Child 4
-        // enabled STABLE_PAGE_TIDY_V1: a new semantic version/generation per
-        // ADR-0007 §8 / ADR-0012 — digest-only expansion was explicitly rejected.
-        const val POLICY_BUNDLE_VERSION = "organization-policy-v2.1"
+        // child 2 shipped organization-policy-v2 (CANONICAL only); child 4
+        // published -v2.1 (STABLE_PAGE_TIDY_V1); child 5 published -v2.2
+        // (BOTTOM_FIRST_V1). Every strategy enablement is a new semantic
+        // version/generation per ADR-0007 §8 / ADR-0012 — digest-only
+        // expansion was explicitly rejected.
+        const val POLICY_BUNDLE_VERSION = "organization-policy-v2.2"
         val RULE_VERSION = RuleVersion("v2")
         val TAXONOMY_VERSION = TaxonomyVersion("v1")
         const val CLASSIFICATION_VERSION = "classification-v1"
