@@ -34,7 +34,7 @@ C群の代表（replay-logへ全量を記録）: PR #79（deck退役本体、95 
 2. **keep**: fork側内容をそのまま復元する（patch競合なしの前提が崩れた場合はadaptiveへ再判定し、replay-logに記録）。
 3. **adapt**: 16-dev側の新構造を正とし、forkの契約（各bridge groupのowner ADR/specの受入条件）を満たす形で再表現する。重点3点: `LauncherModel.kt` への `OrganizerModelReloadAdapter` 接続、`GridSizeMigrationDBController/Logic` への `GridMigration*` 接続（transaction ownership [spec 118](../../specs/118-sqlite-migration-transaction-audit/spec.md)維持）、`MainThreadInitializedObject` のonPostInit代替hook（Issue #14要件）。
 4. **drop**: 該当なし（Phase 0確定）。16-dev代替を発見した場合は停止してPhase 0 assessment/ADR-0018を改訂する。
-5. Nova restore 2挙動（#522 §4採用port）: `NovaBackupConverter.kt` のC単位で、警告/toggleと座標丸め・rows補償を一組で16-dev構造へ実装する。fixture境界値oracle（T4）を同時に追加する。
+5. Nova restore 2挙動（#522 §4採用port）: `NovaBackupConverter.kt` のC単位で、警告/toggleと座標丸め・rows補償を一組で16-dev構造へ実装する。converter通常入口のfixture境界値oracle（fractional四フィールド / smartspace ON-OFF / clamp・skip。**T8**）を同時に追加する。
 6. 解消で挙動変更が必要になった場合: その単位で停止し、replay-logへ「ADR/spec改訂要求」を記録する。改訂accepted後に再開する。
 
 ## 5. 実行の記録（replay-log）
@@ -70,7 +70,14 @@ C群の代表（replay-logへ全量を記録）: PR #79（deck退役本体、95 
 | T8 Nova 2挙動 | NovaRestoreGridApplicationTest + #299 A/B群 | 再利用 + **追加（converter境界fixture。未実装）** | backup_restore restore-capture API36 Conditional（A/B間force-stop維持） | fractional四フィールド、smartspace ON/OFF、clamp/skip、warning/toggle表示 |
 | T9 実APK F/R | 15↔16実APK roundtrip | **追加の互換実証（on-demand）** | Permanent laneは増やさない。API36 emulator + API37 Pixel 9a実機。Phase 4 owner closure | R→16→R→16同一data、DB/prefs/recovery独立比較 |
 
-**T4/T5/T7/T8は追加oracleの実装がgateの前提**である（実装PRでrouting正本 `tools/repo-contract/ci_portfolio_map.yml` / [ci-test-portfolio](../../docs/engineering/ci-test-portfolio.md) を同期する。新規恒久laneは増やさない）。T9はPhase 2時点の証跡とcutover前の再確認を区別し、closureはPhase 4 owner decision（ADR-0018 Decision 5）。
+**G4実行の固定情報**（[#522 assessment §6](../../docs/assessment/issue-522-rebase-data-compatibility.md)の要求）:
+
+- **source anchor**: T1〜T8の実行対象sourceはreplay完了後のrebase headで固定する（replay head確定後、各oracleをそのheadで実行した結果をevidenceとする。本表のclass/fixtureはanchor確定時点の正本）。T9は15↔16両APKの実build物（APK versionCode/名をreplay-logへ記録）。
+- **command/filter**: T1〜T3は `.github/workflows/ci.yml` の既存db-migration / surface_db_schema / layout_write lanes（`compute_ci_gating.py` のimpact判定で起動。PRでは対象classのfilter指定で実行）。T6/T2のNestedTransactionTestはAPI35 production-input lane。organizer-unit-tests（Permanent）に載るunitは [quality-strategy](../../docs/engineering/quality-strategy.md) のorganizer gate command。
+- **fixture**: T1 `legacy32/fresh33` fixture群（既存）。T2 旧schema32 binary fixture（既存）。T3 grid migration fixture（fast/general、target既存/新規）。T4 実DB+profile remap fixture。T5 real ZIP32/33 fixture（新規作成）。T8 fractional四フィールド・subgrid・smartspace ON/OFF・clamp/skip fixture（新規作成）。
+- **追加oracle名と重複境界**: T4 `RestoreDbTaskSuccessPathTest`（責務: performRestore成功入口の実DB assert。既存3 classはlease/remap/reentryを所有し重複しない）。T5 `RealZipRestoreE2E`（real ZIP復元とcold-start状態。既存critical-section/mutex testsは並行制御のみ）。T7 `PrefsLegacyXmlMigrationTest`（legacy XML→DataStore key変換。既存commit testはwrite pathのみ）。T8 `NovaConverterBoundaryTest`（converter通常入口の境界fixture。既存A/B群はUI接続・process分離の確認）。
+- **routing同期**: T4/T5/T7/T8の追加oracleは実装PRで `tools/repo-contract/ci_portfolio_map.yml` / [ci-test-portfolio](../../docs/engineering/ci-test-portfolio.md) を同時同期する（新規恒久laneは増やさない）。
+- **T4/T5/T7/T8は追加oracleの実装がgateの前提**である。T9はPhase 2時点の証跡とcutover前の再確認を区別し、closureはPhase 4 owner decision（ADR-0018 Decision 5）。
 
 ## 8. 実行順のまとめ
 
