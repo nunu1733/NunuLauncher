@@ -88,6 +88,33 @@ PRは次を含む。
 
 reviewはspec適合、安全invariant、上流patch surface、test evidenceを優先する。
 
+### main branch protection (Issue #249)
+
+`main` はGitHub側のbranch protectionで、Pull Request経由とrequired status checkを強制する。設定はrepository内のファイルではなくGitHubのremote stateなので、変更前後の値をAPIで読み戻して確認する。
+
+現在の設定（2026-09-08、[Issue #249](https://github.com/nunu1733/NunuLauncher/issues/249)）は次のとおりである。
+
+- Pull Request必須。required approving review countは `0` とし、solo保守で実現不能な別GitHubユーザー承認を要求しない。
+- required status checksは `final-status` と `high-risk-evidence`。どちらもChecks APIでGitHub Actions app id `15368`（`github-actions`）と照合済みである。
+- strict status checksは有効。PR branchがbase branchから遅れている場合は更新してからmergeする。
+- admin enforcement、conversation resolutionは有効。force-push、branch deletion、linear historyは許可しない/要求しない。
+- actor/user/teamのpush restrictionやbypass actorは設定しない。adminもprotected ruleの対象であり、required checkを迂回する運用を前提にしない。
+
+設定確認は対象forkを明示して行う。
+
+```bash
+gh api repos/nunu1733/NunuLauncher/branches/main/protection
+gh api repos/nunu1733/NunuLauncher/rulesets
+```
+
+復旧が必要な場合は、変更前の状態（branch protectionは404、rulesetは空）へ戻すため、管理者が明示的に次を実行し、直後にAPIで404/空配列を再確認する。これは通常のmerge手順ではなく、設定障害時だけに使う。
+
+```bash
+gh api --method DELETE repos/nunu1733/NunuLauncher/branches/main/protection
+```
+
+設定前後のAPI応答、検証URL、復旧手順は [Issue #249 assessment](../assessment/issue-249-main-merge-gate.md) に保存する。
+
 ### 6. Close
 
 merge後にIssueを閉じる。specを `implemented` にし、必要な要件、DESIGN、CONTEXT、ADRを更新する。残課題は新しいIssueへ移し、元Issueを曖昧なTODO置場にしない。
@@ -161,6 +188,7 @@ PRが次のいずれかに当たる場合に適用する。`high-risk-gate` work
 
 - 低リスク経路: [PR #63](https://github.com/nunu1733/NunuLauncher/pull/63)（docs/toolingのみ）はauditなしで [gateがpass](https://github.com/nunu1733/NunuLauncher/actions/runs/31801071856)。
 - 高リスク経路: 検証専用の [PR #64](https://github.com/nunu1733/NunuLauncher/pull/64)（close済み・非merge）に `risk: layout-data` labelを付与すると [gateがfail](https://github.com/nunu1733/NunuLauncher/actions/runs/31801210644)（audit記録欠如）し、`docs/assessment/pr-64-gate-demo.md` の追加（Head SHA・docs-only delta・[成功CI run参照](https://github.com/nunu1733/NunuLauncher/actions/runs/31801159754)）で [pass](https://github.com/nunu1733/NunuLauncher/actions/runs/31801306031) した。
+- post-protection経路: [PR #256](https://github.com/nunu1733/NunuLauncher/pull/256)（2026-09-08のbranch protection設定後）に `risk: layout-data` labelを付け、audit記録を欠落させると [high-risk-evidenceがfail](https://github.com/nunu1733/NunuLauncher/actions/runs/34198208520)し、Pulls APIの `mergeable_state` が `blocked` になった。検証PRはclose済み・非mergeである。
 
 ## Fork label vocabulary
 
