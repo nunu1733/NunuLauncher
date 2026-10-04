@@ -15,6 +15,8 @@ import com.android.launcher3.LauncherModel;
 import com.android.launcher3.OrganizerModelReloadAdapter;
 import com.android.launcher3.model.BgDataModel;
 import com.android.launcher3.model.LayoutWriteCoordinator;
+import com.android.launcher3.util.IntArray;
+import com.android.launcher3.util.IntSet;
 
 import org.junit.After;
 import org.junit.Before;
@@ -28,6 +30,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Instrumentation tests for AC-04 reload supersession.
@@ -59,6 +62,7 @@ import java.util.concurrent.TimeUnit;
 public class OrganizerReloadSupersessionTest {
 
     private static final long RELOAD_TIMEOUT_SECONDS = 15L;
+    private static final long EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS = 5L;
 
     private LauncherModel model;
     private Handler mainHandler;
@@ -119,39 +123,43 @@ public class OrganizerReloadSupersessionTest {
      */
     @Test
     public void subsequentRequestSupersedesPriorRequest() throws Exception {
-        addDummyCallback();
+        var barrier = new SyncPageSelectionBarrier();
+        addModelCallback(barrier);
         waitForModelIdle();
+        barrier.arm();
 
         var lease = LayoutWriteCoordinator.getInstance()
                 .tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
         assertNotNull("Must acquire organizer lease", lease);
         try {
             var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
-            var executor = Executors.newSingleThreadExecutor();
+            var executor = Executors.newFixedThreadPool(2);
+            try {
+                // Start request A on a background thread (requestAndWait blocks).
+                Future<OrganizerModelReloadAdapter.Outcome> outcomeAFuture = executor.submit(
+                        () -> adapter.requestAndWait(lease.token()));
+                barrier.awaitReached();
 
-            // Start request A on a background thread (requestAndWait blocks).
-            Future<OrganizerModelReloadAdapter.Outcome> outcomeAFuture = executor.submit(
-                    () -> adapter.requestAndWait(lease.token()));
+                // Request B supersedes A while A is blocked before its completion signal.
+                Future<OrganizerModelReloadAdapter.Outcome> outcomeBFuture = executor.submit(
+                        () -> adapter.requestAndWait(lease.token()));
+                OrganizerModelReloadAdapter.Outcome outcomeA = outcomeAFuture.get(
+                        RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            // Allow A's LoaderTask to start before issuing B.
-            // The LoaderTask does DB reads, sorting, and binding, so this
-            // window is sufficient on a real device/emulator.
-            Thread.sleep(500);
+                assertEquals("A must be SUPERSEDED by B",
+                        OrganizerModelReloadAdapter.Outcome.SUPERSEDED, outcomeA);
 
-            // Request B supersedes A via forceReloadForOrganizer -> stopLoader
-            // -> cancelOrganizerReload.
-            OrganizerModelReloadAdapter.Outcome outcomeB = adapter.requestAndWait(lease.token());
-
-            // Wait for A with timeout (should wake up from SUPERSEDED signal).
-            OrganizerModelReloadAdapter.Outcome outcomeA = outcomeAFuture.get(
-                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-
-            assertEquals("A must be SUPERSEDED by B",
-                    OrganizerModelReloadAdapter.Outcome.SUPERSEDED, outcomeA);
-            assertEquals("B must complete successfully",
-                    OrganizerModelReloadAdapter.Outcome.COMPLETED, outcomeB);
-
-            executor.shutdown();
+                // Let both the superseded A loader and replacement B loader drain.
+                barrier.release();
+                OrganizerModelReloadAdapter.Outcome outcomeB = outcomeBFuture.get(
+                        RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                assertEquals("B must complete successfully",
+                        OrganizerModelReloadAdapter.Outcome.COMPLETED, outcomeB);
+                barrier.assertWaitDidNotFail();
+            } finally {
+                barrier.release();
+                shutdownExecutor(executor);
+            }
         } finally {
             lease.close();
         }
@@ -172,34 +180,42 @@ public class OrganizerReloadSupersessionTest {
      */
     @Test
     public void staleCompletionIsRejectedAfterSupersession() throws Exception {
-        addDummyCallback();
+        var barrier = new SyncPageSelectionBarrier();
+        addModelCallback(barrier);
         waitForModelIdle();
+        barrier.arm();
 
         var lease = LayoutWriteCoordinator.getInstance()
                 .tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
         assertNotNull("Must acquire organizer lease", lease);
         try {
             var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
-            var executor = Executors.newSingleThreadExecutor();
+            var executor = Executors.newFixedThreadPool(2);
+            try {
+                Future<OrganizerModelReloadAdapter.Outcome> outcomeAFuture = executor.submit(
+                        () -> adapter.requestAndWait(lease.token()));
+                barrier.awaitReached();
 
-            Future<OrganizerModelReloadAdapter.Outcome> outcomeAFuture = executor.submit(
-                    () -> adapter.requestAndWait(lease.token()));
+                // B supersedes A while A is blocked before its completion signal.
+                Future<OrganizerModelReloadAdapter.Outcome> outcomeBFuture = executor.submit(
+                        () -> adapter.requestAndWait(lease.token()));
+                OrganizerModelReloadAdapter.Outcome outcomeA = outcomeAFuture.get(
+                        RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            Thread.sleep(500);
+                // A must be SUPERSEDED, proving A's stale completed callback was rejected.
+                assertEquals("Stale completion must be rejected (SUPERSEDED, not COMPLETED)",
+                        OrganizerModelReloadAdapter.Outcome.SUPERSEDED, outcomeA);
 
-            // B supersedes A.
-            OrganizerModelReloadAdapter.Outcome outcomeB = adapter.requestAndWait(lease.token());
-
-            OrganizerModelReloadAdapter.Outcome outcomeA = outcomeAFuture.get(
-                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-
-            // A must be SUPERSEDED, proving A's completed callback was rejected.
-            assertEquals("Stale completion must be rejected (SUPERSEDED, not COMPLETED)",
-                    OrganizerModelReloadAdapter.Outcome.SUPERSEDED, outcomeA);
-            assertEquals("B must complete",
-                    OrganizerModelReloadAdapter.Outcome.COMPLETED, outcomeB);
-
-            executor.shutdown();
+                barrier.release();
+                OrganizerModelReloadAdapter.Outcome outcomeB = outcomeBFuture.get(
+                        RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                assertEquals("B must complete",
+                        OrganizerModelReloadAdapter.Outcome.COMPLETED, outcomeB);
+                barrier.assertWaitDidNotFail();
+            } finally {
+                barrier.release();
+                shutdownExecutor(executor);
+            }
         } finally {
             lease.close();
         }
@@ -217,42 +233,45 @@ public class OrganizerReloadSupersessionTest {
      */
     @Test
     public void cancellationByForceReloadIsTerminalExactlyOnce() throws Exception {
-        addDummyCallback();
+        var barrier = new SyncPageSelectionBarrier();
+        addModelCallback(barrier);
         waitForModelIdle();
+        barrier.arm();
 
         var lease = LayoutWriteCoordinator.getInstance()
                 .tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER);
         assertNotNull("Must acquire organizer lease", lease);
         try {
             var adapter = new OrganizerModelReloadAdapter(model, mainHandler);
-            var executor = Executors.newSingleThreadExecutor();
+            var executor = Executors.newFixedThreadPool(2);
+            try {
+                // Start an organizer reload on a background thread.
+                Future<OrganizerModelReloadAdapter.Outcome> outcomeFuture = executor.submit(
+                        () -> adapter.requestAndWait(lease.token()));
+                barrier.awaitReached();
 
-            // Start an organizer reload on a background thread.
-            Future<OrganizerModelReloadAdapter.Outcome> outcomeFuture = executor.submit(
-                    () -> adapter.requestAndWait(lease.token()));
+                // The main thread is blocked by the barrier, so cancel from a safe worker.
+                Future<?> cancellationFuture = executor.submit(model::forceReload);
+                cancellationFuture.get(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            // Allow the reload to start.
-            Thread.sleep(500);
+                // The cancelled callback fires exactly once, delivering SUPERSEDED.
+                OrganizerModelReloadAdapter.Outcome outcome = outcomeFuture.get(
+                        RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                assertEquals("Cancelled request must be SUPERSEDED",
+                        OrganizerModelReloadAdapter.Outcome.SUPERSEDED, outcome);
 
-            // Cancel the organizer reload via a regular forceReload.
-            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
-                model.forceReload();
-            });
-
-            // The cancelled callback fires exactly once, delivering SUPERSEDED.
-            OrganizerModelReloadAdapter.Outcome outcome = outcomeFuture.get(
-                    RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-
-            assertEquals("Cancelled request must be SUPERSEDED",
-                    OrganizerModelReloadAdapter.Outcome.SUPERSEDED, outcome);
-
-            executor.shutdown();
-
-            // Wait for the forceReload that cancelled it to settle.
-            waitForModelIdle();
+                barrier.release();
+                barrier.assertWaitDidNotFail();
+            } finally {
+                barrier.release();
+                shutdownExecutor(executor);
+            }
         } finally {
             lease.close();
         }
+        // The regular reload is tokenless and may remain deferred behind the organizer lease.
+        // Wait for it only after the lease has been released.
+        waitForModelIdle();
     }
 
     /**
@@ -314,6 +333,62 @@ public class OrganizerReloadSupersessionTest {
             addedCallbacks.remove(cb);
         } catch (Exception e) {
             // Swallow cleanup exceptions.
+        }
+    }
+
+    private void shutdownExecutor(ExecutorService executor) throws InterruptedException {
+        executor.shutdownNow();
+        assertTrue("Reload executor did not terminate",
+                executor.awaitTermination(
+                        EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+    }
+
+    /**
+     * One-shot barrier at the synchronous page-selection callback. The LoaderTask invokes
+     * {@link BgDataModel.Callbacks#getPagesToBindSynchronously(IntArray)} before it can schedule the
+     * organizer completion signal, so holding this callback prevents A from completing until the
+     * test has issued B or cancellation.
+     */
+    private static final class SyncPageSelectionBarrier implements BgDataModel.Callbacks {
+        private final CountDownLatch reached = new CountDownLatch(1);
+        private final CountDownLatch released = new CountDownLatch(1);
+        private final AtomicBoolean armed = new AtomicBoolean(false);
+        private final AtomicBoolean waitFailed = new AtomicBoolean(false);
+
+        @Override
+        public IntSet getPagesToBindSynchronously(IntArray orderedScreenIds) {
+            if (!armed.compareAndSet(true, false)) {
+                return new IntSet();
+            }
+            reached.countDown();
+            try {
+                if (!released.await(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    waitFailed.set(true);
+                }
+            } catch (InterruptedException e) {
+                waitFailed.set(true);
+                Thread.currentThread().interrupt();
+            }
+            return new IntSet();
+        }
+
+        void awaitReached() throws InterruptedException {
+            assertTrue("A did not reach the pre-completion barrier",
+                    reached.await(RELOAD_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+        }
+
+        void release() {
+            released.countDown();
+        }
+
+        void arm() {
+            assertTrue("Pre-completion barrier was already armed",
+                    armed.compareAndSet(false, true));
+        }
+
+        void assertWaitDidNotFail() {
+            assertTrue("Pre-completion barrier timed out or was interrupted",
+                    !waitFailed.get());
         }
     }
 

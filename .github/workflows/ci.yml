@@ -200,11 +200,11 @@ jobs:
   # serial critical path; the jobs start together after the shared changes gate.
   #
   # Shared-writer / coordinator seam lane: the Issue #113 MODEL_WRITER
-  # self-deadlock regression, lease admission/FIFO/Binder suites, and the
-  # whole-unit nested SQLiteTransaction contract run permanently here on their
-  # own clean API 36 emulator. They exercise the model DB write seam only
-  # (isolated fixture DBs) and stay independent from the app-state-heavy UI
-  # lanes below.
+  # self-deadlock regression, lease admission/FIFO/Binder suites, the whole-unit
+  # nested SQLiteTransaction contract, and Issue #119 reload-supersession suite
+  # run permanently here on their own clean API 36 emulator. Coordinator and
+  # transaction cases use isolated fixture DBs; the reload case uses the real
+  # Launcher model but stays independent from the UI lanes below.
   organizer-instrumentation-shared-writer-tests:
     needs: changes
     if: ${{ needs.changes.outputs.source == 'true' || needs.changes.outputs.ci == 'true' }}
@@ -237,7 +237,7 @@ jobs:
           emulator-boot-timeout: 900
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest
+            -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.NestedTransactionTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest
       - name: Upload shared-writer instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

@@ -18,8 +18,12 @@ Baseline for evidence: main `3663f3157d`. Spec: `spec.md` in this directory.
 - Supersession machinery: `LauncherModel.forceReloadForOrganizer` /
   `completeOrganizerReload` (identity check) / `cancelOrganizerReload` /
   `stopLoader`; `OrganizerModelReloadAdapter` (COMPLETED/FAILED/SUPERSEDED/
-  TIMEOUT, 10s timeout). No tests cover A-then-B, stale completion,
-  cancellation, timeout, or exactly-one-terminal.
+  TIMEOUT, 10s timeout). Issue #119 replaces the former wall-clock assumption
+  with a one-shot `BgDataModel.Callbacks.getPagesToBindSynchronously()` barrier: A signals
+  that it reached the pre-completion bind point and blocks until the test
+  explicitly releases it, while B or regular `forceReload()` is issued from a
+  separate worker. A is then asserted `SUPERSEDED` before release, and B is
+  asserted `COMPLETED` after release. The real timeout remains unsupported.
 - `SQLiteTransaction` (`LauncherDbUtils.java:217-254`): close releases the
   lease in `finally`; Android's `beginTransaction`/`endTransaction` nesting is
   whole-unit atomic and does not provide SAVEPOINT isolation. The #117 erratum
@@ -39,10 +43,15 @@ Baseline for evidence: main `3663f3157d`. Spec: `spec.md` in this directory.
    skip, duplicate, or reorder later entries or the terminal signal. Add
    FIFO-ordering and throwing-callback tests (unit-level where possible,
    else instrumentation in `tests/organizer-instrumentation`).
-2. **Reload supersession tests** — new instrumentation test over the public
-   seams (`LauncherModel` reload request lifecycle + adapter outcomes):
-   A-then-B supersession, stale completion rejection, cancellation, timeout,
-   exactly one terminal signal per request.
+2. **Reload supersession tests (implemented; Issue #119 follow-up)** —
+   instrumentation test over the public seams (`LauncherModel` reload request
+   lifecycle + adapter outcomes). A one-shot synchronous page-selection callback barrier
+   deterministically holds A before the production completion signal. The test
+   exercises A-then-B supersession, stale completion rejection, regular
+   `forceReload()` cancellation from a worker thread, and exactly one terminal
+   signal per request. The existing API 36 shared-writer lane runs this class;
+   no new lane or production API is required. Real timeout remains a separate
+   unsupported path.
 3. **Binder future + nested transaction tests** — instrumentation test for
    `LauncherProvider.executeControllerTask` deferral under an organizer
    lease (release happens on the deferred-callback executor thread, not
@@ -72,6 +81,14 @@ git submodule update --init --recursive
 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \\
   -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.NestedTransactionTest
 python3 tools/repo-contract/<new scan script>
+```
+
+Issue #119's focused connected evidence is run on the existing clean API 36
+shared-writer lane:
+
+```text
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.ModelWriterTransactionReentryTest,com.android.launcher3.organizer.LayoutWriteCoordinatorTest,com.android.launcher3.organizer.BinderOperationFutureTest,com.android.launcher3.organizer.OrganizerReloadSupersessionTest
 ```
 
 (JDK 21, ANDROID_HOME=/opt/homebrew/share/android-commandline-tools.)

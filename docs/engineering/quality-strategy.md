@@ -116,7 +116,7 @@ Issue #41 で organizer JVM test gateをCIに追加した。`.github/workflows/c
 
 Issue #83、#52、#53 の production/Launcher-host evidence は `.github/workflows/ci.yml` の独立した focused instrumentation job が source-changing PR で実行する。これらは `final-status` の required evidence であり、JVM gate の代替ではない。API 35 の #83 evidence と API 36 の #52/#53 evidence の責務、baseline、状態隔離、変更候補の判断は [ci-test-portfolio.md](./ci-test-portfolio.md) を正本とする。
 
-shared-writer seam の coordinator 回帰(Issue #113 の `ModelWriterTransactionReentryTest` を含む)も独立した API 36 instrumentation job `organizer-instrumentation-shared-writer-tests` として同じく required evidence であり、isolated fixture DB を使うため UI lane の app state とは隔離される。lane 責務の正本は [ci-test-portfolio.md](./ci-test-portfolio.md) である。
+shared-writer seam の coordinator 回帰(Issue #113 の `ModelWriterTransactionReentryTest` を含む)と Issue #119 の実Launcher modelを使うreload supersession回帰は、独立した API 36 instrumentation job `organizer-instrumentation-shared-writer-tests` として同じく required evidence である。coordinator caseはisolated fixture DBを使い、job全体をUI laneのapp stateとは別のclean emulatorで実行する。lane 責務の正本は [ci-test-portfolio.md](./ci-test-portfolio.md) である。
 
 Issue #52 と #53 は同じ API 36 emulator または target application state を共有しない。独立 job による clean emulator を各 suite に与え、source-changing PR の critical path から直列 emulator provisioning を除く。database-heavy fixture state、class-filtered Gradle invocation、coverage ownership は統合しない。
 
