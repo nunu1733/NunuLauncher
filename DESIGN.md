@@ -77,7 +77,7 @@ fun interface OrganizationPlanner {
 
 ```text
 apply(ValidatedLayoutPlan) -> ApplyResult
-recover(RecoveryPointId) -> RecoveryResult
+recover(RecoveryRequest) -> RecoveryResult
 ```
 
 このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
