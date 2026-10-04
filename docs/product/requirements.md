@@ -52,7 +52,7 @@ Status語彙: `implemented` / `accepted/evidence pending` / `proposed` / `deferr
 | NFR-011 | Observability | accepted/evidence pending | 個人情報を含めず、run ID、phase、error category、plan summaryを診断可能にする |
 | NFR-012 | Migration | implemented | DB/rule schema変更はupgrade、downgrade/rollback、backup/restoreとの整合をtestする |
 | NFR-013 | Responsiveness | proposed（2026-09-24） | 直接編集の応答性: 編集アクションの結果が即座に見える。数値はspecで決める（[#448](https://github.com/nunu1733/NunuLauncher/issues/448)、[#449](https://github.com/nunu1733/NunuLauncher/issues/449)） |
-| NFR-014 | Editing burden | proposed（2026-09-24） | Now段階の機能は編集負担ベンチマークの目標を満たす（[#441](https://github.com/nunu1733/NunuLauncher/issues/441)が正本） |
+| NFR-014 | Editing burden | accepted（2026-09-26。ベンチマークのbaseline・目標確定に伴う。旧: proposed（2026-09-24）） | Now段階の機能は編集負担ベンチマーク（手順コストの会計）の目標を満たす（[#441](https://github.com/nunu1733/NunuLauncher/issues/441)が正本） |
 
 ## Required item coverage
 
@@ -91,6 +91,8 @@ Status語彙: `implemented` / `accepted/evidence pending` / `proposed` / `deferr
 - 2026-08-21: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected Option B. FR-008 and FR-009 move from MVP to Later/deferred; the current package-event behavior remains fail-closed and produces no incremental proposal.
 - 2026-09-19: [organizer-to-be-ux.md](./organizer-to-be-ux.md)（[Issue #361](https://github.com/nunu1733/NunuLauncher/issues/361)でaccepted）のD-01〜D-17を反映し、FR-006/FR-017のユーザー可視表現がOrganizer hub経由になる旨を追記した。新FR/NFRは起票しない: TO-BE決定は既存FRの達成経路・可視性・timingの改善であり、新たな観測可能要件となるのはD-08（取り込み済み提案のdurable化）とD-15（durable statusからの復元導線）由来のみで、それらは各実装Issueのspecが所有する（[Issue #365](https://github.com/nunu1733/NunuLauncher/issues/365)）。
 - 2026-09-24: 再焦点化方針メモ（2026-09-24承認、Revision 5。[Epic #439](https://github.com/nunu1733/NunuLauncher/issues/439)、[Issue #440](https://github.com/nunu1733/NunuLauncher/issues/440)付録）に基づき、FR-008を「新規アプリの配置先ポリシー」として再定義してNow-1へ戻した（ADR-0015、D-015）。FR-009はLaterのまま（ADR-0005は「既存アイテムを動かす増分整理提案についての判断」として維持）。FR-017をFrozenへ変更した（D-016）。FR-018〜023、NFR-013〜014を新設し、D-013〜016をDecision gatesへ追加した。プロダクトの中心成果を「ホーム画面の日常的な編集と散らからない状態の維持にかかる手間の削減」へ移す（R-1/R-2）。2026-09-25の [PR #463](https://github.com/nunu1733/NunuLauncher/pull/463) で保守者が承認した確定事項: product-briefのVision/User problem文言とTarget usersの再優先づけ、FR-009の補足文言、状態語彙 `frozen` の追加、NFR-013のCategory名 `Responsiveness`、FR-008のstatus表記（`proposed（再定義）` + 旧#85履歴の併記）、D-013〜016の参照形式（各ADRのacceptedまでは起草Issueをlinkし、file pathは平文で併記）。
+
+- 2026-09-26: [Issue #441](https://github.com/nunu1733/NunuLauncher/issues/441)（正本文書とfixtureは[PR #464](https://github.com/nunu1733/NunuLauncher/pull/464)で構築済み）の編集負担ベンチマークについて、保守者が人間の実測計測を対象外とする判断を記録した（[Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)。指標は手順コストの会計であり知覚負担の測定ではない）。baseline・目標を固定手順からの決定的算出として確定し、NFR-014をacceptedへ変更した。
 
 ## Traceability rule
 
