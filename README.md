@@ -6,7 +6,7 @@
 
 GitHub repositoryは [nunu1733/NunuLauncher](https://github.com/nunu1733/NunuLauncher) です。Lawnchairのfork ancestryを保持し、projectの `main` は `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` をbaselineとして固定しています。
 
-bootstrapは [Issue #1](https://github.com/nunu1733/NunuLauncher/issues/1) で追跡しています。2026-08-09にJDK 21、Android SDK 36.1、Build Tools 36.1.0でformat checkとGitHub debug APK buildを再現済みです。
+bootstrapは [Issue #1](https://github.com/nunu1733/NunuLauncher/issues/1) で完走し、PR [#7](https://github.com/nunu1733/NunuLauncher/pull/7) がmergeされました。2026-08-09にJDK 21、Android SDK 36.1、Build Tools 36.1.0でformat checkとGitHub debug APK buildを再現済みです。Issue graphと次の作業は [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) で追跡します。
 
 ## 読み始める場所
 
