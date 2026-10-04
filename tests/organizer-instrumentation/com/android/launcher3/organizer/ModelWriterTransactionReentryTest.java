@@ -95,8 +95,7 @@ public class ModelWriterTransactionReentryTest {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         runBounded(failure, () -> {
             try (SQLiteTransaction t = mController.newTransaction()) {
-                mController.update(Favorites.TABLE_NAME,
-                        titleValues("after"), itemIdMatch(id), null);
+                mController.update(titleValues("after"), itemIdMatch(id), null);
                 t.commit();
             }
         });
@@ -121,13 +120,12 @@ public class ModelWriterTransactionReentryTest {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         runBounded(failure, () -> {
             try (SQLiteTransaction outer = mController.newTransaction()) {
-                mController.update(Favorites.TABLE_NAME,
-                        titleValues("moved-title"), itemIdMatch(moved), null);
+                mController.update(titleValues("moved-title"), itemIdMatch(moved), null);
 
                 ContentValues values = baseValues(inserted, "inserted-inside");
-                mController.insert(Favorites.TABLE_NAME, values);
+                mController.insert(values);
 
-                mController.delete(Favorites.TABLE_NAME, itemIdMatch(deleted), null);
+                mController.delete(itemIdMatch(deleted), null);
 
                 // The outer writer lease is still held while mutations run.
                 assertNull("lease must stay held inside the open transaction",
@@ -161,12 +159,10 @@ public class ModelWriterTransactionReentryTest {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         runBounded(failure, () -> {
             try (SQLiteTransaction outer = mController.newTransaction()) {
-                mController.update(Favorites.TABLE_NAME,
-                        titleValues("outer-write"), itemIdMatch(id), null);
+                mController.update(titleValues("outer-write"), itemIdMatch(id), null);
 
                 try (SQLiteTransaction inner = mController.newTransaction()) {
-                    mController.update(Favorites.TABLE_NAME,
-                            titleValues("inner-write"), itemIdMatch(id), null);
+                    mController.update(titleValues("inner-write"), itemIdMatch(id), null);
                     inner.commit();
                 }
 
@@ -208,7 +204,7 @@ public class ModelWriterTransactionReentryTest {
                         // the inner lease was taken.
                         ContentValues bad = new ContentValues();
                         bad.put("no_such_column", 1);
-                        mController.update(Favorites.TABLE_NAME, bad,
+                        mController.update(bad,
                                 itemIdMatch(id), null);
                         throw new IllegalStateException("expected update to fail");
                     } catch (RuntimeException expected) {
@@ -250,8 +246,7 @@ public class ModelWriterTransactionReentryTest {
         Thread competitor = new Thread(() -> {
             competitorStarted.countDown();
             try {
-                mController.update(Favorites.TABLE_NAME,
-                        titleValues("competitor"), itemIdMatch(id), null);
+                mController.update(titleValues("competitor"), itemIdMatch(id), null);
                 competitorDone.set(true);
             } catch (Throwable t) {
                 competitorFailure.set(t);
@@ -262,8 +257,7 @@ public class ModelWriterTransactionReentryTest {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         runBounded(failure, () -> {
             try (SQLiteTransaction outer = mController.newTransaction()) {
-                mController.update(Favorites.TABLE_NAME,
-                        titleValues("inside-transaction"), itemIdMatch(id), null);
+                mController.update(titleValues("inside-transaction"), itemIdMatch(id), null);
 
                 competitor.start();
                 assertTrue(competitorStarted.await(5, TimeUnit.SECONDS));

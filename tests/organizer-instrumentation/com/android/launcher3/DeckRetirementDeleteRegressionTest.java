@@ -63,12 +63,12 @@ public class DeckRetirementDeleteRegressionTest {
         int beforeCount = countRows(controller);
         int rowId = controller.generateNewItemId();
         values.put(Favorites._ID, rowId);
-        int inserted = controller.insert(Favorites.TABLE_NAME, values);
+        // Issue #532 rebase: the anchor ModelDbController CRUD is favorites-fixed.
+        int inserted = controller.insert(values);
         assertEquals("Insert must report the explicit row id", rowId, inserted);
         assertEquals(beforeCount + 1, countRows(controller));
 
         int deleted = controller.delete(
-                Favorites.TABLE_NAME,
                 Favorites._ID + " = ?",
                 new String[]{String.valueOf(rowId)});
         assertEquals("Exactly one row should be deleted", 1, deleted);
@@ -85,7 +85,7 @@ public class DeckRetirementDeleteRegressionTest {
 
     private static int countRows(ModelDbController controller) {
         try (Cursor cursor = controller.query(
-                Favorites.TABLE_NAME, new String[]{"COUNT(*)"}, null, null, null)) {
+                new String[]{"COUNT(*)"}, null, null, null)) {
             assertTrue(cursor.moveToFirst());
             return cursor.getInt(0);
         }

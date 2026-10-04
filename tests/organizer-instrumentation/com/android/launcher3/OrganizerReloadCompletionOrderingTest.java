@@ -9,7 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.launcher3.model.BgDataModel;
 import com.android.launcher3.model.LayoutWriteCoordinator;
-import com.android.launcher3.util.IntSet;
+import com.android.launcher3.model.data.WorkspaceData;
 
 import org.junit.After;
 import org.junit.Before;
@@ -146,9 +146,12 @@ public class OrganizerReloadCompletionOrderingTest {
             return;
         }
         var latch = new CountDownLatch(1);
+        // Issue #532 rebase: the anchor Callbacks seam binds the loaded
+        // snapshot through bindCompleteModel (the pre-rebase seam was
+        // finishBindingItems) — same per-reload bind signal for the idle wait.
         var cb = new BgDataModel.Callbacks() {
             @Override
-            public void finishBindingItems(IntSet pagesBoundFirst) {
+            public void bindCompleteModel(WorkspaceData itemIdMap, boolean isBindingSync) {
                 latch.countDown();
             }
         };
@@ -173,15 +176,14 @@ public class OrganizerReloadCompletionOrderingTest {
         private final AtomicBoolean armed = new AtomicBoolean(false);
         private final AtomicBoolean waitFailed = new AtomicBoolean(false);
 
+        // Issue #532 rebase: the anchor bind seam is bindCompleteModel; the
+        // bind callback executes on the main thread (bindCompleteModelAsync
+        // posts it there), so blocking inside it still pins the loader in
+        // waitForIdle() after bindWorkspace and before the transaction commit —
+        // the same causal boundary the pre-rebase onInitialBindComplete held.
         @Override
-        public void onInitialBindComplete(
-                IntSet boundPages,
-                com.android.launcher3.util.RunnableList pendingTasks,
-                com.android.launcher3.util.RunnableList onCompleteSignal,
-                int workspaceItemCount,
-                boolean isBindSync) {
+        public void bindCompleteModel(WorkspaceData itemIdMap, boolean isBindingSync) {
             if (!armed.compareAndSet(true, false)) {
-                pendingTasks.executeAllAndDestroy();
                 return;
             }
             entered.countDown();
@@ -193,7 +195,6 @@ public class OrganizerReloadCompletionOrderingTest {
                 waitFailed.set(true);
                 Thread.currentThread().interrupt();
             }
-            pendingTasks.executeAllAndDestroy();
         }
 
         void arm() {

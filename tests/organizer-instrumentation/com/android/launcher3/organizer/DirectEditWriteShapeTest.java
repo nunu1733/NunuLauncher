@@ -161,7 +161,7 @@ public class DirectEditWriteShapeTest {
                     // DirectEditTask shape: validate first, write only on proceed.
                     DirectEditContract.Decision decision = rejector.validate(null);
                     if (decision.proceed) {
-                        mController.update(Favorites.TABLE_NAME, rankValues(1),
+                        mController.update(rankValues(1),
                                 Favorites._ID + "=" + itemId, null);
                     }
                     done.countDown();
@@ -205,8 +205,8 @@ public class DirectEditWriteShapeTest {
                 values.put(Favorites._ID, folderId);
                 values.put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_FOLDER);
                 values.put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP);
-                mController.insert(Favorites.TABLE_NAME, values);
-                mController.update(Favorites.TABLE_NAME, rankValues(1),
+                mController.insert(values);
+                mController.update(rankValues(1),
                         Favorites._ID + "=" + itemId, null);
                 // "Process death": abandon without commit. Closing without
                 // commit rolls the journal back.
@@ -240,10 +240,10 @@ public class DirectEditWriteShapeTest {
                     .put(Favorites.RANK, 0)
                     .put(Favorites.OPTIONS, 0)
                     .put(Favorites._ID, folderId);
-            controller.insert(Favorites.TABLE_NAME, folderWriter.getValues(mContext));
+            controller.insert(folderWriter.getValues(mContext));
 
             mController.failOnNextUpdate = failOnUpdate;
-            controller.update(Favorites.TABLE_NAME, childValues(folderId),
+            controller.update(childValues(folderId),
                     Favorites._ID + "=" + itemId, null);
             t.commit();
         } finally {
@@ -335,13 +335,13 @@ public class DirectEditWriteShapeTest {
         }
 
         @Override
-        public int update(String table, ContentValues values, String selection,
+        public int update(ContentValues values, String selection,
                 String[] selectionArgs) {
             if (failOnNextUpdate) {
                 updateFailed = true;
                 throw new IllegalStateException("injected update failure");
             }
-            return super.update(table, values, selection, selectionArgs);
+            return super.update(values, selection, selectionArgs);
         }
     }
 }
