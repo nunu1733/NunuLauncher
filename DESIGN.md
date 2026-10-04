@@ -98,6 +98,24 @@ Lawnchair/Launcher3のeventとmodelをproject固有moduleへ接続するadapter�
 
 organizer runのphase遷移を、個人情報を含まないtyped recordとしてapp-privateなjournalへ追記するmoduleである。journal、logcat出力、userが開始するexportの3つだけをsinkとして公開し、network transportは持たない。field集合、redaction、retention、export、logcatの契約は [docs/engineering/organizer-diagnostics.md](./docs/engineering/organizer-diagnostics.md) を正本とする。
 
+### 4.6 Deck retirement startup migration
+
+[ADR-0006](./docs/adr/0006-retire-deck-runtime.md) と
+[Issue #57 spec](./specs/57-deck-runtime-retirement/spec.md) に従い、
+`LawnchairApp` はdefault launcher processのapp startupでのみ内部Deck retirement
+migration seamを1回呼ぶ。process identityはcurrent process nameとapplicationの
+default process nameの一致で判定し、`:bugReport`等のsecondary processはmigrationを
+呼ばず、retirement preference storeやartifact cleanupを開かない。
+public organizer APIは追加しない。active Launcher DBはauthorityのままであり、
+artifact cleanupより先にatomically normalizeする。normalizationまたはdeleteの
+failureはDBを変更せず、後続のdefault launcher process startでretryする。old
+Lawnchair backupのrestoreはdefault processのrestartを伴うため、同じseamへ再入する。
+replacement package hookは持たない。
+
+production phase observerはinternal default no-opである。instrumentationは
+`Application.onCreate` 前にobserverをinstallしてnormalization-before-cleanupを
+検証できるが、userまたはruntime control surfaceは公開しない。
+
 ## 5. Core invariants
 
 planと適用結果は以下を常に満たす。
@@ -162,7 +180,7 @@ signalがないことは原則として失敗ではない。頻度情報がな�
 
 ## 9. Target source layout
 
-[ADR-0002](./docs/adr/0002-replace-deck-layout.md)に従い、Deck layoutと並行する新規runtime hookは追加せず、organizerを次の論理構成で新設する。既存Deck runtimeの退役とpreference移行は [Issue #56](https://github.com/nunu1733/NunuLauncher/issues/56) / [Issue #57](https://github.com/nunu1733/NunuLauncher/issues/57) で追跡する。
+[ADR-0002](./docs/adr/0002-replace-deck-layout.md)に従い、Deck layoutと並行する新規runtime hookは追加せず、organizerを次の論理構成で新設する。既存Deck runtimeの退役とpreference移行は [Issue #56](https://github.com/nunu1733/NunuLauncher/issues/56) / [Issue #57](https://github.com/nunu1733/NunuLauncher/issues/57) で追跡する。app-start compatibility migrationはorganizer外の `lawnchair/src/app/lawnchair/migration/` に置き、Deck tombstone normalizationとbounded historical-artifact cleanupだけを担う。
 
 ```text
 lawnchair/src/app/lawnchair/organizer/
@@ -182,6 +200,7 @@ package数をこの図に合わせること自体を目的にしない。interfa
 - Property tests: overlap、bounds、conservation、lock、determinism、idempotenceを多数の生成layoutで検証する。
 - Application contract tests: test DBでtransaction、failure injection、rollback、stale revisionを検証する。
 - Upstream integration tests: package event、model reload、backup/restore、grid migration、process restartを検証する。
+- Startup migration integration tests: default processのapp-start normalization/cleanup ordering、secondary processの非実行、old-backup restore後のrestart、failure retry、real APK upgrade/downgrade evidenceを検証する。
 - UI tests: preview/confirmation/recoveryとaccessibilityを検証する。
 
 詳細は [docs/engineering/quality-strategy.md](./docs/engineering/quality-strategy.md) を参照する。
