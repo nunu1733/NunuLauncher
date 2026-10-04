@@ -1,7 +1,7 @@
 # Plan: Issue #230 restore 確認の復元対象説明
 
-> Spec: [spec.md](./spec.md) (status: accepted, head `436f2a7a54`)
-> Status: draft (owner review 待ち — plan review (PR #244, 2026-09-08) の指摘により Spec 52 更新を変更 module へ追加、E2E 記述を SA-18 の一般 oracle へ修正)
+> Spec: [spec.md](./spec.md) (status: implemented, merge commit `f16b1db0c1`)
+> Status: implemented ([PR #246](https://github.com/nunu1733/NunuLauncher/pull/246) を merge。plan review fix [PR #245](https://github.com/nunu1733/NunuLauncher/pull/245)、review fix [PR #253](https://github.com/nunu1733/NunuLauncher/pull/253) を含む。実装からの差分: 件数 3 区分は review 指摘に応じて `<plurals>` リソースで解決)
 
 ## 現在の code の根拠
 
