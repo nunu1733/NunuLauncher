@@ -2,7 +2,7 @@
 
 > Issue: #123
 > Spec: [spec.md](./spec.md)
-> Status: accepted — 2026-08-26にIssue #123で承認（4回のreview対応後）。本planに従い実装する。
+> Status: implemented — 2026-08-27に[PR #154](https://github.com/nunu1733/NunuLauncher/pull/154) merge（`a84cbb7451`）。
 
 ## Current evidence
 
@@ -118,7 +118,7 @@
 - [x] Slice A–D implemented with per-slice evidence.
 - [x] Full relevant verification completed (`final-status` green, run 32973322535).
 - [x] Evidence doc (`docs/assessment/evidence/issue-123-ui-mapping.md`) completed.
-- [ ] PR review・merge（残務はPR側で追跡）。
+- [x] PR review・merge（PR #154、`a84cbb7451`）。
 
 ## Execution notes (2026-08-26)
 
