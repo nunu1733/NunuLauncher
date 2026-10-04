@@ -1,6 +1,6 @@
 # Replay log: 16-dev rebase Phase 2（Issue #532 / plan.md §5）
 
-> Status: in-progress（2026-10-04 開始）
+> Status: replay完了 / G1 gateで設計判断が必要なため一時停止（2026-10-04）
 > rebase branch: `issue-516-rebase-16-dev`（anchor upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35` 起点）
 > 単位番号: main first-parent 時系列index（唯一の実行順。A/B/Cは分類ラベル）
 >REBASE_HEAD=<replay完了時に記録>（G4開始前と対にする）
@@ -327,3 +327,22 @@
 - conflict解消はすべてplan §4に従い、fork側のaccepted契約（PR単位のtree内容）を正として復元する方式（keep相当）。16-dev側の新構造へのadaptが必要なsemantic解消は、Phase 3検証およびT4/T5/T7/T8追加oracle実装PRで扱う（plan §7 gate前提）。
 - 挙動変更を意図した解消は発生していない（plan §4.6の停止条件に該当なし）。submodule pin判断点（§2）は到達しなかった（§0参照）。
 - commit messageは `PR #<番号>: <title>` 形式。direct commitは `Direct: <title>` 形式。
+
+
+## 4. G1 gate実行で判明した設計判断要求（plan §4.6 相当 — 停止中）
+
+### 現象
+- replay自体は300単位すべて適用済み（本ログ§2）。conflict解消でfork側tree内容を正として復元した結果、commitツリーは`main`のproductionコード状態に近づいた。
+- 一方anchor側のビルド土台（settings.gradleの新module include、Gradle 9.8、AGP/Kotlin/Baselineprofile新版、`ModuleDbController`のCRUDシグネチャ変更、`BgDataModel.kt`の新データ層、daggerグラフの`@Inject`化）と、main側のモデル層（`LauncherModel.java`/`LauncherAppState.java`/`BgDataModel.java`のINSTANCEパターン、旧CRUDシグネチャ）は、plan §4.3の想定を超えて相互に噛み合わず、`assembleLawnWithQuickstepGithubDebug`が通らない。
+
+### 構造的对立（どちらか一方への統一が必要）
+1. **anchorモデル層を正**（`LauncherModel.kt`/`BgDataModel.kt`/dagger `@Inject`）: この場合、forkの`ModelWriter`/`RestoreDbTask`/`ModelDbController`契約（spec 118のlease/transaction所有、ADR-0013直接編集の書込み契約）をanchor構造へ移植する大規模adaptが必要。モデルAPIの差分は約200行相当。
+2. **mainモデル層を正**（現状の`src/`javaスタック）: anchorのdaggerグラフ・`PreviewAppComponent`・`BgDataModel.kt`依存（`WidgetModule`、`ModelInitializer`等）をmain方式に書き換える必要がある。quickstepのtaskbar/recentsもanchorのdaggerに寄っているため影響が広い。
+
+### 求める判断
+- ADR-0018のDecision（per-PR replay方式）は本対立を解消しない。**ADR-0018改訂または補足ADR**として、上記1/2のいずれをPhase 2の統一方針とするか（および中間のハイブリッド容認可否）を決定すること。
+- 作業再開の前提: 上記判断のreview/accept後、rebase branch `issue-516-rebase-16-dev`上のWIP commit（`7bd1c681`〜`bb832b3863`）を前提に統一作業を継続する。
+
+### 補足
+- 本判断はPhase 0 assessment §5のdisposition（keep 57 / adapt 48）が前提とした「adapt可能」の粒度を超える（ファイル単位ではなく層単位の統一が必要）。
+- submodule pin、settings.gradle/tomlの統合方針（anchor土台+fork追加）は確定済みで本判断の対象外。
