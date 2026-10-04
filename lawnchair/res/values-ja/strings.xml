@@ -188,7 +188,7 @@
     <string name="manual_organization_preserved_structural">関連する項目を保持: %1$d件</string>
 <string name="manual_organization_strategy_section">整理ストラテジー</string>
     <string name="organization_strategy_canonical_name">標準コンパクト</string>
-    <string name="organization_strategy_canonical_description">各ページを左上から詰めます。従来の整理動作です。</string>
+    <string name="organization_strategy_canonical_description">各ページを左上から詰めます。</string>
     <string name="organization_strategy_tidy_name">ページ内で隙間を詰める</string>
     <string name="organization_strategy_tidy_description">アプリを別のページへ移動せずに、各ページの隙間を閉じます。ウィジェットは移動しません。</string>
     <string name="organization_strategy_tidy_v2_name">ページ内で隙間を詰める（ウィジェット対応）</string>
