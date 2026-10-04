@@ -1281,6 +1281,58 @@ class PlannerContractHarnessTest {
     }
 
     @Test
+    fun containerIntegrityAcceptsPageAfterFormerIntMaximum() {
+        val base = minimalInput(items = listOf(itemA))
+        val input = base.copy(
+            snapshot = base.snapshot.copy(
+                pages = listOf(Page(PageId("p0"), PageOrder(Int.MAX_VALUE))),
+            ),
+        )
+        val result = plannedResult(
+            newPages = listOf(NewPage(NewPageOrdinal(0), PageOrder("2147483648"))),
+        )
+
+        val report = PlannerContractHarness(ScriptedPlanner(mapOf(input to listOf(result)))).verify(
+            PlannerFixture(
+                FixtureId("page-order-beyond-int"),
+                input,
+                FixtureExpectation(ExpectedOutcome.Planned()),
+                setOf(ContractCheck.CONTAINER_INTEGRITY),
+            ),
+        )
+
+        assertTrue(report.violations.toString(), report.isSuccess)
+    }
+
+    @Test
+    fun containerIntegrityRejectsNewPageNotAfterCapturedMaximum() {
+        val base = minimalInput(items = listOf(itemA))
+        val input = base.copy(
+            snapshot = base.snapshot.copy(
+                pages = listOf(Page(PageId("p0"), PageOrder(Int.MAX_VALUE))),
+            ),
+        )
+        val result = plannedResult(
+            newPages = listOf(NewPage(NewPageOrdinal(0), PageOrder(Int.MAX_VALUE))),
+        )
+
+        val report = PlannerContractHarness(ScriptedPlanner(mapOf(input to listOf(result)))).verify(
+            PlannerFixture(
+                FixtureId("page-order-not-following"),
+                input,
+                FixtureExpectation(ExpectedOutcome.Planned()),
+                setOf(ContractCheck.CONTAINER_INTEGRITY),
+            ),
+        )
+
+        assertTrue(
+            report.violations.any {
+                it.message == "New-page order does not follow captured pages"
+            },
+        )
+    }
+
+    @Test
     fun lockPreservationRequiresExactTarget() {
         val locked = itemA.copy(locked = true)
         val input = minimalInput(items = listOf(locked))

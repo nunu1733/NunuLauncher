@@ -332,6 +332,9 @@ None.
 
 ## Change history
 
+- 2026-08-10: Issue #33 makes new-page order checks compare the unbounded
+  `PageOrder` domain value and covers the boundary after the former `Int`
+  maximum.
 - 2026-08-10: Issue #31 makes the idempotence oracle require unchanged targets
   and the typed `ALREADY_CANONICAL` reason for otherwise movable top-level
   items.

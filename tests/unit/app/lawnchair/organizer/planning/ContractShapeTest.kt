@@ -47,6 +47,27 @@ class ContractShapeTest {
     }
 
     @Test
+    fun pageOrderIsUnboundedCanonicalNumericValue() {
+        val formerIntMaximum = PageOrder(Int.MAX_VALUE)
+        val next = PageOrder("2147483648")
+
+        assertTrue(formerIntMaximum < next)
+        assertTrue(PageOrder("9") < PageOrder("10"))
+        assertTrue(PageOrder("99999999999999999999") < PageOrder("100000000000000000000"))
+        assertEquals(next, formerIntMaximum + 1)
+        assertEquals(PageOrder("2147483650"), formerIntMaximum + 3)
+        assertEquals(PageOrder("1000"), PageOrder("999") + 1)
+        assertEquals(PageOrder(7), PageOrder("7"))
+    }
+
+    @Test
+    fun pageOrderRejectsNonCanonicalText() {
+        listOf("", "-1", "+1", "01", " 1", "1 ").forEach { invalid ->
+            assertThrows(IllegalArgumentException::class.java) { PageOrder(invalid) }
+        }
+    }
+
+    @Test
     fun emptyTextHandleConstructionRejected() {
         assertThrows(IllegalArgumentException::class.java) { ItemId("") }
         assertThrows(IllegalArgumentException::class.java) { CategoryId("") }

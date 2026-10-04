@@ -221,9 +221,9 @@ internal object Oracle {
         if (planned.newPages.map { it.ordinal.value } != expectedPageOrdinals) {
             add(finding(ContractCheck.CONTAINER_INTEGRITY, FindingSubject.None, "New-page ordinals are not canonical and ascending"))
         }
-        val maxCapturedOrder = input.snapshot.pages.maxOfOrNull { it.order.value } ?: -1
+        val maxCapturedOrder = input.snapshot.pages.maxOfOrNull { it.order }
         planned.newPages.forEach {
-            if (it.order.value <= maxCapturedOrder) {
+            if (maxCapturedOrder != null && it.order <= maxCapturedOrder) {
                 add(finding(ContractCheck.CONTAINER_INTEGRITY, FindingSubject.NewPage(it.ordinal), "New-page order does not follow captured pages"))
             }
         }
