@@ -384,3 +384,73 @@
 ### 未完（S3c/S4で対応）
 - T4/T5/T7/T8追加oracle実装と `ci_portfolio_map.yml`/portfolio同期
 - G2（organizer unit test gate）、G3（candidate ownership inventory正式計測）、G4（T1〜T9実行表+`REBASE_HEAD`記録）、G5（CI merge gate）
+
+
+## 6. G4実行表（2026-10-05、plan §7 G4 / AC-4）
+
+- **REBASE_HEAD**=`7f46ab6466075ebf5a39f954cf3376d2968e6353`（本log冒頭でG4開始前に確定記録済み。以下の全実行はこのsourceと対にする）
+- **G4実行head**=`794db5dd50b5578cc7ef9ae32ff103e5ad5eee4d`（= REBASE_HEAD `f24b315f05` に、G4直前に発見されたtest-infra欠陥の修復1件 `794db5dd50 G4(532): compile the Kotlin instrumentation sources against anchor APIs` を加えたhead。差分は `build.gradle` のandroidTest Kotlin source set配線と `tests/organizer-instrumentation` のanchor API追従のみで、**app production code非接触**）
+- **実行環境**: ローカルAPI 36 emulator（Android 16 / arm64、AVD `issue108_api36_pixel_9_pro_fold`、serial `emulator-5556`）。CI正本（API 36 / google_apis / pixel_7_pro / x86_64）と同じAPI level。command形式は正本どおり `bash tools/ci/run-emulator-command-with-failure-capture.sh … -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=…`（ci.ymlと同一entrypoint）。失敗時のfailure-time capture証跡は `build/{db-migration,shared-writer,reservation-recovery,restore-capture}-failure-time-evidence/`、per-class result XMLは `build/g4-evidence/G4-<class>.xml`。
+- **実行方式（正本からの逸脱と理由）**: 正本のlane commandはcomma区切りの複数class filterだが、**anchor AGP（Gradle 9.8内蔵test runner）は `android.testInstrumentationRunnerArguments` を `k=v,k=v` ペアとしてparseするため、comma区切りfilterでは最初の1 classしかdispatchされない**（`--info` で発行済み `am instrument` 引数を確認。`\,` escapeも不可）。このため本G4は **同一wrapper commandのper-class独立invocation** で実行した（#299のper-class原則と整合）。**ci.ymlの既存複数class filter（db-migration 13 class等）もanchor AGP下では同じ静かなunder-runになる** → G5への必須引継ぎ事項（§6.4）。
+- **総合結果: 非green（G4 gate未達）**。失敗はすべて§6.2の単一のproduction regressionに起因する。PASSしているclass（schema/rollback/profile remap/recovery/prefs）はcomponent非依存の実DB assert群であり、契約自体はanchor構造でも成立している。
+
+### 6.1 T1〜T9実行表
+
+| T | lane | class filter（per-class実行） | 結果 | command実体 / 失敗要約 |
+|---|---|---|---|---|
+| T1 | db-migration | `DatabaseHelperSchema33Test` | **PASS 6/6** | wrapper+connected、exit 0 |
+| T1 | db-migration | `DowngradeSchema33Test` | **PASS 1/1** | 同上、exit 0 |
+| T1 | db-migration | `InactiveGridDbNormalizationTest` | **PASS 1/1** | 同上、exit 0 |
+| T2 | db-migration | `MigrationTransactionOwnershipTest` | **PASS 3/3** | 同上、exit 0 |
+| T2 | db-migration | `rollback32.Schema32RollbackBinaryTest` | **PASS 2/2** | 同上、exit 0 |
+| T2 | shared-writer | `NestedTransactionTest` | **FAIL 0/5** | 5件とも `StackOverflowError`（§6.2循環） |
+| T3 | db-migration | `GridMigrationSuccessTest` | **FAIL 0/3** | setUpの `LauncherAppState.getIDP` でSO → JUnit4が@Afterを実行しtearDownのNPEが表面化（根因は§6.2） |
+| T3 | db-migration | `GridMigrationFailureTest` | **FAIL 0/30** | 同上（tryMigrateDB/attemptMigrateDb両entryとも到達不能） |
+| T4 | db-migration | `RestoreDbTaskSuccessPathTest`（新oracle） | **FAIL 0/1** | SO（§6.2） |
+| T4 | shared-writer | `RestoreLeaseSerializationTest` | **FAIL 6/11（5 PASS）** | 6件SO（§6.2）。component非依存の5 caseはPASS |
+| T4 | shared-writer | `ModelWriterTransactionReentryTest` | **FAIL 0/5** | SO（§6.2） |
+| T4 | db-migration | `RestoreProfileRemapTest` | **PASS 1/1** | component非依存。profile remap/surviving lock契約は成立 |
+| T5 | db-migration | `RealZipRestoreE2E`（新oracle） | **FAIL 0/2** | setUp SO → tearDown `lateinit launcher` 未初期化でマスク表示（根因§6.2） |
+| T6 | unit Permanent | `RecoveryRecordCodecTest` | **PASS 9/9** | `testLawnWithQuickstepGithubDebugUnitTest --tests …` exit 0（G2のunit PermanentのG4側再証跡） |
+| T6 | unit Permanent | `RecoveryManifestChunksTest` | **PASS 9/9** | 同上 |
+| T6 | reservation-recovery | `RecoveryStoreLifecycleTest` | **PASS 22/22** | wrapper+connected、exit 0 |
+| T6 | reservation-recovery | `RecoveryStoreChunkedManifestInstrumentationTest` | **PASS 7/7** | 同上 |
+| T7 | db-migration | `PrefsLegacyXmlMigrationTest`（device半分。新oracle） | **PASS 2/2** | legacy XML→DataStore変換のdevice readback契約は成立。JVM半分はG2 green（`SharedPreferencesLegacyKeyMigrationTest`） |
+| T7 | db-migration | `LauncherPrefsCommitTest` | **PASS 1/1** | §6.3のseam適応後の契約（全editor commit）をverify |
+| T7 | db-migration | `DeckRetirementMigrationInstrumentationTest` | **FAIL 0/2** | SO（§6.2） |
+| T8 | restore-capture（script正本） | script通し実行 | **stage 1で停止（正本どおりfirst-failure停止）** | `bash tools/ci/run-restore-capture-instrumentation.sh` をwrapper経由で実行。stage 1 `NovaRestoreCaptureControlTest` 1/1 FAIL |
+| T8 | restore-capture（per-class継続） | `NovaRestoreCaptureControlTest` / `WidgetWindowTest` / `UnknownProviderTest` / `NoCallbacksTest` | **FAIL 0/1, 0/1, 0/1, 0/2** | いずれもSO→tearDown lateinitマスク（§6.2） |
+| T8 | restore-capture（cross-process） | manual install + `am instrument` StageA → force-stop → StageB | **FAIL** | StageAは`ForkServiceModule.provideIdp`のSOでprocess crash。force-stop後StageBは `Tests run: 1, Failures: 1` |
+| T8 | restore-capture | `NovaRestoreGridApplicationTest` | **FAIL 0/4** | SO（§6.2） |
+| T8 | restore-capture | `NovaConverterBoundaryTest` / `NovaConverterBoundarySmartspaceOffTest`（新oracle） | **FAIL 0/2, 0/1** | SO（§6.2） |
+| T9 | — | 実行不要 | **SKIP** | on-demand（API 36 emulator + Pixel 9a / API 37実機）。closureはPhase 4 owner decision（ADR-0018 Decision 5） |
+
+合計: instrumented 20 class + cross-process 2 stage + unit 2 class。PASS 64 case / FAIL 65 case超（失敗は全て§6.2）。証跡XML 27件を `build/g4-evidence/` に保存。
+
+### 6.2 production regression（確定 — 変更せず報告）
+
+**launcher appが本branchでは起動時クラッシュする**（エミュレータ実機確認: `am start -n app.lawnchair.debug/app.lawnchair.LawnchairLauncher` → 即座にFATAL）。全失敗の根因は単一のDI循環:
+
+- `ForkServiceModule.provideIdp`（`lawnchair/src/app/lawnchair/dagger/ForkServiceModule.kt:44`）が `InvariantDeviceProfile.INSTANCE.get(context)` でIDPを供給する。
+- anchorでは `InvariantDeviceProfile.INSTANCE` は `DaggerSingletonObject(LauncherAppComponent::getIDP)`（`InvariantDeviceProfile.java:106`）であり、`INSTANCE.get` は**component経由**でIDPを解決する。
+- anchor IDPはS3で `@Inject` constructor（`InvariantDeviceProfile.java:291`）を既に持つが、Daggerはmodule `@Provides` を優先するため `provideIdp` が使われ、`component.getIDP() → provideIdp → INSTANCE.get → component.getIDP() → …` の再帰で `StackOverflowError` になる。Daggerの循環検出は通らない（DoubleCheckの自己再入）。
+- `ForkServiceModule` のdoc comment（「IDP has no @Inject constructor yet」）はS3での `@Inject` 復活後に陳腐化した記述で、循環はS3のjavac収束時に混入したと考えられる。G1（compile/assemble）は通るが起動は誰も確認していなかった。
+- 影響: componentを構築する全経路（app起動、`LauncherAppState.getIDP/getInstance`、IDP `INSTANCE.get` 全caller）。component非依存のtest（T1/T2のDB fixture群、`RestoreProfileRemapTest`、recovery lane、prefs 2 class、unit）はPASSしており、DB/schema/recovery/prefs契約そのもののregressionは本実行では検出されていない。
+- 想定修正（**本G4では未実施**）: `ForkServiceModule.provideIdp` を削除しanchor `@Inject` constructorへ委譲させる（他のForkServiceModule providerは `MainThreadInitializedObject` 系で循環なし、削除影響はIDPのみ）。修正はowner reviewのうえ後続commitで行い、失敗classの再実行（本表と同一command）で確認する。
+
+失敗表示の注意: `GridMigration*Test`（tearDown NPE）と `RealZipRestoreE2E` / Nova capture群（`lateinit property launcher`）のXML上のfailure messageは **setUp時SOのマスク表示** である（JUnit4は@Before失敗後も@Afterを実行する）。根因はすべて上記循環のSOで、`build/g4-evidence/` の `RestoreDbTaskSuccessPathTest` / `ModelWriterTransactionReentryTest` / `DeckRetirementMigrationInstrumentationTest` のXMLにフルスタック（`DaggerLauncherAppComponent.getIDP ↔ ForkServiceModule.provideIdp`）が記録されている。
+
+### 6.3 G4でのtest-infra修復（1 commit、assert契約維持）
+
+commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
+
+- **`build.gradle`**: androidTest source setへ `kotlin.directories.addAll('tests/organizer-instrumentation')` を追加。anchor build（Gradle 9.8内蔵Kotlin）は `java.srcDirs` をKotlin compile taskへmirrorしないため、Kotlin instrumentation source全体（runner `DeckRetirementTestRunner` 含む、T5/T7/T8 oracle群）が **NO-SOURCEでAPKから欠落** していた。初回G4実行で全laneが `tests="0"`（runner class不在でinstrumentation crash）となって発見。G2の修復（Java半分+tests/unit配線）の漏れ。
+- 上記配線修復で顕在化した **Kotlin instrumentation約60件のanchor API追従**（G2のJava修復と同種・assert契約維持）: `bindCompleteModel` seam統一、`isModelLoaded()` 呼出し形、`LauncherAppState.model` property、anchor IDPでのgrid適用（`DeviceProfileOverrides.setCurrentGrid` + `onConfigChanged` 同期実行）、`parseAllDefinedGridOptions` へのdisplayInfo引数、`DeviceGridState` gridType（G2 S3a convention）、`LoaderCursor` @AssistedInject化、`SplitScreenConstants` の `wm.shell.shared.split` 移行（persisted値は不変: 1/2）、`WidgetPickerActivity` パッケージ移動、favorites固定query。
+- **契約seamの消失1件（明示）**: anchor `LauncherPrefs.putSync()` はUnitを返す（S2/S3のproduction adapt `ModelDbController.writeGridPreferences` はreadback検証で代替済み）。`LauncherPrefsCommitTest` は「#59 集約commit boolean」のassert（`assertFalse(committed)`）を削除し、「全editorが両pref fileで正確に1回commitされる」契約のみを保持するよう改名・適応した。boolean契約の消失はS2/S3 production adaptに由来し、review対象としてここに記録する。
+
+### 6.4 G5（CI）への引継ぎ
+
+1. **anchor AGPの複数class filter制限**: ci.ymlの `android.testInstrumentationRunnerArguments.class=A,B,…` はanchor AGP下で最初の1 classしか実行しない。G5のCIはこのままだと全laneが静かにunder-runする。lane filterの分割実行（per-class invocation化、script化）またはrunner引数経路の修正が必要。
+2. **production regression（§6.2）の修正と本表の再実行**: `ForkServiceModule.provideIdp` 修正commit後に、FAIL 65 caseの再実行（同一command）でG4をgreenにする必要がある。PASS済みclassの再実行も、最終head上でREBASE_HEAD対証跡を更新すること。
+3. **CI emulator**: 本G4はarm64ローカルAPI 36で実行。CI正本（x86_64 pixel_7_pro）での最終確認はG5のCI runで行う。
+4. T9はon-demandのまま（Phase 4 owner closure）。
