@@ -33,15 +33,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
+import app.lawnchair.LawnchairLauncher
 import app.lawnchair.homeedit.EditSurfaceApplyPlan
 import app.lawnchair.homeedit.EditSurfaceDiagram
 import app.lawnchair.homeedit.EditSurfacePlanBuilder
 import app.lawnchair.homeedit.EditSurfaceProjection
 import app.lawnchair.homeedit.EditSurfaceSession
 import app.lawnchair.homeedit.EditSurfaceSessionPlanner
+import app.lawnchair.homeedit.HomeEditApplyReceipt
 import app.lawnchair.homeedit.HomeEditRejection
 import app.lawnchair.homeedit.HomeEditSnapshot
 import app.lawnchair.homeedit.HomeEditSurfaceAccess
+import app.lawnchair.homeedit.HomeEditUndoEntry
+import app.lawnchair.homeedit.HomeEditUndoRecord
 import app.lawnchair.homeedit.PendingSessionAction
 import app.lawnchair.homeedit.SelectionEligibility
 import app.lawnchair.homeedit.SessionPlanResult
@@ -219,6 +223,37 @@ class HomeEditSurfaceActivity : ComponentActivity() {
 
     private fun moveToPage(screenId: Int) = runAction(PendingSessionAction.MoveToPage(screenId))
 
+    // Issue #450: instrumentation hooks (same module, internal). They expose
+    // the same production callbacks the UI wiring uses; no behavior change.
+    internal fun firstSelectableItemIdForTest(): Int? = diagram?.items?.firstOrNull {
+        it.eligibility == SelectionEligibility.SELECTABLE &&
+            it.isOnWorkspace && it.screenId == 0
+    }?.id
+
+    internal fun toggleSelectionForTest(itemId: Int) = toggleSelection(itemId)
+
+    /** Test-only: the second selectable item (different id, page 0). */
+    internal fun secondSelectableItemIdForTest(excludeId: Int): Int? = diagram?.items?.firstOrNull {
+        it.eligibility == SelectionEligibility.SELECTABLE &&
+            it.isOnWorkspace && it.screenId == 0 && it.id != excludeId
+    }?.id
+
+    internal fun createFolderForTest() = createFolder()
+
+    /** Test-only: the current typed reason (null when none). */
+    internal fun reasonResForTest(): Int? = reasonRes
+
+    /** Test-only: re-runs the capture (the same path reloadCapture uses). */
+    internal fun recaptureForTest() = reloadCapture()
+
+    /** Test-only: the last non-Applied apply result, for oracle diagnostics. */
+    internal var lastApplyResultForTest: ApplyResult? = null
+
+    /** Test-only: the last plan built by confirm(), for oracle diagnostics. */
+    internal var lastPlanForTest: EditSurfaceApplyPlan? = null
+
+    internal fun moveToPageForTest(screenId: Int) = moveToPage(screenId)
+
     private fun addToFolder(folderId: Int) = runAction(PendingSessionAction.AddToFolder(folderId))
 
     private fun createFolder() = runAction(PendingSessionAction.CreateFolder)
@@ -231,7 +266,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         reasonRes = null
     }
 
-    private fun confirm() {
+    // Internal so the instrumentation oracle can drive the real #449 confirm
+    // flow (capture → session → plan build → applyForUndo → handleApplyResult)
+    // end to end; production callers are within this class only.
+    internal fun confirm() {
         val layoutState = captureState ?: return
         val revision = captureRevision ?: return
         if (applying || session.isEmpty) return
@@ -252,24 +290,42 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 versions.first,
                 versions.second,
             )
-            val result = when (built) {
-                is EditSurfaceApplyPlan.Ready -> access.apply(built.plan, runId)
+            lastPlanForTest = built
+            val receipt = when (built) {
+                is EditSurfaceApplyPlan.Ready -> access.applyForUndo(built.plan, runId)
 
                 is EditSurfaceApplyPlan.Empty -> null
 
                 // 確定ゲートが空セッションを阻止済み（防御）
                 is EditSurfaceApplyPlan.Inconsistent -> null
             }
-            runOnUiThread { handleApplyResult(result, built) }
+            runOnUiThread { handleApplyResult(receipt, built) }
         }
     }
 
-    private fun handleApplyResult(result: ApplyResult?, built: EditSurfaceApplyPlan) {
+    // Internal so the instrumentation oracle can drive the #449 confirm-flow's
+    // Applied branch directly (the flow the undo record + snackbar hook lives
+    // in); production callers are unaffected.
+    internal fun handleApplyResult(receipt: HomeEditApplyReceipt?, built: EditSurfaceApplyPlan) {
+        val result = receipt?.result
+        lastApplyResultForTest = if (result is ApplyResult.Applied) null else result
         applying = false
         busy = false
         when {
             result is ApplyResult.Applied -> {
                 // 1回の適用と1個の復元点が完了。ホームは相関reloadで更新される。
+                // Undo記録（spec 450）: pointId + 適用経路のverified post
+                // revision（receipt正本。post-hoc captureではない）。snackbarは
+                // 閉じたあとのlauncher画面へ出す（launcher不在時は出さない）。
+                val revision = receipt?.verifiedPostRevision
+                if (revision != null) {
+                    val token = HomeEditUndoRecord.record(
+                        HomeEditUndoEntry.EditSession(result.pointId, revision),
+                    )
+                    LawnchairLauncher.instance?.let { launcher ->
+                        HomeEditUndoSnackbar.show(launcher, token)
+                    }
+                }
                 finish()
                 return
             }

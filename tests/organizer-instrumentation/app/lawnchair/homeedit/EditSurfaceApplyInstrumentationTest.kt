@@ -164,6 +164,16 @@ class EditSurfaceApplyInstrumentationTest {
         assertEquals(0L, queryRowOrNull(aId, Favorites.RANK))
         assertEquals(folderId.toLong(), queryRowOrNull(cId, Favorites.CONTAINER))
         assertEquals(1L, queryRowOrNull(cId, Favorites.RANK))
+        // Issue #450 (review round 13 finding 1): the materialized
+        // folder-child rows carry the launcher's own bind-time normalized
+        // grid cells (a 2-child folder is a 2x1 grid: rank 0 → (0,0),
+        // rank 1 → (1,0)), so the folder binding's bind-time normalization
+        // finds nothing to rewrite and no `modified` bump can stale the
+        // undo receipt.
+        assertEquals(0L, queryRowOrNull(aId, Favorites.CELLX))
+        assertEquals(0L, queryRowOrNull(aId, Favorites.CELLY))
+        assertEquals(1L, queryRowOrNull(cId, Favorites.CELLX))
+        assertEquals(0L, queryRowOrNull(cId, Favorites.CELLY))
 
         launcher.model.forceReload()
         waitForModelLoaded()

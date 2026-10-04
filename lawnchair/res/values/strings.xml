@@ -944,6 +944,17 @@
     <string name="homeedit_error_profile_mismatch">A work-profile icon cannot go into this folder.</string>
     <string name="homeedit_error_unsupported">This icon is not supported by the edit actions.</string>
     <string name="homeedit_error_write_failed">The write failed. The layout is unchanged.</string>
+    <!-- Issue #450: undo -->
+    <string name="homeedit_undo_label">Edit applied</string>
+    <string name="homeedit_undo_error_stale">Can\u2019t undo: the icon has moved since.</string>
+    <string name="homeedit_undo_error_no_space">Can\u2019t undo: no space at the original spot.</string>
+    <string name="homeedit_undo_error_folder_changed">Can\u2019t undo: the created folder has changed.</string>
+    <string name="homeedit_undo_error_item_unavailable">Can\u2019t undo: the app is no longer on this device.</string>
+    <string name="homeedit_undo_error_write_failed">Couldn\u2019t undo. The layout is unchanged.</string>
+    <string name="homeedit_undo_error_stale_revision">Can\u2019t undo: the home screen changed since.</string>
+    <string name="homeedit_undo_error_not_restorable">Can\u2019t undo: the restore point is no longer available.</string>
+    <string name="homeedit_undo_error_busy">Can\u2019t undo right now: an organization task is running.</string>
+    <string name="homeedit_undo_error_restore_failed">Couldn\u2019t undo. You can restore from the organizer.</string>
     <!-- Issue #449: multi-select visual edit surface -->
     <string name="edit_surface_menu_open">Edit layout grid</string>
     <string name="edit_surface_title">Edit layout grid</string>

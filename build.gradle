@@ -431,6 +431,8 @@ addFrameworkJar('framework-16.jar')
 dependencies {
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core
+    // Issue #450: UiDevice.takeScreenshot for the AC-1 undo evidence capture.
+    androidTestImplementation libs.androidx.uiautomator
     // Issue #38: Compose UI semantics tests for the placement lock screen.
     androidTestImplementation platform(libs.compose.bom)
     androidTestImplementation libs.compose.ui.test

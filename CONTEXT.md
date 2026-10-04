@@ -271,3 +271,15 @@ _Avoid_: 整理run（organizerのsnapshot取得〜適用〜検証の一連の試
 **セッション計画 (Session Plan)**:
 編集セッション内でアクション実行の結果として図に反映されている、まだ適用されていない変更の集まり。#448の純粋計画関数の結果から構成される純dataであり、確定時にcaptureと照合される。
 _Avoid_: レイアウトplan（organizerのplan artifact。適用の正本と混同）、Undo記録（#450が所有する情報）
+
+**編集の取り消し (Edit Undo)**:
+利用者がforkの編集（項目単位のアクション、編集画面の確定）の直後に1操作で直前の編集を元に戻す操作（FR-020。正本の契約は [spec 450](./specs/450-edit-undo/spec.md)）。入口は操作直後のUndo snackbarのみ。
+_Avoid_: 復元 (restore)（organizerのrecovery point復元と混同。編集画面確定のundoは結果として復元経路を使うが、操作の語は取り消し）、redo
+
+**取り消し記録 (Undo Record)**:
+直前のfork編集1件を取り消すためにprocess内の単一slotへ保持する閉じたrecord。世代識別子を持ち、次のfork編集の成功で置換され、process死で消失する。編集画面entryのrevision正本は、apply経路が適用後検証に使ったmaterialized post-stateのrevisionである。
+_Avoid_: recovery point（organizerの適用前状態の永続復旧手段。別の物）、履歴（複数段を保持しない）
+
+**逆操作 (Inverse Operation)**:
+項目単位のアクションを戻すための、ADR-0013契約に従う直接の編集書込み（逆UPDATE / 逆INSERT+逆DELETEの組 / 逆INSERT）。実行前に現在状態との照合（配置・availability込み）を必ず通る。
+_Avoid_: abort（上流の遅延commit取消との混同）

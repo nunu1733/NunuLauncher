@@ -122,6 +122,38 @@ class HomeEditAcceptanceOraclesTest {
 
     // --- Issue #449 AC-15: edit-surface strings exist and are non-empty ---
 
+    // --- Issue #450 AC-9: undo strings exist and are non-empty ---
+
+    private fun readUndoStrings(localeDir: String): Map<String, String> {
+        val text = stringsFile(localeDir).readText()
+        val regex = Regex("<string name=\"(homeedit_undo_[^\"]+)\">(.*?)</string>")
+        return regex.findAll(text).associate { it.groupValues[1] to it.groupValues[2] }
+    }
+
+    @Test
+    fun `all undo strings are defined and non-empty in en and ja`() {
+        val expected = listOf(
+            "homeedit_undo_label",
+            "homeedit_undo_error_stale",
+            "homeedit_undo_error_no_space",
+            "homeedit_undo_error_folder_changed",
+            "homeedit_undo_error_item_unavailable",
+            "homeedit_undo_error_write_failed",
+            "homeedit_undo_error_stale_revision",
+            "homeedit_undo_error_not_restorable",
+            "homeedit_undo_error_busy",
+            "homeedit_undo_error_restore_failed",
+        )
+        for (localeDir in listOf("values", "values-ja")) {
+            val strings = readUndoStrings(localeDir)
+            for (name in expected) {
+                val value = strings[name]
+                assertTrue("$localeDir/$name missing", value != null)
+                assertTrue("$localeDir/$name empty", value!!.isNotBlank())
+            }
+        }
+    }
+
     private fun readEditSurfaceStrings(localeDir: String): Map<String, String> {
         val text = stringsFile(localeDir).readText()
         val regex = Regex("<string name=\"(edit_surface_[^\"]+)\">(.*?)</string>")

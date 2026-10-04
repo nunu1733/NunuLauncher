@@ -30,6 +30,7 @@ object HomeEditSnapshotMapper {
                 userSerial = row.userSerial,
             )
         },
+        hotseatCount = snapshot.hotseatCount,
     )
 
     fun rejectionKey(reason: HomeEditRejection): String = when (reason) {
