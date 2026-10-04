@@ -13,6 +13,7 @@ import com.android.launcher3.model.LayoutWriteCoordinator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -232,5 +233,139 @@ public class LayoutWriteCoordinatorTest {
         // All three entries ran exactly once.
         assertEquals(3, runCount.get());
         assertEquals(0, c.pendingDeferredCount());
+    }
+
+    // --- Issue #168: restore-family lease visibility for restore-safe DB cleanup ---
+
+    @Test
+    public void restoreFamilyLeaseIsReportedAsActive() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        assertFalse(c.hasActiveRestoreFamilyLease());
+        try (LayoutWriteCoordinator.Lease lease =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE)) {
+            assertNotNull(lease);
+            assertTrue(c.hasActiveRestoreFamilyLease());
+        }
+        assertFalse(c.hasActiveRestoreFamilyLease());
+    }
+
+    @Test
+    public void plainRestoreLeaseIsReportedAsActive() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        try (LayoutWriteCoordinator.Lease lease =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.RESTORE)) {
+            assertNotNull(lease);
+            assertTrue(c.hasActiveRestoreFamilyLease());
+        }
+        assertFalse(c.hasActiveRestoreFamilyLease());
+    }
+
+    @Test
+    public void nonRestoreLeaseIsNotReportedAsRestoreFamily() {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        try (LayoutWriteCoordinator.Lease lease =
+                     c.tryAcquire(LayoutWriteCoordinator.OwnerKind.ORGANIZER)) {
+            assertNotNull(lease);
+            assertFalse(c.hasActiveRestoreFamilyLease());
+        }
+        assertFalse(c.hasActiveRestoreFamilyLease());
+    }
+
+    // --- Issue #168 review follow-up: DB cleanup runs under real mutual exclusion ---
+
+    /**
+     * The coordinator is shared with the live app process (startup reconciliation,
+     * model loads), so acquisition can transiently fail; retry until the app is
+     * quiet instead of flaking.
+     */
+    private static LayoutWriteCoordinator.Lease tryAcquireRetried(
+            LayoutWriteCoordinator c, LayoutWriteCoordinator.OwnerKind kind) throws Exception {
+        for (int i = 0; i < 100; i++) {
+            LayoutWriteCoordinator.Lease lease = c.tryAcquire(kind);
+            if (lease != null) {
+                return lease;
+            }
+            Thread.sleep(50);
+        }
+        return null;
+    }
+
+    @Test
+    public void dbCleanupExclusionBlocksRestoreAcquisitionForItsDuration() throws Exception {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        CountDownLatch cleanupRunning = new CountDownLatch(1);
+        CountDownLatch releaseCleanup = new CountDownLatch(1);
+        AtomicBoolean cleanupRan = new AtomicBoolean(false);
+        Thread cleanupThread = new Thread(() -> {
+            // Retry until the exclusion is won; a false return holds no lease.
+            for (int i = 0; i < 100 && !cleanupRan.get(); i++) {
+                cleanupRan.set(c.runDbCleanupExclusively(() -> {
+                    cleanupRunning.countDown();
+                    try {
+                        releaseCleanup.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                }));
+                if (!cleanupRan.get()) {
+                    try {
+                        Thread.sleep(50);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        });
+        cleanupThread.start();
+        assertTrue(cleanupRunning.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        // While the cleanup section is open, a restore must not be able to acquire
+        // its lease — this is the guarantee that closes the check→delete race.
+        LayoutWriteCoordinator.Lease restore =
+                c.tryAcquire(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE);
+        releaseCleanup.countDown();
+        assertNull("restore lease must be blocked while DB cleanup exclusion is held", restore);
+        cleanupThread.join(5000);
+        assertFalse(cleanupThread.isAlive());
+        assertTrue(cleanupRan.get());
+        assertFalse(c.hasActiveRestoreFamilyLease());
+    }
+
+    @Test
+    public void dbCleanupExclusionSkipsUnderRestoreFamilyLease() throws Exception {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        try (LayoutWriteCoordinator.Lease restore =
+                     tryAcquireRetried(c, LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE)) {
+            assertNotNull(restore);
+            AtomicBoolean ran = new AtomicBoolean(false);
+            assertFalse(c.runDbCleanupExclusively(() -> ran.set(true)));
+            assertFalse(ran.get());
+        }
+        AtomicBoolean ranAfter = new AtomicBoolean(false);
+        assertTrue(c.runDbCleanupExclusively(() -> ranAfter.set(true)));
+        assertTrue(ranAfter.get());
+    }
+
+    @Test
+    public void dbCleanupExclusionReentersSameThreadModelWriter() throws Exception {
+        LayoutWriteCoordinator c = LayoutWriteCoordinator.getInstance();
+        try (LayoutWriteCoordinator.Lease writer =
+                     tryAcquireRetried(c, LayoutWriteCoordinator.OwnerKind.MODEL_WRITER)) {
+            assertNotNull(writer);
+            AtomicBoolean ran = new AtomicBoolean(false);
+            assertTrue(c.runDbCleanupExclusively(() -> ran.set(true)));
+            assertTrue(ran.get());
+            // The outer writer lease is still held after the reentered cleanup.
+            LayoutWriteCoordinator.Lease nested = c.tryReenterModelWriter();
+            assertNotNull(nested);
+            nested.close();
+        }
+        // The outer close released everything.
+        LayoutWriteCoordinator.Lease reacquired =
+                tryAcquireRetried(c, LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
+        assertNotNull(reacquired);
+        if (reacquired != null) {
+            reacquired.close();
+        }
     }
 }
