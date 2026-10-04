@@ -112,6 +112,28 @@ object LauncherDbUtils {
     fun dropTable(db: SQLiteDatabase, tableName: String) =
         db.execSQL("DROP TABLE IF EXISTS $tableName")
 
+    // Issue #532 S3a (rebase of Issue #59): replace toTable in toDb with fromTable read
+    // from an already-attached foreign database ("from_db"). The caller owns the ATTACH /
+    // DETACH lifecycle and the surrounding transaction.
+    @JvmStatic
+    fun copyTableFromAttachedDb(
+        fromTable: String,
+        toDb: SQLiteDatabase,
+        toTable: String,
+        context: Context,
+    ) {
+        val userSerial = UserCache.INSTANCE[context].getSerialNumberForUser(Process.myUserHandle())
+        replaceTable(toDb, "from_db.$fromTable", toTable, userSerial)
+    }
+
+    private fun replaceTable(toDb: SQLiteDatabase, qualifiedFromTable: String, toTable: String, userSerial: Long) {
+        dropTable(toDb, toTable)
+        LauncherSettings.Favorites.addTableToDb(toDb, userSerial, false, toTable)
+        toDb.execSQL(
+            "INSERT INTO $toTable SELECT ${LauncherSettings.Favorites.getColumns(userSerial)} FROM $qualifiedFromTable"
+        )
+    }
+
     /** Copy fromTable in fromDb to toTable in toDb. */
     @JvmStatic
     fun copyTable(
