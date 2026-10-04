@@ -227,6 +227,26 @@ fun getAllAppsScrimColor(context: Context): Int {
     return ColorUtils.setAlphaComponent(scrimColor, alpha)
 }
 
+/** Apply Lawnchair custom allapps colour to the provided colour */
+private fun getAllAppsBaseColor(context: Context, defaultColor: Int): Int {
+    val prefs2 = PreferenceManager2.getInstance(context)
+    val colorOptions: ColorOption = prefs2.appDrawerBackgroundColor.firstBlocking()
+    val color = colorOptions.colorPreferenceEntry.lightColor.invoke(context)
+    val baseColor = if (color != 0) color else defaultColor
+    return ColorUtils.setAlphaComponent(baseColor, 255)
+}
+
+/**
+ * Apply Lawnchair custom allapps opacity and colour to the provided colour.
+ * Rebase Phase 2 adapt (#532): ported for the anchor ActivityAllAppsContainerView
+ * and TaskbarAllAppsSlideInView background handling.
+ */
+fun getAllAppsBackgroundColor(context: Context, defaultColor: Int): Int {
+    val prefs = PreferenceManager.getInstance(context)
+    val userOpacity = prefs.drawerOpacity.get()
+    return ColorUtils.setAlphaComponent(getAllAppsBaseColor(context, defaultColor), (userOpacity * 255).roundToInt())
+}
+
 fun Context.checkPackagePermission(packageName: String, permissionName: String): Boolean {
     try {
         val info = packageManager.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)

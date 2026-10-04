@@ -50,6 +50,7 @@ import app.lawnchair.ui.preferences.destinations.OrganizerHubPreferences
 import app.lawnchair.ui.preferences.destinations.OrganizerStrategyPreferences
 import app.lawnchair.ui.preferences.destinations.PickAppForGesture
 import app.lawnchair.ui.preferences.destinations.PlacementLockPreferences
+import app.lawnchair.ui.preferences.destinations.PredictionsPreferences
 import app.lawnchair.ui.preferences.destinations.PreferencesDashboard
 import app.lawnchair.ui.preferences.destinations.QuickstepPreferences
 import app.lawnchair.ui.preferences.destinations.SearchPreferences
@@ -187,6 +188,10 @@ fun PreferenceNavigation(
 
         // Rebase Phase 2 adapt (#532): dismissed predictions destination.
         composable<DismissedPredictionApps> { DismissedPredictionAppsPreferences() }
+
+        // Rebase Phase 2 adapt (#532): anchor predictions destination; the anchor
+        // HotseatEduController opens it directly.
+        composable<Predictions> { PredictionsPreferences() }
 
         composable<SelectIcon> { backStackEntry ->
             val args: SelectIcon = backStackEntry.toRoute()

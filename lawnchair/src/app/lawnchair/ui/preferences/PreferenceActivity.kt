@@ -60,6 +60,9 @@ class PreferenceActivity : ComponentActivity() {
 
         private const val EXTRA_DESTINATION_ROUTE = "app.lawnchair.ui.preferences.DESTINATION_ROUTE"
 
+        // Rebase Phase 2 adapt (#532): @JvmStatic so the anchor quickstep
+        // HotseatEduController can call this from Java.
+        @JvmStatic
         fun createIntent(context: Context, destination: PreferenceRoute): Intent {
             val intent = Intent(context, PreferenceActivity::class.java)
             val routeString = Json.encodeToString(destination)

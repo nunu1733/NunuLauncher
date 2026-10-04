@@ -659,4 +659,9 @@
         <attr name="arrowTipBackground" format="color" />
         <attr name="arrowTipTextColor" format="color" />
     </declare-styleable>
+
+    <!-- Rebase Phase 2 adapt (#532): fork resource additions. The quickstep
+         bg_overview_clear_all_button drawable tints itself with the Material
+         surface color exposed as a theme attribute. -->
+    <attr name="materialColorSurfaceBright" format="color" />
 </resources>

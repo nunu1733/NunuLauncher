@@ -59,6 +59,16 @@ class PreferenceManager private constructor(private val context: Context) :
     // has no value here (ADR-0015 Decision 15).
     val newAppDestination = StringPref("pref_new_app_destination", "upstream")
     val hotseatColumns = IntPref("pref_hotseatColumns", 4, reloadGrid)
+
+    // Rebase Phase 2 adapt (#532): anchor grid prefs the anchor model layer reads
+    // (multi-row/page dock in DeviceProfile and the foldable hotseat overrides in
+    // DeviceProfileOverrides.Options). Keys and defaults follow the anchor; the
+    // unfolded default mirrors hotseatColumns because the fork has no LayoutConfig
+    // foldable spec yet.
+    val hotseatColumnsUnfolded = IntPref("pref_hotseatColumnsUnfolded", 4, reloadGrid)
+    val hotseatRows = IntPref("pref_hotseatRows", 1, reloadGrid)
+    val dockPages = IntPref("pref_dockPages", 1, reloadGrid)
+
     val workspaceColumns = IntPref("pref_workspaceColumns", 4)
     val workspaceRows = IntPref("pref_workspaceRows", 5)
     val workspaceIncreaseMaxGridSize = BoolPref("pref_workspace_increase_max_grid_size", false)

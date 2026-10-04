@@ -58,6 +58,7 @@ import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.InvariantDeviceProfile.INDEX_DEFAULT
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
+import com.android.launcher3.Workspace
 import com.android.launcher3.graphics.IconShape as L3IconShape
 import com.android.launcher3.reloadIcons
 import com.android.launcher3.util.ComponentKey
@@ -235,6 +236,23 @@ class PreferenceManager2 private constructor(private val context: Context) :
         defaultValue = ColorOption.SystemAccent,
     )
 
+    // Rebase Phase 2 adapt (#532): anchor pref read by the anchor
+    // ActivityAllAppsContainerView work tab container background.
+    val workProfileTabContainerBackground = preference(
+        key = booleanPreferencesKey(name = "work_profile_tab_container_background"),
+        defaultValue = true,
+        onSet = { reloadHelper.recreate() },
+    )
+
+    // Rebase Phase 2 adapt (#532): anchor pref read by the anchor Hotseat corner
+    // radius handling.
+    val hotseatBackgroundCornerRadius = preference(
+        key = floatPreferencesKey(name = "hotseat_bg_corner_radius"),
+        defaultValue = context.resources.getDimension(R.dimen.bg_round_rect_radius) /
+            context.resources.displayMetrics.density, // This should hopefully match corner of all devices
+        onSet = { reloadHelper.recreate() },
+    )
+
     val notificationDotColor = preference(
         key = stringPreferencesKey(name = "notification_dot_color"),
         parse = ColorOption::fromString,
@@ -392,6 +410,13 @@ class PreferenceManager2 private constructor(private val context: Context) :
     val lockHomeScreen = preference(
         key = booleanPreferencesKey(name = "lock_home_screen"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_lock_home_screen),
+    )
+
+    // Rebase Phase 2 adapt (#532): anchor pref backing the workspace default page
+    // (anchor Workspace read path).
+    val defaultHomePage = preference(
+        key = intPreferencesKey(name = "default_home_page"),
+        defaultValue = Workspace.DEFAULT_PAGE,
     )
 
     val legacyPopupOptionsMigrated = preference(
@@ -583,6 +608,32 @@ class PreferenceManager2 private constructor(private val context: Context) :
         onSet = { reloadHelper.reloadGrid() },
     )
 
+    // Rebase Phase 2 adapt (#532): anchor user padding factor prefs read by the
+    // anchor DeviceProfile layout math; clamped by the caller to the slider range.
+    val workspacePaddingHorizontalFactor = preference(
+        key = floatPreferencesKey(name = "workspace_padding_horizontal"),
+        defaultValue = resourceProvider.getFloat(R.dimen.config_default_workspace_padding_horizontal),
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
+    val workspacePaddingVerticalFactor = preference(
+        key = floatPreferencesKey(name = "workspace_padding_vertical"),
+        defaultValue = resourceProvider.getFloat(R.dimen.config_default_workspace_padding_vertical),
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
+    val widgetPaddingFactor = preference(
+        key = floatPreferencesKey(name = "widget_padding_factor"),
+        defaultValue = resourceProvider.getFloat(R.dimen.config_default_widget_padding_factor),
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
+    val drawerPaddingTopFactor = preference(
+        key = floatPreferencesKey(name = "drawer_padding_top"),
+        defaultValue = resourceProvider.getFloat(R.dimen.config_default_drawer_padding_top),
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
     val hotseatBottomFactor = preference(
         key = floatPreferencesKey(name = "hotseat_bottom_factor"),
         defaultValue = resourceProvider.getFloat(R.dimen.config_default_hotseat_bottom_factor),
@@ -706,6 +757,14 @@ class PreferenceManager2 private constructor(private val context: Context) :
     val drawerColumns = idpPreference(
         key = intPreferencesKey(name = "drawer_columns"),
         defaultSelector = { numAllAppsColumns },
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
+    // Rebase Phase 2 adapt (#532): anchor unfolded-drawer pref read by the foldable
+    // overrides in DeviceProfileOverrides.Options.
+    val drawerColumnsUnfolded = idpPreference(
+        key = intPreferencesKey(name = "drawer_columns_unfolded"),
+        defaultSelector = { numAllAppsColumns + 2 },
         onSet = { reloadHelper.reloadGrid() },
     )
 
@@ -900,6 +959,18 @@ class PreferenceManager2 private constructor(private val context: Context) :
                     .getOrDefault(GestureHandlerConfig.NoOp)
             } ?: GestureHandlerConfig.NoOp
         }
+    }
+
+    // Rebase Phase 2 adapt (#532): cached variant read by the anchor
+    // IconGestureListener scroll path.
+    fun getGestureForAppCached(key: ComponentKey, gestureType: GestureType): GestureHandlerConfig {
+        val cmp = Converters().fromComponentKey(key)
+        val key = stringPreferencesKey("$cmp:${gestureType.name}")
+        val prefs = getCachedPreferences()
+        return prefs[key]?.let {
+            runCatching { kotlinxJson.decodeFromString<GestureHandlerConfig>(it) }
+                .getOrDefault(GestureHandlerConfig.NoOp)
+        } ?: GestureHandlerConfig.NoOp
     }
 
     private fun initializeIconShape(shape: IconShape) {
