@@ -226,7 +226,11 @@ internal class LayoutApplicationModule<S>(
     private fun emitRecoveryResult(result: RecoveryResult, request: RecoveryRequest) {
         try {
             val record = store.readRecord(request.pointId)
-            val pointOriginRunId = record?.runId?.value
+            val pointOriginRunId = when (record) {
+                is RecoveryStorePort.RecordRead.Readable -> record.record.runId.value
+                is RecoveryStorePort.RecordRead.Unreadable -> record.metadata.runId.value
+                else -> null
+            }
             val event = app.lawnchair.organizer.diagnostics.projection.RecoveryProjection.project(
                 result = result,
                 journalSequence = 0L,
@@ -242,7 +246,11 @@ internal class LayoutApplicationModule<S>(
     private fun emitRecoveryRequested(request: RecoveryRequest) {
         try {
             val record = store.readRecord(request.pointId)
-            val pointOriginRunId = record?.runId?.value
+            val pointOriginRunId = when (record) {
+                is RecoveryStorePort.RecordRead.Readable -> record.record.runId.value
+                is RecoveryStorePort.RecordRead.Unreadable -> record.metadata.runId.value
+                else -> null
+            }
             val event = app.lawnchair.organizer.diagnostics.projection.RecoveryProjection.projectRequested(
                 pointId = request.pointId.value,
                 pointOriginRunId = pointOriginRunId,

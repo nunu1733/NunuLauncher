@@ -216,7 +216,10 @@ class ProductionPublicSeamInstrumentationTest {
 
             assertEquals(ApplyResult.Rejected(runId, PreWriteRejection.CHECKPOINT_CREATE_FAILED), result)
             val reopenedStore = RecoveryStore(context, clock::nowMillis)
-            assertEquals(LifecycleState.CREATING, reopenedStore.readRecord(pointId)?.lifecycle)
+            assertEquals(
+                LifecycleState.CREATING,
+                (reopenedStore.readRecord(pointId) as? RecoveryStorePort.RecordRead.Readable)?.record?.lifecycle,
+            )
             assertEquals(capture.manifest, LauncherLayoutAdapter(
                 context,
                 launcher.model.modelDbController,
@@ -230,7 +233,10 @@ class ProductionPublicSeamInstrumentationTest {
                 FixedIds(runId, pointId),
             )
             assertEquals(RestartReconciler.ReconciliationSummary.Clean, restartModule.reconcileAtStart())
-            assertNull(RecoveryStore(context, clock::nowMillis).readRecord(pointId))
+            assertEquals(
+                RecoveryStorePort.RecordRead.Missing,
+                RecoveryStore(context, clock::nowMillis).readRecord(pointId),
+            )
             assertEquals(
                 RecoveryStorePort.TombstoneReason.PRUNED_UNUSED,
                 RecoveryStore(context, clock::nowMillis).readTombstone(pointId)?.reason,

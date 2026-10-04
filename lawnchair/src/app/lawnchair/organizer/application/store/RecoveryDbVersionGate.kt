@@ -23,7 +23,7 @@ object RecoveryDbVersionGate {
         data class ReadFailed(val cause: Throwable) : VersionDecision
     }
 
-    fun probe(file: File): VersionDecision = probeForFormat(file, RecoveryDbSchema.FORMAT_VERSION)
+    fun probe(file: File): VersionDecision = probeForFormat(file, RecoveryDbSchema.SCHEMA_VERSION)
 
     /** Internal compatibility seam for instrumentation of an older binary's read-only gate. */
     internal fun probeForFormat(file: File, supportedFormat: Int): VersionDecision {

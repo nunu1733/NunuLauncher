@@ -107,6 +107,7 @@ class RecoveryPreviewProtocol(
             RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION -> RecoveryPreviewRejection.INCOMPATIBLE_VERSION
             RecoveryStorePort.TombstoneReason.ALREADY_RESTORED -> RecoveryPreviewRejection.ALREADY_RESTORED
             RecoveryStorePort.TombstoneReason.PRUNED_UNUSED -> RecoveryPreviewRejection.MISSING
+            RecoveryStorePort.TombstoneReason.QUARANTINED -> RecoveryPreviewRejection.CORRUPT
         }
         return RecoveryPreviewResult.NotRestorable(pointId, reason)
     }

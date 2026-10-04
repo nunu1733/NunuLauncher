@@ -130,7 +130,7 @@ class RestartReconcilerDiagnosticsTest {
             RecoveryLifecycle.READY,
             event.reconciliation?.resultingLifecycle,
         )
-        assertTrue("Record must actually be pruned", store.readRecord(pointId) == null)
+        assertTrue("Record must actually be pruned", store.readRecord(pointId) == RecoveryStorePort.RecordRead.Missing)
         assertEquals(
             "RESTART_RECONCILED must carry the record's pointId for retention correlation",
             pointId.value,

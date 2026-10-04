@@ -188,9 +188,7 @@ interface RecoveryStorePort {
         recoveryActionDigest: ByteArray,
     ): Boolean
 
-    fun readRecord(pointId: RecoveryPointId): StoredRecord?
-
-    fun listNonFinalRecords(): List<StoredRecord>
+    fun readRecord(pointId: RecoveryPointId): RecordRead
 
     /** Delete a checkpoint proven unused while Launcher still matches its pre-state. */
     fun pruneUnused(pointId: RecoveryPointId): Boolean
@@ -198,6 +196,39 @@ interface RecoveryStorePort {
     fun runRetention(nowMillis: Long): RetentionOutcome
 
     enum class StoreAvailability { READY, INCOMPATIBLE_VERSION, READ_FAILED }
+
+    /**
+     * Bounded record metadata: identity, lifecycle, timestamps, logical format
+     * version, and the digests used by authoritative classification. Never
+     * contains manifest bytes (Issue #174).
+     */
+    data class RecordMetadata(
+        val pointId: RecoveryPointId,
+        val runId: RunId,
+        val lifecycle: LifecycleState,
+        val priorLifecycle: LifecycleState?,
+        val createdAtMs: Long,
+        val updatedAtMs: Long,
+        val formatVersion: Int,
+        val preDigest: ByteArray,
+        val intendedDigest: ByteArray,
+        val reviewedDigest: ByteArray?,
+    )
+
+    /**
+     * Closed ordinary point-read result (Issue #174). A row whose bounded
+     * metadata decoded but whose chunk assembly or manifest decode failed is
+     * [Unreadable] — never `null`, never a generic store failure. An assembled,
+     * decodable record with a payload-checksum mismatch remains [Readable]
+     * with `checksumValid = false` so the existing `CORRUPT` path is preserved.
+     * [Failed] is reserved for store I/O or undecodable metadata.
+     */
+    sealed interface RecordRead {
+        data class Readable(val record: StoredRecord) : RecordRead
+        data class Unreadable(val metadata: RecordMetadata) : RecordRead
+        data object Missing : RecordRead
+        data object Failed : RecordRead
+    }
 
     /** Closed result of the SQLite-free inspection snapshot seam. */
     sealed interface InspectionProjectionRead {
@@ -232,6 +263,7 @@ interface RecoveryStorePort {
         ALREADY_RESTORED,
         EXPIRED,
         PRUNED_UNUSED,
+        QUARANTINED,
     }
 
     data class Tombstone(
@@ -296,6 +328,17 @@ internal interface RecoveryStoreReconciliationPort {
     ): RecoveryStoreReconciliationIssuer?
 }
 
+/**
+ * One enumerated reconciliation candidate (Issue #174). [Valid] carries bounded
+ * metadata loadable through the shared point-level read; [Malformed] is a row
+ * whose identity/lifecycle metadata cannot be decoded — it is never loadable
+ * or deletable and must be preserved.
+ */
+internal sealed interface ReconciliationCandidate {
+    data class Valid(val metadata: RecoveryStorePort.RecordMetadata) : ReconciliationCandidate
+    data class Malformed(val pointId: RecoveryPointId?) : ReconciliationCandidate
+}
+
 /** Opaque issuer retained only by the composition root. */
 internal interface RecoveryStoreReconciliationIssuer {
     fun openSession(
@@ -307,12 +350,35 @@ internal interface RecoveryStoreReconciliationIssuer {
  * Opaque, method-scoped capability for legal startup reconciliation work.
  * Implementations must reject every call after [close] or when the exact
  * module-owned [RunMutex.ReconciliationLease] is no longer active.
+ *
+ * Issue #174: metadata enumeration is separate from point-level full-record
+ * loading, so one unreadable record degrades that record only. Loading reuses
+ * the ordinary closed [RecoveryStorePort.RecordRead] result; no second
+ * load-result interface exists.
  */
 internal interface RecoveryStoreReconciliationSession : AutoCloseable {
     fun isActive(): Boolean
     fun availability(): RecoveryStorePort.StoreAvailability
-    fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>?
-    fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord?
+
+    /**
+     * Bounded metadata for every non-final record, ordered by creation time.
+     * Null means a store-level failure; malformed rows appear as
+     * [ReconciliationCandidate.Malformed] entries and are preserved.
+     */
+    fun listReconciliationCandidates(): List<ReconciliationCandidate>?
+
+    /** Point-level load of one candidate through the ordinary closed read result. */
+    fun loadRecord(candidate: RecoveryStorePort.RecordMetadata): RecoveryStorePort.RecordRead?
+
+    /**
+     * Session-owned quarantine of an unreadable record whose durable lifecycle
+     * ([LifecycleState.CREATING] or [LifecycleState.READY]) proves no Launcher
+     * mutation can have begun. Rechecks the point ID and expected lifecycle in
+     * the same transaction before writing the typed tombstone and deleting
+     * children/parent. Any other lifecycle is refused.
+     */
+    fun quarantineUnmutated(pointId: RecoveryPointId, expectedLifecycle: LifecycleState): Boolean
+
     fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean
     fun markRestoring(
         pointId: RecoveryPointId,
