@@ -26,3 +26,9 @@ adb install -r build/outputs/apk/androidTest/lawnWithQuickstepGithub/debug/*.apk
 adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCrossProcessStageATest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
 adb shell am force-stop app.lawnchair.debug
 adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCrossProcessStageBTest app.lawnchair.debug.test/app.lawnchair.migration.DeckRetirementTestRunner
+# Issue #458 (R-1): the cleanUpDatabases lease guard (#168) owns a restore
+# lease and a live app process, so it runs as its OWN connected invocation
+# after the capture walk — the #299 per-class invocation principle applies to
+# it too, and the gradle uninstall above keeps its state isolated from the
+# capture stages.
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreGridApplicationTest

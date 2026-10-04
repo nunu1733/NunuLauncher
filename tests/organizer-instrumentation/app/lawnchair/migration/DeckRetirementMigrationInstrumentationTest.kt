@@ -43,6 +43,9 @@ class DeckRetirementMigrationInstrumentationTest {
     @Test
     fun enabledDisabledAndInconsistentStatesPreserveActiveDbAndNormalizeAtomically() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // A fresh emulator has not created the active grid database yet; use
+        // the same precondition helper as the sibling test below.
+        ensureActiveDbExists(context)
         val prefs2 = PreferenceManager2.getInstance(context)
 
         // Verify normalization works when both tombstones are already false.
