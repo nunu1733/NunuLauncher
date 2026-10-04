@@ -1,6 +1,6 @@
 ---
 issue: "#287"
-status: accepted
+status: implemented
 requirements:
   - FR-003
   - NFR-002
@@ -243,7 +243,7 @@ TalkBack到達性はspec #38の既存実装 (UI testで検証済み) を変更�
 - [x] **AC-6 — 再現フローの端末検証:** Issue再現シーケンス (適用 → 復元 →
   グリッド変更 → 失敗 → review解消 → 同一プロセスでpreview成功) を
   emulatorで実行し、`docs/assessment/` に手順・journal証跡付きで記録する。
-- [ ] **AC-7 — gate:** `spotlessCheck`、`assembleLawnWithQuickstepGithubDebug`、
+- [x] **AC-7 — gate:** `spotlessCheck`、`assembleLawnWithQuickstepGithubDebug`、
   organizer unit-test gate (`app.lawnchair.organizer.*`) が成功する。
 
 ## Test oracle
@@ -280,3 +280,10 @@ migration仕様・composer意味論・batch atomicityは既存正本
 - 2026-09-13: rev 3実装。`fitsProfile` フォルダ子上限の削除、JVM/instrumentation
   回帰 (AC-1〜AC-4)、emulator検証とassessment記録 (AC-6)。AC-7はCI
   `final-status` の確認後に完了とする。
+- 2026-09-13: PR [#306](https://github.com/nunu1733/NunuLauncher/pull/306)
+  がmerge (cbb329f095)。実装・回帰・emulator検証 (AC-1〜AC-6) とCI
+  `final-status` (run 34711506777) / 独立high-risk audit
+  ([docs/assessment/pr-306-287-grid-change-unknown-lock-recovery.md](../../docs/assessment/pr-306-287-grid-change-unknown-lock-recovery.md))
+  によりAC-7も完了。statusを `implemented` へ更新。Issue側の当初AC/
+  regression記述はReview条件対応として確定仕様へ更新済み
+  ([issue comment](https://github.com/nunu1733/NunuLauncher/issues/287#issuecomment-5650042996))。
