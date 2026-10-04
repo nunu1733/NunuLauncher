@@ -236,3 +236,101 @@ The existing API 36 clean-emulator
 `organizer-instrumentation-shared-writer-tests` lane now includes
 `OrganizerReloadSupersessionTest`. No new lane, production seam, or public API
 is required.
+
+## Issue #156 follow-up: Hybrid Hotseat atomic admission
+
+> Follow-up date: 2026-08-27
+> Scope: tokenless Hybrid Hotseat DB work that previously posted directly to
+> `MODEL_EXECUTOR` and could synchronously wait on an external coordinator lease
+> Implementation status: **implemented**. The 2026-08-27 implementation review
+> added and resolved the `createBackup` call-time ordering requirement; API 36
+> connected instrumentation and fresh-workspace device evidence completed on the
+> rebased branch. Remote CI and the independent high-risk audit remain merge
+> prerequisites.
+
+Issue #156 found a writer path that the historical Issue #60 inventory did not
+scan: `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java`.
+`createBackup` and `restoreBackup` each posted tokenless
+`ModelDbController.newTransaction()` work to the single `MODEL_EXECUTOR`. When
+an organizer or restore-family lease was held, the transaction's fallback
+could synchronously wait and starve the correlated organizer reload.
+
+The corrective source change preserves the single `LayoutWriteCoordinator`
+serialization seam. `HotseatRestoreHelper` now first reserves call-time FIFO position through the
+existing tokenless `runOrDefer` path, then schedules the body through
+`runModelWriterOrDefer`. The reservation preserves `createBackup()` before the
+following Hotseat migration `ModelWriter` write whenever an organizer or
+restore-family holder already exists. Its callback only posts to
+`MODEL_EXECUTOR`; it never performs Hotseat DB work on the lease-releasing
+thread. The execution-time operation then makes one monitor-protected decision:
+it grants an outer `MODEL_WRITER` lease and runs the body, including the
+existing same-thread transaction reentry, or it appends a continuation that
+reposts the same atomic admission attempt to `MODEL_EXECUTOR`. This closes
+both call-time backup reordering and the race where a holder appears after
+scheduling but before the model executor begins admission.
+
+The executable inventory now scans `src`, `quickstep/src`, and
+`lawnchair/src`; its bounded `dbController` receiver pattern covers both
+Hotseat transaction expressions. The current source scan passes with **19
+allowlisted writer files across 1,437 scanned source files, 0 errors, and 0
+warnings**. The one new inventory row is as follows.
+
+| File | Pattern kind(s) | Lease kind / reason |
+|---|---|---|
+| `quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java` | controller-call | Hybrid Hotseat backup/restore uses `MODEL_EXECUTOR` atomic `LayoutWriteCoordinator.runModelWriterOrDefer` admission. |
+
+The inventory's responsibility remains intentionally limited to identifying
+writer paths and requiring their documented allowlist registration. It cannot
+prove that an admission gate stays structurally present. The focused
+`HotseatRestoreAdmissionTest` owns that behavioral guarantee: it uses the
+actual helper scheduler seam and a deterministic single-executor fixture to
+stage the order `schedule while empty → acquire ORGANIZER → begin admission`.
+It asserts FIFO deferral, exact-token correlated-loader progress before
+explicit lease release, re-deferral when a new holder appears, same-thread
+writer reentry, and finally-based release after an admitted exception. Its
+connected cases also execute the real uncontended `createBackup`, backup-absent
+`restoreBackup`, and backup-present/drop-after-use `restoreBackup` DB paths.
+The existing API 36 shared-writer CI lane is extended to include this test.
+
+### Scope stop condition
+
+The `quickstep/src` scan extension produced no writer path beyond
+`HotseatRestoreHelper`. If a subsequent scan reveals another path, Issue #156
+may change its production behavior only when inspection shows the same cause:
+tokenless DB work running on `MODEL_EXECUTOR` can synchronously wait for an
+external coordinator lease. Every other ownership or lifecycle finding must
+be recorded with source evidence and split into its own Issue before an
+allowlist rationale or product change is added. This preserves the Issue #156
+boundary while keeping the inventory fail-closed.
+
+### Connected-environment evidence
+
+> Verification date: 2026-08-27
+> Environment: macOS arm64, OpenJDK 21.0.12, Android SDK Platform 36.1, Build
+> Tools 36.1.0, and isolated `issue142_api36` API 36 / Android 16 emulator.
+
+| Surface | Result |
+|---|---|
+| `spotlessCheck` | Passed when run as a standalone `--no-configuration-cache` invocation. Combining it with Android compile/instrumentation tasks triggers an unrelated Gradle implicit-dependency validation error. |
+| Organizer and full JVM suites | Passed: focused organizer gate and `testLawnWithQuickstepGithubDebugUnitTest --rerun-tasks`. |
+| Compile and APK | Passed: Android-test Java compile and `assembleLawnWithQuickstepGithubDebug`. |
+| Focused Hotseat instrumentation | Passed: 10 tests in `HotseatRestoreAdmissionTest` on the rebased head. The new case creates a fixture with actual `ModelWriter`, holds `ORGANIZER`, invokes `createBackup`, then submits the migration. It asserts that the backup-table rank is pre-migration while Favorites receives the migration rank. |
+| Shared-writer regression | Passed: 23 tests across Hotseat, coordinator, and reload-supersession classes on the rebased head. |
+
+For fresh-workspace evidence, the debug launcher was installed on the isolated
+emulator, its package data was cleared, and it was temporarily assigned the
+HOME role. The review displayed 15 targets over two pages. Explicit apply
+confirmation produced two `Deferring tokenless runnable` logs, followed by
+`APPLY_RECOVERED stage=A7 err=APPLY_FAILURE.VERIFICATION_FAILED`.
+After more than the ten-second starvation window, `MODEL_RELOAD_FAILED` had zero
+logcat matches and UI truthfully reported that the previous layout was restored.
+The emulator HOME role was restored to `com.google.android.apps.nexuslauncher`
+and the debug package was absent after cleanup.
+
+[Issue #155](https://github.com/nunu1733/NunuLauncher/issues/155) was **Open**
+at the evidence point. The fresh-workspace A7 verification failure is therefore
+recorded as its separate layout-overlap result, not as a #156 regression: the
+#156 Hotseat task deferred rather than blocking and recovery did not terminate
+with `MODEL_RELOAD_FAILED`. The exact commit SHA, GitHub Actions `final-status`
+run URL, and an independent high-risk audit must be added to the eventual PR
+assessment before merge.

@@ -8,6 +8,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import java.util.ArrayDeque;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -234,12 +235,153 @@ public final class LayoutWriteCoordinator {
     }
 
     /**
+     * Runs tokenless MODEL_EXECUTOR work with an atomic MODEL_WRITER admission decision.
+     *
+     * <p>Inside one coordinator critical section, this method either grants a new or
+     * same-thread reentrant MODEL_WRITER lease to {@code admittedRunnable}, or appends
+     * {@code deferredContinuation} to the existing FIFO. The continuation must hand work
+     * back to MODEL_EXECUTOR and invoke this method again; it must not run DB work inline on
+     * the lease-releasing thread. This closes the schedule-to-transaction race for callers
+     * that cannot ever block MODEL_EXECUTOR behind an external organizer/restore holder.
+     *
+     * <p>The lease wraps the full admitted runnable, rather than only a nested transaction.
+     * Existing {@code ModelDbController.newTransaction()} then uses same-thread MODEL_WRITER
+     * reentry for its transaction-scoped lease. The outer lease is always released in
+     * {@code finally}, including an early return or a DB-open failure before the transaction
+     * is constructed.
+     */
+    public void runModelWriterOrDefer(
+            @NonNull Runnable admittedRunnable,
+            @NonNull Runnable deferredContinuation) {
+        Lease lease;
+        synchronized (lock) {
+            Holder h = current;
+            if (h == null) {
+                long token = nextToken.getAndIncrement();
+                current = new Holder(Thread.currentThread(), OwnerKind.MODEL_WRITER, token);
+                lease = new LeaseImpl(OwnerKind.MODEL_WRITER, token);
+            } else if (h.thread == Thread.currentThread() && h.kind == OwnerKind.MODEL_WRITER) {
+                h.recursionCount += 1;
+                lease = new LeaseImpl(h.kind, h.token);
+            } else {
+                deferred.addLast(new DeferredRunnable() {
+                    @Override
+                    public void runWithOperationFuture() {
+                        deferredContinuation.run();
+                    }
+                });
+                Log.d(TAG, "Deferring atomic MODEL_WRITER runnable; queue size=" + deferred.size());
+                return;
+            }
+        }
+        try {
+            admittedRunnable.run();
+        } finally {
+            lease.close();
+        }
+    }
+
+    /**
+     * Reserves call-time FIFO order for tokenless MODEL_EXECUTOR work, then executes it with
+     * atomic MODEL_WRITER admission.
+     *
+     * <p>The reservation is deliberately recorded even when {@code current} is null. A later
+     * organizer or restore-family holder can therefore not let a following ModelWriter submission
+     * overtake work that was already accepted by MODEL_EXECUTOR but has not started its admission
+     * attempt. When a holder exists, the reservation stays in the FIFO at its original position;
+     * its release callback only posts an admission attempt to {@code executor}. The DB body never
+     * runs on the releasing thread.
+     */
+    public void runModelWriterWithCallTimeReservation(
+            @NonNull Executor executor, @NonNull Runnable admittedRunnable) {
+        ModelWriterReservation reservation = new ModelWriterReservation(executor, admittedRunnable);
+        boolean scheduleImmediately;
+        synchronized (lock) {
+            deferred.addLast(reservation);
+            scheduleImmediately = current == null && deferred.peekFirst() == reservation;
+        }
+        if (scheduleImmediately) {
+            reservation.schedule();
+        }
+    }
+
+    /** Call-time reservation whose body is always admitted on MODEL_EXECUTOR. */
+    private final class ModelWriterReservation implements DeferredRunnable {
+        private final Executor executor;
+        private final Runnable admittedRunnable;
+        @GuardedBy("lock") private boolean admissionPosted;
+        @GuardedBy("lock") private boolean completed;
+
+        ModelWriterReservation(@NonNull Executor executor, @NonNull Runnable admittedRunnable) {
+            this.executor = executor;
+            this.admittedRunnable = admittedRunnable;
+        }
+
+        @Override
+        public void runWithOperationFuture() {
+            schedule();
+        }
+
+        void schedule() {
+            synchronized (lock) {
+                if (completed || admissionPosted) {
+                    return;
+                }
+                admissionPosted = true;
+            }
+            executor.execute(this::attemptAdmission);
+        }
+
+        private void attemptAdmission() {
+            Lease lease;
+            synchronized (lock) {
+                admissionPosted = false;
+                if (completed) {
+                    return;
+                }
+                // A reservation behind an earlier writer remains dormant until that head has
+                // completed. This preserves submission order even when multiple callbacks were
+                // reposted around a holder reacquisition.
+                if (deferred.peekFirst() != this) {
+                    return;
+                }
+                Holder h = current;
+                if (h == null) {
+                    deferred.remove(this);
+                    completed = true;
+                    long token = nextToken.getAndIncrement();
+                    current = new Holder(
+                            Thread.currentThread(), OwnerKind.MODEL_WRITER, token);
+                    lease = new LeaseImpl(OwnerKind.MODEL_WRITER, token);
+                } else if (h.thread == Thread.currentThread()
+                        && h.kind == OwnerKind.MODEL_WRITER) {
+                    deferred.remove(this);
+                    completed = true;
+                    h.recursionCount += 1;
+                    lease = new LeaseImpl(h.kind, h.token);
+                } else {
+                    // Keep this entry in place. The releasing holder schedules the FIFO head;
+                    // a later writer must not overtake this reservation during reacquisition.
+                    return;
+                }
+            }
+            try {
+                admittedRunnable.run();
+            } finally {
+                lease.close();
+            }
+        }
+    }
+
+    /**
      * Run [runnable] under the coordinator's MODEL_EXECUTOR gate. If an
      * organizer or restore-family lease is held and the runnable is tokenless,
      * it is appended to the FIFO and the executor returns immediately. Baseline
      * {@link OwnerKind#MODEL_WRITER} and {@link OwnerKind#GRID_MIGRATION}
-     * leases do not defer tokenless work, preserving baseline executor
-     * semantics. The exact-token holder bypasses the queue.
+     * leases otherwise do not defer tokenless work, preserving baseline executor
+     * semantics. A prior stable Hotseat reservation also defers a later tokenless
+     * {@link OwnerKind#MODEL_WRITER} submission while a stable reservation is pending. The
+     * exact-token holder bypasses the queue.
      */
     public void runOrDefer(
         @NonNull OwnerKind kind,
@@ -250,7 +392,16 @@ public final class LayoutWriteCoordinator {
         boolean installOrganizerCapability = false;
         synchronized (lock) {
             Holder h = current;
-            if (h != null && !exactOrganizerToken && defersTokenlessWork(h)) {
+            // Stable Hotseat reservations preserve caller-visible order for later tokenless
+            // MODEL_WRITER work. Posting that later work directly to MODEL_EXECUTOR could let
+            // it overtake the reservation after any current holder releases. This applies only
+            // to later tokenless MODEL_WRITER submissions; exact organizer capability and all
+            // other owner kinds preserve their existing behavior.
+            boolean blockedByStableReservation = !exactOrganizerToken
+                    && kind == OwnerKind.MODEL_WRITER
+                    && hasStableModelWriterReservation();
+            if ((h != null && !exactOrganizerToken && defersTokenlessWork(h))
+                    || blockedByStableReservation) {
                 deferred.addLast(new DeferredRunnable() {
                     @Override
                     public void runWithOperationFuture() {
@@ -283,6 +434,16 @@ public final class LayoutWriteCoordinator {
                 activeOrganizerToken.set(previous);
             }
         }
+    }
+
+    @GuardedBy("lock")
+    private boolean hasStableModelWriterReservation() {
+        for (DeferredRunnable entry : deferred) {
+            if (entry instanceof ModelWriterReservation) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Issue #58 audit: only organizer and restore-family leases defer tokenless work.
@@ -347,10 +508,18 @@ public final class LayoutWriteCoordinator {
                 return;
             }
             current = null;
-            // The queued callback owns its executor hand-off. Moving callbacks out of the
-            // monitor avoids running arbitrary model/provider code while holding this lock.
-            toRun.addAll(deferred);
-            deferred.clear();
+            // Ordinary callbacks can drain as before. A stable model-writer reservation remains
+            // in the existing FIFO until it has actually acquired a writer lease; scheduling only
+            // its head prevents a later ModelWriter callback from overtaking it if another holder
+            // is acquired before MODEL_EXECUTOR runs.
+            while (!deferred.isEmpty()) {
+                DeferredRunnable next = deferred.peekFirst();
+                if (next instanceof ModelWriterReservation) {
+                    toRun.add(next);
+                    break;
+                }
+                toRun.add(deferred.removeFirst());
+            }
             lock.notifyAll();
         }
         // Issue #60: each deferred callback runs in isolation so a throwing entry
