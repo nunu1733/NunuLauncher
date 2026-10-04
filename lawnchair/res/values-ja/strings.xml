@@ -410,7 +410,7 @@
     <string name="exchange_import_from_file">ファイルから</string>
     <string name="exchange_import_result_title">取り込み結果</string>
     <string name="exchange_import_result_unknown">回答を利用できませんでした。</string>
-    <string name="exchange_import_retry_hint">AIにマーカー行で囲んだ最終JSONを再送してもらい、再度取り込んでください。</string>
+    <string name="exchange_import_retry_hint">AIに最終JSONを```jsonコードブロック1つで再送してもらい、再度取り込んでください。</string>
     <string name="exchange_import_retry">再取り込み</string>
     <string name="exchange_import_accepted">整理案を検証しました。プレビューを生成します…</string>
     <string name="exchange_run_busy">整理が実行中のため取り込めません。終了後に再度取り込んでください。</string>
@@ -433,11 +433,11 @@
     <string name="exchange_generation_store_failure">交換セッションを作成できませんでした。何も送信されていません。</string>
     <string name="exchange_generation_oversize">レイアウトが大きすぎて依頼文を作成できません。</string>
     <string name="exchange_failure_input_oversize">回答が大きすぎます。前後の文章を減らして再度取り込んでください。</string>
-    <string name="exchange_failure_framing_missing">回答にマーカーで囲まれた整理案がありません。マーカー行で囲んだJSONを再送してもらってください。</string>
+    <string name="exchange_failure_framing_missing">回答にマーカーで囲まれた整理案がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください。</string>
     <string name="exchange_failure_framing_ambiguous">回答に複数のマーカー囲みの領域があります。最終のJSONを1つだけ送ってもらってください。</string>
-    <string name="exchange_failure_framing_empty">マーカー内が空です。JSONを再送してもらってください。</string>
+    <string name="exchange_failure_framing_empty">マーカー内が空です。AIに最終JSONを```jsonコードブロック1つで再送してもらってください。</string>
     <string name="exchange_failure_normalization_ambiguous">回答に複数のコードブロックがあります。最後のJSONブロックだけをコピーして、再度取り込んでください。</string>
-    <string name="exchange_failure_normalization_unrecognized">取り込める形式がありません。マーカー行で囲んだJSONを再送してもらうか、```jsonブロックを1つだけにするか、JSONだけを貼り付けてください。</string>
+    <string name="exchange_failure_normalization_unrecognized">取り込める形式がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください（従来のマーカー形式も利用できます）。</string>
     <string name="exchange_failure_schema_mismatch">回答が期待するintent形式ではありません。</string>
     <string name="exchange_failure_export_mismatch">回答が古い依頼宛です。新しい依頼文を作成して再依頼してください。</string>
     <string name="exchange_failure_session_expired">依頼の有効期限 (24時間) が切れています。新しい依頼文を作成してください。</string>

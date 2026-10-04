@@ -27,26 +27,10 @@ object IntentCodec {
         "script", "code", "command", "reservation", "occupy", "favorites",
     )
 
-    private val ALLOWED_TOP_KEYS = setOf(
-        "schemaVersion",
-        "exportId",
-        "itemIntents",
-        "unresolvedRefs",
-        "globalPreference",
-        "rationale",
-        "confidence",
-    )
-    private val ALLOWED_ITEM_KEYS = setOf(
-        "ref",
-        "importance",
-        "desiredGroup",
-        "groupSemantic",
-        "pageAffinity",
-        "regionAffinity",
-        "preserve",
-    )
-    private val ALLOWED_GLOBAL_KEYS = setOf("minimizeMovement")
-    private val ALLOWED_SEMANTIC_KEYS = setOf("category", "freeText")
+    private val ALLOWED_TOP_KEYS = IntentWireContract.topLevel.map { it.name }.toSet()
+    private val ALLOWED_ITEM_KEYS = IntentWireContract.item.map { it.name }.toSet()
+    private val ALLOWED_GLOBAL_KEYS = IntentWireContract.globalPreference.map { it.name }.toSet()
+    private val ALLOWED_SEMANTIC_KEYS = IntentWireContract.groupSemantic.map { it.name }.toSet()
 
     private val json = Json
 
@@ -99,7 +83,7 @@ object IntentCodec {
         val confidence = when (val decoded = obj.optInt("confidence")) {
             is Optional.Invalid -> return IntentDecodeResult.Failure(IntentValidationFailure.InvalidEnum)
 
-            is Optional.Present -> decoded.value?.takeIf { it in 0..100 }
+            is Optional.Present -> decoded.value?.takeIf { it in ContextExportContract.CONFIDENCE_MIN..ContextExportContract.CONFIDENCE_MAX }
                 ?: return IntentDecodeResult.Failure(IntentValidationFailure.InvalidEnum)
 
             is Optional.Absent -> null

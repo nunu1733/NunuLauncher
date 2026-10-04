@@ -149,6 +149,47 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule.onNodeWithTag("exchange-import-file").assertIsDisplayed().assertHasClickAction()
     }
 
+    /**
+     * Issue #348 AC-1 (content oracle): the failure/retry guidance strings
+     * must keep offering the allowed recovery (re-copy / re-paste / ask the
+     * AI to resend the final JSON) and must never instruct an AI repair loop
+     * (feeding failure diagnostics or error content back to the AI). Both
+     * locales are resolved through real resource contexts.
+     */
+    @Test
+    fun failureAndRetryGuidanceStaysWithinTheRecoveryBoundary() {
+        val english = android.content.res.Configuration().apply { setLocale(java.util.Locale.ENGLISH) }
+        val japanese = android.content.res.Configuration().apply { setLocale(java.util.Locale.JAPAN) }
+        val contexts = listOf(
+            "en" to context.createConfigurationContext(english),
+            "ja" to context.createConfigurationContext(japanese),
+        )
+        val guidance = listOf(
+            R.string.exchange_import_retry_hint,
+            R.string.exchange_failure_framing_missing,
+            R.string.exchange_failure_framing_empty,
+            R.string.exchange_failure_normalization_unrecognized,
+        )
+        val allowedMarkers = listOf("resend", "再送", "import again", "再度取り込")
+        val forbiddenMarkers = listOf(
+            "diagnostic", "send the error", "paste the failure", "validation error",
+            "診断", "エラーメッセージを送", "検証エラーを送",
+        )
+        for ((tag, localized) in contexts) {
+            for (res in guidance) {
+                val text = localized.getString(res)
+                check(allowedMarkers.any { text.contains(it, ignoreCase = true) }) {
+                    "[$tag] $res lost its recovery phrasing: $text"
+                }
+                for (forbidden in forbiddenMarkers) {
+                    check(!text.contains(forbidden, ignoreCase = true)) {
+                        "[$tag] $res instructs an AI repair loop ('$forbidden'): $text"
+                    }
+                }
+            }
+        }
+    }
+
     /** AC-3/AC-4: the fallback editor is collapsed, bounds its content, and clears. */
     @Test
     fun hugeManualPasteStaysBoundedWithInternalScrollAndClearsInOneAction() {

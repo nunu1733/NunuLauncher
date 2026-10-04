@@ -25,7 +25,7 @@ data class PersonalizedIntentV1(
         require(itemIntents.size <= ContextExportContract.MAX_INTENT_ENTRIES)
         require(unresolvedRefs.size <= ContextExportContract.MAX_INTENT_UNRESOLVED)
         rationale?.let { require(it.length <= ContextExportContract.MAX_RATIONALE_CHARS) }
-        confidence?.let { require(it in 0..100) }
+        confidence?.let { require(it in ContextExportContract.CONFIDENCE_MIN..ContextExportContract.CONFIDENCE_MAX) }
     }
 }
 

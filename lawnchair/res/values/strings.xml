@@ -1322,7 +1322,7 @@
     <string name="exchange_import_from_file">From file</string>
     <string name="exchange_import_result_title">Import result</string>
     <string name="exchange_import_result_unknown">The reply could not be used.</string>
-    <string name="exchange_import_retry_hint">Ask the AI to resend the final JSON between the exact marker lines, then import again.</string>
+    <string name="exchange_import_retry_hint">Ask the AI to resend the final JSON in a single ```json code block, then import again.</string>
     <string name="exchange_import_retry">Import again</string>
     <string name="exchange_import_accepted">Proposal validated. Generating the preview…</string>
     <string name="exchange_run_busy">An organization run is active. Import again after it finishes.</string>
@@ -1345,11 +1345,11 @@
     <string name="exchange_generation_store_failure">Could not create the exchange session. Nothing was sent.</string>
     <string name="exchange_generation_oversize">The layout is too large for an exchange request.</string>
     <string name="exchange_failure_input_oversize">The reply is too large. Remove the surrounding text and import again.</string>
-    <string name="exchange_failure_framing_missing">The reply has no marked intent block. Ask the AI to resend the JSON between the exact marker lines.</string>
+    <string name="exchange_failure_framing_missing">The reply has no marked intent block. Ask the AI to resend the final JSON in a single ```json code block, or paste the JSON by itself.</string>
     <string name="exchange_failure_framing_ambiguous">The reply contains multiple marked blocks. Ask for a single final JSON.</string>
-    <string name="exchange_failure_framing_empty">The marked block is empty. Ask the AI to resend the JSON.</string>
+    <string name="exchange_failure_framing_empty">The marked block is empty. Ask the AI to resend the final JSON in a single ```json code block.</string>
     <string name="exchange_failure_normalization_ambiguous">The reply contains multiple code blocks. Copy the final JSON block only, then import again.</string>
-    <string name="exchange_failure_normalization_unrecognized">No importable format was found. Ask the AI to resend the JSON between the exact marker lines, keep a single ```json code block, or paste the JSON by itself.</string>
+    <string name="exchange_failure_normalization_unrecognized">No importable format was found. Ask the AI to resend the final JSON in a single ```json code block, paste the JSON by itself, or use the older marker-line format.</string>
     <string name="exchange_failure_schema_mismatch">The reply is not in the expected intent format.</string>
     <string name="exchange_failure_export_mismatch">The reply answers an older request. Create a new request and ask again.</string>
     <string name="exchange_failure_session_expired">The request has expired (24 hours). Create a new request.</string>
