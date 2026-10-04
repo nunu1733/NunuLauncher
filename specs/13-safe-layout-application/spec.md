@@ -9,7 +9,7 @@ requirements:
   - NFR-007
   - NFR-011
   - NFR-012
-updated: 2026-08-10
+updated: 2026-08-11
 ---
 
 # Safe layout application and recovery contract
@@ -84,6 +84,84 @@ expected state**. There are no nullable wildcard fields and no `NoCheck`
 precondition. An insert carries an exact expected-absence identity and complete
 new item state. The artifact contains no Android, Launcher row, cursor, or SQL
 type.
+
+The public values are closed and platform-free:
+
+```text
+LayoutState(pages: List<PageState>, profiles: List<ProfileState>,
+            deviceCapabilities: DeviceCapabilities,
+            items: List<CanonicalItemState>)
+ApplicationPageRef = PersistentPage(PageId) | PlannedPage(NewPageOrdinal)
+PageState(ref: ApplicationPageRef, order: PageOrder)
+ProfileAvailability = AVAILABLE | UNAVAILABLE
+ProfileState(id: ProfileId, availability: ProfileAvailability)
+ApplicationItemRef = PersistentItem(ItemId) | PlannedCandidate(ItemId)
+                   | PlannedFolder(NewFolderOrdinal)
+PlacementState = Workspace(page: ApplicationPageRef,
+                           cell: GridCell, span: GridSpan)
+               | Dock(rank: Int)
+               | FolderChild(parent: ApplicationItemRef, rank: Int)
+               | AppPairChild(parent: ApplicationItemRef, stage: SplitStage)
+               | UnsupportedContainer(code: ContainerCode)
+CanonicalItemState(
+  ref: ApplicationItemRef, kind: ItemKind,
+  targetKey: TargetKey, profile: ProfileId,
+  profileAvailability: ProfileAvailability,
+  itemAvailability: Availability,
+  placement: PlacementState,
+  title: OptionalText, intent: OptionalText, icon: OptionalBytes,
+  widget: WidgetState,
+  modified: ModifiedAtMillis, lockState: OrganizerLockState,
+  structure: StructureState
+)
+WidgetState = NoWidget | Widget(provider: ComponentKey,
+                                appWidgetId: AppWidgetId,
+                                restored: WidgetRestoreState,
+                                options: WidgetOptions,
+                                source: WidgetSource)
+StructureState = Plain | FolderMembers(List<RankedMember>)
+               | AppPairMembers(first: ApplicationItemRef,
+                                second: ApplicationItemRef,
+                                firstStage: SplitStage,
+                                secondStage: SplitStage,
+                                snapPosition: OptionalSnapPosition)
+RankedMember(item: ApplicationItemRef, rank: Int)
+OptionalSnapPosition = Absent | Present(SnapPositionToken)
+OptionalText = Absent | Present(value: String)
+OptionalBytes = Absent | Present(value: ImmutableByteString)
+ImmutableByteString(bytes: immutable value-copied List<Byte>)
+OrganizerLockState = UNKNOWN | UNLOCKED | LOCKED
+WidgetRestoreState(value: Int)
+WidgetOptions(value: Int)
+WidgetSource(value: Int)
+ModifiedAtMillis(value: Long)
+ApplyAction = Preserve(ref: ApplicationItemRef,
+                       expected: CanonicalItemState)
+            | Update(ref: ApplicationItemRef,
+                      expected: CanonicalItemState,
+                      intended: CanonicalItemState)
+            | Insert(ref: ApplicationItemRef,
+                     intended: CanonicalItemState)
+RunId(value: exactly 32 lowercase hexadecimal characters)
+RecoveryPointId(value: exactly 32 lowercase hexadecimal characters)
+```
+
+Optional values are explicit unions; null is not a wildcard.
+`ImmutableByteString` copies its input and uses byte-value equality/hash.
+Lists are canonical and duplicate-free. `Availability` is the complete Issue
+#10 enum (`AVAILABLE`, `DISABLED`, `QUIET`, `LOCKED_PRIVATE_SPACE`,
+`UNAVAILABLE`).
+All named scalar/domain types (`GridCell`, `GridSpan`, `TargetKey`, `ProfileId`,
+`ComponentKey`, `AppWidgetId`, `SplitStage`, `SnapPositionToken`, and
+`ContainerCode`) are the exact Issue #10 types. `ItemKind` is its complete union, including `APPWIDGET`,
+`CUSTOM_APPWIDGET`, and `Unknown(KindCode)`. `UnsupportedContainer` preserves
+an otherwise unknown container code but is valid
+only for a structurally preserved item; apply rejects moving or inserting it.
+Plan-local page/folder references remain distinct from persistent identities
+until allocation inside the transaction. The exact raw row placement for an
+unsupported container is retained in the separate internal manifest. The module captures a separate
+internal lossless persistence manifest at checkpoint time; raw column names,
+row encodings, and recovery bytes never cross this public contract.
 
 ### Revision semantics
 
@@ -467,3 +545,9 @@ Source observations are fixed to
   pre/post intent and lifecycle total, added full in-transaction revision
   rechecks, row-accounted stale-safe recovery, truthful commit/reload outcomes,
   and a no-write empty-diff result.
+- 2026-08-11: Proposed a narrow public-shape clarification authorized by Issue
+  #14 comment `#issuecomment-5248038572`; added constructible persistent/plan-local
+  references and closed canonical state/action/operation-ID values. Behavior and
+  result semantics are unchanged; acceptance awaits renewed Spec/Standards review.
+- 2026-08-11: Re-accepted the clarified public contract after renewed Spec and
+  Standards review passed; Stage B may implement only these closed shapes.
