@@ -55,11 +55,11 @@
     <string name="download_update">Download update</string>
     <string name="install_update">Install update</string>
     <string name="view_changes">View changes</string>
-    <string name="pro_updated">You\'re up-to-date!</string>
+    <string name="pro_updated">You\'re up-to-date</string>
 
     <!-- Changes dialog strings -->
     <string name="changes_dialog_title">Updates</string>
-    <string name="changes_dialog_error">Failed to load changes</string>
+    <string name="changes_dialog_error">Couldn\'t load updates</string>
     <string name="changes_dialog_no_changes">No changes found</string>
     <string name="changes_dialog_build_format">Build #%1$d → #%2$d</string>
     <string name="changes_dialog_commit_info">by %1$s • %2$s • %3$s</string>
@@ -108,7 +108,6 @@
     <string name="wallpaper">Wallpaper</string>
     <string name="style">Style</string>
     <string name="background_opacity">Background opacity</string>
-    <string name="pref_all_apps_search_bar_background">Separated Search bar background</string>
 
     <!-- Toast text and tips -->
     <string name="copied_toast">Copied to clipboard</string>
@@ -121,13 +120,13 @@
 
     <string name="wallpapers">Wallpapers</string>
 
-    <string name="caddy_beta">Caddy (Beta)</string>
+    <string name="caddy_beta">Caddy (beta)</string>
     <string name="caddy">Caddy</string>
 
     <string name="app_drawer_folder">App drawer folders</string>
     <string name="selected_apps">Selected apps</string>
     <string name="add_apps">Add apps</string>
-    <string name="app_drawer_folder_settings">Drawer folder</string>
+    <string name="app_drawer_folder_settings">App drawer folder</string>
     <string name="add_folder">Create folder</string>
     <string name="edit_folder">Edit folder</string>
     <string name="add_label">Add</string>
@@ -141,24 +140,27 @@
 
     <string name="folders_filter_duplicates">Only show unique apps</string>
     <string name="my_folder_label">My folder</string>
+    <string name="sort_active_items_action">Sort active items</string>
 
     <!-- A11y description -->
-    <string name="accessibility_service_description">To perform certain actions (such as locking your phone) when performing a gesture, Lawnchair requires accessibility access.\n\nLawnchair doesn\'t watch any user action, though the privilege to do so is required for all accessibility services. Lawnchair discards any event sent by the system.\n\nIn order to lock your phone, or to open the Recents screen, Lawnchair uses the performGlobalAction Accessibility service.</string>
+    <string name="accessibility_service_description">To perform certain actions when you use a gesture, such as locking your phone, Lawnchair requires accessibility access.\n\nLawnchair doesn\'t watch your actions, though all accessibility services require this privilege. Lawnchair discards any event sent by the system.\n\nTo lock your phone or open the Recents screen, Lawnchair uses the performGlobalAction accessibility service.</string>
 
     <string name="iconPackPackageDefault" translatable="false">""</string>
 
     <string name="n_percent" translatable="false">%1$d%%</string>
     <string name="x_with_y_count">%1$s (%2$d)</string>
-    <string name="x_by_y">%1$d x %2$d</string>
+    <string name="x_by_y">%1$d &#xd7; %2$d</string>
     <string name="x_and_y">%1$s &amp; %2$s</string>
 
     <string name="advanced">Advanced</string>
 
     <!-- Draggable -->
+    <string name="reorderable_move_up">Move up</string>
+    <string name="reorderable_move_down">Move down</string>
     <string name="reorderable_active_items">Active items</string>
     <string name="reorderable_disabled_items">Other items</string>
-    <string name="reorderable_disabled_hint">Disabled items will appear here. Drag an item here or tap the remove button to make an item active.</string>
-    <string name="reorderable_add_hint_items">Active items will appear here. Drag an item here or tap the add button to make an item active.</string>
+    <string name="reorderable_disabled_hint">Disabled items will appear here</string>
+    <string name="reorderable_add_hint_items">Active items will appear here</string>
 
     <!--
 
@@ -191,7 +193,10 @@
     <string name="gestures_description">Taps and swipes</string>
 
     <string name="quickstep_label">Recents screen</string>
-    <string name="quickstep_description">Clear All button, corner radius</string>
+    <string name="quickstep_description">Clear all button, corner radius</string>
+
+    <string name="backup_and_restore_label">Backup and restore</string>
+    <string name="backup_and_restore_description">Save current setup, restore backups</string>
 
     <string name="about_label">About</string>
 
@@ -200,6 +205,12 @@
     <string name="experimental_features_label">Experimental features</string>
 
     <!-- Experimental features -->
+    <string name="workspace_label">Workspace</string>
+    <string name="smartspace_label">Smartspace</string>
+
+    <string name="internal_label">Internal</string>
+    <string name="internal_description">Internal may be less stable than other experimental groups</string>
+
     <string name="font_picker_label">Font customization</string>
     <string name="font_picker_description">Some text remains unchanged</string>
 
@@ -207,26 +218,65 @@
     <string name="smartspace_calendar_description">Allow showing date in non-Gregorian calendar systems</string>
 
     <string name="workspace_increase_max_grid_size_label">Increase maximum grid size limit</string>
-    <string name="workspace_increase_max_grid_size_description">Increase maximum allowed home screen grid size from 10 x 10 to 20 x 20</string>
+    <string name="workspace_increase_max_grid_size_description">Increase maximum allowed home screen grid size from 10 &#xd7; 10 to 20 &#xd7; 20</string>
 
     <string name="always_reload_icons_label">Always reload icons</string>
     <string name="always_reload_icons_description">Avoid using cached icons from icon packs</string>
+    <string name="always_reload_icons_warning">This will cause icons to refresh regularly, impacting performance. Turn off if the icon pack doesn\'t update regularly.</string>
 
-    <string name="icon_swipe_gestures">Icon swipe gestures</string>
-    <string name="icon_swipe_gestures_description">Perform actions when swiping left or right on icons instead of moving the home screen</string>
+
+    <string name="show_deck_layout">Deck layout</string>
+    <string name="show_deck_layout_description">Show a layout option to hide the app drawer and automatically add new apps to the home screen</string>
+
+    <string name="material_expressive_label">Material 3 Expressive</string>
+    <string name="material_expressive_description">Enable Material 3 Expressive changes in the workspace</string>
+
+    <string name="folder_shape_label">Folder shape</string>
+    <string name="folder_label">Folder</string>
+    <string name="app_icon_shape_label">App</string>
 
     <string name="gesturenavcontract_label">Use GestureNavContract API</string>
-    <string name="gesturenavcontract_description">Support Android\'s enhanced animations when using gesture navigation. Not all devices support this. May cause animation bugs when in use.</string>
+    <string name="gesturenavcontract_description">Support Android\'s enhanced animations when using gesture navigation</string>
+    <string name="gesturenavcontract_warning_incompatibility">Your device isn\'t fully supported. This may cause visual issue for some animations.</string>
 
-    <string name="recents_lock_unlock">Lock/unlock</string>
-    <string name="recents_lock_unlock_description">Prevent selected app from closing when pressing \"Clear all\"</string>
+    <string name="vibration_feedback_level_label">Vibration feedback level</string>
+    <string name="vibration_feedback_no_feedback_choice">None</string>
+    <string name="vibration_feedback_minimal_choice">Minimal</string>
+    <string name="vibration_feedback_default_choice">Default</string>
+    <string name="vibration_feedback_expressive_choice">Expressive</string>
+
+
+    <string name="recents_lock_unlock">App locking</string>
+    <string name="recents_lock_unlock_description">Prevent the selected app from closing when you tap \"Clear all\"</string>
 
     <!--Overlay-->
-    <string name="overlay_fade_in">Fade In</string>
-    <string name="overlay_suck_in">Suck In</string>
     <string name="app_closing_animation">App closing animation</string>
+    <string name="overlay_fade_in">Fade in</string>
+    <string name="overlay_suck_in">Suck in</string>
     <string name="overlay_label">Overlay</string>
     <string name="overlay_none">None</string>
+
+    <!--
+    App suggestions
+    -->
+    <string name="suggestion_pref_screen_title">Suggestions</string>
+
+    <string name="global_predictions_label">Show suggestion features</string>
+    <string name="app_predictions_label">App suggestions</string>
+    <string name="prediction_mode_label">Suggestions provider</string>
+    <string name="app_predictions_disable_reason_pre_q_description">This feature requires Android 10 or higher</string>
+    <string name="prediction_mode_system">System</string>
+    <string name="prediction_mode_lawnchair" translatable="false">Lawnchair</string>
+    <string name="prediction_mode_none">Off</string>
+    <string name="prediction_weighted_usage_stats_label">Use device usage data</string>
+    <string name="prediction_weighted_usage_stats_description">Use your device\'s usage statistics to make suggestions more accurate</string>
+    <string name="dismissed_prediction_apps_label">Blocked apps</string>
+    <string name="dismissed_prediction_apps_label_with_count">Blocked apps (%1$d)</string>
+
+    <string name="prediction_system_settings">Manage system suggestions</string>
+
+    <string name="missing_usage_access_label">Usage access needed</string>
+    <string name="missing_usage_access_desc">To improve app suggestions, turn on usage access for <xliff:g id="name" example="Lawnchair">%1$s</xliff:g></string>
 
     <!--
 
@@ -240,8 +290,8 @@
     <string name="show_notification_count">Show notification counter</string>
     <string name="notification_dots_color">Notification dot color</string>
     <string name="notification_dots_text_color">Notification counter color</string>
-    <string name="notification_dots_color_contrast_warning_always">Warning: Notification dot and counter colors don\'t have enough contrast with each other</string>
-    <string name="notification_dots_color_contrast_warning_sometimes">Warning: Notification dot and counter colors might not always have enough contrast with each other</string>
+    <string name="notification_dots_color_contrast_warning_always">Notification dot and counter colors don\'t have enough contrast with each other</string>
+    <string name="notification_dots_color_contrast_warning_sometimes">Notification dot and counter colors might not always have enough contrast with each other</string>
     <!--
 
     Icons
@@ -249,6 +299,7 @@
     -->
     <!-- General strings -->
     <string name="icon_style_label">Icon style</string>
+    <string name="apply_icon_pack_title">Apply icon pack</string>
     <string name="icon_shape_label">Icon shape</string>
     <string name="icon_sizes">Icon size</string>
 
@@ -257,8 +308,8 @@
     <string name="twoline_label">Use multiple lines</string>
 
     <!-- Icon-related settings -->
-    <string name="transparent_background_icons_label">Transparent themed icons</string>
-    <string name="transparent_background_icons_description">Use transparent background on themed icons</string>
+    <string name="transparent_background_icons_label">Transparent icon backgrounds</string>
+    <string name="transparent_background_icons_description">For themed icons and auto-adaptive icons</string>
 
     <string name="auto_adaptive_icons_label">Auto-adaptive icons</string>
     <string name="auto_adaptive_icons_description">For all non-adaptive icons</string>
@@ -296,15 +347,30 @@
     <string name="icon_shape_square">Square</string>
     <string name="icon_shape_squircle">Squircle</string>
     <string name="icon_shape_teardrop">Teardrop</string>
-    <!-- Icon shape (Material 3 Expressive) -->
+    <!-- Icon shapes (Material 3 Expressive) -->
+    <string name="icon_shape_very_sunny">Very sunny</string>
+    <string name="icon_shape_complex_clover">Complex clover</string>
     <string name="icon_shape_four_sided_cookie">Four-sided cookie</string>
     <string name="icon_shape_seven_sided_cookie">Seven-sided cookie</string>
     <string name="icon_shape_arch">Arch</string>
+    <!-- Additional icon shapes -->
+    <string name="icon_shape_cloudy">Cloudy</string>
+    <string name="icon_shape_flower">Flower</string>
+    <string name="icon_shape_heart">Heart</string>
+    <string name="icon_shape_leaf">Leaf</string>
+    <string name="icon_shape_meow">Meow</string>
+    <string name="icon_shape_pebble">Pebble</string>
+    <string name="icon_shape_roundedhexagon">Rounded hexagon</string>
+    <string name="icon_shape_stretched">Stretched</string>
+    <string name="icon_shape_vessel">Vessel</string>
 
     <!-- Custom icon shapes -->
     <string name="custom_icon_shape">Custom icon shape</string>
     <string name="custom_icon_shape_create">Create custom icon shape</string>
     <string name="custom_icon_shape_edit">Edit custom icon shape</string>
+    <string name="custom_folder_shape">Custom folder shape</string>
+    <string name="custom_folder_shape_create">Create custom folder shape</string>
+    <string name="custom_folder_shape_edit">Edit custom folder shape</string>
     <string name="custom_icon_shape_corner">Corner shape</string>
     <string name="custom_icon_shape_corner_round">Round</string>
     <string name="custom_icon_shape_corner_squircle">Smooth</string>
@@ -323,6 +389,8 @@
     <string name="themed_icon_pack">Themed icon source</string>
     <string name="themed_icon_pack_tint">Tint with accent color</string>
     <string name="system_icons">System icons</string>
+    <string name="force_monochrome_label">Force monochrome</string>
+    <string name="force_monochrome_description">Recolor unsupported apps with the current accent color.</string>
 
     <string name="themed_icon_title">Themed icons</string>
     <string name="themed_icons_off_label">Off</string>
@@ -407,18 +475,17 @@
     <!-- Date formats -->
     <string name="smartspace_calendar_gregorian">Gregorian</string>
     <string name="smartspace_calendar_persian">Persian</string>
+    <string name="smartspace_calendar_lunar">Lunar</string>
 
     <string name="generic_smartspace_concatenated_desc">%1$s, %2$s</string>
     <string name="smartspace_icu_date_pattern_gregorian_wday_month_day_no_year" translatable="false">EEEMMMd</string>
     <string name="smartspace_icu_date_pattern_gregorian_time" translatable="false">HH:mm</string>
     <string name="smartspace_icu_date_pattern_gregorian_time_12h" translatable="false">hh:mm aa</string>
     <string name="smartspace_icu_date_pattern_gregorian_date" translatable="false"> dd MMMM</string>
-    <string name="smartspace_icu_date_pattern_persian_wday_month_day_no_year" translatable="false">l، j F</string>
-    <string name="smartspace_icu_date_pattern_persian_time" translatable="false">H:i</string>
-    <string name="smartspace_icu_date_pattern_persian_time_12h" translatable="false">g:i a</string>
-    <string name="smartspace_icu_date_pattern_persian_date" translatable="false">"j F، "</string>
 
     <!-- Battery labels -->
+    <string name="smartspace_battery_fast_charging">Fast charging</string>
+    <string name="smartspace_battery_slow_charging">Slow charging</string>
     <string name="smartspace_battery_charging">Charging</string>
     <string name="smartspace_battery_full">Charged</string>
     <string name="smartspace_battery_low">Battery low</string>
@@ -440,7 +507,23 @@
     <!-- Available targets -->
     <string name="smartspace_weather">Weather</string>
     <string name="smartspace_battery_status">Battery status</string>
-    <string name="smartspace_now_playing">Now Playing</string>
+    <string name="smartspace_torch">Flashlight status</string>
+    <string name="smartspace_now_playing">Now playing</string>
+    <string name="smartspace_onboarding">Onboarding</string>
+
+    <!-- Torch strings -->
+    <string name="torch_status_on">Flashlight on</string>
+    <string name="torch_action_off">Tap to turn off</string>
+
+    <!-- Onboarding strings -->
+    <string name="onboarding_open_settings_title">Set up Lawnchair</string>
+    <string name="onboarding_open_settings_subtitle">Long-press on the home screen to open settings</string>
+
+    <string name="onboarding_major_upgrade_title">Meet the new Lawnchair</string>
+    <string name="onboarding_major_upgrade_subtitle">See what\'s new</string>
+
+    <string name="onboarding_welcome">Welcome to Lawnchair!</string>
+    <string name="onboarding_swipe_up">Swipe up to open the app drawer</string>
 
     <!-- Smartspacer strings -->
     <string name="maximum_number_of_targets">Maximum number of targets</string>
@@ -449,11 +532,11 @@
 
     <!-- Setup settings -->
     <string name="smartspace_requires_setup">Tap to set up</string>
-    <string name="event_provider_missing_notification_dots">To use <xliff:g example="My Provider" id="providerName">%1$s</xliff:g>, turn on Notification Dots.</string>
+    <string name="event_provider_missing_notification_dots">To use <xliff:g example="My Provider" id="providerName">%1$s</xliff:g>, turn on notification dots</string>
 
     <!-- Toggle button for enabling Smartspace -->
     <string name="smartspace_widget_toggle_label">Show on home screen</string>
-    <string name="smartspace_widget_toggle_description">At a Glance can be manually added to the home screen by placing the Lawnchair widget</string>
+    <string name="smartspace_widget_toggle_description">At a Glance can be added to the home screen with the Lawnchair widget</string>
 
     <!-- List of available providers -->
     <string name="smartspace_mode_label">At a Glance provider</string>
@@ -498,6 +581,13 @@
     <string name="contributor_status_active">Active</string>
 
     <string name="update_check_failed">Failed to check for updates</string>
+    <string name="major_update_label">Update to major version?</string>
+    <string name="major_update_description">You are updating from version <xliff:g example="15" id="current_major_version">%1$s</xliff:g>. This newer version is a major update and may be less stable.</string>
+
+    <string name="pro_disabled_by_unknown">Updates are not available</string>
+    <string name="pro_disabled_by_major_is_newer">You are already running a newer version</string>
+
+    <string name="updater">Updates</string>
 
     <!--
 
@@ -525,16 +615,10 @@
     <string name="nova_folder_label">Folders</string>
     <string name="nova_shortcut_label">Shortcuts</string>
     <string name="nova_icon_pack_label">Icon pack</string>
-    <string name="restore_nova_subgrid_warning">This backup uses Nova\'s subgrid positioning. Lawnchair does not support subgrids, so any items placed in a subgrid will be aligned to the nearest grid position.</string>
-    <string name="restore_nova_smartspace_conflict_toggle">Add extra row to show At a Glance</string>
 
-    <!-- Issue #233: page summary shown on the restore confirmation screen when
-         the single screenshot preview cannot cover all saved workspace pages.
-         Counts use label-style wording so singular/plural stays correct. -->
-    <string name="backup_preview_partial_caption">The preview image may not show all saved pages.</string>
-    <string name="backup_page_summary_title">Saved pages (%1$d)</string>
-    <string name="backup_page_summary_entry">Page %1$d (items: %2$d, folders: %3$d, widgets: %4$d)</string>
-    <string name="backup_page_summary_unavailable">Saved page details are not available.</string>
+    <string name="create_backup_description">Export settings and launcher layout</string>
+    <string name="restore_backup_description">Import a previously created backup</string>
+    <string name="restore_nova_backup_description">Import layout from a Nova Launcher backup</string>
 
     <!--
 
@@ -544,6 +628,8 @@
     <string name="gesture_double_tap">Double tap</string>
     <string name="gesture_swipe_up">Swipe up</string>
     <string name="gesture_swipe_down">Swipe down</string>
+    <string name="gesture_two_finger_swipe_down">Two-finger swipe down</string>
+    <string name="gesture_two_finger_swipe_up">Two-finger swipe up</string>
     <string name="gesture_home_tap">Home button</string>
     <string name="gesture_back_tap">Back button</string>
     <string name="gesture_swipe_left">Swipe left</string>
@@ -553,6 +639,7 @@
     <string name="gesture_handler_sleep">Sleep</string>
     <string name="gesture_handler_recents">Open Recents screen</string>
     <string name="gesture_handler_open_notifications">Open notification panel</string>
+    <string name="gesture_handler_open_quick_settings">Open Quick Settings</string>
     <string name="gesture_handler_open_app_option">Open app</string>
     <string name="gesture_handler_open_app_config">Open %1$s</string>
     <string name="gesture_handler_open_app_drawer">Open app drawer</string>
@@ -563,14 +650,24 @@
     <string name="pick_app_for_gesture">Pick app</string>
 
     <string name="dt2s_admin_hint_title">Admin permissions required</string>
-    <string name="dt2s_admin_hint">To use Double-Tap to Sleep, set Lawnchair as a device admin app. Tap \"Open settings\", then tap \"Activate this device admin app.\"</string>
-    <string name="dt2s_admin_warning">Double-Tap to Sleep will be turned off.</string>
+    <string name="dt2s_admin_hint">To put the device to sleep, set Lawnchair as a device admin app. Tap \"Open settings\", then tap \"Activate this device admin app.\"</string>
+    <string name="dt2s_admin_warning">Gestures to put the device to sleep will be turned off.</string>
 
     <string name="d2ts_recents_a11y_hint_title">Turn on accessibility service</string>
-    <string name="dt2s_a11y_hint">To use Double-Tap to Sleep, turn on the Lawnchair accessibility service. Tap \"Open settings\", select \"Lawnchair\" and turn on \"Use Lawnchair.\"\n\nLawnchair uses Accessibility\'s `performGlobalAction` method to perform this action. This is a sensitive permission that allows monitoring other apps. However, Lawnchair is not configured for that functionality and receives no events.</string>
-    <string name="dt2s_recents_warning_open_settings">Open settings</string>
 
-    <string name="recents_a11y_hint">To use Open Recents screen, turn on the Lawnchair accessibility service. Tap \"Open settings\", select \"Lawnchair\" and turn on \"Use Lawnchair.\"\n\nLawnchair uses Accessibility\'s `performGlobalAction` method to perform this action. This is a sensitive permission that allows monitoring other apps. However, Lawnchair is not configured for that functionality and receives no events.</string>
+    <string name="sleep_a11y_hint">put the device to sleep</string>
+    <string name="notifications_fallback_a11y_hint">open the notification panel</string>
+    <string name="quick_settings_a11y_hint">open the Quick Settings panel</string>
+    <string name="recents_screen_a11y_hint">open the Recents screen</string>
+
+    <string name="generic_a11y_hint">To %1$s, turn on the Lawnchair accessibility service. Tap \"Open settings\", choose \"Lawnchair\" and turn on \"Use Lawnchair.\"</string>
+    <string name="generic_a11y_disclaimer">Lawnchair uses Accessibility\'s `performGlobalAction` method to perform this action. This is a sensitive permission that allows monitoring other apps. However, Lawnchair is not configured for that functionality and receives no events.</string>
+
+    <string name="sleep_mode_label">Sleep mode</string>
+    <string name="sleep_mode_auto">Automatic</string>
+    <string name="sleep_mode_root">Root</string>
+    <string name="sleep_mode_accessibility">Accessibility service</string>
+    <string name="sleep_mode_device_admin">Device admin</string>
 
     <!--
 
@@ -597,32 +694,23 @@
     -->
     <!-- General and home screen settings -->
     <string name="home_screen_rotation_label">Home screen rotation</string>
-    <string name="home_screen_rotation_description">Allow home screen rotation when device is rotated</string>
+    <string name="home_screen_rotation_description">Allow home screen rotation when the device is rotated</string>
+
+    <string name="auto_updater_label">Automatically check for updates</string>
+    <string name="auto_updater_description">Checks for Nightly updates when opening the About screen</string>
+
+    <string name="live_information_label">Live information</string>
+    <string name="live_information_description">Displays announcement, and set the default feature flags</string>
 
     <string name="wallpaper_blur">Blur wallpaper (experimental)</string>
     <string name="wallpaper_background_blur">Blur intensity</string>
     <string name="wallpaper_background_blur_factor">Factor threshold</string>
 
-    <string name="auto_add_shortcuts_label">Add new apps to home screen</string>
+    <string name="home_lawn_deck_label">Deck</string>
+    <string name="home_lawn_deck_label_beta">Deck (Beta)</string>
+    <string name="home_lawn_deck_description">Effortlessly access your apps with Deck, a drawerless experience designed for simplicity and seamless organization</string>
 
-    <!-- Issue #497: new-app destination policy (ADR-0015) -->
-    <string name="destination_policy_label">Where to place new apps</string>
-    <string name="destination_policy_summary_upstream">Upstream default (first free cell)</string>
-    <string name="destination_policy_summary_folder">Designated folder: %1$s</string>
-    <string name="destination_policy_summary_folder_missing">Designated folder is gone — choose again</string>
-    <string name="destination_policy_summary_dont_add">Don\u2019t add new apps</string>
-    <string name="destination_policy_dialog_title">Where to place new apps</string>
-    <string name="destination_policy_choice_upstream">Upstream default</string>
-    <string name="destination_policy_choice_folder">Designated folder\u2026</string>
-    <string name="destination_policy_choice_dont_add">Don\u2019t add new apps</string>
-    <string name="destination_policy_folder_picker_title">Choose a folder</string>
-    <string name="destination_policy_folder_stop">Stop designating (upstream default)</string>
-    <string name="destination_policy_other_profile">(another profile)</string>
-    <string name="destination_policy_notice_missing">The designated folder is gone; new apps were placed in the default spot</string>
-    <string name="destination_policy_notice_profile">The designated folder is in another profile; new apps were placed in the default spot</string>
-    <string name="destination_policy_notice_dock">The designated folder was moved to the dock; new apps were placed in the default spot</string>
-    <string name="destination_policy_notice_constraint">The designated folder violated a placement constraint; new apps were placed in the default spot</string>
-    <string name="destination_policy_notice_snapshot">The placement destination could not be confirmed; new apps were placed in the default spot</string>
+    <string name="auto_add_shortcuts_label">Add new apps to home screen</string>
 
     <string name="minus_one_enable">Show feed</string>
     <string name="minus_one_unavailable">No feed apps installed</string>
@@ -643,10 +731,21 @@
     <string name="home_screen_locked">Home screen is locked</string>
     <string name="home_screen_lock_description">Prevent changes to the home screen layout</string>
 
-    <string name="show_dot_pagination_label">Show dot pagination</string>
-    <string name="show_dot_pagination_description">Use dots instead of lines to show page number</string>
-    <string name="show_material_u_popup_label">Use new pop-up style</string>
-    <string name="show_material_u_popup_description">Use Material You\'s bouncy and slightly consolidated pop-up style</string>
+    <string name="horizontal_padding_label">Horizontal padding</string>
+    <string name="vertical_padding_label">Vertical padding</string>
+    <string name="top_padding_label">Top padding</string>
+    <string name="widget_padding_label">Widget padding</string>
+
+    <string name="set_default_home_page">Set as default page</string>
+    <string name="default_home_page_set">Default home page updated</string>
+    <string name="move_page_left">Move page left</string>
+    <string name="move_page_right">Move page right</string>
+    <string name="page_order_updated">Page order updated</string>
+    <string name="edit_mode_page_strip_default">Default</string>
+    <string name="edit_mode_page_strip_page">Page %1$d</string>
+    <string name="edit_mode_page_strip_set_home">Set as home page</string>
+    <string name="edit_mode_page_strip_home_selected">Default home page</string>
+    <string name="edit_mode_page_strip_tip">Drag pages to reorder. Tap the home icon to set your default page.</string>
 
     <string name="popup_menu">Pop-up menu</string>
     <string name="popup_menu_items">Pop-up menu items</string>
@@ -658,7 +757,7 @@
     <string name="show_status_bar">Show status bar</string>
     <string name="dark_status_bar_label">Dark status bar</string>
     <string name="status_bar_clock_label">Status bar clock</string>
-    <string name="status_bar_clock_description">Dynamically hide status bar clock in first screen</string>
+    <string name="status_bar_clock_description">Dynamically hide the status bar clock on the first screen</string>
 
     <string name="home_screen_text_color">Text color</string>
     <string name="color_light">Light</string>
@@ -676,14 +775,14 @@
     <!-- Dock settings -->
     <string name="show_hotseat_title">Show dock</string>
 
-    <string name="enable_dock_to_access_qsb_settings">Search bar settings are available when the Dock is visible. Tap to show the Dock.</string>
+    <string name="enable_dock_to_access_qsb_settings">Search bar settings are available when the dock is visible. Tap to show the dock</string>
 
     <string name="search_bar_label">Search bar</string>
     <string name="search_bar_settings">Search bar settings</string>
     <string name="hotseat_mode_label">Search bar widget</string>
     <string name="hotseat_mode_disabled">Disabled</string>
     <string name="hotseat_mode_lawnchair" translatable="false">Lawnchair</string>
-    <string name="hotseat_mode_google_search">Google Search bar</string>
+    <string name="hotseat_mode_google_search">Google search bar</string>
 
     <string name="qsb_hotseat_background_transparency">Background opacity</string>
     <string name="qsb_hotseat_stroke_width">Outline width</string>
@@ -697,7 +796,9 @@
     <string name="hotseat_bg_vertical_inset_top">Top margin</string>
     <string name="hotseat_bg_vertical_inset_bottom">Bottom margin</string>
     <string name="hotseat_bg_color_label">Background color</string>
+    <string name="hotseat_bg_corner_radius">Background corner radius</string>
     <string name="hotseat_bg_alpha">Background opacity</string>
+
 
     <!-- Pause apps shortcut -->
     <string name="pause">Pause</string>
@@ -706,14 +807,26 @@
     <string name="paused_apps_dialog_title">App paused</string>
     <string name="paused_apps_dialog_message">%1$s was directly paused from the launcher</string>
     <string name="paused_apps_drop_target_label">Pause app</string>
+    <string name="open_in_store_drop_target_label">Open in store</string>
 
     <string name="dock_icons">Dock icons</string>
+    <string name="dock_rows">Dock rows</string>
+    <string name="dock_pages">Dock pages</string>
+    <string name="state_folded">%1$s (folded)</string>
+    <string name="state_unfolded">%1$s (unfolded)</string>
+    <string name="folded_label">Folded</string>
+    <string name="unfolded_label">Unfolded</string>
+    <string name="when_folded_label">When folded</string>
+    <string name="when_unfolded_label">When unfolded</string>
+    <string name="unfolded_grid_description">Lawnchair pairs two pages together to fill the larger display</string>
+    <string name="foldable_columns_error">The folded value must be less than or equal to the unfolded value. It will be automatically adjusted if needed.</string>
     <string name="hotseat_bottom_space_label">Bottom padding</string>
     <string name="page_indicator_height">Page indicator height</string>
 
     <!-- Search providers -->
     <string name="search_provider_app_search">App search</string>
     <string name="search_provider_startpage" translatable="false">Startpage</string>
+    <string name="search_provider_startpage_eu" translatable="false">Startpage (EU)</string>
     <string name="search_provider_google" translatable="false">Google</string>
     <string name="search_provider_google_go" translatable="false">Google Go</string>
     <string name="search_provider_duckduckgo" translatable="false">DuckDuckGo</string>
@@ -729,9 +842,14 @@
     <string name="search_provider_yandex" translatable="false">Yandex</string>
     <string name="search_provider_fennec" translatable="false">Fennec</string>
     <string name="search_provider_firefox" translatable="false">Firefox</string>
+    <string name="search_provider_firefox_beta" translatable="false">Firefox Beta</string>
+    <string name="search_provider_firefox_nightly" translatable="false">Firefox Nightly</string>
     <string name="search_provider_iceraven" translatable="false">Iceraven</string>
     <string name="search_provider_ironfox" translatable="false">IronFox</string>
+    <string name="search_provider_waterfox" translatable="false">Waterfox</string>
     <string name="search_provider_kagi" translatable="false">Kagi</string>
+    <string name="search_provider_cromite" translatable="false">Cromite</string>
+    <string name="search_provider_vivaldi" translatable="false">Vivaldi</string>
     <string name="search_provider_custom">Custom</string>
 
     <string name="search_provider_sponsored_description">%1$s and Lawnchair have a revenue share agreement.\n\nSearching with %1$s helps support Lawnchair.</string>
@@ -751,15 +869,20 @@
     <string name="pref_all_apps_bulk_icon_loading_title">Load apps in bulk</string>
     <string name="pref_all_apps_bulk_icon_loading_description">Load and display icons in bulk instead of individually</string>
 
-    <string name="pref_all_apps_remember_position_title">Remember position</string>
-    <string name="pref_all_apps_remember_position_description">Remember app drawer position after leaving drawer</string>
+    <string name="pref_all_apps_remember_position_title">Remember scroll position</string>
+    <string name="pref_all_apps_remember_position_description">Save the last scrolled location when closing the app drawer</string>
 
     <string name="pref_all_apps_show_scrollbar_title">Show scrollbar</string>
 
     <string name="app_drawer_columns">App drawer columns</string>
     <string name="row_height_label">Row height</string>
+    <string name="app_drawer_haptic_feedback_label">Haptic feedback</string>
     <string name="app_drawer_indent_label">Horizontal padding</string>
     <string name="app_drawer_bg_color_label">Background color</string>
+    <string name="work_profile_tab_background_label">Tab background color</string>
+
+    <string name="pref_all_apps_search_bar_background">Show background behind search bar</string>
+    <string name="work_profile_tab_container_background_label">Show background behind tabs</string>
 
     <!-- HiddenAppsPreferences -->
     <string name="hide_from_drawer">Hide from app drawer</string>
@@ -778,10 +901,10 @@
     <string name="max_folder_rows">Maximum folder rows</string>
 
     <!-- Quickstep settings -->
-    <string name="quickswitch_ignored_warning">These settings will be ignored as Lawnchair isn\'t set as the Recents screen provider</string>
+    <string name="quickswitch_ignored_warning">These settings will be ignored because Lawnchair isn\'t set as the Recents screen provider</string>
 
     <string name="quickstep_incompatible">Incompatible system integration</string>
-    <string name="quickstep_incompatible_description">Your device is configured to have system gestures (known as Quickstep) provided by %1$s, but this version of %1$s isn\'t compatible with your Android version. To continue using your device, please uninstall %1$s updates or disable %1$s as a system gesture provider.</string>
+    <string name="quickstep_incompatible_description">Your device is configured to have system gestures, known as Quickstep, provided by %1$s, but this version of %1$s isn\'t compatible with your Android version. To continue using your device, uninstall %1$s updates or disable %1$s as a system gesture provider.</string>
 
     <string name="translucent_background">Translucent background</string>
     <string name="translucent_background_alpha">Background opacity</string>
@@ -807,7 +930,8 @@
     <!-- Launcher strings used -->
     <string name="all_apps_device_search_hint">Search web and more</string>
     <string name="all_apps_search_bar_hint">Search apps</string>
-    <string name="all_apps_no_search_results">No apps found matching \"<xliff:g example="Android" id="query">%1$s</xliff:g>\"</string>
+    <string name="all_apps_no_search_results">No apps found matching \"<xliff:g example="Android" id="query">%1$s</xliff:g>\"
+    </string>
 
     <string name="all_apps_search_result_suggestions">From the web</string>
     <string name="all_apps_search_result_contacts_from_device">Contacts from device</string>
@@ -815,7 +939,8 @@
     <string name="all_apps_search_result_settings_entry_from_device">Settings from device</string>
 
     <string name="all_apps_search_market_message">Search for more apps</string>
-    <string name="all_apps_search_on_web_message">Search on <xliff:g example="Startpage" id="web_search_provider">%1$s</xliff:g></string>
+    <string name="all_apps_search_on_web_message">Search on <xliff:g example="Startpage" id="web_search_provider">%1$s</xliff:g>
+    </string>
     <string name="error_no_market_or_browser_installed">No app store or browser installed</string>
     <string name="all_apps_search_on_web_general">Search on the web</string>
 
@@ -831,7 +956,6 @@
     <string name="fuzzy_search_title">Fuzzy search</string>
     <string name="fuzzy_search_desc">Approximate matching for app searches</string>
 
-    <string name="suggestion_pref_screen_title">Suggestions</string>
     <string name="show_suggested_apps_at_drawer_top">Show suggested apps at the top of the drawer</string>
 
     <string name="perform_wide_search_title">Device search</string>
@@ -841,13 +965,13 @@
     <string name="hidden_apps_show_name_typed">If full name is typed</string>
 
     <string name="allapps_web_suggestion_provider_label">Web suggestion provider</string>
-    <string name="allapps_use_web_suggestion_icon_label">Show web suggestion provider icon in search bar</string>
+    <string name="allapps_use_web_suggestion_icon_label">Show the web suggestion provider icon in the search bar</string>
 
     <string name="allapps_match_qsb_style_label">Match dock search bar actions</string>
-    <string name="allapps_match_qsb_style_description">Clicking the dock search bar will now open the app drawer search UI</string>
+    <string name="allapps_match_qsb_style_description">Tapping the dock search bar opens the app drawer search view</string>
 
     <string name="app_search_algorithm">Search algorithm</string>
-    <string name="search_algorithm_app_search">App Search</string>
+    <string name="search_algorithm_app_search">App search</string>
     <string name="search_algorithm_global_search_on_device">Global search (on-device)</string>
     <string name="search_algorithm_global_search_via_asi">Global search (via ASI)</string>
 
@@ -876,14 +1000,15 @@
 
     <string name="search_empty_state_title">Start searching</string>
     <string name="search_empty_state_no_history_subtitle">Find apps, contacts, and more. Your recent searches will appear here.</string>
-    <string name="search_empty_state_history_disabled_subtitle">Find apps, contacts, and more.</string>
+    <string name="search_empty_state_history_disabled_subtitle">Find apps, contacts, and more</string>
 
     <!-- Description for each search result type -->
     <string name="search_pref_files_search_on">Search on</string>
 
     <string name="search_pref_result_files_description">Media, files, and more</string>
     <string name="search_pref_result_contacts_description">Contacts and more</string>
-    <string name="search_pref_result_web_provider_description">Via <xliff:g id="web_search_provider">%1$s</xliff:g></string>
+    <string name="search_pref_result_web_provider_description">Via <xliff:g id="web_search_provider">%1$s</xliff:g>
+    </string>
 
     <!-- Maximum xyz for each search result type -->
     <string name="max_apps_result_count_title">Maximum number of apps</string>
@@ -896,26 +1021,28 @@
 
     <!-- Permission management -->
     <string name="missing_notification_access_label">Notification access needed</string>
-    <string name="missing_notification_access_desc">To show Notification Dots, turn on app notifications for <xliff:g id="name" example="My App">%1$s</xliff:g></string>
+    <string name="missing_notification_access_desc">To show notification dots, turn on app notifications for <xliff:g id="name" example="My App">%1$s</xliff:g>
+    </string>
 
     <string name="warn_contact_permission_title">Contacts permission needed</string>
-    <string name="warn_contact_permission_content">To search for contacts, grant contacts and phone permissions to <xliff:g id="name" example="My App">%1$s</xliff:g></string>
+    <string name="warn_contact_permission_content">To search for contacts, grant contacts and phone permissions to <xliff:g id="name" example="My App">%1$s</xliff:g>
+    </string>
 
     <string name="permissions_music_audio">Music and audio access needed</string>
-    <string name="permissions_music_audio_description">To search your music and other audio files, <xliff:g id="name" example="My App">%1$s</xliff:g> needs permission to access your media library.</string>
+    <string name="permissions_music_audio_description">To search your music and other audio files, <xliff:g id="name" example="My App">%1$s</xliff:g> needs permission to access your media library</string>
 
     <!-- Photos and videos -->
     <string name="permissions_photos_videos">Photos and videos access needed</string>
-    <string name="permissions_photos_videos_description">To search your photos and videos, <xliff:g id="name" example="My App">%1$s</xliff:g> needs permission to access your media library.</string>
+    <string name="permissions_photos_videos_description">To search your photos and videos, <xliff:g id="name" example="My App">%1$s</xliff:g> needs permission to access your media library</string>
 
     <string name="permissions_photos_videos_full">Access your full media library?</string>
-    <string name="permissions_photos_videos_full_description">To search all your photos and videos, <xliff:g id="name" example="My App">%1$s</xliff:g> needs full access to your media library.</string>
+    <string name="permissions_photos_videos_full_description">To search all your photos and videos, <xliff:g id="name" example="My App">%1$s</xliff:g> needs full access to your media library</string>
     <string name="permissions_photos_videos_grant_full">Grant full media permissions</string>
     <string name="permissions_photos_videos_manage_selected">Manage selected items</string>
 
     <!-- External storage -->
     <string name="permissions_external_storage">External storage access needed</string>
-    <string name="permissions_external_storage_description">To search your files, <xliff:g id="name" example="My App">%1$s</xliff:g> needs permission to access your device\'s external storage.</string>
+    <string name="permissions_external_storage_description">To search your files, <xliff:g id="name" example="My App">%1$s</xliff:g> needs permission to access your device\'s external storage</string>
 
     <string name="permissions_manage_storage">Manage storage access needed</string>
     <string name="permissions_manage_storage_description">To display your files in search results, <xliff:g id="name" example="My App">%1$s</xliff:g> requires permission to manage all files on your device. This permission is used solely to list files and will not be used to read or change the content of your personal files.</string>
@@ -930,7 +1057,7 @@
     <string name="permission_label_manage_all_files">Manage all files on device</string>
     <string name="permission_label_read_photos_videos">Read photos and videos</string>
 
-    <string name="manage_storage_access_denied_title">Cannot enable manage storage access</string>
+    <string name="manage_storage_access_denied_title">Cannot turn on manage storage access</string>
     <string name="manage_storage_access_denied_description">Due to Play Store policy, <xliff:g id="name" example="My App">%1$s</xliff:g> cannot request full storage access here. To access all files, please download <xliff:g id="name" example="My App">%1$s</xliff:g> from GitHub. Alternatively, you can grant access to photos, videos, and audio files individually in settings.</string>
 
     <string name="open_permission_settings">Open settings</string>
@@ -939,778 +1066,624 @@
     <string name="grant_requested_permissions_tap">Tap to grant permissions</string>
     <!-- Message shown when all home screen views are removed -->
     <string name="home_screen_all_views_removed_msg">Home screen cleared</string>
+    <string name="lawnchair_actions">Actions</string>
+    <string name="lawnchair_action_failed">Failed to trigger action</string>
 
-    <!-- Organizer placement locks (Issue #38). States are always shown as text, never color alone. -->
-    <string name="organizer_lock_menu_title">Placement lock</string>
-    <!-- Issue #448: per-item edit actions -->
-    <string name="homeedit_menu_move_to_page">Move to page\u2026</string>
-    <string name="homeedit_menu_add_to_folder">Add to folder\u2026</string>
-    <string name="homeedit_menu_remove_from_home">Remove from Home</string>
-    <string name="homeedit_dialog_title_move_to_page">Destination page</string>
-    <string name="homeedit_dialog_title_add_to_folder">Destination folder</string>
-    <string name="homeedit_dialog_title_new_folder_page">Page for the new folder</string>
-    <string name="homeedit_list_new_folder">New folder</string>
-    <string name="homeedit_page_label">Page %1$d</string>
-    <string name="homeedit_folder_entry">%1$s (%2$d items)</string>
-    <string name="homeedit_folder_default_label">Folder</string>
-    <string name="homeedit_lock_note_locked">This icon is placement-locked. The lock is kept when moved.</string>
-    <string name="homeedit_lock_note_locked_remove">This icon is placement-locked. Removing it also removes the lock.</string>
-    <string name="homeedit_error_stale">The layout changed meanwhile. Try again.</string>
-    <string name="homeedit_error_item_gone">The icon is already gone.</string>
-    <string name="homeedit_error_no_space">The selected page has no free space.</string>
-    <string name="homeedit_error_redundant">The icon is already at that position.</string>
-    <string name="homeedit_error_folder_gone">The folder is already gone.</string>
-    <string name="homeedit_error_profile_mismatch">A work-profile icon cannot go into this folder.</string>
-    <string name="homeedit_error_unsupported">This icon is not supported by the edit actions.</string>
-    <string name="homeedit_error_write_failed">The write failed. The layout is unchanged.</string>
-    <!-- Issue #450: undo -->
-    <string name="homeedit_undo_label">Edit applied</string>
-    <string name="homeedit_undo_error_stale">Can\u2019t undo: the icon has moved since.</string>
-    <string name="homeedit_undo_error_no_space">Can\u2019t undo: no space at the original spot.</string>
-    <string name="homeedit_undo_error_folder_changed">Can\u2019t undo: the created folder has changed.</string>
-    <string name="homeedit_undo_error_item_unavailable">Can\u2019t undo: the app is no longer on this device.</string>
-    <string name="homeedit_undo_error_write_failed">Couldn\u2019t undo. The layout is unchanged.</string>
-    <string name="homeedit_undo_error_stale_revision">Can\u2019t undo: the home screen changed since.</string>
-    <string name="homeedit_undo_error_not_restorable">Can\u2019t undo: the restore point is no longer available.</string>
-    <string name="homeedit_undo_error_busy">Can\u2019t undo right now: an organization task is running.</string>
-    <string name="homeedit_undo_error_restore_failed">Couldn\u2019t undo. You can restore from the organizer.</string>
-    <!-- Issue #449: multi-select visual edit surface -->
-    <string name="edit_surface_menu_open">Edit layout grid</string>
-    <!-- Issue #452: organizer entry in the workspace long-press popup -->
-    <string name="home_screen_organize">Organize home screen</string>
-    <string name="edit_surface_title">Edit layout grid</string>
-    <string name="edit_surface_snapshot_notice">Showing the layout captured when this screen opened. Changes made elsewhere are not reflected.</string>
-    <string name="edit_surface_selection_count">%1$d selected</string>
-    <string name="edit_surface_action_move_to_page">Move to page\u2026</string>
-    <string name="edit_surface_action_add_to_folder">Add to folder\u2026</string>
-    <string name="edit_surface_action_create_folder">Create new folder</string>
-    <string name="edit_surface_action_remove">Remove from Home</string>
-    <string name="edit_surface_confirm">Apply</string>
-    <string name="edit_surface_reset">Reset</string>
-    <string name="edit_surface_cancel">Cancel</string>
-    <string name="edit_surface_error_capture_unavailable">The layout is not ready yet. Try again.</string>
-    <string name="edit_surface_error_empty_session">No changes to apply.</string>
-    <string name="edit_surface_error_lock_unknown">Some items have an unverifiable lock state, so changes cannot be applied.</string>
-    <string name="edit_surface_error_stale_reopen">The layout changed meanwhile. Reopening with the latest layout.</string>
-    <string name="edit_surface_error_busy">Another layout operation is in progress. Try again shortly.</string>
-    <string name="edit_surface_error_blocked">Recovery points are full. Try again shortly.</string>
-    <string name="edit_surface_error_no_changes">The changes were not applied.</string>
-    <string name="edit_surface_error_unchanged">Applying failed. The layout is unchanged.</string>
-    <string name="edit_surface_error_unresolved">The apply outcome is unclear. Use the restore entry to recover.</string>
-    <string name="edit_surface_error_generic">The changes could not be applied.</string>
-    <string name="edit_surface_no_folder_available">No folder is available for the selected items.</string>
-    <string name="edit_surface_widget_label">Widget</string>
-    <string name="edit_surface_a11y_selected">selected</string>
-    <string name="edit_surface_a11y_not_selectable">not selectable</string>
-    <string name="edit_surface_a11y_locked">placement locked</string>
-    <string name="edit_surface_a11y_lock_unknown">lock state unavailable</string>
-    <string name="edit_surface_a11y_widget">widget</string>
-    <string name="edit_surface_a11y_folder">folder, %1$d items</string>
-    <string name="edit_surface_a11y_reserved">reserved area</string>
-    <string name="edit_surface_a11y_dock">dock</string>
-    <string name="edit_surface_a11y_page">Page %1$d</string>
-    <!-- Issue #507: duplicate confirmation surface -->
-    <string name="edit_surface_duplicate_summary">Duplicate icons: %1$d groups</string>
-    <string name="edit_surface_duplicate_dialog_title">Duplicate icons</string>
-    <string name="edit_surface_duplicate_guard_last">Keep at least one icon in each duplicate group.</string>
-    <string name="edit_surface_duplicate_no_selectable">No removable icon in this group.</string>
-    <string name="edit_surface_duplicate_handled">Handled in this session</string>
-    <string name="edit_surface_duplicate_workspace_position">Page %1$d, row %2$d, column %3$d</string>
-    <string name="edit_surface_duplicate_in_folder">In folder \'%1$s\'</string>
-    <string name="edit_surface_duplicate_on_dock">On the dock</string>
-    <string name="organizer_lock_state_locked">Locked</string>
-    <string name="organizer_lock_state_unlocked">Unlocked</string>
-    <string name="organizer_lock_state_unknown">Needs review</string>
-    <string name="organizer_lock_dialog_title_lock">Lock this placement?</string>
-    <string name="organizer_lock_dialog_title_unlock">Unlock this placement?</string>
-    <string name="organizer_lock_dialog_title_review">Review this placement</string>
-    <string name="organizer_lock_dialog_current_state">Current state: %1$s</string>
-    <string name="organizer_lock_dialog_target_title">Target: %1$s</string>
-    <string name="organizer_lock_dialog_target_position">Position: row %1$d, column %2$d</string>
-    <string name="organizer_lock_dialog_target_folder">Folder: %1$s</string>
-    <string name="organizer_lock_dialog_target_app_pair">App pair: %1$s</string>
-    <string name="organizer_lock_dialog_split_top_left">Member: top or left</string>
-    <string name="organizer_lock_dialog_split_bottom_right">Member: bottom or right</string>
-    <string name="organizer_lock_dialog_review_intro">The lock state of this placement is unknown, for example after an update, a grid change, or restoring a backup. Choose whether it should stay where it is.</string>
-    <string name="organizer_lock_action_lock">Lock</string>
-    <string name="organizer_lock_action_unlock">Unlock</string>
-    <string name="organizer_lock_action_keep_locked">Keep locked</string>
-    <string name="organizer_lock_action_mark_unlocked">Mark unlocked</string>
-    <string name="organizer_lock_effect_own_placement">Locking keeps this item where it is; organization will not move it.</string>
-    <string name="organizer_lock_effect_widget_region">Locking keeps this widget\'s cell, size, and the whole area it occupies.</string>
-    <string name="organizer_lock_effect_dock_slot">Locking keeps this item in its Dock slot.</string>
-    <string name="organizer_lock_effect_folder_scope">A locked folder keeps its position on the home screen.</string>
-    <string name="organizer_lock_effect_folder_child_scope">A locked item keeps its position inside the folder.</string>
-    <string name="organizer_lock_effect_app_pair_scope">A locked pair keeps its position on the home screen.</string>
-    <string name="organizer_lock_effect_app_pair_member_scope">A locked app keeps its place in the pair.</string>
-    <string name="organizer_lock_effect_folder_parent_covers_children">Locking this folder also keeps every item inside it in place.</string>
-    <string name="organizer_lock_effect_folder_children_own_lock_remains">Items inside that are locked on their own stay locked.</string>
-    <string name="organizer_lock_effect_folder_child_own_lock_binds">Locking this item keeps its position inside the folder, even while the folder itself is unlocked.</string>
-    <string name="organizer_lock_effect_folder_child_unlock_ineffective">The folder is locked, so unlocking this item has no effect until the folder is unlocked.</string>
-    <string name="organizer_lock_effect_app_pair_parent_covers_members">Locking this pair keeps both apps and their split placement together.</string>
-    <string name="organizer_lock_effect_app_pair_member_unlock_ineffective">The pair is locked, so unlocking this app has no effect until the pair is unlocked.</string>
-    <string name="organizer_lock_effect_app_pair_member_own_lock_binds">Locking this app keeps its place in the pair, even while the pair itself is unlocked.</string>
-    <string name="organizer_lock_kind_app">App</string>
-    <string name="organizer_lock_kind_shortcut">Shortcut</string>
-    <string name="organizer_lock_kind_folder">Folder</string>
-    <string name="organizer_lock_kind_widget">Widget</string>
-    <string name="organizer_lock_kind_app_pair">App pair</string>
-    <string name="organizer_lock_kind_unknown">Item</string>
-    <string name="organizer_lock_result_locked">Placement locked.</string>
-    <string name="organizer_lock_result_unlocked">Placement unlocked.</string>
-    <string name="organizer_lock_result_no_change">This placement is already in that state.</string>
-    <string name="organizer_lock_error_failed">The change failed. Nothing was modified.</string>
-    <string name="organizer_lock_error_stale">This item or the layout changed. Nothing was modified — try again.</string>
-    <string name="organizer_lock_error_busy">Another layout change is in progress. Try again in a moment.</string>
-    <string name="organizer_lock_error_item_not_found">This item no longer exists. Nothing was modified.</string>
-    <string name="organizer_lock_error_item_not_unknown">This item was already reviewed. Nothing was modified.</string>
-    <string name="organizer_lock_error_profile_unavailable">The profile for this item is currently unavailable. Nothing was modified.</string>
-    <string name="organizer_lock_error_unsupported">This item cannot be locked.</string>
-    <string name="organizer_lock_error_intent_required">Confirm the change to apply it.</string>
-    <string name="organizer_lock_screen_title">Placement locks</string>
-    <string name="organizer_lock_screen_summary">Review and change which placements organization must keep.</string>
-    <string name="organizer_lock_screen_known_heading">All placements</string>
-    <string name="organizer_lock_screen_profile_work">Work profile</string>
-    <string name="organizer_lock_screen_profile_cloned">Cloned profile</string>
-    <string name="organizer_lock_screen_profile_private">Private space</string>
-    <string name="organizer_lock_screen_profile_other">Other profile</string>
-    <string name="organizer_lock_screen_unknown_banner">%1$d placements need review before organizing.</string>
-    <string name="organizer_lock_screen_unknown_banner_none">No placements need review.</string>
-    <string name="organizer_lock_screen_review_all_keep_locked">Review all as locked</string>
-    <string name="organizer_lock_screen_review_all_mark_unlocked">Review all as unlocked</string>
-    <string name="organizer_lock_screen_review_all_confirm">Review %1$d placements as %2$s? This applies to the listed placements only.</string>
-    <string name="organizer_lock_screen_effectively_locked">Protected by a locked parent</string>
-    <string name="organizer_lock_screen_placement_desktop">Home screen %1$d</string>
-    <string name="organizer_lock_screen_placement_dock">Dock %1$d</string>
-    <string name="organizer_lock_screen_placement_folder">Inside a folder, position %1$d</string>
-    <string name="organizer_lock_screen_placement_app_pair">In an app pair</string>
-    <!-- Issue #123: composed display and read-aloud text is a format resource so locales control word order and separators. -->
-    <string name="organizer_lock_screen_item_state_description">%1$s, %2$s</string>
-    <string name="organizer_lock_screen_placement_summary_double">%1$s · %2$s</string>
-    <string name="organizer_lock_screen_placement_summary_triple">%1$s · %2$s · %3$s</string>
-
-    <!-- Organizer diagnostics export -->
-    <!-- Issue #138: supported release Settings route for the diagnostics journal export -->
-    <string name="organizer_diagnostics_title">Organizer diagnostics</string>
-    <string name="organizer_diagnostics_description">Export the privacy-safe organizer diagnostics journal to a file for support.</string>
-    <!-- Issue #373: the transient "recent import failure" auxiliary row, shown
-         only while the process-scoped holder keeps a recorded failure -->
-    <string name="organizer_diagnostics_recent_import_failure">Recent import failure</string>
-    <string name="organizer_diagnostics_export_label">Export organizer diagnostics</string>
-    <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
-    <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
-    <string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
-    <!-- Issue #366: Organizer hub (T-01), the persistent organizing workspace -->
-    <string name="organizer_hub_title">Organizer</string>
-    <string name="organizer_hub_summary">Organizing status, starting a review, and materials in one place.</string>
-    <string name="organizer_hub_label">Organizer</string>
-    <string name="organizer_hub_materials_heading">Organizing materials</string>
-    <!-- Issue #374 (DI-AC-11): the status card's session-scoped rows — the
-         active-request action and the imported-proposal state/action. The
-         request state line and both rows' remaining time reuse the #372 T-15
-         vocabulary (exchange_request_active_line / the request plurals). -->
-    <string name="organizer_hub_request_open">View request</string>
-    <string name="organizer_hub_proposal_row">You have an imported proposal</string>
-    <string name="organizer_hub_proposal_open">View proposal</string>
-    <string name="organizer_personalization_recording_label">Record app launches for organizing</string>
-    <string name="organizer_personalization_recording_description">Keeps a local counter of launches started from this launcher to improve organizing quality. Stored on this device only and never exported. Turning this off stops recording and erases the existing records.</string>
-    <!-- Issue #371: the permission copy contract (spec 203 U-2 + TO-BE §7.3)
-         belongs to #371: purpose, why this row asks/reviews now, and what
-         changes when declined, in one sentence. Placement stays #367's. -->
-    <string name="organizer_personalization_usage_access_label">Usage access permission</string>
-    <string name="organizer_personalization_usage_access_granted">Granted — coarse usage hints (raw history never leaves this device, and an AI consult that includes them still confirms before sending) improve organizing quality, and this row is where you manage or revoke them while organizing works fully regardless.</string>
-    <string name="organizer_personalization_usage_access_not_granted">Not granted — organizing asks when it first needs usage hints that improve placement quality (raw history never leaves this device, and an AI consult that includes them still confirms before sending), and this row manages the permission while organizing works fully without it.</string>
-    <!-- Issue #371: the just-in-time Usage Access request (spec 371). One
-         sentence covering TO-BE §7.3's three elements (what for / why now /
-         what changes when declined), optionality, and the qualified privacy
-         statement (raw history never leaves the device; an AI consult with
-         the bucketed hints still confirms before sending). -->
-    <string name="organizer_usage_access_jit_title">Use app usage to organize smarter?</string>
-    <string name="organizer_usage_access_jit_body">Asking now because organizing is about to read app usage: with your permission, coarse usage hints — raw usage history never leaves this device — improve placement quality, and an AI consult that includes them still confirms before sending; skipping is fine and organizing works fully without it.</string>
-    <string name="organizer_usage_access_jit_open_settings">Open settings</string>
-    <string name="organizer_usage_access_jit_continue">Skip for now</string>
-    <string name="organizer_usage_access_jit_settings_unavailable">Couldn\'t open the system usage access settings. You can keep going without granting.</string>
-    <!-- Issue #52: explicit manual full organization -->
-    <string name="manual_organization_title">Organize home layout</string>
-    <string name="manual_organization_explainer">Review proposed changes before anything is applied. Your current layout is never changed automatically.</string>
-    <string name="manual_organization_strategy_section">Organization strategy</string>
-    <!-- Issue #368: strategy materials surface (T-05), reached only from the
-         organizer hub materials section; the run surface no longer hosts the picker. -->
-    <string name="organizer_strategy_title">Organization strategy</string>
-    <string name="organizer_strategy_summary">Choose how your home layout is organized.</string>
-    <string name="organizer_strategy_frozen_operation_active">An organize operation is in progress. Interrupt it before changing the strategy.</string>
-    <string name="organizer_strategy_retry_when_busy">Another organizer change is in progress. Try again after it finishes.</string>
-    <string name="organization_strategy_canonical_name">Standard compaction</string>
-    <string name="organization_strategy_canonical_description">Fills each screen from the top-left.</string>
-    <string name="organization_strategy_tidy_name">Tidy each screen (widgets stay in place)</string>
-    <string name="organization_strategy_tidy_description">Closes gaps on each screen without moving apps to other screens. Widgets stay in place.</string>
-    <string name="organization_strategy_tidy_v2_name">Tidy each screen</string>
-    <string name="organization_strategy_tidy_v2_description">Closes gaps on each screen without moving apps to other screens. Widgets are tidied within their screen as well.</string>
-    <string name="organization_strategy_bottom_first_name">Bottom-first fill</string>
-    <string name="organization_strategy_bottom_first_description">Places apps row by row from the bottom of each screen. Widgets stay in place.</string>
-    <string name="organization_strategy_bottom_first_v2_name">Bottom-first fill, widgets included</string>
-    <string name="organization_strategy_bottom_first_v2_description">Places apps toward the bottom of each screen and moves widgets above the apps.</string>
-    <!-- Issue #398 BOTTOM_REGION_V1: lower-preferred-region sweep. -->
-    <string name="organization_strategy_bottom_region_name">Bottom-half layout</string>
-    <string name="organization_strategy_bottom_region_description">Uses the lower half of each screen as the main area and keeps the top open, adding screens when needed. Widgets stay in place.</string>
-    <string name="organization_strategy_global_name">Compact across screens (apps only)</string>
-    <string name="organization_strategy_global_description">Moves apps from later screens into earlier free spaces. Existing folders stay where they are.</string>
-    <string name="organization_strategy_global_v2_name">Compact across screens</string>
-    <string name="organization_strategy_global_v2_description">Moves apps and folders from later screens into earlier free spaces.</string>
-    <string name="organization_strategy_category_contiguous_name">Group by category</string>
-    <string name="organization_strategy_category_contiguous_description">Keeps apps of the same category next to each other on each screen.</string>
-    <string name="organization_strategy_unknown_name">Custom strategy</string>
-    <string name="organization_strategy_unknown_description">A strategy provided by this build.</string>
-    <string name="manual_organization_preview_strategy">Strategy: %1$s</string>
-    <string name="manual_organization_cross_page_moved_count">Moved across screens: %1$d</string>
-    <string name="manual_organization_preserved_by_strategy_count">Kept in place by the strategy: %1$d</string>
-    <!-- Issue #417: the method-neutral start CTA (run admission only — the
-         method choice moved to the post-scope method-choice face). -->
-    <string name="manual_organization_start">Start organizing</string>
-    <!-- Issue #417: the method-choice face (shown after the scope is
-         confirmed). Both arms consume the same frozen scope. -->
-    <string name="manual_organization_method_title">How should the plan be made?</string>
-    <string name="manual_organization_method_plain">Organize as-is</string>
-    <!-- Issue #443: the experimental-features toggle for the frozen AI
-         consultation entry (default OFF). OFF hides the method-choice face's
-         AI arm and runs go straight to the plain organize path; durable
-         session state stays reachable from the hub status card. -->
-    <string name="exchange_ai_consultation_toggle_label">AI consultation</string>
-    <string name="exchange_ai_consultation_toggle_description">Experimental. Off by default. When off, organizing runs without the AI option, and any active request or imported proposal stays available from the organizer hub until it expires.</string>
-    <string name="manual_organization_start_again">Start a new review</string>
-    <string name="manual_organization_retry">Try again</string>
-    <string name="manual_organization_capturing">Reading the current home layout…</string>
-    <string name="manual_organization_planning">Preparing a safe organization proposal…</string>
-    <string name="manual_organization_input_not_ready_yet">The launcher is still starting up. Wait a moment, then try again.</string>
-    <string name="manual_organization_input_unavailable_bug">Required organization information is unavailable. Nothing was changed. If this keeps happening, please report a bug.</string>
-    <string name="manual_organization_rejected">This layout cannot be organized safely. Nothing was changed.</string>
-    <string name="manual_organization_impossible">This layout cannot be organized with the current available space. Nothing was changed.</string>
-    <string name="manual_organization_no_changes">No changes are needed. Nothing was changed.</string>
-    <string name="manual_organization_preview">Review the proposed organization</string>
-    <string name="manual_organization_moved_count">%1$d placements will move</string>
-    <string name="manual_organization_widget_moved_count">Moved as a widget: %1$d</string>
-    <string name="manual_organization_preserved_count">%1$d placements will be preserved</string>
-    <string name="manual_organization_new_folders_count">%1$d new folders will be created</string>
-    <string name="manual_organization_new_pages_count">%1$d new home screen pages will be created</string>
-    <string name="manual_organization_confirm">Apply reviewed organization</string>
-    <string name="manual_organization_cancel">Cancel</string>
-    <string name="manual_organization_cancel_before_checkpoint">Stop before applying</string>
-    <string name="manual_organization_applying">Applying the reviewed organization. This step cannot be interrupted safely.</string>
-    <string name="manual_organization_stale_outcome">This proposal was not applied. This attempt did not change your current home layout.</string>
-    <string name="manual_organization_stale_proposal_discarded">The reviewed proposal could no longer be applied safely, so it was discarded.</string>
-    <string name="manual_organization_stale_proposal_not_reviewed">The home layout changed while the proposal was being prepared, so it was discarded before you could review it.</string>
-    <string name="manual_organization_recapture">Capture and review again</string>
-    <string name="manual_organization_recapture_summary">Captures your current home layout and prepares a new proposal to review.</string>
-    <string name="manual_organization_apply_success">Organization was applied and verified.</string>
-    <!-- Issue #231: completed-tense counts on the verified success surface -->
-    <plurals name="manual_organization_applied_moved_count">
-        <item quantity="one">%1$d placement moved</item>
-        <item quantity="other">%1$d placements moved</item>
-    </plurals>
-    <plurals name="manual_organization_applied_preserved_count">
-        <item quantity="one">%1$d placement was preserved</item>
-        <item quantity="other">%1$d placements were preserved</item>
-    </plurals>
-    <plurals name="manual_organization_applied_new_folders_count">
-        <item quantity="one">%1$d new folder was created</item>
-        <item quantity="other">%1$d new folders were created</item>
-    </plurals>
-    <plurals name="manual_organization_applied_new_pages_count">
-        <item quantity="one">%1$d new home screen page was created</item>
-        <item quantity="other">%1$d new home screen pages were created</item>
-    </plurals>
-    <string name="manual_organization_apply_rejected">Organization was not applied.</string>
-    <string name="manual_organization_apply_rolled_back">The attempted organization was rolled back. Your saved layout remains in place.</string>
-    <string name="manual_organization_apply_recovered">The attempted organization could not finish. Your saved layout was restored.</string>
-    <string name="manual_organization_apply_unresolved">The current layout could not be verified. Do not make another organization change yet.</string>
-    <string name="manual_organization_apply_recovery_failed">Automatic recovery could not be verified. Do not make another organization change yet.</string>
-    <string name="manual_organization_safe_terminal">The current layout needs a safety review. Do not start another organization run yet.</string>
-    <string name="manual_organization_open_diagnostics">Open organizer diagnostics</string>
-    <string name="manual_organization_open_diagnostics_summary">Export privacy-safe details for support before making another change.</string>
-    <string name="manual_organization_apply_concurrent">Another layout operation is in progress. Try again later.</string>
-    <string name="manual_organization_recovery">Restore saved layout</string>
-    <string name="manual_organization_recovery_inspecting">Checking whether the saved layout can be restored safely…</string>
-    <string name="manual_organization_recovery_preview">The saved layout — this returns your home layout to the state before the organization you reviewed on this screen. Confirmation is required to proceed.</string>
-    <string name="manual_organization_recovery_history_prefix">Changes made by the last organization: %1$s</string>
-    <plurals name="manual_organization_recovery_history_moved">
-        <item quantity="one">moved %1$d placement</item>
-        <item quantity="other">moved %1$d placements</item>
-    </plurals>
-    <plurals name="manual_organization_recovery_history_new_folders">
-        <item quantity="one">created %1$d folder</item>
-        <item quantity="other">created %1$d folders</item>
-    </plurals>
-    <plurals name="manual_organization_recovery_history_new_pages">
-        <item quantity="one">added %1$d page</item>
-        <item quantity="other">added %1$d pages</item>
-    </plurals>
-    <string name="manual_organization_recovery_confirm">Restore saved layout</string>
-    <string name="manual_organization_recovering">Restoring the saved layout…</string>
-    <string name="manual_organization_recovery_restored">The saved layout was restored.</string>
-    <string name="manual_organization_recovery_not_available">This saved layout can no longer be restored safely.</string>
-    <string name="manual_organization_recovery_failed">The saved layout could not be restored safely.</string>
-    <string name="manual_organization_durable_status_restorable">Home layout is organized. Its saved pre-organization backup is restorable.</string>
-    <string name="manual_organization_durable_status_restored_or_expired">The saved pre-organization backup is no longer restorable (restored or expired).</string>
-    <string name="manual_organization_durable_status_unresolved">An organizer change did not finish safely.</string>
-    <string name="manual_organization_durable_status_checking">Checking for a saved organizer state…</string>
-    <plurals name="manual_organization_recovery_remaining_hours">
-        <item quantity="one">Restorable for about 1 more hour.</item>
-        <item quantity="other">Restorable for about %1$d more hours.</item>
-    </plurals>
-    <string name="manual_organization_recovery_remaining_under_one_hour">Restorable for less than an hour.</string>
-    <string name="manual_organization_scope">Full layout scope: %1$d targets across %2$d profiles and %3$d pages.</string>
-    <string name="manual_organization_device_scope">Device profile: %1$d columns × %2$d rows, %3$d Dock slots.</string>
-    <string name="manual_organization_moved_single_placement">Moved as a single placement: %1$d</string>
-    <string name="manual_organization_moved_folder_member">Moved as a folder member: %1$d</string>
-    <string name="manual_organization_moved_folder_unit">Moved as a folder unit: %1$d</string>
-    <string name="manual_organization_moved_widget_unit">Moved as a widget: %1$d</string>
-    <string name="manual_organization_preserved_locked">Preserved locked placements: %1$d</string>
-    <string name="manual_organization_preserved_reserved_region">Preserved placements in the reserved search area: %1$d</string>
-    <string name="manual_organization_preserved_unavailable">Preserved unavailable placements: %1$d</string>
-    <string name="manual_organization_preserved_dock">Preserved Dock placements: %1$d</string>
-    <string name="manual_organization_preserved_widget">Preserved widgets: %1$d</string>
-    <string name="manual_organization_preserved_app_pair">Preserved app pairs: %1$d</string>
-    <string name="manual_organization_preserved_legacy_shortcut">Preserved legacy shortcuts: %1$d</string>
-    <string name="manual_organization_preserved_non_target">Preserved out-of-scope placements: %1$d</string>
-    <string name="manual_organization_preserved_strategy">Preserved by the selected strategy: %1$d</string>
-    <string name="manual_organization_preserved_structural">Preserved structural members: %1$d</string>
-    <!-- Issue #451: duplicate surplus items are kept at their captured
-         position, never removed from the layout. -->
-    <string name="manual_organization_preserved_duplicate_launch_target">Kept as duplicates of another icon: %1$d</string>
-    <string name="manual_organization_preserved_already_canonical">Already-canonical placements: %1$d</string>
-    <string name="manual_organization_unplaced_grid">Unplaced because the item exceeds grid dimensions: %1$d</string>
-    <string name="manual_organization_unplaced_target">Unplaced because the target is unavailable: %1$d</string>
-    <string name="manual_organization_unplaced_strategy_scope">Unplaced because the selected strategy keeps the current pages and folders: %1$d</string>
-    <string name="manual_organization_selection_stale">The Home layout changed since these apps were selected. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
-    <string name="manual_organization_candidate_unresolved">A selected app can no longer be added. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
-    <string name="manual_organization_warning_legacy_shortcut">Legacy shortcuts require review: %1$d</string>
-    <string name="manual_organization_warning_fallback_category">Fallback category used: %1$d</string>
-    <string name="manual_organization_warning_unavailable">Unavailable placements were preserved: %1$d</string>
-    <!-- Issue #451: duplicate icons are reported, never deletion-suggested. -->
-    <string name="manual_organization_warning_duplicate_launch_target">Duplicates of another icon were kept in place: %1$d</string>
-    <string name="manual_organization_rejection_unknown_item_kind">Unsupported item type: %1$d</string>
-    <string name="manual_organization_rejection_invalid_container">Invalid container: %1$d</string>
-    <string name="manual_organization_rejection_unknown_page">Unknown page reference: %1$d</string>
-    <string name="manual_organization_rejection_bounds">Out-of-bounds placement: %1$d</string>
-    <string name="manual_organization_rejection_overlap">Overlapping placement: %1$d</string>
-    <string name="manual_organization_rejection_dangling_reference">Broken reference: %1$d</string>
-    <string name="manual_organization_rejection_malformed_app_pair">Malformed app pair: %1$d</string>
-    <string name="manual_organization_rejection_locked_out_of_bounds">Locked item out of bounds: %1$d</string>
-    <string name="manual_organization_rejection_duplicate_target">Duplicate target: %1$d</string>
-    <string name="manual_organization_rejection_missing_target">Missing target: %1$d</string>
-    <string name="manual_organization_rejection_incomplete_target_partition">Incomplete target set: %1$d</string>
-    <string name="manual_organization_rejection_additions">Unexpected additions in full organization: %1$d</string>
-    <string name="manual_organization_rejection_invalid_rules">Invalid rules: %1$d</string>
-    <string name="manual_organization_rejection_duplicate_item">Duplicate item ID: %1$d</string>
-    <string name="manual_organization_rejection_duplicate_page">Duplicate page: %1$d</string>
-    <string name="manual_organization_rejection_invalid_dimensions">Invalid device dimensions: %1$d</string>
-    <string name="manual_organization_rejection_kind_target_mismatch">Item/target mismatch: %1$d</string>
-    <string name="manual_organization_rejection_target_profile_mismatch">Target profile mismatch: %1$d</string>
-    <string name="manual_organization_rejection_unknown_signal_item">Unknown signal item: %1$d</string>
-    <string name="manual_organization_rejection_unknown_category">Unknown category: %1$d</string>
-    <string name="manual_organization_rejection_invalid_category_provenance">Category source not allowed: %1$d</string>
-    <string name="manual_organization_available_constraint">Available placements: %1$d</string>
-    <string name="manual_organization_disabled_constraint">Disabled-profile placements: %1$d</string>
-    <string name="manual_organization_quiet_constraint">Quiet-profile placements: %1$d</string>
-    <string name="manual_organization_private_space_constraint">Private-space placements: %1$d</string>
-    <string name="manual_organization_unavailable_item_constraint">Unavailable placements: %1$d</string>
-    <string name="manual_organization_locked_constraint">Lock constraint preserved: %1$d</string>
-    <string name="manual_organization_unavailable_constraint">Unavailable/profile-constrained placements: %1$d</string>
-    <string name="manual_organization_widget_constraint">Widget constraints preserved: %1$d</string>
-    <string name="manual_organization_app_pair_constraint">App-pair constraints preserved: %1$d</string>
-    <string name="manual_organization_legacy_shortcut_constraint">Legacy shortcut constraints preserved: %1$d</string>
-    <string name="manual_organization_empty_folder_constraint">Empty folders preserved: %1$d</string>
-    <!-- Issue #195: concrete change list on the confirmation surface -->
-    <string name="manual_organization_preview_details_unavailable">A detailed change list could not be prepared this time. Review the summary counts before applying.</string>
-    <!-- Issue #228: missing-app selection and Add rows -->
-    <string name="manual_organization_detecting_missing_apps">Checking for apps that are not on the Home screen…</string>
-    <!-- Issue #369 RD-1/RD-5, reshaped by #417: the entry face — the scope summary only (the method choice moved to the method-choice face). -->
-    <string name="manual_organization_preamble_scope">This review covers your whole home layout. Nothing is applied before you confirm the proposal.</string>
-    <!-- Issue #369: T-09 integrated preparation face -->
-    <string name="manual_organization_preparation">Preparing the organization</string>
-    <!-- Issue #369: D-13 interrupt vocabulary (zero-write; run stops and returns to the hub) -->
-    <string name="manual_organization_interrupt">Stop</string>
-    <!-- Issue #369: T-13 integrated failure face headline -->
-    <string name="manual_organization_failed">Could not run the organization</string>
-    <!-- Issue #369: D-13 discard/interrupt confirmation dialog -->
-    <string name="manual_organization_discard_confirm_title">Discard this work?</string>
-    <string name="manual_organization_discard_confirm_text">Your selections and the proposal will be discarded. Nothing has been applied to your home layout.</string>
-    <string name="manual_organization_discard">Discard</string>
-    <string name="manual_organization_missing_apps_title">Select apps to organize</string>
-    <plurals name="manual_organization_missing_apps_selected_count">
-        <item quantity="one">%1$d app selected</item>
-        <item quantity="other">%1$d apps selected</item>
-    </plurals>
-    <string name="manual_organization_missing_apps_search_hint">Search apps</string>
-    <string name="manual_organization_missing_apps_select_all">Select all</string>
-    <string name="manual_organization_missing_apps_clear_all">Clear all</string>
-    <string name="manual_organization_missing_apps_continue">Continue</string>
-    <!-- Issue #417 (AC-4): the explicit zero-selection disclosure shown while
-         the user continues with nothing selected. -->
-    <string name="manual_organization_missing_apps_empty_continue">Continuing with nothing selected. Your home will be organized without adding unplaced apps.</string>
-    <string name="manual_organization_missing_apps_state_checked">Selected</string>
-    <string name="manual_organization_missing_apps_state_unchecked">Not selected</string>
-    <string name="manual_organization_preview_unavailable_add">The detailed change list for this proposal, which adds new apps, could not be prepared. Nothing has been changed. New apps are only added after the full list is reviewed.</string>
-    <string name="manual_organization_preview_retry">Retry preview</string>
-    <string name="manual_organization_added_count">Apps to add: %1$d</string>
-    <plurals name="manual_organization_applied_added_count">
-        <item quantity="one">%1$d app added</item>
-        <item quantity="other">%1$d apps added</item>
-    </plurals>
-    <string name="manual_organization_changes_heading">Proposed changes</string>
-    <string name="manual_organization_group_moved">Move (%1$d)</string>
-    <string name="manual_organization_group_added">Add (%1$d)</string>
-    <string name="manual_organization_preview_add_descriptor">%1$s (%2$s)</string>
-    <string name="manual_organization_preview_add_row">Add %1$s → %2$s</string>
-    <string name="manual_organization_group_new_folders">New folders (%1$d)</string>
-    <string name="manual_organization_group_new_pages">New pages (%1$d)</string>
-    <string name="manual_organization_group_preserved">Preserve (%1$d)</string>
-    <string name="manual_organization_group_warnings">Warnings (%1$d)</string>
-    <string name="manual_organization_preview_show_all">Show all %1$d items</string>
-    <string name="manual_organization_preview_show_fewer">Show only the first %1$d items</string>
-    <string name="manual_organization_preview_expanded_state">Expanded</string>
-    <string name="manual_organization_preview_collapsed_state">Collapsed</string>
-    <!-- Issue #208: row templates take the source descriptor (quoted name with
-         kind, plus current position) as their first argument; quoting lives in
-         the descriptor strings so same-named placements stay distinguishable.
-         The same-band row reuses the descriptor and only replaces the
-         destination with the in-region adjustment wording. -->
-    <string name="manual_organization_preview_move_row">%1$s → %2$s (%3$s)</string>
-    <string name="manual_organization_preview_same_band_move_row">%1$s → position adjusted within %2$s%3$s</string>
-    <!-- Issue #234: workspace destination of both move branches (%1 = region,
-         %2 = page, %3 = row ordinal, %4 = column ordinal). Always all four
-         parts so the resolved anchor is uniquely identifiable on any grid. -->
-    <string name="manual_organization_preview_workspace_destination">%1$s, %2$s, row %3$d, column %4$d</string>
-    <string name="manual_organization_preview_row_ordinal_note"> (from row %1$d to row %2$d)</string>
-    <string name="manual_organization_preview_item_row">%1$s: %2$s</string>
-    <string name="manual_organization_preview_item_descriptor">“%1$s” (%2$s) — %3$s</string>
-    <string name="manual_organization_preview_item_descriptor_without_kind">“%1$s” — %2$s</string>
-    <string name="manual_organization_preview_position_unidentified">unsupported placement %1$d</string>
-    <string name="manual_organization_preview_position_with_supplement">%1$s (%2$s)</string>
-    <string name="manual_organization_preview_supplement_cell">row %1$d, column %2$d, %3$s</string>
-    <string name="manual_organization_preview_supplement_parent_with_stage">%1$s, %2$s</string>
-    <string name="manual_organization_preview_supplement_stage_top">upper half</string>
-    <string name="manual_organization_preview_supplement_stage_bottom">lower half</string>
-    <string name="manual_organization_preview_move_reason_single_placement">moves as a single placement</string>
-    <string name="manual_organization_preview_move_reason_folder_member">moves as a folder member</string>
-    <string name="manual_organization_preview_move_reason_folder_unit">moves as a folder unit</string>
-    <string name="manual_organization_preview_move_reason_widget_unit">moves as a widget</string>
-    <string name="manual_organization_preview_move_reason_unspecified">moves</string>
-    <string name="manual_organization_preview_preserved_reason_locked">kept because it is locked</string>
-    <string name="manual_organization_preview_preserved_reason_reserved_region">kept for the reserved search area</string>
-    <string name="manual_organization_preview_preserved_reason_unavailable">kept because it is unavailable</string>
-    <string name="manual_organization_preview_preserved_reason_dock">kept in the Dock</string>
-    <string name="manual_organization_preview_preserved_reason_widget">kept because it is a widget</string>
-    <string name="manual_organization_preview_preserved_reason_app_pair">kept because it is an app pair</string>
-    <string name="manual_organization_preview_preserved_reason_legacy_shortcut">kept because it is a legacy shortcut</string>
-    <string name="manual_organization_preview_preserved_reason_non_target">kept because it is out of scope</string>
-    <string name="manual_organization_preview_preserved_reason_structural">kept as a structural member</string>
-    <string name="manual_organization_preview_preserved_reason_strategy">kept by the selected organization strategy</string>
-    <string name="manual_organization_preview_preserved_reason_already_canonical">already in its canonical place</string>
-    <!-- Issue #451: duplicate surplus items stay at their captured position;
-         the wording never suggests removing them (deletion proposals are out
-         of scope for #451). -->
-    <string name="manual_organization_preview_preserved_reason_duplicate_launch_target">kept in place as a duplicate of another icon</string>
-    <string name="manual_organization_preview_warning_legacy_shortcut_item">legacy shortcut needs review</string>
-    <string name="manual_organization_preview_warning_fallback_category_item">fallback category was used</string>
-    <string name="manual_organization_preview_warning_unavailable_item">kept as it is currently unavailable</string>
-    <string name="manual_organization_preview_warning_duplicate_launch_target_item">kept in place as a duplicate of another icon</string>
-    <string name="manual_organization_preview_page">page %1$d</string>
-    <string name="manual_organization_preview_new_page_position">new page (position %1$d)</string>
-    <string name="manual_organization_preview_position_workspace">%2$s, %1$s</string>
-    <string name="manual_organization_preview_region_top_left">top left</string>
-    <string name="manual_organization_preview_region_top_center">top center</string>
-    <string name="manual_organization_preview_region_top_right">top right</string>
-    <string name="manual_organization_preview_region_middle_left">middle left</string>
-    <string name="manual_organization_preview_region_middle_center">middle center</string>
-    <string name="manual_organization_preview_region_middle_right">middle right</string>
-    <string name="manual_organization_preview_region_bottom_left">bottom left</string>
-    <string name="manual_organization_preview_region_bottom_center">bottom center</string>
-    <string name="manual_organization_preview_region_bottom_right">bottom right</string>
-    <string name="manual_organization_preview_position_dock">Dock slot %1$d</string>
-    <!-- Issue #208: the position inside the folder disambiguates same-named
-         folder children, matching the placement-locks screen wording. -->
-    <string name="manual_organization_preview_position_folder_existing">folder “%1$s”, position %2$d</string>
-    <string name="manual_organization_preview_position_folder_planned">new folder “%1$s”, position %2$d</string>
-    <string name="manual_organization_preview_position_app_pair">app pair “%1$s”</string>
-    <string name="manual_organization_preview_kind_application">App</string>
-    <string name="manual_organization_preview_kind_deep_shortcut">Shortcut</string>
-    <string name="manual_organization_preview_kind_shortcut_legacy">Legacy shortcut</string>
-    <string name="manual_organization_preview_kind_folder">Folder</string>
-    <string name="manual_organization_preview_kind_app_widget">Widget</string>
-    <string name="manual_organization_preview_kind_custom_app_widget">Custom widget</string>
-    <string name="manual_organization_preview_kind_app_pair">App pair</string>
-    <string name="manual_organization_preview_kind_unknown">Item</string>
-    <string name="manual_organization_preview_new_folder_row">Create new folder “%1$s” at %2$s (members: %3$s)</string>
-    <!-- Issue #201: safe generic title for generated folders whose semantic name cannot be resolved. -->
-    <string name="organizer_generated_folder_fallback_name">Folder</string>
-    <string name="manual_organization_preview_new_page_row">Add a new page at position %1$d</string>
-    <!-- Issue #508: before/after diagrams, per-item exclusion, and the replan
-         progress on the confirmation surface. Zero-write display state. -->
-    <string name="manual_organization_diagram_before">Before</string>
-    <string name="manual_organization_diagram_after">After</string>
-    <string name="manual_organization_diagram_page">Page %1$d</string>
-    <string name="manual_organization_diagram_new_page">New page</string>
-    <string name="manual_organization_diagram_dock">Dock</string>
-    <string name="manual_organization_diagram_widget">Widget</string>
-    <string name="manual_organization_diagram_item_a11y">%1$s, %2$s, %3$s</string>
-    <string name="manual_organization_exclude_action">Exclude</string>
-    <string name="manual_organization_include_action">Put back</string>
-    <string name="manual_organization_excluded_heading">Excluded from this proposal: %1$d</string>
-    <string name="manual_organization_excluded_unknown_item">Item</string>
-    <string name="manual_organization_exclusion_blocked_kind">not excludable: this item type is never an exclusion target</string>
-    <string name="manual_organization_exclusion_blocked_placement">not excludable: dock, folder, and app-pair placements are not exclusion targets</string>
-    <string name="manual_organization_exclusion_blocked_preserved">not excludable: a stronger preservation rule keeps this placement</string>
-    <string name="manual_organization_exclusion_blocked_structural">not excludable: replanning decides this row automatically</string>
-    <string name="manual_organization_exclusion_state_included">In the proposal</string>
-    <string name="manual_organization_exclusion_state_excluded">Excluded</string>
-    <string name="manual_organization_unplaced_candidates_heading">Not placed by this proposal: %1$d</string>
-    <string name="manual_organization_unplaced_candidate_a11y">%1$s (%2$s), not placed by this proposal</string>
-    <string name="manual_organization_replanning">Replanning the proposal</string>
-    <string name="manual_organization_replanning_summary">Preparing a new proposal with your exclusions. The diagrams and list below still show the previous proposal.</string>
-
-    <!-- Issue #53: non-blocking onboarding proposal. -->
-    <string name="organization_onboarding_proposal_title">Organize your Home screen?</string>
-    <string name="organization_onboarding_proposal_summary">Review a proposed organization first. Nothing changes until you confirm the preview.</string>
-    <string name="organization_onboarding_proposal_defer">Later</string>
-    <string name="organization_onboarding_proposal_skip">Skip</string>
-    <string name="organization_onboarding_proposal_review">Review organization</string>
-    <!-- Issue #232: re-entry guidance shown once after `Later`. The body is assembled from
-         the real UI labels so the path stays in sync with the actual settings naming. -->
-    <string name="organization_onboarding_reentry_hint_title">You can organize anytime</string>
-    <string name="organization_onboarding_reentry_hint_body">Long-press the Home screen → %1$s → %2$s → %3$s.</string>
-
-    <!-- Issue #205: External Agent Exchange -->
-    <!-- Issue #372: the idle entry row is gone (D-04), and #417 moved the AI
-         choice onto the method-choice face. The subtitle survives as the
-         short description of that face's 「Consult the AI」 row; the import
-         label survives as the T-15 import lead-in. -->
-    <string name="exchange_entry_subtitle">Create a request for an external AI (such as ChatGPT) and import its proposal as a reviewable plan.</string>
-    <string name="exchange_method_consult">Consult the AI</string>
-    <!-- Issue #327: user-facing capability explanation (en) -->
-    <string name="exchange_capability_title">What the AI can do</string>
-    <string name="exchange_capability_example_frequent">Put the apps you use most first</string>
-    <string name="exchange_capability_example_group">Group related apps together</string>
-    <string name="exchange_capability_example_keep">Keep the apps you don\'t want moved where they are</string>
-    <string name="exchange_capability_example_front">Move important apps toward the first page</string>
-    <string name="exchange_capability_example_minimal_change">Keep today\'s layout mostly intact</string>
-    <string name="exchange_capability_no_direct_change">The AI never changes your home screen directly. It drafts your preferences and tendencies for a reorganization plan.</string>
-    <string name="exchange_capability_flow">The conversation happens inside your external AI app (such as ChatGPT). Send the request once, answer a few short questions (2–4), confirm the plan, and receive one final proposal. Your conversation is never sent to NunuLauncher.</string>
-    <string name="exchange_entry_import">Import reply</string>
-    <!-- Issue #372: T-15 request-creation face (en) -->
-    <string name="exchange_request_title">Create a request to consult the AI</string>
-    <!-- Issue #372 (implementation review): the pre-display must not claim a
-         send state — `sent` is process-local, so a delivered request still
-         reads as active here. -->
-    <string name="exchange_request_active_line">You have an active request.</string>
-    <plurals name="exchange_request_remaining_hours">
-        <item quantity="one">About %1$d hour left</item>
-        <item quantity="other">About %1$d hours left</item>
-    </plurals>
-    <string name="exchange_request_remaining_under_hour">Less than an hour left</string>
-    <!-- Issue #372 (D-09): the expectation statement, shown on T-15 and T-16. -->
-    <string name="exchange_expectation_fixed_home">This request is fixed to your home as of its creation. If you change your home or categories while the conversation is open, the reply can no longer be imported.</string>
-    <string name="exchange_privacy_title">Privacy of the outgoing request</string>
-    <!-- Issue #372 (D-14): the two-choice tier vocabulary; LOCAL_FULL never appears. -->
-    <string name="exchange_privacy_redacted">Send with less information (default)</string>
-    <string name="exchange_privacy_labels">Send with labels</string>
-    <!-- Issue #372 (review): the warning matches the v4 free-text set exactly
-         (app and folder names plus user-defined category names, spec 337). -->
-    <string name="exchange_privacy_labels_warning">The request will contain app and folder names, and the names of your user-defined categories.</string>
-    <string name="exchange_replacement_notice">An unfinished request exists. Creating a new request discards the existing one; its reply can no longer be imported. The imported proposal is also discarded.</string>
-    <string name="exchange_replacement_title">Discard the existing request and create a new one?</string>
-    <!-- Issue #374 (spec 374 DI-AC-03): the warning extends to the imported
-         proposal — a replacement discards it in all of its holding places. -->
-    <string name="exchange_replacement_warning">Creating a new request discards the previous one; its reply can no longer be imported. The imported proposal is also discarded. Continue?</string>
-    <string name="exchange_replacement_confirm">Discard and create</string>
-    <string name="exchange_replacement_decline">Keep existing</string>
-    <string name="exchange_generate">Create request</string>
-    <string name="exchange_generating">Generating the exchange request…</string>
-    <string name="exchange_cancel">Cancel</string>
-    <string name="exchange_close">Close</string>
-    <string name="exchange_disclosure_title">Review before sending</string>
-    <string name="exchange_disclosure_redacted">This request contains no app names, package names, or raw usage data. It does list your categories, including user-defined ones, but without their names.</string>
-    <string name="exchange_disclosure_labels_included">This request contains app and folder names, and the names of your user-defined categories.</string>
-    <!-- Issue #372 (D-10): the summary-first face; the item count is labelled
-         as the item count (not a total record count) and the limit line
-         states the V1 contract ceiling (512 items / 256 KB). -->
-    <string name="exchange_disclosure_summary_items">Items included: %1$d</string>
-    <string name="exchange_disclosure_summary_limit">One request can contain up to 512 items and 256 KB of request text.</string>
-    <string name="exchange_disclosure_expand">Review the full text</string>
-    <string name="exchange_disclosure_collapse">Hide the full text</string>
-    <string name="exchange_disclosure_hint">Send this exact text to the AI app of your choice. Nothing is sent until you choose a send method.</string>
-    <!-- Issue #372 (D-13): the pre-send cancel is 破棄 (discard) with one confirmation. -->
-    <string name="exchange_discard">Discard</string>
-    <string name="exchange_discard_confirm_title">Discard this request?</string>
-    <string name="exchange_discard_confirm_body">Discarding invalidates this request; the AI\'s reply can no longer be imported. This cannot be undone.</string>
-    <string name="exchange_discard_confirm_confirm">Discard</string>
-    <string name="exchange_copy">Copy</string>
-    <string name="exchange_share">Share…</string>
-    <string name="exchange_save_file">Save to file</string>
-    <string name="exchange_transport_success">Request copied, shared, or saved. After you give it to your AI app, answer a few short questions (2–4) and confirm the plan to receive one final proposal. Paste that reply here to import it.</string>
-    <string name="exchange_transport_clipboard_failed">Clipboard unavailable. Try sharing or saving to a file.</string>
-    <string name="exchange_transport_share_absent">No app can receive the share. Copy or save to a file instead.</string>
-    <string name="exchange_transport_file_failed">File operation failed. Try again or use another send method.</string>
-    <string name="exchange_import_title">Import the AI reply</string>
-    <string name="exchange_import_hint">Paste the full reply text</string>
-    <string name="exchange_import_action">Import</string>
-    <string name="exchange_import_from_file">From file</string>
-    <string name="exchange_import_result_title">Import result</string>
-    <string name="exchange_import_result_unknown">The reply could not be used.</string>
-    <string name="exchange_import_failure_action_reimport">Import again</string>
-    <string name="exchange_import_failure_action_repost">Re-paste</string>
-    <string name="exchange_import_failure_action_recreate">Recreate the request</string>
-    <string name="exchange_import_interrupt">Stop</string>
-    <string name="exchange_import_open_diagnostics">Open diagnostics</string>
-    <string name="exchange_import_failure_detail_show">Show details</string>
-    <string name="exchange_import_failure_detail_hide">Hide details</string>
-    <string name="exchange_import_failure_detail_type_format">Type: %1$s</string>
-    <string name="exchange_run_busy">An organization run is active. Import again after it finishes.</string>
-    <string name="exchange_import_from_clipboard">Import from clipboard</string>
-    <string name="exchange_import_fallback_toggle">Details / if the import does not work</string>
-    <string name="exchange_import_clear">Clear</string>
-    <string name="exchange_import_file_types">Text (.txt) or JSON (.json) · up to 1 MiB</string>
-    <string name="exchange_status_clipboard_empty">The clipboard is empty or could not be read. Copy the reply in the AI app again, return to this app, and import once more. If it still fails, use the file import or paste the text manually.</string>
-    <string name="exchange_status_clipboard_not_text">The clipboard has no text. Copy the reply text in the AI app again.</string>
-    <string name="exchange_status_file_read_failed">The file could not be read. Select it again, or check the supported format (.txt / .json, up to 1 MiB). If it still fails, use the clipboard import or paste the text manually.</string>
-    <string name="exchange_recognized_framing">Recognized format</string>
-    <string name="exchange_recognized_version">Recognized version</string>
-    <string name="exchange_recognized_entries">Recognized entries</string>
-    <string name="exchange_framing_marker">Marker lines</string>
-    <string name="exchange_framing_fenced_json">Fenced JSON block</string>
-    <string name="exchange_framing_standalone_json">Standalone JSON</string>
-    <string name="exchange_generation_input_not_ready">The current layout could not be captured. Try again in a moment.</string>
-    <string name="exchange_generation_store_failure">Could not create the exchange session. Nothing was sent.</string>
-    <string name="exchange_generation_oversize">The layout is too large for an exchange request.</string>
-    <string name="exchange_failure_primary_input_oversize">The reply is too large. Trim the surrounding text and import it again.</string>
-    <string name="exchange_failure_primary_framing_missing">No importable proposal was found in the reply. Ask the AI app to resend the final proposal, then re-paste it.</string>
-    <string name="exchange_failure_primary_framing_ambiguous">The reply contains multiple proposals. Ask the AI app to resend only the final one, then re-paste it.</string>
-    <string name="exchange_failure_primary_framing_empty">The proposal was empty. Ask the AI app to resend the final proposal, then re-paste it.</string>
-    <string name="exchange_failure_primary_normalization_ambiguous">The reply contains multiple code blocks. Copy only the proposal\'s JSON and re-paste it.</string>
-    <string name="exchange_failure_primary_normalization_unrecognized">No importable format was found. Ask the AI app to resend the final proposal, then re-paste it.</string>
-    <string name="exchange_failure_primary_schema_mismatch">The reply could not be read as a proposal. Ask the AI app to resend it, then re-paste it.</string>
-    <string name="exchange_failure_primary_export_mismatch">This reply was not addressed to the current request. Recreate the request.</string>
-    <string name="exchange_failure_primary_session_expired">The request has expired. Recreate the request.</string>
-    <string name="exchange_failure_primary_context_stale">The request is out of date. Recreate the request.</string>
-    <string name="exchange_failure_primary_oversize">The proposal body is too large. Request a smaller proposal, then re-paste it.</string>
-    <string name="exchange_failure_primary_unknown_ref">The proposal references items that are not in the request. Ask the AI app to resend it, then re-paste it.</string>
-    <string name="exchange_failure_primary_duplicate_ref">The proposal contains duplicate items. Ask the AI app to resend it, then re-paste it.</string>
-    <string name="exchange_failure_primary_incomplete_coverage">The proposal lists some items more than once. Ask the AI app to resend it, then re-paste it.</string>
-    <string name="exchange_failure_primary_invalid_enum">The proposal contains unknown values. Ask the AI app to resend it, then re-paste it.</string>
-    <string name="exchange_failure_primary_forbidden_content">The proposal contains prohibited instructions. Ask the AI app to resend it, then re-paste it.</string>
-    <string name="exchange_failure_primary_mobility_contradiction">The proposal tries to move items that cannot move. Ask the AI app to resend it, then re-paste it.</string>
-    <string name="exchange_failure_primary_capability_unsupported">The proposal uses unsupported features. Ask the AI app to resend it, then re-paste it.</string>
-    <string name="exchange_failure_primary_scope_mismatch">This reply does not match the current request. Recreate the request.</string>
-    <string name="exchange_failure_primary_unknown_category_ref">A category the reply refers to is currently unavailable. Recreate the request.</string>
-    <string name="exchange_failure_input_oversize">The reply is too large. Remove the surrounding text and import again.</string>
-    <string name="exchange_failure_framing_missing">The reply has no marked intent block. Ask the AI to resend the final JSON in a single ```json code block, or paste the JSON by itself.</string>
-    <string name="exchange_failure_framing_ambiguous">The reply contains multiple marked blocks. Ask for a single final JSON.</string>
-    <string name="exchange_failure_framing_empty">The marked block is empty. Ask the AI to resend the final JSON in a single ```json code block.</string>
-    <string name="exchange_failure_normalization_ambiguous">The reply contains multiple code blocks. Copy the final JSON block only, then import again.</string>
-    <string name="exchange_failure_normalization_unrecognized">No importable format was found. Ask the AI to resend the final JSON in a single ```json code block, paste the JSON by itself, or use the older marker-line format.</string>
-    <string name="exchange_failure_schema_mismatch">The reply is not in the expected intent format.</string>
-    <string name="exchange_failure_export_mismatch">The reply answers an older request. Create a new request and ask again.</string>
-    <string name="exchange_failure_session_expired">The request has expired (24 hours). Create a new request.</string>
-    <string name="exchange_failure_context_stale">The home layout changed after the request was created. Create a new request.</string>
-    <string name="exchange_failure_oversize">The intent itself is too large.</string>
-    <string name="exchange_failure_unknown_ref">The intent references items that do not exist in the request.</string>
-    <string name="exchange_failure_duplicate_ref">The intent has duplicate item entries.</string>
-    <string name="exchange_failure_incomplete_coverage">The intent mentions at least one item more than once. Each item may appear at most once across \"itemIntents\" and \"unresolvedRefs\".</string>
-    <string name="exchange_failure_invalid_enum">The intent contains an unknown value.</string>
-    <string name="exchange_failure_forbidden_content">The intent contains forbidden instructions (coordinates, sizes, or database changes).</string>
-    <string name="exchange_failure_mobility_contradiction">The intent tries to move an immovable item.</string>
-    <string name="exchange_failure_capability_unsupported">The intent uses an unsupported capability.</string>
-    <string name="exchange_failure_scope_mismatch">The selected apps no longer match the request. Select the same apps, or create a new request.</string>
-    <!-- Issue #375 (spec SR-AC-01/02): the SCOPE_MISMATCH remedy is split by cause —
-         a set mismatch is fixable on the selection surface; an unresolvable or
-         projection-drifted candidate can only be answered by re-creating the request. -->
-    <string name="exchange_scope_set_mismatch">The selected apps differ from the request. Select the highlighted apps to match the request, and this proposal can continue.</string>
-    <string name="exchange_scope_unresolvable_mismatch">The request can no longer be matched by editing the selection. Create a new request.</string>
-    <!-- Issue #375 (spec SR-01): non-color-only diff highlighting on the candidate rows. -->
-    <string name="exchange_scope_diff_missing">Required by the request</string>
-    <string name="exchange_scope_diff_extra">Not in the request</string>
-    <!-- Issue #375 (spec "再開面CTAの有効化"): the rebind continuation — TO-BE T-18 vocabulary. -->
-    <string name="exchange_import_continue">Continue with this proposal</string>
-    <!-- Issue #375: rebind typed notices. -->
-    <string name="exchange_rebind_context_stale">This request is out of date. Create a new request.</string>
-    <string name="exchange_rebind_anchor_refused">This proposal is no longer available. Open it again from the home screen hub.</string>
-    <string name="exchange_rebind_start_failed">Could not continue with this proposal. Try again.</string>
-    <string name="exchange_failure_unknown_category_ref">The reply references a category that is no longer available. Create a new request and ask again.</string>
-    <string name="exchange_scoped_freeze_notice">The app selection is locked while the AI request is being created. Cancel the request to edit it again.</string>
-    <!-- Issue #417: the entry face is import-only, the method-choice face gates
-         foreign requests to recreation, and the run-owned cleanup/discard
-         failures are typed and retryable. -->
-    <string name="exchange_entry_import_only_notice">This request stays importable here. To create a new request for your frozen selection, start organizing and choose “Consult the AI”.</string>
-    <string name="exchange_generation_not_confirmed">The organize run is no longer holding the confirmed selection. Nothing was created.</string>
-    <string name="exchange_export_cleanup_failed">Could not discard the unused request. Nothing was sent. Try again.</string>
-    <string name="exchange_scope_discard_failed">Could not discard the request. Your selection stays locked. Try again.</string>
-    <string name="exchange_recreate_request_title">This reply belongs to a different request</string>
-    <string name="exchange_recreate_request_body">The reply you imported was not created from the selection confirmed in this organize run, so it cannot be used here. Create a new request for this selection.</string>
-    <string name="exchange_recreate_request_action">Create a new request</string>
-    <plurals name="exchange_scope_intent_count">
-        <item quantity="one">The AI proposal covers %1$d app that is not yet on your home. Select it to use the proposal.</item>
-        <item quantity="other">The AI proposal covers %1$d apps that are not yet on your home. Select them to use the proposal.</item>
-    </plurals>
-
-    <!-- Issue #328: the import success state and its typed guidance.
-         Issue #374: the CTA copy is the T-18 vocabulary (spec 328 rev.2 D-3),
-         the discard body reflects the durable (tombstone) semantics, and the
-         persistence-failure face covers the durable save's typed failure. -->
-    <string name="exchange_import_success_title">Proposal imported</string>
-    <string name="exchange_import_success_warning_title">Proposal imported (some items have no stated preference)</string>
-    <string name="exchange_import_not_applied">Nothing has been applied to your home screen yet.</string>
-    <string name="exchange_import_cta_idle">Continue with this proposal</string>
-    <string name="exchange_import_cta_run_in">Continue with this proposal and return to selection</string>
-    <string name="exchange_import_discard">Discard and close</string>
-    <string name="exchange_import_discard_confirm_title">Discard the import?</string>
-    <string name="exchange_import_discard_confirm_body">The imported proposal will be discarded. While the request stays valid, you can import the same reply again.</string>
-    <string name="exchange_import_discard_confirm_confirm">Discard</string>
-    <string name="exchange_import_discarded_guidance">The import was discarded. While the request stays valid, you can import the same reply again.</string>
-    <string name="exchange_import_persist_failed_title">Could not save the proposal</string>
-    <string name="exchange_import_persist_failed_body">The proposal has not been saved yet. Check your device\'s state and try saving again. If you close without saving, this proposal will be lost (while the request stays valid, you can import the same reply again).</string>
-    <string name="exchange_import_persist_retry">Try saving again</string>
-    <string name="exchange_import_discard_failed">Could not discard. Please try again.</string>
-    <!-- Issue #374 (DI-AC-01): the typed notice of a fail-closed ImportReview
-         open (expired / invalidated / absent) — no review face is invented. -->
-    <string name="exchange_import_review_unavailable">The imported proposal could not be opened. It expired or was invalidated.</string>
-    <string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
-    <string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
-    <!-- Issue #417: `exchange_start_frozen_import` was removed — a durable
-         active request no longer freezes the entry face's start row (AC-5). -->
-    <plurals name="exchange_import_summary_recognized">
-        <item quantity="one">%1$d wish was recognized from the proposal.</item>
-        <item quantity="other">%1$d wishes were recognized from the proposal.</item>
-    </plurals>
-    <plurals name="exchange_import_summary_no_judgment">
-        <item quantity="one">%1$d item has no stated preference; it will be organized without one.</item>
-        <item quantity="other">%1$d items have no stated preference; they will be organized without one.</item>
-    </plurals>
-    <plurals name="exchange_import_summary_scope_candidates">
-        <item quantity="one">%1$d app outside your home is covered by this request.</item>
-        <item quantity="other">%1$d apps outside your home are covered by this request.</item>
-    </plurals>
-    <plurals name="exchange_import_summary_priority">
-        <item quantity="one">Priority stated: %1$d item</item>
-        <item quantity="other">Priority stated: %1$d items</item>
-    </plurals>
-    <plurals name="exchange_import_summary_existing_category">
-        <item quantity="one">%1$d item refers to an existing category</item>
-        <item quantity="other">%1$d items refer to an existing category</item>
-    </plurals>
-    <plurals name="exchange_import_summary_proposed_group">
-        <item quantity="one">%1$d item proposes a new group for this run (not saved)</item>
-        <item quantity="other">%1$d items propose a new group for this run (not saved)</item>
-    </plurals>
-    <plurals name="exchange_import_summary_group">
-        <item quantity="one">Grouping wish: %1$d item</item>
-        <item quantity="other">Grouping wishes: %1$d items</item>
-    </plurals>
-    <plurals name="exchange_import_summary_placement">
-        <item quantity="one">Placement wish: %1$d item</item>
-        <item quantity="other">Placement wishes: %1$d items</item>
-    </plurals>
-    <plurals name="exchange_import_summary_keep">
-        <item quantity="one">Keep-position wish: %1$d item</item>
-        <item quantity="other">Keep-position wishes: %1$d items</item>
-    </plurals>
+    <string name="please_wait">Please wait…</string>
+<string name="icon_swipe_gestures">Icon swipe gestures</string>
+<string name="icon_swipe_gestures_description">Perform actions when swiping left or right on icons instead of moving the home screen</string>
+<string name="smartspace_icu_date_pattern_persian_wday_month_day_no_year" translatable="false">l، j F</string>
+<string name="smartspace_icu_date_pattern_persian_time" translatable="false">H:i</string>
+<string name="smartspace_icu_date_pattern_persian_time_12h" translatable="false">g:i a</string>
+<string name="smartspace_icu_date_pattern_persian_date" translatable="false">"j F، "</string>
+<string name="restore_nova_subgrid_warning">This backup uses Nova\'s subgrid positioning. Lawnchair does not support subgrids, so any items placed in a subgrid will be aligned to the nearest grid position.</string>
+<string name="restore_nova_smartspace_conflict_toggle">Add extra row to show At a Glance</string>
+<string name="backup_preview_partial_caption">The preview image may not show all saved pages.</string>
+<string name="backup_page_summary_title">Saved pages (%1$d)</string>
+<string name="backup_page_summary_entry">Page %1$d (items: %2$d, folders: %3$d, widgets: %4$d)</string>
+<string name="backup_page_summary_unavailable">Saved page details are not available.</string>
+<string name="dt2s_a11y_hint">To use Double-Tap to Sleep, turn on the Lawnchair accessibility service. Tap \"Open settings\", select \"Lawnchair\" and turn on \"Use Lawnchair.\"\n\nLawnchair uses Accessibility\'s `performGlobalAction` method to perform this action. This is a sensitive permission that allows monitoring other apps. However, Lawnchair is not configured for that functionality and receives no events.</string>
+<string name="dt2s_recents_warning_open_settings">Open settings</string>
+<string name="recents_a11y_hint">To use Open Recents screen, turn on the Lawnchair accessibility service. Tap \"Open settings\", select \"Lawnchair\" and turn on \"Use Lawnchair.\"\n\nLawnchair uses Accessibility\'s `performGlobalAction` method to perform this action. This is a sensitive permission that allows monitoring other apps. However, Lawnchair is not configured for that functionality and receives no events.</string>
+<string name="destination_policy_label">Where to place new apps</string>
+<string name="destination_policy_summary_upstream">Upstream default (first free cell)</string>
+<string name="destination_policy_summary_folder">Designated folder: %1$s</string>
+<string name="destination_policy_summary_folder_missing">Designated folder is gone — choose again</string>
+<string name="destination_policy_summary_dont_add">Don\u2019t add new apps</string>
+<string name="destination_policy_dialog_title">Where to place new apps</string>
+<string name="destination_policy_choice_upstream">Upstream default</string>
+<string name="destination_policy_choice_folder">Designated folder\u2026</string>
+<string name="destination_policy_choice_dont_add">Don\u2019t add new apps</string>
+<string name="destination_policy_folder_picker_title">Choose a folder</string>
+<string name="destination_policy_folder_stop">Stop designating (upstream default)</string>
+<string name="destination_policy_other_profile">(another profile)</string>
+<string name="destination_policy_notice_missing">The designated folder is gone; new apps were placed in the default spot</string>
+<string name="destination_policy_notice_profile">The designated folder is in another profile; new apps were placed in the default spot</string>
+<string name="destination_policy_notice_dock">The designated folder was moved to the dock; new apps were placed in the default spot</string>
+<string name="destination_policy_notice_constraint">The designated folder violated a placement constraint; new apps were placed in the default spot</string>
+<string name="destination_policy_notice_snapshot">The placement destination could not be confirmed; new apps were placed in the default spot</string>
+<string name="show_dot_pagination_label">Show dot pagination</string>
+<string name="show_dot_pagination_description">Use dots instead of lines to show page number</string>
+<string name="show_material_u_popup_label">Use new pop-up style</string>
+<string name="show_material_u_popup_description">Use Material You\'s bouncy and slightly consolidated pop-up style</string>
+<string name="organizer_lock_menu_title">Placement lock</string>
+<string name="homeedit_menu_move_to_page">Move to page\u2026</string>
+<string name="homeedit_menu_add_to_folder">Add to folder\u2026</string>
+<string name="homeedit_menu_remove_from_home">Remove from Home</string>
+<string name="homeedit_dialog_title_move_to_page">Destination page</string>
+<string name="homeedit_dialog_title_add_to_folder">Destination folder</string>
+<string name="homeedit_dialog_title_new_folder_page">Page for the new folder</string>
+<string name="homeedit_list_new_folder">New folder</string>
+<string name="homeedit_page_label">Page %1$d</string>
+<string name="homeedit_folder_entry">%1$s (%2$d items)</string>
+<string name="homeedit_folder_default_label">Folder</string>
+<string name="homeedit_lock_note_locked">This icon is placement-locked. The lock is kept when moved.</string>
+<string name="homeedit_lock_note_locked_remove">This icon is placement-locked. Removing it also removes the lock.</string>
+<string name="homeedit_error_stale">The layout changed meanwhile. Try again.</string>
+<string name="homeedit_error_item_gone">The icon is already gone.</string>
+<string name="homeedit_error_no_space">The selected page has no free space.</string>
+<string name="homeedit_error_redundant">The icon is already at that position.</string>
+<string name="homeedit_error_folder_gone">The folder is already gone.</string>
+<string name="homeedit_error_profile_mismatch">A work-profile icon cannot go into this folder.</string>
+<string name="homeedit_error_unsupported">This icon is not supported by the edit actions.</string>
+<string name="homeedit_error_write_failed">The write failed. The layout is unchanged.</string>
+<string name="homeedit_undo_label">Edit applied</string>
+<string name="homeedit_undo_error_stale">Can\u2019t undo: the icon has moved since.</string>
+<string name="homeedit_undo_error_no_space">Can\u2019t undo: no space at the original spot.</string>
+<string name="homeedit_undo_error_folder_changed">Can\u2019t undo: the created folder has changed.</string>
+<string name="homeedit_undo_error_item_unavailable">Can\u2019t undo: the app is no longer on this device.</string>
+<string name="homeedit_undo_error_write_failed">Couldn\u2019t undo. The layout is unchanged.</string>
+<string name="homeedit_undo_error_stale_revision">Can\u2019t undo: the home screen changed since.</string>
+<string name="homeedit_undo_error_not_restorable">Can\u2019t undo: the restore point is no longer available.</string>
+<string name="homeedit_undo_error_busy">Can\u2019t undo right now: an organization task is running.</string>
+<string name="homeedit_undo_error_restore_failed">Couldn\u2019t undo. You can restore from the organizer.</string>
+<string name="edit_surface_menu_open">Edit layout grid</string>
+<string name="home_screen_organize">Organize home screen</string>
+<string name="edit_surface_title">Edit layout grid</string>
+<string name="edit_surface_snapshot_notice">Showing the layout captured when this screen opened. Changes made elsewhere are not reflected.</string>
+<string name="edit_surface_selection_count">%1$d selected</string>
+<string name="edit_surface_action_move_to_page">Move to page\u2026</string>
+<string name="edit_surface_action_add_to_folder">Add to folder\u2026</string>
+<string name="edit_surface_action_create_folder">Create new folder</string>
+<string name="edit_surface_action_remove">Remove from Home</string>
+<string name="edit_surface_confirm">Apply</string>
+<string name="edit_surface_reset">Reset</string>
+<string name="edit_surface_cancel">Cancel</string>
+<string name="edit_surface_error_capture_unavailable">The layout is not ready yet. Try again.</string>
+<string name="edit_surface_error_empty_session">No changes to apply.</string>
+<string name="edit_surface_error_lock_unknown">Some items have an unverifiable lock state, so changes cannot be applied.</string>
+<string name="edit_surface_error_stale_reopen">The layout changed meanwhile. Reopening with the latest layout.</string>
+<string name="edit_surface_error_busy">Another layout operation is in progress. Try again shortly.</string>
+<string name="edit_surface_error_blocked">Recovery points are full. Try again shortly.</string>
+<string name="edit_surface_error_no_changes">The changes were not applied.</string>
+<string name="edit_surface_error_unchanged">Applying failed. The layout is unchanged.</string>
+<string name="edit_surface_error_unresolved">The apply outcome is unclear. Use the restore entry to recover.</string>
+<string name="edit_surface_error_generic">The changes could not be applied.</string>
+<string name="edit_surface_no_folder_available">No folder is available for the selected items.</string>
+<string name="edit_surface_widget_label">Widget</string>
+<string name="edit_surface_a11y_selected">selected</string>
+<string name="edit_surface_a11y_not_selectable">not selectable</string>
+<string name="edit_surface_a11y_locked">placement locked</string>
+<string name="edit_surface_a11y_lock_unknown">lock state unavailable</string>
+<string name="edit_surface_a11y_widget">widget</string>
+<string name="edit_surface_a11y_folder">folder, %1$d items</string>
+<string name="edit_surface_a11y_reserved">reserved area</string>
+<string name="edit_surface_a11y_dock">dock</string>
+<string name="edit_surface_a11y_page">Page %1$d</string>
+<string name="edit_surface_duplicate_summary">Duplicate icons: %1$d groups</string>
+<string name="edit_surface_duplicate_dialog_title">Duplicate icons</string>
+<string name="edit_surface_duplicate_guard_last">Keep at least one icon in each duplicate group.</string>
+<string name="edit_surface_duplicate_no_selectable">No removable icon in this group.</string>
+<string name="edit_surface_duplicate_handled">Handled in this session</string>
+<string name="edit_surface_duplicate_workspace_position">Page %1$d, row %2$d, column %3$d</string>
+<string name="edit_surface_duplicate_in_folder">In folder \'%1$s\'</string>
+<string name="edit_surface_duplicate_on_dock">On the dock</string>
+<string name="organizer_lock_state_locked">Locked</string>
+<string name="organizer_lock_state_unlocked">Unlocked</string>
+<string name="organizer_lock_state_unknown">Needs review</string>
+<string name="organizer_lock_dialog_title_lock">Lock this placement?</string>
+<string name="organizer_lock_dialog_title_unlock">Unlock this placement?</string>
+<string name="organizer_lock_dialog_title_review">Review this placement</string>
+<string name="organizer_lock_dialog_current_state">Current state: %1$s</string>
+<string name="organizer_lock_dialog_target_title">Target: %1$s</string>
+<string name="organizer_lock_dialog_target_position">Position: row %1$d, column %2$d</string>
+<string name="organizer_lock_dialog_target_folder">Folder: %1$s</string>
+<string name="organizer_lock_dialog_target_app_pair">App pair: %1$s</string>
+<string name="organizer_lock_dialog_split_top_left">Member: top or left</string>
+<string name="organizer_lock_dialog_split_bottom_right">Member: bottom or right</string>
+<string name="organizer_lock_dialog_review_intro">The lock state of this placement is unknown, for example after an update, a grid change, or restoring a backup. Choose whether it should stay where it is.</string>
+<string name="organizer_lock_action_lock">Lock</string>
+<string name="organizer_lock_action_unlock">Unlock</string>
+<string name="organizer_lock_action_keep_locked">Keep locked</string>
+<string name="organizer_lock_action_mark_unlocked">Mark unlocked</string>
+<string name="organizer_lock_effect_own_placement">Locking keeps this item where it is; organization will not move it.</string>
+<string name="organizer_lock_effect_widget_region">Locking keeps this widget\'s cell, size, and the whole area it occupies.</string>
+<string name="organizer_lock_effect_dock_slot">Locking keeps this item in its Dock slot.</string>
+<string name="organizer_lock_effect_folder_scope">A locked folder keeps its position on the home screen.</string>
+<string name="organizer_lock_effect_folder_child_scope">A locked item keeps its position inside the folder.</string>
+<string name="organizer_lock_effect_app_pair_scope">A locked pair keeps its position on the home screen.</string>
+<string name="organizer_lock_effect_app_pair_member_scope">A locked app keeps its place in the pair.</string>
+<string name="organizer_lock_effect_folder_parent_covers_children">Locking this folder also keeps every item inside it in place.</string>
+<string name="organizer_lock_effect_folder_children_own_lock_remains">Items inside that are locked on their own stay locked.</string>
+<string name="organizer_lock_effect_folder_child_own_lock_binds">Locking this item keeps its position inside the folder, even while the folder itself is unlocked.</string>
+<string name="organizer_lock_effect_folder_child_unlock_ineffective">The folder is locked, so unlocking this item has no effect until the folder is unlocked.</string>
+<string name="organizer_lock_effect_app_pair_parent_covers_members">Locking this pair keeps both apps and their split placement together.</string>
+<string name="organizer_lock_effect_app_pair_member_unlock_ineffective">The pair is locked, so unlocking this app has no effect until the pair is unlocked.</string>
+<string name="organizer_lock_effect_app_pair_member_own_lock_binds">Locking this app keeps its place in the pair, even while the pair itself is unlocked.</string>
+<string name="organizer_lock_kind_app">App</string>
+<string name="organizer_lock_kind_shortcut">Shortcut</string>
+<string name="organizer_lock_kind_folder">Folder</string>
+<string name="organizer_lock_kind_widget">Widget</string>
+<string name="organizer_lock_kind_app_pair">App pair</string>
+<string name="organizer_lock_kind_unknown">Item</string>
+<string name="organizer_lock_result_locked">Placement locked.</string>
+<string name="organizer_lock_result_unlocked">Placement unlocked.</string>
+<string name="organizer_lock_result_no_change">This placement is already in that state.</string>
+<string name="organizer_lock_error_failed">The change failed. Nothing was modified.</string>
+<string name="organizer_lock_error_stale">This item or the layout changed. Nothing was modified — try again.</string>
+<string name="organizer_lock_error_busy">Another layout change is in progress. Try again in a moment.</string>
+<string name="organizer_lock_error_item_not_found">This item no longer exists. Nothing was modified.</string>
+<string name="organizer_lock_error_item_not_unknown">This item was already reviewed. Nothing was modified.</string>
+<string name="organizer_lock_error_profile_unavailable">The profile for this item is currently unavailable. Nothing was modified.</string>
+<string name="organizer_lock_error_unsupported">This item cannot be locked.</string>
+<string name="organizer_lock_error_intent_required">Confirm the change to apply it.</string>
+<string name="organizer_lock_screen_title">Placement locks</string>
+<string name="organizer_lock_screen_summary">Review and change which placements organization must keep.</string>
+<string name="organizer_lock_screen_known_heading">All placements</string>
+<string name="organizer_lock_screen_profile_work">Work profile</string>
+<string name="organizer_lock_screen_profile_cloned">Cloned profile</string>
+<string name="organizer_lock_screen_profile_private">Private space</string>
+<string name="organizer_lock_screen_profile_other">Other profile</string>
+<string name="organizer_lock_screen_unknown_banner">%1$d placements need review before organizing.</string>
+<string name="organizer_lock_screen_unknown_banner_none">No placements need review.</string>
+<string name="organizer_lock_screen_review_all_keep_locked">Review all as locked</string>
+<string name="organizer_lock_screen_review_all_mark_unlocked">Review all as unlocked</string>
+<string name="organizer_lock_screen_review_all_confirm">Review %1$d placements as %2$s? This applies to the listed placements only.</string>
+<string name="organizer_lock_screen_effectively_locked">Protected by a locked parent</string>
+<string name="organizer_lock_screen_placement_desktop">Home screen %1$d</string>
+<string name="organizer_lock_screen_placement_dock">Dock %1$d</string>
+<string name="organizer_lock_screen_placement_folder">Inside a folder, position %1$d</string>
+<string name="organizer_lock_screen_placement_app_pair">In an app pair</string>
+<string name="organizer_lock_screen_item_state_description">%1$s, %2$s</string>
+<string name="organizer_lock_screen_placement_summary_double">%1$s · %2$s</string>
+<string name="organizer_lock_screen_placement_summary_triple">%1$s · %2$s · %3$s</string>
+<string name="organizer_diagnostics_title">Organizer diagnostics</string>
+<string name="organizer_diagnostics_description">Export the privacy-safe organizer diagnostics journal to a file for support.</string>
+<string name="organizer_diagnostics_recent_import_failure">Recent import failure</string>
+<string name="organizer_diagnostics_export_label">Export organizer diagnostics</string>
+<string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
+<string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
+<string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
+<string name="organizer_hub_title">Organizer</string>
+<string name="organizer_hub_summary">Organizing status, starting a review, and materials in one place.</string>
+<string name="organizer_hub_label">Organizer</string>
+<string name="organizer_hub_materials_heading">Organizing materials</string>
+<string name="organizer_hub_request_open">View request</string>
+<string name="organizer_hub_proposal_row">You have an imported proposal</string>
+<string name="organizer_hub_proposal_open">View proposal</string>
+<string name="organizer_personalization_recording_label">Record app launches for organizing</string>
+<string name="organizer_personalization_recording_description">Keeps a local counter of launches started from this launcher to improve organizing quality. Stored on this device only and never exported. Turning this off stops recording and erases the existing records.</string>
+<string name="organizer_personalization_usage_access_label">Usage access permission</string>
+<string name="organizer_personalization_usage_access_granted">Granted — coarse usage hints (raw history never leaves this device, and an AI consult that includes them still confirms before sending) improve organizing quality, and this row is where you manage or revoke them while organizing works fully regardless.</string>
+<string name="organizer_personalization_usage_access_not_granted">Not granted — organizing asks when it first needs usage hints that improve placement quality (raw history never leaves this device, and an AI consult that includes them still confirms before sending), and this row manages the permission while organizing works fully without it.</string>
+<string name="organizer_usage_access_jit_title">Use app usage to organize smarter?</string>
+<string name="organizer_usage_access_jit_body">Asking now because organizing is about to read app usage: with your permission, coarse usage hints — raw usage history never leaves this device — improve placement quality, and an AI consult that includes them still confirms before sending; skipping is fine and organizing works fully without it.</string>
+<string name="organizer_usage_access_jit_open_settings">Open settings</string>
+<string name="organizer_usage_access_jit_continue">Skip for now</string>
+<string name="organizer_usage_access_jit_settings_unavailable">Couldn\'t open the system usage access settings. You can keep going without granting.</string>
+<string name="manual_organization_title">Organize home layout</string>
+<string name="manual_organization_explainer">Review proposed changes before anything is applied. Your current layout is never changed automatically.</string>
+<string name="manual_organization_strategy_section">Organization strategy</string>
+<string name="organizer_strategy_title">Organization strategy</string>
+<string name="organizer_strategy_summary">Choose how your home layout is organized.</string>
+<string name="organizer_strategy_frozen_operation_active">An organize operation is in progress. Interrupt it before changing the strategy.</string>
+<string name="organizer_strategy_retry_when_busy">Another organizer change is in progress. Try again after it finishes.</string>
+<string name="organization_strategy_canonical_name">Standard compaction</string>
+<string name="organization_strategy_canonical_description">Fills each screen from the top-left.</string>
+<string name="organization_strategy_tidy_name">Tidy each screen (widgets stay in place)</string>
+<string name="organization_strategy_tidy_description">Closes gaps on each screen without moving apps to other screens. Widgets stay in place.</string>
+<string name="organization_strategy_tidy_v2_name">Tidy each screen</string>
+<string name="organization_strategy_tidy_v2_description">Closes gaps on each screen without moving apps to other screens. Widgets are tidied within their screen as well.</string>
+<string name="organization_strategy_bottom_first_name">Bottom-first fill</string>
+<string name="organization_strategy_bottom_first_description">Places apps row by row from the bottom of each screen. Widgets stay in place.</string>
+<string name="organization_strategy_bottom_first_v2_name">Bottom-first fill, widgets included</string>
+<string name="organization_strategy_bottom_first_v2_description">Places apps toward the bottom of each screen and moves widgets above the apps.</string>
+<string name="organization_strategy_bottom_region_name">Bottom-half layout</string>
+<string name="organization_strategy_bottom_region_description">Uses the lower half of each screen as the main area and keeps the top open, adding screens when needed. Widgets stay in place.</string>
+<string name="organization_strategy_global_name">Compact across screens (apps only)</string>
+<string name="organization_strategy_global_description">Moves apps from later screens into earlier free spaces. Existing folders stay where they are.</string>
+<string name="organization_strategy_global_v2_name">Compact across screens</string>
+<string name="organization_strategy_global_v2_description">Moves apps and folders from later screens into earlier free spaces.</string>
+<string name="organization_strategy_category_contiguous_name">Group by category</string>
+<string name="organization_strategy_category_contiguous_description">Keeps apps of the same category next to each other on each screen.</string>
+<string name="organization_strategy_unknown_name">Custom strategy</string>
+<string name="organization_strategy_unknown_description">A strategy provided by this build.</string>
+<string name="manual_organization_preview_strategy">Strategy: %1$s</string>
+<string name="manual_organization_cross_page_moved_count">Moved across screens: %1$d</string>
+<string name="manual_organization_preserved_by_strategy_count">Kept in place by the strategy: %1$d</string>
+<string name="manual_organization_start">Start organizing</string>
+<string name="manual_organization_method_title">How should the plan be made?</string>
+<string name="manual_organization_method_plain">Organize as-is</string>
+<string name="exchange_ai_consultation_toggle_label">AI consultation</string>
+<string name="exchange_ai_consultation_toggle_description">Experimental. Off by default. When off, organizing runs without the AI option, and any active request or imported proposal stays available from the organizer hub until it expires.</string>
+<string name="manual_organization_start_again">Start a new review</string>
+<string name="manual_organization_retry">Try again</string>
+<string name="manual_organization_capturing">Reading the current home layout…</string>
+<string name="manual_organization_planning">Preparing a safe organization proposal…</string>
+<string name="manual_organization_input_not_ready_yet">The launcher is still starting up. Wait a moment, then try again.</string>
+<string name="manual_organization_input_unavailable_bug">Required organization information is unavailable. Nothing was changed. If this keeps happening, please report a bug.</string>
+<string name="manual_organization_rejected">This layout cannot be organized safely. Nothing was changed.</string>
+<string name="manual_organization_impossible">This layout cannot be organized with the current available space. Nothing was changed.</string>
+<string name="manual_organization_no_changes">No changes are needed. Nothing was changed.</string>
+<string name="manual_organization_preview">Review the proposed organization</string>
+<string name="manual_organization_moved_count">%1$d placements will move</string>
+<string name="manual_organization_widget_moved_count">Moved as a widget: %1$d</string>
+<string name="manual_organization_preserved_count">%1$d placements will be preserved</string>
+<string name="manual_organization_new_folders_count">%1$d new folders will be created</string>
+<string name="manual_organization_new_pages_count">%1$d new home screen pages will be created</string>
+<string name="manual_organization_confirm">Apply reviewed organization</string>
+<string name="manual_organization_cancel">Cancel</string>
+<string name="manual_organization_cancel_before_checkpoint">Stop before applying</string>
+<string name="manual_organization_applying">Applying the reviewed organization. This step cannot be interrupted safely.</string>
+<string name="manual_organization_stale_outcome">This proposal was not applied. This attempt did not change your current home layout.</string>
+<string name="manual_organization_stale_proposal_discarded">The reviewed proposal could no longer be applied safely, so it was discarded.</string>
+<string name="manual_organization_stale_proposal_not_reviewed">The home layout changed while the proposal was being prepared, so it was discarded before you could review it.</string>
+<string name="manual_organization_recapture">Capture and review again</string>
+<string name="manual_organization_recapture_summary">Captures your current home layout and prepares a new proposal to review.</string>
+<string name="manual_organization_apply_success">Organization was applied and verified.</string>
+<string name="manual_organization_apply_rejected">Organization was not applied.</string>
+<string name="manual_organization_apply_rolled_back">The attempted organization was rolled back. Your saved layout remains in place.</string>
+<string name="manual_organization_apply_recovered">The attempted organization could not finish. Your saved layout was restored.</string>
+<string name="manual_organization_apply_unresolved">The current layout could not be verified. Do not make another organization change yet.</string>
+<string name="manual_organization_apply_recovery_failed">Automatic recovery could not be verified. Do not make another organization change yet.</string>
+<string name="manual_organization_safe_terminal">The current layout needs a safety review. Do not start another organization run yet.</string>
+<string name="manual_organization_open_diagnostics">Open organizer diagnostics</string>
+<string name="manual_organization_open_diagnostics_summary">Export privacy-safe details for support before making another change.</string>
+<string name="manual_organization_apply_concurrent">Another layout operation is in progress. Try again later.</string>
+<string name="manual_organization_recovery">Restore saved layout</string>
+<string name="manual_organization_recovery_inspecting">Checking whether the saved layout can be restored safely…</string>
+<string name="manual_organization_recovery_preview">The saved layout — this returns your home layout to the state before the organization you reviewed on this screen. Confirmation is required to proceed.</string>
+<string name="manual_organization_recovery_history_prefix">Changes made by the last organization: %1$s</string>
+<string name="manual_organization_recovery_confirm">Restore saved layout</string>
+<string name="manual_organization_recovering">Restoring the saved layout…</string>
+<string name="manual_organization_recovery_restored">The saved layout was restored.</string>
+<string name="manual_organization_recovery_not_available">This saved layout can no longer be restored safely.</string>
+<string name="manual_organization_recovery_failed">The saved layout could not be restored safely.</string>
+<string name="manual_organization_durable_status_restorable">Home layout is organized. Its saved pre-organization backup is restorable.</string>
+<string name="manual_organization_durable_status_restored_or_expired">The saved pre-organization backup is no longer restorable (restored or expired).</string>
+<string name="manual_organization_durable_status_unresolved">An organizer change did not finish safely.</string>
+<string name="manual_organization_durable_status_checking">Checking for a saved organizer state…</string>
+<string name="manual_organization_recovery_remaining_under_one_hour">Restorable for less than an hour.</string>
+<string name="manual_organization_scope">Full layout scope: %1$d targets across %2$d profiles and %3$d pages.</string>
+<string name="manual_organization_device_scope">Device profile: %1$d columns × %2$d rows, %3$d Dock slots.</string>
+<string name="manual_organization_moved_single_placement">Moved as a single placement: %1$d</string>
+<string name="manual_organization_moved_folder_member">Moved as a folder member: %1$d</string>
+<string name="manual_organization_moved_folder_unit">Moved as a folder unit: %1$d</string>
+<string name="manual_organization_moved_widget_unit">Moved as a widget: %1$d</string>
+<string name="manual_organization_preserved_locked">Preserved locked placements: %1$d</string>
+<string name="manual_organization_preserved_reserved_region">Preserved placements in the reserved search area: %1$d</string>
+<string name="manual_organization_preserved_unavailable">Preserved unavailable placements: %1$d</string>
+<string name="manual_organization_preserved_dock">Preserved Dock placements: %1$d</string>
+<string name="manual_organization_preserved_widget">Preserved widgets: %1$d</string>
+<string name="manual_organization_preserved_app_pair">Preserved app pairs: %1$d</string>
+<string name="manual_organization_preserved_legacy_shortcut">Preserved legacy shortcuts: %1$d</string>
+<string name="manual_organization_preserved_non_target">Preserved out-of-scope placements: %1$d</string>
+<string name="manual_organization_preserved_strategy">Preserved by the selected strategy: %1$d</string>
+<string name="manual_organization_preserved_structural">Preserved structural members: %1$d</string>
+<string name="manual_organization_preserved_duplicate_launch_target">Kept as duplicates of another icon: %1$d</string>
+<string name="manual_organization_preserved_already_canonical">Already-canonical placements: %1$d</string>
+<string name="manual_organization_unplaced_grid">Unplaced because the item exceeds grid dimensions: %1$d</string>
+<string name="manual_organization_unplaced_target">Unplaced because the target is unavailable: %1$d</string>
+<string name="manual_organization_unplaced_strategy_scope">Unplaced because the selected strategy keeps the current pages and folders: %1$d</string>
+<string name="manual_organization_selection_stale">The Home layout changed since these apps were selected. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
+<string name="manual_organization_candidate_unresolved">A selected app can no longer be added. Nothing was changed — start again to re-check the apps that are not on the Home screen.</string>
+<string name="manual_organization_warning_legacy_shortcut">Legacy shortcuts require review: %1$d</string>
+<string name="manual_organization_warning_fallback_category">Fallback category used: %1$d</string>
+<string name="manual_organization_warning_unavailable">Unavailable placements were preserved: %1$d</string>
+<string name="manual_organization_warning_duplicate_launch_target">Duplicates of another icon were kept in place: %1$d</string>
+<string name="manual_organization_rejection_unknown_item_kind">Unsupported item type: %1$d</string>
+<string name="manual_organization_rejection_invalid_container">Invalid container: %1$d</string>
+<string name="manual_organization_rejection_unknown_page">Unknown page reference: %1$d</string>
+<string name="manual_organization_rejection_bounds">Out-of-bounds placement: %1$d</string>
+<string name="manual_organization_rejection_overlap">Overlapping placement: %1$d</string>
+<string name="manual_organization_rejection_dangling_reference">Broken reference: %1$d</string>
+<string name="manual_organization_rejection_malformed_app_pair">Malformed app pair: %1$d</string>
+<string name="manual_organization_rejection_locked_out_of_bounds">Locked item out of bounds: %1$d</string>
+<string name="manual_organization_rejection_duplicate_target">Duplicate target: %1$d</string>
+<string name="manual_organization_rejection_missing_target">Missing target: %1$d</string>
+<string name="manual_organization_rejection_incomplete_target_partition">Incomplete target set: %1$d</string>
+<string name="manual_organization_rejection_additions">Unexpected additions in full organization: %1$d</string>
+<string name="manual_organization_rejection_invalid_rules">Invalid rules: %1$d</string>
+<string name="manual_organization_rejection_duplicate_item">Duplicate item ID: %1$d</string>
+<string name="manual_organization_rejection_duplicate_page">Duplicate page: %1$d</string>
+<string name="manual_organization_rejection_invalid_dimensions">Invalid device dimensions: %1$d</string>
+<string name="manual_organization_rejection_kind_target_mismatch">Item/target mismatch: %1$d</string>
+<string name="manual_organization_rejection_target_profile_mismatch">Target profile mismatch: %1$d</string>
+<string name="manual_organization_rejection_unknown_signal_item">Unknown signal item: %1$d</string>
+<string name="manual_organization_rejection_unknown_category">Unknown category: %1$d</string>
+<string name="manual_organization_rejection_invalid_category_provenance">Category source not allowed: %1$d</string>
+<string name="manual_organization_available_constraint">Available placements: %1$d</string>
+<string name="manual_organization_disabled_constraint">Disabled-profile placements: %1$d</string>
+<string name="manual_organization_quiet_constraint">Quiet-profile placements: %1$d</string>
+<string name="manual_organization_private_space_constraint">Private-space placements: %1$d</string>
+<string name="manual_organization_unavailable_item_constraint">Unavailable placements: %1$d</string>
+<string name="manual_organization_locked_constraint">Lock constraint preserved: %1$d</string>
+<string name="manual_organization_unavailable_constraint">Unavailable/profile-constrained placements: %1$d</string>
+<string name="manual_organization_widget_constraint">Widget constraints preserved: %1$d</string>
+<string name="manual_organization_app_pair_constraint">App-pair constraints preserved: %1$d</string>
+<string name="manual_organization_legacy_shortcut_constraint">Legacy shortcut constraints preserved: %1$d</string>
+<string name="manual_organization_empty_folder_constraint">Empty folders preserved: %1$d</string>
+<string name="manual_organization_preview_details_unavailable">A detailed change list could not be prepared this time. Review the summary counts before applying.</string>
+<string name="manual_organization_detecting_missing_apps">Checking for apps that are not on the Home screen…</string>
+<string name="manual_organization_preamble_scope">This review covers your whole home layout. Nothing is applied before you confirm the proposal.</string>
+<string name="manual_organization_preparation">Preparing the organization</string>
+<string name="manual_organization_interrupt">Stop</string>
+<string name="manual_organization_failed">Could not run the organization</string>
+<string name="manual_organization_discard_confirm_title">Discard this work?</string>
+<string name="manual_organization_discard_confirm_text">Your selections and the proposal will be discarded. Nothing has been applied to your home layout.</string>
+<string name="manual_organization_discard">Discard</string>
+<string name="manual_organization_missing_apps_title">Select apps to organize</string>
+<string name="manual_organization_missing_apps_search_hint">Search apps</string>
+<string name="manual_organization_missing_apps_select_all">Select all</string>
+<string name="manual_organization_missing_apps_clear_all">Clear all</string>
+<string name="manual_organization_missing_apps_continue">Continue</string>
+<string name="manual_organization_missing_apps_empty_continue">Continuing with nothing selected. Your home will be organized without adding unplaced apps.</string>
+<string name="manual_organization_missing_apps_state_checked">Selected</string>
+<string name="manual_organization_missing_apps_state_unchecked">Not selected</string>
+<string name="manual_organization_preview_unavailable_add">The detailed change list for this proposal, which adds new apps, could not be prepared. Nothing has been changed. New apps are only added after the full list is reviewed.</string>
+<string name="manual_organization_preview_retry">Retry preview</string>
+<string name="manual_organization_added_count">Apps to add: %1$d</string>
+<string name="manual_organization_changes_heading">Proposed changes</string>
+<string name="manual_organization_group_moved">Move (%1$d)</string>
+<string name="manual_organization_group_added">Add (%1$d)</string>
+<string name="manual_organization_preview_add_descriptor">%1$s (%2$s)</string>
+<string name="manual_organization_preview_add_row">Add %1$s → %2$s</string>
+<string name="manual_organization_group_new_folders">New folders (%1$d)</string>
+<string name="manual_organization_group_new_pages">New pages (%1$d)</string>
+<string name="manual_organization_group_preserved">Preserve (%1$d)</string>
+<string name="manual_organization_group_warnings">Warnings (%1$d)</string>
+<string name="manual_organization_preview_show_all">Show all %1$d items</string>
+<string name="manual_organization_preview_show_fewer">Show only the first %1$d items</string>
+<string name="manual_organization_preview_expanded_state">Expanded</string>
+<string name="manual_organization_preview_collapsed_state">Collapsed</string>
+<string name="manual_organization_preview_move_row">%1$s → %2$s (%3$s)</string>
+<string name="manual_organization_preview_same_band_move_row">%1$s → position adjusted within %2$s%3$s</string>
+<string name="manual_organization_preview_workspace_destination">%1$s, %2$s, row %3$d, column %4$d</string>
+<string name="manual_organization_preview_row_ordinal_note"> (from row %1$d to row %2$d)</string>
+<string name="manual_organization_preview_item_row">%1$s: %2$s</string>
+<string name="manual_organization_preview_item_descriptor">“%1$s” (%2$s) — %3$s</string>
+<string name="manual_organization_preview_item_descriptor_without_kind">“%1$s” — %2$s</string>
+<string name="manual_organization_preview_position_unidentified">unsupported placement %1$d</string>
+<string name="manual_organization_preview_position_with_supplement">%1$s (%2$s)</string>
+<string name="manual_organization_preview_supplement_cell">row %1$d, column %2$d, %3$s</string>
+<string name="manual_organization_preview_supplement_parent_with_stage">%1$s, %2$s</string>
+<string name="manual_organization_preview_supplement_stage_top">upper half</string>
+<string name="manual_organization_preview_supplement_stage_bottom">lower half</string>
+<string name="manual_organization_preview_move_reason_single_placement">moves as a single placement</string>
+<string name="manual_organization_preview_move_reason_folder_member">moves as a folder member</string>
+<string name="manual_organization_preview_move_reason_folder_unit">moves as a folder unit</string>
+<string name="manual_organization_preview_move_reason_widget_unit">moves as a widget</string>
+<string name="manual_organization_preview_move_reason_unspecified">moves</string>
+<string name="manual_organization_preview_preserved_reason_locked">kept because it is locked</string>
+<string name="manual_organization_preview_preserved_reason_reserved_region">kept for the reserved search area</string>
+<string name="manual_organization_preview_preserved_reason_unavailable">kept because it is unavailable</string>
+<string name="manual_organization_preview_preserved_reason_dock">kept in the Dock</string>
+<string name="manual_organization_preview_preserved_reason_widget">kept because it is a widget</string>
+<string name="manual_organization_preview_preserved_reason_app_pair">kept because it is an app pair</string>
+<string name="manual_organization_preview_preserved_reason_legacy_shortcut">kept because it is a legacy shortcut</string>
+<string name="manual_organization_preview_preserved_reason_non_target">kept because it is out of scope</string>
+<string name="manual_organization_preview_preserved_reason_structural">kept as a structural member</string>
+<string name="manual_organization_preview_preserved_reason_strategy">kept by the selected organization strategy</string>
+<string name="manual_organization_preview_preserved_reason_already_canonical">already in its canonical place</string>
+<string name="manual_organization_preview_preserved_reason_duplicate_launch_target">kept in place as a duplicate of another icon</string>
+<string name="manual_organization_preview_warning_legacy_shortcut_item">legacy shortcut needs review</string>
+<string name="manual_organization_preview_warning_fallback_category_item">fallback category was used</string>
+<string name="manual_organization_preview_warning_unavailable_item">kept as it is currently unavailable</string>
+<string name="manual_organization_preview_warning_duplicate_launch_target_item">kept in place as a duplicate of another icon</string>
+<string name="manual_organization_preview_page">page %1$d</string>
+<string name="manual_organization_preview_new_page_position">new page (position %1$d)</string>
+<string name="manual_organization_preview_position_workspace">%2$s, %1$s</string>
+<string name="manual_organization_preview_region_top_left">top left</string>
+<string name="manual_organization_preview_region_top_center">top center</string>
+<string name="manual_organization_preview_region_top_right">top right</string>
+<string name="manual_organization_preview_region_middle_left">middle left</string>
+<string name="manual_organization_preview_region_middle_center">middle center</string>
+<string name="manual_organization_preview_region_middle_right">middle right</string>
+<string name="manual_organization_preview_region_bottom_left">bottom left</string>
+<string name="manual_organization_preview_region_bottom_center">bottom center</string>
+<string name="manual_organization_preview_region_bottom_right">bottom right</string>
+<string name="manual_organization_preview_position_dock">Dock slot %1$d</string>
+<string name="manual_organization_preview_position_folder_existing">folder “%1$s”, position %2$d</string>
+<string name="manual_organization_preview_position_folder_planned">new folder “%1$s”, position %2$d</string>
+<string name="manual_organization_preview_position_app_pair">app pair “%1$s”</string>
+<string name="manual_organization_preview_kind_application">App</string>
+<string name="manual_organization_preview_kind_deep_shortcut">Shortcut</string>
+<string name="manual_organization_preview_kind_shortcut_legacy">Legacy shortcut</string>
+<string name="manual_organization_preview_kind_folder">Folder</string>
+<string name="manual_organization_preview_kind_app_widget">Widget</string>
+<string name="manual_organization_preview_kind_custom_app_widget">Custom widget</string>
+<string name="manual_organization_preview_kind_app_pair">App pair</string>
+<string name="manual_organization_preview_kind_unknown">Item</string>
+<string name="manual_organization_preview_new_folder_row">Create new folder “%1$s” at %2$s (members: %3$s)</string>
+<string name="organizer_generated_folder_fallback_name">Folder</string>
+<string name="manual_organization_preview_new_page_row">Add a new page at position %1$d</string>
+<string name="manual_organization_diagram_before">Before</string>
+<string name="manual_organization_diagram_after">After</string>
+<string name="manual_organization_diagram_page">Page %1$d</string>
+<string name="manual_organization_diagram_new_page">New page</string>
+<string name="manual_organization_diagram_dock">Dock</string>
+<string name="manual_organization_diagram_widget">Widget</string>
+<string name="manual_organization_diagram_item_a11y">%1$s, %2$s, %3$s</string>
+<string name="manual_organization_exclude_action">Exclude</string>
+<string name="manual_organization_include_action">Put back</string>
+<string name="manual_organization_excluded_heading">Excluded from this proposal: %1$d</string>
+<string name="manual_organization_excluded_unknown_item">Item</string>
+<string name="manual_organization_exclusion_blocked_kind">not excludable: this item type is never an exclusion target</string>
+<string name="manual_organization_exclusion_blocked_placement">not excludable: dock, folder, and app-pair placements are not exclusion targets</string>
+<string name="manual_organization_exclusion_blocked_preserved">not excludable: a stronger preservation rule keeps this placement</string>
+<string name="manual_organization_exclusion_blocked_structural">not excludable: replanning decides this row automatically</string>
+<string name="manual_organization_exclusion_state_included">In the proposal</string>
+<string name="manual_organization_exclusion_state_excluded">Excluded</string>
+<string name="manual_organization_unplaced_candidates_heading">Not placed by this proposal: %1$d</string>
+<string name="manual_organization_unplaced_candidate_a11y">%1$s (%2$s), not placed by this proposal</string>
+<string name="manual_organization_replanning">Replanning the proposal</string>
+<string name="manual_organization_replanning_summary">Preparing a new proposal with your exclusions. The diagrams and list below still show the previous proposal.</string>
+<string name="organization_onboarding_proposal_title">Organize your Home screen?</string>
+<string name="organization_onboarding_proposal_summary">Review a proposed organization first. Nothing changes until you confirm the preview.</string>
+<string name="organization_onboarding_proposal_defer">Later</string>
+<string name="organization_onboarding_proposal_skip">Skip</string>
+<string name="organization_onboarding_proposal_review">Review organization</string>
+<string name="organization_onboarding_reentry_hint_title">You can organize anytime</string>
+<string name="organization_onboarding_reentry_hint_body">Long-press the Home screen → %1$s → %2$s → %3$s.</string>
+<string name="exchange_entry_subtitle">Create a request for an external AI (such as ChatGPT) and import its proposal as a reviewable plan.</string>
+<string name="exchange_method_consult">Consult the AI</string>
+<string name="exchange_capability_title">What the AI can do</string>
+<string name="exchange_capability_example_frequent">Put the apps you use most first</string>
+<string name="exchange_capability_example_group">Group related apps together</string>
+<string name="exchange_capability_example_keep">Keep the apps you don\'t want moved where they are</string>
+<string name="exchange_capability_example_front">Move important apps toward the first page</string>
+<string name="exchange_capability_example_minimal_change">Keep today\'s layout mostly intact</string>
+<string name="exchange_capability_no_direct_change">The AI never changes your home screen directly. It drafts your preferences and tendencies for a reorganization plan.</string>
+<string name="exchange_capability_flow">The conversation happens inside your external AI app (such as ChatGPT). Send the request once, answer a few short questions (2–4), confirm the plan, and receive one final proposal. Your conversation is never sent to NunuLauncher.</string>
+<string name="exchange_entry_import">Import reply</string>
+<string name="exchange_request_title">Create a request to consult the AI</string>
+<string name="exchange_request_active_line">You have an active request.</string>
+<string name="exchange_request_remaining_under_hour">Less than an hour left</string>
+<string name="exchange_expectation_fixed_home">This request is fixed to your home as of its creation. If you change your home or categories while the conversation is open, the reply can no longer be imported.</string>
+<string name="exchange_privacy_title">Privacy of the outgoing request</string>
+<string name="exchange_privacy_redacted">Send with less information (default)</string>
+<string name="exchange_privacy_labels">Send with labels</string>
+<string name="exchange_privacy_labels_warning">The request will contain app and folder names, and the names of your user-defined categories.</string>
+<string name="exchange_replacement_notice">An unfinished request exists. Creating a new request discards the existing one; its reply can no longer be imported. The imported proposal is also discarded.</string>
+<string name="exchange_replacement_title">Discard the existing request and create a new one?</string>
+<string name="exchange_replacement_warning">Creating a new request discards the previous one; its reply can no longer be imported. The imported proposal is also discarded. Continue?</string>
+<string name="exchange_replacement_confirm">Discard and create</string>
+<string name="exchange_replacement_decline">Keep existing</string>
+<string name="exchange_generate">Create request</string>
+<string name="exchange_generating">Generating the exchange request…</string>
+<string name="exchange_cancel">Cancel</string>
+<string name="exchange_close">Close</string>
+<string name="exchange_disclosure_title">Review before sending</string>
+<string name="exchange_disclosure_redacted">This request contains no app names, package names, or raw usage data. It does list your categories, including user-defined ones, but without their names.</string>
+<string name="exchange_disclosure_labels_included">This request contains app and folder names, and the names of your user-defined categories.</string>
+<string name="exchange_disclosure_summary_items">Items included: %1$d</string>
+<string name="exchange_disclosure_summary_limit">One request can contain up to 512 items and 256 KB of request text.</string>
+<string name="exchange_disclosure_expand">Review the full text</string>
+<string name="exchange_disclosure_collapse">Hide the full text</string>
+<string name="exchange_disclosure_hint">Send this exact text to the AI app of your choice. Nothing is sent until you choose a send method.</string>
+<string name="exchange_discard">Discard</string>
+<string name="exchange_discard_confirm_title">Discard this request?</string>
+<string name="exchange_discard_confirm_body">Discarding invalidates this request; the AI\'s reply can no longer be imported. This cannot be undone.</string>
+<string name="exchange_discard_confirm_confirm">Discard</string>
+<string name="exchange_copy">Copy</string>
+<string name="exchange_share">Share…</string>
+<string name="exchange_save_file">Save to file</string>
+<string name="exchange_transport_success">Request copied, shared, or saved. After you give it to your AI app, answer a few short questions (2–4) and confirm the plan to receive one final proposal. Paste that reply here to import it.</string>
+<string name="exchange_transport_clipboard_failed">Clipboard unavailable. Try sharing or saving to a file.</string>
+<string name="exchange_transport_share_absent">No app can receive the share. Copy or save to a file instead.</string>
+<string name="exchange_transport_file_failed">File operation failed. Try again or use another send method.</string>
+<string name="exchange_import_title">Import the AI reply</string>
+<string name="exchange_import_hint">Paste the full reply text</string>
+<string name="exchange_import_action">Import</string>
+<string name="exchange_import_from_file">From file</string>
+<string name="exchange_import_result_title">Import result</string>
+<string name="exchange_import_result_unknown">The reply could not be used.</string>
+<string name="exchange_import_failure_action_reimport">Import again</string>
+<string name="exchange_import_failure_action_repost">Re-paste</string>
+<string name="exchange_import_failure_action_recreate">Recreate the request</string>
+<string name="exchange_import_interrupt">Stop</string>
+<string name="exchange_import_open_diagnostics">Open diagnostics</string>
+<string name="exchange_import_failure_detail_show">Show details</string>
+<string name="exchange_import_failure_detail_hide">Hide details</string>
+<string name="exchange_import_failure_detail_type_format">Type: %1$s</string>
+<string name="exchange_run_busy">An organization run is active. Import again after it finishes.</string>
+<string name="exchange_import_from_clipboard">Import from clipboard</string>
+<string name="exchange_import_fallback_toggle">Details / if the import does not work</string>
+<string name="exchange_import_clear">Clear</string>
+<string name="exchange_import_file_types">Text (.txt) or JSON (.json) · up to 1 MiB</string>
+<string name="exchange_status_clipboard_empty">The clipboard is empty or could not be read. Copy the reply in the AI app again, return to this app, and import once more. If it still fails, use the file import or paste the text manually.</string>
+<string name="exchange_status_clipboard_not_text">The clipboard has no text. Copy the reply text in the AI app again.</string>
+<string name="exchange_status_file_read_failed">The file could not be read. Select it again, or check the supported format (.txt / .json, up to 1 MiB). If it still fails, use the clipboard import or paste the text manually.</string>
+<string name="exchange_recognized_framing">Recognized format</string>
+<string name="exchange_recognized_version">Recognized version</string>
+<string name="exchange_recognized_entries">Recognized entries</string>
+<string name="exchange_framing_marker">Marker lines</string>
+<string name="exchange_framing_fenced_json">Fenced JSON block</string>
+<string name="exchange_framing_standalone_json">Standalone JSON</string>
+<string name="exchange_generation_input_not_ready">The current layout could not be captured. Try again in a moment.</string>
+<string name="exchange_generation_store_failure">Could not create the exchange session. Nothing was sent.</string>
+<string name="exchange_generation_oversize">The layout is too large for an exchange request.</string>
+<string name="exchange_failure_primary_input_oversize">The reply is too large. Trim the surrounding text and import it again.</string>
+<string name="exchange_failure_primary_framing_missing">No importable proposal was found in the reply. Ask the AI app to resend the final proposal, then re-paste it.</string>
+<string name="exchange_failure_primary_framing_ambiguous">The reply contains multiple proposals. Ask the AI app to resend only the final one, then re-paste it.</string>
+<string name="exchange_failure_primary_framing_empty">The proposal was empty. Ask the AI app to resend the final proposal, then re-paste it.</string>
+<string name="exchange_failure_primary_normalization_ambiguous">The reply contains multiple code blocks. Copy only the proposal\'s JSON and re-paste it.</string>
+<string name="exchange_failure_primary_normalization_unrecognized">No importable format was found. Ask the AI app to resend the final proposal, then re-paste it.</string>
+<string name="exchange_failure_primary_schema_mismatch">The reply could not be read as a proposal. Ask the AI app to resend it, then re-paste it.</string>
+<string name="exchange_failure_primary_export_mismatch">This reply was not addressed to the current request. Recreate the request.</string>
+<string name="exchange_failure_primary_session_expired">The request has expired. Recreate the request.</string>
+<string name="exchange_failure_primary_context_stale">The request is out of date. Recreate the request.</string>
+<string name="exchange_failure_primary_oversize">The proposal body is too large. Request a smaller proposal, then re-paste it.</string>
+<string name="exchange_failure_primary_unknown_ref">The proposal references items that are not in the request. Ask the AI app to resend it, then re-paste it.</string>
+<string name="exchange_failure_primary_duplicate_ref">The proposal contains duplicate items. Ask the AI app to resend it, then re-paste it.</string>
+<string name="exchange_failure_primary_incomplete_coverage">The proposal lists some items more than once. Ask the AI app to resend it, then re-paste it.</string>
+<string name="exchange_failure_primary_invalid_enum">The proposal contains unknown values. Ask the AI app to resend it, then re-paste it.</string>
+<string name="exchange_failure_primary_forbidden_content">The proposal contains prohibited instructions. Ask the AI app to resend it, then re-paste it.</string>
+<string name="exchange_failure_primary_mobility_contradiction">The proposal tries to move items that cannot move. Ask the AI app to resend it, then re-paste it.</string>
+<string name="exchange_failure_primary_capability_unsupported">The proposal uses unsupported features. Ask the AI app to resend it, then re-paste it.</string>
+<string name="exchange_failure_primary_scope_mismatch">This reply does not match the current request. Recreate the request.</string>
+<string name="exchange_failure_primary_unknown_category_ref">A category the reply refers to is currently unavailable. Recreate the request.</string>
+<string name="exchange_failure_input_oversize">The reply is too large. Remove the surrounding text and import again.</string>
+<string name="exchange_failure_framing_missing">The reply has no marked intent block. Ask the AI to resend the final JSON in a single ```json code block, or paste the JSON by itself.</string>
+<string name="exchange_failure_framing_ambiguous">The reply contains multiple marked blocks. Ask for a single final JSON.</string>
+<string name="exchange_failure_framing_empty">The marked block is empty. Ask the AI to resend the final JSON in a single ```json code block.</string>
+<string name="exchange_failure_normalization_ambiguous">The reply contains multiple code blocks. Copy the final JSON block only, then import again.</string>
+<string name="exchange_failure_normalization_unrecognized">No importable format was found. Ask the AI to resend the final JSON in a single ```json code block, paste the JSON by itself, or use the older marker-line format.</string>
+<string name="exchange_failure_schema_mismatch">The reply is not in the expected intent format.</string>
+<string name="exchange_failure_export_mismatch">The reply answers an older request. Create a new request and ask again.</string>
+<string name="exchange_failure_session_expired">The request has expired (24 hours). Create a new request.</string>
+<string name="exchange_failure_context_stale">The home layout changed after the request was created. Create a new request.</string>
+<string name="exchange_failure_oversize">The intent itself is too large.</string>
+<string name="exchange_failure_unknown_ref">The intent references items that do not exist in the request.</string>
+<string name="exchange_failure_duplicate_ref">The intent has duplicate item entries.</string>
+<string name="exchange_failure_incomplete_coverage">The intent mentions at least one item more than once. Each item may appear at most once across \"itemIntents\" and \"unresolvedRefs\".</string>
+<string name="exchange_failure_invalid_enum">The intent contains an unknown value.</string>
+<string name="exchange_failure_forbidden_content">The intent contains forbidden instructions (coordinates, sizes, or database changes).</string>
+<string name="exchange_failure_mobility_contradiction">The intent tries to move an immovable item.</string>
+<string name="exchange_failure_capability_unsupported">The intent uses an unsupported capability.</string>
+<string name="exchange_failure_scope_mismatch">The selected apps no longer match the request. Select the same apps, or create a new request.</string>
+<string name="exchange_scope_set_mismatch">The selected apps differ from the request. Select the highlighted apps to match the request, and this proposal can continue.</string>
+<string name="exchange_scope_unresolvable_mismatch">The request can no longer be matched by editing the selection. Create a new request.</string>
+<string name="exchange_scope_diff_missing">Required by the request</string>
+<string name="exchange_scope_diff_extra">Not in the request</string>
+<string name="exchange_import_continue">Continue with this proposal</string>
+<string name="exchange_rebind_context_stale">This request is out of date. Create a new request.</string>
+<string name="exchange_rebind_anchor_refused">This proposal is no longer available. Open it again from the home screen hub.</string>
+<string name="exchange_rebind_start_failed">Could not continue with this proposal. Try again.</string>
+<string name="exchange_failure_unknown_category_ref">The reply references a category that is no longer available. Create a new request and ask again.</string>
+<string name="exchange_scoped_freeze_notice">The app selection is locked while the AI request is being created. Cancel the request to edit it again.</string>
+<string name="exchange_entry_import_only_notice">This request stays importable here. To create a new request for your frozen selection, start organizing and choose “Consult the AI”.</string>
+<string name="exchange_generation_not_confirmed">The organize run is no longer holding the confirmed selection. Nothing was created.</string>
+<string name="exchange_export_cleanup_failed">Could not discard the unused request. Nothing was sent. Try again.</string>
+<string name="exchange_scope_discard_failed">Could not discard the request. Your selection stays locked. Try again.</string>
+<string name="exchange_recreate_request_title">This reply belongs to a different request</string>
+<string name="exchange_recreate_request_body">The reply you imported was not created from the selection confirmed in this organize run, so it cannot be used here. Create a new request for this selection.</string>
+<string name="exchange_recreate_request_action">Create a new request</string>
+<string name="exchange_import_success_title">Proposal imported</string>
+<string name="exchange_import_success_warning_title">Proposal imported (some items have no stated preference)</string>
+<string name="exchange_import_not_applied">Nothing has been applied to your home screen yet.</string>
+<string name="exchange_import_cta_idle">Continue with this proposal</string>
+<string name="exchange_import_cta_run_in">Continue with this proposal and return to selection</string>
+<string name="exchange_import_discard">Discard and close</string>
+<string name="exchange_import_discard_confirm_title">Discard the import?</string>
+<string name="exchange_import_discard_confirm_body">The imported proposal will be discarded. While the request stays valid, you can import the same reply again.</string>
+<string name="exchange_import_discard_confirm_confirm">Discard</string>
+<string name="exchange_import_discarded_guidance">The import was discarded. While the request stays valid, you can import the same reply again.</string>
+<string name="exchange_import_persist_failed_title">Could not save the proposal</string>
+<string name="exchange_import_persist_failed_body">The proposal has not been saved yet. Check your device\'s state and try saving again. If you close without saving, this proposal will be lost (while the request stays valid, you can import the same reply again).</string>
+<string name="exchange_import_persist_retry">Try saving again</string>
+<string name="exchange_import_discard_failed">Could not discard. Please try again.</string>
+<string name="exchange_import_review_unavailable">The imported proposal could not be opened. It expired or was invalidated.</string>
+<string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
+<string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
 </resources>
