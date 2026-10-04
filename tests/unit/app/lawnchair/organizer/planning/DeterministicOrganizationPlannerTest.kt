@@ -4,6 +4,7 @@ import java.util.Locale
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -391,6 +392,33 @@ class DeterministicOrganizationPlannerTest {
         val newPage = planned.newPages.single()
         assertEquals(NewPageOrdinal(0), newPage.ordinal)
         assertEquals(PageOrder(1), newPage.order)
+    }
+
+    @Test
+    fun fullAllocationFailureCannotBecomePartialPlannedResult() {
+        val failingPlanner: OrganizationPlanner = DeterministicOrganizationPlanner(
+            allocationFault = AllocationFault.FAIL_ALLOCATION,
+        )
+
+        assertThrows(IllegalStateException::class.java) {
+            failingPlanner.plan(fullInput(listOf(app("movable"))))
+        }
+    }
+
+    @Test
+    fun incrementalAllocationFailureCannotBecomePartialPlannedResult() {
+        val failingPlanner: OrganizationPlanner = DeterministicOrganizationPlanner(
+            allocationFault = AllocationFault.FAIL_ALLOCATION,
+        )
+
+        assertThrows(IllegalStateException::class.java) {
+            failingPlanner.plan(
+                incrementalInput(
+                    captured = listOf(app("existing", locked = true)),
+                    additions = listOf(candidate("new.app")),
+                ),
+            )
+        }
     }
 
     @Test
