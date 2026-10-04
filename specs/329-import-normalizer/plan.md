@@ -2,12 +2,13 @@
 
 > Issue: #329
 > Spec: [spec.md](./spec.md)
-> Status: accepted (2026-09-17。ChatGPT re-review Accepted (blocking/required 0件、head `150bc0b54b` 基準) を受け実装開始)
+> Status: **implemented** (2026-09-17) — execution checklist完了。[PR #339](https://github.com/nunu1733/NunuLauncher/pull/339) merge (commit `3170c57e32fd`) でmainへ取り込まれた。
 
 ## Re-entry status
 
 - 2026-09-16: 初回draft。baseline `aab0d293d1a98bf59f5b164693f54ee1a63e3f0b` (origin/main、PR #334 merge後)。Issue #329は本文のみでコメントなし。前回snapshot無し。main差分のうち本plan対象への影響: #331実装 (PR #333) は `ExchangeImportPipeline` への `prepare`/`validate` 2段化と `ScopeBindingGate` 追加が中心で、normalizer挿入seam (`prepare` のframing→decode間) は存在し続けている。
 - 2026-09-17: 1st owner review ([Issueコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5699609908)、head `b7b96fbb01`) のRequired 3点対応。baseline `15f4f0209f` (origin/main、PR #338 merge後 = #330 intent schema v3実装込み) へrebaseし、plan型契約を修正: (1) envelope検査を `prepare` 先頭の #205所有gateへ移し、normalizer結果型の失敗は新2種のみに限定 (`InputOversize` のtyped identityは不変)、(2) nested fenceのtest oracleをD-4 grammarへ統一 (fence内info付きfence開始行→`SCHEMA_MISMATCH`、独立2 block→曖昧)、(3) `Prepared` へ `RecognizedImportFraming` をadditive fieldとして追加し認識framingをproduction outcomeまで保持 (#332共通path契約)。#330影響の再確認: `ContextExportModels` / `IntentCompletion` / `ExchangePackageComposer` 等は変更されたが、本plan対象の `IntentImportParser` / `ExchangeImportPipeline` / `ExchangeFlowUi` 失敗表示の構造は無変更 (schema文字列 `personalized-intent-v3` 化、13 class・17種表示は不変)。
+- 2026-09-17: **implemented** — [PR #339](https://github.com/nunu1733/NunuLauncher/pull/339) merge (commit `3170c57e32fd`)。検証: exchange/UI unit lane PASS、organizer全体unit lane PASS、`spotlessCheck` PASS、`assembleLawnWithQuickstepGithubDebug` PASS、CI run [35123094379](https://github.com/nunu1733/NunuLauncher/actions/runs/35123094379) (final-status含む全15 job成功)。独立監査 Approve ([docs/assessment/pr-339-import-normalizer.md](../../docs/assessment/pr-339-import-normalizer.md)、head `30849b4e8a`)。実装review対応の確定事項は下記「実装review対応」のとおり。
 
 ## Current evidence
 
@@ -166,7 +167,7 @@ import text (paste受領時/envelope上限check済、file bounded read済)
 - [x] Minimal implementation (`ImportNormalizer` + pipeline接続 + `Prepared.framing` + 19種表示)。
 - [x] Security/regression verification (AC-4〜AC-9 corpus。pipeline test 10 test追加・1 test更新)。
 - [ ] Physical-device representative evidence (AC-10)。#205と同じく後続evidence PRでの実施を予定 (受入条件は残置)。
-- [ ] PR evidence and remaining risks recorded。
+- [x] PR evidence and remaining risks recorded ([PR #339](https://github.com/nunu1733/NunuLauncher/pull/339)本文)。AC-10は後続evidence PRへ明示的にdisposition (Issue close時に記録)。
 
 ### 実装review対応 (2026-09-17、[reviewコメント](https://github.com/nunu1733/NunuLauncher/issues/329#issuecomment-5700625875) Blocking 1 / Required 3)
 
