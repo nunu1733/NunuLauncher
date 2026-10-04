@@ -63,7 +63,8 @@ python3 tools/repo-contract/measure_upstream_patch_surface.py --verify
 python3 tools/repo-contract/measure_upstream_patch_surface.py \
   --upstream 505dbc40e6154c05158b5d0271c45f6a885a411b --target HEAD --enforce-baseline
 # -> Counted upstream/bridge surface: 105 file(s), +23314 / -1098 lines（delta 0）
-#    PASS（現HEADでも受入済みinventoryを正確に再現。8af117b6fc..main 間は#509 spec/docs-only差分のみ）
+#    PASS（現HEADでも受入済みinventoryを正確に再現。anchor後のmain側差分はdocs/spec-only
+#    （#507 device evidence、#508 closing docs、#509 specを含むmerge群）で計測対象surfaceの差分なし）
 
 python3 tools/repo-contract/measure_upstream_patch_surface.py \
   --upstream 43a21b43d7cc7850ab54e14b1a57dc9646685f35 --target HEAD --enforce-baseline
@@ -85,17 +86,19 @@ python3 tools/repo-contract/test_measure_upstream_patch_surface.py
 
 下表のdispositionの定義: **keep** = patch競合なしで再適用可能（依存先upstream APIの変化に対するcompile追従はrebase作業の範囲）/**adapt** = upstream側の変更・構造変化により再表現が必要/**drop** = 16-dev側が目的を代替しており再適用不要。group内で混在する場合はpath単位で区切る。
 
-| bridge group | paths | fork追加 | up無変更 | up変更 | up削除 | disposition（path内訳） |
+| bridge group | paths | fork追加 | up無変更 | up変更 | up削除 | disposition（path単位の内訳） |
 |---|---:|---:|---:|---:|---:|---|
-| deck-retirement | 20 | 0 | 1 | 19 | 0 | **adapt**（全path）。deck runtimeは16-devに存続し（`LawndeckManager.kt` up +7/−3、`AddFoldersWithItemsTask.kt` up +11/−27）、退役契約（ADR-0006）の再適用が必要 |
-| organizer-ui-and-lock-authoring | 13 | 8 | 1 | 4 | 0 | **adapt**。fork追加8は競合なし再追加だが、strings churn大（`lawnchair/res/values/strings.xml` up +215/−66、fork +801）と `BaseLauncherBinder.java` up −440の再表現を含む |
-| model-reload-and-transaction-gates | 11 | 3 | 1 | 6 | 1 | **adapt**。競合面最大: `LauncherModel.java`→`LauncherModel.kt`化、`ModelDbController` up +235/−193、`ModelWriter` up +147/−63、`LoaderTask` up +403/−418、`InvariantDeviceProfile` up +1,677/−1,288、`MainThreadInitializedObject` up −128（onPostInit削除。後述） |
-| layout-schema-and-recovery | 11 | 4 | 2 | 3 | 2 | **adapt**。`GridSizeMigrationUtil.java` が `GridSizeMigrationDBController.java` + `GridSizeMigrationLogic.kt` に分割、`LauncherDbUtils.java`→`.kt`化。`SCHEMA_VERSION` 32不変、`downgrade_schema.json` 無変更 |
-| homeedit-edit-surface | 22 | 20 | 0 | 2 | 0 | **keep 20 path**（fork追加のみ）/ **adapt 2 path**（`LauncherOptionsPopup.kt` up +61/−14、`lawnchair/AndroidManifest.xml` up +45/−0） |
-| homeedit-edit-undo | 8 | 7 | 0 | 1 | 0 | **keep 7 path**（fork追加のみ）/ **adapt 1 path**（`Folder.java` up +426/−161 へOPTIONS bit guard（fork +26/−3）を再適用） |
-| organizer-home-entry | 2 | 1 | 0 | 1 | 0 | **keep 1 path**（`ic_organize_home.xml`）/ **adapt 1 path**（`LauncherPopupPreference.kt` up +1/−4） |
-| fork-platform-preexisting | 8 | 1 | 2 | 5 | 0 | **adapt**。`build.gradle` up +111/−64、`settings.gradle` up +28/−5（module再編）等へのfork pin再適用 |
-| new-app-destination | 10 | 5 | 1 | 4 | 0 | **keep 6 path**（fork追加5 + `PersistedItemArray.java` 無変更）/ **adapt 4 path**（`AddWorkspaceItemsTask` up +25/−43、`ItemInstallQueue` up +45/−23、`PreferenceManager.kt` up +135/−20、`LawnchairProcessInitializer.kt` up +2/−3） |
+| deck-retirement | 20 | 0 | 1 | 19 | 0 | **keep 1**（`LawnchairBackup.kt` 無変更）/ **adapt 19**（`PreferencesDashboard.kt` up +131/−164、`PreferenceManager2.kt` up +228/−51、`LauncherPrefs.kt` up +121/−106、`PackageUpdatedTask.java` up +111/−100 等を含む。deck runtimeは16-devに存続し、退役契約（ADR-0006）の再適用が必要） |
+| organizer-ui-and-lock-authoring | 13 | 8 | 1 | 4 | 0 | **keep 9**（fork追加8 + `lawnchair/res/values-ja/strings.xml` 無変更）/ **adapt 4**（`lawnchair/res/values/strings.xml` up +215/−66 × fork +801のorganizer strings再統合、`res/values/strings.xml` up +74/−8、`res/values-ja/strings.xml` up +35/−4、`BaseLauncherBinder.java` up −440の大規模改変へのfork +19再表現） |
+| model-reload-and-transaction-gates | 11 | 3 | 1 | 6 | 1 | **keep 4**（fork追加3: `OrganizerModelReloadAdapter.java`・`LayoutWriteCoordinator.java`・`DirectEditContract.java` は競合なし再追加 + `HotseatRestoreHelper.java` 無変更。ただし接続先の再表現はadapt側で実施）/ **adapt 7**（`LauncherModel.java`→`LauncherModel.kt` 化への接続再表現、`ModelWriter` up +147/−63 × fork +923、`ModelDbController` up +235/−193 × fork +753、`LoaderTask` up +403/−418、`LauncherProvider` up +141/−53、`MainThreadInitializedObject` up −128（onPostInit削除）、`InvariantDeviceProfile` up +1,677/−1,288） |
+| layout-schema-and-recovery | 11 | 4 | 2 | 3 | 2 | **keep 6**（fork追加4: `FavoritesTableDigest.java`・`GridMigrationJournal.java`・`GridMigrationOperation.java`・`GridMigrationRuntime.java` + 無変更2: `downgrade_schema.json`・`DbDowngradeHelper.java`。分割後構造への接続はadapt側で実施）/ **adapt 5**（`GridSizeMigrationUtil.java`→`GridSizeMigrationDBController.java` + `GridSizeMigrationLogic.kt` 分割への追従、`LauncherDbUtils.java`→`.kt` 化、`LauncherSettings.java` up +66/−100、`DatabaseHelper.java` up +48/−59、`RestoreDbTask.java` up +116/−111） |
+| homeedit-edit-surface | 22 | 20 | 0 | 2 | 0 | **keep 20**（fork追加のみ）/ **adapt 2**（`LauncherOptionsPopup.kt` up +61/−14 × fork +96、`lawnchair/AndroidManifest.xml` up +45/−0 × fork +9） |
+| homeedit-edit-undo | 8 | 7 | 0 | 1 | 0 | **keep 7**（fork追加のみ）/ **adapt 1**（`Folder.java` up +426/−161 へOPTIONS bit guard（fork +26/−3）を再適用） |
+| organizer-home-entry | 2 | 1 | 0 | 1 | 0 | **keep 1**（`ic_organize_home.xml`）/ **adapt 1**（`LauncherPopupPreference.kt` up +1/−4 × fork +1） |
+| fork-platform-preexisting | 8 | 1 | 2 | 5 | 0 | **keep 3**（fork追加1: `BackupPageSummaryReader.kt` + 無変更2: `RestoreBackupViewModel.kt`・`LawnchairBugReporter.kt`）/ **adapt 5**（`build.gradle` up +111/−64 × fork +53、`settings.gradle` up +28/−5（module再編）× fork +4、`config.xml` up +19/−3、`DeviceProfileOverrides.kt` up +98/−19 × fork +75、`RestoreBackupScreen.kt` up +2/−0 × fork +67） |
+| new-app-destination | 10 | 5 | 1 | 4 | 0 | **keep 6**（fork追加5 + `PersistedItemArray.java` 無変更）/ **adapt 4**（`AddWorkspaceItemsTask` up +25/−43 × fork +64、`ItemInstallQueue` up +45/−23 × fork +81、`PreferenceManager.kt` up +135/−20、`LawnchairProcessInitializer.kt` up +2/−3） |
+
+**合計: keep 57 / adapt 48 / drop 0。** fork追加・upstream無変更pathをkeepとする根拠は「patch自体に競合がない」ことである。ただし model-reload のfork追加3 pathと layout-schema のfork追加4 pathは、接続先のupstream構造変化（`LauncherModel.kt` 化、grid migration分割）をadapt側pathで再表現する前提のkeepであり、接続の再表現はadapt側のPhase 2作業に含まれる。
 
 **drop該当なし（Phase 0としての結論）**: §5.1の33 commit棚卸しと上表の照合で、16-devがfork patchの目的を代替したpathは確認されなかった（deck退役・direct-edit write契約・destination policy・grid migration journal等の代替実装は存在しない）。Phase 2のconflict解消で新事実（upstream代替の発見）が生じた場合は、本assessmentとADR-0018の改訂によりdispositionを変更する（黙示的な変更はしない）。
 
@@ -107,9 +110,9 @@ merge-base `b011d84c` から baseline `505dbc40` 側だけに存在する33 comm
 |---|---|---|
 | A. build / CI / version / docs / 翻訳 / fonts metadata（15件） | `eeb66fb129`（baseline-profile cfg）、`90c2b35333`（AGP 9.0.1）、`cf23430a6c`+`310cd77a1f`（Google Fonts json）、`857b8c71e2`（16-kb page size）、`fc1104a9a6`（buildTools 36.1.0）、`f05391baae`+`640b4b8321`（上流CI workflow）、`cd8add7a5f`+`70be89746a`（version bump）、`ddfe62c05d`+`c7a23a529a`（Crowdin翻訳）、`972a825132`（version表示名）、`ae80519238`+`4dff675620`（changelog） | **不運搬で損失なし**。upstream release engineering差分であり、16-devは AGP 9.4.1 / buildTools 37.0.0 等の現行版を持つ。上流CI workflowはfork対象外 |
 | B. 16-devに同等実装を確認（15件） | `582d9fc660`（web suggestions timeout→16-dev `WebSuggestionProvider.kt` に同実装）、`0b32a513cc`（BAL hardening→`StartActivityParams.java` の `allowBGLaunch`）、`ec71d5990c`（GestureNavContract toggle→strings/Compatibility確認）、`8d04c149b6`（PagedView feed無限scroll→`mCachedEnableFeed` による進化実装）、`54835b3315`（BGLaunch at-least→`Utilities.java`）、`46abccbe38`（preview省メモリ→`MAX_PREVIEW_SIZE_PX`）、`892cdc9ad3`（exif orientation→`exifinterface` 依存）、`e67ccde64c`（FGS dataSync→manifest）、`1ba03af948`（bugreport ClipData→`BugReport.kt` `newRawUri`）、`c65f34ab28`（URI flags削除→`SearchTargetFactory.kt` 進化後）、`787ddd0e57`（workflow artifact名→`release_update.yml`）、`f973986d21`（Nova backup import→strings/`NovaBackupConverter.kt`）、`5a152708cc`（Nova row/column mapping→同 converter）、`00a58d0203`（Nova smart folders→`FOLDER%3A-` marker）、`505dbc40e6`（app drawer fonts→`FontCache.kt` `preloadFont`） | **不運搬で損失なし**（16-devで同等以上の実装に置換済み） |
-| C. 16-devに同等なし（Phase 2でport/pin判断）（3件） | `9b48473c7e`（Nova復元時のsubgrid警告。16-dev backup配下に `subgrid` 実装なし）、`53a2092541`（Nova復元時のsmartspace conflict toggle。16-devに該当toggleなし）、`aae5fbbc96`（icon shadow preference修正。submodule bump `6a11ef76`） | **現baselineが持つ挙動で16-devが欠落しているため、rebase時にport/pin判断が必要**。(1)(2)はNova backup restore機能の一部であり、#522（backup/restore互換）の調査と統合してPhase 2で採否を決める。(3)は現mainがpinする submodule `6a11ef767998885838a599331b5485f768b3d725` に対し、16-dev pin `7d9e92bda50359dc66a530248e15f9748343524e` はbehind_by 1であり、欠落している1 commitがまさにicon shadow修正（compare API確認）である。Phase 2で「16-dev pinへ追従し修正を再適用する」か「修正済みpinを維持するか」を決め、未決のままrebase差分に入れない |
+| C. 16-devに同等なし（契約確定をrebase前に）（3件） | `9b48473c`（Nova復元のsubgrid対応。**挙動は2単位**: (i) subgrid検出と警告UI、(ii) `cellX/cellY/spanX/spanY` の `.toInt()` 切り捨て→`roundToInt()` 最近傍丸めへのrestore座標変換。16-dev `NovaBackupConverter.kt:358-362` は依然 `.toInt()` であることを確認）、`53a2092541`（Nova復元のsmartspace対応。**挙動は2単位**: (i) smartspace conflict toggle UI、(ii) smartspace有効時の `rows +1` grid補償・desktop itemの `cellY +1` shift・span/grid境界のclamp・範囲外item skip。16-devにはsmartspace処理がなく `rows = info.rows` の補償なしであることを確認）、`aae5fbbc96`（icon shadow preference修正。submodule bump `6a11ef76`） | **現baselineが持つ挙動で16-devが欠落している。**(1)(2)の採否・保持条件は **#522（Phase 1）の成果物としてrebase着手前に確定し、Phase 2は確定結果を実装するのみ**とする（UI単体だけportしてrestoreデータ変換契約を落とすことを防ぐため、挙動単位で記録）。(3)はbackup/restore契約と別の問題であり、Phase 2のplanで「16-dev pin `7d9e92bd` へ追従しicon shadow修正を再適用する」か「修正済みpin `6a11ef76` を維持する」かを決める（現mainは `6a11ef76` をpin。16-dev pinはcompare APIでbehind_by 1、欠落1 commitが当該修正であることを確認） |
 
-結論: 33件のうち **30件は不運搬で挙動損失なし**、**3件（Group C）はPhase 2でのport/pin判断対象**として引き継ぐ。ADR-0018 Decision 2はこの結論に基づく。
+結論: 33件のうち **30件は不運搬で挙動損失なし**、**3件（Group C）はrebase着手前〜Phase 2でのport/pin判断対象**として引き継ぐ（2件のNova restore契約は#522のPhase 1成果物で確定、icon shadow pinはPhase 2 plan判断）。ADR-0018 Decision 2はこの結論に基づく。
 
 ### 要対応の3点（upstream側構造変化によりfork patchの再表現が必要）
 
@@ -149,3 +152,4 @@ merge-base `b011d84c` から baseline `505dbc40` 側だけに存在する33 comm
 
 - 2026-10-04: 初版。候補固定（§2）、7区分分類（§3）、surface計測（§4）、disposition分析（§5）、発見（§6）を記録。対象: main `0b4db97a9aa8853fba9824ae148aadb4ec42e32b`、候補upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35`。
 - 2026-10-04（revision 2）: PR #523 review round 1（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975549572)）指摘対応: (1) §4の `--verify` 記録を実測（105 files +23,314/−1,098、anchor `8af117b6fc`）へ修正し、初回capture値（47/+3,993/−1,017）との混在を解消、(2) §5.1にbaseline側33 commitsの棚卸しを追加（30件不運搬可、3件port/pin判断）、(3) §5のdispositionを `keep / adapt` の単一結論（path内訳つき）へ変更しdrop判定の根拠を明記、(4) §6-2のquickstepMinSdk影響記述を「advertised range変化・実影響は#520で確定」へ修正、(5) §1のnetwork記述と§7のIssue番号を修正。
+- 2026-10-04（revision 3）: PR #523 review round 2（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975684996)）指摘対応: (1) §5.1 Group CのNova restore 2件を「UI＋restoreデータ変換契約」の挙動単位へ展開（`9b48473c`: subgrid警告＋`roundToInt()`座標変換〔16-devは `.toInt()` のまま〕、`53a2092541`: toggle＋rows+1補償・cellY shift・clamp/skip〔16-devに同等なし〕。いずれも16-dev候補で確認済み）し、採否確定を#522（Phase 1、rebase前）へ移管、(2) §5のdispositionを全groupでkeep/adapt subsetの統一粒度に変更（合計keep 57 / adapt 48 / drop 0）、(3) §4のanchor後差分説明を「docs/spec-only（#507/#508/#509を含むmerge群）でsurface差分なし」へ修正。
