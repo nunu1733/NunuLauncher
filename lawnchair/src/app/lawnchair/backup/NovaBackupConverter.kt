@@ -241,7 +241,14 @@ class NovaBackupConverter(
                     // restore-correlated generation completes and the
                     // workspace is capture-valid before the restore reports
                     // completion in every case.
-                    val app = LauncherAppState.INSTANCE.getNoCreate()
+                    // Rebase Phase 2 adapt: anchor's AppState is a Dagger singleton
+                    // without a nullable getNoCreate; resolving via getInstance creates
+                    // the (empty-callbacks) app state, which the barrier path supports.
+                    val app = try {
+                        LauncherAppState.getInstance(context)
+                    } catch (t: Throwable) {
+                        null
+                    }
                     reloadBarrier = if (app != null) {
                         RestoreReloadBarrier(app, RESTORE_RELOAD_COMPLETION_TIMEOUT_MS).also { it.dispatch() }
                     } else {
@@ -284,7 +291,7 @@ class NovaBackupConverter(
             val outcome: AtomicReference<String> = AtomicReference(""),
         )
 
-        private val model = app.getModel()
+        private val model = app.model
         private var currentAttempt = Attempt()
         private var currentRequestId = 0L
 

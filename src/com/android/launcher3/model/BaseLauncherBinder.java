@@ -23,6 +23,8 @@ import android.content.Context;
 import android.os.Trace;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+
 import com.android.launcher3.LauncherModel;
 import com.android.launcher3.LauncherModel.CallbackTask;
 import com.android.launcher3.LauncherSettings;
@@ -66,6 +68,11 @@ public class BaseLauncherBinder {
 
     final Callbacks[] mCallbacksList;
 
+    // Fork contract port (Issues #14/#150/#152): terminal completion callback for the
+    // exact loader generation. Fired only after the owning LoaderTask committed and
+    // closed its transaction; never part of the bind-callback path.
+    private final Runnable mOrganizerReloadComplete;
+
     private int mMyBindingId;
 
     @AssistedInject
@@ -74,13 +81,27 @@ public class BaseLauncherBinder {
             LauncherModel model,
             BgDataModel dataModel,
             AllAppsList allAppsList,
-            @Assisted Callbacks[] callbacksList) {
+            @Assisted Callbacks[] callbacksList,
+            @Assisted @NonNull Runnable organizerReloadComplete) {
         mUiExecutor = MAIN_EXECUTOR;
         mContext = context;
         mModel = model;
         mBgDataModel = dataModel;
         mBgAllAppsList = allAppsList;
         mCallbacksList = callbacksList;
+        mOrganizerReloadComplete = organizerReloadComplete;
+    }
+
+    /**
+     * Fork contract port: signals the organizer/restore reload terminal boundary only
+     * after the owning LoaderTask has committed and closed its transaction. This
+     * deliberately is not part of the bind-complete callback path: bind callbacks may
+     * run before the loader transaction reaches its causal completion boundary.
+     */
+    // Fork contract port: public because the Kotlin LauncherModel caller lives in the
+    // package com.android.launcher3 while the binder lives in com.android.launcher3.model.
+    public void notifyOrganizerReloadComplete() {
+        mOrganizerReloadComplete.run();
     }
 
     /**
@@ -180,6 +201,6 @@ public class BaseLauncherBinder {
     }
     @AssistedFactory
     public interface BaseLauncherBinderFactory {
-        BaseLauncherBinder createBinder(Callbacks[] callbacks);
+        BaseLauncherBinder createBinder(Callbacks[] callbacks, Runnable organizerReloadComplete);
     }
 }

@@ -142,6 +142,14 @@ public class LoaderTask implements Runnable {
     private final LoaderCursorFactory mLoaderCursorFactory;
     private final LoaderParams mParams;
 
+    // Issue #14 (fork contract port): only the exact organizer-requested loader carries
+    // this capability as an assisted input; normal/preview loaders are tokenless.
+    private final long mOrganizerLeaseToken;
+
+    // Issue #299 (fork contract port): tokenless restore reload whose terminal completion
+    // resolves the restore's completion barrier (notification posted after commit).
+    private final boolean mNotifyRestoreReloadComplete;
+
     private final ModelDelegate mModelDelegate;
     private boolean mIsRestoreFromBackup;
 
@@ -187,6 +195,8 @@ public class LoaderTask implements Runnable {
             @Named("SAFE_MODE") boolean isSafeModeEnabled,
             @Assisted @NonNull BaseLauncherBinder launcherBinder,
             @Assisted UserManagerState userManagerState,
+            @Assisted long organizerLeaseToken,
+            @Assisted boolean notifyRestoreReloadComplete,
             Provider<LauncherRestoreEventLogger> restoreEventLoggerFactory,
             LoaderParams params) {
         mContext = context;
@@ -209,6 +219,8 @@ public class LoaderTask implements Runnable {
         mFolderNameProviderFactory = folderNameProviderFactory;
         mRestoreEventLoggerProvider = restoreEventLoggerFactory;
         mParams = params;
+        mOrganizerLeaseToken = organizerLeaseToken;
+        mNotifyRestoreReloadComplete = notifyRestoreReloadComplete;
     }
 
     protected synchronized void waitForIdle() {
@@ -280,7 +292,10 @@ public class LoaderTask implements Runnable {
         // TODO(b/384731096): Write Unit Test to make sure sanitizeWidgetsShortcutsAndPackages
         //  actually re-pins shortcuts that are in model but not in ShortcutManager, if possible
         //  after a simulated restore.
-        if (Objects.equals(mIDP.dbFile, mDbName) && mParams.getSanitizeData()) {
+        // Issue #14: organizer-requested reloads skip sanitize to keep the DB immutable
+        // between checkpoint and post-apply/recovery verification.
+        if (Objects.equals(mIDP.dbFile, mDbName) && mParams.getSanitizeData()
+                && mOrganizerLeaseToken == 0L) {
             verifyNotStopped();
             sanitizeWidgetsShortcutsAndPackages();
             logASplit("sanitizeData finished");
@@ -398,10 +413,12 @@ public class LoaderTask implements Runnable {
         if (enableLauncherBrMetricsFixed()) {
             restoreEventLogger = mRestoreEventLoggerProvider.get();
         }
+        boolean transactionCommitted = false;
         try (LauncherModel.LoaderTransaction transaction = mModel.beginLoader(this)) {
             loadAllSurfacesOrdered(memoryLogger, restoreEventLogger);
 
             transaction.commit();
+            transactionCommitted = true;
             memoryLogger.clearLogs();
             if (mIsRestoreFromBackup) {
                 mIsRestoreFromBackup = false;
@@ -419,6 +436,16 @@ public class LoaderTask implements Runnable {
         }
         MODEL_EXECUTOR.restorePriority(CALLER_LOADER_TASK);
         TraceHelper.INSTANCE.endSection();
+        if (transactionCommitted && (mOrganizerLeaseToken != 0L || mNotifyRestoreReloadComplete)) {
+            // Fork contract port (Issues #14/#150/#152/#299): queue — never run inline —
+            // after the transaction commit+close. The completion is delivered only after
+            // every runnable already queued on MODEL_EXECUTOR ahead of it has drained, so
+            // the organizer's next capture cannot race pending token-scoped work. Delivery
+            // re-checks request identity under the model lock; LauncherModel terminalizes a
+            // request whose token is replaced before its queued notification runs, so no
+            // request loses its terminal signal while one is still queued here.
+            MODEL_EXECUTOR.post(mLauncherBinder::notifyOrganizerReloadComplete);
+        }
     }
 
     public synchronized void stopLocked() {
@@ -830,7 +857,11 @@ public class LoaderTask implements Runnable {
     @AssistedFactory
     public interface LoaderTaskFactory {
 
-        LoaderTask newLoaderTask(BaseLauncherBinder binder, UserManagerState userState);
+        LoaderTask newLoaderTask(
+                BaseLauncherBinder binder,
+                UserManagerState userState,
+                long organizerLeaseToken,
+                boolean notifyRestoreReloadComplete);
     }
 
 }

@@ -392,7 +392,7 @@ class ModelCallbacks(private var launcher: Launcher) : BgDataModel.Callbacks {
 
     /** Bind the items start-end from the list. */
     @VisibleForTesting
-    override fun bindItems(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
+    fun bindItems(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
         launcher.bindInflatedItems(
             items.map { Pair.create(it, launcher.itemInflater.inflateItem(it)) },
             if (forceAnimateIcons) AnimatorSet() else null,
