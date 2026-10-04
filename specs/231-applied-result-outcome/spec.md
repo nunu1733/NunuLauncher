@@ -1,6 +1,6 @@
 ---
 issue: "#231"
-status: accepted
+status: implemented
 requirements: []
 risk: []
 updated: 2026-09-09
@@ -197,6 +197,8 @@ None。文言と適用範囲は §D1–D5 のとおり spec 時点で確定し�
 - 2026-09-09: Drafted for Issue #231。Issue 本文 (Astra blind exploratory UX review 2026-09-06, Finding 5)、`ManualOrganizationRun.kt` / `ManualOrganizationPreferences.kt` / strings / 既存 instrumentation・E2E test の調査、spec 210 (stale outcome の文言構成先例)・spec 195 (PreviewCounts truth 分担)・spec 230 (apply history 語彙・correlation gate) の契約調査を入力に作成。Phase1 review はセッション指示に基づき code-reviewer サブエージェントが行う。
 - 2026-09-09: Phase1 review (code-reviewer-2 サブエージェントによる独立 review セッション、REQUEST CHANGES) 対応: (1) Medium — D3 / AC-1 / plan を修正し、成功 case の描画を現行 `summaryItems` と同一の行構成 (`rejectedByReason` / `unplacedByReason` 反復を含む) に揃え、両 map が `State.Applied` で常に空である不変条件 (`Planned` outcome からのみ到達可能) を明記。spec 52 の "applied/preserved/unplaced summary counts" 文との整合を保持。(2) AC-3 の test oracle に Home 再訪経路の包含根拠を追記。(3) AC-4 の E2E 主張を「適用前後の capture 差分からの導出」に強化。(4) plan の行番号参照を修正。
 - 2026-09-09: Phase1 re-review (同一 reviewer) が 4 条件の解消を確認し APPROVE。non-blocking の整備指摘 (scope bullet / Scenario の行構成言及、D3 の in-place 差し替えの明確化、AC-8 への Home 往復 capture 明記、変更履歴 link の整理) を本 revision で反映し、spec を `accepted` へ進める。実装 (同一 PR) で owner review を継続する。
+- 2026-09-09: [PR #262](https://github.com/nunu1733/NunuLauncher/pull/262) owner review (PR コメント): Medium — AC-1 instrumentation test の future-tense 不在確認が固定値 (`getString(id, 1)`) でなく `applied.summary` 実件数と組にすべきとの指摘に対応 (head `b2eb1851e8`)。非成功 test も 4 count 対称化。test-only delta に対し独立監査セッションが PASS 継続を再確認し、[audit 記録](../../docs/assessment/pr-262-applied-result-outcome.md) に Head SHA 更新 + re-audit note を追記 (`c7c7736141`)。re-run CI 全 job green。
+- 2026-09-09: [PR #262](https://github.com/nunu1733/NunuLauncher/pull/262) を squash merge (merge commit `0f8638692136a5f4db8b3ccac38159eef7320dea`)。CI run [34322893724](https://github.com/nunu1733/NunuLauncher/actions/runs/34322893724) が全 job pass (`final-status` green)。`Closes #231` により Issue #231 は自動 close。受入条件 AC-1〜AC-8 が満たされたため spec を `implemented` へ進める。
 
 ## References
 
