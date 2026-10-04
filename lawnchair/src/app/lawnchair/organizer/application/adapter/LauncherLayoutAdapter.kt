@@ -450,8 +450,7 @@ private fun LayoutState.resolvePersistentReferences(
         )
 
         is StructureState.AppPairMembers -> structure.copy(
-            first = itemRef(structure.first),
-            second = itemRef(structure.second),
+            members = structure.members.map { it.copy(item = itemRef(it.item)) },
         )
     }
 

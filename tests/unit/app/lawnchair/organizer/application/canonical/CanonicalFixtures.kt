@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.application.canonical
 
+import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.CanonicalItemKind
@@ -140,10 +141,10 @@ object CanonicalFixtures {
         secondStage: SplitStage = SplitStage.BOTTOM_OR_RIGHT,
         snapPosition: OptionalSnapPosition = OptionalSnapPosition.Absent,
     ): StructureState = StructureState.AppPairMembers(
-        first = first,
-        second = second,
-        firstStage = firstStage,
-        secondStage = secondStage,
+        members = listOf(
+            AppPairMemberState(first, firstStage),
+            AppPairMemberState(second, secondStage),
+        ),
         snapPosition = snapPosition,
     )
 

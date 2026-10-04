@@ -3,17 +3,23 @@ package app.lawnchair.organizer.integration
 import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.protocol.CaptureId
+import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.LayoutState
+import app.lawnchair.organizer.application.public.OptionalSnapPosition
 import app.lawnchair.organizer.application.public.PageState
 import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.RankedMember
 import app.lawnchair.organizer.application.public.StructureState
+import app.lawnchair.organizer.planning.AppPairId
+import app.lawnchair.organizer.planning.AppPairMember
+import app.lawnchair.organizer.planning.AppPairRef
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
+import app.lawnchair.organizer.planning.DiagnosticParam
 import app.lawnchair.organizer.planning.Disposition
 import app.lawnchair.organizer.planning.ExistingRole
 import app.lawnchair.organizer.planning.FolderId
@@ -25,6 +31,10 @@ import app.lawnchair.organizer.planning.PageOrder
 import app.lawnchair.organizer.planning.PlacementTarget
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.Rejected
+import app.lawnchair.organizer.planning.RejectionCode
+import app.lawnchair.organizer.planning.SnapPositionToken
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
@@ -35,6 +45,7 @@ import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -144,6 +155,156 @@ class DefaultLayoutComposerPlannerRegressionTest {
             add(pageOneApp("60", GridCell(0, 4)))
             add(pageOneApp("61", GridCell(1, 4)))
             add(pageOneApp("62", GridCell(3, 4)))
+        },
+    )
+
+    @Test
+    fun appPairLayoutComposesSnapTokenIntoPlannerAcceptedInput() {
+        val composition = composer(appPairLayoutState(OptionalSnapPosition.Present(SnapPositionToken("1"))))
+            .composeFullOrganization()
+        assertTrue("composition must be ready: $composition", composition is OrganizationInputComposition.Ready)
+        val ready = composition as OrganizationInputComposition.Ready
+
+        val items = ready.input.snapshot.items.associateBy { it.id }
+        val pairId = ItemId("70")
+        val memberIds = listOf(ItemId("71"), ItemId("72"))
+        val pair = items.getValue(pairId)
+        assertEquals(ItemKind.APP_PAIR, pair.kind)
+        assertEquals(
+            listOf(
+                AppPairMember(ItemId("71"), SplitStage.TOP_OR_LEFT, SnapPositionToken("1")),
+                AppPairMember(ItemId("72"), SplitStage.BOTTOM_OR_RIGHT, SnapPositionToken("1")),
+            ).sortedBy { it.item },
+            pair.appPair!!.members.sortedBy { it.item },
+        )
+        memberIds.forEach { memberId ->
+            val member = items.getValue(memberId)
+            assertNull(member.appPairId)
+            assertEquals(
+                CapturedPlacement.AppPairMember(AppPairRef(AppPairId(pairId.value))),
+                member.placement,
+            )
+        }
+
+        val partition = ready.input.targets.existing
+        (listOf(pairId) + memberIds).forEach { id ->
+            assertEquals(ExistingRole.Preserved, partition.single { it.item == id }.role)
+        }
+
+        val planned = DeterministicOrganizationPlanner().plan(ready.input)
+        assertTrue("planner must accept the app-pair layout: ${planned.outcome}", planned.outcome is Planned)
+        val placements = (planned.outcome as Planned).placements
+        assertEquals(3, placements.size)
+        assertTrue(placements.single { it.item == pairId }.disposition is Disposition.Preserved)
+    }
+
+    /**
+     * Issue #141: an app pair whose canonical structure carries no snap token
+     * composes unchanged and must still fail planner validation typed — the fix
+     * supplies captured values, it never loosens MALFORMED_APP_PAIR.
+     */
+    @Test
+    fun appPairWithoutSnapTokenStaysTypedMalformed() {
+        val composition = composer(appPairLayoutState(OptionalSnapPosition.Absent)).composeFullOrganization()
+        assertTrue("composition stays ready: $composition", composition is OrganizationInputComposition.Ready)
+
+        val planned = DeterministicOrganizationPlanner().plan((composition as OrganizationInputComposition.Ready).input)
+        val rejected = planned.outcome as? Rejected.Invalid
+        assertNotNull("planner must reject", rejected)
+        val malformed = rejected!!.reasons.filter { it.code == RejectionCode.MALFORMED_APP_PAIR }
+        assertEquals(1, malformed.size)
+        assertEquals(listOf(DiagnosticParam.ItemParam(ItemId("70"))), malformed.single().params)
+    }
+
+    /**
+     * Issue #141 review follow-up: an app pair whose member count is not two
+     * composes unchanged and must reach the planner's typed MALFORMED_APP_PAIR
+     * rejection — degenerate cardinality is a planner judgment, never a capture
+     * exception or silent repair.
+     */
+    @Test
+    fun appPairWithAbnormalMemberCountStaysTypedMalformed() {
+        for (memberCount in listOf(0, 1, 3)) {
+            val composition = composer(appPairLayoutWithMemberCount(memberCount)).composeFullOrganization()
+            assertTrue("$memberCount: composition stays ready: $composition", composition is OrganizationInputComposition.Ready)
+
+            val planned = DeterministicOrganizationPlanner().plan((composition as OrganizationInputComposition.Ready).input)
+            val rejected = planned.outcome as? Rejected.Invalid
+            assertNotNull("$memberCount: planner must reject", rejected)
+            val malformed = rejected!!.reasons.filter { it.code == RejectionCode.MALFORMED_APP_PAIR }
+            assertEquals("$memberCount: exactly one typed rejection", 1, malformed.size)
+            assertEquals(
+                "$memberCount: rejection names the pair",
+                listOf(DiagnosticParam.ItemParam(ItemId("70"))),
+                malformed.single().params,
+            )
+        }
+    }
+
+    /** One saved app pair at cell (0,4): container row 70 plus two member rows. */
+    private fun appPairLayoutState(snapPosition: OptionalSnapPosition): LayoutState = CanonicalFixtures.state(
+        items = buildList {
+            add(
+                CanonicalFixtures.appItem(
+                    itemId = "70",
+                    kind = CanonicalItemKind.AppPair,
+                    target = TargetKey.AppPairKey(AppPairId("70")),
+                    cell = GridCell(0, 4),
+                    structure = CanonicalFixtures.appPairStructure(
+                        first = ApplicationItemRef.PersistentItem(ItemId("71")),
+                        second = ApplicationItemRef.PersistentItem(ItemId("72")),
+                        snapPosition = snapPosition,
+                    ),
+                ),
+            )
+            add(
+                CanonicalFixtures.appItem(
+                    itemId = "71",
+                    target = appTarget(),
+                ).copy(placement = PlacementState.AppPairChild(ApplicationItemRef.PersistentItem(ItemId("70")), SplitStage.TOP_OR_LEFT)),
+            )
+            add(
+                CanonicalFixtures.appItem(
+                    itemId = "72",
+                    target = appTarget(),
+                ).copy(placement = PlacementState.AppPairChild(ApplicationItemRef.PersistentItem(ItemId("70")), SplitStage.BOTTOM_OR_RIGHT)),
+            )
+        },
+    )
+
+    /** A saved app pair at cell (0,4) with an arbitrary member-row count. */
+    private fun appPairLayoutWithMemberCount(count: Int): LayoutState = CanonicalFixtures.state(
+        items = buildList {
+            add(
+                CanonicalFixtures.appItem(
+                    itemId = "70",
+                    kind = CanonicalItemKind.AppPair,
+                    target = TargetKey.AppPairKey(AppPairId("70")),
+                    cell = GridCell(0, 4),
+                    structure = StructureState.AppPairMembers(
+                        members = (1..count).map { index ->
+                            AppPairMemberState(
+                                ApplicationItemRef.PersistentItem(ItemId((70 + index).toString())),
+                                SplitStage.TOP_OR_LEFT,
+                            )
+                        },
+                        snapPosition = OptionalSnapPosition.Absent,
+                    ),
+                ),
+            )
+            repeat(count) { index ->
+                add(
+                    CanonicalFixtures.appItem(
+                        itemId = (71 + index).toString(),
+                        target = appTarget(),
+                    ).copy(
+                        placement = PlacementState.AppPairChild(
+                            ApplicationItemRef.PersistentItem(ItemId("70")),
+                            SplitStage.TOP_OR_LEFT,
+                        ),
+                    ),
+                )
+            }
         },
     )
 

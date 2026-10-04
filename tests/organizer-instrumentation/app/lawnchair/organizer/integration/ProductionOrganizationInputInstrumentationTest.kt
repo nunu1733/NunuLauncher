@@ -23,18 +23,34 @@ import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.application.revision.RevisionCalculator
 import app.lawnchair.organizer.application.public.ItemAvailability
+import app.lawnchair.organizer.application.public.CanonicalItemKind
+import app.lawnchair.organizer.application.public.OptionalSnapPosition
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.ProfileState
 import app.lawnchair.organizer.application.public.PlacementState
+import app.lawnchair.organizer.application.public.StructureState
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.AppPairId
+import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ContainerCode
+import app.lawnchair.organizer.planning.DiagnosticParam
+import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
+import app.lawnchair.organizer.planning.Disposition
 import app.lawnchair.organizer.planning.ExistingRole
+import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.ItemKind
 import app.lawnchair.organizer.planning.PackageName
+import app.lawnchair.organizer.planning.PlacementTarget
+import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.Rejected
+import app.lawnchair.organizer.planning.RejectionCode
 import app.lawnchair.organizer.planning.SignalSource
+import app.lawnchair.organizer.planning.SnapPositionToken
+import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideKey
@@ -51,12 +67,14 @@ import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.pm.UserCache
+import com.android.wm.shell.common.split.SplitScreenConstants
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -358,6 +376,286 @@ class ProductionOrganizationInputInstrumentationTest {
         } finally {
             source.close()
         }
+    }
+
+    /**
+     * Issue #141: a user-saved app pair persists its split layout by packing
+     * `(splitPosition shl 16) + snapPosition` into each member row's RANK. Capture
+     * must decode that authoritative value into a present snap token, compose it
+     * through the production mapping seam, and reach a planner-accepted full
+     * organization instead of the typed zero-placement rejection.
+     */
+    @Test
+    fun appPairMemberRanksCaptureSnapPositionComposeIntoPlannerAcceptedInput() {
+        val serial = UserCache.INSTANCE.get(context)
+            .getSerialNumberForUser(Process.myUserHandle()).toString()
+        // Fixture ranks come from the live platform constants so drift between the
+        // persisted format and the codec's mirrored decoder fails this test first.
+        val snapPosition = SplitScreenConstants.SNAP_TO_50_50
+        val topRank = (SplitScreenConstants.SPLIT_POSITION_TOP_OR_LEFT shl 16) + snapPosition
+        val bottomRank = (SplitScreenConstants.SPLIT_POSITION_BOTTOM_OR_RIGHT shl 16) + snapPosition
+        val source = android.database.sqlite.SQLiteDatabase.create(null)
+        try {
+            Favorites.addTableToDb(source, 10L, false)
+            insertAppPairFixture(source, serial, memberRanks = listOf(topRank, bottomRank))
+
+            val captured = RowManifestCodec.capture(
+                source,
+                app.lawnchair.organizer.application.public.DeviceCapabilities(4, 5, 4, 4, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT),
+                listOf(app.lawnchair.organizer.planning.PageId("0")),
+                listOf(ProfileState(ProfileId(serial), ProfileAvailability.AVAILABLE)),
+            )
+
+            val pair = captured.state.items.single { it.kind == CanonicalItemKind.AppPair }
+            val structure = pair.structure as StructureState.AppPairMembers
+            assertEquals(
+                OptionalSnapPosition.Present(SnapPositionToken(snapPosition.toString())),
+                structure.snapPosition,
+            )
+            assertEquals(
+                listOf(SplitStage.TOP_OR_LEFT, SplitStage.BOTTOM_OR_RIGHT),
+                structure.members.map { it.stage },
+            )
+            // The manifest keeps the raw encoded ranks lossless.
+            assertEquals(
+                setOf(topRank, bottomRank),
+                captured.manifest.rows
+                    .filter { it.containerCode.value == PAIR_ROW_ID.toInt() }
+                    .map { it.rank }
+                    .toSet(),
+            )
+
+            val snapshot = CapturedSnapshot(
+                layoutState = captured.state,
+                manifest = captured.manifest,
+                revision = RevisionCalculator.revisionOf(captured.state),
+                digest = RevisionCalculator.classificationDigestOf(captured.state),
+            )
+            val composition = DefaultOrganizationInputComposer(
+                captureSource = CanonicalCaptureSource { CanonicalCaptureReadResult.Ready(snapshot) },
+                bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
+                    override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
+                },
+                overrides = EmptyOverrideSnapshotSource(),
+                platformEvidence = EmptyEvidenceSource(),
+            ).composeFullOrganization()
+            assertTrue("composition must be ready: $composition", composition is OrganizationInputComposition.Ready)
+            val ready = composition as OrganizationInputComposition.Ready
+
+            val items = ready.input.snapshot.items.associateBy { it.id }
+            val pairId = ItemId(PAIR_ROW_ID.toString())
+            val plannedPair = items.getValue(pairId)
+            assertEquals(ItemKind.APP_PAIR, plannedPair.kind)
+            assertEquals(listOf(SnapPositionToken(snapPosition.toString()), SnapPositionToken(snapPosition.toString())), plannedPair.appPair!!.members.map { it.snapPosition })
+            assertEquals(setOf(SplitStage.TOP_OR_LEFT, SplitStage.BOTTOM_OR_RIGHT), plannedPair.appPair!!.members.map { it.stage }.toSet())
+            (1..2).forEach { memberId ->
+                val member = items.getValue(ItemId(memberId.toString()))
+                assertNull(member.appPairId)
+                val placement = member.placement as CapturedPlacement.AppPairMember
+                assertEquals(AppPairId(PAIR_ROW_ID.toString()), placement.pair.appPairId)
+            }
+
+            val partition = ready.input.targets.existing
+            assertEquals(3, partition.size)
+            listOf(pairId, ItemId("1"), ItemId("2")).forEach { id ->
+                assertEquals(ExistingRole.Preserved, partition.single { it.item == id }.role)
+            }
+
+            val planned = DeterministicOrganizationPlanner().plan(ready.input)
+            assertTrue("planner must accept the app-pair layout: ${planned.outcome}", planned.outcome is Planned)
+            val placements = (planned.outcome as Planned).placements
+            assertEquals(3, placements.size)
+            val pairPlacement = placements.single { it.item == pairId }
+            assertTrue(pairPlacement.disposition is Disposition.Preserved)
+            val workspaceTarget = pairPlacement.target as PlacementTarget.WorkspaceTarget
+            assertEquals(GridCell(0, 4), workspaceTarget.cell)
+        } finally {
+            source.close()
+        }
+    }
+
+    /**
+     * Issue #141: pairs whose member ranks carry no decodable persistent snap
+     * position stay typed fail-closed — capture keeps them lossless, the composer
+     * projects no invented token, and the planner rejects exactly
+     * MALFORMED_APP_PAIR instead of guessing or dropping the pair.
+     */
+    @Test
+    fun undecodableAppPairRanksStayTypedMalformedAtThePlanner() {
+        val serial = UserCache.INSTANCE.get(context)
+            .getSerialNumberForUser(Process.myUserHandle()).toString()
+        val malformedRankPairs = mapOf(
+            "legacy plain ranks" to (0 to 1),
+            "out-of-domain snap" to (3 to (65536 + 3)),
+            "mismatched snaps" to (
+                (SplitScreenConstants.SPLIT_POSITION_TOP_OR_LEFT shl 16) + SplitScreenConstants.SNAP_TO_50_50 to
+                    (SplitScreenConstants.SPLIT_POSITION_BOTTOM_OR_RIGHT shl 16) + SplitScreenConstants.SNAP_TO_70_30
+                ),
+        )
+        for ((label, ranks) in malformedRankPairs) {
+            val source = android.database.sqlite.SQLiteDatabase.create(null)
+            try {
+                Favorites.addTableToDb(source, 10L, false)
+                insertAppPairFixture(source, serial, memberRanks = listOf(ranks.first, ranks.second))
+
+                val captured = RowManifestCodec.capture(
+                    source,
+                    app.lawnchair.organizer.application.public.DeviceCapabilities(4, 5, 4, 4, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT),
+                    listOf(app.lawnchair.organizer.planning.PageId("0")),
+                    listOf(ProfileState(ProfileId(serial), ProfileAvailability.AVAILABLE)),
+                )
+                val structure = captured.state.items
+                    .single { it.kind == CanonicalItemKind.AppPair }.structure as StructureState.AppPairMembers
+                assertEquals("$label: no snap may be invented", OptionalSnapPosition.Absent, structure.snapPosition)
+
+                val snapshot = CapturedSnapshot(
+                    layoutState = captured.state,
+                    manifest = captured.manifest,
+                    revision = RevisionCalculator.revisionOf(captured.state),
+                    digest = RevisionCalculator.classificationDigestOf(captured.state),
+                )
+                val composition = DefaultOrganizationInputComposer(
+                    captureSource = CanonicalCaptureSource { CanonicalCaptureReadResult.Ready(snapshot) },
+                    bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
+                        override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
+                    },
+                    overrides = EmptyOverrideSnapshotSource(),
+                    platformEvidence = EmptyEvidenceSource(),
+                ).composeFullOrganization()
+                assertTrue("$label: composition stays ready", composition is OrganizationInputComposition.Ready)
+
+                val planned = DeterministicOrganizationPlanner().plan((composition as OrganizationInputComposition.Ready).input)
+                val rejected = planned.outcome as? Rejected.Invalid
+                assertNotNull("$label: planner must reject", rejected)
+                val malformed = rejected!!.reasons.filter { it.code == RejectionCode.MALFORMED_APP_PAIR }
+                assertEquals("$label: exactly one typed rejection", 1, malformed.size)
+                assertEquals(
+                    "$label: rejection names the pair",
+                    listOf(DiagnosticParam.ItemParam(ItemId(PAIR_ROW_ID.toString()))),
+                    malformed.single().params,
+                )
+            } finally {
+                source.close()
+            }
+        }
+    }
+
+    /**
+     * Issue #141 review follow-up: an APP_PAIR row whose child-row count is not
+     * two — including zero members — must capture without throwing, project
+     * losslessly through the composer, and reach the planner's typed
+     * MALFORMED_APP_PAIR rejection instead of crashing canonicalization.
+     */
+    @Test
+    fun appPairRowWithAbnormalMemberCountStaysTypedMalformedAtThePlanner() {
+        val serial = UserCache.INSTANCE.get(context)
+            .getSerialNumberForUser(Process.myUserHandle()).toString()
+        for (memberCount in listOf(0, 1, 3)) {
+            val source = android.database.sqlite.SQLiteDatabase.create(null)
+            try {
+                Favorites.addTableToDb(source, 10L, false)
+                insertAppPairFixture(source, serial, memberRanks = (0 until memberCount).map { it })
+
+                // Capture itself must not throw on degenerate cardinality.
+                val captured = RowManifestCodec.capture(
+                    source,
+                    app.lawnchair.organizer.application.public.DeviceCapabilities(4, 5, 4, 4, 4, app.lawnchair.organizer.application.public.DeviceOrientation.PORTRAIT),
+                    listOf(app.lawnchair.organizer.planning.PageId("0")),
+                    listOf(ProfileState(ProfileId(serial), ProfileAvailability.AVAILABLE)),
+                )
+                val structure = captured.state.items
+                    .single { it.kind == CanonicalItemKind.AppPair }.structure as StructureState.AppPairMembers
+                assertEquals("$memberCount: every child row projects losslessly", memberCount, structure.members.size)
+                assertEquals("$memberCount: no snap may be invented", OptionalSnapPosition.Absent, structure.snapPosition)
+
+                val snapshot = CapturedSnapshot(
+                    layoutState = captured.state,
+                    manifest = captured.manifest,
+                    revision = RevisionCalculator.revisionOf(captured.state),
+                    digest = RevisionCalculator.classificationDigestOf(captured.state),
+                )
+                val composition = DefaultOrganizationInputComposer(
+                    captureSource = CanonicalCaptureSource { CanonicalCaptureReadResult.Ready(snapshot) },
+                    bundleSource = object : app.lawnchair.organizer.rules.OrganizerPolicyBundleSource {
+                        override fun readActive() = BuiltInOrganizerPolicyBundleSource.readActive()
+                    },
+                    overrides = EmptyOverrideSnapshotSource(),
+                    platformEvidence = EmptyEvidenceSource(),
+                ).composeFullOrganization()
+                assertTrue("$memberCount: composition stays ready", composition is OrganizationInputComposition.Ready)
+
+                val planned = DeterministicOrganizationPlanner().plan((composition as OrganizationInputComposition.Ready).input)
+                val rejected = planned.outcome as? Rejected.Invalid
+                assertNotNull("$memberCount: planner must reject", rejected)
+                val malformed = rejected!!.reasons.filter { it.code == RejectionCode.MALFORMED_APP_PAIR }
+                assertEquals("$memberCount: exactly one typed rejection", 1, malformed.size)
+                assertEquals(
+                    "$memberCount: rejection names the pair",
+                    listOf(DiagnosticParam.ItemParam(ItemId(PAIR_ROW_ID.toString()))),
+                    malformed.single().params,
+                )
+            } finally {
+                source.close()
+            }
+        }
+    }
+
+    /** Inserts one saved app pair: desktop row plus one child row per given rank. */
+    private fun insertAppPairFixture(
+        db: android.database.sqlite.SQLiteDatabase,
+        serial: String,
+        memberRanks: List<Int>,
+    ) {
+        val intent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setComponent(ComponentName("com.example.issue141", "com.example.issue141.MainActivity"))
+        fun memberRow(id: Long, rank: Int) {
+            db.insertOrThrow(
+                Favorites.TABLE_NAME,
+                null,
+                ContentValues().apply {
+                    put(Favorites._ID, id)
+                    put(Favorites.TITLE, "Issue141 member $id")
+                    put(Favorites.INTENT, intent.toUri(0))
+                    put(Favorites.CONTAINER, PAIR_ROW_ID)
+                    put(Favorites.SPANX, 1)
+                    put(Favorites.SPANY, 1)
+                    put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APPLICATION)
+                    put(Favorites.APPWIDGET_ID, -1)
+                    put(Favorites.MODIFIED, 1_000L)
+                    put(Favorites.RESTORED, 0)
+                    put(Favorites.PROFILE_ID, serial.toLong())
+                    put(Favorites.RANK, rank)
+                    put(Favorites.OPTIONS, 0)
+                    put(Favorites.APPWIDGET_SOURCE, -1)
+                    put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
+                },
+            )
+        }
+        db.insertOrThrow(
+            Favorites.TABLE_NAME,
+            null,
+            ContentValues().apply {
+                put(Favorites._ID, PAIR_ROW_ID)
+                put(Favorites.TITLE, "Issue141 pair")
+                put(Favorites.CONTAINER, Favorites.CONTAINER_DESKTOP)
+                put(Favorites.SCREEN, 0)
+                put(Favorites.CELLX, 0)
+                put(Favorites.CELLY, 4)
+                put(Favorites.SPANX, 1)
+                put(Favorites.SPANY, 1)
+                put(Favorites.ITEM_TYPE, Favorites.ITEM_TYPE_APP_PAIR)
+                put(Favorites.APPWIDGET_ID, -1)
+                put(Favorites.MODIFIED, 1_000L)
+                put(Favorites.RESTORED, 0)
+                put(Favorites.PROFILE_ID, serial.toLong())
+                put(Favorites.RANK, 0)
+                put(Favorites.OPTIONS, 0)
+                put(Favorites.APPWIDGET_SOURCE, -1)
+                put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
+            },
+        )
+        memberRanks.forEachIndexed { index, rank -> memberRow(index + 1L, rank) }
     }
 
     /** Inserts one dock-row fixture; a null screen leaves the nullable column unset. */
@@ -848,6 +1146,7 @@ class ProductionOrganizationInputInstrumentationTest {
 
     private companion object {
         const val TAG = "ProductionOrgInputTest"
+        const val PAIR_ROW_ID = 100L
         const val OVERRIDE_PREFERENCES_NAME = "organizer_category_overrides"
         const val OVERRIDE_DIRECTORY_NAME = "organizer_category_overrides"
         const val OVERRIDE_FILE_NAME = "snapshot-v1"

@@ -114,11 +114,9 @@ fun effectiveLockViewOf(state: LayoutState, item: CanonicalItemState): Effective
             (item.structure as? StructureState.FolderMembers)?.members.orEmpty()
                 .mapNotNull { (it.item as? ApplicationItemRef.PersistentItem)?.itemId }
 
-        CanonicalItemKind.AppPair -> {
-            val members = item.structure as? StructureState.AppPairMembers
-            listOfNotNull(members?.first, members?.second)
-                .mapNotNull { (it as? ApplicationItemRef.PersistentItem)?.itemId }
-        }
+        CanonicalItemKind.AppPair ->
+            (item.structure as? StructureState.AppPairMembers)?.members.orEmpty()
+                .mapNotNull { (it.item as? ApplicationItemRef.PersistentItem)?.itemId }
 
         else -> emptyList()
     }

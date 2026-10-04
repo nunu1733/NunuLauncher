@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.application.canonical
 
+import app.lawnchair.organizer.application.public.AppPairMemberState
 import app.lawnchair.organizer.application.public.ApplicationItemRef
 import app.lawnchair.organizer.application.public.ApplicationPageRef
 import app.lawnchair.organizer.application.public.ApplyAction
@@ -297,13 +298,18 @@ object CanonicalMarshalling {
 
             is StructureState.AppPairMembers -> {
                 sink.byte(STRUCTURE_APP_PAIR_MEMBERS)
-                first.encode(sink)
-                second.encode(sink)
-                sink.byte(firstStage.ordinal)
-                sink.byte(secondStage.ordinal)
+                // Members arrive in persisted rank order from capture; the size
+                // prefix keeps degenerate (non-two-member) pairs digestable.
+                sink.int(members.size)
+                members.forEach { it.encode(sink) }
                 snapPosition.encode(sink)
             }
         }
+    }
+
+    private fun AppPairMemberState.encode(sink: Digest.DigestSink) {
+        item.encode(sink)
+        sink.byte(stage.ordinal)
     }
 
     private fun RankedMember.encode(sink: Digest.DigestSink) {
