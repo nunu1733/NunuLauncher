@@ -24,6 +24,7 @@ import app.lawnchair.ui.preferences.components.colorpreference.ColorSelection
 import app.lawnchair.ui.preferences.components.search.SearchProviderPreferenceScreen
 import app.lawnchair.ui.preferences.destinations.AppDrawerFoldersPreference
 import app.lawnchair.ui.preferences.destinations.AppDrawerPreferences
+import app.lawnchair.ui.preferences.destinations.CategoryOverridePreferences
 import app.lawnchair.ui.preferences.destinations.CustomIconShapePreference
 import app.lawnchair.ui.preferences.destinations.DebugMenuPreferences
 import app.lawnchair.ui.preferences.destinations.DockPreferences
@@ -111,6 +112,7 @@ fun PreferenceNavigation(
         composable<HomeScreenGrid> { HomeScreenGridPreferences() }
         composable<HomeScreenPopupEditor> { LauncherPopupPreference() }
         composable<HomeScreenPlacementLocks> { PlacementLockPreferences() }
+        composable<HomeScreenCategoryOverrides> { CategoryOverridePreferences() }
         composable<HomeScreenManualOrganization> { backStackEntry ->
             val route: HomeScreenManualOrganization = backStackEntry.toRoute()
             ManualOrganizationPreferences(

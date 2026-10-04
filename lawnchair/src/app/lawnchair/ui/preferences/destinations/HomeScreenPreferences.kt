@@ -42,6 +42,7 @@ import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
+import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
@@ -156,6 +157,11 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.manual_organization_title),
                 destination = HomeScreenManualOrganization(),
                 subtitle = stringResource(id = R.string.manual_organization_summary),
+            )
+            NavigationActionPreference(
+                label = stringResource(id = R.string.organizer_category_overrides_title),
+                destination = HomeScreenCategoryOverrides,
+                subtitle = stringResource(id = R.string.organizer_category_overrides_summary),
             )
             SwitchPreference(
                 adapter = lockHomeScreenAdapter,

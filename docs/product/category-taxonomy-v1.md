@@ -7,6 +7,7 @@
 > Decision gate: D-008 (category taxonomy)
 > Depends on: Issue #2 Deck audit, Issue #3 item preservation policy
 > Primary scope/dependency record: Issue #6
+> Authoring and persistence note: The historical user-override storage, diagnostics, backup, and profile-remapping suggestions in §6 are superseded for Organizer v1 by [ADR-0007](../adr/0007-authoritative-organization-policy-sources.md) and [Issue #99 Stage A](../../specs/99-user-authored-category-overrides/spec.md). This research document remains a taxonomy and signal-priority reference only.
 
 ## 1. Question and scope
 
@@ -159,40 +160,19 @@ Signal は **S1 > S2 > S3 > S4 > S5 > S6** の順に評価する。上位の sig
 
 ## 6. User override
 
-### 6.1 保存内容
+> **Normative-status note:** The persistence details that previously appeared in this research section are **superseded** for Organizer v1. They must not be used as an implementation contract. In particular, v1 does not authorize timestamp/previous-category fields, raw package/profile/category diagnostics, backup inclusion, or profile-serial remapping. The authoritative storage, identity, failure, migration, rollback, and backup contract is [ADR-0007](../adr/0007-authoritative-organization-policy-sources.md); the user-facing set/change/remove and writer contract is [Issue #99 Stage A](../../specs/99-user-authored-category-overrides/spec.md).
 
-- 永続化層には次の情報を保存する。
-  - Package name
-  - Profile serial
-  - Category ID
-  - 設定日時
-  - 変更前の category（diagnostic 用）
+### 6.1 Retained classification semantics
 
-### 6.2 優先順位
+- User override is always evaluated as S1 and therefore takes precedence over every lower signal.
+- Removing the override restores S2–S6 evaluation only in a later fresh composition.
+- The applicable key is the exact package plus canonical captured profile identity; same-package entries in different profiles remain independent.
 
-- User override は常に S1 として評価され、他の全 signal より優先される。
-- Override を解除した場合、S2 以降の signal で再評価する。
-
-### 6.3 有効範囲
-
-- Override は指定された package + profile の組み合わせに対してのみ有効。
-- 同一 package の別 profile には影響しない。
-- Override が適用された item は、diagnostic に「user override」と記録する。
-
-### 6.4 データ取扱い（NFR-008）
-
-Category override の保存データに関する取扱いを次の通り定義する。
-
-| 項目 | 規定 |
-|---|---|
-| 保存対象 | package name、profile serial、category ID、設定日時、変更前 category ID |
-| 保存先 | 端末内の local storage のみ。外部送信しない。 |
-| 外部送信 | 常に **default off**。将来の機能で送信を追加する場合、明示的な user opt-in と privacy review（Issue #16）を必須とする。 |
-| 保持期間 | ユーザーが override を解除するか、対象 app をアンインストールするまで。 |
-| バックアップ | Lawnchair backup（ZIP）に含まれる可能性がある。restore 先で profile serial が変化する場合は §8.1 に従い再評価する。 |
-| Diagnostic への露出 | package name は生のままで local diagnostic へ記録するが、user-visible 表示では必要に応じて mask する（Issue #16 で具体化）。 |
+No other authoring, persistence, diagnostic, retention, backup, or restore behavior is specified by this research document.
 
 ## 7. Explainability
+
+> **Normative-status note:** The item-level diagnostic fields and raw examples in this research section are superseded for Organizer v1 by [Organizer Diagnostics and Observability Contract](../engineering/organizer-diagnostics.md). Default journal, logcat, and export diagnostics must not contain raw `CategoryId`, package, profile, signal detail, or user-override state. This section remains only a research explanation of classification concepts; user-facing typed reasons and privacy-safe aggregate diagnostics follow their accepted owners.
 
 ### 7.1 分類理由の記録
 

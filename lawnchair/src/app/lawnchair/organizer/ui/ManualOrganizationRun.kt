@@ -95,7 +95,7 @@ internal object ManualOrganizationModule {
             context.applicationContext,
             (context.applicationContext as LawnchairApp).layoutApplicationModule,
         ).let { application ->
-            ManualOrganizationRun(application).also { instance = it }
+            ManualOrganizationRun(application, operationGate = OrganizationOperationLease).also { instance = it }
         }
     }
 }
@@ -109,6 +109,7 @@ internal object ManualOrganizationModule {
 class ManualOrganizationRun internal constructor(
     private val application: ManualOrganizationApplication,
     private val planner: OrganizationPlanner = DeterministicOrganizationPlanner(),
+    private val operationGate: OrganizationOperationGate = NoopOrganizationOperationGate,
 ) {
     enum class DismissalOutcome {
         CancelledAndMayNavigate,
@@ -188,6 +189,7 @@ class ManualOrganizationRun internal constructor(
     private var pending: PendingPlan? = null
     private var appliedPoint: RecoveryPointId? = null
     private var pendingRecovery: RecoveryPreviewResult.Restorable? = null
+    private var recoveryLease: AutoCloseable? = null
     private var lastVerifiedApply: State.Applied? = null
 
     fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome {
@@ -204,73 +206,78 @@ class ManualOrganizationRun internal constructor(
             ),
         )
 
-        when (val composition = application.composeFullOrganization()) {
-            is OrganizationInputComposition.NotReady -> {
-                finish(operation, State.InputUnavailable(composition.reason))
-            }
+        try {
+            when (val composition = application.composeFullOrganization()) {
+                is OrganizationInputComposition.NotReady -> {
+                    finish(operation, State.InputUnavailable(composition.reason))
+                }
 
-            is OrganizationInputComposition.Ready -> {
-                if (!isActive(operation)) return started
-                val input = composition.input
-                emit(
-                    RunEvent(
-                        journalSequence = 0L,
-                        runId = runId.value,
-                        trigger = operation.trigger,
-                        runMode = RunMode.FULL_ORGANIZATION,
-                        phase = PhaseCode.CAPTURED,
-                        deviceProfile = deviceSummary(input),
-                    ),
-                )
-                setIfActive(operation, State.Planning)
-                if (!isActive(operation)) return started
-                val result = planner.plan(input)
-                if (!isActive(operation)) return started
-                emit(
-                    PlanningProjection.project(
-                        result = result,
-                        journalSequence = 0L,
-                        capturedItemCount = input.snapshot.items.size,
-                    ).copy(
-                        runId = runId.value,
-                        trigger = operation.trigger,
-                        runMode = RunMode.FULL_ORGANIZATION,
-                    ),
-                )
-                when (val outcome = result.outcome) {
-                    is Planned -> {
-                        val summary = outcome.summary(input)
-                        if (summary.movedCount == 0 && summary.newFolderCount == 0 && summary.newPageCount == 0) {
-                            finish(operation, State.NoChanges)
-                        } else {
-                            synchronized(lock) {
-                                if (!isActiveLocked(operation)) return started
-                                pending = PendingPlan(operation, input, result, summary)
-                                stateHolder.value = State.Preview(summary)
+                is OrganizationInputComposition.Ready -> {
+                    if (!isActive(operation)) return started
+                    val input = composition.input
+                    emit(
+                        RunEvent(
+                            journalSequence = 0L,
+                            runId = runId.value,
+                            trigger = operation.trigger,
+                            runMode = RunMode.FULL_ORGANIZATION,
+                            phase = PhaseCode.CAPTURED,
+                            deviceProfile = deviceSummary(input),
+                        ),
+                    )
+                    setIfActive(operation, State.Planning)
+                    if (!isActive(operation)) return started
+                    val result = planner.plan(input)
+                    if (!isActive(operation)) return started
+                    emit(
+                        PlanningProjection.project(
+                            result = result,
+                            journalSequence = 0L,
+                            capturedItemCount = input.snapshot.items.size,
+                        ).copy(
+                            runId = runId.value,
+                            trigger = operation.trigger,
+                            runMode = RunMode.FULL_ORGANIZATION,
+                        ),
+                    )
+                    when (val outcome = result.outcome) {
+                        is Planned -> {
+                            val summary = outcome.summary(input)
+                            if (summary.movedCount == 0 && summary.newFolderCount == 0 && summary.newPageCount == 0) {
+                                finish(operation, State.NoChanges)
+                            } else {
+                                synchronized(lock) {
+                                    if (!isActiveLocked(operation)) return started
+                                    pending = PendingPlan(operation, input, result, summary)
+                                    stateHolder.value = State.Preview(summary)
+                                }
+                                emit(
+                                    RunEvent(
+                                        journalSequence = 0L,
+                                        runId = runId.value,
+                                        trigger = operation.trigger,
+                                        runMode = RunMode.FULL_ORGANIZATION,
+                                        phase = PhaseCode.PREVIEWED,
+                                    ),
+                                )
                             }
-                            emit(
-                                RunEvent(
-                                    journalSequence = 0L,
-                                    runId = runId.value,
-                                    trigger = operation.trigger,
-                                    runMode = RunMode.FULL_ORGANIZATION,
-                                    phase = PhaseCode.PREVIEWED,
-                                ),
-                            )
                         }
+
+                        is app.lawnchair.organizer.planning.Rejected.Invalid -> finish(
+                            operation,
+                            State.PlanningRejected(PlanningFailureKind.INVALID, result.summary(input)),
+                        )
+
+                        is app.lawnchair.organizer.planning.Rejected.Impossible -> finish(
+                            operation,
+                            State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, result.summary(input)),
+                        )
                     }
-
-                    is app.lawnchair.organizer.planning.Rejected.Invalid -> finish(
-                        operation,
-                        State.PlanningRejected(PlanningFailureKind.INVALID, result.summary(input)),
-                    )
-
-                    is app.lawnchair.organizer.planning.Rejected.Impossible -> finish(
-                        operation,
-                        State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, result.summary(input)),
-                    )
                 }
             }
+        } catch (failure: Throwable) {
+            abort(operation)
+            throw failure
         }
         return started
     }
@@ -286,6 +293,7 @@ class ManualOrganizationRun internal constructor(
             stateHolder.value = State.Cancelled
             candidate
         }
+        operation.lease.close()
         emit(
             RunEvent(
                 journalSequence = 0L,
@@ -305,82 +313,117 @@ class ManualOrganizationRun internal constructor(
             stateHolder.value = State.Applying
             currentOperation to currentPlan
         }
-        emit(
-            RunEvent(
-                journalSequence = 0L,
-                runId = operation.runId.value,
-                trigger = operation.trigger,
-                runMode = RunMode.FULL_ORGANIZATION,
-                phase = PhaseCode.USER_CONFIRMED,
-            ),
-        )
-        val materialized = application.materialize(pendingPlan.input, pendingPlan.result)
-        val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
-        if (plan == null) {
-            val stale = synchronized(lock) {
-                if (!isActiveLocked(operation)) return
-                pending = null
-                activeOperation = null
-                stateHolder.value = State.Stale
-                true
-            }
-            if (stale) emitStaleRejection(operation)
-            return
-        }
-        val admitted = synchronized(lock) {
-            if (!isActiveLocked(operation) || operation.cancelled.get()) {
-                false
-            } else {
-                operation.applicationAdmitted.set(true)
-                pending = null
-                true
-            }
-        }
-        if (!admitted) return
-
-        val result = application.apply(plan, pendingPlan.runId)
-        synchronized(lock) {
-            if (!isActiveLocked(operation)) return
-            activeOperation = null
-            val nextState = when (result) {
-                is ApplyResult.NoChanges -> State.NoChanges
-
-                is ApplyResult.Rejected -> if (result.reason == PreWriteRejection.STALE_REVISION || result.reason == PreWriteRejection.EXACT_PRECONDITION_FAILED) {
-                    State.Stale
-                } else {
-                    State.Applied(result, pendingPlan.summary)
+        try {
+            emit(
+                RunEvent(
+                    journalSequence = 0L,
+                    runId = operation.runId.value,
+                    trigger = operation.trigger,
+                    runMode = RunMode.FULL_ORGANIZATION,
+                    phase = PhaseCode.USER_CONFIRMED,
+                ),
+            )
+            val materialized = application.materialize(pendingPlan.input, pendingPlan.result)
+            val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
+            if (plan == null) {
+                val stale = synchronized(lock) {
+                    if (!isActiveLocked(operation)) return
+                    pending = null
+                    activeOperation = null
+                    stateHolder.value = State.Stale
+                    true
                 }
+                if (stale) {
+                    operation.lease.close()
+                    emitStaleRejection(operation)
+                }
+                return
+            }
+            val admitted = synchronized(lock) {
+                if (!isActiveLocked(operation) || operation.cancelled.get()) {
+                    false
+                } else {
+                    operation.applicationAdmitted.set(true)
+                    pending = null
+                    true
+                }
+            }
+            if (!admitted) return
 
-                else -> State.Applied(result, pendingPlan.summary)
+            val result = application.apply(plan, pendingPlan.runId)
+            synchronized(lock) {
+                if (!isActiveLocked(operation)) return
+                activeOperation = null
+                val nextState = when (result) {
+                    is ApplyResult.NoChanges -> State.NoChanges
+
+                    is ApplyResult.Rejected -> if (result.reason == PreWriteRejection.STALE_REVISION || result.reason == PreWriteRejection.EXACT_PRECONDITION_FAILED) {
+                        State.Stale
+                    } else {
+                        State.Applied(result, pendingPlan.summary)
+                    }
+
+                    else -> State.Applied(result, pendingPlan.summary)
+                }
+                if (nextState is State.Applied && result is ApplyResult.Applied) {
+                    appliedPoint = result.pointId
+                    lastVerifiedApply = nextState
+                }
+                stateHolder.value = nextState
             }
-            if (nextState is State.Applied && result is ApplyResult.Applied) {
-                appliedPoint = result.pointId
-                lastVerifiedApply = nextState
-            }
-            stateHolder.value = nextState
+            operation.lease.close()
+        } catch (failure: Throwable) {
+            abort(operation)
+            throw failure
         }
     }
 
     fun beginRecoveryPreview() {
-        val (point, previous) = synchronized(lock) {
-            val current = lastVerifiedApply ?: return
-            val pointId = appliedPoint ?: return
-            stateHolder.value = State.InspectingRecovery
-            pointId to current
+        val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return
+        val request = synchronized(lock) {
+            val current = lastVerifiedApply
+            val pointId = appliedPoint
+            if (current == null || pointId == null || activeOperation != null || recoveryLease != null) {
+                null
+            } else {
+                recoveryLease = lease
+                stateHolder.value = State.InspectingRecovery
+                pointId to current
+            }
         }
-        val preview = application.inspectRecovery(point)
-        synchronized(lock) {
-            if (lastVerifiedApply !== previous || state !is State.InspectingRecovery) return
-            pendingRecovery = preview as? RecoveryPreviewResult.Restorable
-            stateHolder.value = State.RecoveryPreview(preview)
+        if (request == null) {
+            lease.close()
+            return
+        }
+        val (point, previous) = request
+        val preview = try {
+            application.inspectRecovery(point)
+        } catch (failure: Throwable) {
+            cancelRecoveryPreview()
+            throw failure
+        }
+        val updated = synchronized(lock) {
+            if (lastVerifiedApply !== previous || state !is State.InspectingRecovery) {
+                false
+            } else {
+                pendingRecovery = preview as? RecoveryPreviewResult.Restorable
+                stateHolder.value = State.RecoveryPreview(preview)
+                true
+            }
+        }
+        if (!updated) {
+            val abandoned = synchronized(lock) { recoveryLease.also { recoveryLease = null } }
+            abandoned?.close()
         }
     }
 
     fun cancelRecoveryPreview() {
-        synchronized(lock) {
+        val lease = synchronized(lock) {
             pendingRecovery = null
             stateHolder.value = lastVerifiedApply ?: State.Idle
+            recoveryLease.also { recoveryLease = null }
         }
+        lease?.close()
     }
 
     fun confirmRecovery() {
@@ -390,13 +433,33 @@ class ManualOrganizationRun internal constructor(
             pendingRecovery = null
             current
         }
-        val result = application.confirmRecovery(preview.pointId, preview.confirmation)
-        synchronized(lock) {
-            if (state is State.Recovering) stateHolder.value = State.RecoveryResultState(result)
+        val result = try {
+            application.confirmRecovery(preview.pointId, preview.confirmation)
+        } catch (failure: Throwable) {
+            cancelRecoveryPreview()
+            throw failure
         }
+        val lease = synchronized(lock) {
+            if (state is State.Recovering) stateHolder.value = State.RecoveryResultState(result)
+            recoveryLease.also { recoveryLease = null }
+        }
+        lease?.close()
     }
 
     fun dismiss(): DismissalOutcome {
+        val recovery = synchronized(lock) {
+            if (activeOperation == null && recoveryLease != null) {
+                pendingRecovery = null
+                stateHolder.value = lastVerifiedApply ?: State.Idle
+                recoveryLease.also { recoveryLease = null }
+            } else {
+                null
+            }
+        }
+        if (recovery != null) {
+            recovery.close()
+            return DismissalOutcome.CancelledAndMayNavigate
+        }
         val operation = synchronized(lock) {
             val operation = activeOperation
             if (operation?.applicationAdmitted?.get() == true) {
@@ -412,6 +475,7 @@ class ManualOrganizationRun internal constructor(
             stateHolder.value = State.Cancelled
             DismissalOutcome.CancelledAndMayNavigate to operation
         }
+        operation.second?.lease?.close()
         operation.second?.let {
             emit(
                 RunEvent(
@@ -426,16 +490,22 @@ class ManualOrganizationRun internal constructor(
         return operation.first
     }
 
-    private fun beginOperation(trigger: Trigger): Operation? = synchronized(lock) {
-        if (activeOperation != null) return@synchronized null
-        val operation = Operation(application.newRunId(), trigger)
-        activeOperation = operation
-        pending = null
-        pendingRecovery = null
-        appliedPoint = null
-        lastVerifiedApply = null
-        stateHolder.value = State.Capturing
-        operation
+    private fun beginOperation(trigger: Trigger): Operation? {
+        val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RUN) ?: return null
+        return synchronized(lock) {
+            if (activeOperation != null || recoveryLease != null) {
+                lease.close()
+                return@synchronized null
+            }
+            val operation = Operation(application.newRunId(), trigger, lease)
+            activeOperation = operation
+            pending = null
+            pendingRecovery = null
+            appliedPoint = null
+            lastVerifiedApply = null
+            stateHolder.value = State.Capturing
+            operation
+        }
     }
 
     private fun isActive(operation: Operation): Boolean = synchronized(lock) { isActiveLocked(operation) }
@@ -449,12 +519,31 @@ class ManualOrganizationRun internal constructor(
     }
 
     private fun finish(operation: Operation, nextState: State) {
-        synchronized(lock) {
-            if (!isActiveLocked(operation)) return
-            activeOperation = null
-            pending = null
-            stateHolder.value = nextState
+        val completed = synchronized(lock) {
+            if (!isActiveLocked(operation)) {
+                false
+            } else {
+                activeOperation = null
+                pending = null
+                stateHolder.value = nextState
+                true
+            }
         }
+        if (completed) operation.lease.close()
+    }
+
+    private fun abort(operation: Operation) {
+        val aborted = synchronized(lock) {
+            if (!isActiveLocked(operation)) {
+                false
+            } else {
+                activeOperation = null
+                pending = null
+                stateHolder.value = State.Cancelled
+                true
+            }
+        }
+        if (aborted) operation.lease.close()
     }
 
     private fun PlanningResult.summary(input: OrganizationInput): Summary {
@@ -570,6 +659,7 @@ class ManualOrganizationRun internal constructor(
     private data class Operation(
         val runId: RunId,
         val trigger: Trigger,
+        val lease: AutoCloseable,
         val cancelled: AtomicBoolean = AtomicBoolean(false),
         val applicationAdmitted: AtomicBoolean = AtomicBoolean(false),
     )
