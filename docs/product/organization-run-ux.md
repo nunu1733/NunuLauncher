@@ -1,11 +1,11 @@
 # Organization Run UX Contract
 
 > Status: Proposed (research output of Issue #4; the applied safe-apply contract is [spec 13](../../specs/13-safe-layout-application/spec.md))
-> Reviewed: 2026-08-09
+> Reviewed: 2026-08-21
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: FR-004, FR-006, FR-007, FR-008, FR-009, NFR-001, NFR-009, NFR-011
 > Decision gates: D-004 (trigger), D-005 (safe UX)
-> Primary scope/dependency record: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4)
+> Primary scope/dependency record: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4); package-event MVP disposition: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) (Option B)
 
 ## 1. Purpose and safety boundary
 
@@ -29,11 +29,12 @@ diagnostic の field/retention は [Issue #16](https://github.com/nunu1733/NunuL
 
 ## 2. D-004: trigger policy proposal
 
-**Propose to adopt:** manual full organization、onboarding proposal、incremental
-placement を別 policy とする。v1 の full/incremental はともに **proposal +
-preview + explicit user confirmation** である。auto-incremental は本 policy では
-採用・許可しない。導入には、別の追跡済み product decision、complete な run/
-recovery/result UX、Issue #13 の safe-apply criteria が必要である。
+**Current MVP policy:** manual full organization、onboarding proposal、package event後の
+incremental placement を別 policy とする。MVPではmanual full organizationとonboardingからのreviewだけが
+organization runへ進む。package eventは[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)のOption Bにより
+incremental proposalを開始せず、manual flowのみ利用可能である。auto-incrementalは採用・許可しない。
+将来、MVP外のincremental placementを再検討する場合も、proposal + preview + explicit user confirmation、
+completeなrun/recovery/result UX、Issue #13のsafe-apply criteriaが必要である。
 
 ### 2.1 Manual full organization
 
@@ -124,20 +125,21 @@ stateDiagram-v2
     Recovering --> RecoveryFailed: recovery failure
 ```
 
-v1 は auto-incremental を許可しない。Issue #54の調査では、現baselineに過去install履歴を
+MVPではauto-incrementalを許可しない。Issue #54の調査では、現baselineに過去install履歴を
 権威的に得るsourceがなく、reinstall除外を証明できないため、package eventによるincremental
 eligibility自体を有効化しない。証拠比較は
 [package-provenance](../engineering/package-provenance.md)、negative decisionの判断・理由は
 [ADR-0005](../adr/0005-fresh-install-presence-evidence.md)のみを正本とする。
-将来のproduct decisionがauthoritative historyとrace/crash protocolを承認し、#52/#57の
-依存成果物が揃うまでは、package eventはproposal/confirmationへ進まず、manual flowだけを
-利用可能とする。
+[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)はOption Bを選択し、FR-008/FR-009の
+package-event incremental placementをMVP外のLater/deferred capabilityとした。したがってpackage eventは
+proposal/confirmationへ進まず、manual flowだけを利用可能とする。将来の再開には、新しいproduct decisionで
+authoritative historyとrace/crash protocolを承認し、accepted specを作成することが必要である。
 
 ## 3. D-005: preview, confirmation, and recovery proposal
 
 **Propose to adopt:** recovery は Foundation の必須 capability とする。full-layout
-change は preview と explicit confirmation を常に必要とする。incremental も
-proposal/confirmation であり、v1 に auto-apply の例外はない。
+change は preview と explicit confirmation を常に必要とする。Later/deferred capabilityとして
+再開されるincremental placementもproposal/confirmationを必要とし、auto-applyの例外はない。
 
 recovery point の作成、検証、retention、容量、expiration、atomic recovery は
 Issue #13 の ownership である。UX は次を保証する。
@@ -154,7 +156,7 @@ Issue #13 の ownership である。UX は次を保証する。
 
 | Content | Required behavior |
 |---|---|
-| scope/trigger | manual/onboarding/incremental、full/incremental、target profile と対象集合を表示する。 |
+| scope/trigger | manual/onboarding、full とtarget profile・対象集合を表示する。Later/deferred capabilityとして再開されるincremental placementは、そのtriggerとincremental scopeを明示する。 |
 | diff/reasons | move、preserve、explicit deletion、new placement、unchanged、unplaced の count と主要理由を表示する。 |
 | warnings | capacity、unsupported item、disabled/locked profile、widget/app pair、legacy/restore、lock、stale risk を影響とともに表示する。 |
 | locks/profiles | locked placement/occupied region と profile identity を視覚だけに依存せず区別する。 |
@@ -245,8 +247,8 @@ replace user-facing explanations.
 | manual full | explicit start → preview → confirm; stale checkpoint does not write; recovery action after success. |
 | onboarding | non-blocking; skip/defer mutate nothing; accepted route still previews/confirms. |
 | package event — new organizer path (current baseline) | Every package event, including a USER session with a unique current target, produces no **new organizer** incremental proposal or placement; manual organization remains available. |
-| package event — legacy Deck (until #57) | Deck is a separate legacy runtime path and may still call `addNewlyInstalledApp` while enabled. This is not evidence for, nor a permitted implementation of, the new organizer path. Device-wide zero-placement verification begins only after #57 removes that hook. |
-| package event (future only) | A future accepted product decision/spec that provides authoritative install history may test proposal → preview → explicit confirmation; that proposal path is not an acceptance condition for the current baseline. |
+| package event — legacy Deck | #57 / PR #79 retired the Deck runtime and removed its package-event hook without a replacement. It is not an organizer path and cannot be reused to implement incremental placement. |
+| package event (Later/deferred only) | [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected Option B, so this is not an MVP acceptance condition. Only a later accepted product decision/spec that provides authoritative install history may test proposal → preview → explicit confirmation. |
 | launcher activity candidates (current baseline) | package/profile から launchable target が 0 件、または複数で一意に解決できなくても、または一意でもprior absenceが証明できなくても、新organizer経路ではincremental proposal/placementを行わず、manual flowを許可する。 |
 | diff/warning/unplaced | counts, reason, and destructive effect visible; empty diff writes nothing. |
 | cancel/recreation | no partial state claimed; retry recaptures; atomic interval is safe. |

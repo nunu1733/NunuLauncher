@@ -1,7 +1,7 @@
 # Product Brief
 
 > Status: Draft
-> Updated: 2026-08-09
+> Updated: 2026-08-21
 
 ## Vision
 
@@ -35,9 +35,11 @@ NunuLauncherは、ローカルrule、ユーザーoverride、ロック配置を�
 
 ## MVP outcome
 
-MVPでは、選択された対象集合について安全な全体整理planを提示・適用・復旧でき、ロック配置を守り、新規アプリを同じpolicyで増分配置できることを目指す。
+MVPでは、選択された対象集合について安全な全体整理planを提示・適用・復旧でき、ロック配置を守ることを目指す。手動全体整理とonboardingからのreviewは、preview、explicit confirmation、stale-safe apply、recoveryを伴う。
 
-詳細なカテゴリ学習、外部LLM、rule共有marketplace、高度な美観最適化はMVPの成果条件にしない。
+[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)のOption Bにより、package eventによる新規アプリのincremental placementはMVPの成果条件に含めない。これはFR-008/FR-009のLater/deferred capabilityであり、将来のaccepted product decision、authoritative prior-absence evidence、およびspecが成立するまで開始しない。
+
+詳細なカテゴリ学習、外部LLM、rule共有marketplace、高度な美観最適化、package eventによるincremental placementはMVPの成果条件にしない。
 
 ## Non-goals
 
@@ -54,7 +56,7 @@ MVPでは、選択された対象集合について安全な全体整理planを�
 
 - 適用後にrecoveryが必要になったrunの割合。
 - planが適用不能または未配置itemを残した割合と理由。
-- 新規アプリが追加から所定時間内に期待する場所へ配置された割合。
+- 新規アプリが追加から所定時間内に期待する場所へ配置された割合（FR-008/FR-009のLater/deferred capabilityのmeasurementであり、MVP success criterionではない）。
 - 同一入力でplan hashが一致する割合。
 - crash、layout破損、復旧失敗の件数。
 - ユーザーが手動で再移動したitemの割合（収集する場合はprivacy review必須）。

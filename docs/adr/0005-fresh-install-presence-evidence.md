@@ -14,14 +14,17 @@ package was absent before the event. A current inventory, an ever-seen set,
 `SessionInfo.getInstallReason() == INSTALL_REASON_USER`, `firstInstallTime`, or a
 unique current launchable activity is not sufficient to prove that absence.
 
-Until that source and its event-correlation protocol are approved and implemented,
-all package-event incremental placement remains disabled. Update, restore, reinstall,
-availability, ambiguous, missing, stale, corrupt, and contradictory paths produce no
-proposal. Manual organization remains available.
+[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected Option B:
+package-event incremental placement is outside the MVP, and FR-008/FR-009 are
+Later/deferred. Until a later product decision selects a source and its event-correlation
+protocol is approved and implemented, all package-event incremental placement remains
+disabled. Update, restore, reinstall, availability, ambiguous, missing, stale, corrupt,
+and contradictory paths produce no proposal. Manual organization remains available.
 
 No presence store, classifier interface, SessionCommitReceiver bridge, schema/migration,
-or callback/session atomic-consume protocol is selected by this ADR. Those choices are
-blocked on the product decision and on the dependency conditions in Issues #52 and #57.
+or callback/session atomic-consume protocol is selected by this ADR. The MVP does not
+introduce those choices; a later feature may consider them only after a new product
+decision and accepted spec satisfy this ADR's verification obligations.
 
 ## Context
 
@@ -68,14 +71,14 @@ were considered.
 
 ## Consequences
 
-- #55 cannot begin its implementation/specification stage while #52 and #57 remain
-  open and while the authoritative-history product decision is unresolved.
+- [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) resolves the MVP scope
+  decision as Option B. #55 is deferred/not planned and no #55 spec or plan is authorized.
 - A future product decision must define the source boundary, retention/privacy,
   profile isolation, event correlation, generation ownership, atomic consume/update,
   crash/restart replay, and failure injection before creating a spec or plan.
 - No new permission, storage file, manifest receiver, public classifier, or package-event
-  hook is added by this ADR.
-- The research result is intentionally a blocker, not an implementation shortcut.
+  hook is added by this ADR or by the MVP scope decision.
+- The research result remains a safety boundary, not an implementation shortcut.
 
 ## Verification obligations for the future decision
 
@@ -88,3 +91,9 @@ Before incremental eligibility can be enabled, its accepted spec must demonstrat
 - crash/restart/replay and durable-write failure behavior that never reuses stale absence;
 - profile isolation, privacy retention, backup behavior, and no raw identity diagnostics;
 - no proposal for missing, stale, contradictory, corrupt, or unavailable evidence.
+
+## Change history
+
+- 2026-08-21: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) selected
+  Option B. This ADR's negative technical conclusion is unchanged; the product-scope
+  result is that package-event incremental placement is deferred outside the MVP.

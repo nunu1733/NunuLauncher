@@ -66,10 +66,12 @@ no telemetry or network transport.
 
 ## Non-goals
 
-- The manual, onboarding, or incremental run-flow orchestration itself. Issues
-  #52, #53, and #55 own emission of UI/run phases such as capture, preview,
+- The manual, onboarding, or future incremental run-flow orchestration itself. Issues
+  #52 and #53 own emission of UI/run phases such as capture, preview,
   confirmation, cancellation, and their trigger-specific sequencing through the
-  diagnostics port defined here.
+  diagnostics port defined here. Package-event incremental placement is outside the MVP
+  by [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85); a later feature
+  issue must own its run-flow emission if that capability is reopened.
 - A second planner, application, recovery, or orchestration seam.
 - Changes to Issue #10 planning public types or Issue #13
   application/recovery public types.
@@ -185,8 +187,10 @@ this spec resolves the older handoff wording as follows:
 - Issue #67 owns diagnostics attachment at existing application/recovery
   lifecycle seams where stage/reconciliation information exists only inside
   that module.
-- Issues #52/#53/#55 own run-orchestration/UI phase emission and call the
-  diagnostics seam defined by #67.
+- Issues #52/#53 own run-orchestration/UI phase emission and call the diagnostics
+  seam defined by #67. Package-event incremental emission has no MVP owner because
+  [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) defers that capability;
+  a later feature issue must own it if reopened.
 - Issue #67 does not invent UI lifecycle events before those run flows exist.
 
 This ownership split must not create two event stores or two logger APIs.
@@ -479,8 +483,10 @@ pointer/touch interaction.
 None are blocking spec definition. One stale ownership statement is resolved by
 this spec: Issue #60 is already implemented and its accepted spec hands
 run-journal/`applyStage`/`RESTART_RECONCILED` implementation back to #67.
-Application/recovery lifecycle attachment therefore belongs to #67, while
-#52/#53/#55 retain their run-orchestration/UI phase emission responsibilities.
+Application/recovery lifecycle attachment therefore belongs to #67, while #52/#53
+retain their run-orchestration/UI phase emission responsibilities. Package-event
+incremental emission is deferred outside the MVP by
+[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85).
 
 The implementation plan may select concrete storage/file names, serializer
 library choices already available in the repository, Settings placement, and
