@@ -69,8 +69,39 @@ internal fun canonicalLegacyLaunchUri(intent: Intent): String {
  * faithfully represent is excluded here and stays covered by the exact DB
  * comparison.
  *
- * Called from `LauncherModel`'s completion path; any capture failure returns
- * null so the reload is failed closed instead of reported complete.
+ * Called from the organizer completion lambda built in
+ * `LauncherModel.startLoader(...)` (the #150 terminal boundary, on
+ * MODEL_EXECUTOR) and passed to `completeOrganizerReload(...)`. Any capture
+ * failure returns null so the reload fails closed instead of reported complete.
+ *
+ * Thread confinement: correctness relies on MODEL_EXECUTOR single-writer
+ * confinement for `BgDataModel`. The `LauncherModel.startLoader(...)` organizer
+ * completion lambda executes this capture on MODEL_EXECUTOR, where
+ * `BgDataModel` mutation is thread-confined. The `synchronized(bgDataModel)`
+ * block is defense-in-depth; subsequent reads of `bgDataModel.collections` and
+ * `bgDataModel.lastLoadId` are safe under this confinement. The
+ * `catch (Throwable)` returning null is fail-closed handling for capture
+ * exceptions — it is not a substitute for synchronization or confinement. Any
+ * future off-executor caller must marshal to MODEL_EXECUTOR, assert the
+ * executor, or provide consistent locking. See Issue #181 item 3.
+ *
+ * Test coverage waiver (Issue #181 item 1): `ModelProjectionCodec` has no JVM
+ * unit test and no deterministic per-kind fixture (folder/widget/app-pair
+ * projections are not directly asserted anywhere); it requires Android
+ * `BgDataModel`/`UserCache`. What the existing instrumentation lanes do cover:
+ * - DB-side kind fidelity (folder, application child, widget, profile, lock):
+ *   `RealAdapterRowMatrixInstrumentationTest` — `RowManifestCodec` DB round-trip
+ *   only; the model-side projection is not exercised there.
+ * - Snapshot transport / generation binding (completed snapshot delivered,
+ *   superseded never): `OrganizerReloadSupersessionTest`
+ *   `.completedOutcomeCarriesSnapshotAndSupersededNeverDoes`.
+ * - Model-leg capture executes end-to-end inside the real reload path
+ *   (`ProductionPublicSeamInstrumentationTest`), but its fixtures do not
+ *   deterministically drive per-kind projection equality.
+ * The residual risk — a misprojection of a specific kind (e.g. app-pair stage)
+ * escaping both the DB leg and the end-to-end lanes — is explicitly accepted
+ * here: it was assessed non-blocking by the #180 audit, and the cost of a
+ * real `BgDataModel` fixture is high. This waiver is recorded on Issue #181.
  */
 internal object ModelProjectionCodec {
 
