@@ -1,6 +1,6 @@
 ---
 issue: "#288"
-status: accepted
+status: implemented
 requirements: [EF-AC-01, EF-AC-02, EF-AC-03, EF-AC-04, EF-AC-05, EF-AC-06, EF-AC-07, EF-AC-08, EF-AC-09]
 risk: []
 updated: 2026-09-12
