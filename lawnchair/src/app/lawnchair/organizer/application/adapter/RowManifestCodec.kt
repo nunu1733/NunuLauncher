@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Intent
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import app.lawnchair.organizer.application.canonical.CanonicalItemOrder
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
 import app.lawnchair.organizer.application.canonical.PersistentRow
 import app.lawnchair.organizer.application.public.AppPairMemberState
@@ -97,10 +98,12 @@ internal object RowManifestCodec {
         // enumeration. Numeric row ids with more than one digit sort differently
         // under the two orders, and A7 verification compares LayoutState exactly,
         // so the capture must use the canonical order while manifest.rows keeps
-        // the row-enumeration order.
-        val canonicalItems = rows
-            .sortedBy { ItemId(it.rowId.toString()) }
-            .map { toCanonical(it, profileById.getValue(it.profileId), childrenByParent, kindById) }
+        // the row-enumeration order. Issue #164: the ordering rule is shared with
+        // the write-set finalization through CanonicalItemOrder, so both sides of
+        // the A7 exact comparison cannot diverge again.
+        val canonicalItems = CanonicalItemOrder.sortedResolved(
+            rows.map { toCanonical(it, profileById.getValue(it.profileId), childrenByParent, kindById) },
+        ) ?: error("Capture produced an unresolved item reference")
         val state = LayoutState(
             pages,
             profileInventory,

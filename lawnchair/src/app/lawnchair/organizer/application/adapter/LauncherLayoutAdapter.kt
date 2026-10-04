@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Process
 import android.os.UserManager
+import app.lawnchair.organizer.application.actions.IntendedStateResolution
 import app.lawnchair.organizer.application.actions.RecoveryAction
 import app.lawnchair.organizer.application.actions.RecoveryWriteSetMaterializer
 import app.lawnchair.organizer.application.canonical.PersistenceManifest
@@ -33,16 +34,13 @@ import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.ProfileState
-import app.lawnchair.organizer.application.public.RankedMember
 import app.lawnchair.organizer.application.public.RecoveryPointId
-import app.lawnchair.organizer.application.public.StructureState
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.public.WidgetState
 import app.lawnchair.organizer.application.revision.RevisionCalculator
 import app.lawnchair.organizer.planning.AppWidgetId
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.ContainerCode
-import app.lawnchair.organizer.planning.FolderId
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
@@ -50,7 +48,6 @@ import app.lawnchair.organizer.planning.KindCode
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
-import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
@@ -222,7 +219,11 @@ internal class LauncherLayoutAdapter(
         } catch (_: IllegalArgumentException) {
             return WriteSetPreparation.InvalidPlan
         }
-        val resolvedState = plan.intendedState.resolvePersistentReferences(plannedIds, plannedPages)
+        val resolvedState = IntendedStateResolution.resolveAndFinalize(
+            plan.intendedState,
+            plannedIds,
+            plannedPages,
+        ) ?: return WriteSetPreparation.InvalidPlan
         // Issue #155: the post-write capture retains only row-backed pages plus
         // the logical first screen. Apply the identical page normalization before
         // deriving either intended canonical state or its opaque context resource.
@@ -487,63 +488,6 @@ private fun normalizeMaterializedPages(
                     persistent.pageId.value == FIRST_SCREEN_ID.toString() ||
                     persistent.pageId in reservationPages
                 )
-        },
-    )
-}
-
-private fun LayoutState.resolvePersistentReferences(
-    plannedIds: Map<ApplicationItemRef, Long>,
-    plannedPages: Map<ApplicationPageRef.PlannedPage, Long>,
-): LayoutState {
-    fun itemRef(ref: ApplicationItemRef): ApplicationItemRef = when (ref) {
-        is ApplicationItemRef.PersistentItem -> ref
-        else -> ApplicationItemRef.PersistentItem(ItemId(requireNotNull(plannedIds[ref]).toString()))
-    }
-
-    fun pageRef(ref: ApplicationPageRef): ApplicationPageRef = when (ref) {
-        is ApplicationPageRef.PersistentPage -> ref
-
-        is ApplicationPageRef.PlannedPage -> ApplicationPageRef.PersistentPage(
-            PageId(requireNotNull(plannedPages[ref]).toString()),
-        )
-    }
-
-    fun placement(placement: PlacementState): PlacementState = when (placement) {
-        is PlacementState.Workspace -> placement.copy(page = pageRef(placement.page))
-        is PlacementState.FolderChild -> placement.copy(parent = itemRef(placement.parent))
-        is PlacementState.AppPairChild -> placement.copy(parent = itemRef(placement.parent))
-        is PlacementState.Dock, is PlacementState.UnsupportedContainer -> placement
-    }
-
-    fun structure(structure: StructureState): StructureState = when (structure) {
-        StructureState.Plain -> structure
-
-        is StructureState.FolderMembers -> structure.copy(
-            members = structure.members.map { RankedMember(itemRef(it.item), it.rank) },
-        )
-
-        is StructureState.AppPairMembers -> structure.copy(
-            members = structure.members.map { it.copy(item = itemRef(it.item)) },
-        )
-    }
-
-    fun targetKey(ref: ApplicationItemRef, target: TargetKey): TargetKey = when {
-        ref is ApplicationItemRef.PlannedFolder && target is TargetKey.FolderKey ->
-            TargetKey.FolderKey(FolderId(requireNotNull(plannedIds[ref]).toString()))
-
-        else -> target
-    }
-
-    return copy(
-        pages = pages.map { it.copy(ref = pageRef(it.ref)) },
-        items = items.map { item ->
-            val resolvedRef = itemRef(item.ref)
-            item.copy(
-                ref = resolvedRef,
-                targetKey = targetKey(item.ref, item.targetKey),
-                placement = placement(item.placement),
-                structure = structure(item.structure),
-            )
         },
     )
 }
