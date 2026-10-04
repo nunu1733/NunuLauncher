@@ -1,6 +1,6 @@
 # Plan: 16-dev rebase実行（Epic #516 Phase 2 / Issue #532）
 
-> Status: draft（review受理後にacceptedへ）
+> Status: accepted（2026-10-04。PR #533 review round 5でblocking解消・Approved（[review](https://github.com/nunu1733/NunuLauncher/pull/533#issuecomment-5976918255)。head `be377805fe85b46175aef3f33c0f6ba9005aa5ca` を確認）。受入は本PR #533のmergeで完了する）
 > Risk tier: H（[spec.md](./spec.md)参照）
 > 対象revision: main `38262fb74d144f4655dfbf01c0084e44c86560be`、anchor upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35`
 

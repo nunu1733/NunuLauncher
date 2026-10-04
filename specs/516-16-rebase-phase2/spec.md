@@ -1,6 +1,6 @@
 # Spec: 16-dev rebase実行（Epic #516 Phase 2）
 
-> Status: draft（review受理後にacceptedへ）
+> Status: accepted（2026-10-04。PR #533 review round 5でblocking解消・Approved（[review](https://github.com/nunu1733/NunuLauncher/pull/533#issuecomment-5976918255)。head `be377805fe85b46175aef3f33c0f6ba9005aa5ca` を確認）。受入は本PR #533のmergeで完了する）
 > Issue: [#532](https://github.com/nunu1733/NunuLauncher/issues/532)（Epic #516）
 > Risk tier: **H** — 上流model/loader bridge、schema、migration、backup/restore経路の全てが対象。判定理由: 変更pathがgithub-workflowの高リスクpath一覧に広く当たるため。
 > 上位契約: [ADR-0018](../../docs/adr/0018-lawnchair-16-rebase.md)（accepted）、[Phase 0 assessment §5 disposition](../../docs/assessment/issue-516-16-rebase-phase0-research.md)、[#522 assessment](../../docs/assessment/issue-522-rebase-data-compatibility.md)（accepted）。本specはこれらを反復せず、実行の受入条件のみを定義する。
