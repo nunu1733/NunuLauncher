@@ -282,7 +282,7 @@ class ReadinessGateTest {
             actions = capture.layoutState.items.map { ApplyAction.Preserve(it.ref, it) },
             newPages = emptyList(),
             newFolders = emptyList(),
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("tv1"),
         )
     }
@@ -300,7 +300,7 @@ class ReadinessGateTest {
             ),
             newPages = emptyList(),
             newFolders = emptyList(),
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("tv1"),
         )
     }

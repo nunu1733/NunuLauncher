@@ -338,6 +338,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 signals = policyIdentity(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
                 targets = policyIdentity(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET),
                 policyBundle = PolicyBundleIdentity("v1", SHA_256),
+                layoutStrategySelection = policyIdentity(PolicySourceKind.LAYOUT_STRATEGY_SELECTION),
             ),
         )
 
@@ -386,6 +387,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             revision = RevisionId(REVISION),
             ruleVersion = RuleVersion("v1"),
             taxonomyVersion = TaxonomyVersion("v1"),
+            organizationStrategy = app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Planned(
                 placements = listOf(
                     PlannedPlacement(
@@ -413,12 +415,12 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 items = emptyList(),
             ),
             rules = RuleSemantics(
-                RuleVersion("v1"),
+                RuleVersion("v2"),
                 FolderPolicy(2, NewFolderProfileScope.SAME_PROFILE_ONLY),
                 DockPolicy.PRESERVE,
                 OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
                 FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-                app.lawnchair.organizer.planning.OrderingPolicy.CANONICAL_V1,
+                app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = TaxonomyContract(
                 TaxonomyVersion("v1"),

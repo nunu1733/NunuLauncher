@@ -66,6 +66,8 @@ fun interface OrganizationPlanner {
 - 決定性を保つtie-break
 - planの自己検証と説明情報生成
 
+layout strategy ([spec 182](./specs/182-layout-strategy-catalog/spec.md)、[ADR-0012](./docs/adr/0012-versioned-layout-strategy-catalog.md)) もこの内側に隠す: 組み込みstrategy catalogはcuratedな内部 `StrategyDefinition` 集合であり、選択はversion付き `StrategyId` として `RuleSemantics` を通って入り、ユーザー選択はRule Management所有の検証済みsourceからcomposerが読む (fail-closed)。strategy実装が共有validation・allocator安全・結果検証をbypassする経路は存在しない。
+
 生成フォルダのsemantic naming identity (`NewFolder.naming`) もplannerがgrouping keyから導出し、planに載せる ([Issue #201](https://github.com/nunu1733/NunuLauncher/issues/201))。
 
 入力不足や制約違反を勝手に補正せず、diagnosticとして返す。計画module自体はI/Oを行わない。

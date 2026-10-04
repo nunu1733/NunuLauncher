@@ -11,6 +11,7 @@ class OrganizationPlannerSeamTest {
             revision = RevisionId("rev-1"),
             ruleVersion = RuleVersion("rv-1"),
             taxonomyVersion = TaxonomyVersion("tv-1"),
+            organizationStrategy = StrategyId("s-1"),
             outcome = Planned(
                 placements = emptyList(),
                 newPages = emptyList(),
@@ -30,6 +31,7 @@ class OrganizationPlannerSeamTest {
             revision = RevisionId("rev-1"),
             ruleVersion = RuleVersion("rv-1"),
             taxonomyVersion = TaxonomyVersion("tv-1"),
+            organizationStrategy = StrategyId("s-1"),
             outcome = Rejected.Invalid(
                 reasons = listOf(
                     RejectionReason(
@@ -51,6 +53,7 @@ class OrganizationPlannerSeamTest {
             revision = RevisionId("rev-1"),
             ruleVersion = RuleVersion("rv-1"),
             taxonomyVersion = TaxonomyVersion("tv-1"),
+            organizationStrategy = StrategyId("s-1"),
             outcome = Rejected.Impossible(
                 unplaced = listOf(
                     UnplacedItem(
@@ -90,7 +93,7 @@ class OrganizationPlannerSeamTest {
             dockPolicy = DockPolicy.PRESERVE,
             overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
             fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-            orderingPolicy = OrderingPolicy.CANONICAL_V1,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
         ),
         taxonomy = TaxonomyContract(
             version = TaxonomyVersion("tv-1"),

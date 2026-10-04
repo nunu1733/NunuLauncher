@@ -162,7 +162,7 @@ data class RuleSemantics(
     val dockPolicy: DockPolicy,
     val overflowPolicy: OverflowPolicy,
     val fallbackCategoryPolicy: FallbackCategoryPolicy,
-    val orderingPolicy: OrderingPolicy,
+    val organizationStrategy: StrategyId,
 )
 
 data class FolderPolicy(
@@ -184,10 +184,6 @@ enum class OverflowPolicy {
 
 enum class FallbackCategoryPolicy {
     KEEP_AS_SINGLETON,
-}
-
-enum class OrderingPolicy {
-    CANONICAL_V1,
 }
 
 data class TaxonomyContract(

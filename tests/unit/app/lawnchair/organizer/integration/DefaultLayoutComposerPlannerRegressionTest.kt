@@ -41,6 +41,9 @@ import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshotSource
 import app.lawnchair.organizer.rules.ClassificationPolicy
+import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSource
 import app.lawnchair.organizer.rules.OrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyInputIdentity
@@ -347,6 +350,9 @@ class DefaultLayoutComposerPlannerRegressionTest {
         overrides = object : CategoryOverrideSnapshotSource {
             override fun read(capturedProfiles: Set<ProfileId>) = OverrideSnapshotReadResult.Ready(emptyOverrideSnapshot())
         },
+        layoutStrategySelections = LayoutStrategySelectionSource {
+            LayoutStrategySelectionReadResult.Ready(emptySelectionSnapshot())
+        },
         platformEvidence = object : ClassificationSignalSnapshotSource {
             override fun read(
                 requests: List<ClassificationEvidenceRequest>,
@@ -364,6 +370,17 @@ class DefaultLayoutComposerPlannerRegressionTest {
             PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT,
             "schema-1-generation-0",
             "a".repeat(64),
+        ),
+    )
+
+    private fun emptySelectionSnapshot() = LayoutStrategySelectionSnapshot(
+        schemaVersion = 1,
+        generation = 0L,
+        selection = null,
+        identity = PolicyInputIdentity(
+            PolicySourceKind.LAYOUT_STRATEGY_SELECTION,
+            "schema-1-generation-0",
+            "c".repeat(64),
         ),
     )
 

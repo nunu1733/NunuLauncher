@@ -19,6 +19,11 @@ import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
+import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSnapshot
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSource
+import app.lawnchair.organizer.rules.PolicyInputIdentity
+import app.lawnchair.organizer.rules.PolicySourceKind
 import app.lawnchair.organizer.ui.CategoryOverrideApp
 import app.lawnchair.organizer.ui.CategoryOverrideAppInventory
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
@@ -291,6 +296,9 @@ class CategoryOverrideAtomicAccessTest {
                     )
                 },
                 bundleSource = BuiltInOrganizerPolicyBundleSource,
+                layoutStrategySelections = LayoutStrategySelectionSource {
+                    LayoutStrategySelectionReadResult.Ready(emptySelectionSnapshot())
+                },
                 overrides = AtomicFileCategoryOverrideSnapshotSource(access),
                 platformEvidence = object : ClassificationSignalSnapshotSource {
                     override fun read(
@@ -494,4 +502,15 @@ class CategoryOverrideAtomicAccessTest {
             }
         }
     }
+
+    private fun emptySelectionSnapshot() = LayoutStrategySelectionSnapshot(
+        schemaVersion = 1,
+        generation = 0L,
+        selection = null,
+        identity = PolicyInputIdentity(
+            PolicySourceKind.LAYOUT_STRATEGY_SELECTION,
+            "schema-1-generation-0",
+            "c".repeat(64),
+        ),
+    )
 }

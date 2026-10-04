@@ -35,7 +35,13 @@ object BuiltInOrganizerPolicyBundleSource : OrganizerPolicyBundleSource {
             systemCategory = OrganizerPolicyBundle.OTHER,
         )
         val targets = FullOrganizationTargetPolicy(OrganizerPolicyBundle.TARGET_VERSION)
-        val rules = v1RuleSemantics()
+        // Spec 182: runtime-supported set names only implemented strategies.
+        // Enabling a later strategy publishes a new bundle identity per ADR-0007 §8.
+        val layoutStrategies = LayoutStrategyCatalog(
+            runtimeSupported = listOf(app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1")),
+            default = app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+        )
+        val rules = v2RuleSemantics(layoutStrategies)
         val taxonomy = app.lawnchair.organizer.planning.TaxonomyContract(
             version = OrganizerPolicyBundle.TAXONOMY_VERSION,
             allowedCategories = categories,
@@ -47,6 +53,7 @@ object BuiltInOrganizerPolicyBundleSource : OrganizerPolicyBundleSource {
             taxonomy = taxonomy,
             classification = classification,
             fullOrganizationTargets = targets,
+            layoutStrategies = layoutStrategies,
         )
         provisional.copy(
             identity = PolicyBundleIdentity(OrganizerPolicyBundle.POLICY_BUNDLE_VERSION, provisional.canonicalDigest()),

@@ -49,6 +49,7 @@ import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.RuleSemantics
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.RunMode
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
 import app.lawnchair.organizer.planning.TaxonomyVersion
@@ -792,6 +793,7 @@ class ManualOrganizationRunTest {
             signals = policyIdentity(PolicySourceKind.MATERIALIZED_CLASSIFICATION_SIGNALS),
             targets = policyIdentity(PolicySourceKind.MATERIALIZED_FULL_TARGET_SET),
             policyBundle = PolicyBundleIdentity("v1", SHA_256),
+            layoutStrategySelection = policyIdentity(PolicySourceKind.LAYOUT_STRATEGY_SELECTION),
         ),
     )
 
@@ -805,12 +807,12 @@ class ManualOrganizationRunTest {
             items = emptyList(),
         ),
         rules = RuleSemantics(
-            RuleVersion("v1"),
+            RuleVersion("v2"),
             FolderPolicy(2, NewFolderProfileScope.SAME_PROFILE_ONLY),
             DockPolicy.PRESERVE,
             OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
             FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-            app.lawnchair.organizer.planning.OrderingPolicy.CANONICAL_V1,
+            app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
         ),
         taxonomy = TaxonomyContract(TaxonomyVersion("v1"), listOf(app.lawnchair.organizer.planning.CategoryId("other")), app.lawnchair.organizer.planning.CategoryId("other")),
         signals = ClassificationSignals(emptyList()),
@@ -820,8 +822,9 @@ class ManualOrganizationRunTest {
 
     private fun planningResult(outcome: app.lawnchair.organizer.planning.PlanningOutcome) = PlanningResult(
         revision = RevisionId("revision"),
-        ruleVersion = RuleVersion("v1"),
+        ruleVersion = RuleVersion("v2"),
         taxonomyVersion = TaxonomyVersion("v1"),
+        organizationStrategy = app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
         outcome = outcome,
     )
 

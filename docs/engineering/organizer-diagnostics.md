@@ -72,7 +72,7 @@ RunEvent {
     applySummary:    ApplySummary?       // §6.2。APPLY_VERIFIED のみ
     recovery:        RecoveryContext?    // recovery 操作系event のみ（§4.3）
     reconciliation:  ReconciliationContext?  // RESTART_RECONCILED のみ（§11）
-    versions:        RunVersions?        // RUN_STARTED のみ
+    versions:        RunVersions?        // RUN_STARTED のみ。spec 182 では PLANNED / PLANNING_REJECTED / PLANNING_IMPOSSIBLE も可 (strategyVersion echo)
     deviceProfile:   DeviceProfileSummary?   // RUN_STARTED のみ
 }
 
@@ -86,7 +86,7 @@ RunCorrelation {
 Trigger = MANUAL_FULL | ONBOARDING_PROPOSAL | INCREMENTAL_PROPOSAL
 RunMode = FULL_ORGANIZATION | INCREMENTAL_PLACEMENT
 
-RunVersions { ruleVersion, taxonomyVersion, recoveryFormatVersion }   // 識別子のみ。内容なし
+RunVersions { ruleVersion, taxonomyVersion, recoveryFormatVersion, strategyVersion }   // 識別子のみ。内容なし。strategyVersion は spec 182 (accepted strategy identity、allowlist 管理)
 DeviceProfileSummary { columns, rows, hotseatSlots, orientation }     // 寸法のみ。座標なし
 ```
 
@@ -126,9 +126,9 @@ apply protocol に対応する。terminal はrun の終了を意味する。
 | `INPUT_NOT_READY` | 入力合成が `NotReady` で終了（error 付き。code は§5 `INPUT_READINESS`）。`CAPTURED` 以前に終わるrun のterminal 記録（Issue #172） | ✓ |
 | `CAPTURED` | snapshot 取得完了 | |
 | `PREVIEWED` | preview をuser に表示 | |
-| `PLANNED` | plan 生成（planSummary 付き） | |
-| `PLANNING_REJECTED` | planner `Rejected.Invalid`（error 付き） | ✓ |
-| `PLANNING_IMPOSSIBLE` | planner `Rejected.Impossible`（planSummary 付き） | ✓ |
+| `PLANNED` | plan 生成（planSummary 付き）。versions に strategyVersion を echo 可（spec 182） | |
+| `PLANNING_REJECTED` | planner `Rejected.Invalid`（error 付き）。versions に strategyVersion を echo 可（catalog-external ID は空に redact、spec 182） | ✓ |
+| `PLANNING_IMPOSSIBLE` | planner `Rejected.Impossible`（planSummary 付き）。versions に strategyVersion を echo 可（catalog-external ID は空に redact、spec 182） | ✓ |
 | `USER_CONFIRMED` | 明示的confirm（spec 13 A0 直前） | |
 | `USER_CANCELLED` | preview/confirm でのcancel。書き込みなし | ✓ |
 | `CHECKPOINTED` | recovery record が`READY`（pointId 付き） | |
@@ -271,6 +271,7 @@ ADR またはspec の承認を必要とする。
 | layout 座標 | cell、span、rank、page order、folder rank | **Never** | 件数のみ |
 | folder / app pair 構造 | membership、親子関係 | **Never** | `newFolderCount` 等の件数 |
 | rule 内容 | `RuleSemantics` の値、rule file 中身 | **Never** | `ruleVersion` 識別子のみ |
+| 選択された layout strategy (spec 182) | 選択値そのもの以外の policy content、selection store の generation/digest | **Never** | `strategyVersion` 識別子 (accepted catalog ID、`RunVersions.APPROVED_VERSIONS` 管理) のみ |
 | 項目単位の分類結果 | `CategoryDecision`、`CategoryId` | **Never** | `confidenceCounts` の件数 |
 | plan preview の具体変更 (Issue #194) | `PreviewChange`、`PreviewLabel`（canonical capture title 含む）、`PreviewPosition`、`PreviewDetails` | **Never** | `PreviewCounts` の件数（preview はjournal 化せず、`PREVIEWED` 等の既存phase の件数のみ） |
 | planner 診断param | `DiagnosticParam`（`ItemParam`、`SpanParam`、`PageParam` 等） | **Never** | error code と件数のみ |
@@ -410,7 +411,7 @@ crash 情報を複製しない。
 ```json
 {"schemaVersion":1,"journalSequence":41,"phase":"RUN_STARTED","runId":"5f0a…","trigger":"MANUAL_FULL","runMode":"FULL_ORGANIZATION","versions":{"ruleVersion":"1","taxonomyVersion":"1"},"deviceProfile":{"columns":5,"rows":6,"hotseatSlots":5,"orientation":"PORTRAIT"}}
 {"journalSequence":42,"phase":"CAPTURED"}
-{"journalSequence":43,"phase":"PLANNED","planSummary":{"capturedItemCount":84,"candidateItemCount":0,"movedCount":61,"preservedCount":23,"preservedByReason":{"DOCK":5,"WIDGET":4,"LOCKED":3,"NON_TARGET":11},"newFolderCount":9,"newPageCount":1,"unplacedCount":0,"warningByCode":{},"confidenceCounts":{"EXPLICIT":2,"RULE":55,"FALLBACK":4}}}
+{"journalSequence":43,"phase":"PLANNED","versions":{"ruleVersion":"1","taxonomyVersion":"1","strategyVersion":"CANONICAL_PAGE_COMPACT_V1"},"planSummary":{"capturedItemCount":84,"candidateItemCount":0,"movedCount":61,"preservedCount":23,"preservedByReason":{"DOCK":5,"WIDGET":4,"LOCKED":3,"NON_TARGET":11},"newFolderCount":9,"newPageCount":1,"unplacedCount":0,"warningByCode":{},"confidenceCounts":{"EXPLICIT":2,"RULE":55,"FALLBACK":4}}}
 {"journalSequence":44,"phase":"PREVIEWED"}
 {"journalSequence":45,"phase":"USER_CONFIRMED"}
 {"journalSequence":46,"phase":"CHECKPOINTED","pointId":"9c2e…"}
@@ -421,15 +422,17 @@ crash 情報を複製しない。
 ### D-02: planning rejection（Invalid / V-04）
 
 ```json
-{"journalSequence":51,"phase":"PLANNING_REJECTED","error":{"family":"PLANNING_INVALID","code":"BOUNDS_VIOLATION","reasonTotal":1}}
+{"journalSequence":51,"phase":"PLANNING_REJECTED","versions":{"strategyVersion":""},"error":{"family":"PLANNING_INVALID","code":"BOUNDS_VIOLATION","reasonTotal":1}}
 ```
 
 planner が返した`SpanParam` 等のparam 値はjournal に現れない。
 
+spec 182: 選択されたlayout strategy はこの3つのplanning phase で`strategyVersion` としてecho される。runtime が実行していないstrategy ID (V-20 rejected のcatalog 外ID、将来のcatalog ID を含む) は空文字にredact される — diagnostics がplanner のruntime truth と矛盾して有効strategy として記録することはない。
+
 ### D-03: planning impossible（V-21）
 
 ```json
-{"journalSequence":52,"phase":"PLANNING_IMPOSSIBLE","planSummary":{"capturedItemCount":10,"candidateItemCount":1,"movedCount":0,"preservedCount":10,"preservedByReason":{"STRUCTURAL":10},"newFolderCount":0,"newPageCount":0,"unplacedCount":1,"unplacedByReason":{"EXCEEDS_GRID_DIMENSIONS":1},"warningByCode":{},"confidenceCounts":{"RULE":10}}}
+{"journalSequence":52,"phase":"PLANNING_IMPOSSIBLE","versions":{"strategyVersion":"CANONICAL_PAGE_COMPACT_V1"},"planSummary":{"capturedItemCount":10,"candidateItemCount":1,"movedCount":0,"preservedCount":10,"preservedByReason":{"STRUCTURAL":10},"newFolderCount":0,"newPageCount":0,"unplacedCount":1,"unplacedByReason":{"EXCEEDS_GRID_DIMENSIONS":1},"warningByCode":{},"confidenceCounts":{"RULE":10}}}
 ```
 
 `PLANNING_IMPOSSIBLE` と`APPLY_*` の区別がplanning 系失敗とapplication 系失敗の

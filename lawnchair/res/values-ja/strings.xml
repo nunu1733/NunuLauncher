@@ -146,6 +146,7 @@
     <string name="manual_organization_preserved_app_pair">アプリペアを保持: %1$d件</string>
     <string name="manual_organization_preserved_legacy_shortcut">旧形式のショートカットを保持: %1$d件</string>
     <string name="manual_organization_preserved_non_target">対象外の配置を保持: %1$d件</string>
+    <string name="manual_organization_preserved_strategy">選択した戦略により保持: %1$d件</string>
     <string name="manual_organization_preserved_structural">関連する項目を保持: %1$d件</string>
     <string name="manual_organization_preserved_already_canonical">変更不要の配置: %1$d件</string>
     <string name="manual_organization_unplaced_grid">画面の範囲を超えるため未配置: %1$d件</string>
@@ -213,6 +214,7 @@
     <string name="manual_organization_preview_preserved_reason_legacy_shortcut">旧形式のショートカットのため保持</string>
     <string name="manual_organization_preview_preserved_reason_non_target">整理対象外のため保持</string>
     <string name="manual_organization_preview_preserved_reason_structural">構造メンバーとして保持</string>
+    <string name="manual_organization_preview_preserved_reason_strategy">選択した整理戦略により保持</string>
     <string name="manual_organization_preview_preserved_reason_already_canonical">既に整列済みのため保持</string>
     <string name="manual_organization_preview_warning_legacy_shortcut_item">旧形式のショートカットのため確認が必要</string>
     <string name="manual_organization_preview_warning_fallback_category_item">分類を推定できずフォールバックカテゴリを使用</string>

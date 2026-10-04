@@ -19,6 +19,7 @@ import app.lawnchair.organizer.planning.RejectionReason
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.SignalSource
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import app.lawnchair.organizer.planning.UnplacedItem
 import app.lawnchair.organizer.planning.UnplacedReason
@@ -33,6 +34,101 @@ import org.junit.Test
  * AC-67-03, D-01–D-03: Planning result projection tests.
  */
 class PlanningProjectionTest {
+
+    @Test
+    fun catalogExternalStrategyIsRedactedInsteadOfThrowing() {
+        // Spec 182 failure layering: a direct planner-seam caller with a
+        // catalog-external StrategyId receives V-20 Rejected.Invalid. The
+        // diagnostics projection must keep that typed rejection — the
+        // unapproved identifier is redacted to the empty value, never turned
+        // into an IllegalArgumentException by RunVersions' allowlist.
+        val result = PlanningResult(
+            revision = dummyRevision,
+            ruleVersion = dummyRuleVersion,
+            taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("REMOVED_STRATEGY_V1"),
+            outcome = Rejected.Invalid(
+                reasons = listOf(
+                    RejectionReason(RejectionCode.INVALID_RULES, emptyList()),
+                ),
+                warnings = emptyList(),
+            ),
+        )
+
+        val event = PlanningProjection.project(result, journalSequence = 7L)
+
+        assertEquals(PhaseCode.PLANNING_REJECTED, event.phase)
+        assertNotNull(event.versions)
+        assertEquals("", event.versions!!.strategyVersion)
+        assertEquals("INVALID_RULES", event.error?.code)
+    }
+
+    @Test
+    fun projectionEchoesTheEffectiveStrategyIdentityInRunVersions() {
+        // Spec 182 / AC-6: the journal carries the effective strategy identity
+        // as an approved version identifier for every projected outcome.
+        for (outcome in listOf(plannedOutcome(), invalidOutcome(), impossibleOutcome())) {
+            val result = PlanningResult(
+                revision = dummyRevision,
+                ruleVersion = dummyRuleVersion,
+                taxonomyVersion = dummyTaxonomyVersion,
+                organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+                outcome = outcome,
+            )
+            val event = PlanningProjection.project(
+                result,
+                journalSequence = 1L,
+                runtimeStrategyIds = setOf("CANONICAL_PAGE_COMPACT_V1"),
+            )
+
+            assertNotNull(event.versions)
+            assertEquals("CANONICAL_PAGE_COMPACT_V1", event.versions!!.strategyVersion)
+        }
+    }
+
+    @Test
+    fun diagnosticsApprovedButNotRuntimeSupportedStrategyIsRedacted() {
+        // Spec 182: the diagnostics echo must match the planner's runtime truth.
+        // STABLE_PAGE_TIDY_V1 is an accepted spec-182 catalog ID (so diagnostics
+        // policy approves it) but is not runtime-supported in child 2 — the
+        // planner rejects it via V-20, and the projection must not record it as
+        // an effective strategy.
+        val result = PlanningResult(
+            revision = dummyRevision,
+            ruleVersion = dummyRuleVersion,
+            taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("STABLE_PAGE_TIDY_V1"),
+            outcome = Rejected.Invalid(
+                reasons = listOf(
+                    RejectionReason(RejectionCode.INVALID_RULES, emptyList()),
+                ),
+                warnings = emptyList(),
+            ),
+        )
+
+        val event = PlanningProjection.project(
+            result,
+            journalSequence = 9L,
+            runtimeStrategyIds = setOf("CANONICAL_PAGE_COMPACT_V1"),
+        )
+
+        assertEquals(PhaseCode.PLANNING_REJECTED, event.phase)
+        assertNotNull(event.versions)
+        assertEquals("", event.versions!!.strategyVersion)
+        assertEquals("INVALID_RULES", event.error?.code)
+    }
+
+    private fun plannedOutcome() = Planned(
+        placements = emptyList(),
+        newPages = emptyList(),
+        newFolders = emptyList(),
+        categories = emptyList(),
+        warnings = emptyList(),
+    )
+
+    private fun invalidOutcome() = Rejected.Invalid(reasons = emptyList(), warnings = emptyList())
+
+    private fun impossibleOutcome() = Rejected.Impossible(unplaced = emptyList(), warnings = emptyList())
 
     private val dummyRevision = RevisionId("dummy_hash")
     private val dummyRuleVersion = RuleVersion("1")
@@ -49,6 +145,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Planned(
                 placements = placements,
                 newPages = emptyList(),
@@ -73,6 +170,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Rejected.Invalid(
                 reasons = listOf(
                     RejectionReason(RejectionCode.BOUNDS_VIOLATION, emptyList()),
@@ -93,6 +191,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Rejected.Invalid(
                 reasons = listOf(
                     RejectionReason(RejectionCode.BOUNDS_VIOLATION, emptyList()),
@@ -118,6 +217,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Rejected.Impossible(
                 unplaced = listOf(
                     UnplacedItem(ItemId("item1"), GridSpan(1, 1), UnplacedReason.EXCEEDS_GRID_DIMENSIONS),
@@ -141,6 +241,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Rejected.Impossible(
                 unplaced = listOf(
                     UnplacedItem(ItemId("item1"), GridSpan(1, 1), UnplacedReason.EXCEEDS_GRID_DIMENSIONS),
@@ -164,6 +265,7 @@ class PlanningProjectionTest {
             revision = dummyRevision,
             ruleVersion = dummyRuleVersion,
             taxonomyVersion = dummyTaxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Planned(
                 placements = placements,
                 newPages = emptyList(),

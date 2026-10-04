@@ -20,6 +20,8 @@ data class InputProvenance(
     val signals: PolicyInputIdentity,
     val targets: PolicyInputIdentity,
     val policyBundle: PolicyBundleIdentity,
+    /** Spec 182: fifth policy input — the user's selected layout strategy snapshot. */
+    val layoutStrategySelection: PolicyInputIdentity,
 )
 
 sealed interface OrganizationInputComposition {
@@ -109,6 +111,9 @@ enum class InputCompositionCode {
     OVERRIDE_UNREADABLE,
     OVERRIDE_UNSUPPORTED_SCHEMA,
     OVERRIDE_CATEGORY_INVALID,
+    STRATEGY_SELECTION_UNREADABLE,
+    STRATEGY_SELECTION_UNSUPPORTED_SCHEMA,
+    STRATEGY_SELECTION_UNSUPPORTED,
     EVIDENCE_UNREADABLE,
     SIGNAL_CONTRADICTION,
     TARGET_PARTITION,

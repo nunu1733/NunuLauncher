@@ -20,7 +20,6 @@ import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.LayoutSnapshot
 import app.lawnchair.organizer.planning.NewFolderProfileScope
-import app.lawnchair.organizer.planning.OrderingPolicy
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.Orientation
 import app.lawnchair.organizer.planning.OverflowPolicy
@@ -39,6 +38,7 @@ import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.RuleSemantics
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.RunMode
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
@@ -108,7 +108,7 @@ class OrganizationPlanMaterializerReservationGuardTest {
             ),
         )
         val revision = RevisionCalculator.revisionOf(sourceState)
-        val ruleVersion = RuleVersion("v1")
+        val ruleVersion = RuleVersion("v2")
         val taxonomyVersion = TaxonomyVersion("tv1")
 
         val plannedTarget = PlacementTarget.WorkspaceTarget(page, GridCell(2, 0), GridSpan(1, 1))
@@ -121,6 +121,7 @@ class OrganizationPlanMaterializerReservationGuardTest {
             revision = revision,
             ruleVersion = ruleVersion,
             taxonomyVersion = taxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Planned(
                 placements = listOf(PlannedPlacement(ItemId("qsb"), disposition, plannedTarget)),
                 newPages = emptyList(),
@@ -143,7 +144,7 @@ class OrganizationPlanMaterializerReservationGuardTest {
                 dockPolicy = DockPolicy.PRESERVE,
                 overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
                 fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-                orderingPolicy = OrderingPolicy.CANONICAL_V1,
+                organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = TaxonomyContract(
                 version = taxonomyVersion,

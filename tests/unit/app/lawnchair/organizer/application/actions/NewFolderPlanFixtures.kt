@@ -22,7 +22,6 @@ import app.lawnchair.organizer.planning.LayoutSnapshot
 import app.lawnchair.organizer.planning.NewFolder
 import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewFolderRef
-import app.lawnchair.organizer.planning.OrderingPolicy
 import app.lawnchair.organizer.planning.OverflowPolicy
 import app.lawnchair.organizer.planning.Page
 import app.lawnchair.organizer.planning.PageId
@@ -38,6 +37,7 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.RunMode
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
@@ -112,7 +112,7 @@ internal object NewFolderPlanFixtures {
     )
 
     private fun fixture(ids: List<String>, folders: List<PlannedFolderSpec>): Fixture {
-        val ruleVersion = RuleVersion("v1")
+        val ruleVersion = RuleVersion("v2")
         val taxonomyVersion = TaxonomyVersion("tv1")
         val profile = ProfileId("personal")
         val page = PageRef(PageId("p0"))
@@ -169,6 +169,7 @@ internal object NewFolderPlanFixtures {
             revision = revision,
             ruleVersion = ruleVersion,
             taxonomyVersion = taxonomyVersion,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             outcome = Planned(
                 placements = placements,
                 newPages = emptyList(),
@@ -201,7 +202,7 @@ internal object NewFolderPlanFixtures {
                 dockPolicy = DockPolicy.PRESERVE,
                 overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
                 fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-                orderingPolicy = OrderingPolicy.CANONICAL_V1,
+                organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = TaxonomyContract(
                 version = taxonomyVersion,

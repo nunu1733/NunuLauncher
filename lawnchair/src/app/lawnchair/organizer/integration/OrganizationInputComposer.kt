@@ -44,11 +44,14 @@ import app.lawnchair.organizer.rules.CategoryOverrideKey
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshot
 import app.lawnchair.organizer.rules.CategoryOverrideSnapshotSource
 import app.lawnchair.organizer.rules.FullOrganizationTargetPolicy
+import app.lawnchair.organizer.rules.LayoutStrategySelectionReadResult
+import app.lawnchair.organizer.rules.LayoutStrategySelectionSource
 import app.lawnchair.organizer.rules.OrganizerPolicyBundle
 import app.lawnchair.organizer.rules.OrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.effectiveRulesIdentity
 import app.lawnchair.organizer.rules.sha256Canonical
 
 interface OrganizationInputComposer {
@@ -105,6 +108,10 @@ class DefaultOrganizationInputComposer(
     private val bundleSource: OrganizerPolicyBundleSource,
     private val overrides: CategoryOverrideSnapshotSource,
     private val platformEvidence: ClassificationSignalSnapshotSource,
+    // Spec 182: the user's selected layout strategy joins the stable cut as the
+    // fifth policy input. Mandatory with no default so a call site cannot
+    // silently fall back to the bundle default (mirrors overlapTolerance).
+    private val layoutStrategySelections: LayoutStrategySelectionSource,
     private val targetMaterializer: FullTargetSetMaterializer = FullTargetSetMaterializer(),
     // Issue #185 / ADR-0010 (PR #186 review): mandatory with no default so a
     // call site cannot silently fall back to unconditional acceptance. The
@@ -180,6 +187,29 @@ class DefaultOrganizationInputComposer(
         var expectedCut: app.lawnchair.organizer.rules.PolicyBundleIdentity? = null
         var observedCut: app.lawnchair.organizer.rules.PolicyBundleIdentity? = null
         repeat(MAX_DYNAMIC_ATTEMPTS) {
+            val firstSelection = when (val read = layoutStrategySelections.read()) {
+                is LayoutStrategySelectionReadResult.Ready -> read.snapshot
+
+                LayoutStrategySelectionReadResult.Unreadable -> return notReady(
+                    InputReadinessReason.SourceUnreadable(PolicySourceKind.LAYOUT_STRATEGY_SELECTION),
+                    InputCompositionCode.STRATEGY_SELECTION_UNREADABLE,
+                )
+
+                LayoutStrategySelectionReadResult.UnsupportedSchema -> return notReady(
+                    InputReadinessReason.UnsupportedVersion(PolicySourceKind.LAYOUT_STRATEGY_SELECTION, null),
+                    InputCompositionCode.STRATEGY_SELECTION_UNSUPPORTED_SCHEMA,
+                )
+            }
+            // Spec 182: a selection naming a strategy outside the active
+            // bundle's runtime-supported set is a typed non-write failure —
+            // never a fallback to the default.
+            firstSelection.selection?.takeIf { it !in bundle.layoutStrategies.runtimeSupported }?.let {
+                return notReady(
+                    InputReadinessReason.UnsupportedVersion(PolicySourceKind.LAYOUT_STRATEGY_SELECTION, firstSelection.identity),
+                    InputCompositionCode.STRATEGY_SELECTION_UNSUPPORTED,
+                    firstSelection.identity.sha256,
+                )
+            }
             val firstOverrides = when (val read = overrides.read(mapped.profiles)) {
                 is OverrideSnapshotReadResult.Ready -> read.snapshot
 
@@ -222,8 +252,28 @@ class DefaultOrganizationInputComposer(
                     InputCompositionCode.EVIDENCE_UNREADABLE,
                 )
             }
-            val firstCut = dynamicCutIdentity(bundle, firstOverrides.identity, firstEvidence.identity)
-            val secondCut = dynamicCutIdentity(bundle, secondOverrides.identity, secondEvidence.identity)
+            val secondSelection = when (val read = layoutStrategySelections.read()) {
+                is LayoutStrategySelectionReadResult.Ready -> read.snapshot
+
+                LayoutStrategySelectionReadResult.Unreadable -> return notReady(
+                    InputReadinessReason.SourceUnreadable(PolicySourceKind.LAYOUT_STRATEGY_SELECTION),
+                    InputCompositionCode.STRATEGY_SELECTION_UNREADABLE,
+                )
+
+                LayoutStrategySelectionReadResult.UnsupportedSchema -> return notReady(
+                    InputReadinessReason.UnsupportedVersion(PolicySourceKind.LAYOUT_STRATEGY_SELECTION, null),
+                    InputCompositionCode.STRATEGY_SELECTION_UNSUPPORTED_SCHEMA,
+                )
+            }
+            secondSelection.selection?.takeIf { it !in bundle.layoutStrategies.runtimeSupported }?.let {
+                return notReady(
+                    InputReadinessReason.UnsupportedVersion(PolicySourceKind.LAYOUT_STRATEGY_SELECTION, secondSelection.identity),
+                    InputCompositionCode.STRATEGY_SELECTION_UNSUPPORTED,
+                    secondSelection.identity.sha256,
+                )
+            }
+            val firstCut = dynamicCutIdentity(bundle, firstOverrides.identity, firstEvidence.identity, firstSelection.identity)
+            val secondCut = dynamicCutIdentity(bundle, secondOverrides.identity, secondEvidence.identity, secondSelection.identity)
             if (firstCut != secondCut) {
                 expectedCut = firstCut
                 observedCut = secondCut
@@ -254,11 +304,23 @@ class DefaultOrganizationInputComposer(
                     InputCompositionCode.TARGET_PARTITION,
                     bundle.identity.sha256,
                 )
-            val rulesIdentity = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.rules.version.value, bundle.identity.sha256)
+            // Spec 182: effective RuleSemantics = bundle rules base with the
+            // selected strategy substituted (absence means the bundle default).
+            val effectiveStrategy = firstSelection.selection ?: bundle.layoutStrategies.default
+            val effectiveRules = bundle.rules.copy(organizationStrategy = effectiveStrategy)
+            val rulesIdentity = effectiveRulesIdentity(bundle.identity, firstSelection.identity, effectiveRules)
             val taxonomyIdentity = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.taxonomy.version.value, bundle.identity.sha256)
             return OrganizationInputComposition.Ready(
-                OrganizationInput(mapped.snapshot, bundle.rules, bundle.taxonomy, signals.signals, targets.targets, RunMode.FullOrganization),
-                InputProvenance(capture.revision, rulesIdentity, taxonomyIdentity, signals.identity, targets.identity, bundle.identity),
+                OrganizationInput(mapped.snapshot, effectiveRules, bundle.taxonomy, signals.signals, targets.targets, RunMode.FullOrganization),
+                InputProvenance(
+                    capture.revision,
+                    rulesIdentity,
+                    taxonomyIdentity,
+                    signals.identity,
+                    targets.identity,
+                    bundle.identity,
+                    firstSelection.identity,
+                ),
             )
         }
         return notReady(
@@ -445,9 +507,14 @@ class DefaultOrganizationInputComposer(
         bundle: OrganizerPolicyBundle,
         overrides: PolicyInputIdentity,
         evidence: PolicyInputIdentity,
+        layoutStrategySelection: PolicyInputIdentity,
     ) = app.lawnchair.organizer.rules.PolicyBundleIdentity(
         bundle.identity.semanticVersion,
-        sha256Canonical("${bundle.identity.sha256}\n${overrides.sha256}\n${evidence.sha256}"),
+        // Generation AND digest of every dynamic input join the cut.
+        sha256Canonical(
+            "${bundle.identity.sha256}\n${overrides.versionOrGeneration}\n${overrides.sha256}\n" +
+                "${evidence.sha256}\n${layoutStrategySelection.versionOrGeneration}\n${layoutStrategySelection.sha256}",
+        ),
     )
 
     private fun notReady(reason: InputReadinessReason, code: InputCompositionCode, digest: String? = null) = OrganizationInputComposition.NotReady(

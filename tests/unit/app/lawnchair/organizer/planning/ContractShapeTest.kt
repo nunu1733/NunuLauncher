@@ -570,7 +570,7 @@ class ContractShapeTest {
     @Test
     fun completeRuleSemanticsIsConstructible() {
         val rules = RuleSemantics(
-            version = RuleVersion("v1"),
+            version = RuleVersion("v2"),
             folderPolicy = FolderPolicy(
                 minGroupSize = 2,
                 newFolderProfileScope = NewFolderProfileScope.SAME_PROFILE_ONLY,
@@ -578,9 +578,9 @@ class ContractShapeTest {
             dockPolicy = DockPolicy.PRESERVE,
             overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
             fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-            orderingPolicy = OrderingPolicy.CANONICAL_V1,
+            organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
         )
-        assertEquals(RuleVersion("v1"), rules.version)
+        assertEquals(RuleVersion("v2"), rules.version)
         assertEquals(FolderPolicy(minGroupSize = 2, newFolderProfileScope = NewFolderProfileScope.SAME_PROFILE_ONLY), rules.folderPolicy)
     }
 
@@ -597,9 +597,6 @@ class ContractShapeTest {
 
         assertEquals(FallbackCategoryPolicy.KEEP_AS_SINGLETON, FallbackCategoryPolicy.valueOf("KEEP_AS_SINGLETON"))
         assertEquals(1, FallbackCategoryPolicy.entries.size)
-
-        assertEquals(OrderingPolicy.CANONICAL_V1, OrderingPolicy.valueOf("CANONICAL_V1"))
-        assertEquals(1, OrderingPolicy.entries.size)
     }
 
     @Test
@@ -755,7 +752,7 @@ class ContractShapeTest {
 
     @Test
     fun everyPreserveReasonVariantIsConstructible() {
-        assertEquals(10, PreserveReason.entries.size)
+        assertEquals(11, PreserveReason.entries.size)
         assertTrue(
             PreserveReason.entries.containsAll(
                 listOf(
@@ -767,11 +764,16 @@ class ContractShapeTest {
                     PreserveReason.APP_PAIR,
                     PreserveReason.LEGACY_SHORTCUT,
                     PreserveReason.NON_TARGET,
+                    PreserveReason.STRATEGY_PRESERVED,
                     PreserveReason.STRUCTURAL,
                     PreserveReason.ALREADY_CANONICAL,
                 ),
             ),
         )
+        // Spec 182 precedence: STRATEGY_PRESERVED sits between NON_TARGET and
+        // STRUCTURAL and never outranks an existing reason.
+        assertTrue(PreserveReason.STRATEGY_PRESERVED.ordinal > PreserveReason.NON_TARGET.ordinal)
+        assertTrue(PreserveReason.STRATEGY_PRESERVED.ordinal < PreserveReason.STRUCTURAL.ordinal)
     }
 
     @Test

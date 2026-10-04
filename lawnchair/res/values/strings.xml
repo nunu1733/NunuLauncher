@@ -1046,6 +1046,7 @@
     <string name="manual_organization_preserved_app_pair">Preserved app pairs: %1$d</string>
     <string name="manual_organization_preserved_legacy_shortcut">Preserved legacy shortcuts: %1$d</string>
     <string name="manual_organization_preserved_non_target">Preserved out-of-scope placements: %1$d</string>
+    <string name="manual_organization_preserved_strategy">Preserved by the selected strategy: %1$d</string>
     <string name="manual_organization_preserved_structural">Preserved structural members: %1$d</string>
     <string name="manual_organization_preserved_already_canonical">Already-canonical placements: %1$d</string>
     <string name="manual_organization_unplaced_grid">Unplaced because the item exceeds grid dimensions: %1$d</string>
@@ -1113,6 +1114,7 @@
     <string name="manual_organization_preview_preserved_reason_legacy_shortcut">kept because it is a legacy shortcut</string>
     <string name="manual_organization_preview_preserved_reason_non_target">kept because it is out of scope</string>
     <string name="manual_organization_preview_preserved_reason_structural">kept as a structural member</string>
+    <string name="manual_organization_preview_preserved_reason_strategy">kept by the selected organization strategy</string>
     <string name="manual_organization_preview_preserved_reason_already_canonical">already in its canonical place</string>
     <string name="manual_organization_preview_warning_legacy_shortcut_item">legacy shortcut needs review</string>
     <string name="manual_organization_preview_warning_fallback_category_item">fallback category was used</string>

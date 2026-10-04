@@ -22,7 +22,6 @@ import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.LayoutSnapshot
 import app.lawnchair.organizer.planning.NewFolderProfileScope
-import app.lawnchair.organizer.planning.OrderingPolicy
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.Orientation
 import app.lawnchair.organizer.planning.OverflowPolicy
@@ -36,6 +35,7 @@ import app.lawnchair.organizer.planning.RuleSemantics
 import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.RunMode
 import app.lawnchair.organizer.planning.SignalSource
+import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TaxonomyContract
@@ -86,7 +86,7 @@ class SplitFolderNamingEndToEndTest {
             ),
             fallbackCategory = app.lawnchair.organizer.planning.CategoryId("OTHER"),
         )
-        val ruleVersion = RuleVersion("v1")
+        val ruleVersion = RuleVersion("v2")
         val input = OrganizationInput(
             snapshot = LayoutSnapshot(
                 revision = app.lawnchair.organizer.planning.RevisionId("snapshot"),
@@ -100,7 +100,7 @@ class SplitFolderNamingEndToEndTest {
                 dockPolicy = DockPolicy.PRESERVE,
                 overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
                 fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-                orderingPolicy = OrderingPolicy.CANONICAL_V1,
+                organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = taxonomy,
             signals = ClassificationSignals(
@@ -212,12 +212,12 @@ class SplitFolderNamingEndToEndTest {
                 items = capturedItems,
             ),
             rules = RuleSemantics(
-                version = RuleVersion("v1"),
+                version = RuleVersion("v2"),
                 folderPolicy = FolderPolicy(2, NewFolderProfileScope.SAME_PROFILE_ONLY),
                 dockPolicy = DockPolicy.PRESERVE,
                 overflowPolicy = OverflowPolicy.ADD_PAGES_FOR_ITEMS_THAT_FIT_EMPTY_PAGE,
                 fallbackCategoryPolicy = FallbackCategoryPolicy.KEEP_AS_SINGLETON,
-                orderingPolicy = OrderingPolicy.CANONICAL_V1,
+                organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = taxonomy,
             signals = ClassificationSignals(

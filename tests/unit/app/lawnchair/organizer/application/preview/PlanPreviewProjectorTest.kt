@@ -678,7 +678,7 @@ class PlanPreviewProjectorTest {
             actions = actions,
             newPages = newPages,
             newFolders = newFolders,
-            ruleVersion = RuleVersion("v1"),
+            ruleVersion = RuleVersion("v2"),
             taxonomyVersion = TaxonomyVersion("v1"),
         )
     }

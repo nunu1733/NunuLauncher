@@ -623,6 +623,7 @@ private fun organizationPreviewWording(context: Context): OrganizationPreviewWor
     preservedReasonAppPair = context.getString(R.string.manual_organization_preview_preserved_reason_app_pair),
     preservedReasonLegacyShortcut = context.getString(R.string.manual_organization_preview_preserved_reason_legacy_shortcut),
     preservedReasonNonTarget = context.getString(R.string.manual_organization_preview_preserved_reason_non_target),
+    preservedReasonStrategyPreserved = context.getString(R.string.manual_organization_preview_preserved_reason_strategy),
     preservedReasonStructural = context.getString(R.string.manual_organization_preview_preserved_reason_structural),
     preservedReasonAlreadyCanonical = context.getString(R.string.manual_organization_preview_preserved_reason_already_canonical),
     warningLegacyShortcutReview = context.getString(R.string.manual_organization_preview_warning_legacy_shortcut_item),
@@ -679,6 +680,7 @@ private class ResourceOrganizationPreviewWording(
     override val preservedReasonAppPair: String,
     override val preservedReasonLegacyShortcut: String,
     override val preservedReasonNonTarget: String,
+    override val preservedReasonStrategyPreserved: String,
     override val preservedReasonStructural: String,
     override val preservedReasonAlreadyCanonical: String,
     override val warningLegacyShortcutReview: String,
@@ -739,6 +741,7 @@ private fun preservedReasonString(reason: PreserveReason): Int = when (reason) {
     PreserveReason.APP_PAIR -> R.string.manual_organization_preserved_app_pair
     PreserveReason.LEGACY_SHORTCUT -> R.string.manual_organization_preserved_legacy_shortcut
     PreserveReason.NON_TARGET -> R.string.manual_organization_preserved_non_target
+    PreserveReason.STRATEGY_PRESERVED -> R.string.manual_organization_preserved_strategy
     PreserveReason.STRUCTURAL -> R.string.manual_organization_preserved_structural
     PreserveReason.ALREADY_CANONICAL -> R.string.manual_organization_preserved_already_canonical
 }

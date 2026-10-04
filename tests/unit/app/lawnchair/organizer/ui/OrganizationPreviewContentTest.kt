@@ -310,6 +310,7 @@ class OrganizationPreviewContentTest {
         override val preservedReasonAppPair = "kept because it is an app pair"
         override val preservedReasonLegacyShortcut = "kept because it is a legacy shortcut"
         override val preservedReasonNonTarget = "kept because it is out of scope"
+        override val preservedReasonStrategyPreserved = "kept by the selected strategy"
         override val preservedReasonStructural = "kept as a structural member"
         override val preservedReasonAlreadyCanonical = "already in its canonical place"
         override val warningLegacyShortcutReview = "legacy shortcut needs review"

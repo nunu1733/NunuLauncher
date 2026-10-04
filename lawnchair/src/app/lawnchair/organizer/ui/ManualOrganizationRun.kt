@@ -34,6 +34,7 @@ import app.lawnchair.organizer.integration.OrganizationInputComposition
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
 import app.lawnchair.organizer.planning.Disposition
+import app.lawnchair.organizer.planning.LayoutStrategyRegistry
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.OrganizationPlanner
 import app.lawnchair.organizer.planning.PlacementCode
@@ -246,6 +247,14 @@ class ManualOrganizationRun internal constructor(
                             result = result,
                             journalSequence = 0L,
                             capturedItemCount = input.snapshot.items.size,
+                            // Spec 182: the diagnostics echo must match the
+                            // planner's runtime truth. The runtime-enabled set
+                            // comes from the internal executable registry, so a
+                            // strategy the binary does not implement is never
+                            // recorded as effective.
+                            runtimeStrategyIds = LayoutStrategyRegistry.acceptedIds
+                                .map { it.value }
+                                .toSet(),
                         ).copy(
                             runId = runId.value,
                             trigger = operation.trigger,
@@ -637,6 +646,7 @@ class ManualOrganizationRun internal constructor(
         revision = input.snapshot.revision,
         ruleVersion = input.rules.version,
         taxonomyVersion = input.taxonomy.version,
+        organizationStrategy = input.rules.organizationStrategy,
         outcome = this,
     ).summary(input)
 

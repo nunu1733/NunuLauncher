@@ -5,6 +5,7 @@ import app.lawnchair.organizer.PreferenceWorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideStoreModule
+import app.lawnchair.organizer.rules.LayoutStrategySelectionModule
 
 /**
  * #83 production entry point. Callers provide only the existing canonical capture
@@ -18,6 +19,9 @@ class ProductionOrganizationInputComposer(
     captureSource = LayoutWriterCanonicalCaptureSource(layoutWriter, captureFailureObserver),
     bundleSource = BuiltInOrganizerPolicyBundleSource,
     overrides = CategoryOverrideStoreModule.source(appContext),
+    // Spec 182: the persisted strategy selection joins the stable cut as the
+    // fifth policy input.
+    layoutStrategySelections = LayoutStrategySelectionModule.source(appContext),
     platformEvidence = AndroidClassificationSignalSnapshotSource(appContext),
     // Issue #185 / ADR-0010: the reservation-overlap gate reads the same
     // platform policy the loader consults, freshly at every compose.
