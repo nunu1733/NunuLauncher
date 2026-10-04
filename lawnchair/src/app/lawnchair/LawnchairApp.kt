@@ -41,6 +41,7 @@ import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.flowerpot.Flowerpot
 import app.lawnchair.migration.DeckRetirementMigration
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.application.store.RecoveryStore
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.ui.ModalBottomSheetContent
 import app.lawnchair.ui.preferences.destinations.openAppInfo
@@ -59,7 +60,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 class LawnchairApp : Application() {
-    lateinit var layoutApplicationModule: LayoutApplicationModule
+    internal lateinit var layoutApplicationModule: LayoutApplicationModule<RecoveryStore>
         private set
     private val compatible = Build.VERSION.SDK_INT in BuildConfig.QUICKSTEP_MIN_SDK..BuildConfig.QUICKSTEP_MAX_SDK
     private val isRecentsComponent: Boolean by unsafeLazy { checkRecentsComponent() }

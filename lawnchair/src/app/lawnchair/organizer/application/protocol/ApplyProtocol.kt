@@ -36,7 +36,7 @@ class ApplyProtocol(
     private val clock: Clock,
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector,
-    private val mutex: RunMutex,
+    private val mutex: RunMutexPort,
     private val diagnosticsPort: DiagnosticsPort = DiagnosticsPort.NOOP,
 ) {
 

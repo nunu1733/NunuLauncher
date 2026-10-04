@@ -141,7 +141,18 @@ interface RecoveryStorePort {
 
     fun availability(): StoreAvailability
 
+    /**
+     * Existing maintenance-capable lookup. Recovery-store implementations may
+     * purge expired tombstones while serving this path.
+     */
     fun readTombstone(pointId: RecoveryPointId): Tombstone?
+
+    /**
+     * Read one snapshot projection without opening SQLite, invoking
+     * SQLiteOpenHelper/version probing, retention cleanup, transaction writes,
+     * or lifecycle mutation. Used only by recovery preview inspection.
+     */
+    fun readInspectionProjection(pointId: RecoveryPointId): InspectionProjectionRead
 
     fun checkpoint(payload: CheckpointPayload): CheckpointResult
 
@@ -173,6 +184,33 @@ interface RecoveryStorePort {
     fun runRetention(nowMillis: Long): RetentionOutcome
 
     enum class StoreAvailability { READY, INCOMPATIBLE_VERSION, READ_FAILED }
+
+    /** Closed result of the SQLite-free inspection snapshot seam. */
+    sealed interface InspectionProjectionRead {
+        data class Value(val projection: InspectionProjection) : InspectionProjectionRead
+        data object Unavailable : InspectionProjectionRead
+        data object Incompatible : InspectionProjectionRead
+    }
+
+    /** Minimal derived metadata needed by #84 classification; no payload data. */
+    sealed interface InspectionProjection {
+        data class Record(
+            val pointId: RecoveryPointId,
+            val lifecycle: LifecycleState,
+            val createdAtMs: Long,
+            val updatedAtMs: Long,
+            val checksumValid: Boolean,
+            val formatVersion: Int,
+        ) : InspectionProjection
+
+        data class Tombstone(
+            val pointId: RecoveryPointId,
+            val reason: TombstoneReason,
+            val expiresAtMs: Long,
+        ) : InspectionProjection
+
+        data object Missing : InspectionProjection
+    }
 
     enum class TombstoneReason {
         CORRUPT,
@@ -234,6 +272,44 @@ interface RecoveryStorePort {
         val checksumValid: Boolean
         val formatVersion: Int
     }
+}
+
+/** Internal reconciliation-only issuer; ordinary protocols never receive this port. */
+internal interface RecoveryStoreReconciliationPort {
+    /** One-time binding performed by the composition root that owns [RunMutex]. */
+    fun bindReconciliationIssuer(
+        mutex: RunMutex,
+    ): RecoveryStoreReconciliationIssuer?
+}
+
+/** Opaque issuer retained only by the composition root. */
+internal interface RecoveryStoreReconciliationIssuer {
+    fun openSession(
+        lease: RunMutex.ReconciliationLease,
+    ): RecoveryStoreReconciliationSession?
+}
+
+/**
+ * Opaque, method-scoped capability for legal startup reconciliation work.
+ * Implementations must reject every call after [close] or when the exact
+ * module-owned [RunMutex.ReconciliationLease] is no longer active.
+ */
+internal interface RecoveryStoreReconciliationSession : AutoCloseable {
+    fun isActive(): Boolean
+    fun availability(): RecoveryStorePort.StoreAvailability
+    fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>?
+    fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord?
+    fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean
+    fun markRestoring(
+        pointId: RecoveryPointId,
+        reviewedManifest: PersistenceManifest,
+        reviewedDigest: ByteArray,
+        recoveryActionDigest: ByteArray,
+    ): Boolean
+    fun pruneUnused(pointId: RecoveryPointId): Boolean
+    fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome
+    fun rebuildInspectionSnapshot(): Boolean
+    override fun close()
 }
 
 /** Internal port: clock for retention and timestamps. */
@@ -334,20 +410,48 @@ interface FaultInjector {
  *
  * Issue #14 Stage B step 4 (A0).
  */
-class RunMutex {
+interface RunMutexPort {
+    fun tryAcquire(runId: RunId): Boolean
+    fun release(runId: RunId)
+}
+
+class RunMutex : RunMutexPort {
+    internal class ReconciliationLease internal constructor(
+        private val mutex: RunMutex,
+        private val runId: RunId,
+    ) {
+        internal fun isActive(): Boolean = mutex.isLeaseActive(runId, this)
+
+        internal fun isActiveFor(expectedMutex: RunMutex): Boolean = mutex === expectedMutex && mutex.isLeaseActive(runId, this)
+    }
+
     private var holder: RunId? = null
+    private var reconciliationLease: ReconciliationLease? = null
 
     @Synchronized
-    fun tryAcquire(runId: RunId): Boolean {
+    override fun tryAcquire(runId: RunId): Boolean {
         if (holder != null) return false
         holder = runId
         return true
     }
 
     @Synchronized
-    fun release(runId: RunId) {
-        if (holder == runId) holder = null
+    override fun release(runId: RunId) {
+        if (holder == runId) {
+            holder = null
+            reconciliationLease = null
+        }
     }
+
+    /** Available only to the composition root that owns the concrete mutex. */
+    @Synchronized
+    internal fun issueReconciliationLease(runId: RunId): ReconciliationLease? {
+        if (holder != runId || reconciliationLease != null) return null
+        return ReconciliationLease(this, runId).also { reconciliationLease = it }
+    }
+
+    @Synchronized
+    private fun isLeaseActive(runId: RunId, lease: ReconciliationLease): Boolean = holder == runId && reconciliationLease === lease
 
     @Synchronized
     fun currentHolder(): RunId? = holder

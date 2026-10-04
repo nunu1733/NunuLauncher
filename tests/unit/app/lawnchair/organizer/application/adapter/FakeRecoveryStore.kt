@@ -5,6 +5,10 @@ import app.lawnchair.organizer.application.lifecycle.LifecycleState
 import app.lawnchair.organizer.application.lifecycle.LifecycleTransitions
 import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.application.protocol.RecoveryStorePort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationIssuer
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationPort
+import app.lawnchair.organizer.application.protocol.RecoveryStoreReconciliationSession
+import app.lawnchair.organizer.application.protocol.RunMutex
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.planning.RevisionId
@@ -17,12 +21,14 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Issue #14 Stage B step 4.
  */
-class FakeRecoveryStore(
+internal class FakeRecoveryStore(
     private val clock: () -> Long = { System.currentTimeMillis() },
-) : RecoveryStorePort {
+) : RecoveryStorePort,
+    RecoveryStoreReconciliationPort {
 
     private val records: ConcurrentHashMap<String, MutableRecord> = ConcurrentHashMap()
     private val tombstones: ConcurrentHashMap<String, RecoveryStorePort.Tombstone> = ConcurrentHashMap()
+    private var reconciliationMutex: RunMutex? = null
 
     var storeAvailability: RecoveryStorePort.StoreAvailability = RecoveryStorePort.StoreAvailability.READY
     var checkpointCreateFails: Boolean = false
@@ -34,10 +40,122 @@ class FakeRecoveryStore(
     var advanceFails: Boolean = false
     var pruneUnusedFails: Boolean = false
     var retentionOutcome: RecoveryStorePort.RetentionOutcome = RecoveryStorePort.RetentionOutcome.Applied
+    var maintenanceTombstoneReads: Int = 0
+        private set
+    var inspectionProjectionReads: Int = 0
+        private set
+    var inspectionReadFails: Boolean = false
+    var markRestoringCalls: Int = 0
+        private set
+    var advanceCalls: Int = 0
+        private set
+    var pruneUnusedCalls: Int = 0
+        private set
+    var retentionCalls: Int = 0
+        private set
 
     override fun availability(): RecoveryStorePort.StoreAvailability = storeAvailability
 
-    override fun readTombstone(pointId: RecoveryPointId): RecoveryStorePort.Tombstone? = tombstones[pointId.value]
+    override fun readTombstone(pointId: RecoveryPointId): RecoveryStorePort.Tombstone? {
+        maintenanceTombstoneReads += 1
+        return tombstones[pointId.value]
+    }
+
+    var snapshotRebuildSucceeds: Boolean = true
+
+    override fun readInspectionProjection(
+        pointId: RecoveryPointId,
+    ): RecoveryStorePort.InspectionProjectionRead {
+        inspectionProjectionReads += 1
+        when (storeAvailability) {
+            RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION ->
+                return RecoveryStorePort.InspectionProjectionRead.Incompatible
+
+            RecoveryStorePort.StoreAvailability.READ_FAILED ->
+                return RecoveryStorePort.InspectionProjectionRead.Unavailable
+
+            RecoveryStorePort.StoreAvailability.READY -> Unit
+        }
+        if (inspectionReadFails) return RecoveryStorePort.InspectionProjectionRead.Unavailable
+        records[pointId.value]?.let { record ->
+            return RecoveryStorePort.InspectionProjectionRead.Value(
+                RecoveryStorePort.InspectionProjection.Record(
+                    pointId = record.pointId,
+                    lifecycle = record.lifecycle,
+                    createdAtMs = record.createdAtMs,
+                    updatedAtMs = record.updatedAtMs,
+                    checksumValid = record.checksumValid,
+                    formatVersion = record.formatVersion,
+                ),
+            )
+        }
+        tombstones[pointId.value]?.let { tombstone ->
+            return RecoveryStorePort.InspectionProjectionRead.Value(
+                RecoveryStorePort.InspectionProjection.Tombstone(
+                    pointId = tombstone.pointId,
+                    reason = tombstone.reason,
+                    expiresAtMs = tombstone.expiresAtMs,
+                ),
+            )
+        }
+        return RecoveryStorePort.InspectionProjectionRead.Value(RecoveryStorePort.InspectionProjection.Missing)
+    }
+
+    override fun bindReconciliationIssuer(
+        mutex: RunMutex,
+    ): RecoveryStoreReconciliationIssuer? {
+        val bound = reconciliationMutex
+        if (bound != null && bound !== mutex) return null
+        reconciliationMutex = mutex
+        return FakeReconciliationIssuer(mutex)
+    }
+
+    private inner class FakeReconciliationIssuer(
+        private val mutex: RunMutex,
+    ) : RecoveryStoreReconciliationIssuer {
+        override fun openSession(
+            lease: RunMutex.ReconciliationLease,
+        ): RecoveryStoreReconciliationSession? = if (lease.isActiveFor(mutex)) FakeReconciliationSession(lease, mutex) else null
+    }
+
+    private inner class FakeReconciliationSession(
+        private val lease: RunMutex.ReconciliationLease,
+        private val mutex: RunMutex,
+    ) : RecoveryStoreReconciliationSession {
+        private var closed: Boolean = false
+
+        override fun isActive(): Boolean = !closed && lease.isActiveFor(mutex)
+
+        override fun availability(): RecoveryStorePort.StoreAvailability = if (isActive()) this@FakeRecoveryStore.availability() else RecoveryStorePort.StoreAvailability.READ_FAILED
+
+        override fun listNonFinalRecords(): List<RecoveryStorePort.StoredRecord>? = if (isActive()) this@FakeRecoveryStore.listNonFinalRecords() else null
+
+        override fun readRecord(pointId: RecoveryPointId): RecoveryStorePort.StoredRecord? = if (isActive()) this@FakeRecoveryStore.readRecord(pointId) else null
+
+        override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean = isActive() && this@FakeRecoveryStore.advance(pointId, next)
+
+        override fun markRestoring(
+            pointId: RecoveryPointId,
+            reviewedManifest: PersistenceManifest,
+            reviewedDigest: ByteArray,
+            recoveryActionDigest: ByteArray,
+        ): Boolean = isActive() && this@FakeRecoveryStore.markRestoring(
+            pointId,
+            reviewedManifest,
+            reviewedDigest,
+            recoveryActionDigest,
+        )
+
+        override fun pruneUnused(pointId: RecoveryPointId): Boolean = isActive() && this@FakeRecoveryStore.pruneUnused(pointId)
+
+        override fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome = if (isActive()) this@FakeRecoveryStore.runRetention(nowMillis) else RecoveryStorePort.RetentionOutcome.StoreUnavailable
+
+        override fun rebuildInspectionSnapshot(): Boolean = isActive() && snapshotRebuildSucceeds
+
+        override fun close() {
+            closed = true
+        }
+    }
 
     override fun checkpoint(payload: RecoveryStorePort.CheckpointPayload): RecoveryStorePort.CheckpointResult {
         checkpointPointIds += payload.pointId
@@ -118,6 +236,7 @@ class FakeRecoveryStore(
     }
 
     override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean {
+        advanceCalls += 1
         if (advanceFails) return false
         val record = records[pointId.value] ?: return false
         if (!LifecycleTransitions.isLegal(record.lifecycle, next)) return false
@@ -133,6 +252,7 @@ class FakeRecoveryStore(
         reviewedDigest: ByteArray,
         recoveryActionDigest: ByteArray,
     ): Boolean {
+        markRestoringCalls += 1
         if (markRestoringFails) return false
         val record = records[pointId.value] ?: return false
         if (record.lifecycle != LifecycleState.RESTORING &&
@@ -157,6 +277,7 @@ class FakeRecoveryStore(
         .map { record -> record.asStored() }
 
     override fun pruneUnused(pointId: RecoveryPointId): Boolean {
+        pruneUnusedCalls += 1
         if (pruneUnusedFails) return false
         val record = records[pointId.value] ?: return false
         if (record.lifecycle != LifecycleState.READY) return false
@@ -164,6 +285,7 @@ class FakeRecoveryStore(
     }
 
     override fun runRetention(nowMillis: Long): RecoveryStorePort.RetentionOutcome {
+        retentionCalls += 1
         // Fake store does not perform retention by default; tests assert retention
         // behavior via RetentionPolicyTest. Returning Applied keeps the protocol happy.
         return retentionOutcome
@@ -210,6 +332,14 @@ class FakeRecoveryStore(
         advanceFails = false
         pruneUnusedFails = false
         retentionOutcome = RecoveryStorePort.RetentionOutcome.Applied
+        maintenanceTombstoneReads = 0
+        inspectionProjectionReads = 0
+        inspectionReadFails = false
+        snapshotRebuildSucceeds = true
+        markRestoringCalls = 0
+        advanceCalls = 0
+        pruneUnusedCalls = 0
+        retentionCalls = 0
     }
 
     private class MutableRecord(

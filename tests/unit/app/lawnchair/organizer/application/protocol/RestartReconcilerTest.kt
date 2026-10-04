@@ -9,6 +9,7 @@ import app.lawnchair.organizer.application.lifecycle.ReconciliationPublicResult
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -19,19 +20,33 @@ class RestartReconcilerTest {
     private lateinit var writer: FakeLayoutWriter
     private lateinit var store: FakeRecoveryStore
     private lateinit var reconciler: RestartReconciler
+    private lateinit var mutex: RunMutex
+    private lateinit var session: RecoveryStoreReconciliationSession
+    private val reconciliationRunId = RunId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
     private val pointId = RecoveryPointId("22222222222222222222222222222222")
 
     @Before
     fun setUp() {
         writer = FakeLayoutWriter(CanonicalFixtures.state(items = listOf(CanonicalFixtures.appItem())))
         store = FakeRecoveryStore(FakeClock::nowMillis)
-        reconciler = RestartReconciler(writer, store, RecordingFaultInjector())
+        mutex = RunMutex()
+        assertTrue(mutex.tryAcquire(reconciliationRunId))
+        val lease = requireNotNull(mutex.issueReconciliationLease(reconciliationRunId))
+        val issuer = requireNotNull(store.bindReconciliationIssuer(mutex))
+        session = requireNotNull(issuer.openSession(lease))
+        reconciler = RestartReconciler(writer, RecordingFaultInjector())
+    }
+
+    @After
+    fun tearDown() {
+        session.close()
+        mutex.release(reconciliationRunId)
     }
 
     @Test
     fun readyCheckpointAtPreStateIsActuallyPruned() {
         seedReady()
-        assertEquals(RestartReconciler.ReconciliationSummary.Clean, reconciler.reconcileAll())
+        assertEquals(RestartReconciler.ReconciliationSummary.Clean, reconciler.reconcileAll(session))
         assertNull(store.readRecord(pointId))
     }
 
@@ -43,7 +58,7 @@ class RestartReconcilerTest {
         assertTrue(store.advance(pointId, LifecycleState.VERIFIED))
         assertTrue(store.markRestoring(pointId, capture.manifest, capture.digest, ByteArray(32)))
 
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
         assertEquals(LifecycleState.RESTORED, store.readRecord(pointId)?.lifecycle)
         assertEquals(1, writer.reloadCount)
@@ -73,7 +88,7 @@ class RestartReconcilerTest {
         store.advance(pointId, LifecycleState.READY)
         store.advance(pointId, LifecycleState.APPLYING)
         store.advanceFails = true
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
         assertTrue(summary.hasUnresolvedFailures())
     }
@@ -82,7 +97,7 @@ class RestartReconcilerTest {
     fun readyAtPreStateWithPruneFailureSurfacesUnresolvedNotClean() {
         seedReady()
         store.pruneUnusedFails = true
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
         assertTrue(summary.hasUnresolvedFailures())
     }
@@ -92,7 +107,7 @@ class RestartReconcilerTest {
         seedReady()
         store.advance(pointId, LifecycleState.APPLYING)
         store.advanceFails = true
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
         assertTrue(summary.hasUnresolvedFailures())
     }
@@ -102,7 +117,7 @@ class RestartReconcilerTest {
         seedReady()
         store.advance(pointId, LifecycleState.APPLYING)
         store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED)
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
         val results = (summary as RestartReconciler.ReconciliationSummary.Resolved).publicResults
         assertTrue(results.any { it is ReconciliationPublicResult.ResumeApply })
@@ -116,10 +131,10 @@ class RestartReconcilerTest {
         seedReady()
         store.advance(pointId, LifecycleState.APPLYING)
         store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED)
-        val firstSummary = reconciler.reconcileAll()
+        val firstSummary = reconciler.reconcileAll(session)
         assertTrue(firstSummary is RestartReconciler.ReconciliationSummary.Resolved)
         assertNull(store.readRecord(pointId))
-        val secondSummary = reconciler.reconcileAll()
+        val secondSummary = reconciler.reconcileAll(session)
         assertEquals(RestartReconciler.ReconciliationSummary.Clean, secondSummary)
     }
 
@@ -129,7 +144,7 @@ class RestartReconcilerTest {
         store.advance(pointId, LifecycleState.APPLYING)
         store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED)
         store.advanceFails = true
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertTrue(summary is RestartReconciler.ReconciliationSummary.Resolved)
         assertTrue(summary.hasUnresolvedFailures())
         assertEquals(LifecycleState.COMMITTED_UNVERIFIED, store.readRecord(pointId)?.lifecycle)
@@ -141,7 +156,7 @@ class RestartReconcilerTest {
         store.advance(pointId, LifecycleState.APPLYING)
         store.advance(pointId, LifecycleState.COMMITTED_UNVERIFIED)
         store.pruneUnusedFails = true
-        val summary = reconciler.reconcileAll()
+        val summary = reconciler.reconcileAll(session)
         assertTrue(summary.hasUnresolvedFailures())
         assertEquals(LifecycleState.READY, store.readRecord(pointId)?.lifecycle)
     }
@@ -149,6 +164,6 @@ class RestartReconcilerTest {
     @Test
     fun retentionFailureKeepsSummaryFailed() {
         store.retentionOutcome = RecoveryStorePort.RetentionOutcome.Failed
-        assertEquals(RestartReconciler.ReconciliationSummary.Failed, reconciler.reconcileAll())
+        assertEquals(RestartReconciler.ReconciliationSummary.Failed, reconciler.reconcileAll(session))
     }
 }
