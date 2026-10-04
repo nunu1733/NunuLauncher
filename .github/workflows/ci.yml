@@ -82,7 +82,12 @@ jobs:
     permissions:
       contents: read
     steps:
+      # The offline patch-surface verifier resolves the accepted upstream/main
+      # commits from the checked-out local object database. Keep complete history
+      # in this inexpensive gate so a shallow checkout cannot mask that evidence.
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -99,6 +104,10 @@ jobs:
         run: python3 tools/repo-contract/test_validate_deck_retirement.py
       - name: Writer inventory scan
         run: python3 tools/repo-contract/validate_writer_inventory.py
+      - name: Upstream patch-surface measurement self-tests
+        run: python3 tools/repo-contract/test_measure_upstream_patch_surface.py
+      - name: Reproduce accepted upstream patch-surface baseline
+        run: python3 tools/repo-contract/measure_upstream_patch_surface.py --verify
       - name: Validate diagnostics contract (AC-67-12)
         run: python3 tools/repo-contract/validate_diagnostics_contract.py
       - name: Diagnostics contract self-tests

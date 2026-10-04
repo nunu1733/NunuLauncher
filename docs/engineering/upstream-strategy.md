@@ -41,6 +41,7 @@ Git履歴を失うsource copy、無関係なroot repositoryとのsquash import�
 - upstream fileへのpatchは、対応Issue、必要理由、代替不可の根拠をPRに記載する。
 - 既存Deck layoutを調査し、同じevent、preference、DB backupを持つ並行機能を作らない。
 - upstream source全体のformat変更、package移動、機械的rewriteをproject機能PRへ混ぜない。
+- organizerの上流patch surfaceは、[Issue #110の受入済みbaseline](../assessment/upstream-patch-surface-baseline.md)を正本として、local Gitだけで再現・比較する。count増加は品質の自動判定ではなく、owner Issueとbridge理由を確認するreview signalとする。
 
 ## Sync workflow
 
@@ -51,7 +52,7 @@ Git履歴を失うsource copy、無関係なroot repositoryとのsquash import�
 3. merge/rebase方式はrepository公開時に1つへ決め、毎回変えない。
 4. conflictはproject固有意図をspec/DESIGN/ADRから確認して解消する。
 5. full build、upstream test、planner/apply contract、migration、backup/restore、smoke testを実行する。
-6. project patch surfaceの増減と、次回までのtemporary workaroundをPRに記録する。
+6. `python3 tools/repo-contract/measure_upstream_patch_surface.py --upstream <candidate-upstream-commit> --target HEAD --enforce-baseline` を実行し、project patch surfaceの増減、bridge owner、および次回までのtemporary workaroundをPRに記録する。候補upstream commitはlocal object databaseに存在し、targetのancestorでなければならない。
 
 ## Upgrade policy
 
