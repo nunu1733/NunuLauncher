@@ -6,7 +6,7 @@ NunuLauncherの変更は、human/AI Agentを問わずGitHub Issueから開始し
 2. 機能変更ではIssue番号を使って `specs/<issue>-<slug>/spec.md` を作り、承認を得る。
 3. `status: ready` 後にbranch `issue-<number>-<slug>` で作業する。
 4. code、test、migration、必要な文書を同じPull Requestで更新する。
-5. PR templateに受入条件ごとのevidenceと実行commandを記載し、`Closes #<issue>` を含める。
+5. PR templateに受入条件ごとのevidenceと実行commandを記載する。Issueの終了条件を満たす最終PRは `Closes #<issue>`、spec/plan/research/調査・証跡などの中間PRは `Refs #<issue>` とし、closing keywordを本文でレビューする。
 
 詳細なsource of truth、label、Ready/Done条件は [GitHub workflow](./docs/project/github-workflow.md) を参照してください。AI Agentは作業前に [AGENTS.md](./AGENTS.md) を必ず読みます。
 
