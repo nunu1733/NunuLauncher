@@ -8,7 +8,10 @@
 # validate_ci_portfolio.py compares every edge here against the lane `if`
 # conditions in .github/workflows/ci.yml (exact set comparison), checks the
 # surface vocabulary in both directions, and verifies the final-status
-# aggregation. It also verifies the machine-readable ownership and trigger of
+# aggregation. Since Issue #438 it also requires every instrumentation lane to
+# run its failure-time capture inside the live emulator-runner wrapper and
+# rejects runner-external capture steps, which can only observe a torn-down
+# emulator. It also verifies the machine-readable ownership and trigger of
 # supporting contract tests. Global control outputs (full /
 # instrumentation_enabled / permanent_run) are not surfaces and are excluded
 # from the edge comparison.
