@@ -54,6 +54,15 @@ build-tools;36.1.0
 ./gradlew assembleLawnWithQuickstepGithubDebug
 ```
 
+Repository documentation、Issue form、required project filesを変更した場合は、同じcheckoutで次も実行する。
+
+```bash
+python3 tools/repo-contract/validate_repo_contract.py
+python3 tools/repo-contract/test_validate_repo_contract.py
+```
+
+localにPyYAMLがない場合、Issue formは構造smoke checkとなる。GitHub ActionsはPyYAMLを導入して完全なYAML parseを行う。
+
 生成APK:
 
 ```text

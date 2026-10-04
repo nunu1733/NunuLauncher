@@ -1,13 +1,18 @@
 name: Crowdin Download
 
+# Fork policy (Issue #8): the weekly schedule is retained for the upstream
+# owner. The job-level owner guard already prevents execution on NunuLauncher;
+# keeping the schedule avoids a diff churn that would complicate upstream sync,
+# and the guard is the authoritative control.
+
 on:
   schedule:
     - cron: '0 0 * * 0'
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 jobs:
 

@@ -1,0 +1,11 @@
+name: Bug
+description: A valid form
+labels:
+  - "type: bug"
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true

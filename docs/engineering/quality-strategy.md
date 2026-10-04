@@ -1,7 +1,7 @@
 # Quality Strategy
 
 > Status: Proposed
-> Updated: 2026-08-09
+> Updated: 2026-08-09 (repository contract gates added, Issue #8)
 
 ## Quality order
 
@@ -95,7 +95,20 @@ budget未決定の間も計測値はPRに残し、regression比較可能にす�
 - debug APK build。
 - risk label付きPRでのtargeted emulator test。
 
-command名をsource導入前に固定しない。
+compile以降のcommand名はsource導入後に確定する。
+
+## Repository contract gates
+
+Issue #8 で repository contract validator を導入した。次のcommandはlocalで検証済みであり、CIではPyYAMLを追加して完全なYAML parseを行う。Markdown内部link、Issue form YAML、required project filesを検証する。
+
+```bash
+python3 tools/repo-contract/validate_repo_contract.py
+python3 tools/repo-contract/test_validate_repo_contract.py
+```
+
+CI（`.github/workflows/ci.yml` の `validate-repo-contract` job）は pinned PyYAMLをinstallして完全なYAML解析を行う。localでPyYAMLがない場合は構造smoke checkにfall backするため、YAMLの最終判定はCIを正本とする。validatorは上流由来の `wmshell`、`quickstep/src` 配下と自身の `tools/repo-contract/fixtures` を検証対象から除外する。
+
+source pathは「既知moduleの列挙」ではなく、docs・Issue form・repository-contract tooling以外をdefaultでsourceとみなす。これにより新しい上流moduleを取り込んでもformat/build gateがfail-openしない。PRの変更検出にはread-onlyのpull-request permissionを使い、CI artifactは7日でexpireする。上流専用secretを使う通知・翻訳・release mutationはfork CIから実行しない。
 
 ## Release evidence
 
