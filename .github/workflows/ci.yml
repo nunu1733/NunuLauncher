@@ -547,7 +547,7 @@ jobs:
           emulator-boot-timeout: 900
           script: >-
             ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.OnboardingOrganizationProposalInstrumentationTest,app.lawnchair.organizer.ui.InjectedInputEnvironmentStateInstrumentationTest
       - name: Upload Issue 53 instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

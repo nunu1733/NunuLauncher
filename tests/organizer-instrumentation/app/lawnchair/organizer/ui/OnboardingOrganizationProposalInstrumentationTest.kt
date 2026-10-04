@@ -99,7 +99,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             awaitInputFocus({ content.title }, "proposal title")
             // Injected through the real input pipeline (not a direct activity dispatch) so the
             // key press ends touch mode exactly like hardware DPAD input does.
-            sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
+            sendKey(launcher, KeyEvent.KEYCODE_DPAD_DOWN)
             awaitAnyInputFocus(launcher, content.laterButton, content.skipButton, content.reviewButton)
             instrumentation.runOnMainSync {
                 val viewport = Rect()
@@ -571,6 +571,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
         description: String,
     ): Rect {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // Issue #300: the scan assumes the target activity is the frontmost focused window; the
+        // gate observes (and repairs) that premise before the walk (TS-AC-04).
+        InjectedInputEnvironment.ensureWindowFocused(activity)
         repeat(50) {
             // rootInActiveWindow returns the sealed node tree of the frontmost window; plain
             // createAccessibilityNodeInfo children are unsealed on API 36 and refuse getChild.
@@ -580,7 +583,32 @@ class OnboardingOrganizationProposalInstrumentationTest {
             }
             SystemClock.sleep(100)
         }
-        error("$description with text '$text' was not found in the accessibility tree")
+        // Issue #300: only a foreign frontmost window or a lost activity focus is an environment
+        // anomaly; a missing node under a healthy frontmost window is the product regression the
+        // test exists to detect and must not poison the run (TS-AC-04).
+        val snapshot = InjectedInputEnvironment.currentSnapshot()
+        var activityWindowFocused = false
+        instrumentation.runOnMainSync {
+            activityWindowFocused = activity.window.decorView.hasWindowFocus()
+        }
+        val deviceState = InjectedInputEnvironment.describeDeviceState()
+        val baseMessage = "$description with text '$text' was not found in the accessibility tree"
+        when (classifyAccessibilityTimeout(snapshot, activity.packageName, activityWindowFocused)) {
+            EnvironmentFailureKind.ENVIRONMENT_ANOMALY -> {
+                val evidence = EnvironmentFailureEvidence(
+                    label = "accessibility-frontmost-timeout",
+                    deviceState = deviceState,
+                    inputEnvironment = "$baseMessage; activityWindowFocused=$activityWindowFocused",
+                )
+                val retained = InjectedInputEnvironment.markEnvironmentFailure(evidence)
+                error(
+                    "$baseMessage; ${InjectedInputEnvironment.ACCESSIBILITY_ENVIRONMENT_PREFIX}; " +
+                        "${buildGateFailureMessage(retained)}",
+                )
+            }
+            EnvironmentFailureKind.NODE_NOT_FOUND, EnvironmentFailureKind.LOCAL_REGRESSION ->
+                error("$baseMessage; frontmostPackage=${snapshot.frontmostPackage}, deviceState=$deviceState")
+        }
     }
 
     private fun findAccessibilityTextBounds(node: AccessibilityNodeInfo, target: String): Rect? =
@@ -947,7 +975,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 "proposalOpen=${proposal?.isOpen}, proposalAttached=${proposal?.isAttachedToWindow}, " +
                 "targetShown=${target?.isShown}, targetLocation=${targetLocation.contentToString()}, " +
                 "targetSize=${target?.width}x${target?.height}, " +
-                "topOpenView=${AbstractFloatingView.getTopOpenView(launcher)}"
+                "topOpenView=${AbstractFloatingView.getTopOpenView(launcher)}, " +
+                // Issue #300: merge the device-level state into one diagnostic format.
+                "deviceState=${InjectedInputEnvironment.describeDeviceState()}"
         }
         return description
     }
@@ -1128,6 +1158,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
         excluding: LawnchairLauncher? = null,
     ): LawnchairLauncher {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // Issue #300: device-level repair before any window exists; also the sticky health entry.
+        InjectedInputEnvironment.ensureInteractiveUnlocked()
         repeat(120) {
             var candidate: LawnchairLauncher? = null
             instrumentation.runOnMainSync {
@@ -1148,11 +1180,29 @@ class OnboardingOrganizationProposalInstrumentationTest {
             candidate?.let { return it }
             SystemClock.sleep(100)
         }
-        error(
-            "LawnchairLauncher did not reach an attached, laid-out RESUMED state" +
-                (expectedFontScale?.let { " with fontScale=$it" } ?: "") +
-                " after HOME launch",
-        )
+        // Issue #300: classify the timeout. Only a broken environment premise (screen off,
+        // keyguard, foreign frontmost window) poisons the run; a healthy-looking environment
+        // means the launcher itself failed to resume and stays a local failure (TS-AC-04).
+        val baseMessage = "LawnchairLauncher did not reach an attached, laid-out RESUMED state" +
+            (expectedFontScale?.let { " with fontScale=$it" } ?: "") +
+            " after HOME launch"
+        val snapshot = InjectedInputEnvironment.currentSnapshot()
+        when (classifyLauncherAwaitTimeout(snapshot, instrumentation.targetContext.packageName)) {
+            EnvironmentFailureKind.ENVIRONMENT_ANOMALY -> {
+                val evidence = EnvironmentFailureEvidence(
+                    label = "launcher-resume-timeout",
+                    deviceState = InjectedInputEnvironment.describeDeviceState(),
+                    inputEnvironment = baseMessage,
+                )
+                val retained = InjectedInputEnvironment.markEnvironmentFailure(evidence)
+                error(
+                    "${InjectedInputEnvironment.RESUME_ENVIRONMENT_PREFIX}; " +
+                        "${buildGateFailureMessage(retained)}",
+                )
+            }
+            EnvironmentFailureKind.LOCAL_REGRESSION, EnvironmentFailureKind.NODE_NOT_FOUND ->
+                error("$baseMessage; deviceState=${InjectedInputEnvironment.describeDeviceState()}")
+        }
     }
 
     private fun startLauncher(context: android.content.Context) {
@@ -1181,7 +1231,9 @@ class OnboardingOrganizationProposalInstrumentationTest {
         }
     }
 
-    private fun sendKey(keyCode: Int) {
+    private fun sendKey(launcher: LawnchairLauncher, keyCode: Int) {
+        // Issue #300: real key streams only traverse focus inside a focused window (TS-AC-01).
+        InjectedInputEnvironment.ensureWindowFocused(launcher)
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(keyCode)
     }
 
@@ -1226,6 +1278,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
             )
             startLauncher(instrumentation.targetContext)
             launcher = awaitResumedLauncher()
+            // Issue #300: observe (and repair) the target window's focus before the proposal
+            // surface exists, so a per-boot focus anomaly fails here with evidence instead of
+            // being re-discovered by every later injection (TS-AC-01/02).
+            InjectedInputEnvironment.ensureWindowFocused(launcher)
             instrumentation.runOnMainSync {
                 // Start from a clean floating-view baseline regardless of cross-test ordering.
                 AbstractFloatingView.closeOpenViews(launcher, false, AbstractFloatingView.TYPE_ALL)
@@ -1314,14 +1370,33 @@ class OnboardingOrganizationProposalInstrumentationTest {
             val y = (location[1] + height / 2).toFloat()
             val downTime = SystemClock.uptimeMillis()
             val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
-            val downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+            // Issue #300 (review P1): every injectInputEvent re-observes the launcher window's
+            // focus immediately before injecting — including each half of the DOWN/UP pair — so
+            // retries inside deliveredTap can never inject into a lost window (TS-AC-01). A gate
+            // failure between DOWN and UP aborts the attempt with the run already poisoned; the
+            // unreleased DOWN is harmless because later gated executions fail at entry and never
+            // inject again, but the events are still recycled deterministically (review nit).
+            var downInjected = false
+            try {
+                InjectedInputEnvironment.ensureWindowFocused(launcher)
+                downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+            } finally {
+                down.recycle()
+            }
+            check(downInjected) {
+                "real touch injection was rejected by the system (down=false)"
+            }
             SystemClock.sleep(TOUCH_INJECTION_GAP_MILLIS)
             val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
-            val upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
-            down.recycle()
-            up.recycle()
-            check(downInjected && upInjected) {
-                "real touch injection was rejected by the system (down=$downInjected, up=$upInjected)"
+            var upInjected = false
+            try {
+                InjectedInputEnvironment.ensureWindowFocused(launcher)
+                upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
+            } finally {
+                up.recycle()
+            }
+            check(upInjected) {
+                "real touch injection was rejected by the system (down=true, up=false)"
             }
         }
 
@@ -1331,6 +1406,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
          * count as taps; the caller's "single tap" requirement applies to delivered taps only.
          */
         fun deliveredTap(view: View): Int {
+            // Issue #300: only inject into a focused window; a poisoned run fails here at entry
+            // instead of re-waiting per tap (TS-AC-01/03). Per-attempt re-observation lives in
+            // tapCenterOf, the single injection point of this loop.
+            InjectedInputEnvironment.ensureWindowFocused(launcher)
             val eventsBefore = touchLog.size
             var attempts = 0
             while (attempts < MAX_INJECTION_ATTEMPTS_PER_TAP) {
@@ -1365,6 +1444,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
          * proposal would make the check vacuous.
          */
         fun deliveredTapOutside(hint: OrganizationOnboardingReentryHint): Int {
+            // Issue #300: same focused-window premise as deliveredTap (TS-AC-01/03).
+            InjectedInputEnvironment.ensureWindowFocused(launcher)
             var attempts = 0
             while (attempts < MAX_INJECTION_ATTEMPTS_PER_TAP) {
                 attempts++
@@ -1380,14 +1461,28 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 )
                 val downTime = SystemClock.uptimeMillis()
                 val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
-                val downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+                // Issue #300 (review P1): same per-injectInputEvent re-observation as tapCenterOf.
+                var downInjected = false
+                try {
+                    InjectedInputEnvironment.ensureWindowFocused(launcher)
+                    downInjected = instrumentation.uiAutomation.injectInputEvent(down, true)
+                } finally {
+                    down.recycle()
+                }
+                check(downInjected) {
+                    "real touch injection was rejected by the system (down=false)"
+                }
                 SystemClock.sleep(TOUCH_INJECTION_GAP_MILLIS)
                 val up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
-                val upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
-                down.recycle()
-                up.recycle()
-                check(downInjected && upInjected) {
-                    "real touch injection was rejected by the system (down=$downInjected, up=$upInjected)"
+                var upInjected = false
+                try {
+                    InjectedInputEnvironment.ensureWindowFocused(launcher)
+                    upInjected = instrumentation.uiAutomation.injectInputEvent(up, true)
+                } finally {
+                    up.recycle()
+                }
+                check(upInjected) {
+                    "real touch injection was rejected by the system (down=true, up=false)"
                 }
                 val deadline = SystemClock.uptimeMillis() + DELIVERY_TIMEOUT_MILLIS
                 while (SystemClock.uptimeMillis() < deadline) {
