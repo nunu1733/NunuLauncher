@@ -206,7 +206,8 @@ None。production の accessibility 振る舞いは変更しない。
       再発が観測できなくなった場合は、「root cause 未確定のまま残存リスクを受容する」
       判断とその根拠を記録して完了する（RC-AC-03）。
 - [x] AC-4: CI 失敗時の追加証拠保全が必要と判断し、対象と理由を本 Issue に記録した。
-      実装は別 workflow PR に pending とする（RC-AC-04）。
+      failure-time evidence preservationをPR #313で実装した。自然再発時のartifact取得と
+      機構判別はAC-3の未完了範囲として残る（RC-AC-04）。
 
 ## Test oracle
 
@@ -263,3 +264,7 @@ blocking なものはない。調査中に解決すべき問い:
 - 2026-09-13: 同一CI jobのrerun（API 36/x86_64/Pixel 7 Pro/SwiftShader、同じconsole
   warning）で25/25 greenを確認した。console warningは十分条件ではないことを追記し、
   AC-3は未完了のまま、失敗boot固有のresource/display状態とCI failure時trace取得を残課題とした。
+- 2026-09-13: failure-time evidence preservationを実装。API36のIssue #52/#53 laneで、
+  failure時だけwindow/activity/power/role/resolve、ANR/dropbox、限定logcat、input/
+  SurfaceFlinger/pressureをartifact化するhelperとfake-`adb` smoke testを追加した。
+  最初の自然再発でartifactを取得するまで、機構証拠そのものは未確認のままとする。
