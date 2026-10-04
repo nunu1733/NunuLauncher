@@ -732,7 +732,7 @@ class ContractShapeTest {
 
     @Test
     fun everyPreserveReasonVariantIsConstructible() {
-        assertEquals(8, PreserveReason.entries.size)
+        assertEquals(9, PreserveReason.entries.size)
         assertTrue(
             PreserveReason.entries.containsAll(
                 listOf(
@@ -744,6 +744,7 @@ class ContractShapeTest {
                     PreserveReason.LEGACY_SHORTCUT,
                     PreserveReason.NON_TARGET,
                     PreserveReason.STRUCTURAL,
+                    PreserveReason.ALREADY_CANONICAL,
                 ),
             ),
         )

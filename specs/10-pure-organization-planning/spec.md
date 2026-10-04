@@ -397,6 +397,7 @@ Disposition =
 PlacementCode   = SINGLE_PLACEMENT | FOLDER_MEMBER | FOLDER_UNIT
 PreserveReason  = LOCKED | UNAVAILABLE_TARGET | DOCK | WIDGET
                  | APP_PAIR | LEGACY_SHORTCUT | NON_TARGET | STRUCTURAL
+                 | ALREADY_CANONICAL
 
 NewPage { ordinal: NewPageOrdinal, order: PageOrder }
 NewFolder {
@@ -541,7 +542,7 @@ Each rule defined once. Scenarios, ACs, and oracle refer to these IDs.
 
 When attributes intersect, exactly one reason is reported, highest first:
 
-`LOCKED > UNAVAILABLE_TARGET > DOCK > WIDGET > APP_PAIR > LEGACY_SHORTCUT > NON_TARGET > STRUCTURAL`
+`LOCKED > UNAVAILABLE_TARGET > DOCK > WIDGET > APP_PAIR > LEGACY_SHORTCUT > NON_TARGET > STRUCTURAL > ALREADY_CANONICAL`
 
 Locked+unavailable → `LOCKED`; locked+dock → `LOCKED`; unavailable+dock →
 `UNAVAILABLE_TARGET`; widget outside target set → `WIDGET` (not `NON_TARGET`).
@@ -552,7 +553,9 @@ The predicates are: `LOCKED` for any locked captured item;
 available unlocked widget; `APP_PAIR` for an app-pair parent and its members;
 `LEGACY_SHORTCUT` for a legacy shortcut; `NON_TARGET` for an otherwise movable
 item whose membership is `Preserved`; and `STRUCTURAL` for a folder member whose
-parent is preserved as a unit. Higher predicates always win.
+parent is preserved as a unit. `ALREADY_CANONICAL` is the lowest-priority
+reason for an otherwise movable item when its computed canonical target is
+value-equal to its captured target. Higher predicates always win.
 
 ## Canonicalization and versioning
 
@@ -657,7 +660,8 @@ signal is `S6` → `OTHER`/`FALLBACK`.
 
 **G** `P = plan(input)` `Planned` under `FullOrganization`.
 **W** re-`plan` on applied snapshot, equivalent membership.
-**T** empty effective change set; `newPages`/`newFolders` empty (INV-8).
+**T** empty effective change set; otherwise movable unchanged items are
+`Preserved{ALREADY_CANONICAL}`; `newPages`/`newFolders` empty (INV-8).
 > NFR-004; AC-8.
 
 ### S-10: convergence (conditional and conservative)
@@ -905,6 +909,10 @@ Issue #10 uses a small representative suite, not the downstream harness:
 
 ## Change history
 
+- 2026-08-10: Issue #31 adds the lowest-priority
+  `ALREADY_CANONICAL` preservation reason so an idempotent full replan can
+  represent an unchanged `ExistingRole.Movable` item without misusing
+  `NON_TARGET`.
 - 2026-08-10: Accepted after Codex Standards/Spec review. Defines the pure `plan` seam with closed
   placement variants (`CapturedPlacement`/`PlacementTarget`), typed identity
   (`FolderKey`/`FolderId`, `AppPairKey`/`AppPairId`, `LegacyShortcutKey`),

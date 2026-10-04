@@ -222,8 +222,12 @@ harness observes returned values as follows:
   existing memberships, additions, taxonomy categories, and folder/app-pair
   member enumeration. Rank values and other semantic values are unchanged.
 - `IDEMPOTENCE` runs only after a `FullOrganization` result is `Planned`. It
-  materializes that result, replans it, and requires no `Moved` dispositions and
-  empty `newPages`/`newFolders`.
+  materializes that result, replans it, and requires no effective target change,
+  exactly one placement for every materialized item, no unknown item, no
+  `Moved` dispositions, and empty `newPages`/`newFolders`. An otherwise
+  movable top-level item whose target is unchanged must be
+  `Preserved(ALREADY_CANONICAL)`; higher preservation predicates retain their
+  existing reasons.
 - `Invalid` checks only `EXPECTATION`; `Impossible` checks its typed expectation.
   Planned-layout safety checks never run on either rejected family.
 
@@ -328,6 +332,9 @@ None.
 
 ## Change history
 
+- 2026-08-10: Issue #31 makes the idempotence oracle require unchanged targets
+  and the typed `ALREADY_CANONICAL` reason for otherwise movable top-level
+  items.
 - 2026-08-10: Accepted after Codex review. Separates the future concrete-planner
   runner from this harness, makes coverage and violation ordering implementable,
   and fixes profile, determinism, fallback, and idempotence semantics.
