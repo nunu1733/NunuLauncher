@@ -482,10 +482,10 @@ jobs:
           # Issue #458: the lane additionally owns the grid-migration success-path
           # (#458 R-2a), the commit-aware prefs primitive it depends on (#59), the
           # Deck retirement startup migration idempotency (#57), and the restore
-          # profile remap lock preservation (#58). GridMigrationFailureTest stays
-          # unrouted behind #461.
+          # profile remap lock preservation (#58). #461 (fail-closed on corrupt
+          # durable recovery source) resolved; GridMigrationFailureTest routed here.
           script: >-
-            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/db-migration-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest,com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest,com.android.launcher3.model.GridMigrationSuccessTest,com.android.launcher3.LauncherPrefsCommitTest,app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest,com.android.launcher3.organizer.RestoreProfileRemapTest
+            bash tools/ci/run-emulator-command-with-failure-capture.sh emulator-5554 build/db-migration-failure-time-evidence -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.launcher3.organizer.MigrationTransactionOwnershipTest,com.android.launcher3.organizer.DatabaseHelperSchema33Test,com.android.launcher3.organizer.DowngradeSchema33Test,com.android.launcher3.organizer.InactiveGridDbNormalizationTest,com.android.launcher3.organizer.rollback32.Schema32RollbackBinaryTest,com.android.launcher3.model.GridMigrationSuccessTest,com.android.launcher3.LauncherPrefsCommitTest,app.lawnchair.migration.DeckRetirementMigrationInstrumentationTest,com.android.launcher3.organizer.RestoreProfileRemapTest,com.android.launcher3.model.GridMigrationFailureTest
       - name: Upload DB migration instrumentation reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
