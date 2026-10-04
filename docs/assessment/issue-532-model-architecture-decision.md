@@ -1,6 +1,6 @@
 # Issue #532: 16-devモデル層への統一判断
 
-> Status: 方針1を選択。ADR-0018 revision 6 / Phase 2 plan revision 2の技術review待ち（2026-10-04）
+> Status: 方針1を選択。ADR-0018 revision 6 / Phase 2 plan revision 2はPR #534 review（[comment](https://github.com/nunu1733/NunuLauncher/pull/534#issuecomment-5979154660)）でblocking findingなしを確認しaccepted（2026-10-04）
 > 対象: [#532の停止報告](https://github.com/nunu1733/NunuLauncher/issues/532#issuecomment-5978884649)
 > Owner入力: 2026-10-04、本Issueの進捗reviewに続く依頼「コードを踏まえて整理し、進め方含め確定」「方針１が丸い（fork乖離が無駄に増えない）」を受け、以下の根拠で方針1を選択。これは現在headに対する独立Review recommendationやmerge承認を意味しない。
 > 正本: 選択と禁止境界は [ADR-0018 Decision 9](../adr/0018-lawnchair-16-rebase.md)、実装順とgateは [Phase 2 plan §4.1](../../specs/516-16-rebase-phase2/plan.md)。本書はコード根拠と比較だけを所有する。

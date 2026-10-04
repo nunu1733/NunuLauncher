@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Lawnchair 16 rebase — 採用baseline・移行方式・rollback（ADR-0018）
 
-> Status: Proposed revision 6（2026-10-04、#532のモデル統一判断。方針1を選択済み、技術review待ち）。revision 5までのaccepted正本はmain `b759506e28f8922a2f4a02a7fbb83360b710b750`。本改訂はDecision 1〜8の契約を維持しDecision 9を追加する。
+> Status: Accepted revision 6（2026-10-04。PR #534 reviewでblocking findingなし・「accepted へ遷移可」を確認（[review](https://github.com/nunu1733/NunuLauncher/pull/534#issuecomment-5979154660)。head `d1e1811900277f2fd5f105075b1cef1dd7c1723a` を確認）。受入は本PR #534のmergeで完了する）。revision 5までのaccepted正本はmain `b759506e28f8922a2f4a02a7fbb83360b710b750`。本改訂はDecision 1〜8の契約を維持しDecision 9を追加する。
 > Date: 2026-10-04
 > 対応: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) / Phase 0 [#519](https://github.com/nunu1733/NunuLauncher/issues/519)
 > 出典: [#442 最終結論C](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)（2026-09-28）、[upstream-strategy.md](../engineering/upstream-strategy.md) Upgrade policy 5比較軸、Phase 0計測 [issue-516 assessment](../assessment/issue-516-16-rebase-phase0-research.md)
@@ -70,3 +70,4 @@ status: proposed
 
 - 2026-10-04（revision 5、#522）: Nova二件のUI/データ変換を共に保持と確定。schema32不変の比較範囲をupstream B/Uに限定し、fork33維持・cutover直前15 forkへのrollbackと歴史的32 binaryの境界、preferences/recoveryを含む実証条件をDecision 2/5へ反映。既存永続化契約は変更しない。
 - 2026-10-04（revision 6 proposed、#532）: G1停止報告の統一方針をDecision 9として具体化。方針1を選択し、旧モデルprovider/恒久二重モデルを不採用、fork契約の移植境界・WIP保護・Phase 2内adaptを明示。既存specの観測可能な契約・G1〜G5・Phase 4 cutover条件は変更しない。実装再開は本revisionとplan revision 2の技術review/accept後。
+- 2026-10-04（revision 6、**acceptedへ遷移**）: PR #534 review（[comment](https://github.com/nunu1733/NunuLauncher/pull/534#issuecomment-5979154660)）でblocking findingなし・「ADR-0018 revision 6 / Phase 2 plan revision 2 は accepted へ遷移可」を確認。受入は本PR #534のmergeで完了する。

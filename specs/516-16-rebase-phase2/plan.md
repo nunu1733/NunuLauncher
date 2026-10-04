@@ -1,6 +1,6 @@
 # Plan: 16-dev rebase実行（Epic #516 Phase 2 / Issue #532）
 
-> Status: proposed revision 2（2026-10-04、#532 G1停止からの再開手順）。revision 1はPR #533でaccepted/merge済み（main `b759506e28f8922a2f4a02a7fbb83360b710b750`）。方針1の選択は [ADR-0018 Decision 9](../../docs/adr/0018-lawnchair-16-rebase.md) に固定し、本revisionの技術review/accept後に実装を再開する。
+> Status: accepted revision 2（2026-10-04。PR #534 reviewでblocking findingなし・「accepted へ遷移可」を確認（[review](https://github.com/nunu1733/NunuLauncher/pull/534#issuecomment-5979154660)。head `d1e1811900277f2fd5f105075b1cef1dd7c1723a` を確認）。受入は本PR #534のmergeで完了する）。revision 1はPR #533でaccepted/merge済み（main `b759506e28f8922a2f4a02a7fbb83360b710b750`）。方針1の選択は [ADR-0018 Decision 9](../../docs/adr/0018-lawnchair-16-rebase.md) に固定。
 > Risk tier: H（[spec.md](./spec.md)参照）
 > 対象revision: main `38262fb74d144f4655dfbf01c0084e44c86560be`、anchor upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35`
 
@@ -137,3 +137,4 @@ G1はS2/S3までの必須契約を残した状態で成功させる。focused te
 
 - 2026-10-04: revision 1 accepted、PR #533 merge。
 - 2026-10-04: revision 2 proposed、#532停止headを固定し、方針1の実装stage・WIP採否・モデル/lease/transactionの境界・既存testのfocused確認を具体化。G1〜G5/T1〜T9の受入条件は維持。queueの誤ったmerge/direct内訳を実親数234/66へ訂正。
+- 2026-10-04: revision 2、**acceptedへ遷移**。PR #534 review（[comment](https://github.com/nunu1733/NunuLauncher/pull/534#issuecomment-5979154660)）でblocking findingなしを確認。受入は本PR #534のmergeで完了する。
