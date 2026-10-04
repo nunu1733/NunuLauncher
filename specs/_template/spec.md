@@ -27,6 +27,10 @@ updated: YYYY-MM-DD
 
 追加・変更する用語があれば記載し、承認時に `CONTEXT.md` へ反映する。実装語だけなら空にする。
 
+## Prior art
+
+設計に影響した外部の類似実装・best practiceを、対象・URL・確認日・採用/不採用理由を1行1事例で記載する。該当がなければ `なし（調査済み）` と書く。正本は [GitHub workflowのExternal reference scan](../../docs/project/github-workflow.md#external-reference-scan設計時の外部参照調査)。
+
 ## Behavior scenarios
 
 ### Scenario: <name>
