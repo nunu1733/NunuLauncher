@@ -1,9 +1,11 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.RunMode
 import app.lawnchair.organizer.planning.harness.ContractCheck
 import app.lawnchair.organizer.planning.harness.DEFAULT_PLANNER_CASE_COUNT
 import app.lawnchair.organizer.planning.harness.ExampleCorpus
 import app.lawnchair.organizer.planning.harness.ExpectedOutcome
+import app.lawnchair.organizer.planning.harness.FixtureId
 import app.lawnchair.organizer.planning.harness.PlannerContractHarness
 import app.lawnchair.organizer.planning.harness.PlannerFixture
 import app.lawnchair.organizer.planning.harness.SyntheticFixtureGenerator
@@ -32,6 +34,27 @@ class CrossStrategyCorpusTest {
                 seed = SyntheticFixtureGenerator.DEFAULT_SEED,
                 count = DEFAULT_PLANNER_CASE_COUNT,
             ),
+        )
+        // Spec 237: every fixture that forms a new folder must also run the
+        // idempotence oracle, so each strategy exercises the full
+        // formation -> materialize (production recapture roles) -> replan
+        // transition. The pinned formation fixture (apps-only) forms a folder
+        // but carries no IDEMPOTENCE check, and no generated FullOrganization
+        // case forms one — without this derived fixture the shared property
+        // suite never re-enters a materialized folder through the mover
+        // stream.
+        addAll(
+            (ExampleCorpus.allExamples.values + ExampleCorpus.validationFixtures.values)
+                .filter { fixture ->
+                    val outcome = fixture.expectation.outcome
+                    outcome is ExpectedOutcome.Planned && (outcome.expectedNewFolderCount ?: 0) > 0
+                }
+                .map { fixture ->
+                    fixture.copy(
+                        id = FixtureId("${fixture.id.value}.idempotence"),
+                        checks = fixture.checks + ContractCheck.IDEMPOTENCE,
+                    )
+                },
         )
     }
 
@@ -95,6 +118,20 @@ class CrossStrategyCorpusTest {
         check(LayoutStrategyRegistry.acceptedIds.isNotEmpty())
         for (id in LayoutStrategyRegistry.acceptedIds) {
             checkNotNull(LayoutStrategyRegistry.definition(id))
+        }
+    }
+
+    @Test
+    fun formationFixturesCarryTheIdempotenceCheck() {
+        // Spec 237: the derived formation fixtures (spec review P1) must
+        // exist and run the idempotence oracle on the FullOrganization path —
+        // otherwise the shared property suite silently skips the
+        // formation -> materialize -> replan transition.
+        val derived = fixtures().filter { it.id.value.endsWith(".idempotence") }
+        check(derived.isNotEmpty()) { "no formation fixture derived for the idempotence oracle" }
+        for (fixture in derived) {
+            check(ContractCheck.IDEMPOTENCE in fixture.checks)
+            check(fixture.input.runMode == RunMode.FullOrganization)
         }
     }
 }

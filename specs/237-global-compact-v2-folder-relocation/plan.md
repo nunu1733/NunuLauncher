@@ -1,0 +1,120 @@
+# Implementation Plan: Compact existing 1×1 folders across pages (GLOBAL_COMPACT_V2)
+
+> Issue: #237
+> Spec: [spec.md](./spec.md)
+> Status: implemented (2026-09-07, `f998da7` + review follow-up)
+
+## Current evidence
+
+- `LayoutStrategyRegistry.GLOBAL_COMPACT_V1` (`lawnchair/src/app/lawnchair/organizer/planning/LayoutStrategyRegistry.kt`): `eligibleUnitFilter` は 1×1 `APPLICATION`/`DEEP_SHORTCUT` のみ。既存 `FOLDER` unit は eligible 外。
+- `FullRunExecution.executeGlobalCompact` (同 `FullRunExecution.kt`): filter 外の movable item を `STRATEGY_PRESERVED` で元位置 `markOccupied`。既存 folder は 1×1 でも cross-page に参加しない。2026-09-06 実機観察 (Issue #237) と一致。
+- `PlanningPlacement.place`: FullOrganization では naturally preserved のみ初期 occupancy に入れ、movable (既存 1×1 folder を含む) は lift される。よって eligible filter に `FOLDER` を加えるだけで folder は mover stream に参加できる。
+- `FolderFormation.formFolderGroups` / `partitionMembers`: per-(profile, category) で独立処理。group 化から漏れた残余は (a) minGroupSize 未満 / (b) fallback category / (c) capacity < minGroupSize のいずれか → formation は replan 安定 (spec 冪等性証明 第3段の根拠)。
+- `Allocator.allocateCapturedThenNew` (`PlacementAllocator.kt`): captured page を `PageOrder` 順に first-fit、満杯なら new page。1×1 mover の自身の cell は必ず空き cell に含まれるため singleton stream は overflow せず、new folder は member 縮約 (≥2 member → 1 unit) で cell 需要が減るため overflow も起きない (防御 branch のみ)。
+- 再現: `GlobalCompactStrategyTest.existingFoldersNeverCompactCrossPage` が V1 挙動 (folder 固定) を normative として固定。
+
+## Design
+
+### Modules and interfaces
+
+外部 seam `OrganizationPlanner.plan(OrganizationInput)` は不変。変更はすべて planning module 内部と bundle/UI 媒体層:
+
+- `LayoutStrategyRegistry`: `GLOBAL_COMPACT_V2` の `StrategyId` と `StrategyDefinition` を追加。`eligibleUnitFilter` に 1×1 top-level `FOLDER` を加える。実装済み: `StrategyDefinition.strategyFixes(item)` を追加し、「eligible filter の絞り込みで strategy が movable item を固定する」述語を registry に一元化した (canonical family は常に false)。oracle とテストがこの述語を共有する。
+- `FullRunExecution`: **V1/V2 で `executeGlobalCompact(context)` を共有** (当初計画の `executeGlobalCompactV2` 分離は不採用 — 2 version の差分は `StrategyDefinition` が宣言する eligibility filter だけで表現でき、executor 複製は seam を太らせるため)。共有 executor 内の差分は (1) folder formation candidate を `kind != FOLDER` に限定 (V1 でも既存 folder は candidate になり得ないので V1 出力は不変)、(2) moved workspace unit の code を kind で選択 (`FOLDER` → `PlacementCode.FOLDER_UNIT`、それ以外 → `SINGLE_PLACEMENT`)。V1 既存テストは無修正で通過 (byte-equivalent の実証)。
+- `PolicyModels.OrganizerPolicyBundle.POLICY_BUNDLE_VERSION`: `organization-policy-v2.4` → `organization-policy-v2.5`。
+- `BuiltInOrganizerPolicyBundleSource`: `runtimeSupported` へ `GLOBAL_COMPACT_V2` 追加 (V1 は残す)。digest は canonical 内容から自動再計算。
+- `ManualOrganizationPreferences` + `lawnchair/res/values{,-ja}/strings.xml`: V2 の name/description 追加、V1 の description を「既存 folder は移動しない」と正直に更新。
+- 適用/recovery/writer/provenance/selection store は無変更 (folder 移動は既存 workspace write 経路、selection store schema v1 のまま)。
+
+### Data flow
+
+capture → composer (bundle v2.5 を読み `RuleSemantics.organizationStrategy` へ反映) → `plan` → `executeGlobalCompact` (V1/V2 共有 executor):
+
+1. fixed (naturally preserved + non-1×1 movable) を元位置 `markOccupied`。
+2. formation candidate = eligible のうち `APPLICATION`/`DEEP_SHORTCUT` のみ。`formFolderGroups` で new folder 群を形成。
+3. workspace units = eligible − new-folder members (既存 1×1 folder を含む) を global captured visual order で `allocateCapturedThenNew`。
+4. new folder を singleton stream の後ろに `(preferred page key, NewFolderOrdinal)` 順で配置。
+5. folder member は placement (`FolderMember`) のまま出力に現れ、preserve reason は spec 10 の precedence で決まる: **production recapture (composer `FullTargetSetMaterializer` が `FolderMember` を `Preserved` membership にする) では `Preserved{NON_TARGET}`**。member を `Movable` membership で渡す direct-seam 形では `Preserved{STRUCTURAL}`。
+
+### Alternatives rejected
+
+- **V1 の無言変更 (eligibility 差し替え)**: ADR-0012 identity policy 違反。spec 182 が新 ID を要求済み。
+- **V1 廃止 + V2 置換**: V1 選択の fail-closed (再選択強制) が発生する。spec は共存を採用したため不採用。
+- **V2 を `UnitOrdering` 新 enum 値で分岐**: 順序付けは V1 と同一のため、ordering family を複製すると seam が太る。eligibility filter の違いだけで十分。
+- **`executeGlobalCompactV2` を別 executor として複製** (当初計画): V1/V2 の差分は eligibility filter だけで表現でき、~100 行の allocation logic 複製はバグ温床になるため共有化に変更した。V1 出力への影響は「FOLDER が candidate/stream に入らない」ことで no-op であり、V1 既存テストが無修正で通過することで実証。
+- **formation fixture を `SyntheticFixtureGenerator` へ追加**: corpus 変更は golden digest (pre-#182 baseline pin) を再 pin することになる。既存 `ExampleCorpus.apps-only` (`expectedNewFolderCount = 1`) が既に formation を網羅するため不採用とし、golden corpus は不変のまま materialization 層だけを production semantics に合わせた。
+- **形成済み folder を次回以降 fixed 化する永続 provenance**: 永続 state 追加の設計負荷に対し、formation replan 安定性により不動点が成立するため不採用 (spec 証明参照)。
+
+## Change set
+
+| Area | Intended change | Why here |
+|---|---|---|
+| `lawnchair/src/app/lawnchair/organizer/planning/LayoutStrategyRegistry.kt` | `GLOBAL_COMPACT_V2` 登録 + `strategyFixes` 述語 | catalog と strategy-fixed 判定の正本はここだけ |
+| `lawnchair/src/app/lawnchair/organizer/planning/FullRunExecution.kt` | `executeGlobalCompact` 共有化 (V1/V2 とも同一 executor) | strategy semantics の差分は `StrategyDefinition` 宣言に還元できる |
+| `lawnchair/src/app/lawnchair/organizer/rules/PolicyModels.kt` | bundle version v2.5 | ADR-0007 §8 |
+| `lawnchair/src/app/lawnchair/organizer/rules/BuiltInOrganizerPolicyBundleSource.kt` | runtimeSupported 追加 | bundle 正本 |
+| `lawnchair/res/values{,-ja}/strings.xml` | V2 copy 追加・V1 copy 更新 | UI 正本 |
+| `lawnchair/src/.../ManualOrganizationPreferences.kt` | V2 mapping | picker 表示 |
+| `tests/unit/.../GlobalCompactStrategyTest.kt` | V2 fixture 追加 | AC-2〜AC-6 |
+| `tests/unit/.../harness/PostPlanMaterializer.kt` | materialized synthetic folder を `Movable`、materialized `FolderMember` items を `Preserved` (production roles) で再投入 | review P1/P1b: idempotence oracle を production recapture semantics に一致させる |
+| `tests/unit/.../harness/Oracle.kt` | `checkIdempotence` の期待 reason に `strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 | movable folder の role 変更に伴い、strategy-fixed item の replan reason を oracle が正しく期待するように |
+| `tests/unit/.../harness/PlannerContractHarnessTest.kt` | `materializationPreservesOriginalRoles` の期待を `Movable` へ | 同上 |
+| `tests/unit/.../CrossStrategyCorpusTest.kt` | formation fixture (`expectedNewFolderCount > 0`) を `IDEMPOTENCE` 付きで派生し、全 strategy に流す。派生の存在を契約 test 化 | review P1: 共有 suite が formation → recapture → replan を実際に踏むように |
+| `lawnchair/src/.../organizer/diagnostics/model/RunEvent.kt` | `APPROVED_VERSIONS` に `GLOBAL_COMPACT_V2` を追加 | device evidence 取得時に発見: diagnostics 経路のみが `RunVersions` を構築し、未登録 ID で run coroutine が abort するため |
+| `tests/unit/.../diagnostics/model/RunEventSerializationTest.kt` | 「registry の全 strategy ID が approved」契約 test 追加 | allowlist と catalog の drift を構造的に防止 |
+| `tests/unit/.../BuiltInOrganizerPolicyBundleSourceTest.kt` | v2.5 期待値 | bundle 契約 |
+| `tests/organizer-instrumentation/.../StrategyPickerInstrumentationTest.kt` | V2 行追加 | AC-9 |
+| `docs/assessment/ac14-device-evidence/237-*.png` | 実機 before/preview/after evidence (6 枚) | AC-10 |
+| `CONTEXT.md` / `docs/product/requirements.md` | domain language / traceability | spec 承認時更新 (実装済み) |
+
+## Migration and recovery
+
+- `organization-policy-v2.5` は application-owned artifact 変更。各 binary は自身の bundle を読むため in-place migration なし (ADR-0007 §8)。
+- selection store schema は v1 のまま。persisted `GLOBAL_COMPACT_V1` selection は V1 が catalog に残るため引き続き有効。
+- downgrade: v2.5 binary で V2 を選択 → v2.4 binary では selection-layer `NotReady` (fail-closed、既存 path)。re-upgrade で再検証。
+- layout data: planner/writer の safety invariants は無変更。recovery point は strategy 非依存。apply → recapture → replan 冪等性は spec 証明 + property suite で担保。
+
+## Verification
+
+| Acceptance criterion | Automated/manual evidence | Command or environment |
+|---|---|---|
+| AC-2 | `GlobalCompactStrategyTest` V2: 既存 1×1 folder が前方 page 空き cell へ `Moved{FOLDER_UNIT}` | `:tests` unit test (JVM) |
+| AC-3 | V2 mixed-movers fixture + `CrossStrategyCorpusTest` (V2 が registry 経由で自動対象) | 同上 |
+| AC-4 | folder identity / member / profile isolation assertion。member の recapture reason は production role で `Preserved{NON_TARGET}` (direct-seam 形では `STRUCTURAL`) を assert | 同上 |
+| AC-5 | formation → apply → recapture → replan → 空 diff、形成済み folder は `Preserved{ALREADY_CANONICAL}` | 同上 |
+| AC-6 | preview projection: `FOLDER_UNIT` wording 経由で folder 移動行が表示 | 既存 preview unit/instrumentation test |
+| AC-7 | V1 既存 test 群 (`GlobalCompactStrategyTest` V1 case) 無修正 pass | 同上 |
+| AC-8 | `BuiltInOrganizerPolicyBundleSourceTest`: v2.5 + coherence equality | 同上 |
+| AC-9 | `StrategyPickerInstrumentationTest` に V2 行 | organizer-instrumentation (実機/エミュレータ) |
+| AC-10 | 実機 3-page fixture で before/preview/after evidence | 手動 (Issue/PR に記録) |
+| AC-11 | downgrade `NotReady` | 既存 selection test + plan 契約 |
+| AC-12 | `final-status` CI + 独立 audit | GitHub Actions / `docs/assessment/` |
+
+含めるべき観点: unit/contract (planner seam)、property (`CrossStrategyCorpusTest` の determinism/idempotence)、bundle 契約、UI/instrumentation (picker/preview)、failure injection (`AllocationFault.FAIL_ALLOCATION` は既存 suite が担保)。
+
+## Documentation updates
+
+- [x] spec status/history (accepted + correction 記録済み)
+- [x] CONTEXT.md (strategy-fixed unit 追加)
+- [x] DESIGN.md — 影響なし (catalog member 追加は DESIGN の記述粒度以下)
+- [x] ADR — 不要 (versioning 判断は spec 内で記録、ADR-0012 の適用例)
+- [x] requirements.md — FR-016 status に spec 237 を追記
+
+## Execution checklist
+
+- [x] Current behavior reproduced. (既存 V1 test が緑であることで担保)
+- [x] Tests fail for the missing behavior. (V2 fixture を先に追加し、登録前は 5 件 fail を確認)
+- [x] Minimal implementation completed.
+- [x] Migration/recovery verified. (bundle version test + selection 継続性)
+- [x] Full relevant verification completed. (organizer unit suite 954 tests、spotlessCheck、assemble、repo contract)
+- [x] PR evidence and remaining risks recorded. (PR #241 本文、[AC-10 実機 evidence コメント](https://github.com/nunu1733/NunuLauncher/issues/237#issuecomment-5569381592)、`docs/assessment/pr-241-global-compact-v2.md`)
+
+## Implementation review follow-ups (2026-09-07)
+
+- **P1 (fixed)**: `PostPlanMaterializer` が materialized synthetic folder を `ExistingRole.Preserved` で固定しており、production の `FullTargetSetMaterializer` (unlocked・available な workspace `FOLDER` は `Movable`) と不一致だった。role を `Movable` に合わせ、property corpus 全体を再実行した。付随修正: (1) `Oracle.checkIdempotence` の期待 reason テーブルに `StrategyDefinition.strategyFixes` 経由の `STRATEGY_PRESERVED` を追加 (strategy-fixed item は replan でも同じ reason を報告する — V1 は materialized folder をこの経路で再 pin する)、(2) `PlannerContractHarnessTest.materializationPreservesOriginalRoles` の期待を `Movable` へ更新。これにより `CrossStrategyCorpusTest` が「formation → materialize (Movable) → V2 mover stream 再参加 → replan 空 diff」を全 corpus で検証する。golden digest は corpus を変えていないため不変 (corpus 変更の代替案は Alternatives rejected を参照)。
+- **P2 (fixed)**: 本 plan の設計記述を実装実態 (shared `executeGlobalCompact`、`strategyFixes` 述語) へ同期し、status を implemented に更新。
+- **再レビュー P1 (fixed)**: 前回の materializer 修正だけでは formation transition を踏んでいなかった (`apps-only` の checks に `IDEMPOTENCE` がなく、generated corpus も formation なし)。`CrossStrategyCorpusTest` が `expectedNewFolderCount > 0` の fixture を `IDEMPOTENCE` 付きで派生し (golden corpus 不変)、派生の存在自体を契約 test `formationFixturesCarryTheIdempotenceCheck` で固定。
+- **再レビュー P1b (fixed, 正本決定)**: materialized folder member の recapture reason について、production semantics (`FullTargetSetMaterializer`: `FolderMember` → `Preserved` membership + spec 10 precedence `NON_TARGET` > `STRUCTURAL`) を正本とし、**production recapture では member は `Preserved{NON_TARGET}`** と確定。`STRUCTURAL` は direct-seam 形 (member を `Movable` membership で渡す) の planner 契約。`determinePreservation` の precedence 変更は全 strategy の公開挙動変更のため本 spec 範囲外として不実施。`PostPlanMaterializer` は materialized `FolderMember` items を `Preserved` role で再投入し、spec 記述・unit test (formation replan test を production shape に更新し member reason を assert) を同期。
+- **再レビュー P2 (fixed)**: Data flow の `executeGlobalCompactV2` 表記を shared executor 名に修正。
+- **実機 evidence 取得時に発見 (fixed, `ccdb4c33`)**: `RunVersions.APPROVED_VERSIONS` に `GLOBAL_COMPACT_V2` が未登録のため、diagnostics 経路 (`PlanningProjection.project`) が即例外を投げ run coroutine が abort — 実機では capture 直後に UI が start button へ戻る症状として現れた。allowlist 追加 + 「registry 全 strategy ID が approved」契約 test で再発防止。test count は 954。
+- **docs 整合修正 (fixed)**: Data flow 5 と AC-4 行の member recapture reason を確定 semantics (production = `NON_TARGET`、direct-seam = `STRUCTURAL`) へ同期、Change set の重複行を整理、Documentation updates / checklist を実績に更新。AC-10 の device evidence は [Issue #237 コメント](https://github.com/nunu1733/NunuLauncher/issues/237#issuecomment-5569381592) と `docs/assessment/ac14-device-evidence/237-*.png` で記録済み。

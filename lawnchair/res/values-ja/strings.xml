@@ -158,8 +158,10 @@
     <string name="organization_strategy_tidy_description">アプリを別のページへ移動せずに、各ページの隙間を閉じます。</string>
     <string name="organization_strategy_bottom_first_name">下段から詰める</string>
     <string name="organization_strategy_bottom_first_description">各ページを下段から順に詰めます。</string>
-    <string name="organization_strategy_global_name">ページ間でコンパクト</string>
-    <string name="organization_strategy_global_description">後ろのページのアプリを、前のページの空きスペースへ移動します。</string>
+    <string name="organization_strategy_global_name">ページ間でコンパクト（アプリのみ）</string>
+    <string name="organization_strategy_global_description">後ろのページのアプリを、前のページの空きスペースへ移動します。既存のフォルダは移動しません。</string>
+    <string name="organization_strategy_global_v2_name">ページ間でコンパクト</string>
+    <string name="organization_strategy_global_v2_description">後ろのページのアプリとフォルダを、前のページの空きスペースへ移動します。</string>
     <string name="organization_strategy_category_contiguous_name">カテゴリごとにまとめる</string>
     <string name="organization_strategy_category_contiguous_description">同じカテゴリのアプリを各ページ内で隣接させます。</string>
     <string name="organization_strategy_unknown_name">カスタムストラテジー</string>

@@ -328,4 +328,20 @@ class RunEventSerializationTest {
             RunEventSerializer.decode(tampered.toByteArray(Charsets.UTF_8))
         }
     }
+
+    /**
+     * Spec 182/237: every runtime-enabled strategy identity must be an
+     * approved version identifier, so `PlanningProjection.project` can emit a
+     * plan event for any selectable strategy. Drift here crashed every
+     * GLOBAL_COMPACT_V2 run at preview (PR #241 device evidence) because the
+     * allowlist lacked the new ID while the planner accepted it.
+     */
+    @Test
+    fun everyRegisteredStrategyIsAnApprovedVersionIdentifier() {
+        val registry = app.lawnchair.organizer.planning.LayoutStrategyRegistry
+        for (id in registry.acceptedIds) {
+            val versions = RunVersions.create(strategyVersion = id.value)
+            assertEquals(id.value, versions.strategyVersion)
+        }
+    }
 }
