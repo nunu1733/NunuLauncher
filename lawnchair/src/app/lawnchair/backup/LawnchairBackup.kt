@@ -7,7 +7,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.core.graphics.drawable.toBitmap
+import app.lawnchair.LawnchairApp
 import app.lawnchair.LawnchairProto.BackupInfo
+import app.lawnchair.organizer.application.store.RecoveryStartupArtifacts
 import app.lawnchair.util.hasFlag
 import app.lawnchair.util.scaleDownTo
 import app.lawnchair.util.scaleDownToDisplaySize
@@ -83,8 +85,24 @@ class LawnchairBackup(
         // and the correlated reload.
         LayoutWriteCoordinator.getInstance()
             .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.BACKUP_RESTORE).use {
-                RestoreDbTask.prepareForRawFileRestore(context)
-                context.getDatabasePath(LAUNCHER_DB_FILE_NAME).parentFile?.deleteRecursively()
+                // Issue #187 / ADR-0011: the databases wipe below takes the organizer
+                // recovery DB with it; the pre-restore process's inspection snapshot must
+                // go with it or every later process fail-closes on SuspiciousAbsence
+                // (permanently NotReady). Run cleanup + verification -> quiesce -> wipe
+                // under the module's operation mutex so no snapshot republication can
+                // interleave into the section. Verification failure aborts the restore
+                // before quiesce and before the databases wipe, so the poison state is
+                // never regenerated (a partially deleted snapshot directory can remain —
+                // the recovery DB survives, so the state stays Existing and self-heals).
+                val module = (context.applicationContext as LawnchairApp).layoutApplicationModule
+                runRestoreCriticalSection(
+                    suspendRecoveryOperations = module::runWithRecoveryOperationsSuspendedForRestore,
+                    clearInspectionSnapshot = { RecoveryStartupArtifacts.clearInspectionSnapshot(context) },
+                    quiesce = { RestoreDbTask.prepareForRawFileRestore(context) },
+                    wipeDatabases = {
+                        context.getDatabasePath(LAUNCHER_DB_FILE_NAME).parentFile?.deleteRecursively()
+                    },
+                )
                 DeviceGridState(info.gridState).writeToPrefs(context, true)
                 readZip(handlers)
                 val dbController = ModelDbController(context)
@@ -116,6 +134,34 @@ class LawnchairBackup(
         private const val PREFS_FILE_NAME = "${LauncherFiles.SHARED_PREFERENCES_KEY}.xml"
         private const val PREFS_DB_FILE_NAME = "preferences"
         private const val PREFS_DATASTORE_FILE_NAME = "preferences.preferences_pb"
+
+        /**
+         * Issue #187 / ADR-0011: the restore critical section, extracted as a
+         * testable seam so the hard-stop and ordering contracts are pinned by
+         * unit tests (AC-2(b)(c)). Ordering is structural: the inspection
+         * snapshot cleanup + verification runs first, and only success reaches
+         * the quiesce and the databases wipe. A verification failure throws
+         * before quiesce and before the wipe — the recovery DB survives, the
+         * poison state (DB absent + snapshot present) is never regenerated, and
+         * a partially deleted snapshot directory self-heals as `Existing` on
+         * the next reconcile.
+         */
+        internal fun runRestoreCriticalSection(
+            suspendRecoveryOperations: (() -> Unit) -> Unit,
+            clearInspectionSnapshot: () -> Boolean,
+            quiesce: () -> Unit,
+            wipeDatabases: () -> Unit,
+        ) {
+            suspendRecoveryOperations {
+                if (!clearInspectionSnapshot()) {
+                    throw IllegalStateException(
+                        "Restore aborted: could not clear the organizer inspection snapshot",
+                    )
+                }
+                quiesce()
+                wipeDatabases()
+            }
+        }
 
         const val INFO_FILE_NAME = "info.pb"
         const val WALLPAPER_FILE_NAME = "wallpaper.png"

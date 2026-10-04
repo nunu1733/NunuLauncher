@@ -82,6 +82,25 @@ internal class LayoutApplicationModule<S>(
     )
     val readinessGate: ReadinessGate = ReadinessGate()
 
+    /**
+     * Issue #187: serialization contract for the backup-restore artifact reset.
+     * Blocks until any in-flight recovery operation (reconciliation, apply,
+     * recovery, preview) drains, then runs [block] while the module operation
+     * mutex is exclusively held — so no inspection snapshot publication
+     * (`rebuildInspectionSnapshot`) can interleave into the section. The
+     * contract scope is recovery mutation/reconciliation exclusivity: manual
+     * compose/capture does not pass through this mutex (read-only, not a
+     * snapshot publisher) and is out of scope. Lock order is one-way
+     * (restore-family coordinator lease -> module mutex); no module-mutex
+     * holder blocks on the coordinator, so no cycle exists (ADR-0011
+     * Decision 2). Fails fast with the rethrown exception when [block] throws
+     * — the restore path turns that into its pre-state-preserving abort.
+     */
+    internal fun <T> runWithRecoveryOperationsSuspendedForRestore(block: () -> T) = mutex.withExclusive(operationIds.newRunId(), block)
+
+    /** Test-only access to the module operation mutex (issue #187 drain tests). */
+    internal fun mutexForTest(): RunMutex = mutex
+
     /** The diagnostics port, available for export (e.g. debug menu). */
     val diagnostics: DiagnosticsPort = diagnosticsPort
 
