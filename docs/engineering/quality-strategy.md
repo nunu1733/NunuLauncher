@@ -80,15 +80,10 @@ Fixtureにはprivateな実端末dataを含めず、synthetic identityを使う�
 
 ## Performance measurement
 
-Big-Oだけを合格条件にしない。performance Issueで次を固定する。
-
-- reference device/emulator class。
-- item countとpage/grid/profile matrix。
-- snapshot、plan、checkpoint、apply、bind、verifyそれぞれのp50/p95。
-- UI threadの最大block時間とframe drop。
-- memory peak、DB write count、recovery size。
-
-budget未決定の間も計測値はPRに残し、regression比較可能にする。
+Big-Oだけを合格条件にしない。reference環境、workload matrix、phase別metric、
+統計法、暫定budgetの正本は [performance-budgets.md](./performance-budgets.md)
+(Issue #15) である。budget未決定・測定不能phaseも、計測値が存在するなら
+PRに残し、regression比較可能にする。
 
 ## CI gates after source import
 
