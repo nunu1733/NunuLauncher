@@ -1,9 +1,12 @@
 # Plan: Issue #230 restore 確認の復元対象説明
 
 > Spec: [spec.md](./spec.md) (status: accepted, head `436f2a7a54`)
-> Status: draft (owner review 待ち)
+> Status: draft (owner review 待ち — plan review (PR #244, 2026-09-08) の指摘により Spec 52 更新を変更 module へ追加、E2E 記述を SA-18 の一般 oracle へ修正)
 
 ## 現在の code の根拠
+
+- `specs/52-manual-full-organization-vertical-slice/spec.md`
+  - §"Result and recovery" (`specs/52-manual-full-organization-vertical-slice/spec.md:134`) は recovery action が preview → opaque confirmation を経由すると規定するが、確認画面の表示内容 (apply 文脈の要約) には触れていない。spec 230 の Scope が本更新を要求する。
 
 - `lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt`
   - `State.RecoveryPreview(val result: RecoveryPreviewResult)` は result のみを運ぶ (`ManualOrganizationRun.kt:161`)。
@@ -30,7 +33,8 @@
 | `res/values/strings.xml` / `res/values-ja/strings.xml` | ① `manual_organization_recovery_preview` の値を共通の戻り先文へ置換。② 新規 4 string: `manual_organization_recovery_history_prefix` / `_history_moved` / `_history_new_folders` / `_history_new_pages`。③ 用語統一 4 key (`manual_organization_recovery`、`_recovery_inspecting`、`_apply_rolled_back`、`_apply_recovered`) の `previous layout` / 「以前のレイアウト」を `saved layout` / 「保存したレイアウト」へ置換。en/ja 同時。 |
 | `tests/unit/.../ManualOrganizationRunTest.kt` | (a) pointId 一致 → `appliedSummary` 運搬、(b) `appliedSummary == null` の state 構築可能 + UI fallback 前提、(c) pointId 不一致 → `null`、(d) Apply A → Apply B → B のみ、(e) 新規 run instance (restart 相当) は recovery 確認へ遷移しない、non-restorable → `null`。既存 cancel test の継続成功。 |
 | `tests/organizer-instrumentation/.../ManualOrganizationPreferencesInstrumentationTest.kt` | RecoveryPreview surface の履歴行描画 test、`appliedSummary == null` fallback 描画 test (confirm は有効)、ja locale 解決 list へ新 string 追加、screenshot surface の state 比較更新。 |
-| `tests/organizer-instrumentation/.../ManualOrganizationProductionE2EInstrumentationTest.kt` | recovery 区間拡張: `State.RecoveryPreview.appliedSummary` が適用 plan の summary と一致することの assert。apply 後に外部 row を 1 件追加した case を追加し、confirm 後の capture が apply 前の rows と一致 (余分 row は recovery write-set により明示削除 = SA-18) することを deterministic に検証。 |
+| `tests/organizer-instrumentation/.../ManualOrganizationProductionE2EInstrumentationTest.kt` | recovery 区間拡張: `State.RecoveryPreview.appliedSummary` が適用 plan の summary と一致することの assert。apply 後に外部 row を 1 件追加した case を追加する。fixture 上この row は pre-state に存在しないため、confirmed recovery write-set で **Delete と分類される前提**を明示して assert し、削除後の capture が apply 前 rows と一致することを deterministic に検証する。主張対象は SA-18 の一般 oracle である「silent loss / unaccounted row がないこと」であり、「追加 row は常に削除される」という spec 13 より強い主張はしない。 |
+| `specs/52-manual-full-organization-vertical-slice/spec.md` | §"Result and recovery" へ追記 (spec 230 Scope、docs-only): Restorable confirmation が同じ `RecoveryPointId` に相関した直前 apply の count summary を **apply 履歴として**表示する旨。summary 不在 / pointId 不一致時は履歴を省略し、confirm 可否には影響させない旨。件数は restore 予定差分ではなく apply 履歴である旨。 |
 
 ## 文言 (実装時に最終化、en/ja 同時)
 
@@ -62,7 +66,7 @@
 
 1. unit: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.ui.ManualOrganizationRunTest'` — AC-1 / AC-2 (a)–(e) / AC-4。
 2. organizer unit gate: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`。
-3. instrumentation: emulator で `ManualOrganizationPreferencesInstrumentationTest` (履歴行描画、fallback 描画、ja 解決) と `ManualOrganizationProductionE2EInstrumentationTest` (AC-5: appliedSummary 一致 + 外部 row 追加 case の pre-state 一致) を実行。
+3. instrumentation: emulator で `ManualOrganizationPreferencesInstrumentationTest` (履歴行描画、fallback 描画、ja 解決) と `ManualOrganizationProductionE2EInstrumentationTest` (AC-5: appliedSummary 一致 + apply 後外部 row 追加 case — Delete 分類前提の明示 assert と削除後 pre-state 一致) を実行。
 4. 通常 build: `./gradlew assembleLawnWithQuickstepGithubDebug`。
 5. format: `./gradlew spotlessCheck`。
 6. UI 証拠: emulator で Apply → Home 確認 → Organizer 再訪 → Restore confirmation (en/ja screenshot) → Cancel 経路と Restore 経路の両方を記録し PR へ添付 (AC-7)。AC-3 は strings diff + `previous layout` 系残存 grep + #161 LQA 規約の用語確認で検証する。
@@ -72,4 +76,4 @@
 - `State.RecoveryPreview` の shape 変更により equality / `is` 比較が壊れる可能性 → 参照箇所は unit test・instrumentation test・UI 1 箇所のみ (grep 済み)。positional constructor を使う箇所は named argument へ寄せる。
 - risk label 不要: `organizer/application/**`、Launcher DB、recovery store への変更はゼロ (高リスク path 一覧の対象外)。Cancel / confirm の zero-write 契約は既存 unit test と E2E が oracle。
 - 文言の機械テスト限界: 件数行の組み合わせ (0 区分の省略、全 0 の行省略) は unit/instrumentation の描画 test で覆盖しきれない可能性があるため、screenshot による目視確認と spec D3/D4 文面の owner review を検証に組み込む (spec 210 の plan と同一方針)。
-- 履歴行の truth (`Summary`) と表示の対応は E2E の appliedSummary assert で検証するが、「履歴件数 ≠ restore 実差分」の性質自体は spec 13 の recovery write-set 検証 (SA-18) に依存する。外部 row 追加 case はこの依存の統合面での確認である。
+- 履歴行の truth (`Summary`) と表示の対応は E2E の appliedSummary assert で検証するが、「履歴件数 ≠ restore 実差分」の性質自体は spec 13 の recovery write-set 検証 (SA-18 の silent loss / unaccounted row oracle) に依存する。外部 row 追加 case は、fixture が Delete と分類する前提を明示したうえでこの依存の統合面を確認するものである。
