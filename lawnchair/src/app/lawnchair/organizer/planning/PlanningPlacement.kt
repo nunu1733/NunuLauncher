@@ -95,6 +95,7 @@ internal object PlanningPlacement {
         data class FormedFolder(
             val ordinal: NewFolderOrdinal,
             val profile: ProfileId,
+            val naming: FolderNaming,
             val members: List<ItemId>,
             val preferredPage: PageRef,
         )
@@ -115,7 +116,7 @@ internal object PlanningPlacement {
             val preferredPage = group.members
                 .map { id -> (itemById.getValue(id).placement as CapturedPlacement.Workspace).page }
                 .minWith(pageRefComparator(pageOrderMap))
-            FormedFolder(group.ordinal, group.profile, group.members, preferredPage)
+            FormedFolder(group.ordinal, group.profile, FolderNaming.FromCategory(group.category), group.members, preferredPage)
         }
         val folderMemberIds = folderGroups.flatMapTo(mutableSetOf()) { it.members }
 
@@ -204,6 +205,7 @@ internal object PlanningPlacement {
                     outputNewFolders += NewFolder(
                         ordinal = nf.ordinal,
                         profile = nf.profile,
+                        naming = nf.naming,
                         workspacePlacement = wsTarget,
                         members = nf.members,
                     )
@@ -363,6 +365,7 @@ internal object PlanningPlacement {
                 outputNewFolders += NewFolder(
                     ordinal = nf.ordinal,
                     profile = nf.profile,
+                    naming = FolderNaming.FromCategory(nf.category),
                     workspacePlacement = wsTarget,
                     members = nf.members,
                 )
@@ -442,6 +445,7 @@ internal object PlanningPlacement {
     private data class FolderGroup(
         val ordinal: NewFolderOrdinal,
         val profile: ProfileId,
+        val category: CategoryId,
         val members: List<ItemId>,
     )
 
@@ -465,7 +469,7 @@ internal object PlanningPlacement {
 
             val effectiveCapacity = minOf(capacity, members.size.toLong()).toInt()
             for (folderMembers in partitionMembers(members, effectiveCapacity, minGroupSize)) {
-                result += FolderGroup(NewFolderOrdinal(ordinal++), profile, folderMembers)
+                result += FolderGroup(NewFolderOrdinal(ordinal++), profile, category, folderMembers)
             }
         }
         return result

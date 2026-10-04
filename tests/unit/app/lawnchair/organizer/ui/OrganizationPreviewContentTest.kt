@@ -154,27 +154,32 @@ class OrganizationPreviewContentTest {
     }
 
     @Test
-    fun dockAndPlannedFolderPositionsAreOneBased() {
+    fun dockPositionsAreOneBasedAndPlannedFoldersRenderByName() {
         val dock = OrganizationPreviewContent.positionText(dock(1), TestWording)
+        // Issue #201: planned-folder destinations render the resolved name,
+        // never the planner ordinal.
         val plannedFolder = OrganizationPreviewContent.positionText(
-            PreviewPosition.InFolder(PreviewFolderRef.Planned(NewFolderOrdinal(0))),
+            PreviewPosition.InFolder(
+                PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("Communication")),
+            ),
             TestWording,
         )
 
         assertEquals("Dock slot 2", dock)
-        assertEquals("new folder 1", plannedFolder)
+        assertEquals("new folder \u201cCommunication\u201d", plannedFolder)
     }
 
     @Test
     fun newFolderRowListsPlacementAndMembers() {
         val change = NewFolderChange(
             ordinal = NewFolderOrdinal(0),
+            name = PreviewLabel.Named("Communication"),
             placement = source(2, RowBand.CENTER, ColumnBand.LEFT, 3),
             memberLabels = listOf(PreviewLabel.Named("game"), PreviewLabel.Named("maps")),
         )
 
         assertEquals(
-            "Create new folder 1 at middle left, page 2 (members: game, maps)",
+            "Create new folder \u201cCommunication\u201d at middle left, page 2 (members: game, maps)",
             OrganizationPreviewContent.sections(
                 PlanPreviewDetails(listOf(change), PreviewCounts(0, 0, 1, 0, emptyMap())),
                 TestWording,
@@ -264,6 +269,7 @@ class OrganizationPreviewContentTest {
 
     private fun newFolder(ordinal: Int) = NewFolderChange(
         ordinal = NewFolderOrdinal(ordinal),
+        name = PreviewLabel.Named("Communication"),
         placement = source(1, RowBand.TOP, ColumnBand.LEFT, 1),
         memberLabels = listOf(PreviewLabel.Named("game")),
     )
@@ -323,7 +329,7 @@ class OrganizationPreviewContentTest {
         override val regionBottomRight = "bottom right"
         override val dockPosition = "Dock slot %1\$d"
         override val folderPositionExisting = "folder “%1\$s”"
-        override val folderPositionPlanned = "new folder %1\$d"
+        override val folderPositionPlanned = "new folder \u201c%1\$s\u201d"
         override val appPairPosition = "app pair “%1\$s”"
         override val kindApplication = "App"
         override val kindDeepShortcut = "Shortcut"
@@ -333,7 +339,7 @@ class OrganizationPreviewContentTest {
         override val kindCustomAppWidget = "Custom widget"
         override val kindAppPair = "App pair"
         override val kindUnknown = "Item"
-        override val newFolderRow = "Create new folder %1\$d at %2\$s (members: %3\$s)"
+        override val newFolderRow = "Create new folder \u201c%1\$s\u201d at %2\$s (members: %3\$s)"
         override val newPageRow = "Add a new page at position %1\$d"
     }
 }

@@ -154,7 +154,7 @@ PreviewPosition =
 
 PreviewFolderRef =
   | Existing(label: PreviewLabel)
-  | Planned(ordinal: NewFolderOrdinal)
+  | Planned(ordinal: NewFolderOrdinal, name: PreviewLabel)   // Issue #201: resolved generated-folder title; UI renders the name, never the ordinal
 
 RowBand = TOP | CENTER | BOTTOM
 ColumnBand = LEFT | CENTER | RIGHT
@@ -189,7 +189,7 @@ PreviewCounts {
 - 表示名は canonical capture (`plan.sourceState`) の `title` を主とし、`OptionalText.Present` なら `PreviewLabel.Named(value)` を運ぶ。
 - `Absent` の場合は `PreviewLabel.KindFallback(kind)` を運ぶ。**kind 由来の総称文言は projection に置かない** (UI 文言を持たない契約)。#195 が strings (`values/` + `values-ja/`) で解決する。この点は assessment §2-3 の「kind 由来の総称表現」を、文言の所在地だけ UI 側へ寄せて具体化したものである。
 - raw package / component / shortcut id / `ItemId` / `PageId` / 生 cell / span / digest / profile serial を `PreviewLabel` および表示値へ露出しない。`ItemId` は opaque 相関キーとしてのみ保持する (spec 84 の `RecoveryPreviewSummary.pointId` と同じ姿勢)。
-- 新規 folder の名前は planner が決めないため、`NewFolderChange` 自身の label は持たず、配置 + member labels で識別する。
+- 新規 folder の名前は planner が決めないため、`NewFolderChange` 自身の label は持たず、配置 + member labels で識別する。**[Issue #201 により更新]** 生成フォルダの semantic naming contract (spec 201) の導入に伴い、`NewFolderChange` は materializer が解決した user-facing title を `name` として運ぶ。本節の歴史的規約は spec 201 が置き換えた。
 
 ### Row ordering and determinism
 

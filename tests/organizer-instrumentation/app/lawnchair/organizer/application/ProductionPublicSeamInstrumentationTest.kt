@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.ui.GeneratedFolderTitles
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.OperationIdSource
 import app.lawnchair.organizer.application.protocol.WriteSetPreparation
@@ -113,6 +114,7 @@ class ProductionPublicSeamInstrumentationTest {
             RecoveryStore(context, clock::nowMillis),
             clock,
             SecureRandomOperationIdSource(),
+            folderTitleResolver = GeneratedFolderTitles.resolver(context),
         )
         module.reconcileAtStart()
         val plan = ValidatedLayoutPlan(
@@ -209,6 +211,7 @@ class ProductionPublicSeamInstrumentationTest {
                 RecoveryStore(context, clock::nowMillis, ThrowingStoreFault(phase, timing)),
                 clock,
                 FixedIds(runId, pointId),
+                folderTitleResolver = app.lawnchair.organizer.ui.GeneratedFolderTitles.resolver(context),
                 FaultInjector.NOOP,
             )
             firstModule.reconcileAtStart()
@@ -231,6 +234,7 @@ class ProductionPublicSeamInstrumentationTest {
                 reopenedStore,
                 clock,
                 FixedIds(runId, pointId),
+                folderTitleResolver = app.lawnchair.organizer.ui.GeneratedFolderTitles.resolver(context),
             )
             assertEquals(RestartReconciler.ReconciliationSummary.Clean, restartModule.reconcileAtStart())
             assertEquals(

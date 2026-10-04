@@ -2,6 +2,7 @@ package app.lawnchair.organizer.application.protocol
 
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.preview.PlanPreviewProjector
+import app.lawnchair.organizer.application.public.FolderTitleResolver
 import app.lawnchair.organizer.application.public.PlanPreview
 import app.lawnchair.organizer.application.public.PlanPreviewRejection
 import app.lawnchair.organizer.application.public.PlanPreviewResult
@@ -26,6 +27,7 @@ class PlanPreviewProtocol(
     private val operationIds: OperationIdSource,
     private val faults: FaultInjector,
     private val mutex: RunMutexPort,
+    private val folderTitleResolver: FolderTitleResolver,
 ) {
 
     fun inspect(input: OrganizationInput, result: PlanningResult): PlanPreviewResult {
@@ -59,7 +61,7 @@ class PlanPreviewProtocol(
 
         val planned = result.outcome as? Planned
             ?: return PlanPreviewResult.NotPlannable(PlanPreviewRejection.OUTCOME_NOT_PLANNED)
-        val materialized = OrganizationPlanMaterializer.materialize(input, result, capture.layoutState)
+        val materialized = OrganizationPlanMaterializer.materialize(input, result, capture.layoutState, folderTitleResolver)
         val plan = (materialized as? OrganizationPlanMaterializer.Result.Ready)?.plan
             ?: return PlanPreviewResult.NotPlannable(PlanPreviewRejection.MATERIALIZATION_INVALID)
         val projection = PlanPreviewProjector.project(plan, planned)

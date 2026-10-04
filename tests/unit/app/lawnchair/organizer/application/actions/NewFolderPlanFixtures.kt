@@ -92,7 +92,13 @@ internal object NewFolderPlanFixtures {
     )
 
     /** Runs the real materializer; the oracles only ever consume its Ready plan. */
-    fun materializeReady(fixture: Fixture): app.lawnchair.organizer.application.public.ValidatedLayoutPlan = when (val materialized = OrganizationPlanMaterializer.materialize(fixture.input, fixture.result, fixture.sourceState)) {
+    fun materializeReady(
+        fixture: Fixture,
+        titleResolver: app.lawnchair.organizer.application.public.FolderTitleResolver = app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
+    ): app.lawnchair.organizer.application.public.ValidatedLayoutPlan = when (
+        val materialized =
+            OrganizationPlanMaterializer.materialize(fixture.input, fixture.result, fixture.sourceState, titleResolver)
+    ) {
         is OrganizationPlanMaterializer.Result.Ready -> materialized.plan
 
         is OrganizationPlanMaterializer.Result.Invalid ->
@@ -170,6 +176,9 @@ internal object NewFolderPlanFixtures {
                     NewFolder(
                         ordinal = NewFolderOrdinal(folder.ordinal),
                         profile = profile,
+                        naming = app.lawnchair.organizer.planning.FolderNaming.FromCategory(
+                            app.lawnchair.organizer.planning.CategoryId("CATEGORY_${folder.ordinal}"),
+                        ),
                         workspacePlacement = PlacementTarget.WorkspaceTarget(page, folder.workspaceCell, GridSpan(1, 1)),
                         members = folder.members.map { ItemId(it) },
                     )

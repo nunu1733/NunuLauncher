@@ -54,7 +54,11 @@ object PlanPreviewProjector {
         val sourceItemByItemId = plan.sourceState.items
             .mapNotNull { item -> item.persistentItemId()?.let { it to item } }
             .toMap()
-        val context = PositionContext(plan, sourceItemByItemId)
+        // Issue #201: join each planned folder ordinal to its resolved title
+        // (the same value the new-folder row and the apply writer use). A join
+        // miss is a contract violation and fails closed.
+        val plannedFolderNames = plannedFolderNames(plan) ?: return Result.Invalid
+        val context = PositionContext(plan, sourceItemByItemId, plannedFolderNames)
         val changes = mutableListOf<PreviewChange>()
 
         plan.actions.forEach { action ->
@@ -75,6 +79,9 @@ object PlanPreviewProjector {
             val insert = plan.actions.filterIsInstance<ApplyAction.Insert>()
                 .firstOrNull { (it.ref as? ApplicationItemRef.PlannedFolder)?.ordinal == folder.ordinal }
                 ?: return Result.Invalid
+            // Issue #201: the folder name is the same resolved title the apply
+            // writer persists — read from the intended state, never re-derived.
+            val name = plannedFolderNames[folder.ordinal] ?: return Result.Invalid
             val placement = context.workspacePosition(insert.intended) ?: return Result.Invalid
             val memberLabels = folder.members.map { memberId ->
                 sourceItemByItemId[memberId]?.let(::itemLabel) ?: return Result.Invalid
@@ -82,6 +89,7 @@ object PlanPreviewProjector {
             changes.add(
                 NewFolderChange(
                     ordinal = folder.ordinal,
+                    name = name,
                     placement = placement,
                     memberLabels = memberLabels,
                 ),
@@ -164,6 +172,27 @@ object PlanPreviewProjector {
 
     private fun CanonicalItemState.persistentItemId(): ItemId? = (ref as? ApplicationItemRef.PersistentItem)?.itemId
 
+    /**
+     * Issue #201: one resolved name per planned folder ordinal, sourced from
+     * the Insert's intended title. `null` = contract violation (missing
+     * Insert, absent or blank title) and the projection fails closed.
+     */
+    private fun plannedFolderNames(plan: ValidatedLayoutPlan): Map<NewFolderOrdinal, PreviewLabel>? {
+        if (plan.newFolders.isEmpty()) return emptyMap()
+        val names = mutableMapOf<NewFolderOrdinal, PreviewLabel>()
+        for (folder in plan.newFolders) {
+            val insert = plan.actions.filterIsInstance<ApplyAction.Insert>()
+                .firstOrNull { (it.ref as? ApplicationItemRef.PlannedFolder)?.ordinal == folder.ordinal }
+                ?: return null
+            val name = when (val title = insert.intended.title) {
+                is OptionalText.Present -> title.value.takeIf { it.isNotBlank() } ?: return null
+                OptionalText.Absent -> return null
+            }
+            names[folder.ordinal] = PreviewLabel.Named(name)
+        }
+        return names
+    }
+
     private fun itemLabel(state: CanonicalItemState): PreviewLabel = when (val title = state.title) {
         is OptionalText.Present -> PreviewLabel.Named(title.value)
         OptionalText.Absent -> PreviewLabel.KindFallback(state.kind)
@@ -177,6 +206,7 @@ object PlanPreviewProjector {
     private class PositionContext(
         private val plan: ValidatedLayoutPlan,
         private val sourceItemByItemId: Map<ItemId, CanonicalItemState>,
+        private val plannedFolderNames: Map<NewFolderOrdinal, PreviewLabel>,
     ) {
         private val plannedFolderOrdinals: Set<NewFolderOrdinal> = plan.newFolders.map { it.ordinal }.toSet()
 
@@ -224,7 +254,10 @@ object PlanPreviewProjector {
                 is ApplicationItemRef.PlannedFolder ->
                     parent.ordinal
                         .takeIf { it in plannedFolderOrdinals }
-                        ?.let { PreviewPosition.InFolder(PreviewFolderRef.Planned(it)) }
+                        ?.let { ord ->
+                            plannedFolderNames[ord]
+                                ?.let { PreviewPosition.InFolder(PreviewFolderRef.Planned(ord, it)) }
+                        }
 
                 is ApplicationItemRef.PlannedCandidate -> null
             }

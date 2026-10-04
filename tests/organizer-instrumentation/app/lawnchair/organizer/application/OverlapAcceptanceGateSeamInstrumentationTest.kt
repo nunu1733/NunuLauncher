@@ -12,6 +12,7 @@ import app.lawnchair.organizer.application.protocol.ApplyTxOutcome
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.ui.GeneratedFolderTitles
 import app.lawnchair.organizer.application.protocol.SystemClock
 import app.lawnchair.organizer.application.protocol.WriterKind
 import app.lawnchair.organizer.application.protocol.WriteSetPreparation
@@ -173,6 +174,7 @@ class OverlapAcceptanceGateSeamInstrumentationTest {
                 RecoveryStore(context, clock::nowMillis),
                 clock,
                 FixedIds(runId, pointId),
+                folderTitleResolver = GeneratedFolderTitles.resolver(context),
             )
             module.reconcileAtStart()
 

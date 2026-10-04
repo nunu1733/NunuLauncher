@@ -83,9 +83,20 @@ data class NewPage(
     val order: PageOrder,
 )
 
+/**
+ * Issue #201: the grouping semantic that produced a planned folder. The
+ * planner is the authority for this identity; it is locale-independent and
+ * deterministic. The user-facing title is resolved exactly once by the
+ * application materializer through a FolderTitleResolver, never here.
+ */
+sealed interface FolderNaming {
+    data class FromCategory(val category: CategoryId) : FolderNaming
+}
+
 data class NewFolder(
     val ordinal: NewFolderOrdinal,
     val profile: ProfileId,
+    val naming: FolderNaming,
     val workspacePlacement: PlacementTarget.WorkspaceTarget,
     val members: List<ItemId>,
 )

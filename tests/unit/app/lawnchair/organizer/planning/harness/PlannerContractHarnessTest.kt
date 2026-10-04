@@ -421,6 +421,7 @@ class PlannerContractHarnessTest {
                 app.lawnchair.organizer.planning.NewFolder(
                     ordinal = NewFolderOrdinal(0),
                     profile = p0,
+                    naming = app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     workspacePlacement = PlacementTarget.WorkspaceTarget(
                         page = NewPageRef(NewPageOrdinal(0)),
                         cell = GridCell(0, 0),
@@ -585,6 +586,7 @@ class PlannerContractHarnessTest {
                 app.lawnchair.organizer.planning.NewFolder(
                     ordinal = NewFolderOrdinal(0),
                     profile = p0,
+                    naming = app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     workspacePlacement = PlacementTarget.WorkspaceTarget(
                         page = NewPageRef(NewPageOrdinal(0)),
                         cell = GridCell(0, 0),
@@ -625,6 +627,7 @@ class PlannerContractHarnessTest {
                 app.lawnchair.organizer.planning.NewFolder(
                     NewFolderOrdinal(0),
                     p0,
+                    app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     workspaceTarget(),
                     listOf(itemA.id),
                 ),
@@ -1061,6 +1064,7 @@ class PlannerContractHarnessTest {
                 app.lawnchair.organizer.planning.NewFolder(
                     ordinal = NewFolderOrdinal(0),
                     profile = p0,
+                    naming = app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     workspacePlacement = PlacementTarget.WorkspaceTarget(
                         page = NewPageRef(NewPageOrdinal(0)),
                         cell = GridCell(0, 0),
@@ -1214,6 +1218,7 @@ class PlannerContractHarnessTest {
                 app.lawnchair.organizer.planning.NewFolder(
                     NewFolderOrdinal(0),
                     p0,
+                    app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     PlacementTarget.WorkspaceTarget(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(2, 1)),
                     listOf(itemA.id),
                 ),
@@ -1238,12 +1243,14 @@ class PlannerContractHarnessTest {
                 app.lawnchair.organizer.planning.NewFolder(
                     folderOrdinal,
                     p0,
+                    app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     workspaceTarget(cell = GridCell(0, 0)),
                     listOf(itemA.id, ItemId("app.b")),
                 ),
                 app.lawnchair.organizer.planning.NewFolder(
                     NewFolderOrdinal(1),
                     p0,
+                    app.lawnchair.organizer.planning.FolderNaming.FromCategory(app.lawnchair.organizer.planning.CategoryId("COMMUNICATION")),
                     workspaceTarget(cell = GridCell(0, 0)),
                     emptyList(),
                 ),

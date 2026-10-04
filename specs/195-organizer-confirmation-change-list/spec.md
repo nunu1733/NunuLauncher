@@ -26,7 +26,7 @@ Manual organization の確認画面 (`ManualOrganizationPreferences` の `State.
   - 大量変更時は group ごとに先頭 5 件を表示し、group ごとの「すべて表示 (N件)」展開 /「先頭N件のみ表示」折りたたみを提供する。展開 state は process-local な UI state である。
   - 行表現: 「名前 — 移動元 → 移動先」。位置は page 序数 + 行帯 × 列帯の領域語 + 行序数で表現し、生 cell 座標・生 ordinal は見せない。同一ページ内移動は assessment §6.1 の領域表現を主表現とし、行帯が不変で行序数が変化する move は行序数の併記 (「2段目から1段目」) を行う。帯内微調整 (`sameBandAdjustment`) は「«領域» 内で位置を調整」の専用行形式で明示する。
   - 移動行には joined `Disposition.Moved.rationale` (`PlacementCode`) の、保持行には `PreserveReason` の、行レベルの理由語を添える (件数 breakdown の行内への置き換え)。
-  - 新規フォルダ行は配置 + メンバー label 一覧で識別する。新規ページ行は 1-based 表示位置で示す。
+  - 新規フォルダ行は配置 + メンバー label 一覧で識別する。新規ページ行は 1-based 表示位置で示す。**[Issue #201 により更新]** 新規フォルダ行は解決済みフォルダ名 (`NewFolderChange.name`) を先頭に表示し、planner ordinal は表示しない (spec 201 の naming contract)。
 - `details == null` (compatibility fallback) の画面では、degraded である旨の告知行を追加し、既存の count-only サマリー (`Summary` 由来の現行表示) をそのまま維持する。
 - strings は `values/` と `values-ja/` の両方へ追加する (#123 の日本語 fallback 禁止契約)。`PreviewLabel.KindFallback(kind)` の総称文言もここで解決する。
 - a11y: 変更行は単一の意味ある読み上げ node とし、`liveRegion` は既存の status 行のみに留める。展開 action は状態 (`stateDescription`) を semantics に持つ。Switch Access / keyboard traversal で全 action に到達でき、200% font scale で wrap する (spec 52 a11y 契約)。

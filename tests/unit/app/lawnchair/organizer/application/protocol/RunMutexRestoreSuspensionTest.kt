@@ -34,6 +34,7 @@ class RunMutexRestoreSuspensionTest {
             store = FakeRecoveryStore { FakeClock.nowMillis() },
             clock = FakeClock,
             operationIds = FixedOperationIdSource(),
+            folderTitleResolver = app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
         )
     }
 

@@ -63,7 +63,7 @@ class OrganizationPlanMaterializerReservationGuardTest {
         val capturedCell = GridCell(2, 0)
         val (input, result, sourceState) = fixture(capturedCell, preserved = true)
 
-        val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState)
+        val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState, app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver())
 
         assertTrue("in-place preservation must pass the guard: $materialized", materialized is OrganizationPlanMaterializer.Result.Ready)
         val plan = (materialized as OrganizationPlanMaterializer.Result.Ready).plan
@@ -75,7 +75,7 @@ class OrganizationPlanMaterializerReservationGuardTest {
     fun movedTargetIntoReservationStillInvalid() {
         val (input, result, sourceState) = fixture(capturedCell = GridCell(2, 1), preserved = false)
 
-        val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState)
+        val materialized = OrganizationPlanMaterializer.materialize(input, result, sourceState, app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver())
 
         assertEquals(OrganizationPlanMaterializer.Result.Invalid, materialized)
     }

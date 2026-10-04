@@ -27,10 +27,12 @@ import app.lawnchair.organizer.application.public.RowBand
 import app.lawnchair.organizer.application.public.StructureState
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.public.WidgetState
+import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.DiagnosticParam
 import app.lawnchair.organizer.planning.Disposition
 import app.lawnchair.organizer.planning.FolderId
+import app.lawnchair.organizer.planning.FolderNaming
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
@@ -164,6 +166,7 @@ class PlanPreviewProjectorTest {
                 NewFolder(
                     ordinal = NewFolderOrdinal(0),
                     profile = ProfileId("personal"),
+                    naming = FolderNaming.FromCategory(CategoryId("COMMUNICATION")),
                     workspacePlacement = PlacementTarget.WorkspaceTarget(
                         PageRef(PageId("p0")),
                         GridCell(2, 0),
@@ -178,9 +181,98 @@ class PlanPreviewProjectorTest {
 
         val row = result.details.changes.single() as NewFolderChange
         assertEquals(NewFolderOrdinal(0), row.ordinal)
+        assertEquals(PreviewLabel.Named("Folder"), row.name)
         assertEquals(PreviewPosition.Workspace(1, false, RowBand.TOP, ColumnBand.CENTER, 1), row.placement)
         assertEquals(listOf(PreviewLabel.Named("Ta"), PreviewLabel.Named("Tb")), row.memberLabels)
         assertEquals(1, result.details.counts.newFolderCount)
+    }
+
+    @Test
+    fun newFolderRowCarriesTheSameResolvedTitleApplyPersists() {
+        // Issue #201 (FN-AC-06): the row name is the insert's intended title —
+        // the exact value the apply writer persists — never re-derived.
+        val folderState = plannedFolderState(
+            ordinal = 0,
+            placement = PlacementState.Workspace(ApplicationPageRef.PersistentPage(PageId("p0")), GridCell(2, 0), GridSpan(1, 1)),
+            title = OptionalText.Present("通信"),
+        )
+        val plan = plan(
+            sourceItems = listOf(item("a"), item("b")),
+            actions = listOf(ApplyAction.Insert(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)), folderState)),
+            newFolders = listOf(
+                NewFolder(
+                    ordinal = NewFolderOrdinal(0),
+                    profile = ProfileId("personal"),
+                    naming = FolderNaming.FromCategory(CategoryId("COMMUNICATION")),
+                    workspacePlacement = PlacementTarget.WorkspaceTarget(
+                        PageRef(PageId("p0")),
+                        GridCell(2, 0),
+                        GridSpan(1, 1),
+                    ),
+                    members = listOf(ItemId("a"), ItemId("b")),
+                ),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(plan, planned()) as PlanPreviewProjector.Result.Ready
+
+        assertEquals(PreviewLabel.Named("通信"), (result.details.changes.single() as NewFolderChange).name)
+    }
+
+    @Test
+    fun newFolderInsertWithoutResolvedTitleFailsClosed() {
+        val folderState = plannedFolderState(
+            ordinal = 0,
+            placement = PlacementState.Workspace(ApplicationPageRef.PersistentPage(PageId("p0")), GridCell(2, 0), GridSpan(1, 1)),
+            title = OptionalText.Absent,
+        )
+        val plan = plan(
+            sourceItems = listOf(item("a"), item("b")),
+            actions = listOf(ApplyAction.Insert(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)), folderState)),
+            newFolders = listOf(
+                NewFolder(
+                    ordinal = NewFolderOrdinal(0),
+                    profile = ProfileId("personal"),
+                    naming = FolderNaming.FromCategory(CategoryId("COMMUNICATION")),
+                    workspacePlacement = PlacementTarget.WorkspaceTarget(
+                        PageRef(PageId("p0")),
+                        GridCell(2, 0),
+                        GridSpan(1, 1),
+                    ),
+                    members = listOf(ItemId("a"), ItemId("b")),
+                ),
+            ),
+        )
+
+        assertEquals(PlanPreviewProjector.Result.Invalid, PlanPreviewProjector.project(plan, planned()))
+    }
+
+    @Test
+    fun newFolderInsertWithBlankResolvedTitleFailsClosed() {
+        val folderState = plannedFolderState(
+            ordinal = 0,
+            placement = PlacementState.Workspace(ApplicationPageRef.PersistentPage(PageId("p0")), GridCell(2, 0), GridSpan(1, 1)),
+            title = OptionalText.Present("   "),
+        )
+        val plan = plan(
+            sourceItems = listOf(item("a"), item("b")),
+            actions = listOf(ApplyAction.Insert(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)), folderState)),
+            newFolders = listOf(
+                NewFolder(
+                    ordinal = NewFolderOrdinal(0),
+                    profile = ProfileId("personal"),
+                    naming = FolderNaming.FromCategory(CategoryId("COMMUNICATION")),
+                    workspacePlacement = PlacementTarget.WorkspaceTarget(
+                        PageRef(PageId("p0")),
+                        GridCell(2, 0),
+                        GridSpan(1, 1),
+                    ),
+                    members = listOf(ItemId("a"), ItemId("b")),
+                ),
+            ),
+        )
+
+        assertEquals(PlanPreviewProjector.Result.Invalid, PlanPreviewProjector.project(plan, planned()))
     }
 
     @Test
@@ -273,6 +365,65 @@ class PlanPreviewProjectorTest {
             ),
             result.details.counts.warningCounts,
         )
+    }
+
+    @Test
+    fun moveIntoPlannedFolderRendersTheResolvedFolderName() {
+        // Issue #201 (review Major 1): a move row whose destination is a
+        // planned folder must carry the same resolved title as the folder's
+        // own change row — the planner ordinal never reaches the UI.
+        val folderState = plannedFolderState(
+            ordinal = 0,
+            placement = PlacementState.Workspace(ApplicationPageRef.PersistentPage(PageId("p0")), GridCell(2, 0), GridSpan(1, 1)),
+            title = OptionalText.Present("ソーシャル"),
+        )
+        val intendedMember = item("a").copy(
+            placement = PlacementState.FolderChild(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)), 0),
+        )
+        val plan = plan(
+            sourceItems = listOf(item("a")),
+            actions = listOf(
+                updateAction(item("a", cell = GridCell(0, 0)), intendedMember),
+                ApplyAction.Insert(ApplicationItemRef.PlannedFolder(NewFolderOrdinal(0)), folderState),
+            ),
+            newFolders = listOf(
+                NewFolder(
+                    ordinal = NewFolderOrdinal(0),
+                    profile = ProfileId("personal"),
+                    naming = FolderNaming.FromCategory(CategoryId("SOCIAL")),
+                    workspacePlacement = PlacementTarget.WorkspaceTarget(
+                        PageRef(PageId("p0")),
+                        GridCell(2, 0),
+                        GridSpan(1, 1),
+                    ),
+                    members = listOf(ItemId("a")),
+                ),
+            ),
+        )
+
+        val result = PlanPreviewProjector.project(
+            plan,
+            planned(
+                PlannedPlacement(
+                    item = ItemId("a"),
+                    disposition = Disposition.Moved(PlacementCode.FOLDER_MEMBER),
+                    target = app.lawnchair.organizer.planning.PlacementTarget.FolderMember(
+                        app.lawnchair.organizer.planning.NewFolderRef(NewFolderOrdinal(0)),
+                        0,
+                    ),
+                ),
+            ),
+        ) as PlanPreviewProjector.Result.Ready
+
+        val move = result.details.changes.filterIsInstance<MoveChange>().single()
+        assertEquals(
+            PreviewPosition.InFolder(
+                PreviewFolderRef.Planned(NewFolderOrdinal(0), PreviewLabel.Named("ソーシャル")),
+            ),
+            move.destination,
+        )
+        val folderRow = result.details.changes.filterIsInstance<NewFolderChange>().single()
+        assertEquals(PreviewLabel.Named("ソーシャル"), folderRow.name)
     }
 
     @Test
@@ -459,6 +610,7 @@ class PlanPreviewProjectorTest {
     private fun plannedFolderState(
         ordinal: Int,
         placement: PlacementState,
+        title: OptionalText = OptionalText.Present("Folder"),
     ): CanonicalItemState = CanonicalItemState(
         ref = ApplicationItemRef.PlannedFolder(NewFolderOrdinal(ordinal)),
         kind = CanonicalItemKind.Folder,
@@ -467,7 +619,7 @@ class PlanPreviewProjectorTest {
         profileAvailability = ProfileAvailability.AVAILABLE,
         itemAvailability = ItemAvailability.AVAILABLE,
         placement = placement,
-        title = OptionalText.Absent,
+        title = title,
         intent = OptionalText.Absent,
         icon = OptionalBytes.Absent,
         widget = WidgetState.NoWidget,

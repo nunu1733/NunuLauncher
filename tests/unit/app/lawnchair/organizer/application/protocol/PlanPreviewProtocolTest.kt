@@ -75,6 +75,7 @@ class PlanPreviewProtocolTest {
             FixedOperationIdSource(),
             faults,
             mutex,
+            app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
         )
     }
 
@@ -140,6 +141,7 @@ class PlanPreviewProtocolTest {
             FixedOperationIdSource(),
             faults,
             mutex,
+            app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
         )
 
         val result = failing.inspect(fixture.input, fixture.result)

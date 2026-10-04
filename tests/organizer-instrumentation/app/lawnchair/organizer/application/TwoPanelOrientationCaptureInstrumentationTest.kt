@@ -23,6 +23,7 @@ import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
+import app.lawnchair.organizer.ui.GeneratedFolderTitles
 import app.lawnchair.organizer.application.protocol.SecureRandomOperationIdSource
 import app.lawnchair.organizer.application.protocol.SystemClock
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
@@ -176,6 +177,7 @@ class TwoPanelOrientationCaptureInstrumentationTest {
                 RecoveryStore(context, clock::nowMillis),
                 clock,
                 SecureRandomOperationIdSource(),
+                folderTitleResolver = GeneratedFolderTitles.resolver(context),
             )
             module.reconcileAtStart()
             val result = module.apply(plan)

@@ -484,6 +484,7 @@ class ContractShapeTest {
                 NewFolder(
                     ordinal = NewFolderOrdinal(0),
                     profile = ProfileId("p0"),
+                    naming = FolderNaming.FromCategory(CategoryId("COMMUNICATION")),
                     workspacePlacement = PlacementTarget.WorkspaceTarget(
                         page = NewPageRef(NewPageOrdinal(0)),
                         cell = GridCell(0, 0),
@@ -705,6 +706,7 @@ class ContractShapeTest {
         val newFolder = NewFolder(
             ordinal = NewFolderOrdinal(1),
             profile = ProfileId("p0"),
+            naming = FolderNaming.FromCategory(CategoryId("COMMUNICATION")),
             workspacePlacement = PlacementTarget.WorkspaceTarget(
                 page = NewPageRef(NewPageOrdinal(0)),
                 cell = GridCell(0, 0),

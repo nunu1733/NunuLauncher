@@ -8,6 +8,7 @@ import app.lawnchair.organizer.planning.harness.SyntheticFixtureGenerator
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -103,6 +104,39 @@ class PlannerGeneratedPropertyTest {
         includeReproduction: Boolean = false,
     ) {
         verifyPlannerFixtures(planner, label, fixtures, includeReproduction)
+    }
+
+    /**
+     * Issue #201 (FN-AC-07): every planned folder must carry the semantic
+     * naming identity of its grouping — the non-fallback category shared by
+     * exactly the members grouped into it — across the whole corpus.
+     */
+    @Test
+    fun generatedCorpusFolderNamingMatchesGroupingCategory() {
+        val fixtures = SyntheticFixtureGenerator.generate(seed, caseCount)
+        for (fixture in fixtures) {
+            val input = fixture.input
+            val result = planner.plan(input)
+            val planned = result.outcome as? Planned ?: continue
+            val decisions = planned.categories.associate { it.item to it.category }
+            val fallback = input.taxonomy.fallbackCategory
+            for (folder in planned.newFolders) {
+                val naming = folder.naming as? FolderNaming.FromCategory
+                    ?: error("planned folder ${folder.ordinal.value} has no category naming")
+                assertTrue("planned folder ${folder.ordinal.value} has no members", folder.members.isNotEmpty())
+                val memberCategories = folder.members.map { decisions[it] ?: fallback }.toSet()
+                assertEquals(
+                    "planned folder ${folder.ordinal.value} naming must equal its grouping category",
+                    setOf(naming.category),
+                    memberCategories,
+                )
+                assertNotEquals(
+                    "fallback category never forms folders (Issue #201 spec)",
+                    fallback,
+                    naming.category,
+                )
+            }
+        }
     }
 }
 
