@@ -325,6 +325,13 @@ public class ModelDbController {
         if (organizerLease != null) {
             return organizerLease;
         }
+        // Issue #58: DB mutations issued by a restore (e.g. RestoreDbTask widget-id remap
+        // through ContentWriter) run on the thread that already holds a restore-family
+        // lease; they reenter it instead of blocking on MODEL_WRITER (self-deadlock).
+        LayoutWriteCoordinator.Lease restoreLease = coordinator.tryReenterRestoreFamily();
+        if (restoreLease != null) {
+            return restoreLease;
+        }
         return coordinator.acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.MODEL_WRITER);
     }
 
@@ -956,6 +963,23 @@ public class ModelDbController {
     public SQLiteDatabase getDb() {
         createDbIfNotExists();
         return mOpenHelper.getWritableDatabase();
+    }
+
+    // Issue #58: restore-scoped seam for runtime raw-file restores. Closes the active
+    // helper (dropping its cached DB references and file handles) so the DB files can be
+    // replaced as raw bytes; a fresh helper is constructed lazily on the next access
+    // (createDbIfNotExists), mirroring the publishFreshSource close/reopen pattern.
+    // Callers must hold a restore-family coordinator lease across close, replacement
+    // and reopen.
+    public void closeActiveHelperForRestore() {
+        DatabaseHelper helper;
+        synchronized (this) {
+            helper = mOpenHelper;
+            mOpenHelper = null;
+        }
+        if (helper != null) {
+            helper.close();
+        }
     }
 
     // Issue #14: refresh allocator state only after the organizer classifies the transaction.

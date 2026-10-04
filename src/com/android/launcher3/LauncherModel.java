@@ -323,6 +323,17 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         }
     }
 
+    // Issue #58: restore quiesce bridge. Stops a running loader and invalidates the
+    // loaded-model state so no loader observes half-replaced DB files. The correlated
+    // reload happens after restore sanitization via forceReload(); loaders posted in
+    // between defer behind the restore-family coordinator lease.
+    public void quiesceForRestore() {
+        synchronized (mLock) {
+            stopLoader();
+            mModelLoaded = false;
+        }
+    }
+
     /**
      * Rebinds all existing callbacks with already loaded model
      */

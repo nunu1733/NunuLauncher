@@ -7,6 +7,7 @@ import app.lawnchair.flowerpot.Flowerpot
 import app.lawnchair.launcher
 import app.lawnchair.launcherNullable
 import app.lawnchair.util.categorizeAppsWithSystemAndGoogle
+import app.lawnchair.util.restartLauncher
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings
@@ -17,15 +18,12 @@ import com.android.launcher3.model.data.AppInfo
 import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.model.data.WorkspaceItemInfo
 import com.android.launcher3.provider.RestoreDbTask
-import com.android.launcher3.util.ApplicationInfoWrapper
 import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.util.PackageManagerHelper
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class LawndeckManager(private val context: Context) {
@@ -72,14 +70,23 @@ class LawndeckManager(private val context: Context) {
     }.onFailure { Log.e("LawndeckManager", "Failed to create backup: $suffix", it) }
 
     private fun restoreBackup(suffix: String) = runCatching {
+        // Issue #58: one DECK_FILE_RESTORE lease spans quiesce, helper close, DB/journal
+        // copy, reentrant performRestore and the correlated reload. The process restart
+        // remains only as the baseline fallback when the organizer application is absent
+        // (no model to reload).
         LayoutWriteCoordinator.getInstance()
             .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.DECK_FILE_RESTORE).use {
+                RestoreDbTask.prepareForRawFileRestore(context)
                 getDatabaseFiles(suffix).apply {
                     backupDb.copyTo(db, overwrite = true)
                     if (backupJournal.exists()) backupJournal.copyTo(journal, overwrite = true)
                 }
+                ModelDbController(context).let { RestoreDbTask.performRestore(context, it) }
+                RestoreDbTask.reloadAfterRestore(context)
             }
-        postRestoreActions()
+        if (LauncherAppState.INSTANCE.getNoCreate() == null) {
+            restartLauncher(context)
+        }
     }.onFailure { Log.e("LawndeckManager", "Failed to restore backup: $suffix", it) }
 
     private fun getDatabaseFiles(suffix: String): DatabaseFiles {
@@ -94,13 +101,6 @@ class LawndeckManager(private val context: Context) {
     }
 
     private fun backupExists(suffix: String): Boolean = getDatabaseFiles(suffix).backupDb.exists()
-
-    private fun postRestoreActions() {
-        ModelDbController(context).let { RestoreDbTask.performRestore(context, it) }
-        MainScope().launch(Dispatchers.Main) {
-            LauncherAppState.getInstance(context).model.forceReload()
-        }
-    }
 
     private fun addAllAppsToWorkspace(
         onProgress: ((String) -> Unit)?,
@@ -206,7 +206,7 @@ class LawndeckManager(private val context: Context) {
         val category = when {
             packageName.startsWith("com.google.") -> "Google Apps"
 
-            intent != null && ApplicationInfoWrapper(context, intent).isSystem() -> "System Apps"
+            intent != null && PackageManagerHelper.isSystemApp(context, intent) -> "System Apps"
 
             else -> {
                 // Use flowerpot to categorize the app
