@@ -1105,8 +1105,9 @@ fun LazyListScope.exchangeFlowItems(
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
+    onOpenDiagnostics: (() -> Unit)? = null,
 ) {
-    exchangeFlowItems(holder, null, emptyMap(), onDiscardRequest, discardFocus, clipboardTransport, shareTransport, fileTransport)
+    exchangeFlowItems(holder, null, emptyMap(), onDiscardRequest, discardFocus, clipboardTransport, shareTransport, fileTransport, onOpenDiagnostics)
 }
 
 /**
@@ -1115,7 +1116,9 @@ fun LazyListScope.exchangeFlowItems(
  * [scopedSelection] is non-null the generation composes the export from the
  * frozen selection instead of the idle full-organization scope.
  * [onDiscardRequest] converges the T-16 破棄 button and system Back on the
- * host's one discard confirmation (issue #372, D-13).
+ * host's one discard confirmation (issue #372, D-13). [onOpenDiagnostics]
+ * reaches the existing diagnostics route from the failure face's 診断を開く
+ * (issue #373); null hides the row where no route exists.
  */
 fun LazyListScope.exchangeFlowItems(
     holder: ExchangeFlowStateHolder,
@@ -1126,6 +1129,7 @@ fun LazyListScope.exchangeFlowItems(
     clipboardTransport: (Context, String) -> ExchangeTransportResult,
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
+    onOpenDiagnostics: (() -> Unit)? = null,
 ) {
     val scoped = scopedSelection?.let { it to scopedLabels }
     when (val current = holder.screen) {
@@ -1217,7 +1221,7 @@ fun LazyListScope.exchangeFlowItems(
 
         is ExchangeScreen.ImportOutcomeScreen -> {
             item(key = "exchange-import-outcome") {
-                ExchangeImportOutcome(current.outcome, current.rawText, holder)
+                ExchangeImportOutcome(current.outcome, current.rawText, holder, onOpenDiagnostics)
             }
         }
 
@@ -2213,89 +2217,197 @@ private fun ExchangeImportSuccess(
 }
 
 @Composable
-private fun ExchangeImportOutcome(outcome: ExchangeImportOutcome, rawText: String, holder: ExchangeFlowStateHolder) {
+private fun ExchangeImportOutcome(
+    outcome: ExchangeImportOutcome,
+    rawText: String,
+    holder: ExchangeFlowStateHolder,
+    onOpenDiagnostics: (() -> Unit)?,
+) {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             text = stringResource(R.string.exchange_import_result_title),
             style = MaterialTheme.typography.titleMedium,
         )
+        // Issue #373 (TO-BE D-11): the primary face carries only the remedy
+        // projection — one remedy copy and one action. The typed cause (the
+        // classification name and the inherited typed copy), the recognition
+        // facts and the raw text are auxiliary information, shown only inside
+        // the collapsed detail expansion below.
         val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
-        val message = when {
-            pipeline is ExchangeImportResult.Failure -> exchangeFailureText(pipeline.failure)
+        val display = (pipeline as? ExchangeImportResult.Failure)?.failure
+            ?.let { exchangeImportFailureDisplay(it) }
+        val primaryText = when {
+            display != null -> stringResource(display.primaryTextRes)
 
             outcome is ExchangeImportOutcome.InputNotReady ->
                 stringResource(R.string.exchange_generation_input_not_ready)
 
             else -> stringResource(R.string.exchange_import_result_unknown)
         }
+        // InputNotReady / unknown have no typed classification — the remedy is
+        // re-running the import itself (the former 再取り込み path).
+        val actionRes = when (display) {
+            null -> R.string.exchange_import_failure_action_reimport
+            else -> display.primaryActionLabelRes
+        }
         Text(
-            text = message,
+            text = primaryText,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier
                 .padding(vertical = 8.dp)
                 .semantics { liveRegion = LiveRegionMode.Polite }
                 .testTag("exchange-import-outcome-message"),
         )
-        // Issue #332 (spec D-5 parse-first presentation): the recognized
-        // framing / accepted version / authored entry count lead the display;
-        // the raw text stays collapsed by default (bounded, internal scroll).
-        // InputNotReady settles AFTER the decode, so its recognition facts
-        // display exactly like a pipeline failure's (spec D-6).
+        OutlinedButton(
+            onClick = {
+                if (display?.remedy == ImportFailureRemedy.RECREATE_REQUEST) {
+                    // 依頼を作り直す: the existing generation-flow seam — the
+                    // replacement gate (spec 205 AC-13) still applies at the
+                    // request face; this action writes nothing (zero-write).
+                    holder.openFlow()
+                } else {
+                    // もう一度取り込む / 貼り直す: back to the import input;
+                    // the raw text is discarded here (spec 332 AC-7 boundary).
+                    holder.openImport()
+                }
+            },
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .testTag("exchange-import-failure-action"),
+        ) {
+            Text(stringResource(actionRes))
+        }
+
+        // Face-level means (spec #373): typed-failure-independent remedies,
+        // always present on the failure face. 中断する closes zero-write —
+        // nothing can be lost, so no confirmation (D-13 §9); the request
+        // (export session) survives. 診断を開く walks the existing diagnostics
+        // route after recording the current attempt's typed cause into the
+        // process-scoped transient holder (never persisted).
+        val detailExplanation = display?.let { stringResource(it.detailTextRes) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(
+                onClick = holder::close,
+                modifier = Modifier.testTag("exchange-import-interrupt"),
+            ) {
+                Text(stringResource(R.string.exchange_import_interrupt))
+            }
+            if (onOpenDiagnostics != null) {
+                TextButton(
+                    onClick = {
+                        // Record the CURRENT attempt's typed cause; an attempt
+                        // without one (InputNotReady / unknown) empties the
+                        // recording instead — a previous attempt's cause is
+                        // never presented as the current failure (issue #373
+                        // implementation review).
+                        display?.let {
+                            ExchangeImportFailureDiagnostics.record(
+                                RecentImportFailure(
+                                    typeName = it.detailTypeName,
+                                    explanation = detailExplanation ?: "",
+                                ),
+                            )
+                        } ?: ExchangeImportFailureDiagnostics.clear()
+                        onOpenDiagnostics()
+                    },
+                    modifier = Modifier.testTag("exchange-import-open-diagnostics"),
+                ) {
+                    Text(stringResource(R.string.exchange_import_open_diagnostics))
+                }
+            }
+        }
+
         val info = when (outcome) {
             is ExchangeImportOutcome.Pipeline -> exchangeImportDisplayInfo(outcome.result)
             is ExchangeImportOutcome.InputNotReady -> exchangeImportDisplayInfo(outcome.recognized)
         }
-        if (info.framing != null) {
-            ExchangeImportInfoRow(
-                label = stringResource(R.string.exchange_recognized_framing),
-                value = exchangeFramingText(info.framing),
-                tag = "exchange-import-outcome-framing",
+        val hasDetail = display != null ||
+            info.framing != null ||
+            info.intentSchemaVersion != null ||
+            info.authoredEntryCount != null ||
+            rawText.isNotEmpty()
+        if (hasDetail) {
+            var detailOpen by remember { mutableStateOf(false) }
+            val detailStateText = stringResource(
+                if (detailOpen) {
+                    R.string.exchange_import_failure_detail_hide
+                } else {
+                    R.string.exchange_import_failure_detail_show
+                },
             )
-        }
-        if (info.intentSchemaVersion != null) {
-            ExchangeImportInfoRow(
-                label = stringResource(R.string.exchange_recognized_version),
-                value = info.intentSchemaVersion,
-                tag = "exchange-import-outcome-version",
-            )
-        }
-        if (info.authoredEntryCount != null) {
-            ExchangeImportInfoRow(
-                label = stringResource(R.string.exchange_recognized_entries),
-                value = info.authoredEntryCount.toString(),
-                tag = "exchange-import-outcome-entries",
-            )
-        }
-        if (rawText.isNotEmpty()) {
-            var rawOpen by remember { mutableStateOf(false) }
             TextButton(
-                onClick = { rawOpen = !rawOpen },
-                modifier = Modifier.testTag("exchange-import-raw-toggle"),
+                onClick = { detailOpen = !detailOpen },
+                modifier = Modifier
+                    .semantics { stateDescription = detailStateText }
+                    .testTag("exchange-import-detail-toggle"),
             ) {
                 Text(
                     stringResource(
-                        if (rawOpen) R.string.exchange_import_raw_hide else R.string.exchange_import_raw_show,
+                        if (detailOpen) {
+                            R.string.exchange_import_failure_detail_hide
+                        } else {
+                            R.string.exchange_import_failure_detail_show
+                        },
                     ),
                 )
             }
-            if (rawOpen) {
-                Text(
-                    text = rawText,
-                    style = MaterialTheme.typography.bodySmall,
+            if (detailOpen) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 240.dp)
                         .verticalScroll(rememberScrollState())
-                        .testTag("exchange-import-raw-detail"),
-                )
+                        .testTag("exchange-import-failure-detail"),
+                ) {
+                    display?.let { d ->
+                        Text(
+                            text = stringResource(
+                                R.string.exchange_import_failure_detail_type_format,
+                                d.detailTypeName,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("exchange-import-detail-type"),
+                        )
+                        Text(
+                            text = stringResource(d.detailTextRes),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .testTag("exchange-import-detail-explanation"),
+                        )
+                    }
+                    if (info.framing != null) {
+                        ExchangeImportInfoRow(
+                            label = stringResource(R.string.exchange_recognized_framing),
+                            value = exchangeFramingText(info.framing),
+                            tag = "exchange-import-outcome-framing",
+                        )
+                    }
+                    if (info.intentSchemaVersion != null) {
+                        ExchangeImportInfoRow(
+                            label = stringResource(R.string.exchange_recognized_version),
+                            value = info.intentSchemaVersion,
+                            tag = "exchange-import-outcome-version",
+                        )
+                    }
+                    if (info.authoredEntryCount != null) {
+                        ExchangeImportInfoRow(
+                            label = stringResource(R.string.exchange_recognized_entries),
+                            value = info.authoredEntryCount.toString(),
+                            tag = "exchange-import-outcome-entries",
+                        )
+                    }
+                    if (rawText.isNotEmpty()) {
+                        Text(
+                            text = rawText,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("exchange-import-raw-detail"),
+                        )
+                    }
+                }
             }
-        }
-        Text(
-            text = stringResource(R.string.exchange_import_retry_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        OutlinedButton(onClick = holder::openImport, modifier = Modifier.padding(top = 8.dp)) {
-            Text(stringResource(R.string.exchange_import_retry))
         }
     }
 }
@@ -2373,34 +2485,14 @@ fun exchangeStatusTextResource(kind: ExchangeStatus.Kind): Int = when (kind) {
 @Composable
 private fun exchangeStatusText(kind: ExchangeStatus.Kind): String = stringResource(exchangeStatusTextResource(kind))
 
-@Composable
-private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (failure) {
-    is ExchangeImportFailure.Envelope -> when (failure.failure) {
-        ExchangeEnvelopeFailure.InputOversize -> stringResource(R.string.exchange_failure_input_oversize)
-        ExchangeEnvelopeFailure.FramingMissing -> stringResource(R.string.exchange_failure_framing_missing)
-        ExchangeEnvelopeFailure.FramingAmbiguous -> stringResource(R.string.exchange_failure_framing_ambiguous)
-        ExchangeEnvelopeFailure.FramingEmpty -> stringResource(R.string.exchange_failure_framing_empty)
-    }
-
-    // Spec 329: normalizer failures settle before the codec — their guidance
-    // is about the recognizable import formats, not the intent content.
-    is ExchangeImportFailure.Normalization -> when (failure.failure) {
-        ImportNormalizationFailure.AmbiguousBlocks ->
-            stringResource(R.string.exchange_failure_normalization_ambiguous)
-
-        ImportNormalizationFailure.UnrecognizedFormat ->
-            stringResource(R.string.exchange_failure_normalization_unrecognized)
-    }
-
-    is ExchangeImportFailure.Contract -> exchangeContractFailureText(failure.failure)
-}
-
 /**
  * The 14-class #204 contract failure mapping (spec 204 + spec 331 D-5 + spec
- * 337 D-8). The
- * exhaustive `when` is the compile-time guarantee that every contract class —
- * including the 17th unified outcome `SCOPE_MISMATCH`, raised by the run-side
- * scope binding gate — reaches the failure UI.
+ * 337 D-8). Since issue #373 the T-18 failure face goes through the
+ * remedy-projection table ([exchangeImportFailureDisplay]) instead — this
+ * mapping remains for its two run-side call sites (the selection surface's
+ * `scopeRejection` row and the `ScopeMismatchFailed` state, issues
+ * #369/#375) and the exhaustive `when` keeps its compile-time guarantee that
+ * every contract class reaches a failure UI.
  */
 @Composable
 fun exchangeContractFailureText(failure: IntentValidationFailure): String = when (failure) {

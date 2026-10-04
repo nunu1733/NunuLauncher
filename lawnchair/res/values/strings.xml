@@ -998,6 +998,9 @@
     <!-- Issue #138: supported release Settings route for the diagnostics journal export -->
     <string name="organizer_diagnostics_title">Organizer diagnostics</string>
     <string name="organizer_diagnostics_description">Export the privacy-safe organizer diagnostics journal to a file for support.</string>
+    <!-- Issue #373: the transient "recent import failure" auxiliary row, shown
+         only while the process-scoped holder keeps a recorded failure -->
+    <string name="organizer_diagnostics_recent_import_failure">Recent import failure</string>
     <string name="organizer_diagnostics_export_label">Export organizer diagnostics</string>
     <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
     <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
@@ -1395,8 +1398,14 @@
     <string name="exchange_import_from_file">From file</string>
     <string name="exchange_import_result_title">Import result</string>
     <string name="exchange_import_result_unknown">The reply could not be used.</string>
-    <string name="exchange_import_retry_hint">Ask the AI to resend the final JSON in a single ```json code block, then import again.</string>
-    <string name="exchange_import_retry">Import again</string>
+    <string name="exchange_import_failure_action_reimport">Import again</string>
+    <string name="exchange_import_failure_action_repost">Re-paste</string>
+    <string name="exchange_import_failure_action_recreate">Recreate the request</string>
+    <string name="exchange_import_interrupt">Stop</string>
+    <string name="exchange_import_open_diagnostics">Open diagnostics</string>
+    <string name="exchange_import_failure_detail_show">Show details</string>
+    <string name="exchange_import_failure_detail_hide">Hide details</string>
+    <string name="exchange_import_failure_detail_type_format">Type: %1$s</string>
     <string name="exchange_run_busy">An organization run is active. Import again after it finishes.</string>
     <string name="exchange_import_from_clipboard">Import from clipboard</string>
     <string name="exchange_import_fallback_toggle">Details / if the import does not work</string>
@@ -1411,11 +1420,29 @@
     <string name="exchange_framing_marker">Marker lines</string>
     <string name="exchange_framing_fenced_json">Fenced JSON block</string>
     <string name="exchange_framing_standalone_json">Standalone JSON</string>
-    <string name="exchange_import_raw_show">Show the imported text</string>
-    <string name="exchange_import_raw_hide">Hide the imported text</string>
     <string name="exchange_generation_input_not_ready">The current layout could not be captured. Try again in a moment.</string>
     <string name="exchange_generation_store_failure">Could not create the exchange session. Nothing was sent.</string>
     <string name="exchange_generation_oversize">The layout is too large for an exchange request.</string>
+    <string name="exchange_failure_primary_input_oversize">The reply is too large. Trim the surrounding text and import it again.</string>
+    <string name="exchange_failure_primary_framing_missing">No importable proposal was found in the reply. Ask the AI app to resend the final proposal, then re-paste it.</string>
+    <string name="exchange_failure_primary_framing_ambiguous">The reply contains multiple proposals. Ask the AI app to resend only the final one, then re-paste it.</string>
+    <string name="exchange_failure_primary_framing_empty">The proposal was empty. Ask the AI app to resend the final proposal, then re-paste it.</string>
+    <string name="exchange_failure_primary_normalization_ambiguous">The reply contains multiple code blocks. Copy only the proposal\'s JSON and re-paste it.</string>
+    <string name="exchange_failure_primary_normalization_unrecognized">No importable format was found. Ask the AI app to resend the final proposal, then re-paste it.</string>
+    <string name="exchange_failure_primary_schema_mismatch">The reply could not be read as a proposal. Ask the AI app to resend it, then re-paste it.</string>
+    <string name="exchange_failure_primary_export_mismatch">This reply was not addressed to the current request. Recreate the request.</string>
+    <string name="exchange_failure_primary_session_expired">The request has expired. Recreate the request.</string>
+    <string name="exchange_failure_primary_context_stale">The request is out of date. Recreate the request.</string>
+    <string name="exchange_failure_primary_oversize">The proposal body is too large. Request a smaller proposal, then re-paste it.</string>
+    <string name="exchange_failure_primary_unknown_ref">The proposal references items that are not in the request. Ask the AI app to resend it, then re-paste it.</string>
+    <string name="exchange_failure_primary_duplicate_ref">The proposal contains duplicate items. Ask the AI app to resend it, then re-paste it.</string>
+    <string name="exchange_failure_primary_incomplete_coverage">The proposal lists some items more than once. Ask the AI app to resend it, then re-paste it.</string>
+    <string name="exchange_failure_primary_invalid_enum">The proposal contains unknown values. Ask the AI app to resend it, then re-paste it.</string>
+    <string name="exchange_failure_primary_forbidden_content">The proposal contains prohibited instructions. Ask the AI app to resend it, then re-paste it.</string>
+    <string name="exchange_failure_primary_mobility_contradiction">The proposal tries to move items that cannot move. Ask the AI app to resend it, then re-paste it.</string>
+    <string name="exchange_failure_primary_capability_unsupported">The proposal uses unsupported features. Ask the AI app to resend it, then re-paste it.</string>
+    <string name="exchange_failure_primary_scope_mismatch">This reply does not match the current request. Recreate the request.</string>
+    <string name="exchange_failure_primary_unknown_category_ref">A category the reply refers to is currently unavailable. Recreate the request.</string>
     <string name="exchange_failure_input_oversize">The reply is too large. Remove the surrounding text and import again.</string>
     <string name="exchange_failure_framing_missing">The reply has no marked intent block. Ask the AI to resend the final JSON in a single ```json code block, or paste the JSON by itself.</string>
     <string name="exchange_failure_framing_ambiguous">The reply contains multiple marked blocks. Ask for a single final JSON.</string>

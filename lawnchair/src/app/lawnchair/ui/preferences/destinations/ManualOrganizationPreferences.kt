@@ -546,6 +546,7 @@ fun ManualOrganizationPreferences(
                             scopedLabels = scopedLabels,
                             onDiscardRequest = { pendingExchangeDiscard = true },
                             discardFocus = exchangeDiscardFocus,
+                            onOpenDiagnostics = onOpenDiagnostics,
                             clipboardTransport = { ctx: android.content.Context, text: String ->
                                 ClipboardExchangeTransport(ctx).copy(text)
                             },
@@ -983,6 +984,7 @@ fun ManualOrganizationPreferences(
                     holder = exchangeHolder,
                     onDiscardRequest = { pendingExchangeDiscard = true },
                     discardFocus = exchangeDiscardFocus,
+                    onOpenDiagnostics = onOpenDiagnostics,
                     clipboardTransport = { ctx: android.content.Context, text: String ->
                         ClipboardExchangeTransport(ctx).copy(text)
                     },

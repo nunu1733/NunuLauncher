@@ -22,6 +22,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
@@ -39,9 +40,11 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -146,7 +149,7 @@ import org.junit.runner.RunWith
 class OrganizerDiagnosticsRouteInstrumentationTest {
 
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     /**
      * Records SAF launch intents and delivers results through
@@ -183,17 +186,22 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
+    @Composable
+    private fun DiagnosticsFace(port: RecordingPort, registry: RecordingRegistry) {
+        LawnchairTheme {
+            CompositionLocalProvider(
+                LocalActivityResultRegistryOwner provides object : ActivityResultRegistryOwner {
+                    override val activityResultRegistry: ActivityResultRegistry get() = registry
+                },
+            ) {
+                OrganizerDiagnosticsPreferences(port = port)
+            }
+        }
+    }
+
     private fun composeScreen(port: RecordingPort, registry: RecordingRegistry) {
         composeRule.setContent {
-            LawnchairTheme {
-                CompositionLocalProvider(
-                    LocalActivityResultRegistryOwner provides object : ActivityResultRegistryOwner {
-                        override val activityResultRegistry: ActivityResultRegistry get() = registry
-                    },
-                ) {
-                    OrganizerDiagnosticsPreferences(port = port)
-                }
-            }
+            DiagnosticsFace(port = port, registry = registry)
         }
     }
 
@@ -229,6 +237,73 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         assertTrue("SAF intent must carry CATEGORY_OPENABLE", intent.hasCategory(Intent.CATEGORY_OPENABLE))
         assertEquals("application/jsonl", intent.type)
         assertEquals("Writer must stay idle until a result arrives", 0, port.snapshotCalls)
+    }
+
+    /**
+     * Issue #373 (IM-AC-04, diagnostics-face side of the 診断を開く means):
+     * while the process-scoped transient holder keeps a recorded failure, the
+     * face surfaces it as the 「直近の取り込み失敗」 auxiliary row — typed
+     * classification name + contract copy only. With no recording (fresh
+     * process / process death) the row is absent and the face is unchanged.
+     */
+    @Test
+    fun recentImportFailureRowMirrorsTheTransientHolder() {
+        val port = RecordingPort()
+        val registry = RecordingRegistry(context)
+        app.lawnchair.organizer.ui.exchange.ExchangeImportFailureDiagnostics.resetForTests()
+        composeScreen(port, registry)
+
+        // No recording: the face is exactly the current one (no aux row).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_diagnostics_description))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithTag("organizer-diagnostics-recent-import-failure")
+            .fetchSemanticsNodes().isEmpty()
+
+        // A recording from the failure face's 診断を開く: the row appears with
+        // the recorded classification name and explanation.
+        app.lawnchair.organizer.ui.exchange.ExchangeImportFailureDiagnostics.record(
+            app.lawnchair.organizer.ui.exchange.RecentImportFailure(
+                typeName = "CONTEXT_STALE",
+                explanation = context.getString(R.string.exchange_failure_context_stale),
+            ),
+        )
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure").assertIsDisplayed()
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure-type")
+            .assertTextContains("CONTEXT_STALE")
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure-explanation")
+            .assertTextContains(context.getString(R.string.exchange_failure_context_stale))
+
+        // The journal stays untouched: the auxiliary row is user-facing reason,
+        // not a diagnostics event (organizer-diagnostics.md §2 separation).
+        assertEquals("the aux row must not emit journal events", 0, port.snapshotCalls)
+
+        // IM-AC-04 lifecycle oracle (Activity recreation side, direct): the
+        // recording is process-scoped — an Activity recreation (configuration
+        // change etc.) is NOT a process death, so the auxiliary row survives
+        // it. (The process-death side is pinned structurally in
+        // ExchangeImportFailureDisplayTest#diagnosticsRecordingIsNotSerializable.)
+        composeRule.activityRule.scenario.recreate()
+        // Re-compose the face on the recreated activity — through the
+        // Activity's own setContent (the ComposeTestRule's setContent is a
+        // once-per-test contract), mirroring what re-entering the route does.
+        // The row must come from the SURVIVING holder recording.
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                DiagnosticsFace(port = port, registry = registry)
+            }
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("organizer-diagnostics-recent-import-failure")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure").assertIsDisplayed()
+        composeRule.onNodeWithTag("organizer-diagnostics-recent-import-failure-type")
+            .assertTextContains("CONTEXT_STALE")
+
+        app.lawnchair.organizer.ui.exchange.ExchangeImportFailureDiagnostics.resetForTests()
     }
 
     @Test
