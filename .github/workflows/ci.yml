@@ -181,7 +181,7 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v5
       - name: Run organizer unit tests
-        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*'
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*'
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6
