@@ -1,6 +1,6 @@
 ---
 issue: "#168"
-status: proposed
+status: implemented
 updated: 2026-08-29
 ---
 
