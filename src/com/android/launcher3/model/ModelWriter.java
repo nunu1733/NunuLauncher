@@ -724,6 +724,26 @@ public class ModelWriter {
     }
 
     /**
+     * Issue #497: destination-policy write for an auto-added install (ADR-0013
+     * target (b), ADR-0015 Decisions 7 and 8). ADR-0013 contract 4: nothing is
+     * mutated before admission — {@code validator} re-runs the pure planning
+     * function against the current state inside admission and returns the
+     * closed result (folder target / upstream default / reject); the item id
+     * is generated inside admission and the row INSERT, model sync and
+     * verifier complete in the same admission. For an upstream-default
+     * decision the placement comes from {@link WorkspaceItemSpaceFinder}
+     * inside admission (upstream semantics, including the first-screen
+     * exclusion under the top QSB and a newly allocated screen when every
+     * existing screen is full), so a fork-side scan is never duplicated and a
+     * new screen id never leaks before the write.
+     */
+    public void addPendingInstallForDirectEdit(ItemInfo payload,
+            DirectEditContract.DestinationValidator validator,
+            DirectEditContract.DestinationResultCallback callback) {
+        new DirectEditAddPendingInstallTask(payload, validator, callback).executeOnModelThread();
+    }
+
+    /**
      * Issue #450: undo of a direct-edit move ("ページへ移動…" / "フォルダへ入れる…").
      * Restores the recorded old placement in one row update (ADR-0013 contract
      * 5). The validator re-verifies inside admission that the item still sits
@@ -1007,6 +1027,148 @@ public class ModelWriter {
             notifyOtherCallbacks(c -> c.bindItemsModified(Collections.singletonList(item)));
             reportSuccess(item, oldContainer, oldScreenId, oldCellX, oldCellY,
                     oldSpanX, oldSpanY, oldRank, folderInfo.id, folderInfo, null);
+        }
+    }
+
+    /**
+     * Issue #497: admitted destination write. Unlike the other direct-edit
+     * tasks there is no existing row: the payload is the queue-built
+     * WorkspaceItemInfo, untouched until admission. The validator returns the
+     * closed result (folder target / upstream default / reject) and only a
+     * positive decision reaches the id allocation + INSERT.
+     */
+    private class DirectEditAddPendingInstallTask extends UpdateItemBaseRunnable {
+        private final ItemInfo mPayload;
+        private final DirectEditContract.DestinationValidator mValidator;
+        private final DirectEditContract.DestinationResultCallback mCallback;
+        // The superclass keeps its capture private; direct-edit tasks record
+        // their own evidence for the model consistency checks below.
+        private final StackTraceElement[] mEditStackTrace = new Throwable().getStackTrace();
+        private final ModelVerifier mEditVerifier = new ModelVerifier();
+
+        DirectEditAddPendingInstallTask(ItemInfo payload,
+                DirectEditContract.DestinationValidator validator,
+                DirectEditContract.DestinationResultCallback callback) {
+            mPayload = payload;
+            mValidator = validator;
+            mCallback = callback;
+        }
+
+        @Override
+        public void runImpl() {
+            DirectEditContract.DestinationDecision decision =
+                    mValidator.validate(buildDirectEditSnapshot());
+            if (decision.action == DirectEditContract.DEST_ACTION_REJECT) {
+                // Invariant failure: nothing is written, no item is dropped
+                // silently (typed failure only).
+                reportResult(false, 0, 0, 0, 0, 0,
+                        DirectEditContract.DEST_NO_SCREEN_ID, decision.reason);
+                return;
+            }
+
+            int container;
+            int screenId;
+            int cellX;
+            int cellY;
+            int rank;
+            int newScreenId = DirectEditContract.DEST_NO_SCREEN_ID;
+            if (decision.action == DirectEditContract.DEST_ACTION_FOLDER) {
+                // Folder append: container-placed child (folder page/cell are
+                // derived at display), tail rank — existing children's ranks
+                // stay untouched (ADR-0015 Decision 6).
+                container = decision.folderId;
+                screenId = 0;
+                cellX = -1;
+                cellY = -1;
+                rank = folderChildCount(decision.folderId);
+            } else {
+                // Upstream default: the same WorkspaceItemSpaceFinder semantics
+                // as the stock path, run inside admission over the live model
+                // state with local screen lists, so a newly allocated screen id
+                // and the list updates never precede the write.
+                IntArray workspaceScreens = mBgDataModel.collectWorkspaceScreens();
+                int screensBefore = workspaceScreens.size();
+                IntArray addedScreens = new IntArray();
+                LauncherAppState app = LauncherAppState.getInstance(mContext);
+                int[] coords;
+                synchronized (mBgDataModel) {
+                    coords = new WorkspaceItemSpaceFinder().findSpaceForItem(app, mBgDataModel,
+                            workspaceScreens, addedScreens, mPayload.spanX, mPayload.spanY);
+                }
+                if (workspaceScreens.size() > screensBefore) {
+                    newScreenId = workspaceScreens.get(workspaceScreens.size() - 1);
+                }
+                container = Favorites.CONTAINER_DESKTOP;
+                screenId = coords[0];
+                cellX = coords[1];
+                cellY = coords[2];
+                rank = 0;
+            }
+
+            // First model/DB changes happen here, inside admission (contract
+            // 4). The payload is not bound to the model yet, so assigning its
+            // fields cannot leave a model/DB mismatch on a failed insert: the
+            // row insert is atomic and the payload is discarded on failure.
+            mPayload.id = mModel.getModelDbController().generateNewItemId();
+            mPayload.container = container;
+            mPayload.screenId = screenId;
+            mPayload.cellX = cellX;
+            mPayload.cellY = cellY;
+            mPayload.rank = rank;
+            final ContentWriter writer = new ContentWriter(mContext);
+            mPayload.onAddToDatabase(writer);
+            writer.put(Favorites._ID, mPayload.id);
+            try {
+                mModel.getModelDbController().insert(
+                        Favorites.TABLE_NAME, writer.getValues(mContext));
+            } catch (Exception e) {
+                FileLog.e(TAG, "destination-policy add failed; nothing changed", e);
+                reportResult(false, container, screenId, cellX, cellY, rank,
+                        DirectEditContract.DEST_NO_SCREEN_ID,
+                        DirectEditContract.FAIL_WRITE_FAILED);
+                return;
+            }
+
+            synchronized (mBgDataModel) {
+                checkItemInfoLocked(mPayload.id, mPayload, mEditStackTrace);
+                mBgDataModel.addItem(mContext, mPayload, true);
+                if (container != Favorites.CONTAINER_DESKTOP) {
+                    // Silent folder membership add (the loader path's
+                    // bookkeeping); the UI-side FolderIcon refresh happens in
+                    // the result callback on the UI thread.
+                    CollectionInfo collection = mBgDataModel.collections.get(container);
+                    if (collection instanceof FolderInfo folder) {
+                        folder.getContents().add(mPayload);
+                    }
+                }
+                mEditVerifier.verifyModel();
+            }
+            updateItemArrays(mPayload, mPayload.id);
+            reportResult(true, container, screenId, cellX, cellY, rank, newScreenId,
+                    decision.action == DirectEditContract.DEST_ACTION_DEFAULT
+                            ? decision.reason : null);
+        }
+
+        private int folderChildCount(int folderId) {
+            synchronized (mBgDataModel) {
+                CollectionInfo collection = mBgDataModel.collections.get(folderId);
+                if (collection instanceof FolderInfo folder) {
+                    return folder.getContents().size();
+                }
+                int count = 0;
+                for (ItemInfo item : mBgDataModel.itemsIdMap) {
+                    if (item.container == folderId) {
+                        count++;
+                    }
+                }
+                return count;
+            }
+        }
+
+        private void reportResult(boolean success, int container, int screenId,
+                int cellX, int cellY, int rank, int newScreenId, String reason) {
+            mCallback.onResult(success, container, screenId, cellX, cellY, rank,
+                    newScreenId, reason);
         }
     }
 

@@ -15,8 +15,6 @@
  */
 package com.android.launcher3.model;
 
-import static com.android.launcher3.LauncherSettings.Favorites.DESKTOP_ICON_FLAG;
-
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.LauncherActivityInfo;
@@ -28,10 +26,12 @@ import android.util.Pair;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.android.launcher3.LauncherModel.CallbackTask;
 import com.android.launcher3.LauncherModel.ModelUpdateTask;
 import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.icons.IconCache;
 import com.android.launcher3.logging.FileLog;
+import com.android.launcher3.model.BgDataModel.Callbacks;
 import com.android.launcher3.model.data.AppInfo;
 import com.android.launcher3.model.data.CollectionInfo;
 import com.android.launcher3.model.data.ItemInfo;
@@ -41,11 +41,11 @@ import com.android.launcher3.model.data.WorkspaceItemFactory;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
 import com.android.launcher3.pm.InstallSessionHelper;
 import com.android.launcher3.pm.PackageInstallInfo;
-import com.android.launcher3.util.ApplicationInfoWrapper;
 import com.android.launcher3.util.IntArray;
 import com.android.launcher3.util.PackageManagerHelper;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -64,6 +64,13 @@ public class AddWorkspaceItemsTask implements ModelUpdateTask {
 
     /**
      * @param itemList items to add on the workspace
+     */
+    public AddWorkspaceItemsTask(@NonNull final List<Pair<ItemInfo, Object>> itemList) {
+        this(itemList, new WorkspaceItemSpaceFinder());
+    }
+
+    /**
+     * @param itemList        items to add on the workspace
      * @param itemSpaceFinder inject WorkspaceItemSpaceFinder dependency for testing
      */
     public AddWorkspaceItemsTask(@NonNull final List<Pair<ItemInfo, Object>> itemList,
@@ -71,7 +78,6 @@ public class AddWorkspaceItemsTask implements ModelUpdateTask {
         mItemList = itemList;
         mItemSpaceFinder = itemSpaceFinder;
     }
-
 
     @Override
     public void execute(@NonNull ModelTaskController taskController, @NonNull BgDataModel dataModel,
@@ -82,23 +88,17 @@ public class AddWorkspaceItemsTask implements ModelUpdateTask {
 
         final ArrayList<ItemInfo> addedItemsFinal = new ArrayList<>();
         final IntArray addedWorkspaceScreensFinal = new IntArray();
-        final Context context = taskController.getContext();
+        final Context context = taskController.getApp().getContext();
 
         synchronized (dataModel) {
-            IntArray workspaceScreens = dataModel.itemsIdMap.collectWorkspaceScreens(context);
+            IntArray workspaceScreens = dataModel.collectWorkspaceScreens();
 
-            List<ItemInfo> filteredItems = new ArrayList<>();
+            List<Pair<ItemInfo, Object>> filteredItems = new ArrayList<>();
             for (Pair<ItemInfo, Object> entry : mItemList) {
                 ItemInfo item = entry.first;
                 if (item.itemType == LauncherSettings.Favorites.ITEM_TYPE_APPLICATION) {
                     // Short-circuit this logic if the icon exists somewhere on the workspace
                     if (shortcutExists(dataModel, item.getIntent(), item.user)) {
-                        continue;
-                    }
-
-                    // b/139663018 Short-circuit this logic if the icon is a system app
-                    if (new ApplicationInfoWrapper(context,
-                            Objects.requireNonNull(item.getIntent())).isSystem()) {
                         continue;
                     }
 
@@ -114,20 +114,31 @@ public class AddWorkspaceItemsTask implements ModelUpdateTask {
                     }
                 }
                 if (item != null) {
-                    filteredItems.add(item);
+                    // Issue #497: carry the flush-time destination route (if
+                    // any) alongside the filtered item.
+                    filteredItems.add(Pair.create(item, entry.second));
                 }
             }
 
-            InstallSessionHelper packageInstaller =
-                    InstallSessionHelper.INSTANCE.get(context);
+            InstallSessionHelper packageInstaller = InstallSessionHelper.INSTANCE.get(context);
             LauncherApps launcherApps = context.getSystemService(LauncherApps.class);
 
-            ModelWriter writer = taskController.getModelWriter();
-            for (ItemInfo item : filteredItems) {
-                // Find appropriate space for the item.
-                int[] coords = mItemSpaceFinder.findSpaceForItem(workspaceScreens,
-                        addedWorkspaceScreensFinal, addedItemsFinal, item.spanX, item.spanY, context);
-                int screenId = coords[0];
+            for (Pair<ItemInfo, Object> filteredEntry : filteredItems) {
+                ItemInfo item = filteredEntry.first;
+                Object carried = filteredEntry.second;
+                DirectEditContract.DestinationRoute destinationRoute =
+                        carried instanceof DirectEditContract.DestinationRoute
+                                ? (DirectEditContract.DestinationRoute) carried : null;
+                boolean policyRoute = destinationRoute != null && destinationRoute.usePolicyWrite;
+                // Issue #497: policy-routed items skip the flush-time space
+                // scan — the placement (folder target or upstream default) is
+                // decided inside MODEL_WRITER admission, so a new screen id is
+                // never allocated before admission (contract 4).
+                int[] coords = policyRoute ? null
+                        : mItemSpaceFinder.findSpaceForItem(taskController.getApp(), dataModel,
+                                workspaceScreens, addedWorkspaceScreensFinal,
+                                item.spanX, item.spanY);
+                int screenId = coords == null ? 0 : coords[0];
 
                 ItemInfo itemInfo;
                 if (item instanceof WorkspaceItemInfo || item instanceof CollectionInfo
@@ -185,34 +196,98 @@ public class AddWorkspaceItemsTask implements ModelUpdateTask {
                             continue;
                         }
 
-                        IconCache cache = taskController.getIconCache();
+                        IconCache cache = taskController.getApp().getIconCache();
                         WorkspaceItemInfo wii = (WorkspaceItemInfo) itemInfo;
                         wii.title = "";
                         wii.bitmap = cache.getDefaultIcon(item.user);
-                        cache.getTitleAndIcon(wii, DESKTOP_ICON_FLAG);
+                        cache.getTitleAndIcon(wii,
+                                ((WorkspaceItemInfo) itemInfo).usingLowResIcon());
                     }
                 }
 
-                // Save the WorkspaceItemInfo for binding in the workspace
-                writer.updateItemInfoProps(itemInfo,
+                if (policyRoute) {
+                    // Issue #497: destination-policy route (ADR-0013 target
+                    // (b), ADR-0015 Decisions 7-9). The closed result and the
+                    // first model/DB change complete inside MODEL_WRITER
+                    // admission; the bind happens exactly once after the
+                    // writer reports success — never from addedItemsFinal,
+                    // which would bind before admission when deferred.
+                    final ItemInfo payload = itemInfo;
+                    final DirectEditContract.DestinationRoute route = destinationRoute;
+                    DirectEditContract.DestinationResultCallback callback =
+                            new DirectEditContract.DestinationResultCallback() {
+                                @Override
+                                public void onResult(boolean success, int resultContainer,
+                                        int resultScreenId, int resultCellX, int resultCellY,
+                                        int resultRank, int newScreenId, String reason) {
+                                    if (route.callback != null) {
+                                        route.callback.onResult(success, resultContainer,
+                                                resultScreenId, resultCellX, resultCellY,
+                                                resultRank, newScreenId, reason);
+                                    }
+                                    if (success
+                                            && resultContainer == LauncherSettings.Favorites.CONTAINER_DESKTOP) {
+                                        // Single post-admission bind: the newly
+                                        // allocated screen (if any) comes first
+                                        // so the page exists before the icon.
+                                        IntArray newScreens = new IntArray();
+                                        if (newScreenId != DirectEditContract.DEST_NO_SCREEN_ID) {
+                                            newScreens.add(newScreenId);
+                                        }
+                                        final ItemInfo boundItem = payload;
+                                        taskController.scheduleCallbackTask(callbacks ->
+                                                callbacks.bindAppsAdded(newScreens,
+                                                        new ArrayList<>(),
+                                                        new ArrayList<>(Collections.singletonList(boundItem))));
+                                    }
+                                }
+                            };
+                    taskController.getModelWriter().addPendingInstallForDirectEdit(
+                            payload, route.validator, callback);
+                    FileLog.d(LOG, "Adding item info via destination policy: " + itemInfo);
+                    continue;
+                }
+
+                // Add the shortcut to the db
+                taskController.getModelWriter().addItemToDatabase(itemInfo,
                         LauncherSettings.Favorites.CONTAINER_DESKTOP, screenId,
                         coords[1], coords[2]);
+
+                // Save the WorkspaceItemInfo for binding in the workspace
                 addedItemsFinal.add(itemInfo);
 
                 // log bitmap and label
                 FileLog.d(LOG, "Adding item info to workspace: " + itemInfo);
             }
-            // Add the shortcut to the db
-            writer.addItemsToDatabase(addedItemsFinal);
         }
 
         if (!addedItemsFinal.isEmpty()) {
-            taskController.scheduleCallbackTask(cb -> cb.bindItemsAdded(addedItemsFinal));
+            taskController.scheduleCallbackTask(new CallbackTask() {
+                @Override
+                public void execute(@NonNull Callbacks callbacks) {
+                    final ArrayList<ItemInfo> addAnimated = new ArrayList<>();
+                    final ArrayList<ItemInfo> addNotAnimated = new ArrayList<>();
+                    if (!addedItemsFinal.isEmpty()) {
+                        ItemInfo info = addedItemsFinal.get(addedItemsFinal.size() - 1);
+                        int lastScreenId = info.screenId;
+                        for (ItemInfo i : addedItemsFinal) {
+                            if (i.screenId == lastScreenId) {
+                                addAnimated.add(i);
+                            } else {
+                                addNotAnimated.add(i);
+                            }
+                        }
+                    }
+                    callbacks.bindAppsAdded(addedWorkspaceScreensFinal,
+                            addNotAnimated, addAnimated);
+                }
+            });
         }
     }
 
     /**
-     * Returns true if the shortcuts already exists on the workspace. This must be called after
+     * Returns true if the shortcuts already exists on the workspace. This must be
+     * called after
      * the workspace has been loaded. We identify a shortcut by its intent.
      */
     protected boolean shortcutExists(@NonNull final BgDataModel dataModel,
