@@ -14,7 +14,7 @@ import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
-import app.lawnchair.organizer.application.lifecycle.ReconciliationPublicResult
+import app.lawnchair.organizer.application.protocol.ReconciliationPublicResult
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.application.protocol.FaultInjector
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule

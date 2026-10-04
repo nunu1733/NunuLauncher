@@ -1,13 +1,12 @@
 package app.lawnchair.organizer.application.protocol
 
-import app.lawnchair.organizer.application.lifecycle.LifecycleReconciler
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
-import app.lawnchair.organizer.application.lifecycle.ReconciliationPublicResult
 import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.AuthoritativeState
 import app.lawnchair.organizer.application.public.RecoveryFailure
 import app.lawnchair.organizer.application.public.RecoveryResult
+import app.lawnchair.organizer.application.store.RecoveryRecordCodec
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.model.RunEvent
 import app.lawnchair.organizer.diagnostics.projection.ReconciliationProjection
@@ -281,7 +280,7 @@ internal class RestartReconciler(
             session.advance(record.pointId, LifecycleState.CORRUPT)
             return unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
         }
-        if (record.formatVersion != LifecycleReconciler.SUPPORTED_FORMAT) {
+        if (record.formatVersion != RecoveryRecordCodec.RECORD_FORMAT_VERSION) {
             // Spec 13 "Recovery record and lifecycle": unsupported version ->
             // INCOMPATIBLE (final). markIncompatible is the store seam whose
             // read-back does not require codec decode (the format stays
@@ -311,76 +310,61 @@ internal class RestartReconciler(
         lease: LeaseHandle,
     ): ReconciliationPublicResult {
         val authoritative = classify(record)
-        return when (record.lifecycle) {
-            LifecycleState.CREATING -> when (authoritative) {
-                AuthoritativeClass.PRE_STATE -> {
-                    if (!session.advance(record.pointId, LifecycleState.READY) ||
-                        !session.pruneUnused(record.pointId)
+        // Issue #377: the single decision table (path context RESTART) owns the
+        // (lifecycle × class) → (transition, prune, surface) mapping; this
+        // protocol layer keeps the side effects (store writes, reload,
+        // verification, recovery resume).
+        val decision = ReconciliationDecisionTable.decideRestart(record.lifecycle, authoritative)
+        return when (decision.surface) {
+            ReconciliationDecision.Surface.SILENT -> {
+                if (decision.pruneRecord) {
+                    if (decision.nextLifecycle != record.lifecycle &&
+                        !session.advance(record.pointId, decision.nextLifecycle)
                     ) {
+                        return unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
+                    }
+                    if (!session.pruneUnused(record.pointId)) {
                         unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
                     } else {
                         ReconciliationPublicResult.SilentPrune
                     }
+                } else {
+                    ReconciliationPublicResult.SilentAdvance
                 }
+            }
 
-                else -> {
+            ReconciliationDecision.Surface.ROLLED_BACK_RESTART -> {
+                val advanced = session.advance(record.pointId, decision.nextLifecycle)
+                val pruned = advanced && session.pruneUnused(record.pointId)
+                if (!advanced || !pruned) {
+                    unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
+                } else {
+                    ReconciliationPublicResult.ResumeApply(
+                        ApplyResult.RolledBack(record.runId, ApplyFailure.COMMIT_OUTCOME_UNKNOWN),
+                    )
+                }
+            }
+
+            ReconciliationDecision.Surface.UNRESOLVED_RESTART -> when (decision.nextLifecycle) {
+                LifecycleState.CORRUPT -> {
                     session.advance(record.pointId, LifecycleState.CORRUPT)
                     unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
                 }
+
+                else -> recover(session, record, lease, ApplyFailure.COMMIT_OUTCOME_UNKNOWN)
             }
 
-            LifecycleState.READY -> if (authoritative == AuthoritativeClass.PRE_STATE) {
-                if (!session.pruneUnused(record.pointId)) {
-                    unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
-                } else {
-                    ReconciliationPublicResult.SilentPrune
-                }
-            } else {
+            // Adjudicated READY row: the lifecycle stays READY (READY ->
+            // RESTORING is illegal) and the fail-closed unresolved surfaces
+            // directly without entering the recovery path.
+            ReconciliationDecision.Surface.UNRESOLVED_KEEP ->
                 unresolved(record, ApplyFailure.COMMIT_OUTCOME_UNKNOWN)
-            }
 
-            LifecycleState.APPLYING -> when (authoritative) {
-                AuthoritativeClass.PRE_STATE -> {
-                    if (!session.advance(record.pointId, LifecycleState.READY) ||
-                        !session.pruneUnused(record.pointId)
-                    ) {
-                        unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
-                    } else {
-                        ReconciliationPublicResult.SilentPrune
-                    }
-                }
+            ReconciliationDecision.Surface.CONTINUE_COMMITTED_APPLY -> finishCommittedApply(session, record, lease)
 
-                AuthoritativeClass.INTENDED_POST_STATE -> finishCommittedApply(session, record, lease)
+            ReconciliationDecision.Surface.COMPLETE_RESTORE -> finishRestored(session, record, lease)
 
-                else -> recover(session, record, lease, ApplyFailure.COMMIT_OUTCOME_UNKNOWN)
-            }
-
-            LifecycleState.COMMITTED_UNVERIFIED -> when (authoritative) {
-                AuthoritativeClass.INTENDED_POST_STATE -> finishCommittedApply(session, record, lease)
-
-                AuthoritativeClass.PRE_STATE -> {
-                    if (!session.advance(record.pointId, LifecycleState.READY) ||
-                        !session.pruneUnused(record.pointId)
-                    ) {
-                        unresolved(record, ApplyFailure.RECOVERY_STORE_FAILED)
-                    } else {
-                        ReconciliationPublicResult.ResumeApply(
-                            ApplyResult.RolledBack(record.runId, ApplyFailure.COMMIT_OUTCOME_UNKNOWN),
-                        )
-                    }
-                }
-
-                else -> recover(session, record, lease, ApplyFailure.COMMIT_OUTCOME_UNKNOWN)
-            }
-
-            LifecycleState.RESTORING -> when (authoritative) {
-                AuthoritativeClass.PRE_STATE, AuthoritativeClass.RECOVERY_TARGET -> finishRestored(session, record, lease)
-                else -> recover(session, record, lease, ApplyFailure.COMMIT_OUTCOME_UNKNOWN)
-            }
-
-            LifecycleState.VERIFIED -> ReconciliationPublicResult.SilentAdvance
-
-            else -> ReconciliationPublicResult.SilentAdvance
+            else -> recover(session, record, lease, ApplyFailure.COMMIT_OUTCOME_UNKNOWN)
         }
     }
 
@@ -531,8 +515,3 @@ internal class RestartReconciler(
         ),
     )
 }
-
-fun ReconciliationPublicResult.asApplyResultOrNull(): ApplyResult? = (this as? ReconciliationPublicResult.ResumeApply)?.outcome
-    ?: (this as? ReconciliationPublicResult.Unresolved)?.outcome
-
-fun ReconciliationPublicResult.asRecoveryResultOrNull(): RecoveryResult? = (this as? ReconciliationPublicResult.ResumeRecovery)?.outcome

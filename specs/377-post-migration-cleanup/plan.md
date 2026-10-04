@@ -156,12 +156,20 @@ risk label（`risk: layout-data`）は適用条件1の別経路であり、付�
 - [ ] **high-risk path（`organizer/application/**`）を変更したPRについて、検証対象head SHAの`CI / final-status` greenと`docs/assessment/pr-<PR>-<slug>.md`独立audit記録の両方をmerge前に揃えた**（risk labelの有無と独立な必須要件）。
 - [ ] specのAC-4評価記録を残した。
 
+## Inventory result（実装時に確定。base `f9c95272d4` = main @ PR #409 merge、2026-09-22）
+
+Gating 1〜4すべて充足（#407はPR #409で解決・merge済み）。Gating 2の差分照合: `c52d5fcc15..f9c95272d4`のorganizer系差分は#407実装（`LifecycleState.kt` / `RestartReconciler.kt` / `Ports.kt` / `RecoveryStore.kt` + test）のみで、Current evidenceのmatrix・裁定に影響する変更はない（format gate行は#409どおりINCOMPATIBLE遷移へ修正済み）。
+
+| 領域 | 分類 | 根拠 |
+|---|---|---|
+| reconciliation統合 | **統合（実施）** | Current evidenceの裁定どおり。生存実装（B/C）間の行差異は規則(b)（path context依存）。実装A（pure `LifecycleReconciler`）はproduction到達不能（`SUPPORTED_FORMAT`定数参照のみ）であり、その削除は挙動変更ではない。統合形状: **単一純分類table `ReconciliationDecisionTable`（path context RESTART / IN_FLIGHT_APPLY / IN_FLIGHT_RECOVERY を明示入力）を新設し、生存3実装（`RestartReconciler.reconcileWithLease` / `ApplyProtocol.classifyApplyOutcome` / `RecoveryProtocol`）を委譲**。副作用（advance/prune/quarantine・reload・検証・recovery resume）とtyped結果組立（runId/pointId含む）は各protocol層に保持。共有型（`ReconciliationPublicResult` + 変換helper）をprotocol層の`ReconciliationPublicResult.kt`へ移動、`LifecycleReconciler.kt`とそのtestを削除、`SUPPORTED_FORMAT`のproduction参照3箇所はformat所有者`RecoveryRecordCodec.RECORD_FORMAT_VERSION`（同一値2）へ統一。**history: characterization-only commit（裁定済みmatrix全行を生存production seam経由で統合前に固定。restart path 13本〔CREATING 2・READY 2・APPLYING 3・COMMITTED_UNVERIFIED 3・RESTORING 2・VERIFIED 1。READY×非PRE_STATEはfailure型direct assert込み〕+ in-flight apply 3行・in-flight recovery 2行を実`ApplyProtocol`/`RecoveryProtocol` seam経由で固定。NEITHER/REVIEWED_CURRENT行はwrite失敗+`FakeLayoutWriter.classificationDigestOverride`（test adapterへのcharacterization用hook、production変更なし）で実class到達を保証。旧実装に対してgreen確認済み）→ 統合commit（table新設・3 path wiring・A削除。characterization seam oracle群を修正なし〔機械的import/定数参照の追従のみ〕で維持・通過。table直接assertは補助oracle `ReconciliationDecisionTableContractTest`として別fileで追加）**。ADR不要求: 統合先選択は「生存実装が正本・到達不能実装の削除」と自明であり、3条件（変更困難・理由がコードから分からない・実際の選択肢があった）を満たさない |
+| `RecoveryPreviewSummary` seam簡素化 | **見送り（記録）** | `RecoveryPreviewResult.Restorable`の`summary` fieldはspec 84（accepted）が明示する公開seam契約（RP-AC-02がexact fieldsをassert）。公開shape不変の内部簡素化の候補（生成箇所`RecoveryPreviewProtocol.kt:100`の定数組立整理）は、閉域語彙サイズ1の型自体がspec 84契約である以上、実装の簡素化余地がfield整理程度に留まり、削除利益（1型・1生成箇所）が契約変更リスク（spec 84改訂・consumers更新）を下回る。**見送り**。語彙サイズ1の問題の解消（`summary` field廃止等）はspec 84改訂を要求する別Issueで行うべき（本Issueでは起案しない。利益が小さく、需要が生じた時点で起票で足りる） |
+| export usage重複（envelope `usageSignals` + item毎`usage`） | **見送り（記録）** | spec 204（accepted）は両者を**意図的に別物として定義**: `usageSignals`はenvelope-levelの#203 bucket projection（L92/L150、stale判定入力から除外）、item毎`usage`はper-item projection（L152-158、rank universe外はfieldごと省略）。`usageAccess`はitemに紐付かない集計値として`usageSignals`から意図的に除外（L158）。重複ではなく補完関係であり、解消にはspec 204改訂（schema v5・privacy評価込み）が前提。本Issueでは**見送り**。schema v5改訂を要するため別起票が必要（disposition §11どおり。実施の需要が生じた時点でspec 204改訂Issueを起票） |
+| freeze残骸（#374/#375/#376後） | **残骸なし（維持）** | #374/#375/#376のmerge後、`importAttemptActive`による個別無効化は2箇所（`ManualOrganizationPreferences.kt:547-568`のstart row freeze、`ExchangeFlowUi.kt:968`の`importAttemptActive`定義）のみであり、いずれもspec 328競合affordanceの現行契約（freeze中のstart不受理）として生存中。status card＋T-18中心への再設計で obsolete になった個別無効化は存在しない（`exchange_start_frozen_import`・`exchange_scoped_freeze_notice`とも現行参照あり）。清掃対象0件 |
+| 旧UX test oracle | **対応済み（削除対象0件）** | #368/#369/#373/#374の各PRが obsolete 理由と対応を記録済み（例: PR #396 IM-AC-08でspec 348 content oracleを手段別primary copy 20種へ更新、旧`exchange_import_retry_hint`等は削除済み）。`exchangeContractFailureText`の現行call siteは#369/#375所有の2箇所のみ（PR #396記録どおり）。残存testは現行契約（手段別primary copy・`exchange_failure_*`詳細展開）を固定しており、旧UX固定の残りはない。追加で削除すべきoracleは0件 |
+| organizer系strings | **削除1件（実施）** | 計上方法の確定: organizer-family（`organizer*` / `exchange*` / `manual_organization*` / `recovery*` / `layout_*` prefix、string+plurals）471項目（values。values-jaは対で管理）。監査「約407」はprefix計上の参考値として乖離のまま記録（family定義により471が正）。未使用判定scanはcode（`lawnchair/src` + `src` launcher3側 + `tests`）と非code参照（res内XML、manifest）の双方を対象。結果: **未使用は`manual_organization_summary` 1件のみ**（en/ja対）。#370（spec 370、merge `23e742095a`）がHomeScreenPreferences直行rowを廃止した際に参照が消失し、spec 370が「resource cleanupは#377所有」と明示していた項目。削除の3条件を満たす（production参照0件・契約値でない・本記録が根拠） |
+
 ## Unverified areas（本planが現時点で検証していない範囲。推測で埋めない）
 
-- `c52d5fcc15`より後の`origin/main`追加変更（実装着手時にGating 2で再照合する）。
-- freeze残骸の実際の残り方（#374/#375/#376 merge後の`ui/exchange/`配下の個別無効化のうち、再設計後も不要なものの確定）と文言変更後のstrings集合。
-- organizer系stringsの正確な計上方法と実未使用数（監査「約407」と簡易計数の乖離の解消。`c52d5fcc15`での再計上含めinventoryで確定）。
-- 統合後の単一実装の位置・形状の確定（Current evidenceの裁定を入力とした実装設計）と、ADR要求の3条件該当性。
-- `RecoveryPreviewSummary`公開shape不変の内部簡素化の実施 / 見送り判断。
-- export usage重複がschema v5（spec 204改訂）を要するか。
-- 依存IssueのPRで記録されたobsolete理由一覧の内容の再確認（inventory入力）。
+- `f9c95272d4`より後の`origin/main`追加変更（PR作成時にGating 2で再照合する）。
+- instrumented emulator上での#407系oracle（RecoveryStoreLifecycleTest）はCI laneでの実行結果をmerge時の証拠とする（ローカルemulator実行はPR #409で実施済み）。

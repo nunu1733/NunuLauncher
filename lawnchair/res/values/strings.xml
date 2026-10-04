@@ -1037,7 +1037,6 @@
     <string name="organizer_usage_access_jit_settings_unavailable">Couldn\'t open the system usage access settings. You can keep going without granting.</string>
     <!-- Issue #52: explicit manual full organization -->
     <string name="manual_organization_title">Organize home layout</string>
-    <string name="manual_organization_summary">Review a proposed home layout before applying it.</string>
     <string name="manual_organization_explainer">Review proposed changes before anything is applied. Your current layout is never changed automatically.</string>
     <string name="manual_organization_strategy_section">Organization strategy</string>
     <!-- Issue #368: strategy materials surface (T-05), reached only from the
