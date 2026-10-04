@@ -1037,6 +1037,23 @@
     <string name="manual_organization_recapture">Capture and review again</string>
     <string name="manual_organization_recapture_summary">Captures your current home layout and prepares a new proposal to review.</string>
     <string name="manual_organization_apply_success">Organization was applied and verified.</string>
+    <!-- Issue #231: completed-tense counts on the verified success surface -->
+    <plurals name="manual_organization_applied_moved_count">
+        <item quantity="one">%1$d placement moved</item>
+        <item quantity="other">%1$d placements moved</item>
+    </plurals>
+    <plurals name="manual_organization_applied_preserved_count">
+        <item quantity="one">%1$d placement was preserved</item>
+        <item quantity="other">%1$d placements were preserved</item>
+    </plurals>
+    <plurals name="manual_organization_applied_new_folders_count">
+        <item quantity="one">%1$d new folder was created</item>
+        <item quantity="other">%1$d new folders were created</item>
+    </plurals>
+    <plurals name="manual_organization_applied_new_pages_count">
+        <item quantity="one">%1$d new home screen page was created</item>
+        <item quantity="other">%1$d new home screen pages were created</item>
+    </plurals>
     <string name="manual_organization_apply_rejected">Organization was not applied.</string>
     <string name="manual_organization_apply_rolled_back">The attempted organization was rolled back. Your saved layout remains in place.</string>
     <string name="manual_organization_apply_recovered">The attempted organization could not finish. Your saved layout was restored.</string>

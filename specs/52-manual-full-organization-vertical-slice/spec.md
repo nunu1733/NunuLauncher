@@ -135,6 +135,8 @@ The result surface maps all accepted `ApplyResult` variants to distinct, localiz
 
 Issue #230: a `Restorable` recovery confirmation also states the restore target — the home layout as it was before the organization reviewed on this screen — and renders the change counts of the correlated verified apply as **apply history** (what the last organization did), never as a predicted restore diff. The history line renders only while the preview's `RecoveryPointId` matches the `ApplyResult.Applied.pointId` retained for this run (same-process pairing); on summary absence or pointId mismatch it is omitted and confirm/cancel remain fully available. Cancelling the preview stays zero-write.
 
+Issue #231: on the verified-success surface (`State.Applied` with `ApplyResult.Applied`), the moved/preserved/new-folder/new-page count lines render in the **completed tense** (applied-result plurals), never in the proposal's future tense (`will move` / `will be preserved`) — a completed apply must not read as a pending proposal. The row order and interleaving with reason/warning/constraint lines are unchanged, and non-success results keep the existing proposal-summary rendering. See [spec 231](../231-applied-result-outcome/spec.md).
+
 | Application outcome | Required manual-run UI behavior |
 |---|---|
 | `NoChanges` | State that no changes were applied; no recovery action is shown for this run. |

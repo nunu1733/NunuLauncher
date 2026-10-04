@@ -333,7 +333,13 @@ fun ManualOrganizationPreferences(
                             focusRequester = focusRequester,
                         )
                     }
-                    summaryItems(currentState.summary)
+                    if (currentState.result is ApplyResult.Applied) {
+                        // Issue #231: a verified apply reports its counts in the
+                        // completed tense, never in the proposal's future tense.
+                        appliedResultItems(currentState.summary)
+                    } else {
+                        summaryItems(currentState.summary)
+                    }
                     if (currentState.result is ApplyResult.Applied) {
                         // Issue #209: the safety net must read as a control,
                         // not as a caption row among the summary lines.
@@ -748,6 +754,73 @@ private fun androidx.compose.foundation.lazy.LazyListScope.changeCountItems(
     summary.warningCounts.forEach { (code, count) ->
         item { SummaryText(stringResource(warningString(code), count)) }
     }
+}
+
+/**
+ * Issue #231: the verified-apply result surface. Same row order and
+ * interleaving as [changeCountItems], but the four count lines use the new
+ * past-tense plurals so a completed apply never reads as a pending proposal.
+ * The planning-failure breakdowns iterate unchanged even though they are
+ * always empty on this surface (`State.Applied` is reachable only from a
+ * `Planned` outcome), keeping row parity if the planner contract ever carries
+ * unplaced information (spec 52 requires applied/preserved/unplaced counts).
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.appliedResultItems(
+    summary: ManualOrganizationRun.Summary,
+) {
+    contextItems(summary)
+    item {
+        SummaryText(
+            pluralStringResource(
+                R.plurals.manual_organization_applied_moved_count,
+                summary.movedCount,
+                summary.movedCount,
+            ),
+        )
+    }
+    summary.movedByReason.forEach { (reason, count) ->
+        item { SummaryText(stringResource(movedReasonString(reason), count)) }
+    }
+    item {
+        SummaryText(
+            pluralStringResource(
+                R.plurals.manual_organization_applied_preserved_count,
+                summary.preservedCount,
+                summary.preservedCount,
+            ),
+        )
+    }
+    summary.preservedByReason.forEach { (reason, count) ->
+        item { SummaryText(stringResource(preservedReasonString(reason), count)) }
+    }
+    item {
+        SummaryText(
+            pluralStringResource(
+                R.plurals.manual_organization_applied_new_folders_count,
+                summary.newFolderCount,
+                summary.newFolderCount,
+            ),
+        )
+    }
+    item {
+        SummaryText(
+            pluralStringResource(
+                R.plurals.manual_organization_applied_new_pages_count,
+                summary.newPageCount,
+                summary.newPageCount,
+            ),
+        )
+    }
+    summary.rejectedByReason.forEach { (reason, count) ->
+        item { SummaryText(stringResource(rejectionReasonString(reason), count)) }
+    }
+    summary.unplacedByReason.forEach { (reason, count) ->
+        item { SummaryText(stringResource(unplacedReasonString(reason), count)) }
+    }
+    summary.warningCounts.forEach { (code, count) ->
+        item { SummaryText(stringResource(warningString(code), count)) }
+    }
+    constraintItems(summary)
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.constraintItems(

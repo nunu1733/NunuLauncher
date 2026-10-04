@@ -218,6 +218,14 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         )
         val beforeIds = before.layoutState.items.mapNotNull { it.ref.itemId() }.toSet()
         val insertedFolder = afterApply.layoutState.items.single { it.ref.itemId() !in beforeIds }
+        // Issue #231 AC-4: the applied summary counts must match the actual
+        // verified apply, derived from the before/after layout captures.
+        val movedFromDiff = before.layoutState.items.count { beforeItem ->
+            afterApply.layoutState.items.firstOrNull { it.ref.itemId() == beforeItem.ref.itemId() }
+                ?.let { after -> beforeItem.placement != after.placement } == true
+        }
+        assertEquals(applied.summary.movedCount, movedFromDiff)
+        assertEquals(applied.summary.newFolderCount, 1)
         val folderPlacement = insertedFolder.placement as? PlacementState.Workspace
             ?: error("Planner folder was not materialized on the workspace")
         assertEquals(
