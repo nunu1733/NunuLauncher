@@ -77,3 +77,15 @@ connected instrumentation test (`OrganizerLockScreenTest` 7/7, en/ja/200% scale)
   - connected test / screenshot evidence は local emulator 起点であり、監査者による実機再実行はしていない (spec の test oracle が local emulator evidence を想定するため許容。solo保守の独立監査規約どおり screenshot の目視確認と CI gate で補完)。
   - evidence README の capture 時 head (`114f496fcc`) と最終 head (`a29006e3f`) の差分に UI/strings 変更がないことを監査者が確認済み (上記)。capture の再取得は不要と判断する。
   - long-press ポップアップ側 (`OrganizerLockShortcut`) への対象行追加は spec D3 により非対象であり、必要になった時点で別 Issue とする予定 (spec Non-goals に記載済み。追跡の必要な新規未決定事項は発生していない)。
+
+## Post-audit head additions
+
+本 audit は実装 head `a29006e3f` を対象とした。merge までに review 対応
+(owner review P1 ×2、reviewer 条件 C-1/C-2/M-1、third review P1) により
+head が `7fc68a97cc` まで進んだ。最終 merge head:
+`1f1ead86fdad1a7316cd24beddb190a02a10171f` (PR #264 squash merge、
+2026-09-10)。各追加 review ラウンドは独立 reviewer session (code-reviewer-2
+agent) が diff と CI run を API 照合のうえ承認しており、最終 head の
+`final-status` は run [34420116789](https://github.com/nunu1733/NunuLauncher/actions/runs/34420116789)
+で success を確認済み。本 PR は高リスク path / label の対象外のため
+本追記は整合のための記録である。

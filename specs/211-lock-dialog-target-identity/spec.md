@@ -1,6 +1,6 @@
 ---
 issue: "#211"
-status: accepted
+status: implemented
 requirements:
   - FR-003
 updated: 2026-09-09
@@ -431,3 +431,10 @@ None（spec 時点で確定）。D1–D3 が値の供給経路、node 構成、�
   (`Member: top or left` / `Member: bottom or right`) を連結する規約へ変更。
   fixture を valid 2-member pair 構成へ変更し、同 pair 内同名 member の
   衝突 class を回帰固定。AC-5 を表示 model 拡張の範囲で調整。
+- 2026-09-10: [PR #264](https://github.com/nunu1733/NunuLauncher/pull/264) を
+  squash merge (merge commit `1f1ead86fdad1a7316cd24beddb190a02a10171f`)。
+  review head `7fc68a97cc` の CI run
+  [34420116789](https://github.com/nunu1733/NunuLauncher/actions/runs/34420116789)
+  が全 job pass (`final-status` green)。`Closes #211` により Issue #211 は
+  自動 close。受入条件 AC-1〜AC-5 (AC-5 は表示 model 拡張の範囲で調整済み) が
+  満たされたため spec を `implemented` へ進める。
