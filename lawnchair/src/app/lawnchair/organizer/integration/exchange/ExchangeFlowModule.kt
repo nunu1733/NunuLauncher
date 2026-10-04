@@ -43,6 +43,11 @@ object ExchangeFlowModule {
             store = ExchangeSessionStoreModule.store(appContext),
             allocator = app.lawnchair.organizer.integration.SecureRandomIdAllocator(),
             clock = System::currentTimeMillis,
+            // Issue #374 (spec 374 DI-AC-03): the #374-owned durable pending
+            // imported intent store — a successful generation (session
+            // replacement) invalidates the previous imported proposal's record
+            // right after the new session's save.
+            pendingImportStore = PendingImportedIntentModule.store(appContext),
         )
     }
 }

@@ -157,7 +157,7 @@ AI回答のvalidation通過後、run接続 (attach / fresh run開始) の前に�
 _Avoid_: 適用完了 (未適用であることとの混同)、プレビュー (#194 previewとの混同)
 
 **取り込み破棄 (Import Discard)**:
-取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md))。pendingなvalidated intentを破棄する (zero-write)。export sessionはinvalidateしないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は明示ボタン (追加確認なし) とsystem Back (確認dialog) の2つで、CTA処理中はどちらも不受理。TO-BEの語彙規約 (D-13) の下では本操作は「破棄」語彙と必須確認の対象であり、spec 328の確認契約の改訂は後続実装Issueが行う。
+取り込み成功状態をCTAなしに閉じる操作 ([spec 328](./specs/328-exchange-import-success-state/spec.md) rev.2、[spec 374](./specs/374-durable-imported-intent/spec.md))。取り込み済み提案のdurable recordを破棄する (tombstone 2段commit: `discarded=true` のatomic commit成功後にbest-effort物理削除。commit成功前に画面を閉じない)。export sessionはinvalidateしないため、依頼が有効の間は同じ回答textを再取り込みできる。入口は明示ボタンとsystem Backの2つで、ともに確認dialog 1回を経由 (D-13)。CTA処理中はどちらも不受理。
 _Avoid_: 取り消し (apply済み変更のrollbackとの混同。何も適用されていない)
 
 **手段別失敗投影 (Failure Remedy Projection)**:
@@ -205,7 +205,7 @@ _Avoid_: 設定 (runと区別する語彙として使う場合)、プレファ�
 _Avoid_: エクスポートセッション (構成要素の1つを指す既存語)、AI連携
 
 **取り込み済み提案 (取り込み済み・未適用の提案)**:
-AI回答のvalidation通過後、run接続の前に存在する提案状態 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-08)。TO-BEでは依頼と同一の有効期限 (24h) を持つdurable artifactとし、process死・画面離脱で消えない。期限切れ・置換・破棄で無効になる。現行の取り込み成功状態 ([spec 328](./specs/328-exchange-import-success-state/spec.md)) の保持はprocess-localであり、durable化は後続実装Issueのspec改訂で行う。
+AI回答のvalidation通過後、run接続の前に存在する提案状態 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-08、[spec 374](./specs/374-durable-imported-intent/spec.md))。依頼と同一の有効期限 (24h) を持つdurable artifactであり、process死・画面離脱で消えない。期限切れ・置換・破棄で無効になる。durable保存の成功が取り込み済み状態の成立条件であり、継続CTA成功後も保持される (継続後の再開は #375)。
 _Avoid_: 適用済み提案 (未適用である)、プレビュー (run接続後の確認対象と混同)
 
 **中断・破棄・キャンセル (中止語彙規約)**:

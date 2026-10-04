@@ -4,12 +4,12 @@ status: accepted
 requirements: [FR-017]
 risk:
   - privacy
-updated: 2026-09-18
+updated: 2026-09-21
 ---
 
 # External Agent ExchangeのImport成功後に状態と次操作を明示する
 
-> Status: **accepted** (2026-09-18、[review Approve](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5724723122) @ head `27a2b48d20`。**2026-09-19に #368 が strategy固有条項のみの狭い改訂を実施** — picker run面撤去・restart廃止により無効化されたstrategy条項をadmission-lease基準へ置換。処分文書§3.14のownership境界どおり、freeze再設計・durable契約 (revision 2) は #374 が所有。承認後、2026-09-19に #368 が委譲境界内で実質改訂 — 以下のChange history参照)。**D-2/D-3 (およびOpen question 3) はowner decisionとして確定済み** ([Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396)、本spec「Decisions」に具体化)。本revisionで **入力変更 (`onImportTextChange`/Clear) によるattempt失効をDesign/test oracleへ明記 (表示中textが変わる場合、active attemptをMain-confinedにinvalidateしてから `Importing(newText)` を採用)**・**arbiterの「全終端解除」列挙を5種 (restart成功 / Committed-no-restart / 非commit / `start()` throw / coroutine cancel) へ統一**・**Permissions節の「summaryは件数のみ」をprivacy境界の確定文言へ統一** を行った。attempt anchor・CTA single-flight・CTA処理中の破棄/Back不受理・strategy変更との相互排他 (commit時gate/書込開始gate/attach前owning runId再照合)・CEを含むseam例外契約・summary内訳4種 + global preference・process death分岐は前revisionで固定済み。未決のproduct decisionは残っていない。
+> Status: **accepted — revision 2 (2026-09-21)**。revision 2は [Issue #374](https://github.com/nunu1733/NunuLauncher/issues/374) 実装に伴うAmend-Supersede改訂である（処分文書§3.14/[spec 374](../374-durable-imported-intent/spec.md) が所有。spec 374はChatGPT review Approved `5761252403` @ `c30f6f46d0`）。改訂内容: (1) pending intentのprocess-local規定をdurable契約（spec 374）へ置換、(2) 取り込み破棄のzero-write規定をdurable削除（tombstone 2段commit）へ置換、(3) 破棄確認契約をD-2（明示ボタンは追加確認なし）からD-13（破棄ラベル＋確認dialog 1回・両入口）へ更新、(4) CTA copyをT-18語彙「この提案で続ける」へ統一、(5) freeze規則の消失保護面をstatus card＋読取時reconcile（spec 374）へ移管（in-flight attempt freeze・AC-3 single-flight/attempt anchor・AC-2/AC-4/AC-7本体は維持）。改訂前の状態: **accepted** (2026-09-18、[review Approve](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5724723122) @ head `27a2b48d20`。**2026-09-19に #368 が strategy固有条項のみの狭い改訂を実施** — picker run面撤去・restart廃止により無効化されたstrategy条項をadmission-lease基準へ置換。処分文書§3.14のownership境界どおり、freeze再設計・durable契約 (revision 2) は #374 が所有。承認後、2026-09-19に #368 が委譲境界内で実質改訂 — 以下のChange history参照)。**D-2/D-3 (およびOpen question 3) はowner decisionとして確定済み** ([Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396)、本spec「Decisions」に具体化)。元revisionで **入力変更 (`onImportTextChange`/Clear) によるattempt失効をDesign/test oracleへ明記 (表示中textが変わる場合、active attemptをMain-confinedにinvalidateしてから `Importing(newText)` を採用)**・**arbiterの「全終端解除」列挙を5種 (restart成功 / Committed-no-restart / 非commit / `start()` throw / coroutine cancel) へ統一**・**Permissions節の「summaryは件数のみ」をprivacy境界の確定文言へ統一** を行った。attempt anchor・CTA single-flight・CTA処理中の破棄/Back不受理・strategy変更との相互排他 (commit時gate/書込開始gate/attach前owning runId再照合)・CEを含むseam例外契約・summary内訳4種 + global preference・process death分岐は前revisionで固定済み。未決のproduct decisionは残っていない。
 
 ## Problem
 
@@ -25,7 +25,7 @@ Importは正規flowでは最終目的ではなく、personalization intentをPla
 
 ## Outcome
 
-Import成功後、**(a) 取り込み済みであること、(b) 認識した希望のprivacy-safeな件数summary、(c) 判断なし項目の有無、(d) まだホーム画面へ適用されていないこと、(e) 次のOrganizer操作への明示的CTA** を示す取り込み成功状態 (中間状態) がexchange導線内に表示される。ユーザーがCTAを押したときのみ、既存のrun接続seam (#331 `attachIntent` / #205 fresh run `start(intent)`) が **一度だけ** 実行され、既存のPlanner / preview / confirm / apply flowへ連続して進める。CTAを押さずに閉じる場合のintentの扱い (破棄) は明示的に定義・表示され、黙喪失しない。成功状態の表示中は、成功状態とpending intentを黙って消す競合操作 (idle entryの「整理を開始」row、system Back経由の画面dismiss) が構造的に排除される (run内entryのstrategy pickerによるrun差し替えは [#368](https://github.com/nunu1733/NunuLauncher/issues/368) が廃止したため競合対象から除去)。さらに **CTA処理中 (seam呼出〜settle) は破棄・system Backとも不受理** とする: `run.start` / `attachIntent` はsettle前にrun stateを先に変更するseamであるため、処理中の破棄受理は「破棄済みのUI表示と開始済みrunの乖離」を生む。破棄・Backはsettle (成功で画面遷移 / 拒否で処理中解除) 後に再度受け付けられる。成功状態へ入る前段の **import validation自体もattempt anchorの下で動作** する: import開始時に採番したattempt tokenが検証settleに紐付き、キャンセル後・再import後・run差し替え後の遅延validation結果は成功状態を生成も置き換えもしない。
+Import成功後、**(a) 取り込み済みであること、(b) 認識した希望のprivacy-safeな件数summary、(c) 判断なし項目の有無、(d) まだホーム画面へ適用されていないこと、(e) 次のOrganizer操作への明示的CTA** を示す取り込み成功状態 (中間状態) がexchange導線内に表示される。ユーザーがCTAを押したときのみ、既存のrun接続seam (#331 `attachIntent` / #205 fresh run `start(intent)`) が **一度だけ** 実行され、既存のPlanner / preview / confirm / apply flowへ連続して進める。CTAを押さずに閉じる場合のintentの扱い (破棄) は明示的に定義・表示され、黙喪失しない。成功状態の表示中は、成功状態とpending intentを黙って消す競合操作 (idle entryの「整理を開始」row、system Back経由の画面dismiss) が構造的に排除される (run内entryのstrategy pickerによるrun差し替えは [#368](https://github.com/nunu1733/NunuLauncher/issues/368) が廃止したため競合対象から除去)。**revision 2 (spec 374)**: import成功 (validation通過) 時にpending intentはdurable storeへ保存され (durable保存の成功が取り込み成功状態の採用条件。保存失敗はretry可能なtyped失敗)、process死・画面離脱後もhub status card「取り込み済みの提案」行からImportReview (T-18再開形態) で再開できる (内容・残時間・破棄まで。継続CTAの有効化は#375)。**画面離脱は破棄ではない** (破棄は確認dialogを経由する明示操作のみ。attempt終端後の消失保護はdurable契約＋読取時reconcile (起動時・status card/ImportReview読取時) へ移管)。さらに **CTA処理中 (seam呼出〜settle) は破棄・system Backとも不受理** とする: `run.start` / `attachIntent` はsettle前にrun stateを先に変更するseamであるため、処理中の破棄受理は「破棄済みのUI表示と開始済みrunの乖離」を生む。破棄・Backはsettle (成功で画面遷移 / 拒否で処理中解除) 後に再度受け付けられる。成功状態へ入る前段の **import validation自体もattempt anchorの下で動作** する: import開始時に採番したattempt tokenが検証settleに紐付き、キャンセル後・再import後・run差し替え後の遅延validation結果は成功状態を生成も置き換えもしない。
 
 ## Scope
 
@@ -61,8 +61,8 @@ Import成功後、**(a) 取り込み済みであること、(b) 認識した希�
 importされたintentがvalidationを通過した後、run接続 (attach / fresh run開始) の前に表示される中間状態。取り込み済みであること、認識した希望の件数summary、未適用であること、次操作へのCTAを含む。CTA押下または明示的な破棄によって終了する。
 _Avoid_: 適用完了 (未適用であることとの混同)、プレビュー (次ステップで生成される #194 preview との混同)
 
-**取り込み破棄 (Import Discard)**:
-取り込み成功状態をCTAなしに閉じる操作。pendingなvalidated intentを破棄する (zero-write)。exchange sessionは失効させないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は2つ: (1) labelで破棄を明示するボタン「破棄して閉じる」(追加確認なし — label自体が明示)、(2) system Back (確認dialogを挟む — 誤Back保護、D-2)。CTA処理中 (`continuing`) はいずれの入口も不受理。
+**取り込み破棄 (Import Discard)**: (revision 2)
+取り込み成功状態をCTAなしに閉じる操作。取り込み済み提案のdurable recordを破棄する (spec 374のtombstone 2段commit — `discarded=true` のatomic commit後、best-effort物理削除。tombstone commit成功前に画面を閉じない)。exchange sessionは失効させないため、依頼が有効な間は同じ回答textを再取り込みできる。入口は2つ: (1) labelで破棄を明示するボタン「破棄して閉じる」、(2) system Back — ともに **確認dialog 1回** を経由する (D-13。旧D-2「明示ボタンは追加確認なし」から更新)。CTA処理中 (`continuing`) はいずれの入口も不受理。
 _Avoid_: 取り消し (apply済み変更のrollbackとの混同。何も適用されていない)
 
 **判断なし項目 (no-judgment items)**:
@@ -168,22 +168,22 @@ Then 表示は「取り込みは成功・判断なし項目あり」であり、
 And 判断なし項目の件数 (合算。provenance非表示) と、判断なし項目も従来どおり整理対象であること (preferenceなしで扱われること) が説明される、
 And successとwarning-with-no-judgmentはsemantics上区別される (見た目のみでなく、heading/live region等でTalkBackが読み分けられる。「Accessibility」参照)。
 
-### Scenario: 取り込み破棄 (CTAを押さずに閉じる)
+### Scenario: 取り込み破棄 (CTAを押さずに閉じる。revision 2 — durable削除)
 
 Given 取り込み成功状態が表示されており、CTA処理中 (`continuing`) ではない、
-When ユーザーがCTAを押さずに破棄操作を行う (D-2確定: 明示ボタン「破棄して閉じる」の押下、またはsystem Back → 確認dialog「取り込みを破棄しますか?」での確定)、
-Then pendingなvalidated intentは **破棄** される (zero-write、run接続なし)。破棄であること、および依頼 (export session) が有効な間は同じ回答textを再取り込みできることが表示される (system Backの確認dialogは当該案内を本文に含む。明示ボタン経由の場合は破棄後の案内文言で)、
+When ユーザーが破棄を確定する (明示ボタン「破棄して閉じる」→ 確認dialog、またはsystem Back → 確認dialog「取り込みを破棄しますか?」での確定。D-13: 両入口とも確認dialog 1回)、
+Then 取り込み済み提案のdurable recordを **tombstone 2段commitで破棄** する (spec 374: `discarded=true` のatomic commitに成功して初めて画面を閉じる → best-effort物理削除。commit失敗はtyped失敗で提案は保持される)。破棄であること、および依頼 (export session) が有効な間は同じ回答textを再取り込みできることが表示される (確認dialogは当該案内を本文に含む)、
 And exchange sessionのinvalidateは行わない (再取り込み可能性を保つ)、
-And validated intentの保持・永続化は行わない (#205/#331契約の継承。process deathで失われても再取り込みが回復pathである)、
-And 画面を閉じただけでimport結果が **黙って** 見失われる状態は存在しない (破棄は常に明示的: ボタンはlabelで破棄を明示、system Backは確認dialogを挟む)。
+And run接続なし (run state・layout DBへのwriteは発生しない)、
+And 画面を閉じただけでimport結果が **黙って** 見失われる状態は存在しない (破棄は常に明示的: 確認dialogを経由。tombstone commit成功前は破棄成功として画面を閉じない)。
 
-> D-2はowner decisionとして確定済み ([Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396)): 明示ボタンはlabelで足り (追加確認なし)、system Backは確認dialogを挟む。interceptionの配置 (hosting画面level・常時composition) と成功state画面外での保護は本specで固定済み。CTA処理中は両入口とも不受理 (前出scenario)。
+> 確認契約はrevision 2でD-13 (TO-BE §9: 取り込み済み提案の破棄=「破棄」ラベル+必須確認) へ更新した。旧D-2 ([Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396)) は明示ボタン無確認だった。interceptionの配置 (hosting画面level・常時composition) と成功state画面外での保護は本specで固定済み。CTA処理中は両入口とも不受理 (前出scenario)。
 
 ### Scenario: system Backのinterceptionは成功stateが画面外でも保証される
 
 Given 取り込み成功状態が表示されており、large font等により成功stateのlazy list itemがviewport外 (composition外) にある、
 When ユーザーがsystem Backを押す、
-Then Backは成功状態の破棄handling (D-2確定: 確認dialog。CTA処理中なら確認dialogを出さず取り込む) として処理され、親の画面level Back処理 (`ManualOrganizationBackHandler` の `dismiss()` → run cancel / navigate away) に **落ちない**。pending intentが確認なしで消えない、
+Then Backは成功状態の破棄handling (revision 2: 確認dialog。D-13。CTA処理中なら確認dialogを出さず取り込む) として処理され、親の画面level Back処理 (`ManualOrganizationBackHandler` の `dismiss()` → run cancel / navigate away) に **落ちない**。pending intentが確認なしで消えない、
 And この保証は成功stateのcomposableがcomposition中であることに依存しない (interceptionは常にcompositionされるhosting画面levelに登録され、成功state表示中のみ有効化される)。lazy item内への `BackHandler` 登録のみでは不十分 (viewport外でcallbackが存在しなくなる) であることを構造として回避する。
 
 ### Scenario: 既存失敗経路の無変更
@@ -192,11 +192,11 @@ Given importがframing失敗・normalization失敗 (#329)・validation reject・
 When 失敗が表示される、
 Then 既存の取り込み結果画面 (typed 19種失敗表示 + 認識framing/version/entry数表示 + 折りたたみraw + 再取り込み) が従来どおり機能し、本specは失敗表示を変更しない (regression条件)。
 
-### Scenario: process death
+### Scenario: process death (revision 2 — durable化)
 
 Given 取り込み成功状態の表示中にprocessが破棄される (CTA処理中 `continuing` ではない)、
-Then runは未開始・未接続であり、失われるのはpending intent (process-local) のみで、layout DB・export sessionへの影響はない、
-And 再起動後の回復は既存どおり再取り込みである (session有効期限内であれば同じ回答textが再検証を通過する)。
+Then runは未開始・未接続であり (run/preview/選択はprocess-localのまま。TO-BE §8.2)、取り込み済み提案は **durable recordとして残る** (spec 374。画面stateは失われるが提案は失われない)。layout DB・export sessionへの影響はない、
+And 再起動後はhub status cardの「取り込み済みの提案」行からImportReview (T-18再開形態) を開ける (spec 374。内容・残時間・破棄。継続CTAの有効化は#375)、同一回答textの再取り込みも引き続き可能である。
 
 ### Scenario: process death (CTA処理中 `continuing`)
 
@@ -207,7 +207,7 @@ And process deathにより「破棄済み表示と開始済みrunの乖離」が
 ## Data and state
 
 - 読むdata: `ValidatedPersonalizedIntent` とその **`completed: CompletedPersonalIntent`** (`decisions` / `authoredItemCount` / `authoredUnresolvedCount` / `omittedCount`。正本は #330 D-4のcanonical representation。authored文書の `itemIntents` / `unresolvedRefs` をsummaryの計数根拠にしない)、`session.scopeCandidates`、`validated.intent.globalPreference?.minimizeMovement` (planner-effective boolean 1値 — summaryの全体方針行の根拠。planner `IntentPlannerAdapter` が消費する同一値)、entry種別 (idle / run内)、run内entryではimport開始時のowning runId (`State.Selecting.runId`)。#204/#330/#331契約を本specは再定義しない。
-- 永続化: **追加なし**。取り込み成功状態とpending intentはprocess-local (exchange flowのUI state) のみ。export session (#204、durable・TTL 24時間) は破棄操作でinvalidateしない。
+- 永続化 (revision 2): 取り込み済み提案 (pending intent) は **durable pending intent store** (spec 374。app-private・backup除外・TTL=依頼sessionと同一の24時間・単一active) へimport成功時に保存され、durable保存の成功が取り込み成功状態の採用条件である (保存失敗はretry可能なtyped失敗。spec 374)。取り込み成功状態 (画面state) とattempt token自体はprocess-localのまま。run/preview/選択は引き続きprocess-local (TO-BE §8.2)。export session (#204、durable・TTL 24時間) は破棄操作でinvalidateしない。提案の有効性は依頼sessionの有効性に従属し、読取時reconcile (起動時・status card/ImportReview読取時) が正本である (spec 374)。
 - run state: **validation開始から `ImportSuccess` 表示中の `!continuing` の間**、`ManualOrganizationRun` の状態は不変 (idle entry: Idle/Cancelledのまま。run内entry: owning runIdのSelectingのまま・freeze継続)。**CTA開始 (`continuing`) 後は既存seam (`start(trigger, intent)` / `attachIntent`) がrun stateを先行変更し得るが、別操作によるrun差し替えは禁止 (相互排他gate。#368以降、strategy書込由来のrun差し替え経路そのものが廃止済み)CTA処理中は同期的な処理中標識 (`continuing` flag) により追加のseam呼出が構造的に拒否され、破棄・Backも不受理である。
 - **attempt token (settle anchor)**: import開始時に採番されるprocess-localな単調増加token。validation settle (`Validated` / `Failure` / `InputNotReady`) とCTA settleの双方がこれに紐付き、settleは「current画面が同じattempt tokenに属する」場合のみ適用される。tokenはUI state内のみで消費され、`validated.identity` (content digest、#330 D-5 — 同一semantic内容の再importで同一値になる) はanchorに使わない。キャンセル・入力変更・再importは旧attemptをinvalidateする。
 - **strategy書込との相互排他 (#368 amend、2026-09-19。旧「単一arbiter状態機械」規定を置換)**: strategy選択変更の書込はrun面から撤去されT-05のみに存在し、`dismiss()`/`start(trigger)` を呼ぶcommit時restart経路は廃止された。書込は `OrganizationOperationLease` の単一admission domainに `AUTHORING` tokenとして参加し、tokenは書込開始 (Main-confined直列化点上で `Writing` 遷移と原子) から全終端 (commit / 非commit / storage失敗 / coroutine cancel — `finally` 相当で解放) まで保持される。したがって本specのrun seam (`start` / `attachIntent`) が書込中に呼ばれた場合は `Busy` としてtyped failure settleになり (既存契約の継続)、run/recovery操作active中のstrategy選択はtyped non-writeとして拒否される。import validation自体 (run seamを触らないzero-write検証) と書込の重なりは競合ではない。書込拒否outcomeの種別 (`RefusedRunOrRecoveryActive` / `RefusedAuthoringBusy` / `RefusedWriteBusy`) とUI契約は [#368](https://github.com/nunu1733/NunuLauncher/issues/368) spec が所有する。
@@ -234,7 +234,7 @@ And process deathにより「破棄済み表示と開始済みrunの乖離」が
 - [ ] AC-2: 取り込み成功状態が「まだホーム画面には適用されていない」ことを明示することがtestされる (string存在 + 表示)。
 - [ ] AC-3: 次のOrganizer操作へ進む主要CTAが存在し、CTAで既存seam経由の接続が **一度だけ** 行われることがtestされる (idle: `start(trigger, intent)`、run内: `attachIntent`)。CTAのsingle-flightがtestされる: 二重押下でseamが複数回呼ばれないこと、および成功状態が閉じた後の遅延settleが表示へ適用されないこと。settleのanchorがattempt tokenであることが **同一 `validated.identity` の再import (ABA) test** で固定される: 旧attemptの遅延settleが、同一identityで作り直された新しい成功状態attemptへ適用されないこと。CTA処理中 (`continuing`) の破棄・Backが不受理であることがtestされる (seam開始 → settle前に破棄/Back試行 → 不受理で成功状態維持、seamは影響を受けずsettleへ進行)。**seam例外時** もtestされる: (a) fake seamが非`CancellationException` をthrow → 処理中解除・再試行/破棄可能に復帰・run abort済み・旧attempt誤settleなし、(b) fake seamが **`CancellationException` をthrowするがholder scopeは生存** → 同様にfailure settleへ落ち `continuing = false` で復帰する (取り残しなし)、(c) holder scope自体をcancelした場合はUI settleを要求しない。**strategy書込との競合** (#368 amend): strategy書込由来のrun差し替え経路は廃止済みのため、旧strategy相互排他oracle項目 ((d)〜(g), (i)) は [#368](https://github.com/nunu1733/NunuLauncher/issues/368) へ移管・置換された (CTAと書込の単一admission domain排他: 書込中の `start` が `Busy` でtyped failure settleになること)。(h) **attach前のowning runId再照合**: 成功状態表示中にowning runIdのrunが差し替えられた状態 → CTAで `attachIntent` を呼ばずtyped failure settleになること。CTA時のgate拒否 (`Busy` / `NotAttachable`) は処理中状態を解除し取り込み成功状態を維持したままtyped案内され、解除後に破棄・Backが再度可能であることがtestされる。
 - [ ] AC-4: privacy-safe summary (件数: `authoredItemCount`・判断なし合算件数 (`authoredUnresolvedCount + omittedCount`)・run内では候補数、**V1必須の内訳4種** (優先度/グループ/配置先/保持。Decisions 3)、**全体方針行** (`minimizeMovement == true` で表示)) が導出されることがtestされる。item計数が **`completed` canonical representationから** 導出されること、bare entryが希望件数と全内訳に計上されないこと、未言及refが判断なし件数に計上されること (bare/omission合算の計数test oracle)、内訳の **item単位算式** がtestされる (優先度 = `importance != null`、グループ = `desiredGroupRefs` 非空 **または** `groupSemantic != null`、配置先 = `pageAffinity != null` **または** `regionAffinity != null`、保持 = `preserve != null` (`false` も1件)。複数dimension指定項目が複数行で数えること、0件行を表示しないこと含む)、**global-only intent** (`minimizeMovement = true` のみ・item希望0件) で全体方針行が表示され取り込み結果が空に見えないこと、**表示した全体方針行がplanner projection (`globalMinimizeMovement`) と一致すること** (contract test)、`false`/`null` で行を表示しないこと、provenanceがuser-visibleでないこと、非表示項目 (`rationale` / `confidence` / label / ref) とその理由が本specに固定されていること (summary導出の純粋関数 + 出力modelの非混入contract test) を含む。
-- [ ] AC-5: CTAを押さずに閉じる場合のlifecycleがD-2確定内容 (明示ボタン「破棄して閉じる」は追加確認なし、system Backは確認dialog) どおり実装される: 破棄が明示的であること、exchange sessionがinvalidateされないこと (破棄後に同じ回答textの再取り込みが成立すること)、競合affordance (idle「整理を開始」row。run内strategy picker経路は #368 で廃止) が **import attempt生存中の全期間** (validation中の `Importing` を含む) 無効化されること (strategy picker・arbiter関係の旧test項目は #368 へ移管・置換)がtestされる。CTA処理中の破棄拒否 (`discardImport()` 不受理) を含む。
+- [ ] AC-5 (revision 2): CTAを押さずに閉じる場合のlifecycleがD-13 (明示ボタン「破棄して閉じる」・system Backの両入口とも確認dialog 1回) どおり実装される: 破棄が明示的であること、破棄がdurable recordのtombstone 2段commitであること (tombstone commit成功前に画面を閉じない。commit失敗はtyped失敗で提案保持。spec 374)、exchange sessionがinvalidateされないこと (破棄後に同じ回答textの再取り込みが成立すること)、競合affordance (idle「整理を開始」row。run内strategy picker経路は #368 で廃止) が **import attempt生存中の全期間** (validation中の `Importing` を含む) 無効化されること (strategy picker・arbiter関係の旧test項目は #368 へ移管・置換)がtestされる。CTA処理中の破棄拒否 (`discardImport()` 不受理) を含む。
 - [ ] AC-6: success / warning (判断なし合算 > 0) / rejectが、TalkBackを含めて識別可能であること (semanticsベース。手動/instrumentation evidence)。
 - [ ] AC-7: system Backが成功stateのlazy item viewport外 (large font) でも成功状態のhandlingに捕捉され、親のdismiss/navigateに落ちないことがinstrumentation testされる。
 - [ ] AC-8: large font (font scale最大) で次操作 (CTA) と未適用表示が画面内で把握できること (手動/instrumentation evidence)。
@@ -249,7 +249,7 @@ And process deathにより「破棄済み表示と開始済みrunの乖離」が
 | AC-2 | string解決test + UI表示 (unit/instrumentation) |
 | AC-3 | holder unit test: CTA → seam呼出 (`Started`/`Attached`)、`Busy`/`NotAttachable` で状態維持・処理中解除。**二重押下でseam 1回のみ** (continuing flag guard)、**遅延settleが閉じた/置き換わった成功状態へ適用されない** (attempt token anchor)、**ABA: 同一identityで再importした新attemptに旧attemptの遅延settleが適用されない**、**CTA処理中の破棄/Back不受理**、**seam例外** (非CE throw → failure settle / **CE throwだがscope生存 → failure settle** (取り残しなし) / scope cancel → UI settle要求なし)、**strategy書込との競合** (#368 amend: 旧strategy oracle項目は #368 へ移管・置換。書込中のCTA `start` は `Busy` typed failure settle) 、(h) attach前owning runId再照合 → 不一致でattachせずfailure settle)、**runId不一致settle** (`Started.runId` ≠ 現在runのrunId → failure settle扱い)。`ManualOrganizationRunTest` 連携 |
 | AC-4 | summary純粋関数のunit test: `authoredItemCount` / `authoredUnresolvedCount + omittedCount` の導出、**bare entry非計上** (bare 1件 → 希望0件・判断なし1件・全内訳0件)、**omission計上** (未言及2件 → 判断なし2件)、**内訳4種の算式** (importance/desiredGroupRefs+groupSemantic/pageAffinity+regionAffinity/preserve。複数dimension指定項目が複数行で数える、`preserve=false` を1件と数える、0件行非表示)、**global-only intent oracle** (`minimizeMovement=true` のみ → item計数0でも全体方針行あり、`false`/`null` → 行なし、planner `globalMinimizeMovement` との一致contract test)、出力modelへlabel/ref/text fieldが存在しないことの型/contract test |
-| AC-5 | holder unit test (discard → session invalidate未呼出、再取り込み成立の往復test、破棄後pending intent消失、**continuing中のdiscard不受理**) + idle競合row無効化UI test (**validation中含む**)  (strategy picker・arbiter関係の旧test項目は #368 へ移管・置換) + system Back確認dialog経路 (確定で破棄・キャンセルで成功状態維持) test |
+| AC-5 | holder unit test (discard → tombstone commit (store.discard) 呼出・session invalidate未呼出、再取り込み成立の往復test、破棄後durable record無効化、**tombstone commit失敗でtyped失敗・提案保持**、**continuing中のdiscard不受理**、両入口の確認dialog 1回) + idle競合row無効化UI test (**validation中含む**)  (strategy picker・arbiter関係の旧test項目は #368 へ移管・置換) + system Back確認dialog経路 (確定で破棄・キャンセルで成功状態維持) test |
 | AC-6 | a11y assertion (semantics/live region) + TalkBack手動evidence |
 | AC-7 | instrumentation: 成功state表示中に成功itemをviewport外へscrollさせ (またはfont scale最大で同等状態にし) system Back → 親dismiss/navigateが発火しないことのassertion |
 | AC-8 | font scaleを上げたinstrumentation/手動evidence |
@@ -260,12 +260,13 @@ And process deathにより「破棄済み表示と開始済みrunの乖離」が
 
 owner decision記録: [Issue コメント](https://github.com/nunu1733/NunuLauncher/issues/328#issuecomment-5723309396) (2026-09-18)。未決のopen questionは残っていない。
 
-1. **CTA最終文言 (D-3) — 確定**: 次surfaceを断定しすぎない中立文言。idle entry「この提案で整理を進める」(en "Continue with this proposal")、run内entry「選択に戻って整理を確定する」(en "Return to selection to finish organizing" — attach成功時の復帰先が選択surfaceであることはrun内entryで確定)。Issue候補「次へ: 整理方法を選ぶ」はstrategy選択がpickerで並存し次画面が選択surfaceとは限らないため不採用。ja正本 (spec 123 / #205 Decision 4)。
-2. **Backの破棄確認形式 (D-2) — 確定**: 明示ボタン「破棄して閉じる」はlabelで足り追加確認なし。system Backは確認dialog「取り込みを破棄しますか?」を挟む (確定で破棄・キャンセルで成功状態維持)。dialog本文に再取り込み案内を含む。interceptionの配置 (hosting画面level・常時composition) と画面外保護は本spec固定済み。CTA処理中は両入口とも不受理。
+1. **CTA最終文言 (D-3) — revision 2でT-18語彙へ更新**: TO-BE T-18語彙「この提案で続ける」(en "Continue with this proposal") へ統一する (#373から本specへ委譲された所有。spec 374 D-3改訂)。run内entryの復帰先が選択surfaceであることの文言調整 (「この提案で続ける (選択に戻る)」相当) は実装PRのstring diffで確定する。旧確定文言 (2026-09-18): idle「この提案で整理を進める」/ run内「選択に戻って整理を確定する」。ja正本 (spec 123 / #205 Decision 4)。
+2. **破棄確認形式 — revision 2でD-13へ更新 (旧D-2)**: 明示ボタン「破棄して閉じる」・system Backの両入口とも確認dialog「取り込みを破棄しますか?」1回を挟む (確定で破棄・キャンセルで成功状態維持。TO-BE §9/D-13「取り込み済み提案の破棄=破棄ラベル+必須確認」。CONTEXT.md中止語彙規約が予告した改訂)。dialog本文に再取り込み案内を含む。破棄はdurable削除 (tombstone 2段commit) である (spec 374)。interceptionの配置 (hosting画面level・常時composition) と画面外保護は本spec固定済み。CTA処理中は両入口とも不受理。
 3. **summary内訳の粒度 — 確定**: 優先度/グループ/配置先/保持の種別別件数をV1に含める (`RefDecision.Authored` のみから導出、件数のみ)。実装PRでの微調整を許容。
 
 ## Change history
 
+- 2026-09-21: **Revision 2 (Amend-Supersede by #374。処分文書§3.14/[spec 374](../374-durable-imported-intent/spec.md) 所有。#373が委譲したD-2/D-13不整合解消・CTA copy T-18語彙統一を含む)**: (1) Data and state「取り込み成功状態とpending intentはprocess-localのみ」をdurable pending intent契約 (spec 374: 保存成功が成功状態の採用条件・TTL=依頼sessionと同一・読取時reconcile) へ置換、process death scenarioをdurable化へ更新。(2) 取り込み破棄のzero-write規定をdurable削除 (tombstone 2段commit・tombstone commit成功前に画面を閉じない) へ置換。(3) 破棄確認契約をD-2 (明示ボタン追加確認なし) からD-13 (両入口とも確認dialog 1回) へ更新 (CONTEXT.md中止語彙規約が予告した改訂)。(4) CTA copyをT-18語彙「この提案で続ける」へ統一 (Decisions 1更新)。(5) 画面離脱＝非破棄を明文化し、attempt終端後の消失保護をstatus card＋読取時reconcile (spec 374) へ移管 (in-flight attemptの競合freeze・idle start row無効化・AC-3 single-flight/attempt anchor・AC-2/AC-4/AC-7本体は維持)。AC-5とTest oracle AC-5をdurable/tombstone基準へ更新。
 - 2026-09-19: **Amended by #368 (strategy固有条項のみの狭い改訂。処分文書§3.9/§3.14のownership境界)**。strategy pickerのrun面撤去と `StrategyWriteArbiter` restart path廃止 (#368実装) により無効化された条項を置換した: Outcome/Scope/競合affordance scenario/CTA scenario/Data and state/AC-3/AC-5/Test oracleのstrategy関係規定 (run内entry picker freeze、idle picker continuation中無効化、commit時gate、exchange側書込開始gate、`Idle → Writing → RestartReserved/Restarting → Idle`状態機械、`IMPORT_STRATEGY_BUSY`/`CTA_STRATEGY_BUSY`、strategy oracle項目 (d)〜(g),(i)) を、`OrganizationOperationLease` の `AUTHORING` admission tokenによる単一admission domain排他へ置換。AC-3(d)(d5)のwrite同士single-flight本体・idle start row freeze・CTA single-flight・attempt anchor・Back interception・(h) owning runId再照合等の非strategy条項は不変。freeze再設計・durable契約 (revision 2) は #374 が所有し続ける。
 - 2026-09-16: Draft created for #328 (baseline `aab0d293d1a9` = origin/main)。現行実装 (#205 PR #325 / #331 PR #333 後) の成功時挙動 (即時attach/start + 1行status、失敗専用の取り込み結果画面、Back時の黙喪失) をコード確認の上、取り込み成功状態の中間状態・summary・CTA・破棄semantics・a11yを起草。D-2/D-3はowner decision待ちでdraft。
 - 2026-09-18: Re-entry revision (review Required 1–4対応)。baselineを `8fd05a40d51a` (origin/main、#329/#330/#332/#336/#348実装merge後) へ更新。**(1)** summaryを #330 v3 canonical representation基準へ変更: 認識希望数 = `completed.authoredItemCount`、判断なし = `authoredUnresolvedCount + omittedCount` の合算 (provenance非表示、D-5/D-6のsemantic同一性に整合)、warning条件を判断なし合算 > 0へ明示、内訳はAuthoredのみから導出。旧coverage不変条件 (export items = `itemIntents` ∪ `unresolvedRefs`) はv3で不成立のため除去。**(2)** system Backのinterceptionを常時compositionされるhosting画面levelへ配置するよう固定 (lazy item内BackHandlerはviewport外で無効になるため不採用)、AC-7を追加。**(3)** run内entryの成功状態中表示中にstrategy pickerのrun差し替え (dismiss→restart) を無効化するよう競合affordance scenarioへ追加。**(4)** CTAのsingle-flight (同期処理中遷移・identity anchored settle・二重押下/遅延settle拒否) をspec/AC-3へ追加。失敗種別をtyped 19種 (#329 normalization追加後) へ更新、#332/#329/#330/#348をimplementedとして参照更新。

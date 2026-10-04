@@ -6,6 +6,7 @@ import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.IntentCodec
 import app.lawnchair.organizer.personalization.IntentValidationFailure
+import app.lawnchair.organizer.personalization.PendingImportedIntentStore
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.RandomIdAllocator
 import app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent
@@ -50,6 +51,18 @@ class ExchangeFlowController(
         { _, _, _ ->
             ExchangeInputResult.NotReady(app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending)
         },
+
+    /**
+     * Issue #374 (spec 374 DI-AC-03): the durable pending imported intent
+     * store, wired for the replacement invalidation — right after the NEW
+     * session's durable save succeeds, the previous imported proposal's
+     * record is deleted (the fixed write order 「新session保存 → 旧pending無効化」).
+     * The read-time reconcile stays the master correctness defense, so a
+     * process death between the two writes is caught by the exportId check.
+     * Null (the default) skips the delete — fixtures that never exercise the
+     * replacement contract keep the pre-#374 behavior.
+     */
+    private val pendingImportStore: PendingImportedIntentStore? = null,
 ) {
 
     constructor(
@@ -57,6 +70,7 @@ class ExchangeFlowController(
         store: ExportSessionStore,
         allocator: RandomIdAllocator,
         clock: () -> Long,
+        pendingImportStore: PendingImportedIntentStore? = null,
     ) : this(
         composeExportInputs = adapter::composeForExport,
         currentStructuralInputs = adapter::currentStructural,
@@ -64,6 +78,7 @@ class ExchangeFlowController(
         allocator = allocator,
         clock = clock,
         composeScopedExportInputs = adapter::composeForExport,
+        pendingImportStore = pendingImportStore,
     )
 
     /** The active (unexpired) session, if any — drives the replacement gate. */
@@ -108,6 +123,13 @@ class ExchangeFlowController(
             // imported after a process death, so nothing is disclosed.
             return ExchangeGenerationResult.SessionStoreFailure
         }
+        // Issue #374 (spec 374 DI-AC-03): the replacement write order is fixed —
+        // the NEW session is durable FIRST, then the previous imported
+        // proposal's record is invalidated (a plain best-effort delete: the
+        // read-time reconcile is the master, so no tombstone is needed here).
+        // Placed before the encode/compose so a replacement can never disclose
+        // a package while the old proposal's record still reads as active.
+        pendingImportStore?.delete()
         val exportJson = when (val encoded = encodeExport(built.export)) {
             is app.lawnchair.organizer.personalization.ContextExportResult.Failure -> {
                 // Review P2: a generation attempt that never produced a package
