@@ -2,7 +2,7 @@
 
 > Issue: #232
 > Spec: [spec.md](./spec.md)
-> Status: accepted (spec approved at PR #267 head 9c23c98a6a)
+> Status: implemented (PR #268 merged as 3355b57165, head 7e95809fd7)
 
 ## Current evidence
 
@@ -81,6 +81,11 @@
 - [ ] DESIGN.md (変更なし — module structure 変更なし)
 - [ ] ADR (不要 — 3 条件を満たす判断なし)
 - [ ] AGENTS.md (変更なし — workflow / verified command 変更なし)
+
+## Execution record
+
+- Current behavior reproduced / all ACs evidenced: docs/assessment/pr-268-organizer-reentry-discoverability.md, docs/assessment/evidence/issue-232/01..08.
+- Verification: spotless, organizer unit tests, repo/diagnostics/ja-resource validators, onboarding instrumentation suite 20/20 on API 36 emulator (issue142_api36), CI final-status green at merge head 7e95809fd7.
 
 ## Execution checklist
 

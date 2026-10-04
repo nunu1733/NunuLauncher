@@ -1,6 +1,6 @@
 ---
 issue: "#232"
-status: accepted
+status: implemented
 requirements:
   - NFR-009
 risk: []
@@ -140,3 +140,4 @@ None。新規 permission、外部送信、sensitive data は存在しない。hi
 
 - 2026-09-10: Draft created for #232.
 - 2026-09-10: Accepted after code-reviewer-2 review of PR #267 (head 9c23c98a6a).
+- 2026-09-10: Implemented by PR #268 (merge 3355b57165, head 7e95809fd7). Owner review findings (focus handoff, unified a11y announcement, label-backed path copy, timeout test) were resolved at 7e95809fd7 before merge. Independent audit: docs/assessment/pr-268-organizer-reentry-discoverability.md (PASS). Emulator evidence: docs/assessment/evidence/issue-232/01..08.
