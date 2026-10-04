@@ -3,7 +3,7 @@
 > Status: replay完了 / G1 gateで設計判断が必要なため一時停止（2026-10-04）
 > rebase branch: `issue-516-rebase-16-dev`（anchor upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35` 起点）
 > 単位番号: main first-parent 時系列index（唯一の実行順。A/B/Cは分類ラベル）
->REBASE_HEAD=<replay完了時に記録>（G4開始前と対にする）
+>REBASE_HEAD=7f46ab6466075ebf5a39f954cf3376d2968e6353（S0〜S3c+G1/G2/G3完了head。G4開始前に確定記録）
 
 ## 0. submodule pin判断（plan §2の停止点判定 — 解決済み、停止不要）
 
