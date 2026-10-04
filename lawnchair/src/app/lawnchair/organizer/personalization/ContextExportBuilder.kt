@@ -1,6 +1,8 @@
 package app.lawnchair.organizer.personalization
 
 import app.lawnchair.organizer.planning.Availability
+import app.lawnchair.organizer.planning.CandidatePlanningIds
+import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.FolderId
@@ -68,6 +70,42 @@ object ContextExportBuilder {
             }
             items += item.toExportItem(inputs, snapshot, tier, folderSemantics, pageOrdinal, allocator, refsByItem)
         }
+        // Issue #331: selected missing-app candidates join the export scope as
+        // candidate subjects. The canonical scope is ONE composition output:
+        // `targets.additions` (already composed by the same
+        // ProductionOrganizationInputComposer seam the planner consumes).
+        val candidateRefsByItem = LinkedHashMap<ItemId, String>()
+        val candidateTargets = inputs.targets.additions
+            .map { addition ->
+                val target = addition.target as? CandidateTarget.AppKey
+                    ?: error("non-AppKey candidate in export scope: ${addition.id.value}")
+                target
+            }
+            .sortedWith(compareBy({ it.component.value }, { it.profile.value }))
+        for (target in candidateTargets) {
+            val candidateId = CandidatePlanningIds.planningId(target)
+            val ref = allocator.newId()
+            if (ref in refsByItem.values || ref in candidateRefsByItem.values) throw IllegalStateException("export ref collision")
+            candidateRefsByItem[candidateId] = ref
+            val label = if (tier == PrivacyTier.EXTERNAL_REDACTED) {
+                null
+            } else {
+                inputs.userLabels[candidateId]?.let { ExportItemLabel(FreeTextClass.APP_LABEL, it) }
+            }
+            items += ExportItem(
+                ref = ref,
+                role = ExportItemRole.APP_OR_SHORTCUT,
+                category = inputs.resolvedCategories[candidateId],
+                groupSemantic = null,
+                label = label,
+                pageAffinity = null,
+                regionAffinity = null,
+                mobility = Mobility.CANDIDATE,
+                fixReason = null,
+                usage = buildUsage(inputs, candidateId),
+                subject = ExportItemSubject.CANDIDATE,
+            )
+        }
         require(items.size <= ContextExportContract.MAX_EXPORT_ITEMS)
 
         val preserved = PreservedConstraints(
@@ -104,11 +142,11 @@ object ContextExportBuilder {
                 intentSchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
                 functions = ContextExportContract.FIXED_CAPABILITIES,
             ),
-            usageSignals = buildUsageSection(inputs, refsByItem),
+            usageSignals = buildUsageSection(inputs, refsByItem + candidateRefsByItem),
         )
         val session = ExportSession(
             exportId = export.exportId,
-            itemRefs = refsByItem.entries.associate { (id, ref) -> ref to id },
+            itemRefs = (refsByItem + candidateRefsByItem).entries.associate { (id, ref) -> ref to id },
             tier = tier,
             sourceContextDigest = SourceContextIdentity.digest(
                 CanonicalStructuralInputs(snapshot, inputs.targets, inputs.resolvedCategories),
@@ -118,6 +156,18 @@ object ContextExportBuilder {
             },
             createdAtEpochMs = inputs.nowEpochMs,
             expiresAtEpochMs = inputs.nowEpochMs + ContextExportContract.SESSION_TTL_MS,
+            scopeCandidates = candidateTargets,
+            scopeCandidateDigest = CandidateScopeIdentity.digest(
+                candidateTargets.map { target ->
+                    CandidateScopeProjection(
+                        target = target,
+                        // Composed additions are AVAILABLE by contract (spec
+                        // 228 §6 fail-closed verification happens at apply).
+                        availability = Availability.AVAILABLE,
+                        category = inputs.resolvedCategories[CandidatePlanningIds.planningId(target)],
+                    )
+                },
+            ),
         )
         return BuiltExport(export, session)
     }

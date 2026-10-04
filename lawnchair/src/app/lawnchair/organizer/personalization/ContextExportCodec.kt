@@ -44,6 +44,7 @@ object ContextExportCodec {
                                 buildMap {
                                     put("ref", JsonPrimitive(item.ref))
                                     put("kind", JsonPrimitive(item.role.name))
+                                    put("subject", JsonPrimitive(item.subject.name))
                                     item.category?.let { put("category", JsonPrimitive(it)) }
                                     item.groupSemantic?.let { put("groupSemantic", JsonPrimitive(it)) }
                                     item.label?.let { put("label", JsonPrimitive(it.value)) }
@@ -183,6 +184,8 @@ object ContextExportCodec {
                     ExportItem(
                         ref = requireNotNull(item.optString("ref")),
                         role = ExportItemRole.valueOf(requireNotNull(item.optString("kind"))),
+                        subject = item.optString("subject")?.let { ExportItemSubject.valueOf(it) }
+                            ?: ExportItemSubject.PLACED,
                         category = item.optString("category"),
                         groupSemantic = item.optString("groupSemantic"),
                         label = item.optString("label")?.let { ExportItemLabel(FreeTextClass.APP_LABEL, it) },

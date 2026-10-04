@@ -135,3 +135,11 @@ _Avoid_: schema (payload本体の契約は #204)、system prompt (instruction部
 **交換セッション置換確認 (Session Replacement Confirmation)**:
 activityなexport sessionが存在する状態で新規exchange package生成を開始するとき、#204 single-active-session規則により既存exchangeが無効化されることを明示し、userの承認を得る確認step。承認なしには生成を開始しない。
 _Avoid_: 上書き保存 (既存exchange宛回答が以降import不可となる破壊的操作であることの表示を省く呼称)
+
+**候補subject (candidate subject)**:
+External Agent Exchangeのexportにおいて、現在Homeに配置されていない未配置アプリ候補を表すexchange subject ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。placed itemと同一の乱数seamによるexport-scoped `ref` を持ち、`subject: CANDIDATE` とmobility `CANDIDATE` で区別される。内部対応先はcandidate安定identity (`ComponentKey` + `ProfileId`) であり、raw identifierはexport文書に現れない。
+_Avoid_: 仮配置 (配置の作成を示唆する)、新規アイテム (Add行というplan表現と混同)
+
+**scope binding gate (scope束縛検証)**:
+validated intentをorganizer runへ適用する時点で、runの確定した対象scopeのcandidate集合がexchange exportの対象scopeと完全一致し、各候補の投影 (identity + availability + 解決済み分類) がexport時と一致することを検証するfail-closedな検証step ([spec 331](./specs/331-exchange-target-scope-coupling/spec.md))。違反はtyped失敗 `SCOPE_MISMATCH` としてzero-write処理される。
+_Avoid_: staleチェック (配置構造変化の検出とは別段)、再検証 (availability再検証と混同)

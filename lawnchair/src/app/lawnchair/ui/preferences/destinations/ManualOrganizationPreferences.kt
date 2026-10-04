@@ -314,12 +314,53 @@ fun ManualOrganizationPreferences(
                     // Issue #228: explicit scope selection (D-1: all
                     // candidates start unchecked). Selection survives query
                     // changes; Select all matches the filtered set, Clear all
-                    // clears the whole set (spec §2).
+                    // clears the whole candidate set (spec §2).
+                    //
+                    // Issue #331: the run-in exchange entry shares the
+                    // surface. While an exchange step is in progress the
+                    // selection is frozen (the export scope is the frozen
+                    // selection); the bound intent's scope size guides
+                    // re-selection (never auto-selects).
+                    val exchangeBusy = exchangeHolder.screen !is app.lawnchair.organizer.ui.exchange.ExchangeScreen.Closed
+                    val scopedSelection = missingAppSelection.selected.toList()
+                    val scopedLabels = missingAppSelection.candidates
+                        .map { it.target to it.label }
+                        .toMap()
+                    // Issue #331: the accepted typed SCOPE_MISMATCH failure from
+                    // the scope binding gate (17th unified failure outcome),
+                    // rendered with the re-export guidance.
+                    currentState.scopeRejection?.let { rejection ->
+                        item(key = "missing-app-selection-scope-mismatch") {
+                            Text(
+                                text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(rejection),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .semantics { liveRegion = LiveRegionMode.Assertive }
+                                    .testTag("missing-app-selection-scope-mismatch"),
+                            )
+                        }
+                    }
                     missingAppSelectionItems(
                         selection = missingAppSelection,
                         onSelectionChange = { missingAppSelection = it },
                         onConfirm = { selected -> execute { coordinator.confirmSelection(selected) } },
                         onCancel = { execute(coordinator::cancel) },
+                        intentScopeCount = currentState.intentScopeCount,
+                        editsEnabled = !exchangeBusy,
+                    )
+                    exchangeFlowItems(
+                        holder = exchangeHolder,
+                        scopedSelection = scopedSelection,
+                        scopedLabels = scopedLabels,
+                        clipboardTransport = { ctx: android.content.Context, text: String ->
+                            ClipboardExchangeTransport(ctx).copy(text)
+                        },
+                        shareTransport = { ctx: android.content.Context, text: String ->
+                            ShareSheetExchangeTransport().share(ctx, text)
+                        },
+                        fileTransport = FileExchangeTransport(context),
                     )
                 }
 
@@ -340,6 +381,21 @@ fun ManualOrganizationPreferences(
                         } else {
                             stringResource(currentState.reason.copyKind())
                         },
+                        focusRequester = focusRequester,
+                        modifier = focusTargetModifier,
+                    )
+                    ClickablePreference(
+                        label = stringResource(R.string.manual_organization_retry),
+                        onClick = { execute { coordinator.start(trigger) } },
+                    )
+                }
+
+                is ManualOrganizationRun.State.ScopeMismatchFailed -> item {
+                    // Issue #331 (D-5): the typed SCOPE_MISMATCH failure for a
+                    // run that could never open a selection surface. Zero-write;
+                    // the remedy is re-export (start a fresh run).
+                    FocusTargetText(
+                        text = app.lawnchair.organizer.ui.exchange.exchangeContractFailureText(currentState.failure),
                         focusRequester = focusRequester,
                         modifier = focusTargetModifier,
                     )

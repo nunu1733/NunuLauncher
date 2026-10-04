@@ -123,10 +123,13 @@ sealed interface ExchangeImportResult {
 }
 
 /**
- * The unified failure surface of the import path (spec 205 AC-5): the four
- * #205-side envelope/framing failures plus the twelve #204 contract classes
- * wrapped in [Contract]. UI failure displays map one-to-one onto these
- * (16 kinds total).
+ * The unified failure surface of the import path (spec 205 AC-5, spec 331
+ * D-5): the four #205-side envelope/framing failures plus the thirteen #204
+ * contract classes wrapped in [Contract]. UI failure displays map one-to-one
+ * onto these (17 kinds total). The #204 `ScopeMismatch` class is raised by the
+ * run-side scope binding gate (`ScopeBindingGate`), not by this pipeline —
+ * only the run knows the confirmed selection and the composition-time
+ * candidate projection.
  */
 sealed interface ExchangeImportFailure {
     data class Envelope(val failure: ExchangeEnvelopeFailure) : ExchangeImportFailure

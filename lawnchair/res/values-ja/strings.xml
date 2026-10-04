@@ -433,4 +433,12 @@
     <string name="exchange_failure_forbidden_content">整理案に禁止された指示 (座標・サイズ・データベース変更) が含まれています。</string>
     <string name="exchange_failure_mobility_contradiction">整理案が移動できない項目を動かそうとしています。</string>
     <string name="exchange_failure_capability_unsupported">整理案が未対応の機能を使用しています。</string>
+    <string name="exchange_failure_scope_mismatch">選択したアプリが依頼内容と一致していません。同じアプリを選び直すか、依頼を再作成してください。</string>
+    <string name="exchange_scoped_entry_title">選択したアプリをAIの依頼に含める</string>
+    <string name="exchange_scoped_entry_subtitle">現在のホームと選択したアプリをまとめて依頼文に含め、AIにすべての対象を判断してもらえます。</string>
+    <string name="exchange_scoped_entry_open">依頼文を作成</string>
+    <string name="exchange_scoped_freeze_notice">AI依頼の作成中はアプリの選択を変更できません。取り消すと再編集できます。</string>
+    <plurals name="exchange_scope_intent_count">
+        <item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するにはそれらを選択してください。</item>
+    </plurals>
 </resources>

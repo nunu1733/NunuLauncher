@@ -2,12 +2,16 @@ package app.lawnchair.organizer.integration
 
 import android.content.Context
 import androidx.core.util.AtomicFile
+import app.lawnchair.organizer.personalization.CandidateScopeIdentity
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.RandomIdAllocator
 import app.lawnchair.organizer.personalization.SignalProvenance
+import app.lawnchair.organizer.planning.CandidateTarget
+import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.ItemId
+import app.lawnchair.organizer.planning.ProfileId
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -56,6 +60,13 @@ class AndroidExportSessionStore : ExportSessionStore {
             },
             createdAtEpochMs = session.createdAtEpochMs,
             expiresAtEpochMs = session.expiresAtEpochMs,
+            // Issue #331 (v2): the export scope's candidate identities and
+            // projection digest (spec 331 "Data and state"). App-private
+            // stable identities; never part of the export document.
+            scopeCandidates = session.scopeCandidates
+                .map { CandidateScopeRecord(component = it.component.value, profile = it.profile.value) }
+                .sortedWith(compareBy({ it.component }, { it.profile })),
+            scopeCandidateDigest = session.scopeCandidateDigest,
         )
         val bytes = json.encodeToString(SessionRecord.serializer(), record).encodeToByteArray()
         val out = try {
@@ -119,6 +130,10 @@ class AndroidExportSessionStore : ExportSessionStore {
                 },
                 createdAtEpochMs = record.createdAtEpochMs,
                 expiresAtEpochMs = record.expiresAtEpochMs,
+                scopeCandidates = record.scopeCandidates.map {
+                    CandidateTarget.AppKey(ComponentKey(it.component), ProfileId(it.profile))
+                },
+                scopeCandidateDigest = record.scopeCandidateDigest.ifEmpty { CandidateScopeIdentity.EMPTY_DIGEST },
             )
         }.getOrNull()
     }
@@ -133,12 +148,20 @@ class AndroidExportSessionStore : ExportSessionStore {
         @SerialName("signalProvenance") val signalProvenance: SignalProvenanceRecord?,
         @SerialName("createdAtEpochMs") val createdAtEpochMs: Long,
         @SerialName("expiresAtEpochMs") val expiresAtEpochMs: Long,
+        @SerialName("scopeCandidates") val scopeCandidates: List<CandidateScopeRecord> = emptyList(),
+        @SerialName("scopeCandidateDigest") val scopeCandidateDigest: String = "",
     ) {
         init {
             require(exportId.isNotEmpty())
             require(expiresAtEpochMs > createdAtEpochMs)
         }
     }
+
+    @Serializable
+    private data class CandidateScopeRecord(
+        @SerialName("component") val component: String,
+        @SerialName("profile") val profile: String,
+    )
 
     @Serializable
     private data class RefEntry(val ref: String, val itemId: String) {
@@ -155,8 +178,12 @@ class AndroidExportSessionStore : ExportSessionStore {
     )
 
     private companion object {
-        const val SESSION_FILE_NAME = "organizer_personalization_export_session_v1.json"
-        const val SCHEMA_VERSION = 1
+        // Issue #331: the candidate scope fields made the record format v2.
+        // The renamed file orphans any pre-331 v1 record (fail-closed: the
+        // user re-exports), and a v1-schema record found at the new path is
+        // still rejected by the version check below.
+        const val SESSION_FILE_NAME = "organizer_personalization_export_session_v2.json"
+        const val SCHEMA_VERSION = 2
     }
 }
 

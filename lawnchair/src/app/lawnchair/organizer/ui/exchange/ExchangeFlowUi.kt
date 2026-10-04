@@ -71,7 +71,11 @@ sealed interface ExchangeScreen {
     data class SelectingPrivacy(val replacementConfirmationRequired: Boolean) : ExchangeScreen
 
     /** Explicit pre-generation confirmation (spec 205 AC-13). */
-    data class ReplacementConfirm(val tier: PrivacyTier) : ExchangeScreen
+    data class ReplacementConfirm(
+        val tier: PrivacyTier,
+        /** Issue #331: the run-in scoped selection the generation continues with. */
+        val scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
+    ) : ExchangeScreen
 
     data object Generating : ExchangeScreen
 
@@ -182,17 +186,31 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Closed
     }
 
-    fun requestGeneration(replacementConfirmationRequired: Boolean, tier: PrivacyTier) {
+    /**
+     * Issue #331: when [scoped] is set (the run-in entry), generation composes
+     * the export from the frozen selection via the scope-composed canonical
+     * seam instead of the idle full-organization composition.
+     */
+    fun requestGeneration(
+        replacementConfirmationRequired: Boolean,
+        tier: PrivacyTier,
+        scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
+    ) {
         if (replacementConfirmationRequired) {
-            screen = ExchangeScreen.ReplacementConfirm(tier)
+            screen = ExchangeScreen.ReplacementConfirm(tier, scoped)
+        } else if (scoped != null) {
+            generateScoped(tier, scoped.first, scoped.second)
         } else {
             generate(tier)
         }
     }
 
     /** The user confirmed discarding the existing exchange (spec 205 AC-13). */
-    fun confirmReplacementAndGenerate(tier: PrivacyTier) {
-        generate(tier)
+    fun confirmReplacementAndGenerate(
+        tier: PrivacyTier,
+        scoped: Pair<List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>, Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>>? = null,
+    ) {
+        if (scoped != null) generateScoped(tier, scoped.first, scoped.second) else generate(tier)
     }
 
     /** The user declined; the existing session stays untouched and importable. */
@@ -204,32 +222,52 @@ class ExchangeFlowStateHolder(
         screen = ExchangeScreen.Generating
         scope.launch(Dispatchers.IO) {
             val result = controller.generate(tier)
-            withContext(Dispatchers.Main) {
-                when (result) {
-                    is ExchangeGenerationResult.Generated ->
-                        screen = ExchangeScreen.Disclosing(
-                            ExchangeDisclosureState(
-                                session = result.session,
-                                packageText = result.packageText,
-                                tier = tier,
-                            ),
-                        )
+            withContext(Dispatchers.Main) { handleGeneration(result, tier) }
+        }
+    }
 
-                    is ExchangeGenerationResult.InputNotReady -> {
-                        status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
-                        screen = ExchangeScreen.SelectingPrivacy(false)
-                    }
+    /**
+     * Issue #331: run-in (scope-composed) generation from the selection
+     * surface. The export scope is the frozen selection composed by the same
+     * canonical seam the planner consumes; the ordering contract (gate →
+     * build → save → compose → disclose) is the controller's.
+     */
+    fun generateScoped(
+        tier: PrivacyTier,
+        selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        candidateLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
+    ) {
+        screen = ExchangeScreen.Generating
+        scope.launch(Dispatchers.IO) {
+            val result = controller.generateForSelection(tier, selection, candidateLabels)
+            withContext(Dispatchers.Main) { handleGeneration(result, tier) }
+        }
+    }
 
-                    ExchangeGenerationResult.SessionStoreFailure -> {
-                        status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_STORE_FAILURE)
-                        screen = ExchangeScreen.SelectingPrivacy(false)
-                    }
+    private fun handleGeneration(result: ExchangeGenerationResult, tier: PrivacyTier) {
+        when (result) {
+            is ExchangeGenerationResult.Generated ->
+                screen = ExchangeScreen.Disclosing(
+                    ExchangeDisclosureState(
+                        session = result.session,
+                        packageText = result.packageText,
+                        tier = tier,
+                    ),
+                )
 
-                    is ExchangeGenerationResult.EncodeFailure -> {
-                        status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
-                        screen = ExchangeScreen.SelectingPrivacy(false)
-                    }
-                }
+            is ExchangeGenerationResult.InputNotReady -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_INPUT_NOT_READY)
+                screen = ExchangeScreen.SelectingPrivacy(false)
+            }
+
+            ExchangeGenerationResult.SessionStoreFailure -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_STORE_FAILURE)
+                screen = ExchangeScreen.SelectingPrivacy(false)
+            }
+
+            is ExchangeGenerationResult.EncodeFailure -> {
+                status = ExchangeStatus(ExchangeStatus.Kind.GENERATION_OVERSIZE)
+                screen = ExchangeScreen.SelectingPrivacy(false)
             }
         }
     }
@@ -365,6 +403,24 @@ class ExchangeFlowStateHolder(
             val outcome = controller.importReply(replyText)
             val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
             if (pipeline is ExchangeImportResult.Validated) {
+                // Issue #331: the run-in entry — the run is still holding the
+                // selection surface, so the validated intent attaches to THAT
+                // run instead of starting a fresh one. Zero-write either way;
+                // a refusal (surface gone, intent already bound) is typed.
+                val selecting = run.state is ManualOrganizationRun.State.Selecting
+                if (selecting) {
+                    val attached = run.attachIntent(pipeline.validated)
+                    withContext(Dispatchers.Main) {
+                        if (attached == ManualOrganizationRun.AttachIntentOutcome.Attached) {
+                            status = ExchangeStatus(ExchangeStatus.Kind.IMPORT_ACCEPTED)
+                            screen = ExchangeScreen.Closed
+                        } else {
+                            status = ExchangeStatus(ExchangeStatus.Kind.RUN_BUSY)
+                            screen = ExchangeScreen.Importing(replyText)
+                        }
+                    }
+                    return@launch
+                }
                 // The fresh-run start performs capture/composition/planning
                 // synchronously; every production entry runs it on IO (audit
                 // P2-1), matching the plain start row's execute{} wrapper.
@@ -422,30 +478,68 @@ fun LazyListScope.exchangeFlowItems(
     shareTransport: (Context, String) -> ExchangeTransportResult,
     fileTransport: FileExchangeTransport,
 ) {
+    exchangeFlowItems(holder, null, emptyMap(), clipboardTransport, shareTransport, fileTransport)
+}
+
+/**
+ * Issue #331: the exchange items with the run-in (scope-composed) entry.
+ * Hosted inside the selection surface while a run holds it; when
+ * [scopedSelection] is non-null the generation composes the export from the
+ * frozen selection instead of the idle full-organization scope.
+ */
+fun LazyListScope.exchangeFlowItems(
+    holder: ExchangeFlowStateHolder,
+    scopedSelection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>?,
+    scopedLabels: Map<app.lawnchair.organizer.planning.CandidateTarget.AppKey, String>,
+    clipboardTransport: (Context, String) -> ExchangeTransportResult,
+    shareTransport: (Context, String) -> ExchangeTransportResult,
+    fileTransport: FileExchangeTransport,
+) {
+    val scoped = scopedSelection?.let { it to scopedLabels }
     when (val current = holder.screen) {
         ExchangeScreen.Closed -> {
             item(key = "exchange-entry") {
-                ExchangeEntryRow(
-                    onOpenFlow = holder::openFlow,
-                    onOpenImport = holder::openImport,
-                )
+                if (scoped != null) {
+                    ExchangeScopedEntryRow(
+                        onOpenFlow = holder::openFlow,
+                        onOpenImport = holder::openImport,
+                    )
+                } else {
+                    ExchangeEntryRow(
+                        onOpenFlow = holder::openFlow,
+                        onOpenImport = holder::openImport,
+                    )
+                }
             }
         }
 
         is ExchangeScreen.SelectingPrivacy -> {
             item(key = "exchange-privacy") {
-                ExchangePrivacySelection(
-                    requiresConfirmation = current.replacementConfirmationRequired,
-                    onGenerate = { tier -> holder.requestGeneration(current.replacementConfirmationRequired, tier) },
-                    onCancel = holder::close,
-                )
+                Column {
+                    if (scoped != null) {
+                        // Issue #331: announce the frozen selection (a11y).
+                        Text(
+                            text = stringResource(R.string.exchange_scoped_freeze_notice),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp)
+                                .semantics { liveRegion = LiveRegionMode.Assertive }
+                                .testTag("exchange-scoped-freeze-notice"),
+                        )
+                    }
+                    ExchangePrivacySelection(
+                        requiresConfirmation = current.replacementConfirmationRequired,
+                        onGenerate = { tier -> holder.requestGeneration(current.replacementConfirmationRequired, tier, scoped) },
+                        onCancel = holder::close,
+                    )
+                }
             }
         }
 
         is ExchangeScreen.ReplacementConfirm -> {
             item(key = "exchange-replacement-confirm") {
                 ExchangeReplacementConfirm(
-                    onConfirm = { holder.confirmReplacementAndGenerate(current.tier) },
+                    onConfirm = { holder.confirmReplacementAndGenerate(current.tier, current.scoped) },
                     onDecline = holder::declineReplacement,
                 )
             }
@@ -528,6 +622,39 @@ private fun ExchangeEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
                 Text(stringResource(R.string.exchange_entry_open))
             }
             OutlinedButton(onClick = onOpenImport, modifier = Modifier.testTag("exchange-entry-import")) {
+                Text(stringResource(R.string.exchange_entry_import))
+            }
+        }
+    }
+}
+
+/**
+ * Issue #331: the run-in entry row. The export scope is the frozen selection
+ * (existing placements plus the selected missing apps), so the reply can
+ * advise the candidates the user is about to organize.
+ */
+@Composable
+private fun ExchangeScopedEntryRow(onOpenFlow: () -> Unit, onOpenImport: () -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(R.string.exchange_scoped_entry_title),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.testTag("exchange-scoped-entry-title"),
+        )
+        Text(
+            text = stringResource(R.string.exchange_scoped_entry_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(onClick = onOpenFlow, modifier = Modifier.testTag("exchange-scoped-entry-open")) {
+                Text(stringResource(R.string.exchange_scoped_entry_open))
+            }
+            OutlinedButton(onClick = onOpenImport, modifier = Modifier.testTag("exchange-scoped-entry-import")) {
                 Text(stringResource(R.string.exchange_entry_import))
             }
         }
@@ -830,18 +957,41 @@ private fun exchangeFailureText(failure: ExchangeImportFailure): String = when (
         ExchangeEnvelopeFailure.FramingEmpty -> stringResource(R.string.exchange_failure_framing_empty)
     }
 
-    is ExchangeImportFailure.Contract -> when (val f = failure.failure) {
-        IntentValidationFailure.SchemaMismatch -> stringResource(R.string.exchange_failure_schema_mismatch)
-        IntentValidationFailure.ExportMismatch -> stringResource(R.string.exchange_failure_export_mismatch)
-        IntentValidationFailure.SessionExpired -> stringResource(R.string.exchange_failure_session_expired)
-        IntentValidationFailure.ContextStale -> stringResource(R.string.exchange_failure_context_stale)
-        IntentValidationFailure.Oversize -> stringResource(R.string.exchange_failure_oversize)
-        is IntentValidationFailure.UnknownRef -> stringResource(R.string.exchange_failure_unknown_ref)
-        IntentValidationFailure.DuplicateRef -> stringResource(R.string.exchange_failure_duplicate_ref)
-        IntentValidationFailure.IncompleteCoverage -> stringResource(R.string.exchange_failure_incomplete_coverage)
-        IntentValidationFailure.InvalidEnum -> stringResource(R.string.exchange_failure_invalid_enum)
-        IntentValidationFailure.ForbiddenContent -> stringResource(R.string.exchange_failure_forbidden_content)
-        is IntentValidationFailure.MobilityContradiction -> stringResource(R.string.exchange_failure_mobility_contradiction)
-        IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
-    }
+    is ExchangeImportFailure.Contract -> exchangeContractFailureText(failure.failure)
+}
+
+/**
+ * The 13-class #204 contract failure mapping (spec 204 + spec 331 D-5). The
+ * exhaustive `when` is the compile-time guarantee that every contract class —
+ * including the 17th unified outcome `SCOPE_MISMATCH`, raised by the run-side
+ * scope binding gate — reaches the failure UI.
+ */
+@Composable
+fun exchangeContractFailureText(failure: IntentValidationFailure): String = when (failure) {
+    IntentValidationFailure.SchemaMismatch -> stringResource(R.string.exchange_failure_schema_mismatch)
+
+    IntentValidationFailure.ExportMismatch -> stringResource(R.string.exchange_failure_export_mismatch)
+
+    IntentValidationFailure.SessionExpired -> stringResource(R.string.exchange_failure_session_expired)
+
+    IntentValidationFailure.ContextStale -> stringResource(R.string.exchange_failure_context_stale)
+
+    IntentValidationFailure.Oversize -> stringResource(R.string.exchange_failure_oversize)
+
+    is IntentValidationFailure.UnknownRef -> stringResource(R.string.exchange_failure_unknown_ref)
+
+    IntentValidationFailure.DuplicateRef -> stringResource(R.string.exchange_failure_duplicate_ref)
+
+    IntentValidationFailure.IncompleteCoverage -> stringResource(R.string.exchange_failure_incomplete_coverage)
+
+    IntentValidationFailure.InvalidEnum -> stringResource(R.string.exchange_failure_invalid_enum)
+
+    IntentValidationFailure.ForbiddenContent -> stringResource(R.string.exchange_failure_forbidden_content)
+
+    is IntentValidationFailure.MobilityContradiction -> stringResource(R.string.exchange_failure_mobility_contradiction)
+
+    IntentValidationFailure.CapabilityUnsupported -> stringResource(R.string.exchange_failure_capability_unsupported)
+
+    // Issue #331 (17th outcome): the scope binding gate's typed rejection.
+    is IntentValidationFailure.ScopeMismatch -> stringResource(R.string.exchange_failure_scope_mismatch)
 }
