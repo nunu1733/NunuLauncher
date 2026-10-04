@@ -186,6 +186,7 @@ signalがないことは原則として失敗ではない。頻度情報がな�
 lawnchair/src/app/lawnchair/organizer/
 ├── planning/       # pure domain model and planning implementation
 ├── application/    # validated plan application and recovery
+├── locks/          # lock authoring decisions and unknown-state review (Issue #38)
 ├── diagnostics/    # privacy-safe run journal, logcat, and export
 ├── rules/          # typed rules, validation, migration and file I/O
 ├── integration/    # Lawnchair/Launcher3 adapters and triggers

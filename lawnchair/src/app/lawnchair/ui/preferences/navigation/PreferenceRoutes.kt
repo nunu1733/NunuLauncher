@@ -146,6 +146,10 @@ data object HomeScreenPopupEditor : PreferenceRoute, PreferenceDeepLink {
     override val deepLink = "$URI/home-screen-popup-editor"
 }
 
+// Issue #38: placement lock management and unknown-state review.
+@Serializable
+data object HomeScreenPlacementLocks : PreferenceRoute
+
 // Dock section routes
 @Serializable
 data object DockSearchProvider : PreferenceRoute, PreferenceDeepLink {

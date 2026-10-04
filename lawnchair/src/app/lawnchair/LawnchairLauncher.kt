@@ -20,6 +20,7 @@ import android.animation.AnimatorSet
 import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -28,6 +29,8 @@ import android.view.Display
 import android.view.View
 import android.view.ViewTreeObserver
 import android.window.SplashScreen
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
@@ -35,19 +38,19 @@ import app.lawnchair.LawnchairApp.Companion.showQuickstepWarningIfNecessary
 import app.lawnchair.compat.LawnchairQuickstepCompat
 import app.lawnchair.data.AppDatabase
 import app.lawnchair.data.wallpaper.service.WallpaperService
+import app.lawnchair.factory.LawnchairWidgetHolder
 import app.lawnchair.gestures.GestureController
 import app.lawnchair.gestures.VerticalSwipeTouchController
 import app.lawnchair.gestures.config.GestureHandlerConfig
-import app.lawnchair.gestures.ui.LawnchairShortcutActivity
 import app.lawnchair.nexuslauncher.OverlayCallbackImpl
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
-import app.lawnchair.preferences2.firstCached
 import app.lawnchair.root.RootHelperManager
 import app.lawnchair.root.RootNotAvailableException
 import app.lawnchair.theme.ThemeProvider
 import app.lawnchair.ui.popup.LauncherOptionsPopup
 import app.lawnchair.ui.popup.LawnchairShortcut
+import app.lawnchair.ui.popup.OrganizerLockShortcut
 import app.lawnchair.util.getThemedIconPacksInstalled
 import app.lawnchair.util.unsafeLazy
 import app.lawnchair.views.LawnchairFloatingSurfaceView
@@ -56,15 +59,10 @@ import com.android.launcher3.BaseActivity
 import com.android.launcher3.BubbleTextView
 import com.android.launcher3.GestureNavContract
 import com.android.launcher3.LauncherAppState
-import com.android.launcher3.LauncherSettings.Favorites.CONTAINER_ALL_APPS_PREDICTION
-import com.android.launcher3.LauncherSettings.Favorites.CONTAINER_HOTSEAT_PREDICTION
-import com.android.launcher3.LauncherSettings.Favorites.CONTAINER_WIDGETS_PREDICTION
 import com.android.launcher3.LauncherState
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
-import com.android.launcher3.folder.FolderIcon
 import com.android.launcher3.model.data.ItemInfo
-import com.android.launcher3.model.data.PredictedContainerInfo
 import com.android.launcher3.popup.SystemShortcut
 import com.android.launcher3.shortcuts.DeepShortcutView
 import com.android.launcher3.statemanager.StateManager
@@ -87,6 +85,7 @@ import com.android.launcher3.widget.RoundedCornerEnforcement
 import com.android.systemui.plugins.shared.LauncherOverlayManager
 import com.android.systemui.shared.system.QuickStepContract
 import com.kieronquinn.app.smartspacer.sdk.client.SmartspacerClient
+import com.patrykmichalik.opto.core.firstBlocking
 import com.patrykmichalik.opto.core.onEach
 import dev.kdrag0n.monet.theme.ColorScheme
 import java.util.stream.Stream
@@ -99,11 +98,7 @@ class LawnchairLauncher : QuickstepLauncher() {
     private val defaultOverlay by unsafeLazy { OverlayCallbackImpl(this) }
     private val prefs by unsafeLazy { PreferenceManager.getInstance(this) }
     private val preferenceManager2 by unsafeLazy { PreferenceManager2.getInstance(this) }
-    private val insetsController: WindowInsetsControllerCompat by lazy {
-        val window = launcher.window
-            ?: throw Exception("WindowInsetsControllerCompat not available.")
-        WindowInsetsControllerCompat(window, rootView)
-    }
+    private val insetsController by unsafeLazy { WindowInsetsControllerCompat(launcher.window, rootView) }
     private val themeProvider by unsafeLazy { ThemeProvider.INSTANCE.get(this) }
     private val noStatusBarStateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {
@@ -158,6 +153,14 @@ class LawnchairLauncher : QuickstepLauncher() {
     val gestureController by unsafeLazy { GestureController(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (!Utilities.ATLEAST_Q) {
+            enableEdgeToEdge(
+                navigationBarStyle = SystemBarStyle.auto(
+                    Color.TRANSPARENT,
+                    Color.TRANSPARENT,
+                ),
+            )
+        }
         layoutInflater.factory2 = LawnchairLayoutFactory(this)
         super.onCreate(savedInstanceState)
 
@@ -194,7 +197,7 @@ class LawnchairLauncher : QuickstepLauncher() {
             }
         }.launchIn(scope = lifecycleScope)
 
-        preferenceManager2.statusBarClock.get().distinctUntilChanged().onEach {
+        preferenceManager2.statusBarClock.get().onEach {
             with(launcher.stateManager) {
                 if (it) {
                     addStateListener(statusBarClockListener)
@@ -204,7 +207,7 @@ class LawnchairLauncher : QuickstepLauncher() {
                     LawnchairApp.instance.restoreClockInStatusBar()
                 }
             }
-        }.launchIn(scope = lifecycleScope)
+        }
         preferenceManager2.rememberPosition.get().onEach {
             with(launcher.stateManager) {
                 if (it) {
@@ -226,7 +229,7 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
         val isWorkspaceDarkText = Themes.getAttrBoolean(this, R.attr.isWorkspaceDarkText)
         preferenceManager2.darkStatusBar.onEach(launchIn = lifecycleScope) { darkStatusBar ->
-            systemUiController?.updateUiState(UI_STATE_BASE_WINDOW, isWorkspaceDarkText || darkStatusBar)
+            systemUiController.updateUiState(UI_STATE_BASE_WINDOW, isWorkspaceDarkText || darkStatusBar)
         }
         preferenceManager2.backPressGestureHandler.onEach(launchIn = lifecycleScope) { handler ->
             hasBackGesture = handler !is GestureHandlerConfig.NoOp
@@ -252,57 +255,28 @@ class LawnchairLauncher : QuickstepLauncher() {
         AppDatabase.INSTANCE.get(this).checkpointSync()
     }
 
-    override fun onNewIntent(intent: Intent?) {
-        if (intent != null && intent.action == LawnchairShortcutActivity.START_ACTION) {
-            val handlerString = intent.getStringExtra(LawnchairShortcutActivity.EXTRA_HANDLER)
-            val config = handlerString?.let { GestureHandlerConfig.fromString(it) }
-            if (config != null && config.isExternallyInvokable()) {
-                gestureController.handle(config)
-            }
-        }
-
-        super.onNewIntent(intent)
-    }
-
     override fun collectStateHandlers(out: MutableList<StateHandler<LauncherState>>) {
         super.collectStateHandlers(out)
         out.add(SearchBarStateHandler(this))
     }
 
-    override fun getAllAppsItemLongClickListener(): View.OnLongClickListener {
-        return View.OnLongClickListener { view ->
-            if (view is FolderIcon && view.mInfo.id != ItemInfo.NO_ID) {
-                LawnchairShortcut.showAppDrawerFolderPopup(this, view)
-            } else {
-                super.getAllAppsItemLongClickListener().onLongClick(view)
-            }
-        }
-    }
-
-    override fun getSupportedShortcuts(container: Int): Stream<SystemShortcut.Factory<*>> = Stream.concat(
-        super.getSupportedShortcuts(container),
+    override fun getSupportedShortcuts(): Stream<SystemShortcut.Factory<*>> = Stream.concat(
+        super.getSupportedShortcuts(),
         Stream.concat(
-            Stream.of(LawnchairShortcut.UNINSTALL, LawnchairShortcut.CUSTOMIZE, LawnchairShortcut.OPEN_IN_STORE),
-            if (LawnchairApp.isRecentsEnabled) Stream.of(LawnchairShortcut.PAUSE_APPS) else Stream.empty(),
+            Stream.of(LawnchairShortcut.UNINSTALL, LawnchairShortcut.CUSTOMIZE),
+            Stream.concat(
+                if (LawnchairApp.isRecentsEnabled) Stream.of(LawnchairShortcut.PAUSE_APPS) else Stream.empty(),
+                // Issue #38: placement lock authoring for shortcut-capable rows.
+                Stream.of(OrganizerLockShortcut.PLACEMENT_LOCK),
+            ),
         ),
     )
 
-    fun updateTheme() {
+    override fun updateTheme() {
         if (themeProvider.colorScheme != colorScheme) {
             recreate()
         } else {
-            mWallpaperThemeManager.updateTheme()
-        }
-    }
-
-    override fun onStateBack() {
-        val searchInput = mAppsView?.searchUiManager?.editText
-        val isSearching = mAppsView?.isSearching == true || searchInput?.hasFocus() == true
-        if (isSearching) {
-            mAppsView?.searchUiManager?.resetSearch()
-            allAppsController.animateAllAppsToNoScale()
-        } else {
-            super.onStateBack()
+            super.updateTheme()
         }
     }
 
@@ -315,21 +289,26 @@ class LawnchairLauncher : QuickstepLauncher() {
         gestureController.onHomePressed()
     }
 
-    fun bindItems(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
-        // pE-TODO(QPR1): Note: null is modelWriter + bindItems override something
+    override fun registerBackDispatcher() {
+        if (LawnchairApp.isAtleastT) {
+            super.registerBackDispatcher()
+        }
+    }
+
+    override fun bindItems(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
         val inflatedItems = items.map { i ->
             Pair.create(
                 i,
                 itemInflater?.inflateItem(
                     i,
-                    null,
+                    modelWriter,
                 ),
             )
         }.toList()
         bindInflatedItems(inflatedItems, if (forceAnimateIcons) AnimatorSet() else null)
     }
 
-    override fun handleGestureContract(intent: Intent) {
+    override fun handleGestureContract(intent: Intent?) {
         if (!LawnchairApp.isRecentsEnabled && prefs.enableGnc.get()) {
             val gnc = GestureNavContract.fromIntent(intent)
             if (gnc != null) {
@@ -350,7 +329,7 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
 
     override fun showDefaultOptions(x: Float, y: Float) {
-        val showWallpaperCarousel = "+carousel" in preferenceManager2.launcherPopupOrder.firstCached()
+        val showWallpaperCarousel = "+carousel" in preferenceManager2.launcherPopupOrder.firstBlocking()
 
         if (showWallpaperCarousel) {
             show<LawnchairLauncher>(
@@ -387,7 +366,7 @@ class LawnchairLauncher : QuickstepLauncher() {
             view.iconView.setBackgroundDrawable(item.icon)
             view.bubbleText.text = item.label
             view.setOnClickListener(popup)
-            view.setOnLongClickListener(popup)
+            view.onLongClickListener = popup
             popup.mItemMap[view] = item
         }
 
@@ -395,12 +374,15 @@ class LawnchairLauncher : QuickstepLauncher() {
         return popup
     }
 
-    fun createAppWidgetHolder(): LauncherWidgetHolder {
-        val holder = LauncherWidgetHolder.newInstance(this)
-        holder.setAppWidgetRemovedCallback { appWidgetId ->
-            workspace.removeWidget(appWidgetId)
+    override fun createAppWidgetHolder(): LauncherWidgetHolder {
+        val factory = LauncherWidgetHolder.HolderFactory.newFactory(this) as LawnchairWidgetHolder.LawnchairHolderFactory
+        return factory.newInstance(
+            this,
+        ) { appWidgetId: Int ->
+            workspace.removeWidget(
+                appWidgetId,
+            )
         }
-        return holder
     }
 
     override fun makeDefaultActivityOptions(splashScreenStyle: Int): ActivityOptionsWrapper {
@@ -470,7 +452,6 @@ class LawnchairLauncher : QuickstepLauncher() {
     override fun onResume() {
         super.onResume()
         restartIfPending()
-        refreshPredictionContainersFromModel()
 
         dragLayer.viewTreeObserver.addOnDrawListener(
             object : ViewTreeObserver.OnDrawListener {
@@ -484,17 +465,11 @@ class LawnchairLauncher : QuickstepLauncher() {
 
                     dragLayer.post {
                         dragLayer.viewTreeObserver.removeOnDrawListener(this)
-                        // Drop stuck All Apps RenderEffect on icons after returning home.
-                        depthController.clearStuckBlurOnResumeIfHome()
                     }
+                    depthController
                 }
             },
         )
-    }
-
-    override fun onStateSetEnd(state: LauncherState) {
-        super.onStateSetEnd(state)
-        refreshPredictionContainersFromModel()
     }
 
     override fun onDestroy() {
@@ -522,33 +497,14 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
     }
 
-    private fun refreshPredictionContainersFromModel() {
-        LauncherAppState.getInstance(this).model.loadAsync { dataModel ->
-            if (dataModel == null || isDestroyed) return@loadAsync
-
-            val predictedContainers = synchronized(dataModel) {
-                listOf(
-                    dataModel.itemsIdMap[CONTAINER_ALL_APPS_PREDICTION] as? PredictedContainerInfo,
-                    dataModel.itemsIdMap[CONTAINER_HOTSEAT_PREDICTION] as? PredictedContainerInfo,
-                    dataModel.itemsIdMap[CONTAINER_WIDGETS_PREDICTION] as? PredictedContainerInfo,
-                ).filterNotNull()
-            }
-
-            Executors.MAIN_EXECUTOR.execute {
-                if (isDestroyed) return@execute
-                predictedContainers.forEach(::bindPredictedContainerInfo)
-            }
-        }
-    }
-
     /**
      * Reloads app icons if there is an active icon pack & [PreferenceManager2.alwaysReloadIcons] is enabled.
      */
     private fun reloadIconsIfNeeded() {
         if (
-            preferenceManager2.alwaysReloadIcons.firstCached()
+            preferenceManager2.alwaysReloadIcons.firstBlocking()
         ) {
-            LauncherAppState.getInstance(this).model.reloadIfActive()
+            LauncherAppState.getInstance(this).reloadIcons()
         }
     }
 
@@ -558,7 +514,7 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         var sRestartFlags = 0
 
-        val instance get() = LawnchairApp.launcher
+        val instance get() = LauncherAppState.getInstanceNoCreate()?.launcher as? LawnchairLauncher
     }
 }
 

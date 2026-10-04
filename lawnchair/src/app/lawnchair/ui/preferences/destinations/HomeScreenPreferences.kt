@@ -16,8 +16,6 @@
 
 package app.lawnchair.ui.preferences.destinations
 
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -46,12 +44,11 @@ import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
+import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.util.collectAsStateBlocking
 import com.android.launcher3.LauncherAppState
-import com.android.launcher3.LauncherSettings
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
-import com.android.launcher3.celllayout.CellPosMapper
 import kotlinx.coroutines.launch
 
 object HomeScreenRoutes {
@@ -66,7 +63,6 @@ fun HomeScreenPreferences(
     val prefs = preferenceManager()
     val prefs2 = preferenceManager2()
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     PreferenceLayout(
         label = stringResource(id = R.string.home_screen_label),
         backArrowVisible = !LocalIsExpandedScreen.current,
@@ -74,6 +70,7 @@ fun HomeScreenPreferences(
     ) {
         val lockHomeScreenAdapter = prefs2.lockHomeScreen.getAdapter()
         val showDeckLayout = prefs2.showDeckLayout.getAdapter().state.value
+        val context = LocalContext.current
 
         if (showDeckLayout) {
             HomeLayoutSettings()
@@ -107,14 +104,14 @@ fun HomeScreenPreferences(
                 confirmationText = stringResource(id = R.string.remove_all_views_from_home_screen_desc),
                 onClick = {
                     scope.launch {
-                        clearAllViewsFromHomeScreen(context, LauncherSettings.Favorites.CONTAINER_DESKTOP)
+                        LauncherAppState.getInstance(context).clearAllViewsFromHomeScreen()
                     }
                 },
             )
         }
-        val feedAvailable = OverlayCallbackImpl.minusOneAvailable(LocalContext.current)
-        val enableFeedAdapter = prefs2.enableFeed.getAdapter()
         PreferenceGroup(heading = stringResource(id = R.string.minus_one)) {
+            val feedAvailable = OverlayCallbackImpl.minusOneAvailable(LocalContext.current)
+            val enableFeedAdapter = prefs2.enableFeed.getAdapter()
             SwitchPreference(
                 adapter = enableFeedAdapter,
                 label = stringResource(id = R.string.minus_one_enable),
@@ -137,7 +134,7 @@ fun HomeScreenPreferences(
                 prefs.wallpaperScrolling.getAdapter(),
                 label = stringResource(id = R.string.wallpaper_scrolling_label),
             )
-            ExpandAndShrink(visible = Utilities.ATLEAST_R) {
+            if (Utilities.ATLEAST_R) {
                 SwitchPreference(
                     prefs2.wallpaperDepthEffect.getAdapter(),
                     label = stringResource(id = R.string.wallpaper_depth_effect_label),
@@ -149,39 +146,41 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.show_sys_ui_scrim),
             )
         }
-        val columns by prefs.workspaceColumns.getAdapter()
-        val rows by prefs.workspaceRows.getAdapter()
         PreferenceGroup(heading = stringResource(id = R.string.layout)) {
+            val columns by prefs.workspaceColumns.getAdapter()
+            val rows by prefs.workspaceRows.getAdapter()
             NavigationActionPreference(
                 label = stringResource(id = R.string.home_screen_grid),
                 destination = HomeScreenGrid,
                 subtitle = stringResource(id = R.string.x_by_y, columns, rows),
             )
-            SliderPreference(
-                label = stringResource(id = R.string.horizontal_padding_label),
-                adapter = prefs2.workspacePaddingHorizontalFactor.getAdapter(),
-                step = 0.05f,
-                valueRange = 0F..2F,
-                showAsPercentage = true,
-            )
-            SliderPreference(
-                label = stringResource(id = R.string.vertical_padding_label),
-                adapter = prefs2.workspacePaddingVerticalFactor.getAdapter(),
-                step = 0.05f,
-                valueRange = 0F..2F,
-                showAsPercentage = true,
+            // Issue #38: placement lock management and unknown-state review.
+            NavigationActionPreference(
+                label = stringResource(id = R.string.organizer_lock_screen_title),
+                destination = HomeScreenPlacementLocks,
+                subtitle = stringResource(id = R.string.organizer_lock_screen_summary),
             )
             SwitchPreference(
                 adapter = lockHomeScreenAdapter,
                 label = stringResource(id = R.string.home_screen_lock),
                 description = stringResource(id = R.string.home_screen_lock_description),
             )
+            SwitchPreference(
+                adapter = prefs2.enableDotPagination.getAdapter(),
+                label = stringResource(id = R.string.show_dot_pagination_label),
+                description = stringResource(id = R.string.show_dot_pagination_description),
+            )
         }
         PreferenceGroup(heading = stringResource(id = R.string.popup_menu)) {
+            SwitchPreference(
+                adapter = prefs2.enableMaterialUPopUp.getAdapter(),
+                label = stringResource(id = R.string.show_material_u_popup_label),
+                description = stringResource(id = R.string.show_material_u_popup_description),
+            )
             LauncherPopupPreferenceItem()
         }
-        val showStatusBarAdapter = prefs2.showStatusBar.getAdapter()
         PreferenceGroup(heading = stringResource(id = R.string.status_bar_label)) {
+            val showStatusBarAdapter = prefs2.showStatusBar.getAdapter()
             SwitchPreference(
                 adapter = showStatusBarAdapter,
                 label = stringResource(id = R.string.show_status_bar),
@@ -200,7 +199,6 @@ fun HomeScreenPreferences(
                 )
             }
         }
-        val homeScreenLabelsAdapter = prefs2.showIconLabelsOnHomeScreen.getAdapter()
         PreferenceGroup(heading = stringResource(id = R.string.icons)) {
             SliderPreference(
                 label = stringResource(id = R.string.icon_sizes),
@@ -209,6 +207,7 @@ fun HomeScreenPreferences(
                 valueRange = 0.5F..1.5F,
                 showAsPercentage = true,
             )
+            val homeScreenLabelsAdapter = prefs2.showIconLabelsOnHomeScreen.getAdapter()
             SwitchPreference(
                 adapter = homeScreenLabelsAdapter,
                 label = stringResource(id = R.string.show_labels),
@@ -225,7 +224,7 @@ fun HomeScreenPreferences(
         }
         val overrideRepo = IconOverrideRepository.INSTANCE.get(LocalContext.current)
         val customIconsCount by remember { overrideRepo.observeCount() }.collectAsStateBlocking()
-        if (customIconsCount > 0) {
+        ExpandAndShrink(visible = customIconsCount > 0) {
             PreferenceGroup {
                 ClickablePreference(
                     label = stringResource(id = R.string.reset_custom_icons),
@@ -253,32 +252,7 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.force_widget_resize_label),
                 description = stringResource(id = R.string.force_widget_resize_description),
             )
-            SliderPreference(
-                label = stringResource(id = R.string.widget_padding_label),
-                adapter = prefs2.widgetPaddingFactor.getAdapter(),
-                step = 0.05f,
-                valueRange = 0F..2F,
-                showAsPercentage = true,
-            )
         }
-    }
-}
-
-private fun clearAllViewsFromHomeScreen(context: Context, type: Int) {
-    val launcherModel = LauncherAppState.getInstance(context).model
-    val modelWriter = launcherModel.getWriter(
-        verifyChanges = false,
-        cellPosMapper = CellPosMapper.DEFAULT,
-        owner = null,
-    )
-    val isViewsRemoved = modelWriter.clearAllHomeScreenViewsByType(type)
-    if (isViewsRemoved) {
-        launcherModel.forceReload()
-        Toast.makeText(
-            context,
-            R.string.home_screen_all_views_removed_msg,
-            Toast.LENGTH_SHORT,
-        ).show()
     }
 }
 
