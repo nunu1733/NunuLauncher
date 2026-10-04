@@ -450,7 +450,52 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 
 ### 6.4 G5（CI）への引継ぎ
 
-1. **anchor AGPの複数class filter制限**: ci.ymlの `android.testInstrumentationRunnerArguments.class=A,B,…` はanchor AGP下で最初の1 classしか実行しない。G5のCIはこのままだと全laneが静かにunder-runする。lane filterの分割実行（per-class invocation化、script化）またはrunner引数経路の修正が必要。
-2. **production regression（§6.2）の修正と本表の再実行**: `ForkServiceModule.provideIdp` 修正commit後に、FAIL 65 caseの再実行（同一command）でG4をgreenにする必要がある。PASS済みclassの再実行も、最終head上でREBASE_HEAD対証跡を更新すること。
+1. **anchor AGPの複数class filter制限**: ci.ymlの `android.testInstrumentationRunnerArguments.class=A,B,…` はanchor AGP下で最初の1 classしか実行しない。G5のCIはこのままだと全laneが静かにunder-runする。lane filterの分割実行（per-class invocation化、script化）またはrunner引数経路の修正が必要。**→ 対応済み（本branch）: `5cfb33d061` で `tools/ci/run-instrumentation-per-class.sh` を新設し、複数class 5 laneをper-class invocationへ変更（lane・surface edge・class集合は不変。`validate_ci_portfolio.py` / `test_validate_ci_portfolio.py` 21 tests / `test_compute_ci_gating.py` すべてOK）。G5はCI上で本変更を検証する。**
+2. **production regression（§6.2）の修正と本表の再実行**: `ForkServiceModule.provideIdp` 修正commit後に、FAIL 65 caseの再実行（同一command）でG4をgreenにする必要がある。PASS済みclassの再実行も、最終head上でREBASE_HEAD対証跡を更新すること。**→ §6.5で実施。残存失敗は§6.6の新規欠陥群。**
 3. **CI emulator**: 本G4はarm64ローカルAPI 36で実行。CI正本（x86_64 pixel_7_pro）での最終確認はG5のCI runで行う。
 4. T9はon-demandのまま（Phase 4 owner closure）。
+
+### 6.5 G4再実行（main agent承認の修正後。2026-10-05）
+
+- **承認事項**: (1) `provideIdp` 削除、(2) CI lane filterのper-class化、(3) FAIL case同一command再実行、(4) `LauncherPrefsCommitTest` boolean seam削除の妥当性確認、(5) boot smoke。
+- **修正commit（この順）**:
+  - `24fc2cca70` — `ForkServiceModule.provideIdp` 削除（anchor IDP `@Inject` constructorへ委譲。循環の全数監査: 他のfork providerは全て `MainThreadInitializedObject` 系か直接構築で、component-backed accessorを返すproviderはIDPのみ）。
+  - `5cfb33d061` — CI per-class化（§6.4-1参照）。
+  - `7873c588d0` — `gridType` を `<resources>` scopeで定義しGridDisplayOption内はreferenceへ（§6.6 D0: 2番目のboot blocker）。
+- **実行head**=`7873c588d0`（REBASE_HEAD=`7f46ab6466075ebf5a39f954cf3376d2968e6353` は不変。REBASE_HEADからの差分は上記3 commit＋§6.3 `794db5dd50`＋replay-log。production差分は `ForkServiceModule.kt` と `res/values/attrs.xml` の2 file）。emulator・command形式は§6.1と同一。証跡XMLは `build/g4-evidence2/`。
+
+#### 再実行表（初回FAIL 65 caseのうち）
+
+| T | class | 初回 | 再実行 | 残存失敗の要約 |
+|---|---|---|---|---|
+| T2 | `NestedTransactionTest` | 0/5 | **5/5 PASS** | — |
+| T3 | `GridMigrationSuccessTest` | 0/3 | **3/3 PASS** | — |
+| T3 | `GridMigrationFailureTest` | 0/30 | 10/30（**20 FAIL**） | §6.6 D1 |
+| T4 | `RestoreDbTaskSuccessPathTest` | 0/1 | 0/1 | **guard: 非default main-user serialが要求される（本機serial=0）**。oracle設計かlane環境の修正がowner判定事項 |
+| T4 | `RestoreLeaseSerializationTest` | 6/11 | 8/11（**3 FAIL**） | `no such table: issue120_replacement_marker` x2、`db file must be deletable while helper is closed` x1（§6.6 D2） |
+| T4 | `ModelWriterTransactionReentryTest` | 0/5 | **5/5 PASS** | — |
+| T5 | `RealZipRestoreE2E` | 0/2 | 0/1 | `SQLiteReadOnlyDatabaseException (READONLY_DBMOVED)` at `DatabaseHelper.createEmptyDB` → `LauncherDbUtils.dropTable`（§6.6 D3） |
+| T7 | `DeckRetirementMigrationInstrumentationTest` | 0/2 | **2/2 PASS** | — |
+| T8 | capture 4 stage（Control/WidgetWindow/UnknownProvider/NoCallbacks） | 0/5 | 1/5（**4 FAIL**） | Control/WidgetWindow/UnknownProviderはD3と同一。NoCallbacksは1/2（1 case新規PASS） |
+| T8 | `NovaRestoreGridApplicationTest` | 0/4 | 3/4（**1 FAIL**） | `applyGridInfoBindsConvertedDbNameForMismatchAndMatch`: 期待 `launcher_6_5_4` 実 `launcher_6_4_4`。anchorのgrid適用入口はpreset ceiling matchで、変換grid (6,5,4) presetが本AVDに無く列数が合わない — **G4のapplyGridInfo適応（preset経由）はforkの「exact DBGridInfo束縛」契約を表現できない**（§6.6 E2） |
+| T8 | `NovaConverterBoundaryTest` / `SmartspaceOffTest` | 0/3 | 0/2 | D3と同一 |
+| T8 | cross-process StageA / force-stop / StageB | crash+1 | **FAIL 1+1** | StageA: `restore completion barrier must persist a capture-valid workspace expected:<(0, 1)> but was:<(1, 0)>`（復元内容の不正、§6.6 D4）。StageB: 1 failure |
+
+合計: **37 caseが新規にPASS**。残存FAILは32 case + StageA crash。§6.2のDI循環・§6.3のtest-infra・D0は全て解消済み。
+
+### 6.6 再実行後に残存したproduction欠陥・判定事項（変更せず報告）
+
+- **D0（解消済み, `7873c588d0`）**: 2番目のboot blocker。compile Rには存在する `GridDisplayOption_gridType` がruntime R（aapt2 link の `runtime_symbol_list` R.txt）のstyleable配列から欠落（attr ID `0x7f0402f6` はtableに存在）。AGP 9.4.1のvalues mergeがdeclare-styleable内定義のflag付きattrを落とす。bridge は意味的に中立（AOSP標準のresources scope定義+styleable内reference）。**owner判断: 本layoutの維持 or AGP upstream起票。**
+- **D1（grid migration failure injection）**: `GridMigrationFailureTest` 20件。代表: `A simulated process death must escape normal RuntimeException compensation`（6件。注入したprocess death相当が汎用RuntimeException補償に捕捉される）、`expected:<RESTORE_FAILED> but was:<null>`（5件。失敗メタデータが記録されない）、delegate-then-throw系のreconciliation失敗（4件）、`expected:<3> but was:<4>`（2件）、`no such table: _issue59_target_favorites_backup`（1件）等。**S3移植版grid migrationのfailure-injection契約（spec 118 / #458 / #461）が成立していない疑い — owner分析が必須の最重要cluster。**
+- **D2（restore lease）**: `RestoreLeaseSerializationTest` 3件。`issue120_replacement_marker` table不在（#120契約のmarker tableが移植 helperで作成されない）、helper close中のdb削除可否assert失敗。
+- **D3（restore時のDB file lifecycle）**: `RealZipRestoreE2E` + Nova capture 6 class。restore経路でDB file移動後も旧接続が生きたまま `createEmptyDB` が書込みし `SQLITE_READONLY_DBMOVED`。lease/quiesce/cleanUpDatabasesの順序契約（#168/#299系）がanchor構造で未成立の疑い。
+- **D4（restore内容）**: cross-process StageA/StageB。復元後workspaceの座標が不正（(0,1) vs (1,0)）。restore content契約のregression疑い。
+- **D5（boot blocker, 未修正）**: launcher UI起動時に `ClassCastException: LawnchairLauncher cannot be cast to androidx.activity.ComponentActivity`（`LawnchairAlphabeticalAppsList.kt:42`。同型のcastが `WallpaperCarouselView.kt:41`）。**anchor 16-devは `BaseActivity` をframework `Activity` 継承に変更した一方、forkはlauncher contextへのandroidx `viewModels()` を2 viewで使用する。** anchor構造を正にする適応（LauncherへのViewModelStore提供等）かfork契約の復活かは層の契約判断を伴うため **§4.6相当のowner決定が必要**（model/DI循環とは異なり適応方式に選択肢がある）。boot smoke（承認事項5）の結果: `am start` はDI循環・R欠落を通過し `Launcher.onCreate` の `setupViews` まで到達するが、all_apps inflateでcrash。証跡: `build/g4-evidence2/boot-smoke.txt`。
+- **E1（oracle設計）**: `RestoreDbTaskSuccessPathTest` は非default main-user serialを要求するが標準emulatorのmain userはserial 0。lane環境（secondary user作成）かoracle guardの修正がowner判定事項。
+- **E2（G4適応の契約限界）**: §6.5表のとおり。anchorにexact DBGridInfo束縛の入口が無く、preset ceiling matchで代替したため、preset不在deviceで契約assertが成立しない。oracle前提のowner reviewが必要。
+
+### 6.7 ADR/spec追認の要否（承認事項4の回答）
+
+1. **`LauncherPrefsCommitTest` boolean seam削除 — 追認が必要**。#59の「集約commit boolean」契約はS2/S3のproduction adapt（`ModelDbController.writeGridPreferences` のreadback検証方式、ModelDbController.java:1027に記録済み）によりanchor seam上で表現不能となった。spec 59 ownerが「readback検証による代替を#59契約の正式な後継とする」ことを追認するか、boolean契約の復活（拡張）をrequireするかの判断を要する。replay-log §6.3の記録は維持。
+2. **D5（BaseActivity base class）**: ADR-0018 Decision 9の及ぶ範囲明確化（model/DI層のみか、activity base classもanchor正とするか）をADR-0018改訂または補足ADRで決定する必要。
+3. **D0（gridType bridge）とE2（applyGridInfo適応のsemantics）**: 実装review packetでの確認事項としてreviewerへ提示。
