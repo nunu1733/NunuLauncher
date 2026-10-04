@@ -41,6 +41,7 @@ import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
@@ -1022,12 +1023,17 @@ public class ModelDbController {
 
     private boolean writeGridPreferences(DeviceGridState state) {
         boolean committed = mGridMigrationRuntime.writeGridPreferences(state,
-                () -> mPrefs.putSync(
-                        LauncherPrefs.WORKSPACE_SIZE.to(
-                                state.getColumns() + "," + state.getRows()),
-                        LauncherPrefs.HOTSEAT_COUNT.to(state.getNumHotseat()),
-                        LauncherPrefs.DEVICE_TYPE.to(state.getDeviceType()),
-                        LauncherPrefs.DB_FILE.to(state.getDbFile())));
+                () -> {
+                    // Rebase Phase 2 adapt (S2/S3): the anchor LauncherPrefs.putSync()
+                    // returns Unit, so the BooleanSupplier reports success explicitly.
+                    mPrefs.putSync(
+                            LauncherPrefs.WORKSPACE_SIZE.to(
+                                    state.getColumns() + "," + state.getRows()),
+                            LauncherPrefs.HOTSEAT_COUNT.to(state.getNumHotseat()),
+                            LauncherPrefs.DEVICE_TYPE.to(state.getDeviceType()),
+                            LauncherPrefs.DB_FILE.to(state.getDbFile()));
+                    return true;
+                });
         boolean matchesReadback = sameGridState(state, new DeviceGridState(mContext));
         return committed && matchesReadback;
     }

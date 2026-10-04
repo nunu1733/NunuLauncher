@@ -208,6 +208,12 @@ public final class Utilities {
         return nightMode == Configuration.UI_MODE_NIGHT_YES;
     }
 
+    // Rebase Phase 2 adapt (S2/S3): fork helper read by FeatureFlags.showFlagTogglerUi.
+    public static boolean isDevelopersOptionsEnabled(Context context) {
+        return Settings.Global.getInt(context.getApplicationContext().getContentResolver(),
+                Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) != 0;
+    }
+
     public static Drawable loadFullDrawableWithoutTheme(Context context, ItemInfo info,
                                                         int width, int height, Object[] outObj) {
         ActivityContext activity = ActivityContext.lookupContext(context);

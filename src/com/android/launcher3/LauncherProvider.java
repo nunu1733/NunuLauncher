@@ -25,14 +25,16 @@ import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.database.Cursor;
-import android.database.sqlite.SQLiteQueryBuilder;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Process;
 import android.text.TextUtils;
 import android.util.Log;
+import android.util.Pair;
 
+import com.android.launcher3.Flags;
 import com.android.launcher3.LauncherSettings.Favorites;
+import com.android.launcher3.dagger.LauncherComponentProvider;
 import com.android.launcher3.model.LayoutWriteCoordinator;
 import com.android.launcher3.model.ModelDbController;
 import com.android.launcher3.widget.LauncherWidgetHolder;
@@ -51,11 +53,10 @@ public class LauncherProvider extends ContentProvider {
      */
     @Override
     public void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
-        LauncherAppState.INSTANCE.executeIfCreated(appState -> {
-            if (appState.getModel().isModelLoaded()) {
-                appState.getModel().dumpState("", fd, writer, args);
-            }
-        });
+        // Rebase Phase 2 adapt (S2/S3): the anchor provider routes dumps through the
+        // dagger DumpManager; the fork's LauncherModel.dumpState() call no longer
+        // exists on the anchor model.
+        LauncherComponentProvider.get(getContext()).getDumpManager().dump("", writer, args);
     }
 
     @Override
@@ -70,24 +71,22 @@ public class LauncherProvider extends ContentProvider {
 
     @Override
     public String getType(Uri uri) {
-        SqlArguments args = new SqlArguments(uri, null, null);
-        if (TextUtils.isEmpty(args.where)) {
-            return "vnd.android.cursor.dir/" + args.table;
+        if (TextUtils.isEmpty(parseUri(uri, null, null).first)) {
+            return "vnd.android.cursor.dir/" + Favorites.TABLE_NAME;
         } else {
-            return "vnd.android.cursor.item/" + args.table;
+            return "vnd.android.cursor.item/" + Favorites.TABLE_NAME;
         }
     }
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection,
             String[] selectionArgs, String sortOrder) {
-        SqlArguments args = new SqlArguments(uri, selection, selectionArgs);
-        SQLiteQueryBuilder qb = new SQLiteQueryBuilder();
-        qb.setTables(args.table);
-
+        // Rebase Phase 2 adapt (S2/S3): the anchor ModelDbController operates on the
+        // favorites table only; the URI's table segment is validated by parseUri().
+        Pair<String, String[]> args = parseUri(uri, selection, selectionArgs);
         Cursor[] result = new Cursor[1];
         executeControllerTask(controller -> {
-            result[0] = controller.query(args.table, projection, args.where, args.args, sortOrder);
+            result[0] = controller.query(projection, args.first, args.second, sortOrder);
             return 0;
         });
         return result[0];
@@ -96,9 +95,15 @@ public class LauncherProvider extends ContentProvider {
     @Override
     public Uri insert(Uri uri, ContentValues values) {
         int rowId = executeControllerTask(controller -> {
-            // 1. Ensure that externally added items have a valid item id
-            int id = controller.generateNewItemId();
-            values.put(LauncherSettings.Favorites._ID, id);
+            // 1. Ensure that externally added items have a valid item id. Don't update Folder ids
+            // because items inside the folder need to reference the original ID as their container
+            // id, or else be deleted.
+            if (Flags.externalDataAccess() && values.containsKey(Favorites._ID)
+                    && Favorites.ITEM_TYPE_FOLDER != values.getAsInteger(Favorites.ITEM_TYPE)
+                    && Favorites.ITEM_TYPE_APP_PAIR != values.getAsInteger(Favorites.ITEM_TYPE)) {
+                int id = controller.generateNewItemId();
+                values.put(LauncherSettings.Favorites._ID, id);
+            }
 
             // 2. In the case of an app widget, and if no app widget id is specified, we
             // attempt allocate and bind the widget.
@@ -131,8 +136,7 @@ public class LauncherProvider extends ContentProvider {
                 }
             }
 
-            SqlArguments args = new SqlArguments(uri);
-            return controller.insert(args.table, values);
+            return controller.insert(values);
         });
 
         return rowId < 0 ? null : ContentUris.withAppendedId(uri, rowId);
@@ -140,14 +144,14 @@ public class LauncherProvider extends ContentProvider {
 
     @Override
     public int delete(Uri uri, String selection, String[] selectionArgs) {
-        SqlArguments args = new SqlArguments(uri, selection, selectionArgs);
-        return executeControllerTask(c -> c.delete(args.table, args.where, args.args));
+        Pair<String, String[]> args = parseUri(uri, selection, selectionArgs);
+        return executeControllerTask(c -> c.delete(args.first, args.second));
     }
 
     @Override
     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
-        SqlArguments args = new SqlArguments(uri, selection, selectionArgs);
-        return executeControllerTask(c -> c.update(args.table, values, args.where, args.args));
+        Pair<String, String[]> args = parseUri(uri, selection, selectionArgs);
+        return executeControllerTask(c -> c.update(values, args.first, args.second));
     }
 
     // Issue #14: MODEL_EXECUTOR gate through the coordinator so tokenless provider
@@ -190,35 +194,24 @@ public class LauncherProvider extends ContentProvider {
         }
     }
 
-    static class SqlArguments {
-        public final String table;
-        public final String where;
-        public final String[] args;
-
-        SqlArguments(Uri url, String where, String[] args) {
-            if (url.getPathSegments().size() == 1) {
-                this.table = url.getPathSegments().get(0);
-                this.where = where;
-                this.args = args;
-            } else if (url.getPathSegments().size() != 2) {
-                throw new IllegalArgumentException("Invalid URI: " + url);
-            } else if (!TextUtils.isEmpty(where)) {
-                throw new UnsupportedOperationException("WHERE clause not supported: " + url);
-            } else {
-                this.table = url.getPathSegments().get(0);
-                this.where = "_id=" + ContentUris.parseId(url);
-                this.args = null;
+    /**
+     * Parses the uri and returns the where and arg clause.
+     *
+     * Note: This should be called on the binder thread (before posting on any executor) so that
+     * any parsing error gets propagated to the caller.
+     */
+    private static Pair<String, String[]> parseUri(Uri url, String where, String[] args) {
+        switch (url.getPathSegments().size()) {
+            case 1 -> {
+                return Pair.create(where, args);
             }
-        }
-
-        SqlArguments(Uri url) {
-            if (url.getPathSegments().size() == 1) {
-                table = url.getPathSegments().get(0);
-                where = null;
-                args = null;
-            } else {
-                throw new IllegalArgumentException("Invalid URI: " + url);
+            case 2 -> {
+                if (!TextUtils.isEmpty(where)) {
+                    throw new UnsupportedOperationException("WHERE clause not supported: " + url);
+                }
+                return Pair.create("_id=" + ContentUris.parseId(url), null);
             }
+            default -> throw new IllegalArgumentException("Invalid URI: " + url);
         }
     }
 }

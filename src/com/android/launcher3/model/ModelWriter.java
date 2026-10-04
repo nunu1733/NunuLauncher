@@ -946,7 +946,7 @@ public class ModelWriter {
             if (!toDesktop) {
                 // Silent contents add: FolderInfo.add would notify the bound
                 // FolderIcon from the model thread (view touch).
-                CollectionInfo collection = mBgDataModel.itemsIdMap.get(mTargetContainer);
+                ItemInfo collection = mBgDataModel.itemsIdMap.get(mTargetContainer);
                 if (collection instanceof FolderInfo folder) {
                     folder.getContents().add(item);
                 }
@@ -1152,7 +1152,7 @@ public class ModelWriter {
                     // Silent folder membership add (the loader path's
                     // bookkeeping); the UI-side FolderIcon refresh happens in
                     // the result callback on the UI thread.
-                    CollectionInfo collection = mBgDataModel.itemsIdMap.get(container);
+                    ItemInfo collection = mBgDataModel.itemsIdMap.get(container);
                     if (collection instanceof FolderInfo folder) {
                         folder.getContents().add(mPayload);
                     }
@@ -1167,7 +1167,7 @@ public class ModelWriter {
 
         private int folderChildCount(int folderId) {
             synchronized (mBgDataModel) {
-                CollectionInfo collection = mBgDataModel.itemsIdMap.get(folderId);
+                ItemInfo collection = mBgDataModel.itemsIdMap.get(folderId);
                 if (collection instanceof FolderInfo folder) {
                     return folder.getContents().size();
                 }
@@ -1359,7 +1359,7 @@ public class ModelWriter {
             synchronized (mBgDataModel) {
                 if (oldContainer != Favorites.CONTAINER_DESKTOP
                         && oldContainer != Favorites.CONTAINER_HOTSEAT) {
-                    CollectionInfo previous = mBgDataModel.itemsIdMap.get(oldContainer);
+                    ItemInfo previous = mBgDataModel.itemsIdMap.get(oldContainer);
                     if (previous instanceof FolderInfo previousFolder) {
                         previousFolder.getContents().remove(item);
                     }
@@ -1373,7 +1373,7 @@ public class ModelWriter {
                 item.rank = mRestoreRank;
                 if (mRestoreContainer != Favorites.CONTAINER_DESKTOP
                         && mRestoreContainer != Favorites.CONTAINER_HOTSEAT) {
-                    CollectionInfo target = mBgDataModel.itemsIdMap.get(mRestoreContainer);
+                    ItemInfo target = mBgDataModel.itemsIdMap.get(mRestoreContainer);
                     if (target instanceof FolderInfo targetFolder) {
                         targetFolder.getContents().add(item);
                     }
@@ -1558,7 +1558,7 @@ public class ModelWriter {
                 item.rank = mRestoreRank;
                 if (mRestoreContainer != Favorites.CONTAINER_DESKTOP
                         && mRestoreContainer != Favorites.CONTAINER_HOTSEAT) {
-                    CollectionInfo target = mBgDataModel.itemsIdMap.get(mRestoreContainer);
+                    ItemInfo target = mBgDataModel.itemsIdMap.get(mRestoreContainer);
                     if (target instanceof FolderInfo targetFolder) {
                         targetFolder.getContents().add(item);
                     }

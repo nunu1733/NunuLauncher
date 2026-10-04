@@ -71,9 +71,9 @@ public class GridSizeMigrationUtil {
             runtime.execute(GridMigrationOperation.TARGET_COPY,
                     () -> copyTableFromAttachedDb(TABLE_NAME, targetDatabase, targetTable, context));
             if (!fastPath) {
-                DbReader srcReader = new DbReader(
+                GridSizeMigrationDBController.DbReader srcReader = new GridSizeMigrationDBController.DbReader(
                         targetDatabase, TMP_TABLE, context);
-                DbReader destReader = new DbReader(
+                GridSizeMigrationDBController.DbReader destReader = new GridSizeMigrationDBController.DbReader(
                         targetDatabase, TABLE_NAME, context);
                 Point targetSize = new Point(
                         destDeviceState.getColumns(), destDeviceState.getRows());
