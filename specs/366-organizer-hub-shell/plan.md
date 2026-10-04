@@ -2,7 +2,7 @@
 
 > Issue: #366
 > Spec: [spec.md](./spec.md)
-> Status: accepted（2026-09-19、owner session指示により実装開始）
+> Status: implemented（PR #380 merge commit `32c72094a4`、2026-09-19）
 
 ## Current evidence
 
@@ -307,7 +307,7 @@ failure injection（durable status fail-closedは既存seam testが所有し、h
        （`ui/preferences/destinations/OrganizerUsageMaterialRows.kt` 新file）。
 6. [x] 文字列EN/ja + a11y assertion + 200% font scale。
 7. [x] spec 123 inventory更新（`issue-123-ui-mapping.md` row 8）。
-8. [ ] full verification（HUB-AC-10）+ evidence記録 + PR（`Refs #366`）。
+8. [x] full verification（HUB-AC-10）+ evidence記録 + PR #380（merge commit `32c72094a4`。CI `final-status` green、run 35434960677）。
 
 ## Implementation notes（実装時の確定事項、2026-09-19）
 
