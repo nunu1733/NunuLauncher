@@ -82,4 +82,23 @@ object OnboardingPrefs {
     @JvmField
     val EDIT_MODE_PAGE_STRIP_TIP_SEEN =
         backedUpItem("launcher.edit_mode_page_strip_tip_seen", false)
+
+    /**
+     * The explicit outcome of the organization onboarding proposal. This is onboarding-only
+     * state: it never represents or authorizes an organization run or a layout mutation.
+     */
+    @JvmField
+    val ORGANIZATION_PROPOSAL_OUTCOME = backedUpItem("launcher.organization_proposal_outcome", "")
+
+    /**
+     * Set synchronously by [com.android.launcher3.provider.RestoreDbTask.setPending] before model
+     * loading can consume transient restore markers. It intentionally persists for this restored
+     * installation and is never restored from backup, so onboarding eligibility remains
+     * fail-closed after the loader clears its one-shot restore state.
+     */
+    @JvmField
+    val ORGANIZATION_PROPOSAL_RESTORE_SEEN = LauncherPrefs.nonRestorableItem(
+        "launcher.organization_proposal_restore_seen",
+        false,
+    )
 }
