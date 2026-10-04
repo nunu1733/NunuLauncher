@@ -45,6 +45,7 @@ import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.DurableRefDecision
 import app.lawnchair.organizer.personalization.DurableRefEntry
 import app.lawnchair.organizer.personalization.ExportInputs
+import app.lawnchair.organizer.personalization.ExportInvalidationResult
 import app.lawnchair.organizer.personalization.ExportSession
 import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.IntentCodec
@@ -95,6 +96,11 @@ class ExchangeImportSuccessInstrumentationTest {
         override fun active(nowEpochMs: Long): ExportSession? = session
         override fun invalidate(exportId: String) {
             if (session?.exportId == exportId) session = null
+        }
+        override fun invalidateIf(expectedExportId: String): ExportInvalidationResult {
+            if (session?.exportId != expectedExportId) return ExportInvalidationResult.NoMatch
+            session = null
+            return ExportInvalidationResult.Committed
         }
     }
 

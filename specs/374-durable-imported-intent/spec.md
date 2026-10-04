@@ -31,6 +31,10 @@ updated: 2026-09-21
 > （[docs/assessment/pr-399-durable-imported-intent.md](../../docs/assessment/pr-399-durable-imported-intent.md)）。
 > それ以前: **accepted** — ChatGPT review **Approved**（[comment `5761252403`](https://github.com/nunu1733/NunuLauncher/issues/374#issuecomment-5761252403)
 > @ `c30f6f46d0`、2026-09-21）を受け、owner指示（Phase 2実装進行）により実装着手。
+> Amended by #417 (head `bc459e9fa0` / spec 417 accepted):
+> [spec 417](../417-scope-first-method-choice/spec.md) が 消失原因へのscope-bound依頼破棄の追加、
+> same-process取り込み成功CTAはlive-owner direct attach時のみ
+> （ownerless RUN_INはImportReview rebind）の明記をAmendする。
 
 ## Problem
 
@@ -738,6 +742,7 @@ greenである。
 
 ## Change history
 
+- 2026-09-24: **Amended by #417**（accepted spec [spec 417](../417-scope-first-method-choice/spec.md)、head `bc459e9fa0`）: 消失原因へのscope-bound依頼破棄の追加、same-process取り込み成功CTAはlive-owner direct attach時のみ（ownerless RUN_INはImportReview rebind）の明記をAmend。
 - 2026-09-21: **Implemented**（PR [#399](https://github.com/nunu1733/NunuLauncher/pull/399)、merge `9dc3ec8fed`）。
   spec 328 rev.2・spec 205改訂・spec 366 HUB-AC-03縮小・CONTEXT.md用語更新を実装PRに同梱。
   DI-AC-01..13のtest表面を実装し、CI merge gate（final-status green・全organizer

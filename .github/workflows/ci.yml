@@ -899,6 +899,70 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # Method-choice connected journey lane (Issue #417). It owns the AC-8
+  # (g)-(v) connected evidence — the scoped AI-request creation, import and
+  # attach journeys across the method-choice face — on a dedicated clean
+  # API 36 emulator, mirroring the per-class lane pattern of the exchange
+  # import surface lane (Issue #332 precedent).
+  organizer-instrumentation-method-choice-journey-tests:
+    needs: changes
+    if: >-
+      needs.changes.outputs.instrumentation_enabled == 'true' &&
+      (needs.changes.outputs.full == 'true' ||
+       needs.changes.outputs.surface_organizer_ui == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run method-choice connected journey instrumentation (API 36 / Platform 36.1)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: >-
+            ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.organizer.ui.exchange.MethodChoiceConnectedJourneyInstrumentationTest
+      - name: Upload method-choice-journey instrumentation reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: organizer-instrumentation-method-choice-journey-reports
+          path: |
+            build/reports/androidTests/connected/**
+            build/outputs/androidTest-results/**
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Capture method-choice-journey failure-time emulator evidence
+        if: failure()
+        continue-on-error: true
+        run: timeout --kill-after=30 300 bash tools/ci/capture-emulator-failure-evidence.sh emulator-5554 build/method-choice-journey-failure-time-evidence
+      - name: Upload method-choice-journey failure-time emulator evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: method-choice-journey-failure-time-emulator-evidence
+          path: build/method-choice-journey-failure-time-evidence/**
+          retention-days: 14
+          if-no-files-found: warn
+
   # Onboarding proposal lane (ex Issue #53 lane). It needs a fresh API 36
   # Launcher process and persistent state so the proposal lifecycle,
   # accessibility, recreation, and review-admission tests remain independent
@@ -981,6 +1045,7 @@ jobs:
       - organizer-instrumentation-reservation-recovery-tests
       - organizer-instrumentation-category-override-tests
       - organizer-instrumentation-exchange-import-ui-tests
+      - organizer-instrumentation-method-choice-journey-tests
       - organizer-instrumentation-onboarding-proposal-tests
       - build-debug-apk
     runs-on: ubuntu-latest

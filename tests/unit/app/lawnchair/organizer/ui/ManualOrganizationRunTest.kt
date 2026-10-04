@@ -1730,6 +1730,10 @@ class ManualOrganizationRunTest {
                 ),
             ),
         )
+        // Issue #417: the manual confirm freezes the scope; the composed
+        // phase starts from the "このまま整理" arm.
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+        runner.planWithConfirmedScope()
         assertTrue(runner.state is ManualOrganizationRun.State.Preview)
 
         val runModes = application.events.map { it.runMode }.toSet()
@@ -1744,12 +1748,23 @@ class ManualOrganizationRunTest {
     }
 
     @Test
-    fun confirmingAnEmptySelectionRunsThePlainFullCompose() {
-        val application = FakeApplication(readyInput()).apply { detection = detected() }
+    fun confirmingAnEmptySelectionConfirmsAnExplicitZeroScopeAndThePlainArmComposesFull() {
+        // Issue #417 (AC-4): confirming with nothing selected is an explicit
+        // zero-selection scope — never an undecided surface, and nothing
+        // composes yet. Only the method choice's "このまま整理" arm runs the
+        // plain full organization.
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.a/.Main") }
         val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
 
         runner.start()
         runner.confirmSelection(emptySet())
+
+        val confirmed = runner.state as ManualOrganizationRun.State.ScopeConfirmed
+        assertTrue(confirmed.selection.isEmpty())
+        assertTrue(confirmed.candidates.isNotEmpty())
+        assertEquals(0, application.composeScopeComposedCalls)
+
+        runner.planWithConfirmedScope()
 
         assertTrue(runner.state is ManualOrganizationRun.State.Preview)
         assertEquals(0, application.composeScopeComposedCalls)
@@ -1766,6 +1781,10 @@ class ManualOrganizationRunTest {
         val selecting = runner.state as ManualOrganizationRun.State.Selecting
         val identities = selecting.candidates.map { it.target }.toSet()
         runner.confirmSelection(identities)
+        // Issue #417: the confirm freezes the scope; the compose happens on
+        // the method choice's "このまま整理" arm with the frozen selection.
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+        runner.planWithConfirmedScope()
 
         assertTrue(runner.state is ManualOrganizationRun.State.Preview)
         assertEquals(1, application.composeScopeComposedCalls)
@@ -1805,6 +1824,7 @@ class ManualOrganizationRunTest {
                 ),
             ),
         )
+        runner.planWithConfirmedScope()
 
         // Spec AC-14: no count-only fallback for an Add run.
         assertTrue(runner.state is ManualOrganizationRun.State.PreviewUnavailable)
@@ -1840,6 +1860,7 @@ class ManualOrganizationRunTest {
                 ),
             ),
         )
+        runner.planWithConfirmedScope()
         assertTrue(runner.state is ManualOrganizationRun.State.PreviewUnavailable)
 
         runner.cancel()
@@ -1881,6 +1902,7 @@ class ManualOrganizationRunTest {
                 ),
             ),
         )
+        runner.planWithConfirmedScope()
         assertTrue(runner.state is ManualOrganizationRun.State.PreviewUnavailable)
 
         application.inspectPlanOverride = { _, _ -> PlanPreviewResult.Stale }
@@ -1943,36 +1965,36 @@ class ManualOrganizationRunTest {
     }
 
     @Test
-    fun zeroCandidatesWithoutIntentContinuesThroughSelectingToTheConfirmation() {
-        // TO-BE D-06 / spec RD-3: an empty cut never shows T-08. The machine
-        // still enters Selecting (transition contract unchanged) and the
-        // coordinator's own continuation drives the composed phase. The
-        // Unconfined collector captures the intermediate pass-through.
-        val application = FakeApplication(readyInput()).apply { detection = detected() }
+    fun manualZeroCandidatesStopAtTheConfirmedScopeAndThePlainArmComposesFull() {
+        // Issue #417 (AC-3, replacing the #369 D-06 pass-through for manual
+        // runs): an empty cut never enters Selecting at the state level — the
+        // machine publishes ScopeConfirmed(empty) and waits for the method
+        // choice. The Unconfined collector proves the pass-through is gone.
+        val application = FakeApplication(readyInput()).apply {
+            detection = detected()
+            composeOverride = { error("the composed phase must not start before the method choice") }
+        }
         val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
         val (observations, collector) = collectStateWithPhase(runner)
 
         runner.start()
 
+        val confirmed = runner.state as ManualOrganizationRun.State.ScopeConfirmed
+        assertTrue(confirmed.candidates.isEmpty())
+        assertTrue(confirmed.selection.isEmpty())
+        assertTrue(
+            "no internal Selecting(empty) may be published for a manual zero cut",
+            observations.none { it.first is ManualOrganizationRun.State.Selecting },
+        )
+        assertEquals(0, application.composeScopeComposedCalls)
+        assertTrue("nothing may be composed or journaled while parked", application.events.isEmpty())
+
+        // The "このまま整理" arm: the plain full organization (empty scope).
+        application.composeOverride = null
+        runner.planWithConfirmedScope()
+
         assertTrue(runner.state is ManualOrganizationRun.State.Preview)
         assertEquals(0, application.composeScopeComposedCalls)
-        // The pass-through: the machine published Selecting(empty) and then
-        // left it again without any user action.
-        assertTrue(
-            "expected an internal Selecting(empty) pass-through",
-            observations.any { (state, _) ->
-                state is ManualOrganizationRun.State.Selecting && state.candidates.isEmpty()
-            },
-        )
-        assertTrue(
-            "the visible progression must include plan before the confirmation face",
-            observations.any {
-                it.first is ManualOrganizationRun.State.Planning && it.second == ManualOrganizationRun.PreparationPhase.PLAN
-            },
-        )
-        // An explicit confirmation afterwards is inert — the surface never opened.
-        runner.confirmSelection(emptySet())
-        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
         collector.cancel()
     }
 
@@ -2018,6 +2040,10 @@ class ManualOrganizationRunTest {
                 ),
             ),
         )
+        // Issue #417: the confirm freezes the scope; the composed phase starts
+        // from the method choice's "このまま整理" arm.
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+        runner.planWithConfirmedScope()
         assertTrue(runner.state is ManualOrganizationRun.State.Preview)
         collector.cancel()
 
@@ -2028,10 +2054,11 @@ class ManualOrganizationRunTest {
                 it.first is ManualOrganizationRun.State.Capturing && it.second == ManualOrganizationRun.PreparationPhase.DETECTION
             },
         )
-        // …and every Capturing published after the selection surface closes
-        // carries CAPTURE — the visible column never goes back to 検出.
+        // …and every Capturing published after the confirmed scope leaves the
+        // method-choice face carries CAPTURE — the visible column never goes
+        // back to 検出.
         val postSelectingCaptures = observations.windowed(2).mapNotNull { (previous, current) ->
-            if (previous.first is ManualOrganizationRun.State.Selecting &&
+            if (previous.first is ManualOrganizationRun.State.ScopeConfirmed &&
                 current.first is ManualOrganizationRun.State.Capturing
             ) {
                 current
@@ -2104,14 +2131,15 @@ class ManualOrganizationRunTest {
     }
 
     @Test
-    fun zeroCutContinuationAdvancesThePreparationPhaseToCapture() {
-        // RD-7: the internal zero-candidate continuation commits CAPTURE with
-        // (before) its Capturing publish, and the confirmation face follows.
+    fun onboardingZeroCutContinuationAdvancesThePreparationPhaseToCapture() {
+        // RD-7, onboarding-only since #417: the internal zero-candidate
+        // continuation (D-16 fixed path) commits CAPTURE with (before) its
+        // Capturing publish, and the confirmation face follows.
         val application = FakeApplication(readyInput()).apply { detection = detected() }
         val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
         val (observations, collector) = collectStateWithPhase(runner)
 
-        runner.start()
+        runner.start(Trigger.ONBOARDING_PROPOSAL)
 
         assertTrue(runner.state is ManualOrganizationRun.State.Preview)
         assertEquals(ManualOrganizationRun.PreparationPhase.PLAN, runner.preparationPhase.value)
@@ -2352,6 +2380,11 @@ class ManualOrganizationRunTest {
 
         val target = (runner.state as ManualOrganizationRun.State.Selecting).candidates.single().target
         runner.confirmSelection(setOf(target))
+        // Issue #417: the manual confirm freezes the scope; the composed phase
+        // (and with it the JIT pause) starts from the "このまま整理" arm.
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+
+        runner.planWithConfirmedScope()
 
         val awaiting = runner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit
         assertEquals(listOf(target), awaiting.selection)
@@ -2403,7 +2436,15 @@ class ManualOrganizationRunTest {
     }
 
     @Test
-    fun dSixEmptyCutContinuationPausesAtTheSameChokePoint() {
+    fun manualZeroCutPausesAtTheJitChokePointOnlyWhenTheComposedPhaseStarts() {
+        // Issue #417: the manual empty cut stops at ScopeConfirmed BEFORE the
+        // composed phase — the JIT pause is reached only when the method
+        // choice ("このまま整理") starts it. The pause carries the NULL
+        // selection: the empty confirmed scope keeps the plain full
+        // organization (the null-selection legacy composition path), so the
+        // resumed composition after the gate resolves must be identical to the
+        // never-paused zero-cut flow (an empty LIST here would resume as the
+        // scope-composed path with an empty scope instead).
         val application = FakeApplication(readyInput()).apply {
             detection = app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(emptyList())
         }
@@ -2413,9 +2454,17 @@ class ManualOrganizationRunTest {
         )
 
         runner.start()
-
-        assertTrue(runner.state is ManualOrganizationRun.State.AwaitingUsageAccessJit)
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
         assertTrue(application.events.isEmpty())
+
+        runner.planWithConfirmedScope()
+
+        val awaiting = runner.state as ManualOrganizationRun.State.AwaitingUsageAccessJit
+        assertTrue(awaiting.selection == null)
+        assertTrue(application.events.isEmpty())
+
+        // Test hygiene: release the process-wide RUN lease.
+        runner.cancel()
     }
 
     @Test
@@ -2556,6 +2605,7 @@ class ManualOrganizationRunTest {
 
         runner.start()
         runner.confirmSelection(selectionOf("com.example.c1", "com.example.c2"))
+        runner.planWithConfirmedScope()
 
         val preview = runner.state as ManualOrganizationRun.State.Preview
         assertEquals(1, preview.summary.addedCount)
@@ -2582,6 +2632,7 @@ class ManualOrganizationRunTest {
 
         runner.start()
         runner.confirmSelection(selectionOf("com.example.c1"))
+        runner.planWithConfirmedScope()
 
         val rejected = runner.state as ManualOrganizationRun.State.PlanningRejected
         assertEquals(ManualOrganizationRun.PlanningFailureKind.IMPOSSIBLE, rejected.kind)
@@ -2608,6 +2659,7 @@ class ManualOrganizationRunTest {
 
         runner.start()
         runner.confirmSelection(selectionOf("com.example.c1"))
+        runner.planWithConfirmedScope()
 
         val failed = runner.state as ManualOrganizationRun.State.CandidateResolutionFailed
         assertEquals(
@@ -2633,6 +2685,576 @@ class ManualOrganizationRunTest {
 
         assertEquals(ManualOrganizationRun.State.Cancelled, runner.state)
         assertEquals(emptyList<RunEvent>(), application.events)
+    }
+
+    // --- Issue #417 (spec 417): frozen-scope (ScopeConfirmed) state machine ---
+
+    /**
+     * Issue #417: drives a manual run to
+     * [ManualOrganizationRun.State.ScopeConfirmed] by confirming the whole
+     * detection cut. The planner only runs after the method choice, so the
+     * default errors out if the machine composes early.
+     */
+    private fun runToConfirmedScope(
+        application: FakeApplication,
+        planner: OrganizationPlanner = OrganizationPlanner { error("planner must not run before the method choice") },
+    ): ManualOrganizationRun {
+        val runner = ManualOrganizationRun(application, planner)
+        runner.start()
+        val selecting = runner.state as? ManualOrganizationRun.State.Selecting
+        checkNotNull(selecting) { "expected Selecting, got ${runner.state}" }
+        runner.confirmSelection(selecting.candidates.map { it.target }.toSet())
+        checkNotNull(runner.state as? ManualOrganizationRun.State.ScopeConfirmed) {
+            "expected ScopeConfirmed, got ${runner.state}"
+        }
+        return runner
+    }
+
+    @Test
+    fun manualConfirmWithoutIntentPublishesTheConfirmedScopeWithoutComposing() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run on confirm") })
+
+        runner.start()
+        val selecting = runner.state as ManualOrganizationRun.State.Selecting
+        runner.confirmSelection(selecting.candidates.map { it.target }.toSet())
+
+        val confirmed = runner.state as ManualOrganizationRun.State.ScopeConfirmed
+        assertEquals(RunId(RUN_ID), confirmed.runId)
+        assertEquals(selecting.candidates, confirmed.candidates)
+        assertEquals(selecting.candidates.map { it.target }, confirmed.selection)
+        assertEquals(selecting.candidates.associate { it.target to it.label }, confirmed.candidateLabels)
+        assertEquals(0, application.composeScopeComposedCalls)
+        assertEquals(0, application.applyCalls)
+        assertTrue("no journal event before the composed phase", application.events.isEmpty())
+    }
+
+    @Test
+    fun manualConfirmWithABoundIntentComposesDirectlyWithoutTheConfirmedScope() {
+        val application = FakeApplication(scopeReadyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        val (observations, collector) = collectStateWithPhase(runner)
+
+        runner.start()
+        runner.attachIntent(validatedIntentFor(c1Target(), category = null))
+        runner.confirmSelection(setOf(c1Target()))
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(1, application.composeScopeComposedCalls)
+        assertTrue(
+            "the intent-bound confirm must compose directly (rebind continuation)",
+            observations.none { it.first is ManualOrganizationRun.State.ScopeConfirmed },
+        )
+        collector.cancel()
+    }
+
+    @Test
+    fun onboardingConfirmComposesDirectlyAndNeverReachesTheConfirmedScope() {
+        // D-16 regression: the onboarding fixed path never shows the
+        // method-choice state, with or without an intent.
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { planningResult(movingPlan()) })
+        val (observations, collector) = collectStateWithPhase(runner)
+
+        runner.start(Trigger.ONBOARDING_PROPOSAL)
+        val selecting = runner.state as ManualOrganizationRun.State.Selecting
+        runner.confirmSelection(selecting.candidates.map { it.target }.toSet())
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertTrue(
+            observations.none { it.first is ManualOrganizationRun.State.ScopeConfirmed },
+        )
+        collector.cancel()
+    }
+
+    @Test
+    fun planWithConfirmedScopeRunsTheComposedPhaseWithTheFrozenSelection() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        runner.planWithConfirmedScope()
+
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(1, application.composeScopeComposedCalls)
+        assertEquals(listOf(appKey("com.example.c1")), application.composeSelection)
+    }
+
+    @Test
+    fun planWithConfirmedScopeOutsideTheConfirmedScopeIsANoOp() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+
+        runner.planWithConfirmedScope()
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+
+        runner.start()
+        assertTrue(runner.state is ManualOrganizationRun.State.Selecting)
+        runner.planWithConfirmedScope()
+        assertTrue(runner.state is ManualOrganizationRun.State.Selecting)
+        assertEquals(0, application.composeScopeComposedCalls)
+        assertEquals(0, application.applyCalls)
+        runner.cancel()
+    }
+
+    @Test
+    fun attachIntentAtTheConfirmedScopeBindsAndComposesOnMatch() {
+        val application = FakeApplication(scopeReadyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        val outcome = runner.attachIntent(validatedIntentFor(c1Target(), category = null))
+
+        assertEquals(ManualOrganizationRun.AttachIntentOutcome.Attached, outcome)
+        assertTrue("a matching attach IS the consent point: compose directly", runner.state is ManualOrganizationRun.State.Preview)
+        assertEquals(1, application.composeScopeComposedCalls)
+    }
+
+    @Test
+    fun attachIntentAtTheConfirmedScopeRefusesAMismatchTypedZeroWrite() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        runner.start()
+        // Explicit zero-selection scope; the export scope holds c1.
+        runner.confirmSelection(emptySet())
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+
+        val outcome = runner.attachIntent(validatedIntentFor(c1Target(), category = null))
+
+        val rejected = outcome as ManualOrganizationRun.AttachIntentOutcome.Rejected
+        assertEquals(
+            app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(
+                app.lawnchair.organizer.personalization.ScopeMismatchCause.SET_MISMATCH,
+            ),
+            rejected.failure,
+        )
+        val confirmed = runner.state as ManualOrganizationRun.State.ScopeConfirmed
+        assertEquals(rejected.failure, confirmed.scopeRejection)
+        assertEquals(0, application.composeScopeComposedCalls)
+        assertEquals(0, application.applyCalls)
+    }
+
+    @Test
+    fun attachIntentAtTheConfirmedScopeIsSingleShot() {
+        val application = FakeApplication(scopeReadyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { planningResult(movingPlan()) })
+
+        assertEquals(
+            ManualOrganizationRun.AttachIntentOutcome.Attached,
+            runner.attachIntent(validatedIntentFor(c1Target(), category = null)),
+        )
+        assertTrue(runner.state is ManualOrganizationRun.State.Preview)
+
+        assertEquals(
+            ManualOrganizationRun.AttachIntentOutcome.NotAttachable,
+            runner.attachIntent(validatedIntentFor(c1Target(), category = null)),
+        )
+        assertEquals(1, application.composeScopeComposedCalls)
+    }
+
+    @Test
+    fun reopenSelectionFromTheConfirmedScopeRepublishesSelectingWithTheSameCut() {
+        val application = FakeApplication(readyInput())
+            .apply { detection = detected("com.example.a/.Main", "com.example.b/.Main") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val cut = (runner.state as ManualOrganizationRun.State.ScopeConfirmed).candidates
+
+        assertTrue(runner.reopenSelection())
+
+        val selecting = runner.state as ManualOrganizationRun.State.Selecting
+        assertEquals(cut, selecting.candidates)
+        assertEquals(0, application.composeScopeComposedCalls)
+        assertEquals(0, application.applyCalls)
+
+        // The re-opened surface can confirm again into a fresh frozen scope.
+        runner.confirmSelection(selecting.candidates.map { it.target }.toSet())
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+    }
+
+    @Test
+    fun reopenSelectionWithAnEmptyCutIsRefused() {
+        val application = FakeApplication(readyInput()).apply { detection = detected() }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+        runner.start()
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+
+        assertFalse(runner.reopenSelection())
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+    }
+
+    @Test
+    fun reopenSelectionOutsideTheConfirmedScopeIsRefused() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { error("planner must not run") })
+
+        assertFalse(runner.reopenSelection())
+
+        runner.start()
+        assertFalse(runner.reopenSelection())
+        assertTrue(runner.state is ManualOrganizationRun.State.Selecting)
+        runner.cancel()
+    }
+
+    @Test
+    fun claimingAGenerationEpochInvalidatesThePreviousClaimZeroWrite() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val scope = listOf(appKey("com.example.c1"))
+        val first = runner.claimGenerationEpoch(scope)!!
+        val replacement = runner.claimGenerationEpoch(scope)!!
+        var committed = false
+        val commit: ManualOrganizationRun.ExchangeGateTransaction.() -> ManualOrganizationRun.PersistOutcome = {
+            committed = true
+            ManualOrganizationRun.PersistOutcome.Committed
+        }
+
+        assertTrue(replacement.epoch > first.epoch)
+        assertEquals(
+            ManualOrganizationRun.GenerationCommitOutcome.Rejected(ManualOrganizationRun.GenerationCommitRejection.STALE_EPOCH),
+            runner.commitGeneratedSession(epoch = first, exportId = "export-1", commit = commit),
+        )
+        assertFalse("a stale epoch commit is a zero-write rejection", committed)
+        assertFalse(runner.isCurrentEpoch(first))
+
+        assertEquals(
+            ManualOrganizationRun.GenerationCommitOutcome.Committed,
+            runner.commitGeneratedSession(epoch = replacement, exportId = "export-1", commit = commit),
+        )
+        assertTrue(committed)
+    }
+
+    @Test
+    fun claimingAnEpochForADifferentScopeIsRefused() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+
+        assertEquals(null, runner.claimGenerationEpoch(listOf(appKey("com.example.other"))))
+    }
+
+    @Test
+    fun invalidatingTheGenerationEpochRejectsThePendingCommit() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!
+        var invoked = false
+        val commit: ManualOrganizationRun.ExchangeGateTransaction.() -> ManualOrganizationRun.PersistOutcome = {
+            invoked = true
+            ManualOrganizationRun.PersistOutcome.Committed
+        }
+
+        runner.invalidateGenerationEpoch()
+
+        assertFalse(runner.isCurrentEpoch(epoch))
+        assertEquals(
+            ManualOrganizationRun.GenerationCommitOutcome.Rejected(ManualOrganizationRun.GenerationCommitRejection.STALE_EPOCH),
+            runner.commitGeneratedSession(epoch = epoch, exportId = "export-1", commit = commit),
+        )
+        assertFalse("zero-write: the durable mutation must not run", invoked)
+    }
+
+    @Test
+    fun commitGeneratedSessionBindsOnlyOnPersistSuccess() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val scope = listOf(appKey("com.example.c1"))
+        val epoch = runner.claimGenerationEpoch(scope)!!
+
+        // Store save failure: nothing binds — a cleanup for that export is a
+        // Superseded no-op that does not even reach the store.
+        assertEquals(
+            ManualOrganizationRun.GenerationCommitOutcome.WriteFailed,
+            runner.commitGeneratedSession(epoch = epoch, exportId = "export-e1") {
+                ManualOrganizationRun.PersistOutcome.WriteFailed
+            },
+        )
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Superseded,
+            runner.cleanupBoundExport("export-e1") { ManualOrganizationRun.StoreInvalidationOutcome.Committed },
+        )
+
+        // The still-current epoch retries: success binds the export.
+        assertEquals(
+            ManualOrganizationRun.GenerationCommitOutcome.Committed,
+            runner.commitGeneratedSession(epoch = epoch, exportId = "export-e1") {
+                ManualOrganizationRun.PersistOutcome.Committed
+            },
+        )
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Cleared,
+            runner.cleanupBoundExport("export-e1") { ManualOrganizationRun.StoreInvalidationOutcome.Committed },
+        )
+    }
+
+    @Test
+    fun cleanupBoundExportClearsOnlyTheMatchingCurrentBinding() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        var storeCalls = 0
+        runner.commitGeneratedSession(
+            epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!,
+            exportId = "export-1",
+        ) {
+            storeCalls++
+            ManualOrganizationRun.PersistOutcome.Committed
+        }
+
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Cleared,
+            runner.cleanupBoundExport("export-1") {
+                storeCalls++
+                ManualOrganizationRun.StoreInvalidationOutcome.Committed
+            },
+        )
+        // The binding is gone: a second cleanup for the same export is a
+        // Superseded no-op — the store is not touched.
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Superseded,
+            runner.cleanupBoundExport("export-1") {
+                storeCalls++
+                ManualOrganizationRun.StoreInvalidationOutcome.Committed
+            },
+        )
+        assertEquals(2, storeCalls)
+    }
+
+    @Test
+    fun staleCleanupAfterAReplacementIsASupersededNoOpThatKeepsTheCurrentBinding() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val scope = listOf(appKey("com.example.c1"))
+        runner.commitGeneratedSession(epoch = runner.claimGenerationEpoch(scope)!!, exportId = "export-e1") {
+            ManualOrganizationRun.PersistOutcome.Committed
+        }
+        runner.commitGeneratedSession(epoch = runner.claimGenerationEpoch(scope)!!, exportId = "export-e2") {
+            ManualOrganizationRun.PersistOutcome.Committed
+        }
+
+        // E1's delayed cleanup must not touch the store nor the E2 binding.
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Superseded,
+            runner.cleanupBoundExport("export-e1") {
+                error("the store must not be touched for a stale cleanup")
+            },
+        )
+        // E2's own cleanup: a NoMatch against the current binding still clears.
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Cleared,
+            runner.cleanupBoundExport("export-e2") { ManualOrganizationRun.StoreInvalidationOutcome.NoMatch },
+        )
+    }
+
+    @Test
+    fun cleanupBoundExportWriteFailedKeepsTheBindingAndRetries() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        runner.commitGeneratedSession(
+            epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!,
+            exportId = "export-1",
+        ) { ManualOrganizationRun.PersistOutcome.Committed }
+
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.WriteFailed,
+            runner.cleanupBoundExport("export-1") { ManualOrganizationRun.StoreInvalidationOutcome.WriteFailed },
+        )
+
+        // The binding survived the failure: the retry with the same
+        // expectedExportId reaches the terminal outcome.
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Cleared,
+            runner.cleanupBoundExport("export-1") { ManualOrganizationRun.StoreInvalidationOutcome.Committed },
+        )
+    }
+
+    @Test
+    fun savePendingImportForLiveOwnerVerifiesTheExactBindingUnderItsOwnLockFirst() {
+        // Issue #417 (review finding 1, oracles (l)/(s)): the live-owner
+        // pending-import save is the run-owned transaction — the run lock is
+        // held across the gate hold and the ownership verdict reaches the
+        // holder's gate-held callback from under that lock, so the holder
+        // never asks for the run lock inside a gate hold.
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val confirmed = runner.state as ManualOrganizationRun.State.ScopeConfirmed
+        runner.commitGeneratedSession(
+            epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!,
+            exportId = "export-e1",
+        ) { ManualOrganizationRun.PersistOutcome.Committed }
+
+        // Live owner, exact export: the save runs inside the capability and
+        // the gate-held callback sees the Owned verdict plus the save result.
+        var callbackSaveResult: String? = null
+        val saved = runner.savePendingImportForLiveOwner(
+            confirmed.runId,
+            "export-e1",
+            save = { "store-write" },
+        ) { saveResult, owned ->
+            check(owned) { "the bound export must verify as live-owner owned" }
+            callbackSaveResult = saveResult
+            "save-result"
+        }
+        assertEquals("save-result", saved)
+        assertEquals("store-write", callbackSaveResult)
+
+        // A different exportId than the current binding: the save still runs
+        // (the holder's fences live in the gate-held section) but the verdict
+        // is Dropped.
+        runner.savePendingImportForLiveOwner(
+            confirmed.runId,
+            "export-e2",
+            save = { "other-write" },
+        ) { _, owned ->
+            assertFalse("a non-bound export must not verify as owned", owned)
+            "dropped-result"
+        }
+
+        // The binding cleared (cleanup): the same export no longer verifies.
+        runner.cleanupBoundExport("export-e1") { ManualOrganizationRun.StoreInvalidationOutcome.Committed }
+        runner.savePendingImportForLiveOwner(
+            confirmed.runId,
+            "export-e1",
+            save = { "after-cleanup-write" },
+        ) { _, owned ->
+            assertFalse("a cleared binding must not verify as owned", owned)
+            "after-cleanup"
+        }
+
+        // The owner left the frozen scope: no ownership, no crash.
+        runner.reopenSelection()
+        runner.savePendingImportForLiveOwner(
+            confirmed.runId,
+            "export-e1",
+            save = { "after-reopen-write" },
+        ) { _, owned ->
+            assertFalse(owned)
+            "after-reopen"
+        }
+    }
+
+    @Test
+    fun savePendingImportForLiveOwnerOnAnIdleRunIsDroppedWithoutASaveLockError() {
+        val runner = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            OrganizationPlanner { error("planner must not run") },
+        )
+        var invoked = false
+        runner.savePendingImportForLiveOwner(
+            RunId(RUN_ID),
+            "export-e1",
+            save = { "idle-write" },
+        ) { saveResult, owned ->
+            invoked = true
+            assertFalse(owned)
+            assertEquals("idle-write", saveResult)
+            "idle-result"
+        }
+        assertTrue(invoked)
+    }
+
+    @Test
+    fun discardScopeBoundRequestCommittedClearsTheBindingAndInvalidatesTheEpochFirst() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!
+        runner.commitGeneratedSession(epoch = epoch, exportId = "export-1") {
+            ManualOrganizationRun.PersistOutcome.Committed
+        }
+
+        var epochCurrentAtStoreCall: Boolean? = null
+        var invalidatedId: String? = null
+        assertEquals(
+            ManualOrganizationRun.ScopeDiscardOutcome.Discarded,
+            runner.discardScopeBoundRequest { boundExportId ->
+                invalidatedId = boundExportId
+                epochCurrentAtStoreCall = runner.isCurrentEpoch(epoch)
+                ManualOrganizationRun.StoreInvalidationOutcome.Committed
+            },
+        )
+        assertEquals("export-1", invalidatedId)
+        // Oracle (v): the epoch was invalidated BEFORE the capability's store call.
+        assertEquals(false, epochCurrentAtStoreCall)
+        assertFalse(runner.isCurrentEpoch(epoch))
+        // The binding is cleared: a later cleanup for the same export is a no-op.
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Superseded,
+            runner.cleanupBoundExport("export-1") { ManualOrganizationRun.StoreInvalidationOutcome.Committed },
+        )
+    }
+
+    @Test
+    fun discardScopeBoundRequestNoMatchOnTheCurrentBindingAlsoClears() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        runner.commitGeneratedSession(
+            epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!,
+            exportId = "export-1",
+        ) { ManualOrganizationRun.PersistOutcome.Committed }
+
+        assertEquals(
+            ManualOrganizationRun.ScopeDiscardOutcome.Discarded,
+            runner.discardScopeBoundRequest { boundExportId ->
+                assertEquals("export-1", boundExportId)
+                ManualOrganizationRun.StoreInvalidationOutcome.NoMatch
+            },
+        )
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Superseded,
+            runner.cleanupBoundExport("export-1") { ManualOrganizationRun.StoreInvalidationOutcome.Committed },
+        )
+    }
+
+    @Test
+    fun discardScopeBoundRequestWriteFailedKeepsTheBindingAndTheConfirmedScope() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        runner.commitGeneratedSession(
+            epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!,
+            exportId = "export-1",
+        ) { ManualOrganizationRun.PersistOutcome.Committed }
+
+        assertEquals(
+            ManualOrganizationRun.ScopeDiscardOutcome.WriteFailed,
+            runner.discardScopeBoundRequest { ManualOrganizationRun.StoreInvalidationOutcome.WriteFailed },
+        )
+
+        // The frozen scope is kept (typed retryable failure)…
+        assertTrue(runner.state is ManualOrganizationRun.State.ScopeConfirmed)
+        // …and the binding survived the failure: a cleanup for the same
+        // export still matches and clears.
+        assertEquals(
+            ManualOrganizationRun.ExportCleanupOutcome.Cleared,
+            runner.cleanupBoundExport("export-1") { ManualOrganizationRun.StoreInvalidationOutcome.Committed },
+        )
+
+        // The retry: nothing is bound anymore — the discard completes without
+        // touching the store again.
+        assertEquals(
+            ManualOrganizationRun.ScopeDiscardOutcome.Discarded,
+            runner.discardScopeBoundRequest { error("nothing left to invalidate") },
+        )
+    }
+
+    @Test
+    fun discardWithoutABoundSessionStillInvalidatesTheClaimedEpoch() {
+        val application = FakeApplication(readyInput()).apply { detection = detected("com.example.c1") }
+        val runner = runToConfirmedScope(application, OrganizationPlanner { error("planner must not run") })
+        val epoch = runner.claimGenerationEpoch(listOf(appKey("com.example.c1")))!!
+
+        assertEquals(
+            ManualOrganizationRun.ScopeDiscardOutcome.Discarded,
+            runner.discardScopeBoundRequest { error("no store call without a binding") },
+        )
+        assertFalse(runner.isCurrentEpoch(epoch))
+    }
+
+    @Test
+    fun discardOutsideTheConfirmedScopeIsATypedNoOp() {
+        val runner = ManualOrganizationRun(
+            FakeApplication(readyInput()),
+            OrganizationPlanner { error("planner must not run") },
+        )
+
+        assertEquals(
+            ManualOrganizationRun.ScopeDiscardOutcome.NotDiscardable,
+            runner.discardScopeBoundRequest { error("the store must not be touched") },
+        )
     }
 
     private fun placement(

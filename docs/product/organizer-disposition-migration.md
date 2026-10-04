@@ -242,6 +242,12 @@ TO-BE relation: 整合 / 一部衝突 / 全体衝突 / 役割消滅。Orderは �
 | spec 271 Non-goals cold-process restore・表示のみ契約 | #271 | status card復元導線（D-15。新spec） | #376 |
 | spec 203 U-2常設rowのみ | #203 | 常設row＋JIT要求（D-07。再促なし規則は維持）。常設row配置のT-06移動は#367が先行改訂 | #371（配置は#367） |
 | pre-send cancelの「キャンセル」ラベル | #205実装 | 「破棄」（D-13語彙規約） | #372 |
+| spec 205 idle entry（run外idle AI相談の新規作成入口）+ spec 372 T-07方法選択「AIに相談」・idle相談flow入口 | #205/#372 | **Retire（新規作成）**: entry面のexchange hostingはimport-only（既存依頼の状況表示と回答取り込みのみ）。AI依頼の新規作成はscope凍結後の方法選択面へ一本化（D-04/D-17） | #417 |
+| spec 331 §5 run内 entry（選択面から発するscoped exchange。spec 367が維持するsecondary entry） | #331/#367 | 方法選択面（scope確定後）からの新規作成へ一般化。選択面上のAI entryは廃止（scope binding gate D-2/D-4/D-5は不変） | #417 |
+| spec 369 RD-3・D-06節（0候補時のdisplay層pass-through→capture/plan直行）・20状態→8状態対応表・0候補scenario | #369 | manual runでは検出後にstate層で選択面を介さず方法選択面へ進む。onboardingは現行どおりplanning直行（D-16はContinue・不変） | #417 |
+| spec 204 export session契約（entry origin field不在）+ session store `invalidate(exportId): Unit` | #204 | export sessionへdurableなentry origin（`IDLE`/`RUN_IN`）を追加（additive）。storeへfailure-aware invalidation（`invalidateIf(expectedExportId) -> Committed / NoMatch / WriteFailed` 相当）を追加（schema/validator/framing不変） | #417 |
+| spec 374 消失原因（破棄・期限切れ・置換のみ）+ same-process取り込み成功CTA | #374 | 消失原因へscope-bound依頼破棄を追加。same-process取り込み成功CTAはlive-owner direct attach時のみ（ownerless RUN_INはImportReview rebind） | #417 |
+| spec 375 attach authority（durable provenanceと生存run束縛の未分離）+「同一session再取り込みでentryKindだけflip」scenario/SR-AC-07該当oracle | #375 | RUN_INをdurable provenanceと生存runへのdirect attach authorityの2軸へ分離。scope-bound破棄へ`ExchangeMutationGate`を適用。同scenario/oracleを「再取り込みでentryKind不変」回帰へ置換 | #417 |
 
 ### 4.2 Retire — なし
 

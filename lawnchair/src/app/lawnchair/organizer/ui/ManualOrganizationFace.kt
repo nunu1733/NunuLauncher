@@ -15,6 +15,13 @@ internal enum class ManualOrganizationFace {
     /** T-08 missing-app selection. */
     SELECTION,
 
+    /**
+     * Issue #417 (spec 417): the method-choice face — 「整理案の作り方」. The
+     * frozen scope's sibling choice (このまま整理 / AIに相談), shown only
+     * after the scope is confirmed (`State.ScopeConfirmed`).
+     */
+    METHOD_CHOICE,
+
     /** T-09 preparation — detection → capture → plan progress. */
     PREPARATION,
 
@@ -68,6 +75,13 @@ internal fun manualOrganizationFace(state: ManualOrganizationRun.State): ManualO
     } else {
         ManualOrganizationFace.SELECTION
     }
+
+    // Issue #417 (spec 417, AC-1): the frozen-scope state IS the method-choice
+    // face — 「このまま整理」 and 「AIに相談」 are the sibling arms consuming
+    // the same confirmed scope. It never renders for an onboarding run (D-16:
+    // those runs proceed straight into the composed phase from the
+    // confirmation).
+    is ManualOrganizationRun.State.ScopeConfirmed -> ManualOrganizationFace.METHOD_CHOICE
 
     ManualOrganizationRun.State.Capturing,
     ManualOrganizationRun.State.CandidateDetection,

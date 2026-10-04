@@ -46,6 +46,25 @@ class ManualOrganizationFaceTest {
                 scopeRejection = IntentValidationFailure.ScopeMismatch(ScopeMismatchCause.SET_MISMATCH),
             ) to ManualOrganizationFace.SELECTION,
 
+            // Issue #417 (spec 417, AC-1): the frozen-scope state renders the
+            // dedicated method-choice face (「このまま整理」/「AIに相談」).
+            ManualOrganizationRun.State.ScopeConfirmed(
+                runId = RunId(FACE_TEST_RUN_ID),
+                candidates = listOf(detected("com.example.a/.Main")),
+                selection = listOf(
+                    app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                        app.lawnchair.organizer.planning.ComponentKey("com.example.a/.Main"),
+                        app.lawnchair.organizer.planning.ProfileId("personal"),
+                    ),
+                ),
+                candidateLabels = mapOf(
+                    app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                        app.lawnchair.organizer.planning.ComponentKey("com.example.a/.Main"),
+                        app.lawnchair.organizer.planning.ProfileId("personal"),
+                    ) to "com.example.a/.Main",
+                ),
+            ) to ManualOrganizationFace.METHOD_CHOICE,
+
             ManualOrganizationRun.State.Capturing to ManualOrganizationFace.PREPARATION,
             // Issue #371: the JIT pause and its internal resume claim are
             // preparation-phase waiting points — the request dialog is a modal

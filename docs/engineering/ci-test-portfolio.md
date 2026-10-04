@@ -60,6 +60,7 @@ instrumentation_enabled = !smoke
 | organizer-instrumentation-reservation-recovery-tests | surface_layout_write | QSB reservation / recovery store / overlap gate / #265/#269 の実 writer oracle（#155 系） |
 | organizer-instrumentation-category-override-tests | surface_organizer_ui | category override authoring UI（#99） |
 | organizer-instrumentation-exchange-import-ui-tests | surface_organizer_ui | exchange import surface UI（#332/#345） |
+| organizer-instrumentation-method-choice-journey-tests | surface_organizer_ui | method-choice face の connected journey（scope確定後の AI依頼作成・取り込み・attach、#417 AC-8 (g)-(v)） |
 | organizer-instrumentation-onboarding-proposal-tests | surface_organizer_ui | onboarding proposal lifecycle / 実入力 environment（#53/#300） |
 
 surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
@@ -94,6 +95,7 @@ surface 定義（path filter）は `ci.yml` の `changes` job が所有する:
 | reservation-recovery lane | 9.4 分。QSB 予約・recovery store lifecycle・overlap acceptance gate・#265/#269 の実 writer/recovery oracle。独立 storage を扱うため clean emulator 必須 | Conditional（surface_layout_write） |
 | category-override lane | 8.1 分。authoring UI の semantics / focus / font-scale / touch target。Compose UI 検証は JVM で代替不能 | Conditional（surface_organizer_ui） |
 | exchange-import-ui lane | 10.2 分。exchange import surface の Compose 検証（#345 で local-only から昇格。CI green の実績あり） | Conditional（surface_organizer_ui） |
+| method-choice-journey lane | method-choice face の connected journey（#417 AC-8 (g)-(v) evidence。scope-first で凍結した scope 上の AI依頼作成 → 取り込み → attach を固定する per-class lane） | Conditional（surface_organizer_ui） |
 | onboarding-proposal lane | 9.7 分。proposal lifecycle / Back / focus / recreation / review admission。実入力注入は focus 観測を前提とする（#300 accepted、#304/#418 で環境系 failure 実績） | Conditional（surface_organizer_ui） |
 | failure-time evidence capture | 全 9 lane が `capture-emulator-failure-evidence.sh`（#315: bounded・continue-on-error）+ 14 日 artifact。失敗の原因分類を rerun 前に可能にする補助処理。validator が装備を機械検証 | 補助（各 lane） |
 | final-status | 「当該 run に必要と判定された gate が完了したこと」を集約。skip は成功扱い、failure/cancelled のみ fail。needs の必須集合は validator が map file と突き合わせ | 集約（branch protection required check） |

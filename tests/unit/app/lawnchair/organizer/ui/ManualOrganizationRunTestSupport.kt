@@ -31,18 +31,33 @@ object ManualOrganizationRunTestSupport {
         planner = OrganizationPlanner { error("planner must not run") },
     )
 
-    private class NotReadyApplication : ManualOrganizationApplication {
+    /**
+     * Issue #417: a run double whose detection is READY (one stable
+     * candidate), so a test can drive it to the frozen scope
+     * (`State.ScopeConfirmed`) via `start()` + `confirmSelection(...)` — the
+     * state the scoped exchange generation is claimed from. The composition
+     * stays permanently NotReady (the planner must never run), so any
+     * composed-phase continuation surfaces as the typed InputUnavailable
+     * state instead of a silent pass.
+     */
+    fun newReadyDetectionRun(): ManualOrganizationRun = ManualOrganizationRun(
+        application = ReadyDetectionApplication(),
+        planner = OrganizationPlanner { error("planner must not run") },
+    )
+
+    /** The stable candidate of [ReadyDetectionApplication]'s detection cut. */
+    val readyDetectionCandidate: CandidateTarget.AppKey = CandidateTarget.AppKey(
+        app.lawnchair.organizer.planning.ComponentKey("com.example.c1"),
+        app.lawnchair.organizer.planning.ProfileId("personal"),
+    )
+
+    private open class BaseTestApplication : ManualOrganizationApplication {
         override val diagnostics = object : DiagnosticsPort {
             override fun emit(event: RunEvent) = Unit
             override fun snapshot() = emptyList<RunEvent>()
         }
 
         override fun newRunId() = RunId("0123456789abcdef0123456789abcdef")
-
-        // Issue #228: detection unavailable keeps the legacy full flow.
-        override fun detectMissingAppCandidates() = CandidateDetectionResult.Unavailable(
-            DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
-        )
 
         override fun composeFullOrganization(): OrganizationInputComposition = notReady()
 
@@ -71,14 +86,41 @@ object ManualOrganizationRunTestSupport {
 
         override fun readRestorableRecoveryEntry(): app.lawnchair.organizer.application.public.RestorableRecoveryEntry? = error("not reached in exchange holder tests")
 
+        // Issue #417 (spec 417): the detection cut became an application port
+        // member; the base default stays unavailable so only tests that
+        // opt into a cut (NotReadyApplication/ReadyDetectionApplication)
+        // observe one.
+        override fun detectMissingAppCandidates(): CandidateDetectionResult = CandidateDetectionResult.Unavailable(
+            DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+
         override val readinessState: StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
             MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
 
-        private fun notReady() = OrganizationInputComposition.NotReady(
+        protected fun notReady() = OrganizationInputComposition.NotReady(
             InputReadinessReason.InvalidCanonicalCapture(CaptureFailureCategory.CAPTURE_UNAVAILABLE),
             CompositionDiagnostic(InputCompositionCode.CAPTURE_INVALID),
         )
 
         private fun notReadyPreview(): app.lawnchair.organizer.application.public.PlanPreviewResult = app.lawnchair.organizer.application.public.PlanPreviewResult.WriterBusy
+    }
+
+    private class NotReadyApplication : BaseTestApplication() {
+        // Issue #228: detection unavailable keeps the legacy full flow.
+        override fun detectMissingAppCandidates() = CandidateDetectionResult.Unavailable(
+            DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+        )
+    }
+
+    private class ReadyDetectionApplication : BaseTestApplication() {
+        override fun detectMissingAppCandidates() = CandidateDetectionResult.Ready(
+            listOf(
+                app.lawnchair.organizer.integration.DetectedCandidate(
+                    target = readyDetectionCandidate,
+                    label = "c1",
+                    availability = app.lawnchair.organizer.planning.Availability.AVAILABLE,
+                ),
+            ),
+        )
     }
 }

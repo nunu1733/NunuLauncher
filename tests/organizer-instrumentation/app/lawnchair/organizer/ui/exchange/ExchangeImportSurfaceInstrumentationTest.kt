@@ -59,7 +59,6 @@ import app.lawnchair.organizer.personalization.PrivacyTier
 import app.lawnchair.organizer.personalization.SequentialIdAllocator
 import app.lawnchair.organizer.personalization.exchange.ExchangeContract
 import app.lawnchair.organizer.planning.Availability
-import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.ComponentKey
@@ -125,6 +124,15 @@ class ExchangeImportSurfaceInstrumentationTest {
         override fun invalidate(exportId: String) {
             if (session?.exportId == exportId) session = null
         }
+        override fun invalidateIf(
+            expectedExportId: String,
+        ): app.lawnchair.organizer.personalization.ExportInvalidationResult {
+            if (session?.exportId != expectedExportId) {
+                return app.lawnchair.organizer.personalization.ExportInvalidationResult.NoMatch
+            }
+            session = null
+            return app.lawnchair.organizer.personalization.ExportInvalidationResult.Committed
+        }
     }
 
     /**
@@ -139,6 +147,8 @@ class ExchangeImportSurfaceInstrumentationTest {
         override fun load(exportId: String) = bound.takeIf { it.exportId == exportId }
         override fun active(nowEpochMs: Long) = bound.takeIf { !it.isExpired(nowEpochMs) }
         override fun invalidate(exportId: String) = Unit
+        override fun invalidateIf(expectedExportId: String) =
+            app.lawnchair.organizer.personalization.ExportInvalidationResult.NoMatch
     }
 
     private fun structural(): CanonicalStructuralInputs {
@@ -283,10 +293,11 @@ class ExchangeImportSurfaceInstrumentationTest {
     }
 
     /**
-     * Issue #372 (EX-AC-01/EX-AC-07, rendered-UI oracle): the standalone idle
-     * entry row is GONE (D-04) — and the capability notes now surface on the
-     * T-15 request face reached through `openFlow` (the T-07 「AIに相談」
-     * method choice's target). The import lead-in stays reachable from T-15.
+     * Issue #372 (EX-AC-01/EX-AC-07, rendered-UI oracle) + Issue #417 hosting
+     * re-placement: the entry face reached through `openFlow` is IMPORT-ONLY —
+     * the capability notes and the 「回答を取り込む」 lead stay reachable, with NO
+     * creation entry; the creation face (tier choice + D-09 expectation)
+     * lives on the method-choice hosting (`openMethodChoiceFlow`).
      */
     @Test
     fun requestFaceSurfacesTheCapabilityNotesAndIdleEntryIsGone() {
@@ -296,10 +307,12 @@ class ExchangeImportSurfaceInstrumentationTest {
         composeRule.onNodeWithTag("exchange-entry-capability").assertDoesNotExist()
         composeRule.onNodeWithTag("exchange-entry-title").assertDoesNotExist()
 
+        // The entry face hosts IMPORT-ONLY: capability notes, no create CTA.
         composeRule.runOnUiThread { holder.openFlow() }
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("exchange-request-title").assertIsDisplayed()
-        composeRule.onNodeWithTag("exchange-request-capability").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-entry-capability").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-generate").assertDoesNotExist()
         for (res in listOf(
             R.string.exchange_capability_title,
             R.string.exchange_capability_example_frequent,
@@ -314,10 +327,9 @@ class ExchangeImportSurfaceInstrumentationTest {
                 .onNodeWithText(context.getString(res), substring = true)
                 .assertIsDisplayed()
         }
-        // The D-09 expectation statement is on the creation face.
-        composeRule.onNodeWithTag("exchange-expectation").assertIsDisplayed()
 
-        // The removed entry's 「回答を取り込む」 lead stays reachable from T-15.
+        // The removed entry's 「回答を取り込む」 lead stays reachable from the
+        // import-only entry face.
         composeRule.onNodeWithText(context.getString(R.string.exchange_entry_import)).assertIsDisplayed().assertHasClickAction()
         composeRule.onNodeWithText(context.getString(R.string.exchange_entry_import)).performClick()
         composeRule.waitForIdle()
@@ -325,31 +337,22 @@ class ExchangeImportSurfaceInstrumentationTest {
     }
 
     /**
-     * Issue #327 AC-4/AC-5: the run-in (scoped) entry row carries the same
-     * capability notes under its own test tag.
+     * Issue #327 AC-4/AC-5 → Issue #417 re-placement: the selection-surface
+     * scoped entry row is REMOVED (spec 367 superseded — the frozen scope is
+     * confirmed before the method choice), and the capability notes surface
+     * on the method-choice hosting reached through `openMethodChoiceFlow`.
      */
     @Test
-    fun scopedEntrySurfacesTheCapabilityNotes() {
+    fun scopedEntryRowIsGoneAndTheMethodChoiceFaceSurfacesTheCapabilityNotes() {
         val holder = newHolder()
-        val scoped = CandidateTarget.AppKey(ComponentKey("com.example.scoped"), ProfileId("p0"))
-        composeRule.setContent {
-            LawnchairTheme {
-                LazyColumn {
-                    exchangeFlowItems(
-                        holder = holder,
-                        scopedSelection = listOf(scoped),
-                        scopedLabels = mapOf(scoped to "Scoped app"),
-                        onDiscardRequest = {},
-                        discardFocus = null,
-                        clipboardTransport = { _, _ -> ExchangeTransportResult.Success },
-                        shareTransport = { _, _ -> ExchangeTransportResult.Success },
-                        fileTransport = FileExchangeTransport(context),
-                    )
-                }
-            }
-        }
+        setContent(holder)
+        // The removed scoped entry row renders nothing.
+        composeRule.onNodeWithTag("exchange-scoped-entry-open").assertDoesNotExist()
+        composeRule.onNodeWithTag("exchange-scoped-entry-capability").assertDoesNotExist()
+
+        composeRule.runOnUiThread { holder.openMethodChoiceFlow() }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag("exchange-scoped-entry-capability").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-request-capability").assertIsDisplayed()
         composeRule
             .onNodeWithText(context.getString(R.string.exchange_capability_no_direct_change), substring = true)
             .assertIsDisplayed()

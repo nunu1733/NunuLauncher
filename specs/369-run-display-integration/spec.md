@@ -31,6 +31,9 @@ updated: 2026-09-20
 > （accepted、PR #378 merge済み）が本件を「spec 52/228 Amend、spec 210注記、#369が実行」と
 > 定める。D-06の0件時選択面非表示を表示統合として実装し内部state machineを不変と保つ解釈は、
 > 処分文書§3.3の2026-09-20追記とResolved decisions RD-3に記録した。
+> Amended by #417 (head `bc459e9fa0` / spec 417 accepted):
+> [spec 417](../417-scope-first-method-choice/spec.md) が RD-3・D-06節・状態対応表・0候補scenarioを
+> manual runでは検出後に方法選択面へ到達する形へAmendする（onboardingは現行どおり）。
 
 ## Problem
 
@@ -604,6 +607,7 @@ decisions RD-1〜RD-7
 
 ## Change history
 
+- 2026-09-24: **Amended by #417**（accepted spec [spec 417](../417-scope-first-method-choice/spec.md)、head `bc459e9fa0`）: RD-3・D-06節・20状態→8ユーザー状態対応表・0候補scenarioは、manual runでは検出後に方法選択面へ到達する形へAmend（onboardingは現行どおり）。0候補時のdisplay層pass-through（RD-3）は#417の`State.ScopeConfirmed`（方法選択面）新設によりstate層の契約へ置換される。
 - 2026-09-20: **status を implemented へ移行**。実装PR [#387](https://github.com/nunu1733/NunuLauncher/pull/387) merge (merge commit `7ec9e9d3fe`)。実装はChatGPT実装レビュー4回（CR×3 → Accepted）と独立監査（[docs/assessment/pr-387-run-display-integration.md](../../docs/assessment/pr-387-run-display-integration.md)、verdict: pass）を経て受理。RUN-AC-01〜10は監査記録のtest evidence（unit oracle・UI instrumentation lane・4条件screenshot evidence）を正本とする。
 
 - 2026-09-20: Phase1 re-entry（4th revision）。3rd review

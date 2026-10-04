@@ -402,13 +402,18 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
 
     /**
      * Issue #372 (EX-AC-02 + EX-AC-01, rendered-UI oracle over the PRODUCTION
-     * navigation graph and the REAL user route): hub → start CTA → T-07 →
-     * 「AIに相談」→ T-15 shows the ACTIVE REQUEST pre-display; Back returns
-     * through T-07 to the hub; the hub materials row 「Organization strategy」
-     * opens T-05 where a real strategy radio write commits through the
-     * AUTHORING-token arbiter WITHOUT a lease rejection; returning start CTA →
-     * T-07 → 「AIに相談」 restores the T-15 pre-display for the SAME durable
-     * session. Every transition is a real UI row click / system Back.
+     * navigation graph and the REAL user route), mechanically re-routed by
+     * Issue #417: the entry face's 「AIに相談」 row is retired, so the active
+     * request is reached through the hub's 進行中のAI依頼 row (`ExchangeOpen.
+     * REQUEST` → the run destination's IMPORT-ONLY hosting, the T-15
+     * pre-display). hub → request row → T-15 shows the ACTIVE REQUEST
+     * pre-display; Back returns through the entry face to the hub; the hub
+     * materials row 「Organization strategy」 opens T-05 where a real strategy
+     * radio write commits through the AUTHORING-token arbiter WITHOUT a lease
+     * rejection; returning request row → T-15 restores the pre-display for
+     * the SAME durable session. Every transition is a real UI row click /
+     * system Back, and the request row never admits a run (the coordinator
+     * stays `Idle`).
      */
     @Test
     fun issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute() {
@@ -447,25 +452,39 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 composeRule.waitForIdle()
             }
 
-            // Hub → start CTA → T-07 → 「AIに相談」 → T-15 pre-display.
+            fun openRequestRowAndAwaitT15(activeAwaitTag: String) {
+                composeRule.waitUntil(5_000) {
+                    composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
+                }
+                composeRule.onNodeWithText(context.getString(R.string.organizer_hub_request_open)).performClick()
+                // The run surface is showing (its explainer is unique to it)…
+                composeRule.waitUntil(5_000) {
+                    composeRule.onAllNodesWithText(
+                        context.getString(R.string.manual_organization_explainer),
+                    ).fetchSemanticsNodes().isNotEmpty()
+                }
+                // …with the T-15 pre-display for the active request.
+                composeRule.waitUntil(5_000) {
+                    composeRule.onAllNodesWithText(
+                        context.getString(R.string.exchange_request_title),
+                    ).fetchSemanticsNodes().isNotEmpty()
+                }
+                composeRule.waitUntil(5_000) {
+                    composeRule.onAllNodesWithTag(activeAwaitTag).fetchSemanticsNodes().isNotEmpty()
+                }
+            }
+
+            // Hub → 進行中のAI依頼 row → T-15 pre-display.
             composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithText(
                     context.getString(R.string.manual_organization_start),
                 ).fetchSemanticsNodes().isNotEmpty()
             }
-            composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
-            composeRule.waitUntil(5_000) {
-                composeRule.onAllNodesWithText(
-                    context.getString(R.string.exchange_method_consult),
-                ).fetchSemanticsNodes().isNotEmpty()
-            }
-            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
-            composeRule.waitUntil(5_000) {
-                composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isNotEmpty()
-            }
+            openRequestRowAndAwaitT15("exchange-request-active")
 
-            // Back: T-15 closes zero-write to T-07, then T-07 returns to the hub.
+            // Back: T-15 closes zero-write to the entry face, then the entry
+            // face returns to the hub.
             pressBack()
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isEmpty()
@@ -487,24 +506,17 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.waitForIdle()
             composeRule.onNodeWithText(tidy).assertIsSelected()
 
-            // Back to the hub, then the start CTA → T-07 → 「AIに相談」 again:
-            // the same durable request resurfaces through the T-15 pre-display.
+            // Back to the hub, then the request row → T-15 again: the same
+            // durable request resurfaces through the T-15 pre-display.
             pressBack()
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithText(
                     context.getString(R.string.organizer_strategy_title),
                 ).fetchSemanticsNodes().isNotEmpty()
             }
-            composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
-            composeRule.waitUntil(5_000) {
-                composeRule.onAllNodesWithText(
-                    context.getString(R.string.exchange_method_consult),
-                ).fetchSemanticsNodes().isNotEmpty()
-            }
-            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
-            composeRule.waitUntil(5_000) {
-                composeRule.onAllNodesWithTag("exchange-request-active").fetchSemanticsNodes().isNotEmpty()
-            }
+            openRequestRowAndAwaitT15("exchange-request-active")
+            // The request row opens the flow WITHOUT run admission (the
+            // durable active request holds no RUN lease, #417).
             assertEquals(ManualOrganizationRun.State.Idle, fixture.state)
         } finally {
             sessionStore.invalidate("issue372-materials-route")

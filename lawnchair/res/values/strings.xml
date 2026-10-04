@@ -1069,7 +1069,13 @@
     <string name="manual_organization_preview_strategy">Strategy: %1$s</string>
     <string name="manual_organization_cross_page_moved_count">Moved across screens: %1$d</string>
     <string name="manual_organization_preserved_by_strategy_count">Kept in place by the strategy: %1$d</string>
-    <string name="manual_organization_start">Organize as is</string>
+    <!-- Issue #417: the method-neutral start CTA (run admission only — the
+         method choice moved to the post-scope method-choice face). -->
+    <string name="manual_organization_start">Start organizing</string>
+    <!-- Issue #417: the method-choice face (shown after the scope is
+         confirmed). Both arms consume the same frozen scope. -->
+    <string name="manual_organization_method_title">How should the plan be made?</string>
+    <string name="manual_organization_method_plain">Organize as-is</string>
     <string name="manual_organization_start_again">Start a new review</string>
     <string name="manual_organization_retry">Try again</string>
     <string name="manual_organization_capturing">Reading the current home layout…</string>
@@ -1212,7 +1218,7 @@
     <string name="manual_organization_preview_details_unavailable">A detailed change list could not be prepared this time. Review the summary counts before applying.</string>
     <!-- Issue #228: missing-app selection and Add rows -->
     <string name="manual_organization_detecting_missing_apps">Checking for apps that are not on the Home screen…</string>
-    <!-- Issue #369: transitional T-07 preamble (method selection + scope summary, RD-1/RD-5) -->
+    <!-- Issue #369 RD-1/RD-5, reshaped by #417: the entry face — the scope summary only (the method choice moved to the method-choice face). -->
     <string name="manual_organization_preamble_scope">This review covers your whole home layout. Nothing is applied before you confirm the proposal.</string>
     <!-- Issue #369: T-09 integrated preparation face -->
     <string name="manual_organization_preparation">Preparing the organization</string>
@@ -1233,6 +1239,9 @@
     <string name="manual_organization_missing_apps_select_all">Select all</string>
     <string name="manual_organization_missing_apps_clear_all">Clear all</string>
     <string name="manual_organization_missing_apps_continue">Continue</string>
+    <!-- Issue #417 (AC-4): the explicit zero-selection disclosure shown while
+         the user continues with nothing selected. -->
+    <string name="manual_organization_missing_apps_empty_continue">Continuing with nothing selected. Your home will be organized without adding unplaced apps.</string>
     <string name="manual_organization_missing_apps_state_checked">Selected</string>
     <string name="manual_organization_missing_apps_state_unchecked">Not selected</string>
     <string name="manual_organization_preview_unavailable_add">The detailed change list for this proposal, which adds new apps, could not be prepared. Nothing has been changed. New apps are only added after the full list is reviewed.</string>
@@ -1338,10 +1347,10 @@
     <string name="organization_onboarding_reentry_hint_body">Long-press the Home screen → %1$s → %2$s → %3$s.</string>
 
     <!-- Issue #205: External Agent Exchange -->
-    <!-- Issue #372: the idle entry row is gone (D-04). The subtitle survives
-         as the short description of the T-07 "consult the AI" method choice;
-         the import label survives as the T-15 import lead-in and the run-in
-         entry. -->
+    <!-- Issue #372: the idle entry row is gone (D-04), and #417 moved the AI
+         choice onto the method-choice face. The subtitle survives as the
+         short description of that face's 「Consult the AI」 row; the import
+         label survives as the T-15 import lead-in. -->
     <string name="exchange_entry_subtitle">Create a request for an external AI (such as ChatGPT) and import its proposal as a reviewable plan.</string>
     <string name="exchange_method_consult">Consult the AI</string>
     <!-- Issue #327: user-facing capability explanation (en) -->
@@ -1493,10 +1502,17 @@
     <string name="exchange_rebind_anchor_refused">This proposal is no longer available. Open it again from the home screen hub.</string>
     <string name="exchange_rebind_start_failed">Could not continue with this proposal. Try again.</string>
     <string name="exchange_failure_unknown_category_ref">The reply references a category that is no longer available. Create a new request and ask again.</string>
-    <string name="exchange_scoped_entry_title">Include the selected apps in the AI request</string>
-    <string name="exchange_scoped_entry_subtitle">The request will cover your current home plus the selected apps, so the AI can advise on all of them.</string>
-    <string name="exchange_scoped_entry_open">Create request</string>
     <string name="exchange_scoped_freeze_notice">The app selection is locked while the AI request is being created. Cancel the request to edit it again.</string>
+    <!-- Issue #417: the entry face is import-only, the method-choice face gates
+         foreign requests to recreation, and the run-owned cleanup/discard
+         failures are typed and retryable. -->
+    <string name="exchange_entry_import_only_notice">This request stays importable here. To create a new request for your frozen selection, start organizing and choose “Consult the AI”.</string>
+    <string name="exchange_generation_not_confirmed">The organize run is no longer holding the confirmed selection. Nothing was created.</string>
+    <string name="exchange_export_cleanup_failed">Could not discard the unused request. Nothing was sent. Try again.</string>
+    <string name="exchange_scope_discard_failed">Could not discard the request. Your selection stays locked. Try again.</string>
+    <string name="exchange_recreate_request_title">This reply belongs to a different request</string>
+    <string name="exchange_recreate_request_body">The reply you imported was not created from the selection confirmed in this organize run, so it cannot be used here. Create a new request for this selection.</string>
+    <string name="exchange_recreate_request_action">Create a new request</string>
     <plurals name="exchange_scope_intent_count">
         <item quantity="one">The AI proposal covers %1$d app that is not yet on your home. Select it to use the proposal.</item>
         <item quantity="other">The AI proposal covers %1$d apps that are not yet on your home. Select them to use the proposal.</item>
@@ -1525,7 +1541,8 @@
     <string name="exchange_import_review_unavailable">The imported proposal could not be opened. It expired or was invalidated.</string>
     <string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
     <string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
-    <string name="exchange_start_frozen_import">Import in progress. You can start organizing after it finishes.</string>
+    <!-- Issue #417: `exchange_start_frozen_import` was removed — a durable
+         active request no longer freezes the entry face's start row (AC-5). -->
     <plurals name="exchange_import_summary_recognized">
         <item quantity="one">%1$d wish was recognized from the proposal.</item>
         <item quantity="other">%1$d wishes were recognized from the proposal.</item>

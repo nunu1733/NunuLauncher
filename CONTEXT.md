@@ -227,3 +227,15 @@ _Avoid_: 適用済み提案 (未適用である)、プレビュー (run接続後
 **中断・破棄・キャンセル (中止語彙規約)**:
 ユーザー向け中止語彙の規約 ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-13/§9)。不可逆に捨てる操作 (取り込み済み提案の破棄、依頼の置換、未送信依頼の無効化) は「破棄」ラベルと必須確認、zero-writeでrunを止めてhubへ戻るのは「中断」、何も壊さず中止するのは「キャンセル」(確認不要) とする。「キャンセル」ラベルの不可逆操作への混用を禁止し、現行のpre-send cancelは「破棄」へ改める (spec 205側の語彙改訂は後続実装Issueが行う)。
 _Avoid_: Cancelの混用 (zero-write中断と不可逆session無効化の同一ラベル化)
+
+**対象scope凍結 (Frozen Organization Scope)**:
+1回の整理runについて、方法選択より前にユーザーが明示確定した対象集合 ([spec 417](./specs/417-scope-first-method-choice/spec.md))。配置済み対象 (常に全体) と、選択済み未配置候補 (0件以上) からなる。確定後はAI export・deterministic planner・import検証のすべてがこの同一scopeを参照する。
+_Avoid_: 対象選択 (凍結前の編集中状態との混同)、依頼時scope (再開検証に使われる依頼作成時点のscope記録との混同)
+
+**方法選択面 (method choice)**:
+scope凍結後に現れる「このまま整理 / AIに相談」の選択面 ([spec 417](./specs/417-scope-first-method-choice/spec.md))。旧T-07前置き面の方法選択 (spec 369/372) はここへ移る。
+_Avoid_: 前置き面 (方法選択を含まない入口面T-07との混同)、run前置きでの方法選択 (T-07で方法を選ぶ旧構成の示唆)
+
+**scope-bound依頼破棄 (scope-bound request discard)**:
+凍結scopeの再編集のために、そのscopeから作成したactive依頼 (とその従属物) をexchange mutation gate配下で順序付きに無効化する明示操作 ([spec 417](./specs/417-scope-first-method-choice/spec.md))。依頼時scopeを参照する全durable状態の消失原因の1つとなる。
+_Avoid_: 未送信依頼の破棄 (pre-send discardとの混同。scope再編集を目的としない)、中断 (zero-writeでrunを止める語彙との混同)
