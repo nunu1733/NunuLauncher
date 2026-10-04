@@ -288,6 +288,8 @@
     <string name="manual_organization_preserved_non_target">対象外の配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_strategy">選択した戦略により保持: %1$d件</string>
     <string name="manual_organization_preserved_structural">関連する項目を保持: %1$d件</string>
+    <!-- Issue #451: 重複超過分は元の位置に保持される（削除は行わない）。 -->
+    <string name="manual_organization_preserved_duplicate_launch_target">重複のため元の位置に保持: %1$d件</string>
     <string name="manual_organization_strategy_section">整理ストラテジー</string>
     <!-- Issue #368: strategy materials surface (T-05), reached only from the
          organizer hub materials section; the run surface no longer hosts the picker. -->
@@ -328,6 +330,8 @@
     <string name="manual_organization_warning_legacy_shortcut">旧形式のショートカットの確認が必要: %1$d件</string>
     <string name="manual_organization_warning_fallback_category">代替カテゴリを使用: %1$d件</string>
     <string name="manual_organization_warning_unavailable">利用できない配置を保持: %1$d件</string>
+    <!-- Issue #451: 重複は警告で示すのみで、削除は促さない。 -->
+    <string name="manual_organization_warning_duplicate_launch_target">重複のため移動させなかった配置: %1$d件</string>
     <string name="manual_organization_rejection_unknown_item_kind">未対応のアイテム種別: %1$d件</string>
     <string name="manual_organization_rejection_invalid_container">無効なコンテナ: %1$d件</string>
     <string name="manual_organization_rejection_unknown_page">不明なページ参照: %1$d件</string>
@@ -442,9 +446,12 @@
     <string name="manual_organization_preview_preserved_reason_structural">構造メンバーとして保持</string>
     <string name="manual_organization_preview_preserved_reason_strategy">選択した整理戦略により保持</string>
     <string name="manual_organization_preview_preserved_reason_already_canonical">既に整列済みのため保持</string>
+    <!-- Issue #451: 重複のため整理では移動させずに残した（削除は促さない）。 -->
+    <string name="manual_organization_preview_preserved_reason_duplicate_launch_target">同じ起動先の項目と重複しているため保持</string>
     <string name="manual_organization_preview_warning_legacy_shortcut_item">旧形式のショートカットのため確認が必要</string>
     <string name="manual_organization_preview_warning_fallback_category_item">分類を推定できずフォールバックカテゴリを使用</string>
     <string name="manual_organization_preview_warning_unavailable_item">現在利用できないため保持</string>
+    <string name="manual_organization_preview_warning_duplicate_launch_target_item">同じ起動先の項目と重複しているため、整理では移動させずに保持しています</string>
     <string name="manual_organization_preview_page">%1$dページ目</string>
     <string name="manual_organization_preview_new_page_position">新規ページ (%1$dページ目)</string>
     <string name="manual_organization_preview_position_workspace">%1$s・%2$s</string>

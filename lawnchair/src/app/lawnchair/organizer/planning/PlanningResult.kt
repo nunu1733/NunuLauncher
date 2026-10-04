@@ -92,6 +92,16 @@ enum class PreserveReason {
      */
     STRATEGY_PRESERVED,
     STRUCTURAL,
+
+    /**
+     * Issue #451 (spec 451 N-2/N-3): a duplicate surplus item — a captured
+     * APPLICATION/DEEP_SHORTCUT item beyond the duplicate set's representative
+     * for the same launch target. Kept at its captured position instead of
+     * joining a new folder. Lower precedence than every existing preservation
+     * predicate and higher than ALREADY_CANONICAL, so locked, docked,
+     * unavailable, and structural duplicates keep their stronger reason.
+     */
+    DUPLICATE_LAUNCH_TARGET,
     ALREADY_CANONICAL,
 }
 
@@ -236,6 +246,14 @@ enum class WarningCode {
     LEGACY_SHORTCUT_REVIEW,
     FALLBACK_CATEGORY,
     UNAVAILABLE_PRESERVED,
+
+    /**
+     * Issue #451 (spec 451 N-4): one warning per duplicate surplus item (same
+     * launch target beyond the representative). Appended last so the canonical
+     * warning order of the existing codes is unchanged; emitted regardless of
+     * strategy folder capability or run mode — it is an input observation.
+     */
+    DUPLICATE_LAUNCH_TARGET,
 }
 
 enum class UnplacedReason {

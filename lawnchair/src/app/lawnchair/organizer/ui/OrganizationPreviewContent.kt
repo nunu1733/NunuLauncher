@@ -85,9 +85,15 @@ interface OrganizationPreviewWording {
     val preservedReasonStrategyPreserved: String
     val preservedReasonStructural: String
     val preservedReasonAlreadyCanonical: String
+
+    /** Issue #451: a duplicate surplus item kept at its captured position. */
+    val preservedReasonDuplicateLaunchTarget: String
     val warningLegacyShortcutReview: String
     val warningFallbackCategory: String
     val warningUnavailablePreserved: String
+
+    /** Issue #451: one warning row per duplicate surplus item. */
+    val warningDuplicateLaunchTarget: String
     val pagePosition: String
     val newPagePosition: String
     val workspacePosition: String
@@ -437,6 +443,7 @@ object OrganizationPreviewContent {
         PreserveReason.NON_TARGET -> wording.preservedReasonNonTarget
         PreserveReason.STRATEGY_PRESERVED -> wording.preservedReasonStrategyPreserved
         PreserveReason.STRUCTURAL -> wording.preservedReasonStructural
+        PreserveReason.DUPLICATE_LAUNCH_TARGET -> wording.preservedReasonDuplicateLaunchTarget
         PreserveReason.ALREADY_CANONICAL -> wording.preservedReasonAlreadyCanonical
     }
 
@@ -444,6 +451,7 @@ object OrganizationPreviewContent {
         WarningCode.LEGACY_SHORTCUT_REVIEW -> wording.warningLegacyShortcutReview
         WarningCode.FALLBACK_CATEGORY -> wording.warningFallbackCategory
         WarningCode.UNAVAILABLE_PRESERVED -> wording.warningUnavailablePreserved
+        WarningCode.DUPLICATE_LAUNCH_TARGET -> wording.warningDuplicateLaunchTarget
     }
 
     private fun kindText(kind: CanonicalItemKind, wording: OrganizationPreviewWording): String = when (kind) {

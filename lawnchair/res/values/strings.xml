@@ -1244,6 +1244,9 @@
     <string name="manual_organization_preserved_non_target">Preserved out-of-scope placements: %1$d</string>
     <string name="manual_organization_preserved_strategy">Preserved by the selected strategy: %1$d</string>
     <string name="manual_organization_preserved_structural">Preserved structural members: %1$d</string>
+    <!-- Issue #451: duplicate surplus items are kept at their captured
+         position, never removed from the layout. -->
+    <string name="manual_organization_preserved_duplicate_launch_target">Kept as duplicates of another icon: %1$d</string>
     <string name="manual_organization_preserved_already_canonical">Already-canonical placements: %1$d</string>
     <string name="manual_organization_unplaced_grid">Unplaced because the item exceeds grid dimensions: %1$d</string>
     <string name="manual_organization_unplaced_target">Unplaced because the target is unavailable: %1$d</string>
@@ -1253,6 +1256,8 @@
     <string name="manual_organization_warning_legacy_shortcut">Legacy shortcuts require review: %1$d</string>
     <string name="manual_organization_warning_fallback_category">Fallback category used: %1$d</string>
     <string name="manual_organization_warning_unavailable">Unavailable placements were preserved: %1$d</string>
+    <!-- Issue #451: duplicate icons are reported, never deletion-suggested. -->
+    <string name="manual_organization_warning_duplicate_launch_target">Duplicates of another icon were kept in place: %1$d</string>
     <string name="manual_organization_rejection_unknown_item_kind">Unsupported item type: %1$d</string>
     <string name="manual_organization_rejection_invalid_container">Invalid container: %1$d</string>
     <string name="manual_organization_rejection_unknown_page">Unknown page reference: %1$d</string>
@@ -1372,9 +1377,14 @@
     <string name="manual_organization_preview_preserved_reason_structural">kept as a structural member</string>
     <string name="manual_organization_preview_preserved_reason_strategy">kept by the selected organization strategy</string>
     <string name="manual_organization_preview_preserved_reason_already_canonical">already in its canonical place</string>
+    <!-- Issue #451: duplicate surplus items stay at their captured position;
+         the wording never suggests removing them (deletion proposals are out
+         of scope for #451). -->
+    <string name="manual_organization_preview_preserved_reason_duplicate_launch_target">kept in place as a duplicate of another icon</string>
     <string name="manual_organization_preview_warning_legacy_shortcut_item">legacy shortcut needs review</string>
     <string name="manual_organization_preview_warning_fallback_category_item">fallback category was used</string>
     <string name="manual_organization_preview_warning_unavailable_item">kept as it is currently unavailable</string>
+    <string name="manual_organization_preview_warning_duplicate_launch_target_item">kept in place as a duplicate of another icon</string>
     <string name="manual_organization_preview_page">page %1$d</string>
     <string name="manual_organization_preview_new_page_position">new page (position %1$d)</string>
     <string name="manual_organization_preview_position_workspace">%2$s, %1$s</string>

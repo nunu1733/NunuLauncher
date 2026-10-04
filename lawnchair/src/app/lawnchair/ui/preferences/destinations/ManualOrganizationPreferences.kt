@@ -1948,9 +1948,11 @@ private fun organizationPreviewWording(context: Context): OrganizationPreviewWor
     preservedReasonStrategyPreserved = context.getString(R.string.manual_organization_preview_preserved_reason_strategy),
     preservedReasonStructural = context.getString(R.string.manual_organization_preview_preserved_reason_structural),
     preservedReasonAlreadyCanonical = context.getString(R.string.manual_organization_preview_preserved_reason_already_canonical),
+    preservedReasonDuplicateLaunchTarget = context.getString(R.string.manual_organization_preview_preserved_reason_duplicate_launch_target),
     warningLegacyShortcutReview = context.getString(R.string.manual_organization_preview_warning_legacy_shortcut_item),
     warningFallbackCategory = context.getString(R.string.manual_organization_preview_warning_fallback_category_item),
     warningUnavailablePreserved = context.getString(R.string.manual_organization_preview_warning_unavailable_item),
+    warningDuplicateLaunchTarget = context.getString(R.string.manual_organization_preview_warning_duplicate_launch_target_item),
     pagePosition = context.getString(R.string.manual_organization_preview_page),
     newPagePosition = context.getString(R.string.manual_organization_preview_new_page_position),
     workspacePosition = context.getString(R.string.manual_organization_preview_position_workspace),
@@ -2018,9 +2020,11 @@ private class ResourceOrganizationPreviewWording(
     override val preservedReasonStrategyPreserved: String,
     override val preservedReasonStructural: String,
     override val preservedReasonAlreadyCanonical: String,
+    override val preservedReasonDuplicateLaunchTarget: String,
     override val warningLegacyShortcutReview: String,
     override val warningFallbackCategory: String,
     override val warningUnavailablePreserved: String,
+    override val warningDuplicateLaunchTarget: String,
     override val pagePosition: String,
     override val newPagePosition: String,
     override val workspacePosition: String,
@@ -2085,6 +2089,7 @@ private fun preservedReasonString(reason: PreserveReason): Int = when (reason) {
     PreserveReason.NON_TARGET -> R.string.manual_organization_preserved_non_target
     PreserveReason.STRATEGY_PRESERVED -> R.string.manual_organization_preserved_strategy
     PreserveReason.STRUCTURAL -> R.string.manual_organization_preserved_structural
+    PreserveReason.DUPLICATE_LAUNCH_TARGET -> R.string.manual_organization_preserved_duplicate_launch_target
     PreserveReason.ALREADY_CANONICAL -> R.string.manual_organization_preserved_already_canonical
 }
 
@@ -2152,6 +2157,7 @@ private fun warningString(code: WarningCode): Int = when (code) {
     WarningCode.LEGACY_SHORTCUT_REVIEW -> R.string.manual_organization_warning_legacy_shortcut
     WarningCode.FALLBACK_CATEGORY -> R.string.manual_organization_warning_fallback_category
     WarningCode.UNAVAILABLE_PRESERVED -> R.string.manual_organization_warning_unavailable
+    WarningCode.DUPLICATE_LAUNCH_TARGET -> R.string.manual_organization_warning_duplicate_launch_target
 }
 
 /**
