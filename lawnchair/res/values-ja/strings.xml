@@ -29,8 +29,6 @@
     <string name="organizer_hub_summary">整理の状態、整理案の確認、材料を1か所で扱えます。</string>
     <string name="organizer_hub_label">オーガナイザー</string>
     <string name="organizer_hub_materials_heading">整理の材料</string>
-    <!-- Issue #203: organizer personalization signals -->
-    <string name="organizer_personalization_section">パーソナライゼーション</string>
     <string name="organizer_personalization_recording_label">整理のためにアプリ起動を記録する</string>
     <string name="organizer_personalization_recording_description">このランチャーから始まった起動を端末内だけで数え、整理の精度を上げます。記録は端末の外に出ず、書き出しもされません。オフにすると記録を停止し、既存の記録を消去します。</string>
     <string name="organizer_personalization_usage_access_label">使用状況アクセス権限</string>

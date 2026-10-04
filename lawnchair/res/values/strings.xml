@@ -1007,8 +1007,6 @@
     <string name="organizer_hub_summary">Organizing status, starting a review, and materials in one place.</string>
     <string name="organizer_hub_label">Organizer</string>
     <string name="organizer_hub_materials_heading">Organizing materials</string>
-    <!-- Issue #203: organizer personalization signals -->
-    <string name="organizer_personalization_section">Personalization</string>
     <string name="organizer_personalization_recording_label">Record app launches for organizing</string>
     <string name="organizer_personalization_recording_description">Keeps a local counter of launches started from this launcher to improve organizing quality. Stored on this device only and never exported. Turning this off stops recording and erases the existing records.</string>
     <string name="organizer_personalization_usage_access_label">Usage access permission</string>

@@ -27,6 +27,7 @@ Release productには、**Export organizer diagnostics**へ一般に到達でき
 ## Scope
 
 - HomeScreen設定配下に、organizer diagnostics専用のdestination画面を新設し、HomeScreenのLayout groupからのnavigation entryを置く。
+  - Issue #367（入口表記の追記のみ、契約不変）: 材料集約（TO-BE §5.2、organizer-disposition-migration §7.2(b)）により、上記settings側navigation entryはOrganizer hub（T-01）の常設診断導線へ置き換えられた。destination画面・route・export契約、およびrun面safe terminal経由の入口（`Open organizer diagnostics`）は不変である。
 - 既存 `OrganizerDiagnosticsExportPreference` のcomposition siteを新画面へ追加する。diagnostics portは既存の単一port(`layoutApplicationModule.diagnostics`)へのaccessor再利用であり、第2のjournal/export seamは作らない。
 - 安全terminal `Open organizer diagnostics` の遷移先を、Debug menuから新経路へ付け替える。
 - 新画面title・explainerのlocalized文字列(en/ja)の追加。

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -171,7 +172,9 @@ class CustomCategoryPreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isNotEmpty()
         }
-        composeRule.onNodeWithText(
+        // The row exposes the rename affordance as its content description,
+        // not as visible text.
+        composeRule.onNodeWithContentDescription(
             context.getString(R.string.organizer_custom_category_rename_action, "Commute"),
         ).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").performTextClearance()
@@ -208,12 +211,17 @@ class CustomCategoryPreferencesInstrumentationTest {
                 return it
             }
             if (snapshot.identity != expected) return UserDefinedCategoryWriteResult.Conflict
+            // The coordinator's verified-Create contract requires a Committed
+            // Create to report the minted entry (spec #336), so the fake must
+            // carry it instead of a null third member.
+            var minted: UserDefinedCategory? = null
             val next = when (request) {
                 is UserDefinedCategoryMutation.Create -> {
                     val normalized = request.displayName.trim()
                     if (snapshot.categories.any { it.displayName == normalized }) return UserDefinedCategoryWriteResult.DuplicateName
-                    val minted = UserCategoryId("00000000-0000-4000-8000-000000000001")
-                    snapshot.categories + UserDefinedCategory(minted, normalized)
+                    val created = UserDefinedCategory(UserCategoryId("00000000-0000-4000-8000-000000000001"), normalized)
+                    minted = created
+                    snapshot.categories + created
                 }
 
                 is UserDefinedCategoryMutation.Rename -> snapshot.categories.map {
@@ -224,7 +232,7 @@ class CustomCategoryPreferencesInstrumentationTest {
             }
             if (next == snapshot.categories) return UserDefinedCategoryWriteResult.NoChange(snapshot.identity, visible().identity)
             snapshot = storedSnapshot(snapshot.identity.generation + 1L, next)
-            return UserDefinedCategoryWriteResult.Committed(snapshot.identity, visible().identity, null)
+            return UserDefinedCategoryWriteResult.Committed(snapshot.identity, visible().identity, minted)
         }
 
         private fun visible(): UserDefinedCategoryCatalogSnapshot = UserDefinedCategoryCatalogSnapshot(
