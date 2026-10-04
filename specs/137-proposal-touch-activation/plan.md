@@ -2,7 +2,7 @@
 
 > Issue: #137
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: Approved — implementation-ready(2026-08-25、accepted specに対して実装開始を認可)
 
 ## Current evidence
 
