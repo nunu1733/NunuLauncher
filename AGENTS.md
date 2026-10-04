@@ -84,6 +84,8 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 
 `favorites` の無条件な全削除→再挿入、遅延時間への依存、手動バックアップだけをundoとみなす実装は禁止する。例外が必要なら、受入済みADRと破壊・復旧テストを要求する。
 
+ユーザーが明示的に選んだ1個のアイテムへの即時の編集アクション、上流が行う単一アイテムの追加の配置先決定、および前者のUndoは、この規約ではなくADR-0013（直接編集の書込み契約、`docs/adr/0013-direct-edit-write-contract.md`）に従う。これらは1アクション = 1 DB transaction、書込み前の副作用のない検証、fail-closedなUndoを要求するが、snapshot revision照合・recovery point・相関reload・適用後の全体再検証は要求しない。この段落に列挙されないLauncher DBへのlayout書込みは、引き続きこの節の条件に従う。
+
 ## テスト規約
 
 - 計画module: fixture、境界値、property test、決定性、冪等性をinterface経由で検証する。

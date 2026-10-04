@@ -202,3 +202,8 @@ No production schema or migration is implemented by this research Issue.
 - 2026-08-10: Accepted dedicated tri-state `favorites` column; defined
   non-wiping migration, portable downgrade, fail-closed legacy/recovery
   handling, and grid/backup/profile boundaries for Issue #23.
+- 2026-09-27: Related: ADR-0013 (`docs/adr/0013-direct-edit-write-contract.md`) —
+  manual edits (including the direct-edit actions it defines) move rows without
+  writing the lock column and without lifting locks. The Identity and
+  effective-lock rules above scope organizer-side capture/apply/recovery and are
+  unchanged by that ADR; this body is intentionally not modified.
