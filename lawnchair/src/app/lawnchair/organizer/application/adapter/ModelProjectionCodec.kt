@@ -28,6 +28,7 @@ import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.BgDataModel
+import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.model.data.LauncherAppWidgetInfo
 import com.android.launcher3.model.data.WorkspaceItemInfo
@@ -120,21 +121,21 @@ internal object ModelProjectionCodec {
 
     private fun capture(bgDataModel: BgDataModel, context: Context): ModelSnapshot {
         val userCache = UserCache.INSTANCE.get(context)
+        // Rebase Phase 2 adapt (Issue #532 S2b): anchor BgDataModel exposes the
+        // workspace through the WorkspaceData id map (itemsIdMap) and fixed
+        // containers through extraItems. Folders (collections) are FolderInfo
+        // entries reachable from itemsIdMap; their children come from
+        // FolderInfo.getContents().
         val allInfos = ArrayList<ItemInfo>()
         synchronized(bgDataModel) {
-            allInfos += bgDataModel.workspaceItems
-            allInfos += bgDataModel.appWidgets
-            for (index in 0 until bgDataModel.collections.size()) {
-                allInfos += bgDataModel.collections.valueAt(index)
-                allInfos += bgDataModel.collections.valueAt(index).getContents()
-            }
+            bgDataModel.itemsIdMap.forEach { allInfos += it }
+            bgDataModel.extraItems.forEach { allInfos += it.items }
         }
         val kindById = HashMap<Long, Int>()
         allInfos.forEach { kindById[it.id.toLong()] = it.itemType }
         val membersByParent = HashMap<Long, List<ItemInfo>>()
-        for (index in 0 until bgDataModel.collections.size()) {
-            val collection = bgDataModel.collections.valueAt(index)
-            membersByParent[collection.id.toLong()] = collection.getContents().sortedBy { it.rank }
+        for (folder in allInfos.filterIsInstance<FolderInfo>()) {
+            membersByParent[folder.id.toLong()] = folder.getContents().sortedBy { it.rank }
         }
         val seen = HashSet<Long>()
         val items = allInfos.mapNotNull { info ->
