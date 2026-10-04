@@ -35,6 +35,17 @@ internal enum class ManualOrganizationFace {
 }
 
 /**
+ * Issue #370: test-only render trace for the run face. When [recorder] is set,
+ * `ManualOrganizationPreferences` reports every face value a composition
+ * committed (post-apply `SideEffect`), which makes "did the T-07 preamble ever
+ * render" a deterministic record instead of a sampled absence scan. Production
+ * never sets the recorder; only instrumentation guards do.
+ */
+internal object ManualOrganizationRunFaceTrace {
+    @Volatile internal var recorder: ((ManualOrganizationFace) -> Unit)? = null
+}
+
+/**
  * Issue #369 (spec RD-7 / RD-3): maps a coordinator state to its face. The
  * empty `Selecting` cut with no export-scope candidates and no rejection is
  * the internal zero-candidate pass-through (TO-BE D-06): the machine enters

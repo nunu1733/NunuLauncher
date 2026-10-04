@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,6 +71,7 @@ import app.lawnchair.organizer.planning.WarningCode
 import app.lawnchair.organizer.ui.ManualOrganizationFace
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.ManualOrganizationRunFaceTrace
 import app.lawnchair.organizer.ui.MissingAppSelectionState
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
@@ -104,6 +106,12 @@ fun ManualOrganizationPreferences(
     // the legacy admission Capturing and the real composed capture are the
     // same State value, and conflation cannot hide intermediate publishes.
     val preparationPhase by coordinator.preparationPhase.collectAsStateWithLifecycle()
+    // Issue #370: test-only render trace — report the face this composition
+    // committed (SideEffect runs post-apply), so the admission guard records
+    // "did the T-07 preamble ever render" deterministically. Production never
+    // sets the recorder (ManualOrganizationRunFaceTrace doc).
+    val committedFace = manualOrganizationFace(state)
+    SideEffect { ManualOrganizationRunFaceTrace.recorder?.invoke(committedFace) }
     // Issue #205: the external agent exchange sub-flow. The entry surface is
     // hosted only while no run operation is active (spec 205 V1 rule), so it
     // is constructed unconditionally and rendered inside the Idle/Cancelled

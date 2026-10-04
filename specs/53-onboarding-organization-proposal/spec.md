@@ -11,7 +11,7 @@ requirements:
   - NFR-011
 risk:
   - layout-data
-updated: 2026-09-08
+updated: 2026-09-20
 ---
 
 # Specification: Issue #53 Onboarding Organization Proposal
@@ -109,11 +109,13 @@ The entry contract is:
 3. persist `REVIEWED` only after that fresh run is admitted;
 4. then show the existing Issue #52 review surface observing that run.
 
+Issue #370 (D-16 connection wording): the onboarding entry skips the Issue #369 transitional T-07 preamble face (method selection) entirely — the method is fixed to "organize as is" (`start(Trigger.ONBOARDING_PROPOSAL)` is the admission itself), and the surface opened on admission renders the admitted run's current face of the Issue #369 integrated run surface (T-09 preparation or later in the canonical order), never the T-07 preamble.
+
 The onboarding entry must not attach itself to an already-active manual/onboarding run. If the shared process-local coordinator is busy, the onboarding proposal remains non-writing and retryable; it must not relabel or display the existing run as onboarding.
 
 Starting the fresh onboarding run may replace an inactive terminal UI state from a previous run in the same process, exactly as an explicit new Issue #52 start does. It must not reuse the previous run ID, plan, preview authorization, checkpoint, recovery confirmation capability, or active-operation state.
 
-After admission, the observable workflow is the same one used by manual full organization:
+After admission, the observable workflow is the shared organization run workflow defined by Issue #52 as amended by Issue #369 (canonical order: admission → detection → selection only when candidates exist → capture/plan → proposal confirmation → checkpoint/apply → verify/result; the #369 spec owns the per-face integration). The per-state enumeration below is retained as the pre-#369 baseline shape; the normative order and display integration live in Issue #52/#369:
 
 ```text
 explicit Review/Start
@@ -218,7 +220,7 @@ A broader rename of `ManualOrganizationRun` is not required for this issue and s
 
 ### 5.2 Reuse the existing review surface
 
-`ManualOrganizationPreferences` already renders the Issue #52 capture/planning/preview/confirm/apply/recovery states. Onboarding must use that same composable/state-machine implementation.
+`ManualOrganizationPreferences` already renders the Issue #52 capture/planning/preview/confirm/apply/recovery states. Onboarding must use that same composable/state-machine implementation. Issue #370 (D-16 connection wording): that shared surface is now the Issue #369 integrated run surface (TO-BE 8-state faces); the manual entry reaches it through the Organizer hub's start CTA (T-07 preamble), while the onboarding entry skips the preamble and lands on the admitted run's face.
 
 The route/screen may carry only stable entry context required to choose the trigger for future fresh actions (`retry`, `recapture`, `start again`). The onboarding `review organization` action itself starts the first fresh run before navigating, so opening the route never adopts an unrelated prior active run.
 
@@ -233,7 +235,7 @@ For #53, ownership is fixed as follows:
 - **Lifecycle/presentation eligibility owner:** launcher UI lifecycle, anchored from `LawnchairLauncher` only after the launcher is resumed and initial workspace/model presentation is ready. `onCreate()` may initialize a narrow controller/store but must not display the proposal or start a run.
 - **Proposal state owner:** a narrow app-private onboarding-proposal store using existing preference/storage infrastructure; it is not Launcher DB, recovery storage, organizer rule state, target-set state, or run journal state.
 - **Presentation owner:** a small launcher-owned proposal surface controlled by that lifecycle owner. Do not create a general onboarding framework.
-- **Review destination owner:** the existing preferences/navigation surface that renders `ManualOrganizationPreferences`, with stable entry context for `ONBOARDING_PROPOSAL` retry/recapture semantics.
+- **Review destination owner:** the existing preferences/navigation surface that renders `ManualOrganizationPreferences` (the Issue #369 integrated run surface; reached from settings through the Organizer hub since Issues #366/#370), with stable entry context for `ONBOARDING_PROPOSAL` retry/recapture semantics.
 
 The implementation must document the exact selected classes/files in its PR. If the current launcher cannot provide a reliable fresh-install-vs-upgrade/restore classification without a new product/platform contract, stop before production implementation rather than weakening eligibility.
 
@@ -337,3 +339,8 @@ Because #53 is `risk: layout-data`, the implementation PR must also satisfy:
 ## 11. Approval gate
 
 This specification is **Accepted**. AC-001 through AC-008 are frozen for Stage B implementation. Production implementation may begin under the paired approved plan and remains subject to its explicit stop conditions and the repository high-risk evidence gate.
+
+## 12. Revision history
+
+- 2026-09-08: Accepted (Stage B implementation baseline for Issues #52/#53).
+- 2026-09-20: Issue #370 connection-wording revision (D-16, disposition §3.4 "Continue, wording update only"). §3.2: the onboarding entry skips the Issue #369 transitional T-07 preamble face (method fixed to "organize as is"), and the post-admission workflow is referenced to the Issue #52/#369 canonical order instead of re-enumerating it. §5.2/§5.3: review-surface wording updated to the Issue #369 integrated run surface and the Organizer hub entry (Issues #366/#370). No acceptance-criteria, outcome, eligibility, trigger, or diagnostics change; AC-003 "reuses the Issue #52 workflow" is unchanged. Implemented by the Issue #370 PR.

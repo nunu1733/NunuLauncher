@@ -476,9 +476,11 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
      * diagnostics row is gone from the settings Home screen (TO-BE §5.2 —
      * organizer material rows aggregate under the hub; obsolete reason:
      * D-01 material relocation), so the supported settings route now runs
-     * through the hub's standing diagnostics entry. The #232 manual entry
-     * and the hub entry remain the only organizer rows in the General group
-     * (staged coexistence; #370 owns the rest). The lazy list omits
+     * through the hub's standing diagnostics entry.
+     * Issue #370 (obsoletes the #367 staged-coexistence oracle): the manual
+     * run row is removed as well — the hub entry is now the ONLY organizer
+     * row in the General group (D-01 entry-row-only end state; obsolete
+     * reason recorded in the implementation PR). The lazy list omits
      * un-composed rows from the semantics tree, so material-row absence is
      * only observable across a full step-wise traversal before the
      * click-through.
@@ -512,9 +514,11 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 }
             }
 
-            composeRule.onNodeWithText(
+            // Issue #370: the manual run row is gone; the hub entry is the only
+            // organizer row left in the General group.
+            composeRule.onAllNodesWithText(
                 context.getString(R.string.manual_organization_title),
-            ).assertIsDisplayed()
+            ).assertCountEquals(0)
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_hub_title),
             ).assertIsDisplayed()
