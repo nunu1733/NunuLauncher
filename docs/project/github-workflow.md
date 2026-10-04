@@ -116,6 +116,24 @@ Workerは次のpacketを作成してから実装またはレビュー依頼へ�
 
 失効後は新headのdiffを再取得し、Review recommendationを更新する。単なるtypo等の非実質的docs変更を再review不要とする場合も、Reviewがその判断をlink付きで明記する。OwnerはReview recommendationと条件解除を確認してfinal decisionを記録し、Merge operatorはそのdecisionと現在headの一致を確認してからmergeする。
 
+### Evidence 選択原則（Issue #422）
+
+WorkerがPRへ記載するacceptance evidenceは、変更内容とriskに対応して選択する。
+「full workflow N 連続 green」のような全CI fleetの複数回greenを、対象変更の正しさの
+主要証拠として機械的に要求しない。無関係なlaneのenvironment failure解消までmerge
+evidenceに含める運用は、impact-based portfolio（[ci-test-portfolio.md](../engineering/ci-test-portfolio.md)）
+が置き換える。例:
+
+- JVM race 修正: 対象testの高反復実行 + 対象unit gateの複数実行 + 通常のPR gate。
+- emulator state / lifecycle 修正: 対象instrumentation laneの反復・fresh boot evidence。
+- shared DB / writer 修正: 関係するcontract lane + cross-surface fan-out（mappingに従う）。
+- workflow / runner 修正: 当該CI orchestrationの実run evidence（lane起動・skipの実証を含む）。
+- docs-only 変更: repository contract gateで足りる。
+
+必要なevidenceの判断はspecのTest oracleとPR本文に明示する。CI上の一時的failureは
+[quality-strategy.md](../engineering/quality-strategy.md) の分類・証拠・retry方針に従い、
+分類なきrerun-greenだけでは条件を満たさない。
+
 ### Review / handoff packet
 
 PR本文またはIssueコメントに、次の欄を一つのpacketとして残す。chat logだけをpacketの代わりにしない。
