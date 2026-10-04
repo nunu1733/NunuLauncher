@@ -31,6 +31,9 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -128,6 +131,35 @@ class MissingAppSelectionInstrumentationTest {
     private fun selectedCountText(context: Context, count: Int): String =
         context.resources.getQuantityString(R.plurals.manual_organization_missing_apps_selected_count, count, count)
 
+    /**
+     * Issue #443: the method-choice face is an ON-path surface. The AI
+     * consultation entry ships default OFF; these oracles enable it through
+     * the REAL DataStore and reset OFF in @After so the state never leaks
+     * into later classes of the same lane invocation.
+     */
+    private fun enableAiConsultationForTest() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        runBlocking {
+            app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
+                .exchangeAiConsultationEnabled.set(true)
+        }
+        composeRule.waitUntil(5_000) {
+            runBlocking {
+                app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
+                    .exchangeAiConsultationEnabled.get().first() == true
+            }
+        }
+    }
+
+    @After
+    fun resetAiConsultationToDefaultOff() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        runBlocking {
+            app.lawnchair.preferences2.PreferenceManager2.getInstance(context)
+                .exchangeAiConsultationEnabled.set(false)
+        }
+    }
+
     private fun launch(application: SelectingFakeApplication): ManualOrganizationRun {
         val runner = ManualOrganizationRun(
             application,
@@ -180,6 +212,8 @@ class MissingAppSelectionInstrumentationTest {
     @Test
     fun zeroSelectionContinueShowsTheDisclosureAndComposesWithoutAdditions() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Issue #443: this oracle owns the ON-path method-choice contract.
+        enableAiConsultationForTest()
         val application = SelectingFakeApplication(listOf(mail, maps, music))
         val runner = launch(application)
 
@@ -246,6 +280,8 @@ class MissingAppSelectionInstrumentationTest {
     @Test
     fun confirmForwardsTheSelectedIdentitiesToTheScopeComposedCompose() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        // Issue #443: this oracle owns the ON-path method-choice contract.
+        enableAiConsultationForTest()
         val application = SelectingFakeApplication(listOf(mail, maps, music))
         val runner = launch(application)
 
@@ -284,6 +320,8 @@ class MissingAppSelectionInstrumentationTest {
 
     @Test
     fun zeroCandidatesContinuesWithoutShowingTheSelectionSurface() {
+        // Issue #443: this oracle owns the ON-path parked-scope contract.
+        enableAiConsultationForTest()
         // Issue #369 (TO-BE D-06, RUN-AC-05), amended by Issue #417 (spec
         // AC-3): the empty cut never shows the selection surface — a manual
         // run now parks at the state-level `ScopeConfirmed(empty)` (the

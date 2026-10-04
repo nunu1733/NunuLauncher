@@ -1076,6 +1076,12 @@
          confirmed). Both arms consume the same frozen scope. -->
     <string name="manual_organization_method_title">How should the plan be made?</string>
     <string name="manual_organization_method_plain">Organize as-is</string>
+    <!-- Issue #443: the experimental-features toggle for the frozen AI
+         consultation entry (default OFF). OFF hides the method-choice face's
+         AI arm and runs go straight to the plain organize path; durable
+         session state stays reachable from the hub status card. -->
+    <string name="exchange_ai_consultation_toggle_label">AI consultation</string>
+    <string name="exchange_ai_consultation_toggle_description">Experimental. Off by default. When off, organizing runs without the AI option, and any active request or imported proposal stays available from the organizer hub until it expires.</string>
     <string name="manual_organization_start_again">Start a new review</string>
     <string name="manual_organization_retry">Try again</string>
     <string name="manual_organization_capturing">Reading the current home layout…</string>

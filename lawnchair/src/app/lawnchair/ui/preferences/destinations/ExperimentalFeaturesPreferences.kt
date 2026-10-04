@@ -69,6 +69,14 @@ fun ExperimentalFeaturesPreferences(
                 label = stringResource(R.string.icon_swipe_gestures),
                 description = stringResource(R.string.icon_swipe_gestures_description),
             )
+            // Issue #443: the frozen AI consultation entry (FR-017). Default
+            // OFF — OFF hides the method-choice face's AI arm and runs go
+            // straight to the plain organize path.
+            SwitchPreference(
+                adapter = prefs2.exchangeAiConsultationEnabled.getAdapter(),
+                label = stringResource(R.string.exchange_ai_consultation_toggle_label),
+                description = stringResource(R.string.exchange_ai_consultation_toggle_description),
+            )
 
             val context = LocalContext.current
             val enableWallpaperBlur = prefs.enableWallpaperBlur.getAdapter()
