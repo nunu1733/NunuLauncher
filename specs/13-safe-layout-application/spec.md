@@ -238,6 +238,7 @@ PreWriteRejection =
   | CHECKPOINT_CREATE_FAILED | CHECKPOINT_VALIDATE_FAILED
   | RECOVERY_STORE_UNAVAILABLE | RECOVERY_POINT_ADMISSION_BLOCKED
   | WRITER_BUSY
+  | OVERLAP_POLICY_REJECTED
 
 ApplyFailure =
   | WRITE_FAILED | COMMIT_OUTCOME_UNKNOWN
@@ -397,7 +398,7 @@ store-failure result; a subsequent successful reconciliation opens the seam.
 | A2 | Acquire layout-writer serialization and compare the complete current revision and every exact source/absence precondition. | `Rejected(WRITER_BUSY/STALE_REVISION/EXACT_PRECONDITION_FAILED/LOCK_STATE_UNAVAILABLE)` |
 | A3 | If the materialized action set has no mutation, return `NoChanges`; do not write either DB, create a point, or reload. | `NoChanges` |
 | A4 | Read every checkpoint resource through one consistent source snapshot, require its digest to equal the plan source state, commit the complete recovery record in its own recovery-DB transaction, then read it back and validate version/count/digest. | `Rejected(STALE_REVISION/CHECKPOINT_*/RECOVERY_POINT_ADMISSION_BLOCKED)` |
-| A5 | Mark the record `APPLYING` with post intent. Start one Launcher DB write transaction; **inside that transaction and after its writer lock is effective**, re-read the full current `RevisionId` and every exact precondition before the first mutation. | stale/precondition failure leaves Launcher DB unchanged and returns `Rejected`; the unused checkpoint is pruned, or left `READY` for restart reconciliation if cleanup is interrupted |
+| A5 | Mark the record `APPLYING` with post intent. Start one Launcher DB write transaction; **inside that transaction and after its writer lock is effective**, re-read the full current `RevisionId` and every exact precondition before the first mutation. Issue #185 additionally requires the reservation-overlap acceptance predicate ([ADR-0010](../../docs/adr/0010-qsb-row-item-overlap-interop.md)): an intended state containing a desktop item overlapping an authoritative reservation is only writable when the current platform overlap policy accepts it (`OVERLAP_POLICY_REJECTED` otherwise), for both apply and recovery write sets. | stale/precondition/overlap-policy failure leaves Launcher DB unchanged and returns `Rejected`; the unused checkpoint is pruned, or left `READY` for restart reconciliation if cleanup is interrupted |
 | A6 | Execute inserts and updates, resolve references using the unique plan-local mapping, and finish the transaction. No page row and no apply deletion exist. | Outcome classified by authoritative re-read; see below |
 | A7 | Persist `COMMITTED_UNVERIFIED`, request a new model load, and wait for the generation caused by this request. Compare that model snapshot with an independent DB recapture. | Automatic recovery on reload/convergence failure |
 | A8 | Verify the intended state and `DESIGN.md` §5 invariants; mark `VERIFIED` and return `Applied`. | Automatic recovery on mismatch |
@@ -618,3 +619,8 @@ Source observations are fixed to
   gates (behavior owned by spec 24; diagnostics encoding remains with the
   organizer-diagnostics contract); no v1 behavior, result, or lifecycle
   change.
+- 2026-09-01: Issue #185 extended the closed `PreWriteRejection` set with
+  `OVERLAP_POLICY_REJECTED` (ADR-0010): the A5 in-transaction recheck now also
+  requires the current platform overlap policy to accept an intended state that
+  contains an authoritative-reservation-overlapping desktop item, for apply and
+  recovery write sets alike. No other result shape, lifecycle, or behavior change.

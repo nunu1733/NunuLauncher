@@ -18,6 +18,7 @@ import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.TargetKey
+import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.ui.CategoryOverrideApp
 import app.lawnchair.organizer.ui.CategoryOverrideAppInventory
 import app.lawnchair.organizer.ui.CategoryOverrideAuthoringCoordinator
@@ -307,6 +308,7 @@ class CategoryOverrideAtomicAccessTest {
                         ),
                     )
                 },
+                overlapTolerance = WorkspaceOverlapToleranceSource { true },
             ).composeFullOrganization()
 
             listOf(composeFresh(), composeFresh()).forEach { composition ->

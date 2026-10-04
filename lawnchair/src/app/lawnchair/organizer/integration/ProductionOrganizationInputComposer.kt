@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.integration
 
 import android.content.Context
+import app.lawnchair.organizer.PreferenceWorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideStoreModule
@@ -18,4 +19,7 @@ class ProductionOrganizationInputComposer(
     bundleSource = BuiltInOrganizerPolicyBundleSource,
     overrides = CategoryOverrideStoreModule.source(appContext),
     platformEvidence = AndroidClassificationSignalSnapshotSource(appContext),
+    // Issue #185 / ADR-0010: the reservation-overlap gate reads the same
+    // platform policy the loader consults, freshly at every compose.
+    overlapTolerance = PreferenceWorkspaceOverlapToleranceSource(appContext),
 )

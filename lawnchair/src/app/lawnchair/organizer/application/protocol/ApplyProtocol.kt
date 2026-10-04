@@ -595,6 +595,9 @@ class ApplyProtocol(
             PreWriteRejection.INVALID_PLAN,
             PreWriteRejection.STALE_REVISION,
             PreWriteRejection.EXACT_PRECONDITION_FAILED,
+            // Issue #185 / ADR-0010: normally attributed to A5 via the context's
+            // tracked terminal stage; this fallback keeps the stage mapping total.
+            PreWriteRejection.OVERLAP_POLICY_REJECTED,
             PreWriteRejection.LOCK_STATE_UNAVAILABLE,
             PreWriteRejection.IDENTITY_EXHAUSTED,
             PreWriteRejection.RECOVERY_STORE_UNAVAILABLE,

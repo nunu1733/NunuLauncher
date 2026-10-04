@@ -18,6 +18,7 @@ import app.lawnchair.organizer.planning.KindCode
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PageRef
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.rules.FullOrganizationTargetPolicy
 import org.junit.Assert.assertEquals
@@ -76,6 +77,28 @@ class FullTargetSetMaterializerTest {
         )
         assertEquals(TargetMaterializationResult.Invalid, unknown)
         assertEquals(TargetMaterializationResult.Invalid, unsupported)
+    }
+
+    @Test
+    fun reservationOverlappingWorkspaceItemIsPreservedAheadOfEligibleMovable() {
+        // Issue #185 / ADR-0010: an authoritative-reservation overlap forces
+        // Preserved regardless of the item's eligible kind, while items outside
+        // the reservation stay Movable.
+        val items = listOf(
+            item("inside"),
+            item("outside", placement = CapturedPlacement.Workspace(PageRef(PageId("0")), GridCell(2, 1), GridSpan(1, 1))),
+            item("other-page", placement = CapturedPlacement.Workspace(PageRef(PageId("1")), GridCell(0, 0), GridSpan(1, 1))),
+        )
+        val reservations = listOf(
+            ReservedWorkspaceRegion(PageRef(PageId("0")), GridCell(0, 0), GridSpan(4, 1)),
+        )
+
+        val result = FullTargetSetMaterializer().materialize(items, FullOrganizationTargetPolicy("full-target-v1"), reservations)
+        assertTrue(result is TargetMaterializationResult.Ready)
+        val value = (result as TargetMaterializationResult.Ready).value
+        assertRole(value, "inside", ExistingRole.Preserved)
+        assertRole(value, "outside", ExistingRole.Movable)
+        assertRole(value, "other-page", ExistingRole.Movable)
     }
 
     private fun ready(items: List<CapturedItem>): MaterializedTargetSet {

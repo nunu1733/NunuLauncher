@@ -753,11 +753,12 @@ class ContractShapeTest {
 
     @Test
     fun everyPreserveReasonVariantIsConstructible() {
-        assertEquals(9, PreserveReason.entries.size)
+        assertEquals(10, PreserveReason.entries.size)
         assertTrue(
             PreserveReason.entries.containsAll(
                 listOf(
                     PreserveReason.LOCKED,
+                    PreserveReason.RESERVED_REGION,
                     PreserveReason.UNAVAILABLE_TARGET,
                     PreserveReason.DOCK,
                     PreserveReason.WIDGET,

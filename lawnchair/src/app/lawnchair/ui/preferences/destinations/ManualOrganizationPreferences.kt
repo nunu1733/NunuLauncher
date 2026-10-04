@@ -461,6 +461,7 @@ private fun movedReasonString(reason: PlacementCode): Int = when (reason) {
 
 private fun preservedReasonString(reason: PreserveReason): Int = when (reason) {
     PreserveReason.LOCKED -> R.string.manual_organization_preserved_locked
+    PreserveReason.RESERVED_REGION -> R.string.manual_organization_preserved_reserved_region
     PreserveReason.UNAVAILABLE_TARGET -> R.string.manual_organization_preserved_unavailable
     PreserveReason.DOCK -> R.string.manual_organization_preserved_dock
     PreserveReason.WIDGET -> R.string.manual_organization_preserved_widget

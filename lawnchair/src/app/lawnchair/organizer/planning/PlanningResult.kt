@@ -48,6 +48,14 @@ enum class PlacementCode {
 
 enum class PreserveReason {
     LOCKED,
+
+    /**
+     * Issue #185 / ADR-0010: the captured placement overlaps an authoritative
+     * workspace reservation (e.g. the QSB row). The loader tolerates such items
+     * only under the current overlap policy, so the item is kept exactly where
+     * it is and the reservation's cells stay untouched.
+     */
+    RESERVED_REGION,
     UNAVAILABLE_TARGET,
     DOCK,
     WIDGET,

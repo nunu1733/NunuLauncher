@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Process
 import android.os.UserManager
+import app.lawnchair.organizer.PreferenceWorkspaceOverlapToleranceSource
 import app.lawnchair.organizer.application.actions.IntendedStateResolution
 import app.lawnchair.organizer.application.actions.RecoveryAction
 import app.lawnchair.organizer.application.actions.RecoveryWriteSetMaterializer
@@ -49,7 +50,9 @@ import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.KindCode
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.ProfileId
+import app.lawnchair.organizer.planning.ReservationOverlapAcceptance
 import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
+import app.lawnchair.organizer.planning.WorkspaceOverlapToleranceSource
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
@@ -65,6 +68,10 @@ internal class LauncherLayoutAdapter(
     context: Context,
     private val controller: ModelDbController,
     private val model: LauncherModel,
+    // Issue #185 / ADR-0010: re-read inside every A5/recovery transaction so a
+    // policy flip between compose and apply cannot let an intended state the
+    // current loader would reject reach the DB.
+    private val overlapToleranceSource: WorkspaceOverlapToleranceSource = PreferenceWorkspaceOverlapToleranceSource(context),
 ) : LayoutWriterPort {
     private val appContext = context.applicationContext
     private val reload = OrganizerModelReloadAdapter(model, android.os.Handler(appContext.mainLooper))
@@ -304,6 +311,21 @@ internal class LauncherLayoutAdapter(
                 tx.close()
                 return ApplyTxOutcome.PreconditionFailed(PreWriteRejection.EXACT_PRECONDITION_FAILED)
             }
+            if (
+                !overlapAcceptanceHolds(
+                    // Audit F1 (PR #186): evaluate the state this write would
+                    // produce — the intended manifest for a normal apply and the
+                    // recovery target for a recovery write set — never the
+                    // current state, or a recovery could resurrect an overlapped
+                    // row the loader already deleted.
+                    writeSet.intendedManifest.rows,
+                    before.layoutState.reservedWorkspaceRegions,
+                    overlapToleranceSource.isOverlapTolerated(),
+                )
+            ) {
+                tx.close()
+                return ApplyTxOutcome.PreconditionFailed(PreWriteRejection.OVERLAP_POLICY_REJECTED)
+            }
             if (writeSet.recoveryActions.isNotEmpty()) {
                 writeSet.recoveryActions.forEachIndexed { index, action ->
                     faults.beforeLauncherWrite(index, pointId)
@@ -485,6 +507,28 @@ internal class LauncherLayoutAdapter(
 
 private fun WriterKind.bridge() = LayoutWriteCoordinator.OwnerKind.valueOf(name)
 private fun LayoutWriteCoordinator.OwnerKind.port() = WriterKind.valueOf(name)
+
+/**
+ * Issue #185 / ADR-0010: the intended state (normal write set or recovery
+ * target) must be acceptable under the currently active platform overlap
+ * policy. An authoritative-reservation overlap that exists in the intended
+ * state is only accepted when the loader keeps such items; otherwise the write
+ * would be followed by a correlated reload that deletes the row and breaks
+ * A7/recovery verification. Evaluated fresh inside every A5 transaction.
+ */
+internal fun overlapAcceptanceHolds(
+    intendedRows: List<PersistentRow>,
+    reservations: List<ReservedWorkspaceRegion>,
+    overlapTolerated: Boolean,
+): Boolean {
+    if (reservations.isEmpty()) return true
+    val intendedOverlaps = intendedRows.any { row ->
+        row.containerCode.value == Favorites.CONTAINER_DESKTOP &&
+            row.screenId != null && row.rawCell != null && row.rawSpan != null &&
+            ReservationOverlapAcceptance.overlaps(row.screenId, row.rawCell, row.rawSpan, reservations)
+    }
+    return !intendedOverlaps || overlapTolerated
+}
 
 internal fun canonicalOrientation(
     isTwoPanels: Boolean,

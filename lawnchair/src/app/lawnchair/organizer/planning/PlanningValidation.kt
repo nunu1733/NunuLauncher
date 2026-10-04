@@ -258,17 +258,12 @@ internal object PlanningValidation {
                 }
             }
         }
-        for (reservation in input.snapshot.reservedWorkspaceRegions) {
-            if (reservation.span.width <= 0 || reservation.span.height <= 0) continue
-            val occupants = byPage[reservation.page.pageId].orEmpty()
-            if (occupants.any { item ->
-                    val ws = item.placement as? CapturedPlacement.Workspace
-                    ws != null && rectanglesOverlap(reservation.cell, reservation.span, ws.cell, ws.span)
-                }
-            ) {
-                hasOverlap = true
-            }
-        }
+        // Issue #185 / ADR-0010: a captured item overlapping a reservation is a
+        // representable state — the composer projects it as
+        // Preserved(RESERVED_REGION) and the allocator already holds those cells
+        // via the reservation itself, so this is no longer a rejection. Items
+        // overlapping each other and reservations overlapping each other stay
+        // rejected.
         val reservations = input.snapshot.reservedWorkspaceRegions
         for (i in reservations.indices) {
             for (j in i + 1 until reservations.size) {
