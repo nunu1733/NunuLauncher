@@ -1,6 +1,6 @@
 ---
 issue: "#174"
-status: accepted
+status: implemented
 updated: 2026-08-30
 ---
 
@@ -8,9 +8,9 @@ updated: 2026-08-30
 
 > Issue: #174
 > Spec: [spec.md](./spec.md)
-> Status: accepted — implemented on `docs/issue-174-stage-a-spec-plan` (merge
-> blocked on CI `final-status` + independent high-risk audit; CW-AC-08 manual
-> device sequence remains operator evidence)
+> Status: implemented — merged through
+> [PR #175](https://github.com/nunu1733/NunuLauncher/pull/175); CW-AC-08
+> operator device evidence recorded on the PR
 
 ## Current evidence
 
@@ -302,5 +302,5 @@ Baseline gates: `./gradlew spotlessCheck`,
       - `connectedLawnWithQuickstepGithubDebugAndroidTest` (class-filtered): `RecoveryStoreChunkedManifestInstrumentationTest` 6/6 on the emulator and on a Pixel 9a device (CW-AC-02/03/04/05/10 evidence on real hardware); `RecoveryStoreLifecycleTest`, `RecoveryStoreInspectionInstrumentationTest`, `ProductionPublicSeamInstrumentationTest` green.
       - `tools/organizer-recovery-smoke.sh --serial emulator-5554`: all four phases (READY, AROUND_COMMIT, COMMITTED_UNVERIFIED, RESTORING) passed end-to-end on the fixed build. The script has a pre-existing startup-reconcile lease-contention race (`Unresolved(COMMIT_OUTCOME_UNKNOWN)` racing the async startup resume); reproduced identically on unfixed `main` (RESTORING phase) — follow-up issue required.
       - Review fixes re-verified: store boundary normalizes checked decode exceptions (`RecoveryManifestChunksTest.truncatedManifestDecodeThrowsCheckedExceptionNotRuntimeException` + `truncatedManifestPayloadIsUnreadableAndDoesNotPoisonHealthyReconciliation` on real SQLite), and the v1-empty migration test now performs `prepareForMutation` → `checkpoint()` → close/reopen → `Readable` against the rebuilt schema-3 structure. Suites re-run green on the emulator and the Pixel 9a device.
-- [ ] Device-class verification (CW-AC-08): the #171 device sequence (organize → exactly one Nova restore → organize → `APPLY_VERIFIED`) executed by the operator; instrumentation evidence on the same Pixel 9a-class device is already recorded above.
-- [ ] PR: CI `final-status` incl. focused instrumentation jobs; independent high-risk audit `docs/assessment/pr-<PR>-<slug>.md` by a separate session.
+- [x] Device-class verification (CW-AC-08): the #171 device sequence (organize → exactly one Nova restore → organize → `APPLY_VERIFIED`) executed by the operator on a Pixel 9a with build `15.Dev.(48e42e7)`; evidence posted to PR #175 (zero `CHECKPOINT_CREATE_FAILED` / `RECOVERY_STORE_UNAVAILABLE`, recovery + restart reconciliation + idempotent no-op follow-ups healthy).
+- [x] PR: CI `final-status` green on `f14640d5` incl. focused instrumentation jobs; independent high-risk audit `docs/assessment/pr-175-chunk-recovery-manifests.md` by a separate session (pass-with-findings); `high-risk-evidence` gate green.
