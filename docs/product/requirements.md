@@ -83,7 +83,7 @@ Status語彙: `implemented` / `accepted/evidence pending` / `proposed` / `deferr
 | D-012 | UI framework | 既存画面のconventionを優先し、Compose/Viewを画面ごとに判断 | UI work |
 | D-013 | 直接編集の書込み契約 | ADR-0013「直接編集の書込み契約」。起草: [#445](https://github.com/nunu1733/NunuLauncher/issues/445)。accepted後に `docs/adr/0013-direct-edit-write-contract.md` を作成してここへlinkする | FR-018, FR-020, FR-008, #446/#447/#449 |
 | D-014 | 編集の操作面と上流workspaceへの変更 | ADR-0014「編集の操作面と上流workspaceへの変更」。起草: [#447](https://github.com/nunu1733/NunuLauncher/issues/447)。#442の結論が受入の前提。accepted後に `docs/adr/0014-edit-surface.md` を作成してここへlinkする | FR-019, #449 |
-| D-015 | 新規アプリの配置先ポリシー | ADR-0015「新規アプリの配置先ポリシー」。起草: [#446](https://github.com/nunu1733/NunuLauncher/issues/446)。accepted後に `docs/adr/0015-new-app-destination-policy.md` を作成してここへlinkする | FR-008, #446 |
+| D-015 | 新規アプリの配置先ポリシー | [ADR-0015](../adr/0015-new-app-destination-policy.md)「新規アプリの配置先ポリシー」。起草: [#446](https://github.com/nunu1733/NunuLauncher/issues/446)。accepted（2026-09-27） | FR-008, #446 |
 | D-016 | AI相談の凍結 | [#443](https://github.com/nunu1733/NunuLauncher/issues/443)の草案が正本 | FR-017, FR-022, #452 |
 
 ## Decision history
@@ -100,6 +100,6 @@ Status語彙: `implemented` / `accepted/evidence pending` / `proposed` / `deferr
 
 ## 未解決事項
 
-- **FR-008と旧[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)決定（Option B）の整合**: fail-closed維持と再定義の関係は、ADR-0015（[#446](https://github.com/nunu1733/NunuLauncher/issues/446)）の起草で明文化する。
-- **D-013〜016のADR link**: 各ADRがacceptedになった時点で、Decision gatesの参照を起草Issueから `docs/adr/` のfile linkへ更新する（#445/#446/#447/#443のPRで行う）。
+- ~~**FR-008と旧[Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85)決定（Option B）の整合**~~: 解決済み（2026-09-27）。fail-closed維持と再定義の関係は、[ADR-0015](../adr/0015-new-app-destination-policy.md) Decision 2で明文化された（prior absenceの証明は配置先決定には不要。ADR-0005の適用範囲は「既存アイテムを動かす増分整理提案」へ狭められ、fail-closed結論は維持される）。
+- **D-013〜016のADR link**: 各ADRがacceptedになった時点で、Decision gatesの参照を起草Issueから `docs/adr/` のfile linkへ更新する（#445/#446/#447/#443のPRで行う。D-015は2026-09-27に更新済み。D-013は#445で未実施のまま残っている）。
 - **FR-022の#443との分担**: FR-022のowning Issueは[#452](https://github.com/nunu1733/NunuLauncher/issues/452)、「AI相談が無効の間は方法選択を経ない」部分の実装は[#443](https://github.com/nunu1733/NunuLauncher/issues/443)が担当する（両Issue本文が参照する）。
