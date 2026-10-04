@@ -3,6 +3,9 @@ package app.lawnchair.ui.preferences.destinations
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -21,6 +24,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
@@ -77,7 +81,11 @@ fun ManualOrganizationPreferences(
     ) { paddingValues ->
         PreferenceLazyColumn(paddingValues) {
             item {
-                Text(stringResource(R.string.manual_organization_explainer))
+                Text(
+                    text = stringResource(R.string.manual_organization_explainer),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp),
+                )
             }
             when (val currentState = state) {
                 ManualOrganizationRun.State.Idle,
@@ -201,7 +209,11 @@ fun ManualOrganizationPreferences(
                     }
                     if (currentState.result.requiresSafeSupport()) {
                         item {
-                            Text(stringResource(R.string.manual_organization_safe_terminal))
+                            Text(
+                                text = stringResource(R.string.manual_organization_safe_terminal),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(16.dp),
+                            )
                         }
                         item {
                             ClickablePreference(
@@ -260,7 +272,11 @@ fun ManualOrganizationPreferences(
                     }
                     if (currentState.result.requiresSafeSupport()) {
                         item {
-                            Text(stringResource(R.string.manual_organization_safe_terminal))
+                            Text(
+                                text = stringResource(R.string.manual_organization_safe_terminal),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(16.dp),
+                            )
                         }
                         item {
                             ClickablePreference(
@@ -335,9 +351,11 @@ private fun ProgressText(
     }
     Text(
         text = stringResource(resourceId),
-        modifier = focusModifier.semantics {
-            liveRegion = LiveRegionMode.Polite
-        },
+        modifier = focusModifier
+            .padding(horizontal = 16.dp)
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+            },
     )
 }
 
@@ -351,6 +369,7 @@ private fun FocusTargetText(
         modifier = Modifier
             .focusRequester(focusRequester)
             .focusable()
+            .padding(horizontal = 16.dp)
             .semantics {
                 liveRegion = LiveRegionMode.Polite
             },
@@ -361,7 +380,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
     summary: ManualOrganizationRun.Summary,
 ) {
     item {
-        Text(
+        SummaryText(
             stringResource(
                 R.string.manual_organization_scope,
                 summary.scope.targetCount,
@@ -371,7 +390,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
         )
     }
     item {
-        Text(
+        SummaryText(
             stringResource(
                 R.string.manual_organization_device_scope,
                 summary.scope.columns,
@@ -380,49 +399,58 @@ private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
             ),
         )
     }
-    item { Text(stringResource(R.string.manual_organization_moved_count, summary.movedCount)) }
+    item { SummaryText(stringResource(R.string.manual_organization_moved_count, summary.movedCount)) }
     summary.movedByReason.forEach { (reason, count) ->
-        item { Text(stringResource(movedReasonString(reason), count)) }
+        item { SummaryText(stringResource(movedReasonString(reason), count)) }
     }
-    item { Text(stringResource(R.string.manual_organization_preserved_count, summary.preservedCount)) }
+    item { SummaryText(stringResource(R.string.manual_organization_preserved_count, summary.preservedCount)) }
     summary.preservedByReason.forEach { (reason, count) ->
-        item { Text(stringResource(preservedReasonString(reason), count)) }
+        item { SummaryText(stringResource(preservedReasonString(reason), count)) }
     }
-    item { Text(stringResource(R.string.manual_organization_new_folders_count, summary.newFolderCount)) }
-    item { Text(stringResource(R.string.manual_organization_new_pages_count, summary.newPageCount)) }
+    item { SummaryText(stringResource(R.string.manual_organization_new_folders_count, summary.newFolderCount)) }
+    item { SummaryText(stringResource(R.string.manual_organization_new_pages_count, summary.newPageCount)) }
     summary.rejectedByReason.forEach { (reason, count) ->
-        item { Text(stringResource(rejectionReasonString(reason), count)) }
+        item { SummaryText(stringResource(rejectionReasonString(reason), count)) }
     }
     summary.unplacedByReason.forEach { (reason, count) ->
-        item { Text(stringResource(unplacedReasonString(reason), count)) }
+        item { SummaryText(stringResource(unplacedReasonString(reason), count)) }
     }
     summary.warningCounts.forEach { (code, count) ->
-        item { Text(stringResource(warningString(code), count)) }
+        item { SummaryText(stringResource(warningString(code), count)) }
     }
     val constraints = summary.constraints
     if (constraints.lockedCount > 0) {
-        item { Text(stringResource(R.string.manual_organization_locked_constraint, constraints.lockedCount)) }
+        item { SummaryText(stringResource(R.string.manual_organization_locked_constraint, constraints.lockedCount)) }
     }
     if (constraints.unavailableCount > 0) {
-        item { Text(stringResource(R.string.manual_organization_unavailable_constraint, constraints.unavailableCount)) }
+        item { SummaryText(stringResource(R.string.manual_organization_unavailable_constraint, constraints.unavailableCount)) }
     }
     constraints.availabilityCounts.forEach { (availability, count) ->
         if (availability != Availability.AVAILABLE) {
-            item { Text(stringResource(availabilityString(availability), count)) }
+            item { SummaryText(stringResource(availabilityString(availability), count)) }
         }
     }
     if (constraints.widgetCount > 0) {
-        item { Text(stringResource(R.string.manual_organization_widget_constraint, constraints.widgetCount)) }
+        item { SummaryText(stringResource(R.string.manual_organization_widget_constraint, constraints.widgetCount)) }
     }
     if (constraints.appPairCount > 0) {
-        item { Text(stringResource(R.string.manual_organization_app_pair_constraint, constraints.appPairCount)) }
+        item { SummaryText(stringResource(R.string.manual_organization_app_pair_constraint, constraints.appPairCount)) }
     }
     if (constraints.legacyShortcutCount > 0) {
-        item { Text(stringResource(R.string.manual_organization_legacy_shortcut_constraint, constraints.legacyShortcutCount)) }
+        item { SummaryText(stringResource(R.string.manual_organization_legacy_shortcut_constraint, constraints.legacyShortcutCount)) }
     }
     if (constraints.emptyFolderCount > 0) {
-        item { Text(stringResource(R.string.manual_organization_empty_folder_constraint, constraints.emptyFolderCount)) }
+        item { SummaryText(stringResource(R.string.manual_organization_empty_folder_constraint, constraints.emptyFolderCount)) }
     }
+}
+
+@Composable
+private fun SummaryText(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(horizontal = 16.dp),
+    )
 }
 
 private fun movedReasonString(reason: PlacementCode): Int = when (reason) {

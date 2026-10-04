@@ -67,7 +67,11 @@ fun OrganizerDiagnosticsExportPreference(diagnosticsPort: DiagnosticsPort) {
             val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/jsonl"
-                putExtra(Intent.EXTRA_TITLE, "organizer_diagnostics.jsonl")
+                // Fixed technical identifier, not UI copy; intentionally translatable="false".
+                putExtra(
+                    Intent.EXTRA_TITLE,
+                    context.getString(R.string.organizer_diagnostics_export_default_filename),
+                )
             }
             launcher.launch(intent)
         },

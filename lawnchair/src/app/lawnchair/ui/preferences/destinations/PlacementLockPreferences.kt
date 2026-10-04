@@ -278,7 +278,14 @@ private fun LockRow(
         title = { Text(title) },
         description = { Text(placementDescription(entry, profileLabel)) },
         endWidget = {
-            StateBadge(stateLabel = stateLabel, contentDescription = "$title, $stateLabel")
+            StateBadge(
+                stateLabel = stateLabel,
+                contentDescription = stringResource(
+                    R.string.organizer_lock_screen_item_state_description,
+                    title,
+                    stateLabel,
+                ),
+            )
         },
     )
 }
@@ -407,7 +414,28 @@ private fun placementDescription(entry: LockStateEntry, profileLabel: String?): 
         } else {
             null
         }
-    return listOfNotNull(placement, profileLabel, protectedByParent).joinToString(" · ")
+    return when {
+        profileLabel != null && protectedByParent != null -> stringResource(
+            R.string.organizer_lock_screen_placement_summary_triple,
+            placement,
+            profileLabel,
+            protectedByParent,
+        )
+
+        profileLabel != null -> stringResource(
+            R.string.organizer_lock_screen_placement_summary_double,
+            placement,
+            profileLabel,
+        )
+
+        protectedByParent != null -> stringResource(
+            R.string.organizer_lock_screen_placement_summary_double,
+            placement,
+            protectedByParent,
+        )
+
+        else -> placement
+    }
 }
 
 private fun OptionalText.textOrFallback(entry: LockStateEntry): String = when (this) {
