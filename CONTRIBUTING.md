@@ -1,32 +1,34 @@
-# Contributing to Lawnchair
+# Contributing
 
-Thank you for your interest in contributing to the Lawnchair project. This document provides general reminders and directs you to our official, living documentation hub at [docs.lawnchair.app](https://docs.lawnchair.app).
+NunuLauncherの変更は、human/AI Agentを問わずGitHub Issueから開始します。
 
-## General reminders
+1. 適切なIssue formで問題・成果・非対象・終了条件を記載する。
+2. 機能変更ではIssue番号を使って `specs/<issue>-<slug>/spec.md` を作り、承認を得る。
+3. `status: ready` 後にbranch `issue-<number>-<slug>` で作業する。
+4. code、test、migration、必要な文書を同じPull Requestで更新する。
+5. PR templateに受入条件ごとのevidenceと実行commandを記載し、`Closes #<issue>` を含める。
 
-Before participating in any area of the project, please keep these core guidelines in mind:
+詳細なsource of truth、label、Ready/Done条件は [GitHub workflow](./docs/project/github-workflow.md) を参照してください。AI Agentは作業前に [AGENTS.md](./AGENTS.md) を必ず読みます。
 
-* Adhere to our [Code of Conduct](CODE_OF_CONDUCT.md) during all interactions.
-* Always search our [GitHub issue tracker](https://github.com/LawnchairLauncher/lawnchair/issues) to see if a bug has already been reported or a feature requested before opening a new issue.
-* Avoid using the issue tracker for personal support. If you need help, please visit our [community channels](https://docs.lawnchair.app/project-and-community/get-involved/community-channels) on Telegram or Discord.
+## Checkout and build
 
-### Contributing non-code
+submoduleを含めてcheckoutします。
 
-You do not need to write code to make a significant impact on Lawnchair. We welcome and encourage several forms of non-code contributions:
+```bash
+git clone --recursive https://github.com/nunu1733/NunuLauncher.git
+cd NunuLauncher
+./gradlew spotlessCheck
+./gradlew assembleLawnWithQuickstepGithubDebug
+```
 
-* You can help make Lawnchair accessible to a global audience by contributing translations through [Lawnchair on Crowdin](https://lawnchair.crowdin.com/lawnchair).
-* You can help make development sustainable by [donating to the project](https://opencollective.com/lawnchair/).
-* You can help maintain a clean and effective issue tracker by joining our [triaging issues](https://docs.lawnchair.app/community/get-involved/triage-issues).
-* You can help keep our documentation accurate and clear by contributing directly to our [documentation files](https://docs.lawnchair.app/community/get-involved/writing-documentation).
+JDK/SDK要件、環境変数、検証済みversionは [building guide](./docs/engineering/building.md) を参照してください。submoduleが欠けている場合は `git submodule update --init --recursive` を実行します。
 
-### Contributing code
+## Source placement and upstream conventions
 
-Lawnchair is built on a highly complex, AOSP-derived foundation. Because of this, direct code contribution is challenging and may not be suitable for beginners. 
+- project固有codeは原則 `lawnchair/src/app/lawnchair` 配下に置く。
+- `src/com/android/launcher3` はLauncher3由来であり、変更を最小のbridgeに限定する。
+- commit messageはLawnchairのConventional Commits形式 `type(scope): subject` を継承する。
+- NunuLauncherのPRは `main` をbaseにする。Lawnchair上流へ送る変更は、上流の最新方針を別途確認する。
+- upstream copyright、license、source headerを削除しない。
 
-Before setting up your environment or writing any code, please read our [onboarding preface](https://docs.lawnchair.app/developers) to understand the unique challenges of this codebase.
-
-If you are ready to write code, refer to [our official developer guides](https://docs.lawnchair.app/developers) on our documentation site:
-
-* [Setup your build environment](https://docs.lawnchair.app/developers/introduction/get-started)
-* [Understand our development workflow](https://docs.lawnchair.app/developers/standards/development-workflow)
-* [Follow code standards](https://docs.lawnchair.app/developer-guide/standards/coding-standards)
+上流固有の開発情報は [Lawnchair contributing guidelines](https://github.com/LawnchairLauncher/lawnchair/blob/15-beta/CONTRIBUTING.md) も参照してください。
