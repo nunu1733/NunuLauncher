@@ -172,7 +172,7 @@ class NovaRestoreCaptureCrossProcessStageBTest {
         // the settled state is what is asserted, never which generation ran.
         val latch = java.util.concurrent.CountDownLatch(1)
         val callbacks = object : com.android.launcher3.model.BgDataModel.Callbacks {
-            override fun finishBindingItems(pagesBoundFirst: com.android.launcher3.util.IntSet?) { latch.countDown() }
+            override fun bindCompleteModel(itemIdMap: com.android.launcher3.model.data.WorkspaceData, isBindingSync: Boolean) { latch.countDown() }
         }
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
             launcher.model.addCallbacks(callbacks)
@@ -180,12 +180,12 @@ class NovaRestoreCaptureCrossProcessStageBTest {
         }
         assertTrue("reload did not reach the settle point (bind firing)", latch.await(30, java.util.concurrent.TimeUnit.SECONDS))
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30)
-        while (!launcher.model.isModelLoaded && System.nanoTime() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.nanoTime() < deadline) {
             Thread.sleep(25L)
         }
         assertTrue(
             "model must reach the settle point (isModelLoaded=true, no active loader) within 30s",
-            launcher.model.isModelLoaded,
+            launcher.model.isModelLoaded(),
         )
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
             launcher.model.removeCallbacks(callbacks)

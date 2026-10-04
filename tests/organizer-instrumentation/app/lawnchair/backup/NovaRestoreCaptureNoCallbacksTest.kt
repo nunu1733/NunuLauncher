@@ -131,7 +131,7 @@ class NovaRestoreCaptureNoCallbacksTest {
         // Creating the app instance does NOT register model callbacks; assert
         // the inactive-model precondition this test exists for.
         val app = LauncherAppState.getInstance(context)
-        check(!app.getModel().hasCallbacks()) {
+        check(!app.model.hasCallbacks()) {
             "this test requires a process with no model callbacks; run it in its own instrumentation process"
         }
 

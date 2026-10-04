@@ -42,7 +42,7 @@ class Issue134GridPresetInstrumentationTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val overrides = DeviceProfileOverrides.INSTANCE.get(context)
         val prefs = PreferenceManager.getInstance(context)
-        val declared = InvariantDeviceProfile.parseAllDefinedGridOptions(context)
+        val declared = InvariantDeviceProfile.parseAllDefinedGridOptions(context, DisplayController.INSTANCE.get(context).getInfo()) // Issue #532 rebase: anchor requires the display info
         val enabledNames = authoritativeEnabledNames(context)
         val disabledName = declared.firstOrNull { it.name !in enabledNames }?.name
 
@@ -116,7 +116,7 @@ class Issue134GridPresetInstrumentationTest {
      */
     private fun authoritativeEnabledNames(context: Context): List<String> {
         val deviceType = DisplayController.INSTANCE.get(context).info.deviceType
-        return InvariantDeviceProfile.parseAllDefinedGridOptions(context)
+        return InvariantDeviceProfile.parseAllDefinedGridOptions(context, DisplayController.INSTANCE.get(context).getInfo()) // Issue #532 rebase: anchor requires the display info
             .filter { it.isEnabled(deviceType) }
             .map { it.name }
     }
@@ -212,7 +212,7 @@ class Issue134GridPresetInstrumentationTest {
     private fun requiredTargetOption(): InvariantDeviceProfile.GridOption {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val deviceType = DisplayController.INSTANCE.get(context).info.deviceType
-        return InvariantDeviceProfile.parseAllDefinedGridOptions(context)
+        return InvariantDeviceProfile.parseAllDefinedGridOptions(context, DisplayController.INSTANCE.get(context).getInfo()) // Issue #532 rebase: anchor requires the display info
             .filter { it.name == TARGET_PRESET && it.isEnabled(deviceType) }
             .firstOrNull()
             ?: error("$TARGET_PRESET is not an enabled preset on this host")

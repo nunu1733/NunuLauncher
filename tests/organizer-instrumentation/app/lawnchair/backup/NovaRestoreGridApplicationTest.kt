@@ -50,6 +50,17 @@ class NovaRestoreGridApplicationTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
     }
 
+    // Issue #532 rebase: the fork's IDP.applyGridInfo(context, DBGridInfo) is
+    // not part of the anchor IDP. Mirror the anchor setCurrentGrid sequence
+    // synchronously (grid info -> preset grid name -> grid prefs -> IDP
+    // re-init); the anchor posts the re-init to the main executor, this helper
+    // runs it inline so the pre-rebase deterministic bind contract holds.
+    private fun applyGridInfo(idp: InvariantDeviceProfile, gridInfo: DeviceProfileOverrides.DBGridInfo) {
+        val overrides = DeviceProfileOverrides.INSTANCE.get(context())
+        overrides.setCurrentGrid(overrides.getGridName(gridInfo))
+        idp.onConfigChanged(context())
+    }
+
     private fun databasesDir(): File {
         val context = context()
         val dbName = InvariantDeviceProfile.INSTANCE.get(context).dbFile
@@ -70,18 +81,18 @@ class NovaRestoreGridApplicationTest {
                 numRows = original.numRows + 1,
                 numColumns = original.numColumns + 1,
             )
-            idp.applyGridInfo(context, converted)
+            applyGridInfo(idp, converted)
             assertEquals(converted.dbFile, idp.dbFile)
             assertEquals(converted.numRows, idp.numRows)
             assertEquals(converted.numColumns, idp.numColumns)
 
             // Grid match: applying identical values again stays stable.
-            idp.applyGridInfo(context, converted)
+            applyGridInfo(idp, converted)
             assertEquals(converted.dbFile, idp.dbFile)
 
-            // applyGridInfo writes no prefs; reapplying the prefs-backed grid
-            // leaves the app exactly as it was found.
-            idp.applyGridInfo(context, original)
+            // The preset grid prefs are rewritten before each re-init;
+            // reapplying the prefs-backed grid leaves the app as found.
+            applyGridInfo(idp, original)
         }
         assertEquals(original.dbFile, idp.dbFile)
     }

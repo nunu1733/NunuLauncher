@@ -38,8 +38,21 @@ class LoaderCursorOverlapAcceptanceContractTest {
         app: LauncherAppState,
         userManagerState: UserManagerState,
         pmHelper: PackageManagerHelper,
-    ) : LoaderCursor(cursor, app, userManagerState, pmHelper, null) {
-        fun accepts(info: ItemInfo): Boolean = checkItemPlacement(info, true)
+    ) : LoaderCursor(
+            // Issue #532 rebase: the anchor LoaderCursor is @AssistedInject
+            // shaped (cursor, userManagerState, restoreEventLogger, context,
+            // iconCache, idp, model, pmHelper) and checkItemPlacement takes
+            // only the item (the fork's strictness overload is gone).
+            cursor,
+            userManagerState,
+            /* restoreEventLogger = */ null,
+            app.context,
+            app.iconCache,
+            app.invariantDeviceProfile,
+            app.model,
+            pmHelper,
+        ) {
+        fun accepts(info: ItemInfo): Boolean = checkItemPlacement(info)
     }
 
     @Test

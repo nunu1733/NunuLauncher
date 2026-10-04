@@ -389,6 +389,12 @@ android {
 
         androidTest {
             java.srcDirs = ['tests/organizer-instrumentation']
+            // Issue #532 G4: the anchor build (Gradle 9.8 built-in Kotlin) no
+            // longer mirrors java.srcDirs into the Kotlin compile task, so the
+            // Kotlin instrumentation sources (DeckRetirementTestRunner, the
+            // T5/T7/T8 oracles) were silently NO-SOURCE. Same repair as the
+            // tests/unit wiring above.
+            kotlin.directories.addAll('tests/organizer-instrumentation')
             manifest.srcFile 'tests/organizer-instrumentation/AndroidManifest.xml'
             // Issue #441: benchmark fixture alias icons live in the dedicated
             // instrumentation res tree.

@@ -36,7 +36,7 @@ import java.io.FileOutputStream
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import kotlinx.coroutines.flow.first
+import com.patrykmichalik.opto.core.firstBlocking
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -104,7 +104,7 @@ abstract class NovaConverterBoundaryScenarioBase : NovaRestoreCaptureTestBase() 
     fun pinSmartspaceForScenario() {
         val prefs2 = PreferenceManager2.getInstance(context())
         if (originalSmartspace == null) {
-            originalSmartspace = runBlocking { prefs2.enableSmartspace.first() }
+            originalSmartspace = prefs2.enableSmartspace.firstBlocking() // Issue #532 rebase: anchor Preference2 is opto Preference, not Flow
         }
         runBlocking {
             prefs2.preferencesDataStore.edit {

@@ -1316,7 +1316,7 @@ class EditSurfaceUndoInstrumentationTest {
     private fun waitForModelLoaded() {
         val model = appState.model
         val deadline = System.currentTimeMillis() + 10_000L
-        while (!model.isModelLoaded && System.currentTimeMillis() < deadline) {
+        while (!model.isModelLoaded() && System.currentTimeMillis() < deadline) {
             Thread.sleep(50)
         }
     }

@@ -386,7 +386,7 @@ class EditSurfaceApplyInstrumentationTest {
     private fun waitForModelLoaded() {
         val model = launcher.model
         val deadline = System.currentTimeMillis() + 10_000L
-        while (!model.isModelLoaded && System.currentTimeMillis() < deadline) {
+        while (!model.isModelLoaded() && System.currentTimeMillis() < deadline) {
             Thread.sleep(50)
         }
     }

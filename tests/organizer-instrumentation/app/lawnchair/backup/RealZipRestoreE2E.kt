@@ -233,7 +233,7 @@ class RealZipRestoreE2E : NovaRestoreCaptureTestBase() {
         assertEquals(serial, longActiveField(context, expectedTitles[0], Favorites.PROFILE_ID))
         assertTrue(
             (longActiveField(context, expectedTitles[0], Favorites.RESTORED) and
-                WorkspaceItemInfo.FLAG_RESTORED_ICON.toLong()) != 0,
+                WorkspaceItemInfo.FLAG_RESTORED_ICON.toLong()) != 0L,
         )
         assertEquals(
             expectedLock,

@@ -26,7 +26,7 @@ import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.smartspace.SmartspacePreferencesShortcut
 import app.lawnchair.ui.preferences.PreferenceActivity
 import com.android.launcher3.LauncherAppState
-import com.android.launcher3.WidgetPickerActivity
+import com.android.launcher3.widgetpicker.WidgetPickerActivity
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.celllayout.CellPosMapper
@@ -607,10 +607,10 @@ class Issue265ManualEditRecoveryInstrumentationTest {
 
     private fun awaitModelLoaded() {
         val deadline = System.currentTimeMillis() + 15_000L
-        while (!launcher.model.isModelLoaded && System.currentTimeMillis() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.currentTimeMillis() < deadline) {
             Thread.sleep(50)
         }
-        check(launcher.model.isModelLoaded) { "Launcher model did not reload" }
+        check(launcher.model.isModelLoaded()) { "Launcher model did not reload" }
     }
 
     private fun awaitGateReady() {

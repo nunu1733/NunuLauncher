@@ -213,7 +213,7 @@ class PageCaptureInstrumentationTest {
     private fun forceReloadAndWait() {
         val latch = CountDownLatch(1)
         val callback = object : BgDataModel.Callbacks {
-            override fun finishBindingItems(pagesBoundFirst: IntSet) {
+            override fun bindCompleteModel(itemIdMap: com.android.launcher3.model.data.WorkspaceData, isBindingSync: Boolean) {
                 latch.countDown()
             }
         }
