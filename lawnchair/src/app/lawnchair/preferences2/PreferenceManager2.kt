@@ -130,6 +130,28 @@ class PreferenceManager2 @Inject constructor(
         defaultValue = context.resources.getBoolean(R.bool.config_default_dark_status_bar),
     )
 
+    val enableSmartspaceCalendarSelection = preference(
+        key = booleanPreferencesKey(name = "enable_smartspace_calendar_selection"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_smartspace_calendar_selection),
+    )
+
+    val enableDotPagination = preference(
+        key = booleanPreferencesKey(name = "enable_dot_pagination"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_dot_pagination),
+        onSet = { reloadHelper.recreate() },
+    )
+
+    val enableMaterialUPopUp = preference(
+        key = booleanPreferencesKey(name = "enable_material_u_popup"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_enable_material_u_popup),
+        onSet = { reloadHelper.recreate() },
+    )
+
+    val iconSwipeGestures = preference(
+        key = booleanPreferencesKey(name = "icon_swipe_gestures"),
+        defaultValue = false,
+    )
+
     val hotseatMode = preference(
         key = stringPreferencesKey("hotseat_mode"),
         defaultValue = HotseatMode.fromString(context.getString(R.string.config_default_hotseat_mode)),

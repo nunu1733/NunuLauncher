@@ -97,4 +97,9 @@ object OnboardingPrefs {
         "launcher.organization_proposal_restore_seen",
         false,
     )
+
+
+    @JvmField
+    val EDIT_MODE_PAGE_STRIP_TIP_SEEN =
+        backedUpItem("launcher.edit_mode_page_strip_tip_seen", false)
 }

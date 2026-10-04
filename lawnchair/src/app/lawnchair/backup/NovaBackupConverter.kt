@@ -12,6 +12,7 @@ import android.util.Log
 import app.lawnchair.DeviceProfileOverrides
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
+import com.android.launcher3.GridType
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
@@ -197,12 +198,15 @@ class NovaBackupConverter(
                             numRows = rows,
                             numColumns = columns,
                         )
+                        // Rebase Phase 2 adapt: anchor's DeviceGridState carries the
+                        // 16-dev gridType discriminator (#522: GRID_TYPE_ANY coexistence).
                         val gridState = DeviceGridState(
                             columns,
                             rows,
                             hotseatCount,
                             InvariantDeviceProfile.TYPE_PHONE,
                             gridInfo.dbFile,
+                            GridType.GRID_TYPE_ANY,
                         )
                         gridState.writeToPrefs(context)
                         writeGridToLawnchairPrefs(info, smartspaceEnabled)
@@ -241,7 +245,14 @@ class NovaBackupConverter(
                     // restore-correlated generation completes and the
                     // workspace is capture-valid before the restore reports
                     // completion in every case.
-                    val app = LauncherAppState.INSTANCE.getNoCreate()
+                    // Rebase Phase 2 adapt: anchor's AppState is a Dagger singleton
+                    // without a nullable getNoCreate; resolving via getInstance creates
+                    // the (empty-callbacks) app state, which the barrier path supports.
+                    val app = try {
+                        LauncherAppState.getInstance(context)
+                    } catch (t: Throwable) {
+                        null
+                    }
                     reloadBarrier = if (app != null) {
                         RestoreReloadBarrier(app, RESTORE_RELOAD_COMPLETION_TIMEOUT_MS).also { it.dispatch() }
                     } else {
@@ -284,7 +295,7 @@ class NovaBackupConverter(
             val outcome: AtomicReference<String> = AtomicReference(""),
         )
 
-        private val model = app.getModel()
+        private val model = app.model
         private var currentAttempt = Attempt()
         private var currentRequestId = 0L
 

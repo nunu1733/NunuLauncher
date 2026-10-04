@@ -1686,4 +1686,88 @@
 <string name="exchange_import_review_unavailable">The imported proposal could not be opened. It expired or was invalidated.</string>
 <string name="exchange_import_summary_global_minimize">Overall goal: keep the current layout as much as possible</string>
 <string name="exchange_import_cta_failed">Could not start organizing. Please try again.</string>
+<plurals name="manual_organization_applied_moved_count">
+        <item quantity="one">%1$d placement moved</item>
+        <item quantity="other">%1$d placements moved</item>
+    </plurals>
+<plurals name="manual_organization_applied_preserved_count">
+        <item quantity="one">%1$d placement was preserved</item>
+        <item quantity="other">%1$d placements were preserved</item>
+    </plurals>
+<plurals name="manual_organization_applied_new_folders_count">
+        <item quantity="one">%1$d new folder was created</item>
+        <item quantity="other">%1$d new folders were created</item>
+    </plurals>
+<plurals name="manual_organization_applied_new_pages_count">
+        <item quantity="one">%1$d new home screen page was created</item>
+        <item quantity="other">%1$d new home screen pages were created</item>
+    </plurals>
+<plurals name="manual_organization_recovery_history_moved">
+        <item quantity="one">moved %1$d placement</item>
+        <item quantity="other">moved %1$d placements</item>
+    </plurals>
+<plurals name="manual_organization_recovery_history_new_folders">
+        <item quantity="one">created %1$d folder</item>
+        <item quantity="other">created %1$d folders</item>
+    </plurals>
+<plurals name="manual_organization_recovery_history_new_pages">
+        <item quantity="one">added %1$d page</item>
+        <item quantity="other">added %1$d pages</item>
+    </plurals>
+<plurals name="manual_organization_recovery_remaining_hours">
+        <item quantity="one">Restorable for about 1 more hour.</item>
+        <item quantity="other">Restorable for about %1$d more hours.</item>
+    </plurals>
+<plurals name="manual_organization_missing_apps_selected_count">
+        <item quantity="one">%1$d app selected</item>
+        <item quantity="other">%1$d apps selected</item>
+    </plurals>
+<plurals name="manual_organization_applied_added_count">
+        <item quantity="one">%1$d app added</item>
+        <item quantity="other">%1$d apps added</item>
+    </plurals>
+<plurals name="exchange_request_remaining_hours">
+        <item quantity="one">About %1$d hour left</item>
+        <item quantity="other">About %1$d hours left</item>
+    </plurals>
+<plurals name="exchange_scope_intent_count">
+        <item quantity="one">The AI proposal covers %1$d app that is not yet on your home. Select it to use the proposal.</item>
+        <item quantity="other">The AI proposal covers %1$d apps that are not yet on your home. Select them to use the proposal.</item>
+    </plurals>
+<plurals name="exchange_import_summary_recognized">
+        <item quantity="one">%1$d wish was recognized from the proposal.</item>
+        <item quantity="other">%1$d wishes were recognized from the proposal.</item>
+    </plurals>
+<plurals name="exchange_import_summary_no_judgment">
+        <item quantity="one">%1$d item has no stated preference; it will be organized without one.</item>
+        <item quantity="other">%1$d items have no stated preference; they will be organized without one.</item>
+    </plurals>
+<plurals name="exchange_import_summary_scope_candidates">
+        <item quantity="one">%1$d app outside your home is covered by this request.</item>
+        <item quantity="other">%1$d apps outside your home are covered by this request.</item>
+    </plurals>
+<plurals name="exchange_import_summary_priority">
+        <item quantity="one">Priority stated: %1$d item</item>
+        <item quantity="other">Priority stated: %1$d items</item>
+    </plurals>
+<plurals name="exchange_import_summary_existing_category">
+        <item quantity="one">%1$d item refers to an existing category</item>
+        <item quantity="other">%1$d items refer to an existing category</item>
+    </plurals>
+<plurals name="exchange_import_summary_proposed_group">
+        <item quantity="one">%1$d item proposes a new group for this run (not saved)</item>
+        <item quantity="other">%1$d items propose a new group for this run (not saved)</item>
+    </plurals>
+<plurals name="exchange_import_summary_group">
+        <item quantity="one">Grouping wish: %1$d item</item>
+        <item quantity="other">Grouping wishes: %1$d items</item>
+    </plurals>
+<plurals name="exchange_import_summary_placement">
+        <item quantity="one">Placement wish: %1$d item</item>
+        <item quantity="other">Placement wishes: %1$d items</item>
+    </plurals>
+<plurals name="exchange_import_summary_keep">
+        <item quantity="one">Keep-position wish: %1$d item</item>
+        <item quantity="other">Keep-position wishes: %1$d items</item>
+    </plurals>
 </resources>

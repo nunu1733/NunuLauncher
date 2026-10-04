@@ -651,4 +651,12 @@
 <string name="organizer_custom_category_delete_row">Delete this category</string>
 <string name="organizer_custom_category_delete_action">Delete %1$s</string>
 <string name="organizer_custom_category_rename_action">Rename %1$s</string>
+<plurals name="organizer_custom_category_entry_count">
+        <item quantity="one">%1$d app assigned</item>
+        <item quantity="other">%1$d apps assigned</item>
+    </plurals>
+<plurals name="organizer_custom_category_delete_text">
+        <item quantity="one">%1$s has %2$d app assigned. It returns to automatic classification on the next organization. Apps are never moved to another category.</item>
+        <item quantity="other">%1$s has %2$d apps assigned. They return to automatic classification on the next organization. Apps are never moved to another category.</item>
+    </plurals>
 </resources>

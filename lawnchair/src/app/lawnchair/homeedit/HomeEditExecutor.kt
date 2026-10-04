@@ -8,19 +8,33 @@
  */
 package app.lawnchair.homeedit
 
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import android.os.Handler
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import android.os.Looper
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import android.widget.Toast
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import app.lawnchair.homeedit.ui.HomeEditUndoSnackbar
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.LauncherAppState
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.LauncherSettings.Favorites
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.R
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.Workspace
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.folder.FolderIcon
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.model.DirectEditContract
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.model.data.ItemInfo
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import com.android.launcher3.util.Executors
+import app.lawnchair.homeedit.getHomescreenIconByItemId
 import java.util.Collections
 
 class HomeEditExecutor(private val launcher: LawnchairLauncher) {
@@ -139,7 +153,7 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                     is HomeEditPlan.CreateFolder -> mainHandler.post {
                         // The new folder icon does not exist yet on the owning
                         // launcher; bind it from the model folder row.
-                        createdFolder?.let { launcher.bindItems(Collections.singletonList(it), false) }
+                        createdFolder?.let { launcher.bindItemsAdapted(Collections.singletonList(it), false) }
                     }
                 }
             }
@@ -194,7 +208,7 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                 // accessibility-aware timeout could be honored. The
                 // accessibility-path precedent binds without animation too;
                 // the destination snap below still runs.
-                launcher.bindItems(Collections.singletonList(info), false)
+                launcher.bindItemsAdapted(Collections.singletonList(info), false)
                 showDestinationPage(plan.screenId)
             }
 
