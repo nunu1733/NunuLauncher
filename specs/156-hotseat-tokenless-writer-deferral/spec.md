@@ -1,6 +1,6 @@
 ---
 issue: "#156"
-status: accepted
+status: implemented
 requirements:
   - AC-156-01-atomic-hotseat-admission
   - AC-156-02-race-safe-correlated-reload-progress
@@ -273,3 +273,4 @@ admission原因である場合のみ本Issueに追加する。その他のpath�
 - 2026-08-27: `runOrDefer`を、coordinatorがemptyでも先行`ModelWriterReservation`が存在するtokenless `MODEL_WRITER` submissionをFIFO末尾へdeferする限定的ordering barrierへ拡張した。exact organizer capabilityおよび他のowner kindのempty-coordinator semanticsは変更していない。empty→backup reservation→actual `ModelWriter` migration→organizer acquire→backup admission/re-defer→exact-token correlated progress→holder releaseのAPI 36 regressionで、MODEL_EXECUTORがblockせず、backup tableがpre-migration rank、Favoritesがpost-migration rankになることを確認した。focused Hotseat suite（13 tests）、shared-writer suite（50 tests）、全JVM test、debug assembleに成功した。PR未mergeのためstatusは`accepted`を維持し、最終source headにはcode-review後の独立Auditとexact-head CIが必要である。
 - 2026-08-27: PR #157の次回reviewで、先行baseline `MODEL_WRITER` leaseが別threadで保持されている場合は、`current == null`だけを対象にしたreservation barrierを後続migrationがbypassしうると確認した。AC-156-07をdistinct baseline `MODEL_WRITER` holderのinterleavingまで拡張し、回帰実証が完了するまで未充足へ戻した。
 - 2026-08-27: pending stable reservationがある限り、後続tokenless `MODEL_WRITER` submissionをcurrent holderの種別・threadにかかわらず既存FIFO後尾へdeferする限定barrierにした。exact organizer capability、non-MODEL_WRITERの`runOrDefer`意味論、atomic admission内のsame-thread MODEL_WRITER reentryは不変である。先行baseline MODEL_WRITER leaseをMODEL_EXECUTOR上で保持してbackup→actual migrationを送信する実DB regressionを追加し、backup tableのpre-migration rankとFavoritesのpost-migration rankを確認した。最終実機検証はfocused Hotseat suite（14 tests）、shared-writer suite（51 tests）、全JVM test、debug APK assemble、Android test Java compile、Spotless、writer inventory、repository/high-risk contract self-testに成功した。PR未mergeのためstatusは`accepted`を維持し、最終source headには再レビュー後の独立Auditとexact-head CIが必要である。
+- 2026-08-27: [PR #157](https://github.com/nunu1733/NunuLauncher/pull/157)がmerge commit `6fd276b50d328e3d01aa71d1e18d30425f2929d4`として`main`へマージされた。独立auditは`docs/assessment/pr-157-hotseat-tokenless-writer-deferral.md`に記録し、監査対象headの[CI run 33071961999](https://github.com/nunu1733/NunuLauncher/actions/runs/33071961999)の`final-status`とpost-audit [HighRiskGate run 33075302901](https://github.com/nunu1733/NunuLauncher/actions/runs/33075302901)はいずれも成功した。`Closes #156`によりIssue #156は自動クローズされたため、statusを`implemented`へ遷移した。
