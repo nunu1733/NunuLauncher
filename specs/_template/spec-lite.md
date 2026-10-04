@@ -26,7 +26,8 @@ Launcher DB書込み、schema migration、recovery store、上流model/loader br
 ## Prior art
 
 設計に影響した外部の類似実装・best practiceを、対象・URL・確認日・採用/不採用理由を
-1行1事例で記載する。該当がなければ `なし（調査済み）` と書く。正本は
+1行1事例で記載する。`なし（調査済み）` は実際に調査して有用例がなかった場合のみ、
+`省略（理由）` は正本の省略条件に当たる場合のみ使う。適用対象・省略条件の正本は
 [GitHub workflowのExternal reference scan](../../docs/project/github-workflow.md#external-reference-scan設計時の外部参照調査)。
 
 ## Outcome
