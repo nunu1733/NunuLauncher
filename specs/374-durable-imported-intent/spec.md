@@ -1,6 +1,6 @@
 ---
 issue: "#374"
-status: accepted
+status: implemented
 requirements: [FR-017]
 risk:
   - privacy
@@ -23,7 +23,13 @@ updated: 2026-09-21
 > すべてmerge済みである（2026-09-21時点のmain `c05435a947`）。本revisionは
 > 初回review（2026-09-19、Changes requested 6件）への対応、これら前提merge後のcurrent main
 > へのre-entry、および2nd review（2026-09-21、Changes requested 3件）への対応である。
-> Status: **accepted** — ChatGPT review **Approved**（[comment `5761252403`](https://github.com/nunu1733/NunuLauncher/issues/374#issuecomment-5761252403)
+> Status: **implemented** — PR [#399](https://github.com/nunu1733/NunuLauncher/pull/399)
+> （merge commit `9dc3ec8fed`、2026-09-21）で実装がmainに取り込まれた。
+> 実装review: ChatGPT review 2ラウンド（初回Changes requested 高1・中3 → run-in fence 1件 →
+> **Approved** [comment `5763681310`](https://github.com/nunu1733/NunuLauncher/issues/374#issuecomment-5763681310)
+> @ `32d7f341c0`）。CI merge gate `final-status` green + 高リスク独立audit
+> （[docs/assessment/pr-399-durable-imported-intent.md](../../docs/assessment/pr-399-durable-imported-intent.md)）。
+> それ以前: **accepted** — ChatGPT review **Approved**（[comment `5761252403`](https://github.com/nunu1733/NunuLauncher/issues/374#issuecomment-5761252403)
 > @ `c30f6f46d0`、2026-09-21）を受け、owner指示（Phase 2実装進行）により実装着手。
 
 ## Problem
@@ -732,6 +738,12 @@ greenである。
 
 ## Change history
 
+- 2026-09-21: **Implemented**（PR [#399](https://github.com/nunu1733/NunuLauncher/pull/399)、merge `9dc3ec8fed`）。
+  spec 328 rev.2・spec 205改訂・spec 366 HUB-AC-03縮小・CONTEXT.md用語更新を実装PRに同梱。
+  DI-AC-01..13のtest表面を実装し、CI merge gate（final-status green・全organizer
+  instrumentation lane pass）と独立auditで検証。実装reviewはChatGPT 2ラウンドでApprove。
+  後続: #375（継続CTA有効化・rebind・原因別remedy）へrecord（entry種別・`intentIdentity`・
+  ref+`proposalLabel` decisions）を引き継ぐ。
 - 2026-09-21: **Revision 2追補（3rd review comment `5761138332` の中1件対応）**: import成功
   scenarioの旧文言「label/title/free-textは含まない」がrevision 2の `proposalLabel` 保存契約と
   矛盾していたため、DI-AC-10と同一の列挙（保存: export-scoped ref・正規化済み `proposalLabel` /
