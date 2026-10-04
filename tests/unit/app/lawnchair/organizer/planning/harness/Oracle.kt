@@ -455,20 +455,16 @@ internal object Oracle {
                 // Issue #235: under a widget-capable strategy an eligible
                 // widget (the V1-expectation `WIDGET` set) is a widget-stream
                 // item — replan-stable because it reclaimed its own cell
-                // (ALREADY_CANONICAL), its page degraded (STRATEGY_PRESERVED),
-                // or it is outside the target set (NON_TARGET — the
-                // parameterized widget branch falls through to the role
-                // check, pinned by the spec 235 direct-seam fixture). All
-                // three are truthful stable reasons.
+                // (ALREADY_CANONICAL) or its page degraded
+                // (STRATEGY_PRESERVED). The widget branch is terminal for
+                // widget kinds, so NON_TARGET never applies to them under
+                // widget-capable strategies (AC-10 production finding).
                 val widgetStreamItem = expected == PreserveReason.WIDGET &&
                     app.lawnchair.organizer.planning.LayoutStrategyRegistry
                         .definition(input.rules.organizationStrategy)?.widgetPolicy != null
                 if (widgetStreamItem) {
                     val reason = (placement.disposition as? Disposition.Preserved)?.reason
-                    if (reason != PreserveReason.ALREADY_CANONICAL &&
-                        reason != PreserveReason.STRATEGY_PRESERVED &&
-                        reason != PreserveReason.NON_TARGET
-                    ) {
+                    if (reason != PreserveReason.ALREADY_CANONICAL && reason != PreserveReason.STRATEGY_PRESERVED) {
                         add(
                             finding(
                                 ContractCheck.IDEMPOTENCE,

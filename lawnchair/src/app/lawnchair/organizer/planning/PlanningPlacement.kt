@@ -396,11 +396,17 @@ internal fun determinePreservation(
 
     item.placement is CapturedPlacement.Dock -> PreserveReason.DOCK
 
-    // Issue #235: under a widget-capable strategy this branch yields and the
-    // chain falls through — a widget outside the target set still reaches
-    // `NON_TARGET` below, and an eligible widget becomes movable for the
-    // widget stream. Higher-precedence reasons above are unaffected.
-    (item.kind == ItemKind.APPWIDGET || item.kind == ItemKind.CUSTOM_APPWIDGET) && !relocateWidgets -> PreserveReason.WIDGET
+    // Issue #235: the widget branch is terminal for widget kinds. Under a
+    // widget-capable strategy an unlocked, available, top-level widget is
+    // movable for the widget stream REGARDLESS of its target-set role — the
+    // production composer marks every widget `ExistingRole.Preserved` by kind
+    // (widgets are never user-selected organization targets), so a role-based
+    // exclusion would make widget relocation unreachable in production
+    // (found by the AC-10 device evaluation). Higher-precedence reasons above
+    // (reserved overlap, lock, unavailability, Dock) still fix such widgets.
+    (item.kind == ItemKind.APPWIDGET || item.kind == ItemKind.CUSTOM_APPWIDGET) -> {
+        if (relocateWidgets) null else PreserveReason.WIDGET
+    }
 
     item.kind == ItemKind.APP_PAIR || item.placement is CapturedPlacement.AppPairMember -> PreserveReason.APP_PAIR
 
