@@ -59,6 +59,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -91,8 +92,12 @@ class ExchangeFlowStateHolderTest {
             return true
         }
 
+        /** Issue #328 review: lets a test hold validation at the session load. */
+        var loadGate: CountDownLatch? = null
+
         override fun load(exportId: String): ExportSession? {
             loadCalls++
+            loadGate?.await(5, TimeUnit.SECONDS)
             return session?.takeIf { it.exportId == exportId }
         }
 
@@ -144,9 +149,31 @@ class ExchangeFlowStateHolderTest {
             session.tier,
             ReplayAllocator(session),
         )
+        return markedReply(built)
+    }
+
+    /** The run-in (scope-composed) reply: rebuilt from the scoped inputs so
+     * the export id and refs replay exactly as the scoped session stored. */
+    private fun scopedReplyFor(session: ExportSession): String {
+        val built = ContextExportBuilder.build(
+            scopedExportInputs(session.createdAtEpochMs),
+            session.tier,
+            ReplayAllocator(session),
+        )
+        return markedReply(built)
+    }
+
+    private fun markedReply(built: app.lawnchair.organizer.personalization.BuiltExport): String {
         val intent = PersonalizedIntentV1(
             exportId = built.export.exportId,
-            itemIntents = built.export.items.map { ItemIntent(ref = it.ref, preserve = true) },
+            // Mobility candidates must not assert a keep-position wish
+            // (validator: mobility contradiction); they stay bare.
+            itemIntents = built.export.items.map { item ->
+                ItemIntent(
+                    ref = item.ref,
+                    preserve = if (item.mobility == app.lawnchair.organizer.personalization.Mobility.CANDIDATE) null else true,
+                )
+            },
         )
         return buildString {
             append(ExchangeContract.INTENT_BEGIN_MARKER)
@@ -830,6 +857,880 @@ class ExchangeFlowStateHolderTest {
             ExchangeImportDisplayInfo(RecognizedImportFraming.MARKER, ContextExportContract.INTENT_SCHEMA_VERSION, 2),
             exchangeImportDisplayInfo(RecognizedImportInfo(RecognizedImportFraming.MARKER, ContextExportContract.INTENT_SCHEMA_VERSION, 2)),
         )
+    }
+
+    // ------------------------------------------------------------------
+    // Issue #328: the import success state, its attempt anchor and the
+    // explicit continuation/discard lifecycle (spec 328 AC-1..AC-5).
+    // ------------------------------------------------------------------
+
+    /** Issue #328: a run double that reaches the selection surface. */
+    private class ExchangeRunApplication(
+        private val detectionReady: Boolean = true,
+    ) : app.lawnchair.organizer.ui.ManualOrganizationApplication {
+        var composeFullCalls = 0
+        var detectionCalls = 0
+        private var runIdCounter = 0
+
+        override val diagnostics = object : app.lawnchair.organizer.diagnostics.DiagnosticsPort {
+            override fun emit(event: app.lawnchair.organizer.diagnostics.model.RunEvent) = Unit
+            override fun snapshot() = emptyList<app.lawnchair.organizer.diagnostics.model.RunEvent>()
+        }
+
+        override fun newRunId() = app.lawnchair.organizer.application.public.RunId(java.lang.String.format("%032x", ++runIdCounter))
+
+        override fun detectMissingAppCandidates(): app.lawnchair.organizer.integration.CandidateDetectionResult {
+            detectionCalls++
+            return if (detectionReady) {
+                app.lawnchair.organizer.integration.CandidateDetectionResult.Ready(
+                    listOf(
+                        app.lawnchair.organizer.integration.DetectedCandidate(
+                            target = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+                                ComponentKey("com.example.c1"),
+                                ProfileId("personal"),
+                            ),
+                            label = "c1",
+                            availability = Availability.AVAILABLE,
+                        ),
+                    ),
+                )
+            } else {
+                app.lawnchair.organizer.integration.CandidateDetectionResult.Unavailable(
+                    app.lawnchair.organizer.integration.DetectionUnavailableReason.PROFILE_SERIAL_UNAVAILABLE,
+                )
+            }
+        }
+
+        override fun composeFullOrganization(): app.lawnchair.organizer.integration.OrganizationInputComposition {
+            composeFullCalls++
+            return notReady()
+        }
+
+        override fun composeScopeComposedOrganization(
+            selection: List<app.lawnchair.organizer.planning.CandidateTarget.AppKey>,
+        ): app.lawnchair.organizer.integration.OrganizationInputComposition = notReady()
+
+        override fun inspectPlan(
+            input: app.lawnchair.organizer.planning.OrganizationInput,
+            result: app.lawnchair.organizer.planning.PlanningResult,
+        ) = app.lawnchair.organizer.application.public.PlanPreviewResult.WriterBusy
+
+        override fun materialize(
+            input: app.lawnchair.organizer.planning.OrganizationInput,
+            result: app.lawnchair.organizer.planning.PlanningResult,
+        ) = error("not reached in exchange holder tests")
+
+        override fun apply(
+            plan: app.lawnchair.organizer.application.public.ValidatedLayoutPlan,
+            runId: app.lawnchair.organizer.application.public.RunId,
+        ) = error("not reached in exchange holder tests")
+
+        override fun inspectRecovery(pointId: app.lawnchair.organizer.application.public.RecoveryPointId) = error("not reached in exchange holder tests")
+
+        override fun confirmRecovery(
+            pointId: app.lawnchair.organizer.application.public.RecoveryPointId,
+            confirmation: app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation,
+        ) = error("not reached in exchange holder tests")
+
+        override fun readDurableOrganizerStatus() = error("not reached in exchange holder tests")
+
+        override val readinessState: kotlinx.coroutines.flow.StateFlow<app.lawnchair.organizer.application.protocol.ReadinessGate.State> =
+            kotlinx.coroutines.flow.MutableStateFlow(app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY)
+
+        private fun notReady(): app.lawnchair.organizer.integration.OrganizationInputComposition = app.lawnchair.organizer.integration.OrganizationInputComposition.NotReady(
+            app.lawnchair.organizer.integration.InputReadinessReason.InvalidCanonicalCapture(
+                app.lawnchair.organizer.integration.CaptureFailureCategory.CAPTURE_UNAVAILABLE,
+            ),
+            app.lawnchair.organizer.integration.CompositionDiagnostic(
+                app.lawnchair.organizer.integration.InputCompositionCode.CAPTURE_INVALID,
+            ),
+        )
+    }
+
+    private fun newExchangeRun(
+        detectionReady: Boolean = true,
+    ): Pair<app.lawnchair.organizer.ui.ManualOrganizationRun, ExchangeRunApplication> {
+        val application = ExchangeRunApplication(detectionReady)
+        val run = app.lawnchair.organizer.ui.ManualOrganizationRun(
+            application,
+            app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
+        )
+        return run to application
+    }
+
+    private inner class BlockingStructuralInputs {
+        @Volatile
+        var gate: CountDownLatch? = null
+
+        /** Issue #328 review: settle kind coverage (InputNotReady). */
+        @Volatile
+        var notReady = false
+
+        fun inputs(): ExchangeStructuralResult {
+            gate?.await(5, TimeUnit.SECONDS)
+            return if (notReady) {
+                ExchangeStructuralResult.NotReady(
+                    app.lawnchair.organizer.integration.InputReadinessReason.ReconciliationPending,
+                )
+            } else {
+                ExchangeStructuralResult.Ready(structural())
+            }
+        }
+    }
+
+    private class HolderFixture(
+        val holder: ExchangeFlowStateHolder,
+        val controller: ExchangeFlowController,
+        val store: FakeStore,
+        val run: app.lawnchair.organizer.ui.ManualOrganizationRun,
+        val application: ExchangeRunApplication,
+        val unhandled: MutableList<Throwable>,
+        val scope: CoroutineScope,
+    )
+
+    private val scopedCandidate = app.lawnchair.organizer.planning.CandidateTarget.AppKey(
+        ComponentKey("com.example.c1"),
+        ProfileId("personal"),
+    )
+
+    private fun scopedTargets(): TargetSet = TargetSet(
+        structural().targets.existing,
+        listOf(
+            app.lawnchair.organizer.planning.CandidateItem(
+                id = ItemId("c1"),
+                profile = ProfileId("personal"),
+                kind = app.lawnchair.organizer.planning.CandidateKind.APPLICATION,
+                target = scopedCandidate,
+                availability = Availability.AVAILABLE,
+                span = GridSpan(1, 1),
+            ),
+        ),
+    )
+
+    private fun scopedExportInputs(now: Long): ExportInputs = exportInputs(now).copy(targets = scopedTargets())
+
+    /**
+     * The scope-composed freshness digest covers the additions, so a run-in
+     * validation must see the same scoped structural state the export was
+     * composed from (mirrors the production module's frozen-scope seam).
+     */
+    private fun scopedStructural(): CanonicalStructuralInputs = CanonicalStructuralInputs(structural().snapshot, scopedTargets(), structural().resolvedIdentities)
+
+    private fun newFixture(
+        detectionReady: Boolean = true,
+        blockingStructural: BlockingStructuralInputs? = null,
+        scopedStructural: Boolean = false,
+        now: Long = 1_000_000L,
+    ): HolderFixture {
+        val store = FakeStore()
+        val (run, application) = newExchangeRun(detectionReady)
+        val unhandled = mutableListOf<Throwable>()
+        val scope = CoroutineScope(
+            Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+                synchronized(unhandled) { unhandled.add(throwable) }
+            },
+        )
+        val controller = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(now)) },
+            currentStructuralInputs = {
+                blockingStructural?.inputs() ?: ExchangeStructuralResult.Ready(
+                    if (scopedStructural) scopedStructural() else structural(),
+                )
+            },
+            composeScopedExportInputs = { _, _, _ -> ExchangeInputResult.ExportReady(scopedExportInputs(now)) },
+            store = store,
+            allocator = SequentialIdAllocator(),
+            clock = { now },
+        )
+        val holder = ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = run,
+            scope = scope,
+            settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
+        )
+        return HolderFixture(holder, controller, store, run, application, unhandled, scope)
+    }
+
+    private fun awaitImportSuccess(holder: ExchangeFlowStateHolder): ExchangeScreen.ImportSuccess {
+        var waited = 0
+        while (holder.screen !is ExchangeScreen.ImportSuccess && waited < 5_000) {
+            Thread.sleep(20)
+            waited += 20
+        }
+        assertTrue(
+            "the import success state must be reached (screen=${holder.screen}, status=${holder.status?.kind})",
+            holder.screen is ExchangeScreen.ImportSuccess,
+        )
+        return holder.screen as ExchangeScreen.ImportSuccess
+    }
+
+    private fun awaitClosed(holder: ExchangeFlowStateHolder) {
+        var waited = 0
+        while (holder.screen !is ExchangeScreen.Closed && waited < 5_000) {
+            Thread.sleep(20)
+            waited += 20
+        }
+        assertTrue("the success state must close after the continuation settles", holder.screen is ExchangeScreen.Closed)
+    }
+
+    private fun awaitNotContinuing(holder: ExchangeFlowStateHolder) {
+        var waited = 0
+        while (holder.importContinuationActive && waited < 5_000) {
+            Thread.sleep(20)
+            waited += 20
+        }
+        assertFalse("the continuation must settle", holder.importContinuationActive)
+    }
+
+    private fun awaitImporting(holder: ExchangeFlowStateHolder, text: String) {
+        var waited = 0
+        while ((holder.screen as? ExchangeScreen.Importing)?.replyText != text && waited < 5_000) {
+            Thread.sleep(20)
+            waited += 20
+        }
+        assertEquals(text, (holder.screen as ExchangeScreen.Importing).replyText)
+    }
+
+    private fun generatedReplyFixture(fixture: HolderFixture): String {
+        val generated = fixture.controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        return replyFor(generated.session)
+    }
+
+    /** A reply whose items are all canonical unresolved (warning case). */
+    private fun replyWithNoJudgment(session: ExportSession): String {
+        val built = ContextExportBuilder.build(
+            exportInputs(session.createdAtEpochMs),
+            session.tier,
+            ReplayAllocator(session),
+        )
+        val intent = PersonalizedIntentV1(
+            exportId = built.export.exportId,
+            itemIntents = listOf(ItemIntent(ref = built.export.items[0].ref)),
+            unresolvedRefs = listOf(built.export.items[1].ref),
+        )
+        return buildString {
+            append(ExchangeContract.INTENT_BEGIN_MARKER)
+            append('\n')
+            append(IntentCodec.encode(intent).decodeToString())
+            append('\n')
+            append(ExchangeContract.INTENT_END_MARKER)
+        }
+    }
+
+    @Test
+    fun importSuccessShowsTheSummaryAndDoesNotConnectTheRun() {
+        // AC-1/AC-2/AC-4: a validated import stops at the success state; no
+        // run seam is called and the summary is derived from the canonical
+        // representation (authored preserve wishes counted, no judgment).
+        val fixture = newFixture()
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        val success = awaitImportSuccess(fixture.holder)
+        assertEquals(ExchangeImportEntryKind.IDLE, success.entryKind)
+        assertFalse(success.continuing)
+        assertTrue("the attempt is alive while the success state shows", fixture.holder.importAttemptActive)
+        assertEquals("the run must stay untouched before the CTA", "Idle", fixture.run.state::class.java.simpleName)
+        assertEquals(0, fixture.application.detectionCalls)
+        assertEquals(2, success.summary.recognizedCount) // the fixture scope is a + b
+        assertEquals(0, success.summary.noJudgmentCount)
+        assertEquals(2, success.summary.keepCount)
+        assertEquals(0, success.summary.priorityCount)
+        assertEquals(0, success.summary.scopeCandidateCount)
+        assertFalse(success.summary.minimizeMovement)
+    }
+
+    @Test
+    fun warningSummaryCountsCanonicalNoJudgmentItems() {
+        // AC-4: bare entries and unmentioned refs share one canonical
+        // no-judgment count; the success state carries it for the warning
+        // heading (semantics asserted at the UI level).
+        val fixture = newFixture()
+        val generated = fixture.controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        fixture.holder.openImport()
+        fixture.holder.import(replyWithNoJudgment(generated.session))
+        val success = awaitImportSuccess(fixture.holder)
+        assertEquals(0, success.summary.recognizedCount)
+        assertEquals(2, success.summary.noJudgmentCount)
+        assertEquals(0, success.summary.keepCount)
+    }
+
+    @Test
+    fun continueCtaConnectsTheRunExactlyOnceAndClosesTheSuccessState() {
+        // AC-3: the CTA flips continuing synchronously (single-flight — the
+        // second press is refused before any seam call) and the run start
+        // runs exactly once.
+        val fixture = newFixture()
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+
+        fixture.holder.continueImport()
+        assertTrue("the synchronous flip closes the re-entry window", fixture.holder.importContinuationActive)
+        fixture.holder.continueImport() // second press: refused
+        awaitClosed(fixture.holder)
+        assertEquals("exactly one run start", 1, fixture.application.detectionCalls)
+        assertFalse(fixture.holder.importAttemptActive)
+    }
+
+    @Test
+    fun discardClosesTheSuccessStateAndKeepsTheSession() {
+        // AC-5: the explicit discard is zero-write, keeps the export session
+        // alive (re-import stays possible) and shows the re-import guidance.
+        val fixture = newFixture()
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+        assertNotNull(fixture.store.session)
+
+        fixture.holder.discardImport()
+        assertTrue(fixture.holder.screen is ExchangeScreen.Closed)
+        assertNotNull("the session survives a discard", fixture.store.session)
+        assertEquals(0, fixture.application.detectionCalls)
+        assertEquals(ExchangeStatus.Kind.IMPORT_DISCARDED, fixture.holder.status!!.kind)
+        assertFalse(fixture.holder.importAttemptActive)
+    }
+
+    @Test
+    fun cancelBeforeTheValidationSettleDropsTheLateValidated() {
+        // AC-1: a late Validated after the explicit cancel must not (re)create
+        // the success state.
+        val blocking = BlockingStructuralInputs()
+        val fixture = newFixture(blockingStructural = blocking)
+        val reply = generatedReplyFixture(fixture)
+        blocking.gate = CountDownLatch(1)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        fixture.holder.close()
+        blocking.gate!!.countDown()
+        Thread.sleep(200)
+        assertTrue("a cancelled attempt never surfaces a success state", fixture.holder.screen is ExchangeScreen.Closed)
+        assertFalse(fixture.holder.importAttemptActive)
+    }
+
+    @Test
+    fun inputEditInvalidatesTheAttemptSoALateValidatedCannotSurface() {
+        // AC-1: an editor change (no re-import) invalidates the attempt — the
+        // late Validated of the replaced text is dropped.
+        val blocking = BlockingStructuralInputs()
+        val fixture = newFixture(blockingStructural = blocking)
+        val reply = generatedReplyFixture(fixture)
+        blocking.gate = CountDownLatch(1)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        fixture.holder.onImportTextChange("edited while validating")
+        blocking.gate!!.countDown()
+        awaitImporting(fixture.holder, "edited while validating")
+        Thread.sleep(200)
+        assertTrue(fixture.holder.screen is ExchangeScreen.Importing)
+        assertFalse(fixture.holder.importAttemptActive)
+    }
+
+    @Test
+    fun outOfOrderValidatedKeepsTheNewestAttemptState() {
+        // AC-1: with two imports in flight, the newest attempt owns the
+        // surface; the older attempt's late Validated is dropped.
+        val fixture = newFixture()
+        val generated = fixture.controller.generate(PrivacyTier.EXTERNAL_REDACTED) as ExchangeGenerationResult.Generated
+        val reply = replyFor(generated.session)
+
+        val gateA = CountDownLatch(1)
+        val gateB = CountDownLatch(1)
+        val gates = ArrayDeque(listOf(gateA, gateB))
+        val fixtureWithGates = newFixtureWithGates(fixture, gates)
+
+        fixtureWithGates.holder.openImport()
+        fixtureWithGates.holder.import(reply) // attempt A
+        Thread.sleep(100)
+        fixtureWithGates.holder.import(reply) // attempt B
+        Thread.sleep(100)
+        gateB.countDown() // B settles first
+        val success = awaitImportSuccess(fixtureWithGates.holder)
+        val tokenB = success.attemptToken
+        gateA.countDown() // A settles late: dropped
+        Thread.sleep(200)
+        val still = fixtureWithGates.holder.screen as ExchangeScreen.ImportSuccess
+        assertEquals("the newest attempt owns the success state", tokenB, still.attemptToken)
+    }
+
+    private fun newFixtureWithGates(base: HolderFixture, gates: ArrayDeque<CountDownLatch>): HolderFixture {
+        // Rebuild the controller seam so each validation blocks on the next
+        // gate; the store/session fixture is carried over.
+        val unhandled = base.unhandled
+        val scope = CoroutineScope(
+            Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
+                synchronized(unhandled) { unhandled.add(throwable) }
+            },
+        )
+        val controller = ExchangeFlowController(
+            composeExportInputs = { ExchangeInputResult.ExportReady(exportInputs(1_000_000L)) },
+            currentStructuralInputs = {
+                gates.removeFirstOrNull()?.await(5, TimeUnit.SECONDS)
+                ExchangeStructuralResult.Ready(structural())
+            },
+            store = base.store,
+            allocator = SequentialIdAllocator(),
+            clock = { 1_000_000L },
+        )
+        val holder = ExchangeFlowStateHolder(
+            controllerFactory = { controller },
+            run = base.run,
+            scope = scope,
+            settleDispatcher = Dispatchers.IO,
+            uiDispatcher = Dispatchers.IO,
+        )
+        return HolderFixture(holder, controller, base.store, base.run, base.application, unhandled, scope)
+    }
+
+    @Test
+    fun runInImportShowsTheScopedSummaryAndAttachesOnCta() {
+        // AC-1/AC-3 (run-in entry): the owning run holds the selection
+        // surface while the success state shows; the CTA attaches the intent
+        // to that run and the selection surface's guidance follows.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        fixture.run.start()
+        val selectingBefore = fixture.run.state as app.lawnchair.organizer.ui.ManualOrganizationRun.State.Selecting
+        val generated = fixture.controller.generateForSelection(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        ) as ExchangeGenerationResult.Generated
+        fixture.holder.openImport()
+        fixture.holder.import(scopedReplyFor(generated.session))
+        val success = awaitImportSuccess(fixture.holder)
+        assertEquals(ExchangeImportEntryKind.RUN_IN, success.entryKind)
+        assertEquals(1, success.summary.scopeCandidateCount)
+        val selectingDuring = fixture.run.state as app.lawnchair.organizer.ui.ManualOrganizationRun.State.Selecting
+        assertEquals("the run state stays untouched while the success state shows", selectingBefore.runId, selectingDuring.runId)
+
+        fixture.holder.continueImport()
+        awaitClosed(fixture.holder)
+        val selectingAfter = fixture.run.state as app.lawnchair.organizer.ui.ManualOrganizationRun.State.Selecting
+        assertEquals("the validated intent binds to the owning run", 1, selectingAfter.intentScopeCount)
+    }
+
+    @Test
+    fun runInLateSettleIsDroppedWhenTheOwningRunIsGone() {
+        // AC-1: a run-in settle whose owning run no longer holds the
+        // selection surface is dropped (defense-in-depth).
+        val blocking = BlockingStructuralInputs()
+        val fixture = newFixture(detectionReady = true, blockingStructural = blocking)
+        fixture.run.start()
+        val reply = generatedReplyFixture(fixture)
+        blocking.gate = CountDownLatch(1)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        fixture.run.cancel()
+        blocking.gate!!.countDown()
+        Thread.sleep(200)
+        assertFalse(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+    }
+
+    @Test
+    fun runReplacementBeforeTheCtaIsATypedFailureNotAnAttach() {
+        // AC-3(h): the pre-attach owning-runId re-check refuses to attach
+        // into a replacement run and keeps the success state operable.
+        val fixture = newFixture(detectionReady = true, scopedStructural = true)
+        fixture.run.start()
+        val generated = fixture.controller.generateForSelection(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        ) as ExchangeGenerationResult.Generated
+        fixture.holder.openImport()
+        fixture.holder.import(scopedReplyFor(generated.session))
+        awaitImportSuccess(fixture.holder)
+
+        fixture.run.cancel()
+        fixture.run.start() // a fresh run now holds the selection surface
+
+        fixture.holder.continueImport()
+        var waited = 0
+        while (fixture.holder.importContinuationActive && waited < 5_000) {
+            Thread.sleep(20)
+            waited += 20
+        }
+        assertFalse("the refusal releases the continuing flag", fixture.holder.importContinuationActive)
+        assertTrue("the success state stays for retry/discard", fixture.holder.screen is ExchangeScreen.ImportSuccess)
+        assertEquals(ExchangeStatus.Kind.CTA_START_FAILED, fixture.holder.status!!.kind)
+    }
+
+    @Test
+    fun arbiterBusyRefusesImportStartsAndCtaStarts() {
+        // AC-3: the structural arbiter gate refuses both entry points while a
+        // strategy write/restart is in progress (zero-write, retryable).
+        val fixture = newFixture()
+        val reply = generatedReplyFixture(fixture)
+        val loadsBefore = fixture.store.loadCalls
+        fixture.holder.strategyArbiterBusy = { true }
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        Thread.sleep(100)
+        assertEquals(ExchangeStatus.Kind.IMPORT_STRATEGY_BUSY, fixture.holder.status!!.kind)
+        assertEquals("the refused import never runs", loadsBefore, fixture.store.loadCalls)
+        assertFalse(fixture.holder.importAttemptActive)
+
+        fixture.holder.strategyArbiterBusy = { false }
+        fixture.holder.import(reply)
+        awaitImportSuccess(fixture.holder)
+
+        fixture.holder.strategyArbiterBusy = { true }
+        fixture.holder.continueImport()
+        assertEquals(ExchangeStatus.Kind.CTA_STRATEGY_BUSY, fixture.holder.status!!.kind)
+        assertFalse("the refused CTA did not flip continuing", fixture.holder.importContinuationActive)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+    }
+
+    @Test
+    fun clearBeforeTheValidationSettleDropsTheLateValidated() {
+        // AC-1 (review): the Clear affordance invalidates the active attempt,
+        // so a late Validated never surfaces.
+        val blocking = BlockingStructuralInputs()
+        val fixture = newFixture(blockingStructural = blocking)
+        val reply = generatedReplyFixture(fixture)
+        blocking.gate = CountDownLatch(1)
+        fixture.holder.openImport()
+        fixture.holder.onImportTextChange(reply)
+        fixture.holder.import(reply)
+        fixture.holder.onImportTextChange("")
+        blocking.gate!!.countDown()
+        Thread.sleep(200)
+        assertEquals("", (fixture.holder.screen as ExchangeScreen.Importing).replyText)
+        assertFalse(fixture.holder.importAttemptActive)
+    }
+
+    @Test
+    fun editBeforeTheValidationSettleDropsTheLateFailure() {
+        // AC-1 (review): the table covers Failure settlements too — the
+        // attempt is held at the session load, the editor changes, and the
+        // late ExportMismatch must not paint the outcome surface.
+        val fixture = newFixture()
+        val loadGate = CountDownLatch(1)
+        fixture.store.loadGate = loadGate
+        fixture.holder.openImport()
+        fixture.holder.import(unmatchedMarkedReply())
+        fixture.holder.onImportTextChange("edited")
+        loadGate.countDown()
+        Thread.sleep(200)
+        assertEquals("edited", (fixture.holder.screen as ExchangeScreen.Importing).replyText)
+        assertFalse(fixture.holder.importAttemptActive)
+        assertTrue(fixture.holder.screen !is ExchangeScreen.ImportOutcomeScreen)
+    }
+
+    @Test
+    fun editBeforeTheValidationSettleDropsTheLateInputNotReady() {
+        // AC-1 (review): InputNotReady settlements are covered by the same
+        // attempt anchor.
+        val blocking = BlockingStructuralInputs().apply { notReady = true }
+        val fixture = newFixture(blockingStructural = blocking)
+        val reply = generatedReplyFixture(fixture)
+        blocking.gate = CountDownLatch(1)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        fixture.holder.onImportTextChange("edited")
+        blocking.gate!!.countDown()
+        Thread.sleep(200)
+        assertEquals("edited", (fixture.holder.screen as ExchangeScreen.Importing).replyText)
+        assertFalse(fixture.holder.importAttemptActive)
+    }
+
+    @Test
+    fun ctaSeamFailuresKeepTheSuccessStateOperable() {
+        // AC-3 (review): (a) non-CE throw, (b) CancellationException from
+        // inside the seam while the holder scope lives — both settle as an
+        // operable typed failure; (c) the retry then succeeds.
+        val fixture = newFixture()
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+
+        fixture.holder.connectRunOverride = { throw IllegalStateException("boom") }
+        fixture.holder.continueImport()
+        awaitNotContinuing(fixture.holder)
+        assertEquals(ExchangeStatus.Kind.CTA_START_FAILED, fixture.holder.status!!.kind)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        fixture.holder.connectRunOverride = { throw kotlinx.coroutines.CancellationException("seam ce") }
+        fixture.holder.continueImport()
+        awaitNotContinuing(fixture.holder)
+        assertEquals(ExchangeStatus.Kind.CTA_START_FAILED, fixture.holder.status!!.kind)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        fixture.holder.connectRunOverride = null
+        fixture.holder.continueImport()
+        awaitClosed(fixture.holder)
+    }
+
+    @Test
+    fun holderScopeCancellationDoesNotRequireAUiSettle() {
+        // AC-3 (review): cancelling the holder scope itself is not a failure
+        // of the seam — no UI settle is required (and none may corrupt state).
+        val fixture = newFixture()
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+        fixture.scope.cancel()
+        fixture.holder.continueImport()
+        Thread.sleep(100)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+        assertTrue("no unhandled failure may escape", fixture.unhandled.isEmpty())
+    }
+
+    @Test
+    fun aLateCtaSettleNeverAppliesToAReimportedIdenticalAttempt() {
+        // AC-3 ABA (review): the success state of an attempt that was closed
+        // and re-created from the SAME semantic reply must not be touched by
+        // the old attempt's settle (attempt tokens, not content identity).
+        val fixture = newFixture()
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        val successA = awaitImportSuccess(fixture.holder)
+
+        val releaseA = kotlinx.coroutines.CompletableDeferred<Unit>()
+        fixture.holder.connectRunOverride = {
+            releaseA.await()
+            ExchangeFlowStateHolder.ContinueOutcome.Success(null)
+        }
+        fixture.holder.continueImport()
+        assertTrue(fixture.holder.importContinuationActive)
+
+        fixture.holder.close()
+        fixture.holder.import(reply)
+        val successB = awaitImportSuccess(fixture.holder)
+        assertTrue("the re-import must number a fresh attempt", successB.attemptToken != successA.attemptToken)
+
+        releaseA.complete(Unit)
+        Thread.sleep(200)
+        val still = fixture.holder.screen as ExchangeScreen.ImportSuccess
+        assertEquals("the old attempt's settle must not touch the new attempt", successB.attemptToken, still.attemptToken)
+        assertFalse(still.continuing)
+    }
+
+    @Test
+    fun discardedReplyCanBeImportedAgainWhileTheSessionLives() {
+        // AC-5 (review): the discard round trip — the same reply imports
+        // successfully again because the session stays valid.
+        val fixture = newFixture()
+        val reply = generatedReplyFixture(fixture)
+        fixture.holder.openImport()
+        fixture.holder.import(reply)
+        awaitImportSuccess(fixture.holder)
+        fixture.holder.discardImport()
+        assertNotNull(fixture.store.session)
+        fixture.holder.import(reply)
+        awaitImportSuccess(fixture.holder)
+    }
+
+    @Test
+    fun strategyGatePredicatesFollowTheAcceptedEntryPolicy() {
+        // AC-3/AC-5 (review): the entry-specific truth table the hosting
+        // wiring uses — run-in freezes writes for the whole attempt; idle
+        // only while the continuation runs; suppression matches.
+        assertTrue(strategyWriteStartBlockedFor(runInEntry = true, importAttemptActive = true, importContinuationActive = false))
+        assertFalse(strategyWriteStartBlockedFor(runInEntry = false, importAttemptActive = true, importContinuationActive = false))
+        assertTrue(strategyWriteStartBlockedFor(runInEntry = false, importAttemptActive = false, importContinuationActive = true))
+        assertTrue(strategyWriteStartBlockedFor(runInEntry = true, importAttemptActive = false, importContinuationActive = true))
+        assertFalse(strategyWriteStartBlockedFor(runInEntry = false, importAttemptActive = false, importContinuationActive = false))
+
+        assertTrue(strategyRestartSuppressedFor(runInEntry = true, importAttemptActive = true, importContinuationActive = false))
+        assertFalse(strategyRestartSuppressedFor(runInEntry = false, importAttemptActive = true, importContinuationActive = false))
+        assertTrue(strategyRestartSuppressedFor(runInEntry = false, importAttemptActive = false, importContinuationActive = true))
+        assertTrue(strategyRestartSuppressedFor(runInEntry = true, importAttemptActive = true, importContinuationActive = true))
+        assertFalse(strategyRestartSuppressedFor(runInEntry = false, importAttemptActive = false, importContinuationActive = false))
+    }
+
+    @Test
+    fun idleStrategyCommitKeepsTheRunIdleAndTheCtaThenStartsTheRun() {
+        // AC-3/AC-5 integration (review): idle ImportSuccess + committed
+        // strategy + no restart needed -> writer releases to Idle, the
+        // success state stays, and the CTA then starts the run once.
+        val fixture = newFixture(detectionReady = false)
+        val restarts = java.util.concurrent.atomic.AtomicInteger()
+        val arbiter = app.lawnchair.organizer.ui.StrategyWriteArbiter(
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            ioDispatcher = Dispatchers.Unconfined,
+            mainDispatcher = Dispatchers.Unconfined,
+            writeStrategy = { true },
+            restartRun = { restarts.incrementAndGet() },
+            writeStartBlocked = {
+                strategyWriteStartBlockedFor(false, fixture.holder.importAttemptActive, fixture.holder.importContinuationActive)
+            },
+            restartSuppressed = {
+                strategyRestartSuppressedFor(false, fixture.holder.importAttemptActive, fixture.holder.importContinuationActive)
+            },
+            restartNeeded = { false },
+        )
+        fixture.holder.strategyArbiterBusy = { arbiter.busy }
+
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+
+        arbiter.onStrategySelected(app.lawnchair.organizer.planning.StrategyId("other"))
+        assertEquals("an idle commit must not restart a run", 0, restarts.get())
+        assertEquals(app.lawnchair.organizer.ui.StrategyWriteArbiter.State.IDLE, arbiter.state)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        fixture.holder.continueImport()
+        awaitClosed(fixture.holder)
+        assertEquals("exactly one run start", 1, fixture.application.detectionCalls)
+    }
+
+    @Test
+    fun ctaIsRefusedWhileTheStrategyArbiterIsWriting() {
+        // AC-3 (review): the write window is a real busy state — the CTA is
+        // refused while the arbiter is writing, then succeeds after release.
+        val fixture = newFixture(detectionReady = false)
+        val writeGate = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        val arbiter = app.lawnchair.organizer.ui.StrategyWriteArbiter(
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            ioDispatcher = Dispatchers.Unconfined,
+            mainDispatcher = Dispatchers.Unconfined,
+            writeStrategy = { writeGate.await() },
+            restartRun = { error("no restart in this fixture") },
+            writeStartBlocked = { false },
+            restartSuppressed = { false },
+            restartNeeded = { false },
+        )
+        fixture.holder.strategyArbiterBusy = { arbiter.busy }
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+
+        arbiter.onStrategySelected(app.lawnchair.organizer.planning.StrategyId("other"))
+        assertTrue(arbiter.busy)
+        fixture.holder.continueImport()
+        assertEquals(ExchangeStatus.Kind.CTA_STRATEGY_BUSY, fixture.holder.status!!.kind)
+        assertFalse(fixture.holder.importContinuationActive)
+
+        writeGate.complete(true)
+        assertFalse(arbiter.busy)
+        fixture.holder.continueImport()
+        awaitClosed(fixture.holder)
+    }
+
+    @Test
+    fun ctaGateRefusalsKeepTheSuccessStateAndAllowRetry() {
+        // AC-3 (audit D-2): Busy / NotAttachable settle with the typed
+        // guidance, release the continuing flag and keep the success state;
+        // the eventual success settles away the transient guidance.
+        val fixture = newFixture(detectionReady = true)
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+
+        fixture.holder.connectRunOverride = { ExchangeFlowStateHolder.ContinueOutcome.Busy }
+        fixture.holder.continueImport()
+        awaitNotContinuing(fixture.holder)
+        assertEquals(ExchangeStatus.Kind.RUN_BUSY, fixture.holder.status!!.kind)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        fixture.holder.connectRunOverride = { ExchangeFlowStateHolder.ContinueOutcome.NotAttachable }
+        fixture.holder.continueImport()
+        awaitNotContinuing(fixture.holder)
+        assertEquals(ExchangeStatus.Kind.RUN_BUSY, fixture.holder.status!!.kind)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        fixture.holder.connectRunOverride = null
+        fixture.holder.continueImport()
+        awaitClosed(fixture.holder)
+        assertNull("the settled CTA clears the transient guidance", fixture.holder.status)
+    }
+
+    @Test
+    fun aStartedRunIdMismatchSettlesAsFailureNotSuccess() {
+        // AC-3 (audit D-3): the success settle applies only while the started
+        // run still matches the live selection surface.
+        val fixture = newFixture(detectionReady = true)
+        fixture.run.start()
+        val generated = fixture.controller.generateForSelection(
+            PrivacyTier.EXTERNAL_REDACTED,
+            listOf(scopedCandidate),
+            mapOf(scopedCandidate to "c1"),
+        ) as ExchangeGenerationResult.Generated
+        fixture.holder.openImport()
+        fixture.holder.import(scopedReplyFor(generated.session))
+        awaitImportSuccess(fixture.holder)
+
+        fixture.holder.connectRunOverride = {
+            ExchangeFlowStateHolder.ContinueOutcome.Success(
+                app.lawnchair.organizer.application.public.RunId("ffffffffffffffffffffffffffffffff"),
+            )
+        }
+        fixture.holder.continueImport()
+        awaitNotContinuing(fixture.holder)
+        assertEquals(ExchangeStatus.Kind.CTA_START_FAILED, fixture.holder.status!!.kind)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+    }
+
+    @Test
+    fun discardIsRefusedWhileTheCtaIsContinuing() {
+        // AC-5 (audit D-4): the discard guard itself, not only the disabled
+        // button: a continuing discard is a no-op until the seam settles.
+        val fixture = newFixture(detectionReady = true)
+        fixture.holder.openImport()
+        fixture.holder.import(generatedReplyFixture(fixture))
+        awaitImportSuccess(fixture.holder)
+
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        fixture.holder.connectRunOverride = {
+            release.await()
+            ExchangeFlowStateHolder.ContinueOutcome.Success(null)
+        }
+        fixture.holder.continueImport()
+        assertTrue(fixture.holder.importContinuationActive)
+
+        fixture.holder.discardImport()
+        assertTrue("the continuing discard is refused", fixture.holder.importContinuationActive)
+        assertTrue(fixture.holder.screen is ExchangeScreen.ImportSuccess)
+
+        release.complete(Unit)
+        awaitClosed(fixture.holder)
+    }
+
+    @Test
+    fun importSuccessStateStringsExistInBothLocales() {
+        // Audit D-7: the #328 surface copy is the ja正本 AND the en
+        // translation — both resource files must declare every string and
+        // plural.
+        val names = listOf(
+            "exchange_import_success_title",
+            "exchange_import_success_warning_title",
+            "exchange_import_not_applied",
+            "exchange_import_cta_idle",
+            "exchange_import_cta_run_in",
+            "exchange_import_discard",
+            "exchange_import_discard_confirm_title",
+            "exchange_import_discard_confirm_body",
+            "exchange_import_discard_confirm_confirm",
+            "exchange_import_discarded_guidance",
+            "exchange_import_summary_global_minimize",
+            "exchange_import_strategy_busy",
+            "exchange_import_cta_strategy_busy",
+            "exchange_import_cta_failed",
+            "exchange_start_frozen_import",
+            "exchange_strategy_frozen_import",
+            "exchange_strategy_frozen_continuing",
+        )
+        val plurals = listOf(
+            "exchange_import_summary_recognized",
+            "exchange_import_summary_no_judgment",
+            "exchange_import_summary_scope_candidates",
+            "exchange_import_summary_priority",
+            "exchange_import_summary_group",
+            "exchange_import_summary_placement",
+            "exchange_import_summary_keep",
+        )
+        for (localeDir in listOf("values", "values-ja")) {
+            val xml = lawnchairStringsXml(localeDir).readText()
+            for (name in names) {
+                assertTrue("$name must exist in $localeDir", xml.contains("name=\"$name\""))
+            }
+            for (name in plurals) {
+                assertTrue("plurals $name must exist in $localeDir", xml.contains("<plurals name=\"$name\">"))
+            }
+        }
     }
 
     /**

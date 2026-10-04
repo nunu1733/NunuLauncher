@@ -421,7 +421,6 @@
     <string name="exchange_import_result_unknown">回答を利用できませんでした。</string>
     <string name="exchange_import_retry_hint">AIに最終JSONを```jsonコードブロック1つで再送してもらい、再度取り込んでください。</string>
     <string name="exchange_import_retry">再取り込み</string>
-    <string name="exchange_import_accepted">整理案を検証しました。プレビューを生成します…</string>
     <string name="exchange_run_busy">整理が実行中のため取り込めません。終了後に再度取り込んでください。</string>
     <string name="exchange_import_from_clipboard">クリップボードから読み込む</string>
     <string name="exchange_import_fallback_toggle">詳細 / うまく読み込めない場合</string>
@@ -466,5 +465,45 @@
     <string name="exchange_scoped_freeze_notice">AI依頼の作成中はアプリの選択を変更できません。取り消すと再編集できます。</string>
     <plurals name="exchange_scope_intent_count">
         <item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するにはそれらを選択してください。</item>
+    </plurals>
+
+    <!-- Issue #328: 取り込み成功状態とtyped案内。 -->
+    <string name="exchange_import_success_title">提案を取り込みました</string>
+    <string name="exchange_import_success_warning_title">提案を取り込みました (判断なしの項目があります)</string>
+    <string name="exchange_import_not_applied">まだホーム画面には適用されていません。</string>
+    <string name="exchange_import_cta_idle">この提案で整理を進める</string>
+    <string name="exchange_import_cta_run_in">選択に戻って整理を確定する</string>
+    <string name="exchange_import_discard">破棄して閉じる</string>
+    <string name="exchange_import_discard_confirm_title">取り込みを破棄しますか?</string>
+    <string name="exchange_import_discard_confirm_body">取り込んだ提案は保存されません。依頼が有効な間は、同じ回答を再度取り込めます。</string>
+    <string name="exchange_import_discard_confirm_confirm">破棄</string>
+    <string name="exchange_import_discarded_guidance">取り込みを破棄しました。依頼が有効な間は、同じ回答を再度取り込めます。</string>
+    <string name="exchange_import_summary_global_minimize">全体方針: 現状の配置をなるべく維持する</string>
+    <string name="exchange_import_strategy_busy">整理方法を変更しています。完了後に再度取り込んでください。</string>
+    <string name="exchange_import_cta_strategy_busy">整理方法を変更しています。完了後に再度お試しください。</string>
+    <string name="exchange_import_cta_failed">整理を開始できませんでした。もう一度お試しください。</string>
+    <string name="exchange_start_frozen_import">取り込みを確認中のため、整理を開始できません。</string>
+    <string name="exchange_strategy_frozen_import">取り込みを確認中のため、整理方法は変更できません。</string>
+    <string name="exchange_strategy_frozen_continuing">整理を開始しているため、整理方法は変更できません。</string>
+    <plurals name="exchange_import_summary_recognized">
+        <item quantity="other">提案から%1$d件の希望を認識しました。</item>
+    </plurals>
+    <plurals name="exchange_import_summary_no_judgment">
+        <item quantity="other">判断なしの項目が%1$d件あります (希望なしとして整理されます)。</item>
+    </plurals>
+    <plurals name="exchange_import_summary_scope_candidates">
+        <item quantity="other">この依頼にはホームに未配置のアプリ%1$d件が含まれます。</item>
+    </plurals>
+    <plurals name="exchange_import_summary_priority">
+        <item quantity="other">優先度の指定: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_group">
+        <item quantity="other">グループの希望: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_placement">
+        <item quantity="other">配置先の希望: %1$d件</item>
+    </plurals>
+    <plurals name="exchange_import_summary_keep">
+        <item quantity="other">位置の維持の希望: %1$d件</item>
     </plurals>
 </resources>

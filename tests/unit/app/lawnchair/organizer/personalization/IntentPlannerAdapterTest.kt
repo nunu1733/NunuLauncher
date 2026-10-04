@@ -46,7 +46,7 @@ class IntentPlannerAdapterTest {
         availability = Availability.AVAILABLE,
     )
 
-    private fun validatedIntent(): ValidatedPersonalizedIntent {
+    private fun validatedIntent(minimizeMovement: Boolean? = null): ValidatedPersonalizedIntent {
         val snapshot = LayoutSnapshot(
             app.lawnchair.organizer.planning.RevisionId("rev"),
             DeviceCapabilities(4, 6, 5, 3, 5, Orientation.PORTRAIT),
@@ -66,6 +66,7 @@ class IntentPlannerAdapterTest {
                 ItemIntent(ref = refs[0], importance = Importance.HIGH, pageAffinity = 0),
                 ItemIntent(ref = refs[1], preserve = true),
             ),
+            globalPreference = minimizeMovement?.let { GlobalPreference(minimizeMovement = it) },
         )
         val validation = IntentValidator.validate(
             intent = intent,
@@ -91,6 +92,26 @@ class IntentPlannerAdapterTest {
         // The projection carries ordering bias only; no coordinates or DB rows.
         projection.itemPreferences.forEach { preference ->
             assertTrue(preference.role == ExportItemRole.APP_OR_SHORTCUT)
+        }
+    }
+
+    @Test
+    fun summaryGlobalOrientationMatchesThePlannerProjection() {
+        // Issue #328 AC-4 cross-contract (review): the success surface's
+        // global orientation line and the planner-effective projection must
+        // be the same semantic value for true / false / absent.
+        for (minimizeMovement in listOf(true, false, null)) {
+            val validated = validatedIntent(minimizeMovement)
+            val projection = IntentPlannerAdapter.project(validated)
+            val summary = app.lawnchair.organizer.personalization.exchange.exchangeImportSummary(
+                validated.completed,
+                scopeCandidateCount = 0,
+            )
+            assertEquals(
+                "summary.minimizeMovement must equal the planner projection for $minimizeMovement",
+                projection.globalMinimizeMovement,
+                summary.minimizeMovement,
+            )
         }
     }
 
