@@ -292,15 +292,37 @@ fun ManualOrganizationPreferences(
                     )
                 }
 
-                ManualOrganizationRun.State.Stale -> item {
-                    FocusTargetText(
-                        text = stringResource(R.string.manual_organization_stale),
-                        focusRequester = focusRequester,
-                    )
-                    ClickablePreference(
-                        label = stringResource(R.string.manual_organization_recapture),
-                        onClick = { execute { coordinator.start(trigger) } },
-                    )
+                is ManualOrganizationRun.State.Stale -> {
+                    // Issue #210: the stale surface must report the outcome of
+                    // the blocked apply attempt, not only the layout change:
+                    // nothing was applied, the reviewed proposal was discarded,
+                    // and recapture starts a new review from the current layout.
+                    item {
+                        FocusTargetText(
+                            text = stringResource(R.string.manual_organization_stale_outcome),
+                            focusRequester = focusRequester,
+                        )
+                    }
+                    item {
+                        Text(
+                            text = when (currentState.origin) {
+                                ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED ->
+                                    stringResource(R.string.manual_organization_stale_proposal_discarded)
+
+                                ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW ->
+                                    stringResource(R.string.manual_organization_stale_proposal_not_reviewed)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                    item {
+                        ClickablePreference(
+                            label = stringResource(R.string.manual_organization_recapture),
+                            subtitle = stringResource(R.string.manual_organization_recapture_summary),
+                            onClick = { execute { coordinator.start(trigger) } },
+                        )
+                    }
                 }
 
                 is ManualOrganizationRun.State.Applied -> {

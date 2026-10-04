@@ -51,6 +51,7 @@ import app.lawnchair.organizer.application.public.PreviewFolderRef
 import app.lawnchair.organizer.application.public.PreviewLabel
 import app.lawnchair.organizer.application.public.PreviewPlacementIdentity
 import app.lawnchair.organizer.application.public.PreviewPosition
+import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.CanonicalItemKind
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
@@ -1223,6 +1224,10 @@ class ManualOrganizationPreferencesInstrumentationTest {
             Configuration().apply { setLocale(Locale.JAPAN) },
         )
         val addedPreviewStrings = listOf(
+            R.string.manual_organization_stale_outcome,
+            R.string.manual_organization_stale_proposal_discarded,
+            R.string.manual_organization_stale_proposal_not_reviewed,
+            R.string.manual_organization_recapture_summary,
             R.string.manual_organization_preview_details_unavailable,
             R.string.manual_organization_changes_heading,
             R.string.manual_organization_group_moved,
@@ -1344,7 +1349,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
         staleRunner.start()
         awaitPreview(staleRunner, context)
         staleRunner.confirm()
-        composeRule.waitUntil(5_000) { staleRunner.state == ManualOrganizationRun.State.Stale }
+        composeRule.waitUntil(5_000) { staleRunner.state is ManualOrganizationRun.State.Stale }
         captureReviewScreenshot(context, "stale")
 
         val recoveryApplication = FakeApplication().apply {
@@ -1370,6 +1375,69 @@ class ManualOrganizationPreferencesInstrumentationTest {
             (recoveryRunner.state as? ManualOrganizationRun.State.Applied)?.result is ApplyResult.Unresolved
         }
         captureReviewScreenshot(context, "recovery-failure")
+    }
+
+    @Test
+    fun staleApplyAttemptExplainsOutcomeAndNextStep() {
+        // Issue #210: a stale apply attempt must report that nothing was
+        // applied, that the reviewed proposal was discarded, and what the
+        // recapture action does — from the screen wording alone.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication().apply {
+            applyResult = ApplyResult.Rejected(RunId(RUN_ID), PreWriteRejection.STALE_REVISION)
+        }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        runner.start()
+        awaitPreview(runner, context)
+        runner.confirm()
+
+        assertEquals(
+            ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED),
+            runner.state,
+        )
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_outcome)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_proposal_discarded)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_recapture)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_recapture_summary)).assertIsDisplayed()
+    }
+
+    @Test
+    fun staleDetectionBeforeReviewDoesNotClaimReviewedProposalWasDiscarded() {
+        // Issue #210: when staleness is detected before the proposal was ever
+        // shown, the detail must say the proposal was discarded before review,
+        // not claim a reviewed proposal was discarded.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = FakeApplication()
+        application.inspectPlanOverride = { _, _ -> PlanPreviewResult.Stale }
+        val runner = ManualOrganizationRun(
+            application,
+            OrganizationPlanner { planningResult() },
+        )
+
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+
+        runner.start()
+
+        assertEquals(
+            ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW),
+            runner.state,
+        )
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_outcome)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_stale_proposal_not_reviewed)).assertIsDisplayed()
     }
 
     @Test

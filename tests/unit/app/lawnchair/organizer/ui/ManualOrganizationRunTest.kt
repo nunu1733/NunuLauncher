@@ -287,7 +287,11 @@ class ManualOrganizationRunTest {
         runner.start(Trigger.ONBOARDING_PROPOSAL)
         runner.confirm()
 
-        assertEquals(ManualOrganizationRun.State.Stale, runner.state)
+        // Issue #210: a blocked apply attempt carries the apply-blocked origin.
+        assertEquals(
+            ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED),
+            runner.state,
+        )
         assertEquals(
             setOf(Trigger.ONBOARDING_PROPOSAL),
             application.events.mapNotNull { it.trigger }.toSet(),
@@ -504,7 +508,11 @@ class ManualOrganizationRunTest {
 
         runner.start()
 
-        assertEquals(ManualOrganizationRun.State.Stale, runner.state)
+        // Issue #210: staleness detected before the proposal was ever shown.
+        assertEquals(
+            ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.DETECTED_BEFORE_REVIEW),
+            runner.state,
+        )
         assertEquals(0, application.materializeCalls)
         assertEquals(0, application.applyCalls)
         assertEquals(
@@ -592,7 +600,10 @@ class ManualOrganizationRunTest {
         runner.start()
         runner.confirm()
 
-        assertEquals(ManualOrganizationRun.State.Stale, runner.state)
+        assertEquals(
+            ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED),
+            runner.state,
+        )
         assertEquals(0, application.applyCalls)
         assertEquals(app.lawnchair.organizer.diagnostics.model.PhaseCode.APPLY_REJECTED, application.events.last().phase)
     }

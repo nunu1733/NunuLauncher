@@ -373,7 +373,12 @@ class ManualOrganizationProductionE2EInstrumentationTest {
 
         run.confirm()
 
-        assertEquals(ManualOrganizationRun.State.Stale, run.state)
+        // Issue #210: the blocked apply attempt is reported with the
+        // apply-blocked origin while the DB stays untouched.
+        assertEquals(
+            ManualOrganizationRun.State.Stale(ManualOrganizationRun.StaleOrigin.APPLY_BLOCKED),
+            run.state,
+        )
         assertEquals(
             "Stale confirmation must not apply a second Launcher write",
             expectedAfterMutation,
