@@ -2,10 +2,12 @@
 
 > Status: Implemented for manual/onboarding MVP; package-event incremental placement is Later/deferred
 > Reviewed: 2026-08-23
+> Revised: 2026-09-19 — 入口表示を [organizer-to-be-ux.md](./organizer-to-be-ux.md)（Organizer TO-BE IA/navigation、accepted）のとおりOrganizer hub経由へ改訂し、§3へdurable statusからの復元導線（D-15、実装は後続Issue）を予定として追記。既存の安全契約規定（D-004/D-005、§4/§5/§6）は変更していない
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: FR-004, FR-006, FR-007, FR-008, FR-009, NFR-001, NFR-009, NFR-011
 > Decision gates: D-004 (trigger), D-005 (safe UX)
 > Primary scope/dependency record: [Issue #4](https://github.com/nunu1733/NunuLauncher/issues/4); package-event MVP disposition: [Issue #85](https://github.com/nunu1733/NunuLauncher/issues/85) (Option B)
+> IA/navigation ownership: Organizerの情報設計・遷移・data request timingの正本は [organizer-to-be-ux.md](./organizer-to-be-ux.md)（D-01〜D-17）へ移った。本書はtrigger policy（D-004）とpreview/confirmation/recoveryの安全契約（D-005）の正本であり続ける
 
 ## 1. Purpose and safety boundary
 
@@ -42,6 +44,11 @@ completeなrun/recovery/result UX、Issue #13のsafe-apply criteriaが必要で�
 「変更なし」と表示し、書き込まない。full-layout change は常に preview と
 explicit confirmation が必須である。
 
+入口（TO-BE）: userは設定 → Home screen → Organizer（Organizer hub）から整理を開始する。
+hubの「整理を開始」から方法選択の前置き面に進み、「そのまま整理」を選んだ時点で
+run admission（RUN lease取得）が発生する（[organizer-to-be-ux.md](./organizer-to-be-ux.md)
+D-01/D-03/D-05、§5.2 primary entry）。state machineと本節の契約は変更しない。
+
 ```mermaid
 stateDiagram-v2
     [*] --> ManualStart: explicit user start
@@ -75,6 +82,11 @@ layout、settings、target set を変更しない。user が「review organizati
 遷移する。従って reject、stale、checkpoint failure、apply/verify failure、recovery、
 cancel、process-death path もすべて §2.1 と §5 を継承する。retry は常に新しい
 Capture から始め、古い preview/plan を再利用しない。
+
+入口（TO-BE）: 提案はfloating surface（T-19）に現れ、「確認」は方法選択の前置きを
+省略してrun admissionへ直行する（方法は「そのまま整理」固定）。「後で」を選んだ場合の
+hintはOrganizer hubの入口を案内する（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-16）。
+§2.1 state machine への遷移とoutcome契約（defer=次cold start再表示 / skip=永続）は変わらない。
 
 ```mermaid
 stateDiagram-v2
@@ -146,6 +158,11 @@ Issue #13 の ownership である。UX は次を保証する。
 
 - verified recovery point がなければ apply しない。
 - retention 中は result/recovery surface から user が recovery action に到達できる。
+- **予定（TO-BE、実装は後続Issue）**: durable status（Organizer hub status cardの「復元できる提案あり」）から
+  検査 → 復元確認 → 復元への導線を接続する（cold process起点を含む）。
+  これは [spec 271](../../specs/271-organizer-durable-status-projection/spec.md) がNon-goalsとしたfollow-upであり、
+  新specを要求する（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-15）。接続までの間は上記の
+  現行規則（result/recovery surface からの到達）が契約である。
 - recovery 前に戻る対象と失う可能性のある後続変更を示す。
 - export backup は immediate recovery point の代替ではない。
 - 保存先や retention 数値を本書で固定しない。
