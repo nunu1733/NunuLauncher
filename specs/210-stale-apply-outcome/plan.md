@@ -1,7 +1,7 @@
 # Plan: Issue #210 stale apply outcome
 
 > Spec: [spec.md](./spec.md)
-> Status: proposed — owner review は [PR #240](https://github.com/nunu1733/NunuLauncher/pull/240) で実施する (承認後に implemented へ進める)
+> Status: implemented ([PR #240](https://github.com/nunu1733/NunuLauncher/pull/240) を merge commit `38f9639163` で squash merge。owner review での承認済み)
 
 ## 現在の code の根拠
 
