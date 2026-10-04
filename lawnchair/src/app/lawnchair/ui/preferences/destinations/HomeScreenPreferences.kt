@@ -16,24 +16,16 @@
 
 package app.lawnchair.ui.preferences.destinations
 
-import android.content.Intent
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.lawnchair.LawnchairApp
 import app.lawnchair.data.iconoverride.IconOverrideRepository
 import app.lawnchair.nexuslauncher.OverlayCallbackImpl
-import app.lawnchair.organizer.integration.UsageAccess
 import app.lawnchair.preferences.getAdapter
 import app.lawnchair.preferences.preferenceManager
 import app.lawnchair.preferences2.preferenceManager2
@@ -54,6 +46,7 @@ import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
 import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.util.collectAsStateBlocking
@@ -106,6 +99,14 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.manual_organization_title),
                 destination = HomeScreenManualOrganization(),
                 subtitle = stringResource(id = R.string.manual_organization_summary),
+            )
+            // Issue #366: the Organizer hub (T-01) — the persistent organizing
+            // workspace. The rows below stay in place for the staged
+            // migration (phase (a)); moving or removing them is owned by #367.
+            NavigationActionPreference(
+                label = stringResource(id = R.string.organizer_hub_title),
+                destination = HomeScreenOrganizer,
+                subtitle = stringResource(id = R.string.organizer_hub_summary),
             )
         }
         PreferenceGroup(heading = stringResource(id = R.string.home_screen_actions)) {
@@ -203,38 +204,10 @@ fun HomeScreenPreferences(
         // point (usage access app-op) with rationale, and the launcher-origin
         // recording toggle. Organizing works fully without the permission;
         // the granted state is shown as text (spec #203 U-2, accessibility).
+        // Issue #366: the rows are shared with the Organizer hub materials so
+        // both surfaces operate the same preference and app-op state.
         PreferenceGroup(heading = stringResource(id = R.string.organizer_personalization_section)) {
-            SwitchPreference(
-                adapter = prefs2.organizerPersonalizationRecording.getAdapter(),
-                label = stringResource(id = R.string.organizer_personalization_recording_label),
-                description = stringResource(id = R.string.organizer_personalization_recording_description),
-            )
-            // Spec #203 U-2: the state is re-read on every resume so returning
-            // from the system usage-access settings refreshes the row. The
-            // predicate is the shared app-op semantics (2026-09-15 re-review
-            // Blocking 1).
-            val lifecycleOwner = LocalLifecycleOwner.current
-            var usageAccessGranted by remember { mutableStateOf(UsageAccess.isGranted(context)) }
-            DisposableEffect(lifecycleOwner) {
-                val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME) usageAccessGranted = UsageAccess.isGranted(context)
-                }
-                lifecycleOwner.lifecycle.addObserver(observer)
-                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-            }
-            ClickablePreference(
-                label = stringResource(id = R.string.organizer_personalization_usage_access_label),
-                subtitle = stringResource(
-                    id = if (usageAccessGranted) {
-                        R.string.organizer_personalization_usage_access_granted
-                    } else {
-                        R.string.organizer_personalization_usage_access_not_granted
-                    },
-                ),
-                onClick = {
-                    context.startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                },
-            )
+            OrganizerUsageMaterialRows()
         }
         PreferenceGroup(heading = stringResource(id = R.string.popup_menu)) {
             SwitchPreference(

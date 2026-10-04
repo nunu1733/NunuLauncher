@@ -1002,6 +1002,11 @@
     <string name="organizer_diagnostics_export_subtitle">Export organizer diagnostic journal to a file</string>
     <string name="organizer_diagnostics_export_success">Diagnostics exported successfully</string>
     <string name="organizer_diagnostics_export_error">Failed to export diagnostics</string>
+    <!-- Issue #366: Organizer hub (T-01), the persistent organizing workspace -->
+    <string name="organizer_hub_title">Organizer</string>
+    <string name="organizer_hub_summary">Organizing status, starting a review, and materials in one place.</string>
+    <string name="organizer_hub_label">Organizer</string>
+    <string name="organizer_hub_materials_heading">Organizing materials</string>
     <!-- Issue #203: organizer personalization signals -->
     <string name="organizer_personalization_section">Personalization</string>
     <string name="organizer_personalization_recording_label">Record app launches for organizing</string>
