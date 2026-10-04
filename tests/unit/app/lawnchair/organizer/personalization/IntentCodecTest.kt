@@ -14,7 +14,7 @@ class IntentCodecTest {
         exportId: String = "export-1",
         items: String = """[{"ref":"ref-a","importance":"HIGH"}]""",
         extra: String = "",
-    ): String = """{"schemaVersion":"personalized-intent-v2","exportId":"$exportId","itemIntents":$items$extra}"""
+    ): String = """{"schemaVersion":"personalized-intent-v3","exportId":"$exportId","itemIntents":$items$extra}"""
 
     @Test
     fun roundTripPreservesTheTypedIntent() {
@@ -51,6 +51,29 @@ class IntentCodecTest {
     }
 
     @Test
+    fun savedV1AndV2DocumentsAreRejectedFailClosed() {
+        // Issue #330 (spec 330 D-3): no dual-version runtime — the v3 constant
+        // alone gates decode, so every older document is a typed mismatch.
+        for (oldVersion in listOf("personalized-intent-v1", "personalized-intent-v2")) {
+            val bytes = """{"schemaVersion":"$oldVersion","exportId":"e","itemIntents":[]}""".encodeToByteArray()
+            assertEquals(
+                "old version: $oldVersion",
+                IntentValidationFailure.SchemaMismatch,
+                (IntentCodec.decode(bytes) as IntentDecodeResult.Failure).failure,
+            )
+        }
+    }
+
+    @Test
+    fun encodeWritesTheCurrentSchemaVersion() {
+        // Issue #330 (AC-6): the producer side advertises v3.
+        val encoded = IntentCodec.encode(
+            PersonalizedIntentV1(exportId = "export-1", itemIntents = emptyList()),
+        ).decodeToString()
+        assertTrue(encoded.contains("\"schemaVersion\":\"personalized-intent-v3\""))
+    }
+
+    @Test
     fun malformedJsonIsRejectedWithoutPartialApply() {
         val bytes = "{not json".encodeToByteArray()
         assertEquals(IntentValidationFailure.SchemaMismatch, (IntentCodec.decode(bytes) as IntentDecodeResult.Failure).failure)
@@ -58,18 +81,18 @@ class IntentCodecTest {
 
     @Test
     fun unknownFieldsAreSchemaMismatches() {
-        val bytes = """{"schemaVersion":"personalized-intent-v2","exportId":"e","itemIntents":[],"unexpected":1}"""
+        val bytes = """{"schemaVersion":"personalized-intent-v3","exportId":"e","itemIntents":[],"unexpected":1}"""
             .encodeToByteArray()
         assertEquals(IntentValidationFailure.SchemaMismatch, (IntentCodec.decode(bytes) as IntentDecodeResult.Failure).failure)
     }
 
     @Test
     fun schemaExternalAuthorityExpressionsAreForbiddenContent() {
-        val bytes = """{"schemaVersion":"personalized-intent-v2","exportId":"e","itemIntents":[],"x":0,"y":3}"""
+        val bytes = """{"schemaVersion":"personalized-intent-v3","exportId":"e","itemIntents":[],"x":0,"y":3}"""
             .encodeToByteArray()
         assertEquals(IntentValidationFailure.ForbiddenContent, (IntentCodec.decode(bytes) as IntentDecodeResult.Failure).failure)
 
-        val script = """{"schemaVersion":"personalized-intent-v2","exportId":"e","itemIntents":[],"script":"rm -rf"}"""
+        val script = """{"schemaVersion":"personalized-intent-v3","exportId":"e","itemIntents":[],"script":"rm -rf"}"""
             .encodeToByteArray()
         assertEquals(IntentValidationFailure.ForbiddenContent, (IntentCodec.decode(script) as IntentDecodeResult.Failure).failure)
     }
@@ -80,7 +103,7 @@ class IntentCodecTest {
         assertEquals(IntentValidationFailure.Oversize, (IntentCodec.decode(big) as IntentDecodeResult.Failure).failure)
 
         val tooManyEntries = buildString {
-            append("""{"schemaVersion":"personalized-intent-v2","exportId":"e","itemIntents":[""")
+            append("""{"schemaVersion":"personalized-intent-v3","exportId":"e","itemIntents":[""")
             repeat(ContextExportContract.MAX_INTENT_ENTRIES + 1) { index ->
                 if (index > 0) append(",")
                 append("""{"ref":"r$index"}""")
@@ -95,14 +118,14 @@ class IntentCodecTest {
 
     @Test
     fun invalidEnumValuesAreTypedFailures() {
-        val bytes = """{"schemaVersion":"personalized-intent-v2","exportId":"e","itemIntents":[{"ref":"r","importance":"URGENT"}]}"""
+        val bytes = """{"schemaVersion":"personalized-intent-v3","exportId":"e","itemIntents":[{"ref":"r","importance":"URGENT"}]}"""
             .encodeToByteArray()
         assertEquals(IntentValidationFailure.InvalidEnum, (IntentCodec.decode(bytes) as IntentDecodeResult.Failure).failure)
     }
 
     @Test
     fun outOfRangeConfidenceIsRejected() {
-        val bytes = """{"schemaVersion":"personalized-intent-v2","exportId":"e","itemIntents":[],"confidence":150}"""
+        val bytes = """{"schemaVersion":"personalized-intent-v3","exportId":"e","itemIntents":[],"confidence":150}"""
             .encodeToByteArray()
         assertEquals(IntentValidationFailure.InvalidEnum, (IntentCodec.decode(bytes) as IntentDecodeResult.Failure).failure)
     }
@@ -110,7 +133,7 @@ class IntentCodecTest {
     @Test
     fun oversizedFreeTextIsRejected() {
         val longText = "a".repeat(ContextExportContract.MAX_GROUP_SEMANTIC_FREE_TEXT_CHARS + 1)
-        val bytes = """{"schemaVersion":"personalized-intent-v2","exportId":"e","itemIntents":[{"ref":"r","groupSemantic":{"freeText":"$longText"}}]}"""
+        val bytes = """{"schemaVersion":"personalized-intent-v3","exportId":"e","itemIntents":[{"ref":"r","groupSemantic":{"freeText":"$longText"}}]}"""
             .encodeToByteArray()
         assertEquals(IntentValidationFailure.Oversize, (IntentCodec.decode(bytes) as IntentDecodeResult.Failure).failure)
     }

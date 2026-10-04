@@ -11,7 +11,13 @@ import app.lawnchair.organizer.planning.ItemId
  * digest, internal `ItemId`s, DB row ids, package names, or raw usage times.
  */
 object ContextExportContract {
-    const val SCHEMA_VERSION = "personalization-context-v2"
+    /**
+     * Issue #330 (v3, spec 330 D-3): partial intent authoring — an unmentioned
+     * ref is completed to canonical unresolved; the v2 full-coverage rule is
+     * retired. Bumped together with [INTENT_SCHEMA_VERSION] because the export
+     * advertises the intent schema (spec 204 immutable semantic version rule).
+     */
+    const val SCHEMA_VERSION = "personalization-context-v3"
 
     /** V1 fixed capability set: the export always advertises all six. */
     val FIXED_CAPABILITIES: Set<IntentCapability> = setOf(
@@ -23,7 +29,8 @@ object ContextExportContract {
         IntentCapability.GLOBAL_PREFERENCE,
     )
 
-    const val INTENT_SCHEMA_VERSION = "personalized-intent-v2"
+    /** Issue #330 (v3): partial authoring; see [SCHEMA_VERSION]. */
+    const val INTENT_SCHEMA_VERSION = "personalized-intent-v3"
 
     // Content limits (spec 204 "content limits (V1)"). Overshoot is OVERSIZE.
     const val MAX_EXPORT_ITEMS = 512

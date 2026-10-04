@@ -119,18 +119,33 @@ class IntentValidatorTest {
     }
 
     @Test
-    fun partialResponsesViolateTheCoveragePartition() {
+    fun aPartialResponseIsAcceptedAsCanonicalUnresolvedOmission() {
+        // Issue #330 (v3, spec 330 D-1): a ref missing from both lists is no
+        // longer a coverage violation — it completes to canonical unresolved.
         val (built, structural) = buildState(listOf(app("a"), app("b", x = 1)))
         val refs = refsOf(built).values.toList()
-        // Missing: one ref appears neither in itemIntents nor unresolvedRefs.
         val missing = PersonalizedIntentV1(
             exportId = built.export.exportId,
             itemIntents = listOf(ItemIntent(ref = refs[0])),
         )
+        val validated = (validate(built, structural, missing) as IntentValidation.Validated).validated
         assertEquals(
-            IntentValidationFailure.IncompleteCoverage,
-            (validate(built, structural, missing) as IntentValidation.Failure).failure,
+            RefDecision.UnresolvedByOmission,
+            validated.completed.decisions.getValue(refs[1]),
         )
+        // A full-coverage document stays valid (v3 is a superset of v2).
+        val full = PersonalizedIntentV1(
+            exportId = built.export.exportId,
+            itemIntents = emptyList(),
+            unresolvedRefs = refs,
+        )
+        assertTrue(validate(built, structural, full) is IntentValidation.Validated)
+    }
+
+    @Test
+    fun coverageSplitViolationsAreStillRejected() {
+        val (built, structural) = buildState(listOf(app("a"), app("b", x = 1)))
+        val refs = refsOf(built).values.toList()
         // Overlap: the same ref in both collections.
         val overlapping = PersonalizedIntentV1(
             exportId = built.export.exportId,
@@ -140,6 +155,45 @@ class IntentValidatorTest {
         assertEquals(
             IntentValidationFailure.IncompleteCoverage,
             (validate(built, structural, overlapping) as IntentValidation.Failure).failure,
+        )
+        // Duplicate inside unresolvedRefs.
+        val duplicatedUnresolved = PersonalizedIntentV1(
+            exportId = built.export.exportId,
+            itemIntents = emptyList(),
+            unresolvedRefs = listOf(refs[0], refs[0]),
+        )
+        assertEquals(
+            IntentValidationFailure.IncompleteCoverage,
+            (validate(built, structural, duplicatedUnresolved) as IntentValidation.Failure).failure,
+        )
+    }
+
+    @Test
+    fun bareEntryWithAnUnknownRefIsStillUnknownRef() {
+        // Issue #330 (spec 330 D-6): a bare entry validates like any authored
+        // entry — normalization to unresolved happens after validation, so a
+        // fabricated ref is never accepted through the bare form.
+        val (built, structural) = buildState(listOf(app("a")))
+        val intent = PersonalizedIntentV1(
+            exportId = built.export.exportId,
+            itemIntents = listOf(ItemIntent(ref = "ghost")),
+        )
+        assertEquals(
+            IntentValidationFailure.UnknownRef("ghost"),
+            (validate(built, structural, intent) as IntentValidation.Failure).failure,
+        )
+    }
+
+    @Test
+    fun aFullyOmittedIntentIsAccepted() {
+        // Issue #330 (v3, spec 330 contract detail 8): an empty intent is
+        // legal; the planner effect equals an all-unresolved explicit intent.
+        val (built, structural) = buildState(listOf(app("a")))
+        val intent = PersonalizedIntentV1(exportId = built.export.exportId, itemIntents = emptyList())
+        val validated = (validate(built, structural, intent) as IntentValidation.Validated).validated
+        assertEquals(
+            RefDecision.UnresolvedByOmission,
+            validated.completed.decisions.getValue(refsOf(built).values.first()),
         )
     }
 
@@ -274,7 +328,7 @@ class IntentValidatorTest {
             ByteArray(0),
             "not json".encodeToByteArray(),
             "{}".encodeToByteArray(),
-            """{"schemaVersion":"personalized-intent-v2","exportId":"${built.export.exportId}","itemIntents":[{"ref":"ghost"}]}"""
+            """{"schemaVersion":"personalized-intent-v3","exportId":"${built.export.exportId}","itemIntents":[{"ref":"ghost"}]}"""
                 .encodeToByteArray(),
         )
         for (bytes in arbitrary) {

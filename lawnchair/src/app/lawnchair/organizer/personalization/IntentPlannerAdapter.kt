@@ -19,16 +19,21 @@ object IntentPlannerAdapter {
     fun project(validated: ValidatedPersonalizedIntent): PersonalizedIntentProjection {
         val refToItem = validated.session.itemRefs
         val roleByRef = validated.export.items.associate { it.ref to it.role }
-        val itemPreferences = validated.intent.itemIntents.map { item ->
+        // Issue #330 (spec 330 D-4): project the completed representation's
+        // authored decisions only. Unresolved states (explicit, bare, or by
+        // omission) generate no preference, so an omitted ref has exactly the
+        // planner effect of an explicitly unresolved one.
+        val itemPreferences = validated.completed.decisions.mapNotNull { (ref, decision) ->
+            val authored = (decision as? RefDecision.Authored)?.intent ?: return@mapNotNull null
             ItemPreference(
-                item = refToItem.getValue(item.ref),
-                role = roleByRef.getValue(item.ref),
-                importance = item.importance,
-                desiredGroup = item.desiredGroupRefs?.map(refToItem::getValue),
-                groupSemantic = item.groupSemantic,
-                pageAffinity = item.pageAffinity,
-                regionAffinity = item.regionAffinity,
-                preserve = item.preserve,
+                item = refToItem.getValue(ref),
+                role = roleByRef.getValue(ref),
+                importance = authored.importance,
+                desiredGroup = authored.desiredGroupRefs?.map(refToItem::getValue),
+                groupSemantic = authored.groupSemantic,
+                pageAffinity = authored.pageAffinity,
+                regionAffinity = authored.regionAffinity,
+                preserve = authored.preserve,
             )
         }
         return PersonalizedIntentProjection(

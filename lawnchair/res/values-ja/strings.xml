@@ -428,7 +428,7 @@
     <string name="exchange_failure_oversize">整理案本体が大きすぎます。</string>
     <string name="exchange_failure_unknown_ref">整理案が依頼に存在しない項目を参照しています。</string>
     <string name="exchange_failure_duplicate_ref">整理案に重複した項目があります。</string>
-    <string name="exchange_failure_incomplete_coverage">整理案が依頼内の全項目を扱っていません。</string>
+    <string name="exchange_failure_incomplete_coverage">整理案が同じ項目を複数回列挙しています。各項目は「itemIntents」と「unresolvedRefs」の合計で一度だけ指定できます。</string>
     <string name="exchange_failure_invalid_enum">整理案に未知の値が含まれています。</string>
     <string name="exchange_failure_forbidden_content">整理案に禁止された指示 (座標・サイズ・データベース変更) が含まれています。</string>
     <string name="exchange_failure_mobility_contradiction">整理案が移動できない項目を動かそうとしています。</string>

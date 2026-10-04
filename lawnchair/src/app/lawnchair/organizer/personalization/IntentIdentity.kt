@@ -2,9 +2,10 @@ package app.lawnchair.organizer.personalization
 
 /**
  * Issue #204: content identity of one accepted intent. The digest is taken
- * over the canonical byte representation, so two semantically identical but
- * differently formatted intents share identity only when their canonical
- * representation matches (NFR-003-style determinism).
+ * over the canonical byte representation of the completed intent (spec 330
+ * D-5), so two semantically identical but differently formatted intents share
+ * identity only when their canonical representation matches (NFR-003-style
+ * determinism).
  */
 data class IntentIdentity(
     val schemaVersion: String,
@@ -17,26 +18,28 @@ data class IntentIdentity(
 }
 
 object IntentIdentityCalculator {
-    fun identity(intent: PersonalizedIntentV1): IntentIdentity = IntentIdentity(
+    fun identity(completed: CompletedPersonalIntent): IntentIdentity = IntentIdentity(
         schemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
-        digest = sha256Hex(canonicalRepresentation(intent)),
+        digest = sha256Hex(canonicalRepresentation(completed)),
     )
 
     /**
-     * Canonical rows: header, global preference, then one sorted row per item
-     * intent, and the unresolved refs. Field order is fixed; collections are
-     * sorted.
+     * Issue #330 (spec 330 D-5/D-6): canonical rows over the completed
+     * representation, sorted by ref. Authored refs keep the `item|...` row;
+     * every "no judgment" form — explicit unresolved, a normalized bare entry,
+     * and an unmentioned ref — produces the same `unresolved|ref` row, so the
+     * digest is a function of semantic content only.
      */
-    fun canonicalRepresentation(intent: PersonalizedIntentV1): String {
+    fun canonicalRepresentation(completed: CompletedPersonalIntent): String {
         val rows = mutableListOf<String>()
-        rows += "intent|${ContextExportContract.INTENT_SCHEMA_VERSION}|${intent.exportId}"
-        rows += "global|${intent.globalPreference?.minimizeMovement ?: "-"}"
-        rows += "rationale|${intent.rationale ?: "-"}|${intent.confidence ?: "-"}"
-        for (item in intent.itemIntents.sortedBy { it.ref }) {
-            rows += item.canonicalRow()
-        }
-        for (ref in intent.unresolvedRefs.sorted()) {
-            rows += "unresolved|$ref"
+        rows += "intent|${ContextExportContract.INTENT_SCHEMA_VERSION}|${completed.exportId}"
+        rows += "global|${completed.globalPreference?.minimizeMovement ?: "-"}"
+        rows += "rationale|${completed.rationale ?: "-"}|${completed.confidence ?: "-"}"
+        for ((ref, decision) in completed.decisions.entries.sortedBy { it.key }) {
+            when (decision) {
+                is RefDecision.Authored -> rows += decision.intent.canonicalRow()
+                RefDecision.UnresolvedAuthored, RefDecision.UnresolvedByOmission -> rows += "unresolved|$ref"
+            }
         }
         return rows.joinToString("\n")
     }

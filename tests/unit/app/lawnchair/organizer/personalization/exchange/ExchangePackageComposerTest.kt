@@ -14,7 +14,7 @@ import org.junit.Test
  */
 class ExchangePackageComposerTest {
 
-    private val exportJson = """{"schemaVersion":"personalization-context-v2","exportId":"id-0"}"""
+    private val exportJson = """{"schemaVersion":"personalization-context-v3","exportId":"id-0"}"""
 
     @Test
     fun composeAndParseRoundTripRecoversTheExactContextData() {
@@ -37,8 +37,19 @@ class ExchangePackageComposerTest {
         val pkg = ExchangePackageComposer.compose(exportJson)
         assertTrue(pkg.contains(INTENT_BEGIN_MARKER))
         assertTrue(pkg.contains(INTENT_END_MARKER))
-        assertTrue(pkg.contains("\"personalized-intent-v2\""))
+        assertTrue(pkg.contains("\"personalized-intent-v3\""))
         assertTrue(pkg.contains("\"unresolvedRefs\""))
+    }
+
+    @Test
+    fun instructionAsksForPartialAuthoringInsteadOfFullCoverage() {
+        // Issue #330 (v3, spec 330 contract detail 9): the v2 "cover every ref
+        // exactly once" requirement is replaced by the partial-authoring
+        // contract — author only judged items; omissions stay unguessed.
+        val pkg = ExchangePackageComposer.compose(exportJson)
+        assertTrue(pkg.contains("Author only what you actually judged"))
+        assertTrue(pkg.contains("you do not have to cover every ref"))
+        assertTrue(!pkg.contains("Cover every"))
     }
 
     @Test
