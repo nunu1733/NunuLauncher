@@ -230,6 +230,20 @@ constructor(
         if (wasActive) forceReload()
     }
 
+    /**
+     * Issue #58 (S3a rebase): quiesce the model before a raw DB-file restore. Stops the
+     * running loader and clears the loaded-model state so no loader observes
+     * half-replaced DB files. The correlated reload happens after restore sanitization
+     * via [forceReload]; loaders posted in between defer behind the restore-family
+     * coordinator lease.
+     */
+    fun quiesceForRestore() {
+        synchronized(mLock) {
+            stopLoader()
+            mModelLoaded = false
+        }
+    }
+
     /** Rebinds all existing callbacks with already loaded model */
     fun rebindCallbacks() {
         if (hasCallbacks()) {
