@@ -4,6 +4,7 @@ import app.lawnchair.organizer.personalization.ExportSessionStore
 import app.lawnchair.organizer.personalization.PendingImportedIntentStore
 import app.lawnchair.organizer.personalization.exchange.PendingIntentReconcile
 import app.lawnchair.organizer.personalization.exchange.reconcilePendingIntent
+import app.lawnchair.organizer.personalization.exchange.withGateOrNull
 
 /**
  * Issue #374 (spec 374 DI-AC-05 / Contract notes 8): the STARTUP application
@@ -35,11 +36,21 @@ object PendingImportStartupReconcile {
         store: PendingImportedIntentStore,
         sessionStore: ExportSessionStore,
         nowEpochMs: Long,
+        /**
+         * Issue #375 (spec "exchange mutation gate"): the process-wide gate —
+         * the startup cleanup is a durable-record mutation, so its
+         * read→reconcile→delete runs inside one gate hold and can never
+         * interleave with the rebind admission anchor's fresh verification
+         * (null keeps legacy fixtures un-gated).
+         */
+        gate: app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate? = null,
     ) {
         runCatching {
-            val record = store.load() ?: return
-            if (reconcilePendingIntent(record, sessionStore.active(nowEpochMs), nowEpochMs) is PendingIntentReconcile.Invalid) {
-                store.delete()
+            gate.withGateOrNull {
+                val record = store.load() ?: return@withGateOrNull
+                if (reconcilePendingIntent(record, sessionStore.active(nowEpochMs), nowEpochMs) is PendingIntentReconcile.Invalid) {
+                    store.delete()
+                }
             }
         }
     }

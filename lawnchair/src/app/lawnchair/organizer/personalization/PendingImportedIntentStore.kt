@@ -190,6 +190,40 @@ interface PendingImportedIntentStore {
      * read-compare-delete triple is atomic against other store access.
      */
     fun deleteIf(proposal: DurablePendingIntent): Boolean
+
+    /**
+     * Issue #375 (spec "gate上への線形化統一"): the CONDITIONAL INVALIDATION
+     * COMMIT of one flow-internal attempt invalidation — when the stored
+     * record is still exactly [expected] (full data equality), atomically
+     * commits the `discarded=true` tombstone (the durable, crash-safe
+     * validity truth every reader's reconcile sees) and then best-effort
+     * physically deletes it.
+     *
+     * The result distinguishes the three outcomes the invalidation contract
+     * needs: [DiscardIfResult.Committed] and [DiscardIfResult.NoMatch]
+     * (absent / corrupt / replaced — nothing stale can resurface) are both
+     * invalidation successes; [DiscardIfResult.WriteFailed] means the
+     * invalidation did NOT take effect — the proposal stays valid and the
+     * commit is retryable (the same fail-closed semantics as a failed user
+     * [discard]). A tombstone write failure combined with a process death
+     * must never surface as a "successful invalidation".
+     *
+     * The caller runs it inside the exchange mutation gate; the
+     * read-compare-tombstone triple is atomic against other store access.
+     */
+    fun discardIf(expected: DurablePendingIntent): DiscardIfResult
+}
+
+/** Issue #375: the outcome of one conditional invalidation commit ([PendingImportedIntentStore.discardIf]). */
+sealed interface DiscardIfResult {
+    /** The tombstone was atomically committed — the invalidation is durable. */
+    data object Committed : DiscardIfResult
+
+    /** Absent, corrupt, or replaced by a newer record — nothing to invalidate. */
+    data object NoMatch : DiscardIfResult
+
+    /** The tombstone rewrite failed; the record survives and stays VALID (retryable). */
+    data object WriteFailed : DiscardIfResult
 }
 
 /**

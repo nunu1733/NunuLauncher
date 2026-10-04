@@ -21,6 +21,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -38,6 +39,8 @@ import app.lawnchair.organizer.integration.exchange.ExchangeTransportResult
 import app.lawnchair.organizer.integration.exchange.FileExchangeTransport
 import app.lawnchair.organizer.personalization.CanonicalStructuralInputs
 import app.lawnchair.organizer.personalization.ContextExportBuilder
+import app.lawnchair.organizer.personalization.ContextExportContract
+import app.lawnchair.organizer.personalization.DiscardIfResult
 import app.lawnchair.organizer.personalization.DurablePendingIntent
 import app.lawnchair.organizer.personalization.DurableRefDecision
 import app.lawnchair.organizer.personalization.DurableRefEntry
@@ -123,6 +126,12 @@ class ExchangeImportSuccessInstrumentationTest {
 
         override fun delete() {
             record = null
+        }
+
+        override fun discardIf(expected: DurablePendingIntent): DiscardIfResult {
+            if (record != expected) return DiscardIfResult.NoMatch
+            record = expected.copy(discarded = true)
+            return DiscardIfResult.Committed
         }
 
         override fun deleteIf(proposal: DurablePendingIntent): Boolean {
@@ -297,8 +306,8 @@ class ExchangeImportSuccessInstrumentationTest {
         val session = generated.session
         pendingStore.record = DurablePendingIntent(
             exportId = session.exportId,
-            intentIdentitySchemaVersion = "v1",
-            intentIdentityDigest = "digest",
+            intentIdentitySchemaVersion = ContextExportContract.INTENT_SCHEMA_VERSION,
+            intentIdentityDigest = validDigest,
             decisions = session.itemRefs.keys.sorted().map { DurableRefEntry(it, DurableRefDecision.UnresolvedByOmission) },
             minimizeMovement = false,
             expiresAtEpochMs = session.expiresAtEpochMs,
@@ -593,7 +602,7 @@ class ExchangeImportSuccessInstrumentationTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun importReviewRendersSummaryRemainingAndDiscardWithNoCta() {
+    fun importReviewRendersSummaryRemainingContinueAndDiscard() {
         val (holder, _) = holderInImportReviewState()
         setSuccessContent(holder)
         composeRule.onNodeWithTag("exchange-import-review").assertIsDisplayed()
@@ -623,10 +632,21 @@ class ExchangeImportSuccessInstrumentationTest {
             .assertIsDisplayed()
             .assertIsEnabled()
             .assertTextContains(context.getString(R.string.exchange_import_discard))
-        // DI-AC-01 (Contract notes 2): NO continuation CTA — not even a
-        // disabled or placeholder one; the CTA copy is absent too.
-        composeRule.onNodeWithTag("exchange-import-continue").assertDoesNotExist()
-        composeRule.onNodeWithText(context.getString(R.string.exchange_import_cta_idle)).assertDoesNotExist()
+        // Issue #375 (spec "再開面CTAの有効化" — #374 Contract notes 2の委譲を
+        // 受けてCTAが有効化された): the rebind continuation CTA renders with
+        // the TO-BE T-18 copy (spec 328 rev.2 D-3 unified). The legacy CTA
+        // copies (idle / run-in) stay absent — the resume face never reuses
+        // them.
+        // The discard slot's focus restoration may scroll the list; bring the
+        // CTA (above it) back into the viewport before asserting display.
+        // The review CTA item's tag (the audit's tag fix): the production
+        // review item is `exchange-import-review-continue` — the success
+        // face's `exchange-import-continue` is a different face.
+        composeRule.onNodeWithTag("exchange-import-review-continue")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsEnabled()
+            .assertTextContains(context.getString(R.string.exchange_import_continue))
         composeRule.onNodeWithText(context.getString(R.string.exchange_import_cta_run_in)).assertDoesNotExist()
     }
 
@@ -687,3 +707,6 @@ class ExchangeImportSuccessInstrumentationTest {
         assertNotNull("the record survives the zero-write close", pendingStore.record)
     }
 }
+
+/** Issue #375: reconcile rejects a digest that is not 64 chars — fixtures carry a well-formed one. */
+private val validDigest: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

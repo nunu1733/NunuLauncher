@@ -164,6 +164,18 @@ _Avoid_: 取り消し (apply済み変更のrollbackとの混同。何も適用�
 import失敗のtyped分類を、ユーザーの次の行動 (もう一度取り込む / 貼り直す / 依頼を作り直す / 中断する / 診断を開く) の語彙へ再投影した表示モデル ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-11、[#373](https://github.com/nunu1733/NunuLauncher/issues/373))。各typed失敗に1つのprimary remedy (class別のprimary copyと操作) を対応させ、typed失敗によらず常設される面レベル手段 (中断する・診断を開く) を併置する。primary面は手段別語彙のみを出し、typed分類名 (`CONTEXT_STALE`等) とtyped固有の説明は詳細展開と診断に格下げされる。
 _Avoid_: typed失敗一覧 (20種の列挙そのものはprimary面に現れない)、エラーコード表示 (分類名は補助情報に限る)
 
+**原因別remedy (Cause-Specific Remedy)**:
+`SCOPE_MISMATCH` の原因種別に対応づけられた救済action ([organizer-to-be-ux.md](./docs/product/organizer-to-be-ux.md) D-17、[#375](https://github.com/nunu1733/NunuLauncher/issues/375))。選択集合の差 (`SET_MISMATCH`) は「選択を依頼時の集合へ戻して同じ提案で続行」、依頼時候補の解決不能 (`CANDIDATE_UNRESOLVED`) と候補投影の差 (`PROJECTION_MISMATCH`) は「同じ提案での続行を打ち切り、依頼を作り直す」。完全一致gate・zero-write・fail-closedの契約は不変。
+_Avoid_: 再export (単一remedyの旧語。re-exportは新依頼の作り直しに含まれる操作であり、remedy全体を指す語としては使わない)、リトライ (検証の再実行と混同)
+
+**rebind (process死後再開 / fresh run rebind)**:
+process死後 (および同じ1経路に集約される画面離脱後) に、durableな取り込み済み提案から「この提案で続ける」でfresh run admissionを行い、検出後の選択面で依頼時scopeとの完全一致検証を経て提案のpreferenceを新しいrunへ結合すること ([#375](https://github.com/nunu1733/NunuLauncher/issues/375))。admission直前のanchor再検証 (rebind admission anchor) と、recordに保存済みの `IntentIdentity` をそのまま用いるprovenance同一性 (import時と同一identity) を契約に含む。同一process内の生存runへのattachとは区別される。
+_Avoid_: 復元 (durable status/recoveryの復元 (D-15) と混同)、再接続 (attachの同義語に聞こえる)
+
+**選択復元初期値 (Selection Restore Initial Values)**:
+rebindの選択面で、依頼時の明示選択と一致する候補を初期選択値として設定すること ([#375](https://github.com/nunu1733/NunuLauncher/issues/375))。復元値は選択面の明示的confirm (1回) を経由してのみ確定し、confirm前の選択編集を妨げない。spec 228 D-1 (unchecked-by-default) の、依頼時集合を再現する目的に限定した例外である。
+_Avoid_: 自動選択 (confirmなしの確定を示唆する)、初期化 (全解除と混同)
+
 **判断なし項目 (no-judgment items)**:
 #330 v3 canonical representation (`CompletedPersonalIntent`) 上、`RefDecision.Authored` 以外の決定 (明示unresolved・bare entry正規化・未言及) を持つexport ref ([spec 328](./specs/328-exchange-import-success-state/spec.md))。3表現はsemantic identity・planner効果が同一 (#330 D-5/D-6) であり、UIでは合算1件数のみを表示してprovenanceを出さない。
 _Avoid_: 失敗項目 (取り込み自体は成功している)、未対応 (AIが判断しなかっただけでpreferenceなしとして整理対象)

@@ -15,10 +15,12 @@ import app.lawnchair.organizer.personalization.exchange.ExchangeGenerationGateOu
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportFailure
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportPipeline
 import app.lawnchair.organizer.personalization.exchange.ExchangeImportResult
+import app.lawnchair.organizer.personalization.exchange.ExchangeMutationGate
 import app.lawnchair.organizer.personalization.exchange.IntentFramingResult
 import app.lawnchair.organizer.personalization.exchange.IntentImportParser
 import app.lawnchair.organizer.personalization.exchange.RecognizedImportInfo
 import app.lawnchair.organizer.personalization.exchange.recognizedInfo
+import app.lawnchair.organizer.personalization.exchange.withGateOrNull
 import app.lawnchair.organizer.planning.CandidateTarget
 
 /**
@@ -63,6 +65,16 @@ class ExchangeFlowController(
      * replacement contract keep the pre-#374 behavior.
      */
     private val pendingImportStore: PendingImportedIntentStore? = null,
+    /**
+     * Issue #375 (spec "exchange mutation gate"): the process-wide
+     * serialization point. When injected, every durable-record / active-
+     * session mutation this controller performs (the replacement commit's
+     * new-session save + old-record invalidation, and the pre-send
+     * invalidation) runs inside one gate hold, so it can never interleave
+     * with the rebind admission anchor's fresh verification. Null (the
+     * default) keeps legacy fixtures running un-gated.
+     */
+    private val exchangeMutationGate: ExchangeMutationGate? = null,
 ) {
 
     constructor(
@@ -71,6 +83,7 @@ class ExchangeFlowController(
         allocator: RandomIdAllocator,
         clock: () -> Long,
         pendingImportStore: PendingImportedIntentStore? = null,
+        exchangeMutationGate: ExchangeMutationGate? = null,
     ) : this(
         composeExportInputs = adapter::composeForExport,
         currentStructuralInputs = adapter::currentStructural,
@@ -79,6 +92,7 @@ class ExchangeFlowController(
         clock = clock,
         composeScopedExportInputs = adapter::composeForExport,
         pendingImportStore = pendingImportStore,
+        exchangeMutationGate = exchangeMutationGate,
     )
 
     /** The active (unexpired) session, if any — drives the replacement gate. */
@@ -118,18 +132,29 @@ class ExchangeFlowController(
             is ExchangeInputResult.ExportReady -> composedInputs.inputs
         }
         val built = ContextExportBuilder.build(inputs, tier, allocator)
-        if (!store.save(built.session)) {
-            // Fail-closed: without a durable session the package can never be
-            // imported after a process death, so nothing is disclosed.
+        // Issue #375: the replacement commit (new session save + old record
+        // invalidation) is a session-and-record mutation — inside one exchange
+        // gate hold when the process-wide gate is injected, so it can never
+        // interleave with the rebind admission anchor's fresh verification.
+        val replacementCommitted = exchangeMutationGate.withGateOrNull {
+            if (!store.save(built.session)) {
+                // Fail-closed: without a durable session the package can never
+                // be imported after a process death, so nothing is disclosed.
+                return@withGateOrNull false
+            }
+            // Issue #374 (spec 374 DI-AC-03): the replacement write order is
+            // fixed — the NEW session is durable FIRST, then the previous
+            // imported proposal's record is invalidated (a plain best-effort
+            // delete: the read-time reconcile is the master, so no tombstone
+            // is needed here). Placed before the encode/compose so a
+            // replacement can never disclose a package while the old
+            // proposal's record still reads as active.
+            pendingImportStore?.delete()
+            true
+        }
+        if (!replacementCommitted) {
             return ExchangeGenerationResult.SessionStoreFailure
         }
-        // Issue #374 (spec 374 DI-AC-03): the replacement write order is fixed —
-        // the NEW session is durable FIRST, then the previous imported
-        // proposal's record is invalidated (a plain best-effort delete: the
-        // read-time reconcile is the master, so no tombstone is needed here).
-        // Placed before the encode/compose so a replacement can never disclose
-        // a package while the old proposal's record still reads as active.
-        pendingImportStore?.delete()
         val exportJson = when (val encoded = encodeExport(built.export)) {
             is app.lawnchair.organizer.personalization.ContextExportResult.Failure -> {
                 // Review P2: a generation attempt that never produced a package
@@ -154,8 +179,15 @@ class ExchangeFlowController(
      * this flow, so nothing else is affected.
      */
     fun cancelDisclosure(session: ExportSession) {
-        store.invalidate(session.exportId)
+        // Issue #375: a session invalidation is a gate-held mutation (short;
+        // no suspension inside).
+        exchangeMutationGate.withGateOrNull {
+            store.invalidate(session.exportId)
+        }
     }
+
+    /** Issue #375: the current structural inputs for the rebind's pre-admission re-verification. */
+    fun currentStructural(): app.lawnchair.organizer.integration.exchange.ExchangeStructuralResult = currentStructuralInputs()
 
     /**
      * Imports an agent reply (spec 205 data flow ordering): the untrusted reply
