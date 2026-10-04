@@ -1,10 +1,10 @@
 ---
-status: accepted
+status: proposed
 ---
 
 # Lawnchair 16 rebase — 採用baseline・移行方式・rollback（ADR-0018）
 
-> Status: Accepted（2026-10-04。PR #523 review round 3でblocking findingなしを確認（[review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975761227)）。受入は本PR #523のmergeで完了する）
+> Status: Proposed revision 6（2026-10-04、#532のモデル統一判断。方針1を選択済み、技術review待ち）。revision 5までのaccepted正本はmain `b759506e28f8922a2f4a02a7fbb83360b710b750`。本改訂はDecision 1〜8の契約を維持しDecision 9を追加する。
 > Date: 2026-10-04
 > 対応: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) / Phase 0 [#519](https://github.com/nunu1733/NunuLauncher/issues/519)
 > 出典: [#442 最終結論C](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)（2026-09-28）、[upstream-strategy.md](../engineering/upstream-strategy.md) Upgrade policy 5比較軸、Phase 0計測 [issue-516 assessment](../assessment/issue-516-16-rebase-phase0-research.md)
@@ -29,7 +29,18 @@ status: accepted
 7. **device test matrix**: API 36 CI lanes（現行構成）に加え、保守者実機 Pixel 9a / API 37（#442 §5.2と同一端末）での代表日常操作をPhase 3の検証対象とする。quickstep advertised support rangeの変化（29..35→35..36）をmatrix上に明記し、API 29〜34端末の実挙動・サポート境界の判断は [#520](https://github.com/nunu1733/NunuLauncher/issues/520) の結論を待ってこのmatrix上のowner decisionとする。
 8. **targetSdk 37のbehavior changes対応とAPI 37 quickstep対応は、Phase 1子Issue（[#520](https://github.com/nunu1733/NunuLauncher/issues/520) / [#521](https://github.com/nunu1733/NunuLauncher/issues/521) / [#522](https://github.com/nunu1733/NunuLauncher/issues/522)。起票済み）の結論を待ってrebase後の統合で扱い、rebase差分に混入させない。** 本ADRは「16-dev側のSDK値に追随する」ことのみを確定し、behavior change対応の個別判断は確定しない。
 
+9. **Phase 2のモデル層は方針1（16-dev anchor構造を正とする）へ統一する。** コード比較と不採用理由は [#532 model assessment](../assessment/issue-532-model-architecture-decision.md) に記録する。
+   - `LauncherAppState.kt` / `LauncherModel.kt` / `BgDataModel.kt`、Daggerの生成・寿命・assisted factory、WorkspaceData/repositoryの更新入口、grid migrationの分割、preview/quickstep graphはanchorを土台とする。fork-owned coordinator・organizer・homeeditの契約をその既存seamへ移植する。
+   - process-wide lease/spec 14のadmissionとexact loader token、spec 150/152のcommit+close後の相関完了とsnapshot、ADR-0013/0015のadmission内再検証・1 transaction・model更新・Undo/配置先、ADR-0004のschema33/lock、spec 118のSQLite transaction所有、restore/grid journalと#522の採用portを保持する。保持するのは契約であり、旧Javaファイルや旧mutable collectionの形ではない。
+   - anchorの `INSTANCE/getInstance` facadeは同じDI instanceを返す入口として利用できる。恒久的な二重model、旧Javaモデルを生成するmodel/BgDataModel provider、model同一性・transaction能力を暗黙に変えるbridgeを採用しない。fork-owned非model serviceの小さなDI bindingは既存のowner・scope・初期化順を説明できる場合に限り個別reviewする。
+   - 停止head `88af5218cea51b8556b9935b35d3640714b96111` と300件replay履歴を保護する。WIPを一括採択・一括revertせず、新しいappend commitでanchor構造とfork契約を整合させる。path単位のownerと採否を記録し、semantic adaptはPhase 2内で完成させる。
+   - この選択の技術review/accept後、[plan §4.1](../../specs/516-16-rebase-phase2/plan.md) に従って再開する。API/型/生成経路の追従はこの方針内で解決する。既存契約の緩和、schema変更、anchor刷新、disposition変更が必要なときだけ正本の追加判断へ戻す。G1の成功だけでPhase 2完了とはせずG1〜G5・高リスクauditを維持する。
+
 ## Alternatives considered
+
+### Phase 2で旧15系Javaモデルを正とする / 恒久的二重モデル
+
+不採用。anchorのDI/factory/WorkspaceData/preview/quickstep依存側へ旧構造の互換性を広げ、将来の同期差分を増やす。二重モデルはlayout authority・model寿命・能力tokenの同一性を追加の同期契約にしてしまう。anchorにも既存accessor facadeがあるため、旧呼出し入口を使う目的で旧モデル全体を残す必要はない。固定sourceの比較は [#532 assessment §2〜3](../assessment/issue-532-model-architecture-decision.md) を参照する。
 
 ### merge方式による統合（`git merge 16-dev`）
 
@@ -58,3 +69,4 @@ status: accepted
 - 2026-10-04（revision 4）: **acceptedへ遷移**。PR #523 review round 3（[review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975761227)）でblocking findingなし・「ADR-0018は `proposed` → `accepted` へ遷移してよい」の確認を受けた。受入は本PR #523のmergeで完了する。
 
 - 2026-10-04（revision 5、#522）: Nova二件のUI/データ変換を共に保持と確定。schema32不変の比較範囲をupstream B/Uに限定し、fork33維持・cutover直前15 forkへのrollbackと歴史的32 binaryの境界、preferences/recoveryを含む実証条件をDecision 2/5へ反映。既存永続化契約は変更しない。
+- 2026-10-04（revision 6 proposed、#532）: G1停止報告の統一方針をDecision 9として具体化。方針1を選択し、旧モデルprovider/恒久二重モデルを不採用、fork契約の移植境界・WIP保護・Phase 2内adaptを明示。既存specの観測可能な契約・G1〜G5・Phase 4 cutover条件は変更しない。実装再開は本revisionとplan revision 2の技術review/accept後。

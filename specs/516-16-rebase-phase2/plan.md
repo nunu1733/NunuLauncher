@@ -1,12 +1,12 @@
 # Plan: 16-dev rebase実行（Epic #516 Phase 2 / Issue #532）
 
-> Status: accepted（2026-10-04。PR #533 review round 5でblocking解消・Approved（[review](https://github.com/nunu1733/NunuLauncher/pull/533#issuecomment-5976918255)。head `be377805fe85b46175aef3f33c0f6ba9005aa5ca` を確認）。受入は本PR #533のmergeで完了する）
+> Status: proposed revision 2（2026-10-04、#532 G1停止からの再開手順）。revision 1はPR #533でaccepted/merge済み（main `b759506e28f8922a2f4a02a7fbb83360b710b750`）。方針1の選択は [ADR-0018 Decision 9](../../docs/adr/0018-lawnchair-16-rebase.md) に固定し、本revisionの技術review/accept後に実装を再開する。
 > Risk tier: H（[spec.md](./spec.md)参照）
 > 対象revision: main `38262fb74d144f4655dfbf01c0084e44c86560be`、anchor upstream `43a21b43d7cc7850ab54e14b1a57dc9646685f35`
 
 ## 1. 現在codeの根拠
 
-- fork変更の全量: baseline `505dbc40` 以降のmain first-parent 300単位（PR merge 296 + 直接commit 4）。
+- fork変更の全量: baseline `505dbc40` 以降の対象main first-parent 300単位（親数でmerge commit 234 / single-parent commit 66）。PR由来/直接commitの識別はsource→replay対応表で確認する。
 - 上流変更の全量: [Phase 0 assessment](../../docs/assessment/issue-516-16-rebase-phase0-research.md) §3（5,166 files）。
 - 再適用対象: bridge inventory 105 path（fork追加49 / upstream無変更8 / upstream変更45 / upstream削除3）。
 - 競合面の判定材料: 本plan §3のインベントリ（各単位が48 adapt pathに触れるかでA/B/C分類。生成日 2026-10-04、生成scriptは `git diff-tree` first-parent diff × adapt path集合）。
@@ -26,6 +26,8 @@
 | B | 86 | production差分だがadapt path非接触（fork-owned新規file中心） | 競合なし想定。依存先API変化のcompile追従は後続単位またはgate時に解消 |
 | C | 82 | 48 adapt pathのいずれかに接触 | conflict解消の主体。dispositionに従い再表現する |
 
+上表は着手時の分類見積り。停止中のreplay-logはCをconflict発生で分類しており同じ集計ではない。再開時にS0でsource diff×adapt pathの定義へ揃え、textual conflict件数とは別に記録する。300というqueue件数と全順序は変更しない。
+
 C群の代表（replay-logへ全量を記録）: PR #79（deck退役本体、95 files × 15 adapt paths）、#341/#498（user categories / destination policy）、#481（edit undo、`Folder.java`/`ModelWriter.java`）、#476/#486（edit surface / home entry）、#75/#77（schema・grid migration）、#160/#314/#319（model reload/LoaderTask）、#464（benchmark、build.gradle/settings.gradle）。`LauncherModel.java`→`.kt` 化・`GridSizeMigrationUtil` 分割・`MainThreadInitializedObject` onPostInit削除の3点（Phase 0 §5「要対応の3点」）がC群のsemantic解消の中心である。
 
 ## 4. conflict解消手順
@@ -36,6 +38,40 @@ C群の代表（replay-logへ全量を記録）: PR #79（deck退役本体、95 
 4. **drop**: 該当なし（Phase 0確定）。16-dev代替を発見した場合は停止してPhase 0 assessment/ADR-0018を改訂する。
 5. Nova restore 2挙動（#522 §4採用port）: `NovaBackupConverter.kt` のC単位で、警告/toggleと座標丸め・rows補償を一組で16-dev構造へ実装する。converter通常入口のfixture境界値oracle（fractional四フィールド / smartspace ON-OFF / clamp・skip。**T8**）を同時に追加する。
 6. 解消で挙動変更が必要になった場合: その単位で停止し、replay-logへ「ADR/spec改訂要求」を記録する。改訂accepted後に再開する。
+
+### 4.1 G1停止からの再開（revision 2）
+
+方針の正本はADR-0018 Decision 9、固定source比較は [model assessment](../../docs/assessment/issue-532-model-architecture-decision.md)。保持する契約は既存spec/ADRが所有し、本節で緩和しない。モデル全体の再選択は終了している。
+
+| stage | 変更path / seam | 終了条件 |
+|---|---|---|
+| S0 checkpoint・正本同期 | 停止head `88af5218ce` をfull SHAで固定した保存branch/refを作成。実装branchはそのheadから分岐し、300件replayと追加10件を保護。acceptedになった本判断文書・PR #533 spec/planをrebaseへ同期 | 元300件→replayed commitの一対一対応、A/B/Cとconflictの分離、WIP path/hunkの採否表、candidate ownership inventoryの初版をreplay-logへ記録。ログの「adaptはPhase 3」を「Phase 2未完」へ訂正。追加修復のattributionも残す |
+| S1 anchorモデル構造への統一 | `LauncherAppState.kt` / `LauncherModel.kt` / `BgDataModel.kt` / `ModelInitializer.kt`、`LoaderTask`/binder assisted factory、WorkspaceData/repository、`src/.../dagger`・`quickstep/dagger`・preview接続 | 旧Java duplicateと旧model/data providerを除き、modelは同一DI instanceを使う。fork差分を未移植のままG1をgreenにするために削除しない。S2/S3の必須移植と同じ作業branchで進め、単独merge/完了宣言しない |
+| S2 writer・reload・startup契約の移植 | `ModelWriter.java` / `ModelDbController.java` / `LoaderTask.java` / `LauncherModel.kt`、`OrganizerModelReloadAdapter.java` / `ModelProjectionCodec.kt`、homeedit caller、LawnchairAppの生成後hook | MODEL_WRITER admissionと通常loader defer、exact organizer loaderだけのtoken能力、commit+close後のqueued完了・cancel/supersession・snapshot、直接編集/Undo/配置先のstage-2検証とatomic DB/model更新を維持。main/default model生成後のstartupを一度だけ実行し、preview/secondary processへ漏らさない |
+| S3 schema・grid・restoreの移植 | `DatabaseHelper.java` / `DbDowngradeHelper.java`、`GridSizeMigrationDBController.java` / `GridSizeMigrationLogic.kt`、`ModelDbController`の両migration entry、`RestoreDbTask.java`、Nova converter/prefs | schema33/lock、spec 118のframework transaction所有、grid journal/digest/commit-close/process restart、restore getDb前lease/reentry、Nova二挙動を維持。T3両entryのcoverage、T4/T5/T7/T8追加oracleを完成させる |
+| S4 検証・review packet | G1〜G5、candidate ownership inventory、replay-log、CI map/portfolio同期 | 全gateの結果をexact source headに結び付ける。全non-excluded production差分をreplayまたはS1〜S3のowner付きadaptへattribution。高リスク独立audit後にPhase 3へ渡す。T9 cutover closureはPhase 4 |
+
+S1〜S3はreview可能なappend commitに分けるが、コンパイル依存があるため同じ実装branchで直列に進める。WIP 253 pathを一括revertしない。anchor fileを選び直す前にF側のfork delta・WIPの有効な適応を保存し、path/hunkごとに移植先と残存契約を対応付ける。`git reset --hard` / force-pushで300件履歴や他作業を消さない。
+
+**具体的な実装境界**:
+
+- factoryのassisted入力へrequest/capabilityを明示的に運び、通常/preview loaderはtokenlessとする。DIで全loaderへactive organizer tokenを供給しない。完了はLoad IDやbind callbackだけで代替しない。
+- `WorkspaceData` のversion/modification IDをorganizerの `RevisionId` と同一視しない。snapshot codecは既存projection契約を維持し、writerはanchorの `addItems/updateItems/removeItem` 等の通知を通してmodel/repositoryを同期する。
+- CRUDはanchorのfavorites固定APIへcallerをadaptする。別table操作が必要なcallsiteは用途・owner・leaseを個別に記録し、旧全table CRUDやraw DB書込みを無条件に復活させない。getDb/file rename/table copyもmutation admissionの対象として棚卸しする。
+- old onPostInitをglobal singleton utilityへ戻す代わりに、model生成完了後の既存composition/initialization経路へ接続する。Dagger component構築中に `LauncherAppState.getInstance()` を再入させない。
+- spec 118のSQLiteOpenHelper transaction所有とspec 14/coordinatorのprocess leaseを区別して維持する。「nested transactionを増やせば安全」とは扱わない。
+
+**契約別のfocused確認**（新しい恒久laneを作らない）:
+
+| 移植リスク | primary regression owner / 現行入口 |
+|---|---|
+| loader早期完了・stale token・誤thread | `OrganizerReloadCompletionOrderingTest` / `OrganizerReloadSupersessionTest` / `RestoreLeaseDeferredLoaderThreadAffinityTest`。shared-writer laneの実loader境界を再利用 |
+| defer中stale・model先行変更・folder/Undo失敗 | `DirectEditModelWriterTest` / `DirectEditUndoModelWriterTest` / `InstallDestinationModelWriterTest` / `DirectEditWriteShapeTest` / `ModelWriterTransactionReentryTest`。shared-writer lane。純validationは既存homeedit JVM test |
+| schema/grid/restore/prefs/Nova | §7のT1〜T8の既存ownerと追加oracle。T3は両entryへ拡張。既存成功assert/失敗注入を新model構造でも保ち、compiled-only fixtureへ置換しない |
+
+`test-audit` のfocused discoveryで既存ownerと現行ci.yml class filterを照合済み。今回test/CI routingは変更しない。実装時にtest本文・production callerを再照合して最小の忠実な境界を選び、追加oracleは§7のfilter/map/portfolioへ同時登録する。Android実DB・MODEL_EXECUTOR・process/lifecycleのリスクはJVM mockだけでは閉じない。
+
+G1はS2/S3までの必須契約を残した状態で成功させる。focused testの後にG2〜G5へ進む。G4開始前に最終production sourceのfull SHAを `REBASE_HEAD` に記録し、後続source変更で影響するgateを無効化して再検証する。DI生成の同一性、default-process startup、preview隔離も実装review packetの明示的確認項目とする。
 
 ## 5. 実行の記録（replay-log）
 
@@ -94,3 +130,10 @@ C群の代表（replay-logへ全量を記録）: PR #79（deck退役本体、95 
 2. **replay queueは300単位のfirst-parent時系列を唯一の実行順とする**（並べ替えは行わない。A/B/Cは各単位の分類ラベルであり、処理規則の対応表である。replay-logの単位番号はこの単一時系列indexで固定する）
 3. 時系列に沿ってcherry-pickし、C分類の単位は§4の手順で解消。submodule pin判断点（§2）で停止→ADR改訂→review/accept→再開
 4. G1〜G5 gate（§7。T4/T5/T7/T8の追加oracle実装を含む）→ PR（`Refs #516`、`Refs #532`。Phase 3検証はEpic側で継続のため、本PRは#532の終了条件が満たされた時点で `Closes #532` となる）
+
+停止head以後は§4.1のS0→S4を実行する。方針1とAPI追従の範囲内なら再度1/2/ハイブリッドの選択を要求しない。新たな契約変更やschema/anchor/disposition変更だけは§4.6とADR-0018に従う。
+
+## Change history
+
+- 2026-10-04: revision 1 accepted、PR #533 merge。
+- 2026-10-04: revision 2 proposed、#532停止headを固定し、方針1の実装stage・WIP採否・モデル/lease/transactionの境界・既存testのfocused確認を具体化。G1〜G5/T1〜T9の受入条件は維持。queueの誤ったmerge/direct内訳を実親数234/66へ訂正。

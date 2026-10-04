@@ -10,7 +10,7 @@
 
 baseline `505dbc40` 以降のfork変更全量を、16-dev候補 `43a21b43d7cc7850ab54e14b1a57dc9646685f35` 上へreplayし、fork ancestryを維持したproduction rebase branchを完成させる。
 
-対象: main の first-parent 300単位（PR merge 296 + 直接commit 4、baseline後）。
+対象: main `38262fb74d144f4655dfbf01c0084e44c86560be` の first-parent 300単位（baseline後。親数による内訳はmerge commit 234 / single-parent commit 66。PR由来か直接commitかはsource→replay対応表で確認する）。
 非対象: baseline側のみに存在する33 upstream commits（ADR-0018 Decision 2。Nova restore 2挙動は#522 §4の採用portとして含む、icon shadow submodule pinはplan.mdの判断点）、API 37 quickstep有効化・targetSdk behavior change対応の実装（rebase後統合）、Phase 3再検証・Phase 4切替。
 
 ## 2. 受入条件（AC）
