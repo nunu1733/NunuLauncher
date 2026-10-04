@@ -39,11 +39,13 @@ object BuiltInOrganizerPolicyBundleSource : OrganizerPolicyBundleSource {
         // Enabling a later strategy publishes a new bundle semantic
         // version/generation per ADR-0007 §8 (child 4: -v2.1 for
         // STABLE_PAGE_TIDY_V1; child 5: -v2.2 for BOTTOM_FIRST_V1; child 6:
-        // -v2.3 for GLOBAL_COMPACT_V1).
+        // -v2.3 for GLOBAL_COMPACT_V1; child 7: -v2.4 for
+        // CATEGORY_CONTIGUOUS_V1).
         val layoutStrategies = LayoutStrategyCatalog(
             runtimeSupported = listOf(
                 app.lawnchair.organizer.planning.StrategyId("BOTTOM_FIRST_V1"),
                 app.lawnchair.organizer.planning.StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+                app.lawnchair.organizer.planning.StrategyId("CATEGORY_CONTIGUOUS_V1"),
                 app.lawnchair.organizer.planning.StrategyId("GLOBAL_COMPACT_V1"),
                 app.lawnchair.organizer.planning.StrategyId("STABLE_PAGE_TIDY_V1"),
             ),

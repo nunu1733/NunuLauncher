@@ -34,6 +34,9 @@ internal enum class UnitOrdering {
 
     /** Captured visual order across all pages (cross-page strategies). */
     CAPTURED_VISUAL_GLOBAL,
+
+    /** Per page: `(profile, category with fallback last, canonical target key, ItemId)` (spec 182 CATEGORY_CONTIGUOUS_V1). */
+    CATEGORY_CONTIGUOUS_PAGE_LOCAL,
 }
 
 internal object LayoutStrategyRegistry {
@@ -70,6 +73,15 @@ internal object LayoutStrategyRegistry {
      * units. The heterogeneous-span variant was rejected (INV-8).
      */
     val GLOBAL_COMPACT_V1 = StrategyId("GLOBAL_COMPACT_V1")
+
+    /**
+     * Spec 182 CATEGORY_CONTIGUOUS_V1: page-local category grouping — same
+     * lift-then-place mechanics as STABLE_PAGE_TIDY_V1 with the per-page unit
+     * order `(profile, category with fallback last, canonical target key,
+     * ItemId)`; categories never pulled across page boundaries, no new
+     * folders, existing folders fixed.
+     */
+    val CATEGORY_CONTIGUOUS_V1 = StrategyId("CATEGORY_CONTIGUOUS_V1")
 
     private val definitions: Map<StrategyId, StrategyDefinition> = mapOf(
         CANONICAL_PAGE_COMPACT_V1 to StrategyDefinition(
@@ -111,6 +123,18 @@ internal object LayoutStrategyRegistry {
             },
             unitOrder = UnitOrdering.CAPTURED_VISUAL_GLOBAL,
             pageScope = PageScope.CAPTURED_THEN_NEW,
+            cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
+            placeFullRun = FullRunExecution::execute,
+        ),
+        CATEGORY_CONTIGUOUS_V1 to StrategyDefinition(
+            identity = CATEGORY_CONTIGUOUS_V1,
+            createsFolders = false,
+            eligibleUnitFilter = { item ->
+                (item.kind == ItemKind.APPLICATION || item.kind == ItemKind.DEEP_SHORTCUT) &&
+                    (item.placement as? CapturedPlacement.Workspace)?.span == GridSpan(1, 1)
+            },
+            unitOrder = UnitOrdering.CATEGORY_CONTIGUOUS_PAGE_LOCAL,
+            pageScope = PageScope.CAPTURED_PAGE_ONLY,
             cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
             placeFullRun = FullRunExecution::execute,
         ),

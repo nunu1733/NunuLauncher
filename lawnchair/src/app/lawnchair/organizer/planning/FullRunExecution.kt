@@ -31,8 +31,48 @@ internal object FullRunExecution {
 
     fun execute(context: FullRunContext): PlacementOutput = when (context.strategy.unitOrder) {
         UnitOrdering.CANONICAL_TIE_BREAK -> executeCanonicalPageCompact(context)
-        UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL -> executeStablePageTidy(context)
+
+        UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL ->
+            executePageLocalLiftThenPlace(context, capturedVisualOrder())
+
         UnitOrdering.CAPTURED_VISUAL_GLOBAL -> executeGlobalCompact(context)
+
+        UnitOrdering.CATEGORY_CONTIGUOUS_PAGE_LOCAL ->
+            executePageLocalLiftThenPlace(context, categoryContiguousOrder(context))
+    }
+
+    /** CAPTURED_VISUAL_PAGE_LOCAL: captured visual order `(cell.y, cell.x, ItemId)`. */
+    private fun capturedVisualOrder(): Comparator<CapturedItem> = compareBy(
+        { (it.placement as CapturedPlacement.Workspace).cell.y },
+        { (it.placement as CapturedPlacement.Workspace).cell.x },
+        { it.id },
+    )
+
+    /**
+     * CATEGORY_CONTIGUOUS_PAGE_LOCAL: `(profile, category with fallback last,
+     * canonical target key, ItemId)`. The target-key sort value is this
+     * executor's documented canonical encoding (variant ordinal, then the
+     * opaque handle values in byte order); it is locale-independent and total
+     * over the eligible app/deep-shortcut units.
+     */
+    internal fun categoryContiguousOrder(context: FullRunContext): Comparator<CapturedItem> {
+        val fallback = context.input.taxonomy.fallbackCategory
+        return compareBy(
+            { it.profile },
+            { if (context.classification.decisions[it.id]?.category ?: fallback == fallback) 1 else 0 },
+            { context.classification.decisions[it.id]?.category ?: fallback },
+            { targetKeySortValue(it.target) },
+            { it.id },
+        )
+    }
+
+    private fun targetKeySortValue(key: TargetKey): String = when (key) {
+        is TargetKey.AppKey -> "0:${key.component.value}"
+        is TargetKey.ShortcutKey -> "1:${key.packageName.value}:${key.shortcutId.value}"
+        is TargetKey.LegacyShortcutKey -> "2"
+        is TargetKey.WidgetKey -> "3:${key.provider.value}:${key.appWidgetId.value}"
+        is TargetKey.FolderKey -> "4:${key.folderId.value}"
+        is TargetKey.AppPairKey -> "5:${key.appPairId.value}"
     }
 
     /** Shared tail: naturally preserved items keep their captured placement with their precedence reason. */
@@ -52,7 +92,10 @@ internal object FullRunExecution {
         }
     }
 
-    private fun executeStablePageTidy(context: FullRunContext): PlacementOutput {
+    private fun executePageLocalLiftThenPlace(
+        context: FullRunContext,
+        unitOrder: Comparator<CapturedItem>,
+    ): PlacementOutput {
         val strategy = context.strategy
         val allocator = context.allocator
 
@@ -85,13 +128,7 @@ internal object FullRunExecution {
             (item.placement as CapturedPlacement.Workspace).page
         }
         for ((page, units) in byPage) {
-            val ordered = units.sortedWith(
-                compareBy(
-                    { (it.placement as CapturedPlacement.Workspace).cell.y },
-                    { (it.placement as CapturedPlacement.Workspace).cell.x },
-                    { it.id },
-                ),
-            )
+            val ordered = units.sortedWith(unitOrder)
             for (item in ordered) {
                 val ws = item.placement as CapturedPlacement.Workspace
                 val capturedTarget = PlacementTarget.WorkspaceTarget(PageRef(ws.page.pageId), ws.cell, ws.span)
@@ -357,6 +394,9 @@ internal object FullRunExecution {
             val pageUnits = pageGroups.getValue(page)
 
             val ordered = when (strategy.unitOrder) {
+                // The outer dispatch routes CATEGORY_CONTIGUOUS_PAGE_LOCAL to
+                // the page-local executor; only the canonical ordering reaches
+                // this flow.
                 UnitOrdering.CANONICAL_TIE_BREAK -> {
                     val existingFolders = pageUnits.filter { it.isFolder && !it.isNewFolder }
                         .sortedBy { it.itemId }
@@ -367,10 +407,8 @@ internal object FullRunExecution {
                     existingFolders + newFolderUnits + singletons
                 }
 
-                UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL,
-                UnitOrdering.CAPTURED_VISUAL_GLOBAL,
-                -> throw IllegalStateException(
-                    "UnitOrdering ${strategy.unitOrder} has no full-run executor yet (its child issue owns it)",
+                else -> throw IllegalStateException(
+                    "UnitOrdering ${strategy.unitOrder} has no canonical-flow executor branch",
                 )
             }
 
