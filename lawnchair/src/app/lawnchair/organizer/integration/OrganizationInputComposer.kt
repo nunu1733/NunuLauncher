@@ -158,6 +158,12 @@ class DefaultOrganizationInputComposer(
     // gate never consults the source unless a reservation-overlapping item is
     // captured; production wiring passes PreferenceWorkspaceOverlapToleranceSource.
     private val overlapTolerance: WorkspaceOverlapToleranceSource,
+    // Issue #203: the optional personalization source. It is read exactly once
+    // per composition attempt, outside the mandatory dynamic cut; its failures
+    // degrade to unavailable sections in the returned snapshot and never make
+    // the composition NotReady (FR-013 / D-010). Unwired (null) composes the
+    // all-unavailable snapshot.
+    private val personalizationSource: app.lawnchair.organizer.personalization.PersonalizationSignalSnapshotSource? = null,
 ) : OrganizationInputComposer {
     override fun composeFullOrganization(): OrganizationInputComposition = composeInternal(selection = null)
 
@@ -403,6 +409,10 @@ class DefaultOrganizationInputComposer(
             val effectiveRules = bundle.rules.copy(organizationStrategy = effectiveStrategy)
             val rulesIdentity = effectiveRulesIdentity(bundle.identity, firstSelection.identity, effectiveRules)
             val taxonomyIdentity = policyIdentity(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, bundle.taxonomy.version.value, bundle.identity.sha256)
+            // Issue #203: one personalization read per composition attempt,
+            // after the mandatory cut is stable. Source failures degrade to
+            // unavailable sections; they never reach the NotReady paths.
+            val personalization = readPersonalizationSnapshot(mapped, additions)
             return OrganizationInputComposition.Ready(
                 OrganizationInput(
                     mapped.snapshot,
@@ -411,6 +421,7 @@ class DefaultOrganizationInputComposer(
                     signals.signals,
                     composedTargets.targets,
                     if (selection == null) RunMode.FullOrganization else RunMode.ScopeComposedOrganization,
+                    personalization,
                 ),
                 InputProvenance(
                     capture.revision,
@@ -420,6 +431,7 @@ class DefaultOrganizationInputComposer(
                     composedTargets.identity,
                     bundle.identity,
                     firstSelection.identity,
+                    personalization.policyIdentity(),
                 ),
             )
         }
@@ -490,6 +502,42 @@ class DefaultOrganizationInputComposer(
             base.versionOrGeneration,
             sha256Canonical("${base.sha256}\n$canonical"),
         )
+    }
+
+    /**
+     * Issue #203: the per-attempt personalization read. The request carries the
+     * captured profiles and the launchable app set derived from the capture and
+     * the selection — the rank universe inside the source stays independent of
+     * the run's request set (spec #203 U-5). Any unexpected failure degrades to
+     * the all-unavailable snapshot; this function never throws.
+     */
+    private fun readPersonalizationSnapshot(
+        mapped: MappedLayout,
+        additions: List<CandidateItem>,
+    ): app.lawnchair.organizer.personalization.PersonalizationSignalSnapshot {
+        val source = personalizationSource
+            ?: return app.lawnchair.organizer.personalization.PersonalizationSignalSnapshot.unavailable(mapped.profiles)
+        val launchablePackages = mutableMapOf<ProfileId, MutableSet<PackageName>>()
+        fun addLaunchable(profile: ProfileId, packageName: PackageName?) {
+            if (packageName == null) return
+            launchablePackages.getOrPut(profile) { mutableSetOf() }.add(packageName)
+        }
+        for (item in mapped.items) {
+            when (val target = item.target) {
+                is TargetKey.AppKey -> addLaunchable(target.profile, appKeyPackage(target.component))
+                is TargetKey.ShortcutKey -> addLaunchable(target.profile, target.packageName)
+                else -> {}
+            }
+        }
+        for (addition in additions) {
+            val target = addition.target as? TargetKey.AppKey ?: continue
+            addLaunchable(target.profile, appKeyPackage(target.component))
+        }
+        return try {
+            source.read(app.lawnchair.organizer.personalization.UsageSignalRequest(mapped.profiles, launchablePackages))
+        } catch (_: RuntimeException) {
+            app.lawnchair.organizer.personalization.PersonalizationSignalSnapshot.unavailable(mapped.profiles)
+        }
     }
 
     private fun mapLayout(state: LayoutState, revision: app.lawnchair.organizer.planning.RevisionId): MappedLayout? {

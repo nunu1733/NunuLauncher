@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.integration
 
+import app.lawnchair.organizer.personalization.PersonalizationSignalSnapshot
 import app.lawnchair.organizer.planning.CategoryId
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.ItemId
@@ -22,6 +23,12 @@ data class InputProvenance(
     val policyBundle: PolicyBundleIdentity,
     /** Spec 182: fifth policy input — the user's selected layout strategy snapshot. */
     val layoutStrategySelection: PolicyInputIdentity,
+    /**
+     * Issue #203: the content-addressed identity of the personalization signal
+     * snapshot. Always present — "optional source" means readiness, never an
+     * optional identity on the composition result (U-4, 2026-09-15 review).
+     */
+    val personalization: PolicyInputIdentity = PersonalizationSignalSnapshot.unavailable().policyIdentity(),
 )
 
 sealed interface OrganizationInputComposition {

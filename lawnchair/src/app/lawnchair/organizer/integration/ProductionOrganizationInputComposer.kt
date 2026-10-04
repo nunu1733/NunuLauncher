@@ -23,6 +23,9 @@ class ProductionOrganizationInputComposer(
     // fifth policy input.
     layoutStrategySelections = LayoutStrategySelectionModule.source(appContext),
     platformEvidence = AndroidClassificationSignalSnapshotSource(appContext),
+    // Issue #203: the optional personalization input — system usage and
+    // launcher-origin reads composed into one snapshot per composition.
+    personalizationSource = AndroidPersonalizationSignalSnapshotSource(appContext),
     // Issue #185 / ADR-0010: the reservation-overlap gate reads the same
     // platform policy the loader consults, freshly at every compose.
     overlapTolerance = PreferenceWorkspaceOverlapToleranceSource(appContext),
