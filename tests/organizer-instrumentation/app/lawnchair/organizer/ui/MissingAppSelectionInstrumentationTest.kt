@@ -70,6 +70,9 @@ class MissingAppSelectionInstrumentationTest {
     private class SelectingFakeApplication(
         val candidates: List<DetectedCandidate>,
     ) : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
         override val diagnostics = object : DiagnosticsPort {
             override fun emit(event: RunEvent) = Unit
             override fun snapshot(): List<RunEvent> = emptyList()

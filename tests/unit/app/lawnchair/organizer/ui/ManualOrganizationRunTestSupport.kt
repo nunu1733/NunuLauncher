@@ -57,6 +57,10 @@ object ManualOrganizationRunTestSupport {
             override fun snapshot() = emptyList<RunEvent>()
         }
 
+        // Issue #449: the edit-surface read seam is not exercised by the run
+        // tests; a fail-closed null keeps the fakes minimal.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
         override fun newRunId() = RunId("0123456789abcdef0123456789abcdef")
 
         override fun composeFullOrganization(): OrganizationInputComposition = notReady()

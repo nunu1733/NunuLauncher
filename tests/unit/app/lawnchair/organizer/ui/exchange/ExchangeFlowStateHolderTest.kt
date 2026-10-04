@@ -1059,6 +1059,9 @@ class ExchangeFlowStateHolderTest {
     private class ExchangeRunApplication(
         private val detectionReady: Boolean = true,
     ) : app.lawnchair.organizer.ui.ManualOrganizationApplication {
+        // Issue #449: unused by the exchange holder tests; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
         var composeFullCalls = 0
         var detectionCalls = 0
         private var runIdCounter = 0

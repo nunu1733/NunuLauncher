@@ -3274,6 +3274,10 @@ class ManualOrganizationRunTest {
         var composition: OrganizationInputComposition,
     ) : ManualOrganizationApplication {
         override val diagnostics = RecordingDiagnostics()
+
+        // Issue #449: the edit-surface read seam is out of scope for the run
+        // tests; a fail-closed null keeps the fake minimal.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
         val events: List<RunEvent>
             get() = diagnostics.events
         var nextRunIds = listOf(RUN_ID)

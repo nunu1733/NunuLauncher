@@ -124,6 +124,15 @@
             android:name="app.lawnchair.BlankActivity"
             android:theme="@style/Theme.Transparent" />
 
+        <!-- Issue #449: visual edit surface (ADR-0014 case B). Launcher-process
+             internal only; the session is process-local and nothing persists. -->
+        <activity
+            android:name="app.lawnchair.homeedit.ui.HomeEditSurfaceActivity"
+            android:autoRemoveFromRecents="true"
+            android:exported="false"
+            android:label="@string/edit_surface_title"
+            android:theme="@style/Theme.Lawnchair" />
+
         <activity
             android:name="app.lawnchair.smartspace.SmartspacePreferencesShortcut"
             android:theme="@style/Theme.Transparent" />

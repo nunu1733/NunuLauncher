@@ -61,6 +61,7 @@ import app.lawnchair.organizer.ui.exchange.requestRemainingDisplay
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.NavigationActionPreference
+import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceScaffold
@@ -308,6 +309,15 @@ fun OrganizerHubPreferences(
                     modifier = Modifier
                         .focusRequester(focusRequester)
                         .then(focusTargetModifier),
+                )
+            }
+            // Issue #449: the second entry to the visual edit surface
+            // (ADR-0014 case B, hub row). Zero-write navigation; the hub's
+            // run state machine is untouched.
+            item(key = "organizer-hub-edit-surface") {
+                ClickablePreference(
+                    label = stringResource(R.string.edit_surface_menu_open),
+                    onClick = { app.lawnchair.homeedit.ui.HomeEditSurfaceActivity.start(context) },
                 )
             }
             item(key = "organizer-hub-diagnostics") {

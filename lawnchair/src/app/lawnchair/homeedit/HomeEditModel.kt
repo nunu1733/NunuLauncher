@@ -17,7 +17,18 @@ object HomeEditItemTypes {
     const val APPLICATION = 0
     const val SHORTCUT = 1
     const val FOLDER = 2
+    const val APP_WIDGET = 4
+    const val CUSTOM_APP_WIDGET = 5
     const val DEEP_SHORTCUT = 6
+    const val APP_PAIR = 10
+
+    /**
+     * Issue #449: synthetic item type for platform-owned reserved cells (QSB
+     * etc.) projected into the edit-surface snapshot. Never a real favorites
+     * row type: the shared planner only counts DESKTOP occupancy, so a row
+     * with this type reserves its cells without ever being selectable.
+     */
+    const val RESERVED = Int.MIN_VALUE
 }
 
 /** One favorites-row projection. Plain data. */
@@ -73,6 +84,20 @@ sealed interface HomeEditIntent {
     data class CreateFolderAndAdd(
         override val sourcePlacement: HomeEditItem,
         val destinationScreenId: Int,
+    ) : HomeEditIntent
+
+    /**
+     * Issue #449: 新規フォルダの作成（置き先セル指定）。視覚的編集画面の
+     * 「新しいフォルダを作る」は置き先を「選択の先頭アイテムの元セル」に固定する
+     * ため、既存 CreateFolderAndAdd（row-majorの最初の空きセル）では保証できない。
+     * 指定セルが範囲外・占有の場合はNO_SPACEで拒否する（additive拡張であり、
+     * popup経路が使う既存4 intentの振る舞いは不変）。
+     */
+    data class CreateFolderAt(
+        override val sourcePlacement: HomeEditItem,
+        val screenId: Int,
+        val cellX: Int,
+        val cellY: Int,
     ) : HomeEditIntent
 
     /** ホームから外す（1行削除。アンインストールではない）。 */

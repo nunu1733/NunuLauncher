@@ -1488,7 +1488,11 @@ class OrganizerHubPreferencesInstrumentationTest {
             context.getString(R.string.manual_organization_recovery),
         ).performSemanticsAction(SemanticsActions.RequestFocus)
         awaitFocused(context.getString(R.string.manual_organization_recovery))
+        // Issue #449: the edit-surface row joins the hub between the start
+        // CTA and the diagnostics row; the DPAD budget includes the extra
+        // row.
         val order = listOf(
+            R.string.edit_surface_menu_open,
             R.string.organizer_diagnostics_title,
             R.string.organizer_category_overrides_title,
             R.string.organizer_custom_category_title,
@@ -1499,7 +1503,7 @@ class OrganizerHubPreferencesInstrumentationTest {
         )
         order.forEach { res ->
             val text = context.getString(res)
-            pressDownUntilFocused(text)
+            pressDownUntilFocused(text, maxPresses = 14)
             composeRule.onNodeWithText(text).assertHasClickAction()
         }
     }
@@ -1645,6 +1649,9 @@ class OrganizerHubPreferencesInstrumentationTest {
      * hub must never call is left to fail loudly.
      */
     private class FakeHubApplication : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
         override val diagnostics = RecordingDiagnostics()
         var applyCalls = 0
 

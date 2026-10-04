@@ -1,17 +1,15 @@
 package app.lawnchair.ui.popup
 
 import android.view.View
-import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import app.lawnchair.preferences2.PreferenceManager2.Companion.getInstance
-import app.lawnchair.preferences2.firstCached
 import com.android.launcher3.Launcher
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.logging.StatsLogManager.LauncherEvent
-import com.android.launcher3.popup.SystemShortcut
 import com.android.launcher3.views.OptionsPopupView.OptionItem
+import com.patrykmichalik.opto.core.firstBlocking
 import com.patrykmichalik.opto.core.setBlocking
 
 object LauncherOptionsPopup {
@@ -19,12 +17,11 @@ object LauncherOptionsPopup {
         LauncherOptionPopupItem("carousel", true),
         LauncherOptionPopupItem("lock", false),
         LauncherOptionPopupItem("edit_mode", false),
+        LauncherOptionPopupItem("edit_surface", true),
         LauncherOptionPopupItem("wallpaper", true),
         LauncherOptionPopupItem("widgets", true),
-        LauncherOptionPopupItem("all_apps", true),
         LauncherOptionPopupItem("home_settings", true),
         LauncherOptionPopupItem("sys_settings", false),
-        LauncherOptionPopupItem("default_page", false),
     )
 
     fun restoreMissingPopupOptions(
@@ -32,7 +29,7 @@ object LauncherOptionsPopup {
     ) {
         val prefs2 = getInstance(launcher)
 
-        val currentOrder = prefs2.launcherPopupOrder.firstCached()
+        val currentOrder = prefs2.launcherPopupOrder.firstBlocking()
         val currentOptions = currentOrder.toLauncherOptions()
 
         // check for missing items in current options; if so, add them
@@ -40,11 +37,9 @@ object LauncherOptionsPopup {
             defaultItem.identifier !in currentOptions.map { it.identifier }
         }
 
-        if (missingItems.isNotEmpty()) {
-            prefs2.launcherPopupOrder.setBlocking(
-                (currentOptions + missingItems).toOptionOrderString(),
-            )
-        }
+        prefs2.launcherPopupOrder.setBlocking(
+            (missingItems + currentOptions).toOptionOrderString(),
+        )
     }
 
     /**
@@ -55,15 +50,14 @@ object LauncherOptionsPopup {
         onLockToggle: (View) -> Boolean,
         onStartSystemSettings: (View) -> Boolean,
         onStartEditMode: (View) -> Boolean,
-        onStartAllApps: (View) -> Boolean,
         onStartWallpaperPicker: (View) -> Boolean,
         onStartWidgetsMenu: (View) -> Boolean,
         onStartHomeSettings: (View) -> Boolean,
     ): ArrayList<OptionItem> {
         val prefs2 = getInstance(launcher!!)
-        val lockHomeScreen = prefs2.lockHomeScreen.firstCached()
+        val lockHomeScreen = prefs2.lockHomeScreen.firstBlocking()
         val optionOrder = prefs2
-            .launcherPopupOrder.firstCached().toLauncherOptions()
+            .launcherPopupOrder.firstBlocking().toLauncherOptions()
 
         val wallpaperResString =
             if (Utilities.existsStyleWallpapers(launcher)) R.string.styles_wallpaper_button_text else R.string.wallpapers
@@ -92,12 +86,19 @@ object LauncherOptionsPopup {
                 LauncherEvent.LAUNCHER_SETTINGS_BUTTON_TAP_OR_LONGPRESS,
                 onStartEditMode,
             ),
-            "all_apps" to OptionItem(
+            // Issue #449: visual edit surface entry (ADR-0014 case B). The
+            // handler stays inside this fork file, so the upstream bridge
+            // signature is unchanged. Hidden while the home screen is locked
+            // together with edit_mode/widgets below.
+            "edit_surface" to OptionItem(
                 launcher,
-                R.string.all_apps_button_label,
-                R.drawable.ic_apps,
-                LauncherEvent.LAUNCHER_ALL_APPS_TAP_OR_LONGPRESS,
-                onStartAllApps,
+                R.string.edit_surface_menu_open,
+                R.drawable.ic_folder,
+                LauncherEvent.IGNORE,
+                { view ->
+                    app.lawnchair.homeedit.ui.HomeEditSurfaceActivity.start(view.context)
+                    true
+                },
             ),
             "wallpaper" to OptionItem(
                 launcher,
@@ -109,16 +110,9 @@ object LauncherOptionsPopup {
             "widgets" to OptionItem(
                 launcher,
                 R.string.widget_button_text,
-                SystemShortcut.Widgets.getDrawableId(),
+                R.drawable.ic_widget,
                 LauncherEvent.LAUNCHER_WIDGETSTRAY_BUTTON_TAP_OR_LONGPRESS,
                 onStartWidgetsMenu,
-            ),
-            "enterAllApps" to OptionItem(
-                launcher,
-                R.string.all_apps_button_label,
-                R.drawable.ic_apps,
-                LauncherEvent.LAUNCHER_ALL_APPS_TAP_OR_LONGPRESS,
-                onStartAllApps,
             ),
             "home_settings" to OptionItem(
                 launcher,
@@ -126,13 +120,6 @@ object LauncherOptionsPopup {
                 R.drawable.ic_home_screen,
                 LauncherEvent.LAUNCHER_SETTINGS_BUTTON_TAP_OR_LONGPRESS,
                 onStartHomeSettings,
-            ),
-            "default_page" to OptionItem(
-                launcher,
-                R.string.set_default_home_page,
-                R.drawable.ic_home_pin,
-                LauncherEvent.IGNORE,
-                ::setAsDefaultHomePage,
             ),
         )
 
@@ -143,24 +130,16 @@ object LauncherOptionsPopup {
             }
             .filter {
                 if (lockHomeScreen) {
-                    it.identifier != "edit_mode" && it.identifier != "widgets"
+                    it.identifier != "edit_mode" && it.identifier != "widgets" &&
+                        it.identifier != "edit_surface"
                 } else {
                     true
                 }
             }
-            .filter { it.identifier != "default_page" || !launcher.workspace.isCurrentPageDefault }
             .mapNotNull { optionsList[it.identifier] }
             .forEach { options.add(it) }
 
         return options
-    }
-
-    private fun setAsDefaultHomePage(v: View): Boolean {
-        val launcher = Launcher.getLauncher(v.context)
-        val currentPage = launcher.workspace.getNextPage()
-        launcher.workspace.setDefaultPage(currentPage)
-        Toast.makeText(launcher, R.string.default_home_page_set, Toast.LENGTH_SHORT).show()
-        return true
     }
 
     fun getMetadataForOption(identifier: String): LauncherOptionMetadata {
@@ -186,6 +165,11 @@ object LauncherOptionsPopup {
                 icon = R.drawable.enter_home_gardening_icon,
             )
 
+            "edit_surface" -> LauncherOptionMetadata(
+                label = R.string.edit_surface_menu_open,
+                icon = R.drawable.ic_folder,
+            )
+
             "wallpaper" -> LauncherOptionMetadata(
                 label = R.string.styles_wallpaper_button_text,
                 icon = R.drawable.ic_palette,
@@ -193,22 +177,12 @@ object LauncherOptionsPopup {
 
             "widgets" -> LauncherOptionMetadata(
                 label = R.string.widget_button_text,
-                icon = SystemShortcut.Widgets.getDrawableId(),
-            )
-
-            "all_apps" -> LauncherOptionMetadata(
-                label = R.string.all_apps_button_label,
-                icon = R.drawable.ic_apps,
+                icon = R.drawable.ic_widget,
             )
 
             "home_settings" -> LauncherOptionMetadata(
                 label = R.string.settings_button_text,
                 icon = R.drawable.ic_home_screen,
-            )
-
-            "default_page" -> LauncherOptionMetadata(
-                label = R.string.set_default_home_page,
-                icon = R.drawable.ic_home_pin,
             )
 
             else -> throw IllegalArgumentException("invalid popup option")
@@ -220,17 +194,17 @@ object LauncherOptionsPopup {
     ) {
         val prefs2 = getInstance(launcher)
 
-        val lockHomeScreenButtonOnPopUp = prefs2.lockHomeScreenButtonOnPopUp.firstCached()
-        val editHomeScreenButtonOnPopUp = prefs2.editHomeScreenButtonOnPopUp.firstCached()
-        val showSystemSettingsEntryOnPopUp = prefs2.showSystemSettingsEntryOnPopUp.firstCached()
+        val lockHomeScreenButtonOnPopUp = prefs2.lockHomeScreenButtonOnPopUp.firstBlocking()
+        val editHomeScreenButtonOnPopUp = prefs2.editHomeScreenButtonOnPopUp.firstBlocking()
+        val showSystemSettingsEntryOnPopUp = prefs2.showSystemSettingsEntryOnPopUp.firstBlocking()
 
         val optionOrder = prefs2.launcherPopupOrder
-        val legacyPopupOptionsMigrated = prefs2.legacyPopupOptionsMigrated.firstCached()
+        val legacyPopupOptionsMigrated = prefs2.legacyPopupOptionsMigrated.firstBlocking()
 
         if (!legacyPopupOptionsMigrated) {
             prefs2.legacyPopupOptionsMigrated.setBlocking(true)
 
-            val options = optionOrder.firstCached().toLauncherOptions()
+            val options = optionOrder.firstBlocking().toLauncherOptions()
 
             options.forEachIndexed { index, item ->
                 if (item.identifier == "lock") {
