@@ -3,8 +3,10 @@ package app.lawnchair.organizer.application.protocol
 import android.content.Context
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
+import app.lawnchair.organizer.application.lifecycle.OrganizerDurableStatusDeriver
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.FolderTitleResolver
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.application.public.PlanPreviewUnavailable
 import app.lawnchair.organizer.application.public.PreWriteRejection
@@ -228,6 +230,51 @@ internal class LayoutApplicationModule<S>(
         },
     ) {
         recoveryPreviewProtocol.inspect(pointId)
+    }
+
+    /**
+     * Issue #271: read-only durable status projection for the re-opened
+     * Settings surface. The application module owns the recovery store, so it
+     * owns this projection; the UI only reads the closed, field-free
+     * [OrganizerDurableStatus]. Gated on startup reconciliation like every
+     * other seam, and serialized against writers through the same non-blocking
+     * run-mutex lease as the recovery preview (spec 89 inspection concurrency):
+     * contention, an unready gate, an unreadable snapshot, or any read failure
+     * maps to [OrganizerDurableStatus.UNAVAILABLE] — fail-closed, silent
+     * diagnostically, no write and no lifecycle mutation.
+     */
+    fun durableOrganizerStatus(): OrganizerDurableStatus = readinessGate.runWhenReady(
+        unavailable = { OrganizerDurableStatus.UNAVAILABLE },
+    ) {
+        val runId = operationIds.newRunId()
+        if (!ordinaryMutex.tryAcquire(runId)) return@runWhenReady OrganizerDurableStatus.UNAVAILABLE
+        try {
+            when (val read = store.readInspectionSnapshot()) {
+                is RecoveryStorePort.InspectionSnapshotRead.Value -> OrganizerDurableStatusDeriver.derive(
+                    records = read.records.map {
+                        OrganizerDurableStatusDeriver.DurableRecord(
+                            lifecycle = it.lifecycle,
+                            createdAtMs = it.createdAtMs,
+                            updatedAtMs = it.updatedAtMs,
+                            checksumValid = it.checksumValid,
+                        )
+                    },
+                    tombstones = read.tombstones.map {
+                        OrganizerDurableStatusDeriver.DurableTombstone(
+                            reason = it.reason,
+                            expiresAtMs = it.expiresAtMs,
+                        )
+                    },
+                    nowMs = clock.nowMillis(),
+                )
+
+                RecoveryStorePort.InspectionSnapshotRead.Unavailable -> OrganizerDurableStatus.UNAVAILABLE
+            }
+        } catch (_: RuntimeException) {
+            OrganizerDurableStatus.UNAVAILABLE
+        } finally {
+            ordinaryMutex.release(runId)
+        }
     }
 
     /**

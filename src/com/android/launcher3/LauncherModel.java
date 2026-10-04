@@ -394,7 +394,26 @@ public class LauncherModel implements InstallSessionTracker.Callback {
         return startLoader(new Callbacks[0]);
     }
 
+    /**
+     * Issue #271: starts a workspace load with no bound callbacks so a process
+     * whose only entry is the exported settings surface (organizer durable
+     * status) can reach a loaded model — and complete organizer startup
+     * reconciliation — without a Launcher activity binding first. Identical
+     * loader path to {@link #startLoader()}; binding is a no-op because no
+     * callbacks are bound. The loader-running install-queue flag set here
+     * stays paused until a real Launcher binds, matching the existing "the
+     * loader runs the next time launcher starts" semantics. Must be called on
+     * the UI thread and only when no callbacks are bound.
+     */
+    public boolean startLoaderWithoutCallbacks() {
+        return startLoader(new Callbacks[0], true);
+    }
+
     private boolean startLoader(@NonNull final Callbacks[] newCallbacks) {
+        return startLoader(newCallbacks, false);
+    }
+
+    private boolean startLoader(@NonNull final Callbacks[] newCallbacks, boolean allowEmptyCallbacks) {
         // Enable queue before starting loader. It will get disabled in
         // Launcher#finishBindingItems
         ItemInstallQueue.INSTANCE.get(mApp.getContext())
@@ -406,7 +425,7 @@ public class LauncherModel implements InstallSessionTracker.Callback {
             boolean bindAllCallbacks = wasRunning || !bindDirectly || newCallbacks.length == 0;
             final Callbacks[] callbacksList = bindAllCallbacks ? getCallbacks() : newCallbacks;
 
-            if (callbacksList.length > 0) {
+            if (allowEmptyCallbacks || callbacksList.length > 0) {
                 // Clear any pending bind-runnables from the synchronized load process.
                 for (Callbacks cb : callbacksList) {
                     MAIN_EXECUTOR.execute(cb::clearPendingBinds);

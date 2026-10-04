@@ -68,6 +68,10 @@ _Avoid_: Play Store category（情報源を指す場合を除く）、Theme
 整理runの適用前へアプリ内操作で戻すために保存された、検証済みの復旧状態。
 _Avoid_: Backup（長期保存用バックアップと混同する場合）、Undo（操作そのものを指す場合）
 
+**organizer durable status (永続整理状態)**:
+application moduleがrecovery storeの永続recordとtombstoneから導出する、閉じた語彙の状態表示。永続化せず毎回導出するため、記述対象のrecordより長く生存しない。recordの中身、revision、digest、アイテム識別子を含まない。
+_Avoid_: Organizer status（process-localなrun状態と混同する場合）、Backup state
+
 **有効プリセット (enabled preset)**:
 宣言カタログのうち、現在の端末種別に対してプラットフォーム宣言上有効と判定されたグリッドプリセット。
 _Avoid_: 利用可能グリッド（設定UIの表示と混同する場合）、サポート対象（NFR-007のsupport範囲と混同する場合）

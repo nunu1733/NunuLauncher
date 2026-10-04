@@ -44,7 +44,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.OrganizerDurableStatus
 import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PreviewCounts
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
@@ -90,6 +92,27 @@ fun ManualOrganizationPreferences(
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
+
+    // Issue #271: the durable status projection is rendered only while no run
+    // operation is active (Idle/Cancelled). It is re-read on each transition
+    // into those states — an in-place cancel re-reads, not only the first
+    // composition — and any read maps to a fail-closed no-row outcome.
+    // Issue #271 review: the read also re-runs whenever the application
+    // module's startup readiness moves, so a fail-closed read taken while
+    // startup reconciliation is still running recovers on the same surface
+    // once reconciliation reaches a terminal state, without the user
+    // navigating away. While no result is known yet, an explicit checking row
+    // keeps the loading state visually distinct from "never organized".
+    val showDurableStatus = state is ManualOrganizationRun.State.Idle || state is ManualOrganizationRun.State.Cancelled
+    val readinessState by coordinator.readinessState.collectAsStateWithLifecycle()
+    var durableStatus by remember { mutableStateOf<OrganizerDurableStatus?>(null) }
+    LaunchedEffect(showDurableStatus, readinessState) {
+        durableStatus = if (showDurableStatus) {
+            withContext(Dispatchers.IO) { coordinator.readDurableOrganizerStatus() }
+        } else {
+            null
+        }
+    }
 
     // Issue #195: the concrete change list is planned once per preview state.
     // Expansion state is UI-local and resets when new details arrive.
@@ -179,12 +202,32 @@ fun ManualOrganizationPreferences(
             when (val currentState = state) {
                 ManualOrganizationRun.State.Idle,
                 ManualOrganizationRun.State.Cancelled,
-                -> item {
-                    ClickablePreference(
-                        label = stringResource(R.string.manual_organization_start),
-                        modifier = Modifier.focusRequester(focusRequester).focusable(),
-                        onClick = { execute { coordinator.start(trigger) } },
-                    )
+                -> {
+                    // Issue #271 review: loading is announced, never silently
+                    // equated with "never organized". While startup
+                    // reconciliation is still pending (IDLE/RECONCILING), an
+                    // unavailable read is not yet the durable truth, so the
+                    // checking row stays until the gate reaches a terminal
+                    // state and the surface re-reads.
+                    val showCheckingRow = durableStatus == null ||
+                        (
+                            durableStatus == OrganizerDurableStatus.UNAVAILABLE &&
+                                (
+                                    readinessState == ReadinessGate.State.IDLE ||
+                                        readinessState == ReadinessGate.State.RECONCILING
+                                    )
+                            )
+                    if (showCheckingRow) {
+                        item { ProgressText(R.string.manual_organization_durable_status_checking) }
+                    }
+                    durableStatus?.let { durableStatusItems(it, onOpenDiagnostics) }
+                    item {
+                        ClickablePreference(
+                            label = stringResource(R.string.manual_organization_start),
+                            modifier = Modifier.focusRequester(focusRequester).focusable(),
+                            onClick = { execute { coordinator.start(trigger) } },
+                        )
+                    }
                 }
 
                 ManualOrganizationRun.State.Capturing -> item {
@@ -473,9 +516,52 @@ fun ManualOrganizationPreferences(
  * unsupported schema) returns `null` and the picker shows no active
  * selection, failing closed exactly like the composer.
  */
+
 private fun readSelectedStrategy(context: Context): LayoutStrategySelectionSnapshot? {
     val read = LayoutStrategySelectionModule.store(context).read()
     return (read as? LayoutStrategySelectionReadResult.Ready)?.snapshot
+}
+
+/**
+ * Issue #271: the durable status projection row(s) for the Idle/Cancelled
+ * surfaces. Only the three informative statuses render; `NEVER_ORGANIZED` and
+ * the fail-closed `UNAVAILABLE` render nothing. The unresolved status reuses
+ * the existing safe-support guidance (safe-terminal line plus the diagnostics
+ * entry), matching the in-run unresolved surfaces.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.durableStatusItems(
+    status: OrganizerDurableStatus,
+    onOpenDiagnostics: (() -> Unit)?,
+) {
+    when (status) {
+        OrganizerDurableStatus.ORGANIZED_RESTORABLE -> item {
+            SummaryText(stringResource(R.string.manual_organization_durable_status_restorable))
+        }
+
+        OrganizerDurableStatus.RESTORED_OR_EXPIRED -> item {
+            SummaryText(stringResource(R.string.manual_organization_durable_status_restored_or_expired))
+        }
+
+        OrganizerDurableStatus.UNRESOLVED -> {
+            item {
+                SummaryText(stringResource(R.string.manual_organization_durable_status_unresolved))
+            }
+            item {
+                SummaryText(stringResource(R.string.manual_organization_safe_terminal))
+            }
+            item {
+                ClickablePreference(
+                    label = stringResource(R.string.manual_organization_open_diagnostics),
+                    subtitle = stringResource(R.string.manual_organization_open_diagnostics_summary),
+                    onClick = { onOpenDiagnostics?.invoke() },
+                )
+            }
+        }
+
+        OrganizerDurableStatus.NEVER_ORGANIZED,
+        OrganizerDurableStatus.UNAVAILABLE,
+        -> Unit
+    }
 }
 
 private fun strategyDisplayName(id: StrategyId): Int = when (id.value) {

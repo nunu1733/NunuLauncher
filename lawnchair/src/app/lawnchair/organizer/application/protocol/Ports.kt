@@ -186,6 +186,15 @@ interface RecoveryStorePort {
      */
     fun readInspectionProjection(pointId: RecoveryPointId): InspectionProjectionRead
 
+    /**
+     * Read the whole published inspection snapshot for the derived, closed
+     * durable status projection (Issue #271). Same boundary as
+     * [readInspectionProjection]: no SQLite open, no write, no lifecycle
+     * mutation, no retention cleanup; a snapshot that is missing, stale, or
+     * not generation-valid reads [InspectionSnapshotRead.Unavailable].
+     */
+    fun readInspectionSnapshot(): InspectionSnapshotRead
+
     fun checkpoint(payload: CheckpointPayload): CheckpointResult
 
     fun markApplying(
@@ -253,6 +262,16 @@ interface RecoveryStorePort {
         data class Value(val projection: InspectionProjection) : InspectionProjectionRead
         data object Unavailable : InspectionProjectionRead
         data object Incompatible : InspectionProjectionRead
+    }
+
+    /** Closed whole-snapshot read result for the durable status projection (#271). */
+    sealed interface InspectionSnapshotRead {
+        data class Value(
+            val records: List<InspectionProjection.Record>,
+            val tombstones: List<InspectionProjection.Tombstone>,
+        ) : InspectionSnapshotRead
+
+        data object Unavailable : InspectionSnapshotRead
     }
 
     /** Minimal derived metadata needed by #84 classification; no payload data. */

@@ -117,6 +117,31 @@ internal class FakeRecoveryStore(
         return RecoveryStorePort.InspectionProjectionRead.Value(RecoveryStorePort.InspectionProjection.Missing)
     }
 
+    override fun readInspectionSnapshot(): RecoveryStorePort.InspectionSnapshotRead {
+        if (storeAvailability != RecoveryStorePort.StoreAvailability.READY || inspectionReadFails) {
+            return RecoveryStorePort.InspectionSnapshotRead.Unavailable
+        }
+        return RecoveryStorePort.InspectionSnapshotRead.Value(
+            records = records.values.map { record ->
+                RecoveryStorePort.InspectionProjection.Record(
+                    pointId = record.pointId,
+                    lifecycle = record.lifecycle,
+                    createdAtMs = record.createdAtMs,
+                    updatedAtMs = record.updatedAtMs,
+                    checksumValid = record.checksumValid && record.pointId.value !in unreadablePointIds,
+                    formatVersion = record.formatVersion,
+                )
+            },
+            tombstones = tombstones.values.map { tombstone ->
+                RecoveryStorePort.InspectionProjection.Tombstone(
+                    pointId = tombstone.pointId,
+                    reason = tombstone.reason,
+                    expiresAtMs = tombstone.expiresAtMs,
+                )
+            },
+        )
+    }
+
     override fun bindReconciliationIssuer(
         mutex: RunMutex,
     ): RecoveryStoreReconciliationIssuer? {
