@@ -1,6 +1,6 @@
 ---
 issue: "#336"
-status: accepted
+status: implemented
 spec: ./spec.md
 updated: 2026-09-17
 ---
