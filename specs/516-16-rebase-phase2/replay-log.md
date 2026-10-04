@@ -353,3 +353,34 @@
 - **ADR-0018 Decision 9（方針1: anchor構造を正）がaccepted**（ADR-0018 revision 6 / plan revision 2。PR #534 merge、main `15ae5bf91700a5765ce48f80584469ab965ebb24`）。§4の「求める判断」は解決済み。本branchはplan §4.1のS0〜S4で作業を継続する。
 - モデル層の固定source比較の正本は [docs/assessment/issue-532-model-architecture-decision.md](../../docs/assessment/issue-532-model-architecture-decision.md)。
 - WIP（`4022708e33`〜`88af5218ce` の追加修復10 commit、253 path）は一括採択/一括revert禁止。path単位の採否初版は [wip-adoption-table.md](./wip-adoption-table.md)、source→replay対応表は [source-replay-map.md](./source-replay-map.md)。
+
+
+## 5. S0〜S3 実行記録とG1結果（2026-10-04、ADR-0018 Decision 9 / plan §4.1）
+
+### 実行commit（停止head `88af5218ce` 以降、push順）
+| stage | commit | 内容 |
+|---|---|---|
+| S0 | `827251a398` | accepted文書（ADR rev6 / plan rev2 / assessment / spec）の同期 |
+| S0 | `e1888b2e0b` | replay-log訂正 + source-replay-map（300件一対一）+ WIP採否表（253 path）+ candidate inventory初版（579 path） |
+| S1 | `de06b3da1f`/`ee4d8385cd`/`792b792522`/`bf31d9a8d5` | anchorモデル層復元（`LauncherModel.kt`/`BgDataModel.kt`/`LoaderTask`/binder/`ModelDbController`/dagger/preview）。旧Java duplicate・ForkBridgeModule（旧model provider）削除。非model bindingは `ForkServiceModule` として分離（S2で個別review対象） |
+| S2 | `51f0b6e339` | organizer/restore reload契約をanchor `LauncherModel.kt` へ移植（token入力はassisted、commit+close後queued完了、supersession/cancel、snapshot gate、`startLoaderWithoutCallbacks`） |
+| S2 | `4081458f82` | `ModelProjectionCodec` をanchor `BgDataModel`（itemsIdMap/extraItems/getContents）で動作させる |
+| S2 | `5e4645e273` | `ModelWriter` へのadmission（`LayoutWriteCoordinator`）+ DirectEdit契約（stage-2再検証、1 transaction、Undo、配置先）移植。`LoaderTask.run` を `runOrDefer` で包む（#298 thread affinity） |
+| S2 | `468e5d0ff5`/`35a9fc02ed`/`abe589ee07` | anchor folder UI採用+fork folder契約port、#497 destination policy、startup hook（`LauncherAppState` initから `LawnchairApp.onLauncherAppStateCreated`、component構築中の再入なし、preview/sandbox非発火） |
+| S3 | `20249df0e9`/`60162ea98d`/`b18a98af48` | grid migration journal/reconciliation両entry（`tryMigrateDB`/`attemptMigrateDb`）をanchor `ModelDbController` へ移植、`quiesceForRestore` 復元、Nova converter をanchor APIへ適合 |
+| S3 | `3b5ae96cf0`〜`9636d7c0f9` | lawnchair UI層のanchor API追従（reorderable 3.1/icons mono pipeline/preferences keys/resources）+ src/ javac収束（IDP/PreviewOverrides統合、LauncherProvider/ModelWriter/RestoreDbTask適合、stale削除） |
+
+### G1 gate結果（本head `9636d7c0f9`）
+- `./gradlew spotlessCheck`: **BUILD SUCCESSFUL**
+- `./gradlew assembleLawnWithQuickstepGithubDebug`: **BUILD SUCCESSFUL**
+
+### S2/S3での解消判断（plan §4.1「具体的な実装境界」対応）
+- organizer tokenは `LoaderTask` のassisted入力で運搬、通常/preview loaderはtokenless
+- `WorkspaceData` のversion/modification IDと `RevisionId` は同一視せず、codecはanchor `itemsIdMap` 列挙+`FolderInfo.getContents()` でprojection契約を維持
+- CRUD呼出しはanchorのfavorites固定APIへadapt。旧table指定CRUDは復活させず必要分のみbridge（`LauncherProvider` 経由）
+- startup hookは `LauncherAppState` init末尾（component構築完了後）から `onLauncherAppStateCreated(this)` へ引数渡し。preview/sandbox processはsafe-castで非発火
+- spec 118（DB transaction所有）とspec 14（process-wide lease）は別実装で維持（`SQLiteTransaction` lease-owning ctor / `LayoutWriteCoordinator` admission）
+
+### 未完（S3c/S4で対応）
+- T4/T5/T7/T8追加oracle実装と `ci_portfolio_map.yml`/portfolio同期
+- G2（organizer unit test gate）、G3（candidate ownership inventory正式計測）、G4（T1〜T9実行表+`REBASE_HEAD`記録）、G5（CI merge gate）
