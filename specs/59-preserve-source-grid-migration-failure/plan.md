@@ -2,8 +2,8 @@
 
 > Issue: [#59](https://github.com/nunu1733/NunuLauncher/issues/59)
 > Spec: [spec.md](./spec.md)
-> Status: accepted
-> Updated: 2026-08-16
+> Status: implemented (PR #75)
+> Updated: 2026-08-17
 
 ## Current evidence
 
