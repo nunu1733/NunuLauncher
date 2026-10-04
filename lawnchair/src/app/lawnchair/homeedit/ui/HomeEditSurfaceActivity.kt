@@ -518,7 +518,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             val user = userCache.getUserForSerialNumber(item.userSerial) ?: Process.myUserHandle()
             val activity = launcherApps.getActivityList(component.packageName, user)
                 .firstOrNull { it.componentName == component } ?: return null
-            iconCache.getFullResIcon(activity).toImageBitmap(size)
+            iconCache.getFullResIcon(activity.activityInfo)?.toImageBitmap(size)
         }
 
         is TargetKey.ShortcutKey -> {

@@ -1,6 +1,7 @@
 package app.lawnchair.util
 
 import android.annotation.SuppressLint
+import android.os.Build
 import android.util.Log
 import com.android.launcher3.Utilities
 
@@ -9,6 +10,10 @@ private const val TAG = "Compatibility"
 val isOnePlusStock = checkOnePlusStock()
 
 val isGestureNavContractCompatible = checkGestureNavContract()
+
+val isNothingOs = checkNothingStock()
+
+val isAndroidBaklavaInitial = checkGenericBaklavaInitial()
 
 private fun checkOnePlusStock(): Boolean = when {
     getSystemProperty("ro.rom.version", "")
@@ -48,6 +53,18 @@ private fun checkOppoStock(): Boolean = when {
 private fun checkMeizuStock(): Boolean = when {
     getSystemProperty("ro.meizu.build.number", "").isNotEmpty() -> true
     getSystemProperty("ro.meizu.project.id", "").isNotEmpty() -> true
+    else -> false
+}
+
+private fun checkNothingStock(): Boolean = when {
+    getSystemProperty("ro.nothing.version.id", "").isNotEmpty() -> true
+    getSystemProperty("ro.build.nothing.version", "").isNotEmpty() -> true
+    getSystemProperty("ro.build.nothing.feature.base", "").isNotEmpty() -> true
+    else -> false
+}
+
+private fun checkGenericBaklavaInitial(): Boolean = when {
+    arrayOf("BP2A.", "BD1A.").any { prefix -> Build.FINGERPRINT.contains(prefix) } -> true
     else -> false
 }
 

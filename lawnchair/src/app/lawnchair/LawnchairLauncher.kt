@@ -31,11 +31,13 @@ import android.view.ViewTreeObserver
 import android.window.SplashScreen
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.LawnchairApp.Companion.showQuickstepWarningIfNecessary
 import app.lawnchair.compat.LawnchairQuickstepCompat
+import com.android.launcher3.reloadIcons
 import app.lawnchair.data.AppDatabase
 import app.lawnchair.data.wallpaper.service.WallpaperService
 import app.lawnchair.factory.LawnchairWidgetHolder
@@ -80,6 +82,7 @@ import com.android.launcher3.util.RunnableList
 import com.android.launcher3.util.SystemUiController.UI_STATE_BASE_WINDOW
 import com.android.launcher3.util.Themes
 import com.android.launcher3.util.TouchController
+import com.android.launcher3.Launcher
 import com.android.launcher3.views.ActivityContext
 import com.android.launcher3.views.OptionsPopupView
 import com.android.launcher3.views.OptionsPopupView.OptionItem
@@ -108,7 +111,7 @@ class LawnchairLauncher : QuickstepLauncher() {
             clockEpochDay = { java.time.LocalDate.now().toEpochDay() },
         )
     }
-    private val insetsController by unsafeLazy { WindowInsetsControllerCompat(launcher.window, rootView) }
+    private val insetsController by unsafeLazy { WindowInsetsControllerCompat(launcher.window!!, rootView) }
     private val themeProvider by unsafeLazy { ThemeProvider.INSTANCE.get(this) }
     private val noStatusBarStateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {
@@ -175,12 +178,10 @@ class LawnchairLauncher : QuickstepLauncher() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (!Utilities.ATLEAST_Q) {
-            enableEdgeToEdge(
-                navigationBarStyle = SystemBarStyle.auto(
-                    Color.TRANSPARENT,
-                    Color.TRANSPARENT,
-                ),
-            )
+            // Rebase Phase 2 adapt: anchor's BaseActivity extends android.app.Activity,
+            // so androidx enableEdgeToEdge is unavailable; set edge-to-edge decor flags
+            // directly instead.
+            WindowCompat.setDecorFitsSystemWindows(window!!, false)
         }
         layoutInflater.factory2 = LawnchairLayoutFactory(this)
         super.onCreate(savedInstanceState)
@@ -253,7 +254,7 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
         val isWorkspaceDarkText = Themes.getAttrBoolean(this, R.attr.isWorkspaceDarkText)
         preferenceManager2.darkStatusBar.onEach(launchIn = lifecycleScope) { darkStatusBar ->
-            systemUiController.updateUiState(UI_STATE_BASE_WINDOW, isWorkspaceDarkText || darkStatusBar)
+            systemUiController?.updateUiState(UI_STATE_BASE_WINDOW, isWorkspaceDarkText || darkStatusBar)
         }
         preferenceManager2.backPressGestureHandler.onEach(launchIn = lifecycleScope) { handler ->
             hasBackGesture = handler !is GestureHandlerConfig.NoOp
@@ -284,32 +285,38 @@ class LawnchairLauncher : QuickstepLauncher() {
         out.add(SearchBarStateHandler(this))
     }
 
-    override fun getSupportedShortcuts(): Stream<SystemShortcut.Factory<*>> = Stream.concat(
-        super.getSupportedShortcuts(),
-        Stream.concat(
-            Stream.of(LawnchairShortcut.UNINSTALL, LawnchairShortcut.CUSTOMIZE),
-            Stream.concat(
-                if (LawnchairApp.isRecentsEnabled) Stream.of(LawnchairShortcut.PAUSE_APPS) else Stream.empty(),
-                Stream.concat(
-                    // Issue #38: placement lock authoring for shortcut-capable rows.
-                    Stream.of(OrganizerLockShortcut.PLACEMENT_LOCK),
-                    // Issue #448: per-item edit actions (move to page / add to
-                    // folder / remove from home) via the homeedit module.
-                    Stream.of(
-                        EditActionsShortcuts.MOVE_TO_PAGE,
-                        EditActionsShortcuts.ADD_TO_FOLDER,
-                        EditActionsShortcuts.REMOVE_FROM_HOME,
-                    ),
-                ),
-            ),
-        ),
-    )
+    override fun getSupportedShortcuts(container: Int): Stream<SystemShortcut.Factory<*>> {
+        val base: Stream<SystemShortcut.Factory<*>> = super.getSupportedShortcuts(container)
+        val lawnchair: Stream<SystemShortcut.Factory<*>> =
+            Stream.of(
+                SystemShortcut.Factory<LawnchairLauncher> { activity, itemInfo, view ->
+                    LawnchairShortcut.UNINSTALL.getShortcut(activity, itemInfo, view)
+                },
+                SystemShortcut.Factory<LawnchairLauncher> { activity, itemInfo, view ->
+                    LawnchairShortcut.CUSTOMIZE.getShortcut(activity, itemInfo, view)
+                },
+            )
+        val recents: Stream<SystemShortcut.Factory<*>> =
+            if (LawnchairApp.isRecentsEnabled) Stream.of<SystemShortcut.Factory<*>>(LawnchairShortcut.PAUSE_APPS) else Stream.empty<SystemShortcut.Factory<*>>()
+        // Issue #38: placement lock authoring for shortcut-capable rows.
+        val organizer: Stream<SystemShortcut.Factory<*>> =
+            Stream.of(OrganizerLockShortcut.PLACEMENT_LOCK)
+        // Issue #448: per-item edit actions (move to page / add to folder /
+        // remove from home) via the homeedit module.
+        val edit: Stream<SystemShortcut.Factory<*>> = Stream.of(
+            EditActionsShortcuts.MOVE_TO_PAGE,
+            EditActionsShortcuts.ADD_TO_FOLDER,
+            EditActionsShortcuts.REMOVE_FROM_HOME,
+        )
+        return Stream.concat(
+            base,
+            Stream.concat(lawnchair, Stream.concat(recents, Stream.concat(organizer, edit))),
+        )
+    }
 
-    override fun updateTheme() {
+    private fun updateTheme() {
         if (themeProvider.colorScheme != colorScheme) {
             recreate()
-        } else {
-            super.updateTheme()
         }
     }
 
@@ -340,7 +347,7 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
 
     override fun handleGestureContract(intent: Intent?) {
-        if (!LawnchairApp.isRecentsEnabled && prefs.enableGnc.get()) {
+        if (!LawnchairApp.isRecentsEnabled && prefs.enableGnc.get() && intent != null) {
             val gnc = GestureNavContract.fromIntent(intent)
             if (gnc != null) {
                 AbstractFloatingView.closeOpenViews(
@@ -405,15 +412,15 @@ class LawnchairLauncher : QuickstepLauncher() {
         return popup
     }
 
-    override fun createAppWidgetHolder(): LauncherWidgetHolder {
-        val factory = LauncherWidgetHolder.HolderFactory.newFactory(this) as LawnchairWidgetHolder.LawnchairHolderFactory
-        return factory.newInstance(
-            this,
-        ) { appWidgetId: Int ->
-            workspace.removeWidget(
-                appWidgetId,
-            )
+    // Rebase Phase 2 adapt: the anchor creates the holder through
+    // LauncherWidgetHolder.newInstance (DI WidgetHolderFactory); no
+    // createAppWidgetHolder override point remains.
+    fun createAppWidgetHolder(): LauncherWidgetHolder {
+        val holder = LauncherWidgetHolder.newInstance(this)
+        holder.setAppWidgetRemovedCallback { appWidgetId ->
+            workspace.removeWidget(appWidgetId)
         }
+        return holder
     }
 
     override fun makeDefaultActivityOptions(splashScreenStyle: Int): ActivityOptionsWrapper {
@@ -576,7 +583,8 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         var sRestartFlags = 0
 
-        val instance get() = LauncherAppState.getInstanceNoCreate()?.launcher as? LawnchairLauncher
+        val instance: LawnchairLauncher?
+            get() = LauncherAppState.getInstanceNoCreate(LawnchairApp.instance)?.launcher
     }
 }
 

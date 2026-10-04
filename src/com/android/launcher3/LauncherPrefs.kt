@@ -114,13 +114,8 @@ constructor(@ApplicationContext private val encryptedContext: Context) {
      * Synchronously stores all the values provided according to their associated Item
      * configuration.
      */
-    fun putSync(vararg itemsToValues: Pair<Item, Any>): Boolean {
-        var committed = true
-        prepareToPutValues(itemsToValues).forEach { editor ->
-            committed = editor.commit() && committed
-        }
-        return committed
-    }
+    fun putSync(vararg itemsToValues: Pair<Item, Any>): Unit =
+        prepareToPutValues(itemsToValues).forEach { it.commit() }
 
     /**
      * Updates the values stored in `SharedPreferences` for each corresponding Item-value pair. If

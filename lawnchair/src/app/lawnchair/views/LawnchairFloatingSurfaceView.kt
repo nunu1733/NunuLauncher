@@ -26,7 +26,9 @@ import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import app.lawnchair.LawnchairLauncher
+import com.android.launcher3.uioverrides.QuickstepLauncher
 import app.lawnchair.launcher
+import com.android.launcher3.util.window.RefreshRateTracker.Companion.getSingleFrameMs
 import com.android.app.animation.Interpolators
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.CellLayout
@@ -34,12 +36,11 @@ import com.android.launcher3.GestureNavContract
 import com.android.launcher3.Insettable
 import com.android.launcher3.LauncherAnimUtils
 import com.android.launcher3.QuickstepTransitionManager.CONTENT_SCALE_DURATION
-import com.android.launcher3.QuickstepTransitionManager.LaunchDepthController
+import com.android.launcher3.statehandlers.DepthController
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.util.Executors
 import com.android.launcher3.util.MultiPropertyFactory
-import com.android.launcher3.util.window.RefreshRateTracker
 import com.android.launcher3.views.FloatingIconView.getLocationBoundsForView
 import com.android.launcher3.views.FloatingIconViewCompanion.setPropertiesVisible
 import java.util.function.Consumer
@@ -89,7 +90,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
         // Remove after some time, to avoid flickering
         Executors.MAIN_EXECUTOR.handler.postDelayed(
             mRemoveViewRunnable,
-            RefreshRateTracker.getSingleFrameMs(mLauncher).toLong(),
+            mLauncher.asContext().getSingleFrameMs().toLong(),
         )
     }
 
@@ -167,7 +168,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
     }
 
     private fun getBackgroundAnimator(): ObjectAnimator {
-        val depthController = LaunchDepthController(mLauncher)
+        val depthController = DepthController(mLauncher as QuickstepLauncher)
         val targetDepth = mLauncher.stateManager.state.getDepth<LawnchairLauncher?>(mLauncher)
 
         val backgroundRadiusAnim = createDepthAnimator(
@@ -206,7 +207,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
     }
 
     private fun createDepthAnimator(
-        depthController: LaunchDepthController,
+        depthController: DepthController,
         targetDepth: Float,
         onEnd: (() -> Unit)? = null,
     ): ObjectAnimator {
@@ -238,11 +239,13 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
     }
 
     fun getIcon(): View? {
-        return mLauncher.getFirstMatchForAppClose(
+        // Rebase Phase 2 adapt: anchor renamed the fork's
+        // getFirstMatchForAppClose to getFirstHomeElementForAppClose and dropped
+        // the supportsAllAppsState parameter.
+        return mLauncher.getFirstHomeElementForAppClose(
             null, /* StableViewInfo */
             mContract!!.componentName.packageName,
             mContract!!.user,
-            false, /* supportsAllAppsState */
         )
     }
 
@@ -396,7 +399,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
          */
         fun show(launcher: LawnchairLauncher, contract: GestureNavContract?) {
             val view: LawnchairFloatingSurfaceView =
-                launcher.viewCache.getView<LawnchairFloatingSurfaceView?>(
+                launcher.viewCache.getView<LawnchairFloatingSurfaceView>(
                     R.layout.floating_surface_view,
                     launcher,
                     launcher.dragLayer,
@@ -405,7 +408,7 @@ class LawnchairFloatingSurfaceView @JvmOverloads constructor(
             view.mIsOpen = true
 
             val anim = AnimatorSet()
-            val startDelay = RefreshRateTracker.getSingleFrameMs(launcher)
+            val startDelay = launcher.asContext().getSingleFrameMs()
             val launcherContentAnimator: Pair<AnimatorSet?, Runnable?> =
                 view.getLauncherContentAnimator(startDelay)
             anim.playTogether(launcherContentAnimator.first, view.getBackgroundAnimator())

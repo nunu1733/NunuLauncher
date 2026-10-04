@@ -70,7 +70,10 @@ class DeviceProfileOverrides(context: Context) : SafeCloseable {
     // because InvariantDeviceProfile sets its static deviceType only inside initGrid,
     // after both grid-driven constructors have already touched this singleton.
     private fun enabledPresets(): List<DeclaredGridPreset> = resolveEnabledPresets(
-        InvariantDeviceProfile.parseAllDefinedGridOptions(appContext)
+        InvariantDeviceProfile.parseAllDefinedGridOptions(
+            appContext,
+            DisplayController.INSTANCE.get(appContext).getInfo(),
+        )
             .map { option ->
                 DeclaredGridPreset(
                     name = option.name,

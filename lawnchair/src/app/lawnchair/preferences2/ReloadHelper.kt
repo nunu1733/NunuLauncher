@@ -17,9 +17,12 @@
 package app.lawnchair.preferences2
 
 import android.content.Context
+import android.widget.Toast
 import app.lawnchair.LawnchairLauncher
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
+import com.android.launcher3.R
+import com.android.launcher3.model.ModelWriter
 import com.android.quickstep.TouchInteractionService
 import com.android.quickstep.util.TISBindHelper
 
@@ -51,5 +54,28 @@ class ReloadHelper(private val context: Context) {
         tisBinder.runOnBindToTouchInteractionService {
             tis?.taskbarManager?.recreateTaskbar()
         }
+    }
+}
+
+/**
+ * LC bridge (S2c of #532): clears all views from the home screen (desktop
+ * container). The DB write goes through [ModelWriter.clearAllHomeScreenViewsByType]
+ * (single delete transaction inside the writer contract).
+ */
+fun LauncherAppState.clearAllViewsFromHomeScreen() {
+    val writer = model.getWriter(
+        verifyChanges = false,
+        cellPosMapper = null,
+        owner = null,
+    )
+    val isViewsRemoved = writer.clearAllHomeScreenViewsByType(
+        com.android.launcher3.LauncherSettings.Favorites.CONTAINER_DESKTOP,
+    )
+    if (isViewsRemoved) {
+        Toast.makeText(
+            context,
+            R.string.home_screen_all_views_removed_msg,
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 }

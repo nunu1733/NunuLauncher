@@ -121,6 +121,11 @@ public abstract class ContextTracker<CONTEXT extends ActivityContext> {
 
     public static final class ActivityTracker<T extends BaseActivity> extends ContextTracker<T> {
 
+        @Nullable
+        public <R extends T> R getCreatedActivity() {
+            return getCreatedContext();
+        }
+
         @Override
         public boolean isHomeStarted(T context) {
             return context.isStarted();

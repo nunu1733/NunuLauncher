@@ -31,6 +31,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import app.lawnchair.data.Converters
 import app.lawnchair.font.FontCache
 import app.lawnchair.gestures.config.GestureHandlerConfig
+import app.lawnchair.gestures.handlers.SleepMode
 import app.lawnchair.gestures.type.GestureType
 import app.lawnchair.hotseat.HotseatMode
 import app.lawnchair.icons.CustomAdaptiveIconDrawable
@@ -136,6 +137,22 @@ class PreferenceManager2 private constructor(private val context: Context) :
         },
         save = { it.toString() },
         onSet = { it?.let(iconShape::setBlocking) },
+    )
+
+    val folderShape = preference(
+        key = stringPreferencesKey(name = "folder_shape"),
+        defaultValue = IconShape.fromString(
+            value = context.getString(R.string.config_default_folder_shape),
+            context = context,
+        ) ?: IconShape.Circle,
+        parse = {
+            IconShape.fromString(value = it, context = context)
+                ?: IconShapeManager.getSystemIconShape(context)
+        },
+        save = { it.toString() },
+        onSet = {
+            reloadHelper.reloadIcons()
+        },
     )
 
     val alwaysReloadIcons = preference(
@@ -730,6 +747,13 @@ class PreferenceManager2 private constructor(private val context: Context) :
     val doubleTapGestureHandler = serializablePreference<GestureHandlerConfig>(
         key = stringPreferencesKey("double_tap_gesture_handler"),
         defaultValue = GestureHandlerConfig.Sleep,
+    )
+
+    val sleepMode = preference(
+        key = stringPreferencesKey(name = "sleep_mode"),
+        defaultValue = SleepMode.AUTO,
+        parse = { SleepMode.fromString(it) ?: SleepMode.AUTO },
+        save = { it.toString() },
     )
 
     val swipeUpGestureHandler = serializablePreference<GestureHandlerConfig>(

@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
 import androidx.core.content.edit
+import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.Utilities
 import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
@@ -26,7 +27,7 @@ import kotlinx.coroutines.plus
 class HeadlessWidgetsManager(private val context: Context) : SafeCloseable {
 
     private val scope = MainScope() + CoroutineName("HeadlessWidgetsManager")
-    private val prefs = Utilities.getDevicePrefs(context)
+    private val prefs = LauncherPrefs.getDevicePrefs(context)
     private val widgetManager = AppWidgetManager.getInstance(context)
     private val host = HeadlessAppWidgetHost(context)
     private val widgetsMap = mutableMapOf<String, Widget>()
@@ -118,9 +119,12 @@ class HeadlessWidgetsManager(private val context: Context) : SafeCloseable {
             prefs.edit { putInt(prefKey, widgetId) }
         }
 
-        fun getBindIntent() = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
-            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
-            .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
+        fun getBindIntent(): Intent {
+            val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
+            return intent
+        }
     }
 
     private class WidgetNotBoundException : RuntimeException()

@@ -63,8 +63,10 @@ class IconOverrideRepository(private val context: Context) : SafeCloseable {
     }
 
     private fun updatePackageIcons(target: ComponentKey) {
-        val model = LauncherAppState.getInstance(context).model
-        model.onPackageStateChanged(
+        val appState = LauncherAppState.getInstance(context)
+        // S2c (#532): the anchor model dispatches package-state changes via
+        // ModelLauncherCallbacks; feed the update through the same task queue.
+        appState.model.newModelCallbacks().onPackageStateChanged(
             PackageInstallInfo.fromState(
                 STATUS_INSTALLED,
                 target.componentName.packageName,

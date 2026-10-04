@@ -106,12 +106,20 @@ class LawnchairApp : Application() {
         }
     }
 
-    fun onLauncherAppStateCreated() {
+    fun onLauncherAppStateCreated(appState: com.android.launcher3.LauncherAppState) {
         registerActivityLifecycleCallbacks(activityHandler)
         // Issue #14: make restart reconciliation reachable before organizer requests are accepted.
         // Issue #201: the outer composition supplies the generated-folder title
         // resolver, so the application module never depends on the UI layer.
-        layoutApplicationModule = LayoutApplicationModule.production(this, GeneratedFolderTitles.resolver(this))
+        // S2c (#532): appState is handed over by the caller (LauncherAppState
+        // init) so this hook never re-enters LauncherAppState.getInstance()
+        // during component construction; LayoutApplicationModule.production
+        // receives the instance explicitly.
+        layoutApplicationModule = LayoutApplicationModule.production(
+            this,
+            GeneratedFolderTitles.resolver(this),
+            appState,
+        )
     }
 
     /**
@@ -146,12 +154,12 @@ class LawnchairApp : Application() {
             )
             val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
             com.android.launcher3.util.Executors.MAIN_EXECUTOR.execute {
-                if (!model.isModelLoaded && !model.hasCallbacks()) {
+                if (!model.isModelLoaded() && !model.hasCallbacks()) {
                     model.startLoaderWithoutCallbacks()
                 }
             }
             val deadline = SystemClock.elapsedRealtime() + ORGANIZER_MODEL_LOAD_TIMEOUT_MS
-            while (!model.isModelLoaded && SystemClock.elapsedRealtime() < deadline) {
+            while (!model.isModelLoaded() && SystemClock.elapsedRealtime() < deadline) {
                 try {
                     Thread.sleep(50)
                 } catch (_: InterruptedException) {
@@ -159,7 +167,7 @@ class LawnchairApp : Application() {
                     break
                 }
             }
-            if (!model.isModelLoaded) {
+            if (!model.isModelLoaded()) {
                 Log.e(TAG, "Organizer startup reconciliation began without a completed model load")
                 layoutApplicationModule.failStartupReconciliation()
                 return@thread
