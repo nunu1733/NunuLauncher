@@ -37,14 +37,12 @@ class EffectiveRulesIdentityTest {
 
     @Test
     fun differentSelectedStrategyContentYieldsADifferentRulesIdentity() {
-        // The registry holds one strategy in child 2, but the catalog will grow;
-        // the identity-content contract is exercised directly on the digest
-        // function so it is verified even while the composer sees a single
-        // runtime-supported member.
+        // Both are runtime-supported strategies since child 4; the identity-
+        // content contract must distinguish their effective rule semantics.
         val canonical = effectiveRulesIdentity(bundleA, selectionDefault, rules("CANONICAL_PAGE_COMPACT_V1"))
-        val other = effectiveRulesIdentity(bundleA, selectionDefault, rules("FUTURE_TIDY_V1"))
+        val tidy = effectiveRulesIdentity(bundleA, selectionDefault, rules("STABLE_PAGE_TIDY_V1"))
 
-        assertNotEquals(canonical, other)
+        assertNotEquals(canonical, tidy)
     }
 
     @Test

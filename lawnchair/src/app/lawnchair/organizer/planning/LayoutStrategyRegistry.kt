@@ -45,6 +45,13 @@ internal object LayoutStrategyRegistry {
      */
     val CANONICAL_PAGE_COMPACT_V1 = StrategyId("CANONICAL_PAGE_COMPACT_V1")
 
+    /**
+     * Spec 182 STABLE_PAGE_TIDY_V1: page-local lift-then-place compaction of
+     * eligible `1×1` units; otherwise-movable non-`1×1` units and existing
+     * folders are `STRATEGY_PRESERVED`; no new folders, no new pages.
+     */
+    val STABLE_PAGE_TIDY_V1 = StrategyId("STABLE_PAGE_TIDY_V1")
+
     private val definitions: Map<StrategyId, StrategyDefinition> = mapOf(
         CANONICAL_PAGE_COMPACT_V1 to StrategyDefinition(
             identity = CANONICAL_PAGE_COMPACT_V1,
@@ -52,6 +59,18 @@ internal object LayoutStrategyRegistry {
             eligibleUnitFilter = { it.kind == ItemKind.APPLICATION || it.kind == ItemKind.DEEP_SHORTCUT },
             unitOrder = UnitOrdering.CANONICAL_TIE_BREAK,
             pageScope = PageScope.PREFERRED_THEN_NEW,
+            cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
+            placeFullRun = FullRunExecution::execute,
+        ),
+        STABLE_PAGE_TIDY_V1 to StrategyDefinition(
+            identity = STABLE_PAGE_TIDY_V1,
+            createsFolders = false,
+            eligibleUnitFilter = { item ->
+                (item.kind == ItemKind.APPLICATION || item.kind == ItemKind.DEEP_SHORTCUT) &&
+                    (item.placement as? CapturedPlacement.Workspace)?.span == GridSpan(1, 1)
+            },
+            unitOrder = UnitOrdering.CAPTURED_VISUAL_PAGE_LOCAL,
+            pageScope = PageScope.CAPTURED_PAGE_ONLY,
             cellTraversal = CellTraversal.TOP_LEFT_ROW_MAJOR,
             placeFullRun = FullRunExecution::execute,
         ),

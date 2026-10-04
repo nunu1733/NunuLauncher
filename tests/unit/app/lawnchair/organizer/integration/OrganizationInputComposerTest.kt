@@ -36,6 +36,7 @@ import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.sha256Canonical
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -556,6 +557,54 @@ class OrganizationInputComposerTest {
 
         assertTrue(composition.reason is InputReadinessReason.InconsistentPolicyRead)
         assertEquals(InputCompositionCode.DYNAMIC_CUT_UNSTABLE, composition.diagnostic.code)
+    }
+
+    @Test
+    fun twoValidSelectionsComposeEndToEndWithDistinctRulesIdentities() {
+        // AC-6 (spec 182): same bundle, two different *valid* selections —
+        // both compose Ready with the same bundle identity, the effective
+        // strategy differs, the effective rulesIdentity differs, and each
+        // provenance row carries its own selection identity.
+        val state = CanonicalFixtures.state(
+            profiles = listOf(CanonicalFixtures.profile("personal")),
+            items = listOf(app("a", "personal", "com.example.a/.Main")),
+        )
+
+        // Content-consistent snapshots: the digest is sha256 over the store's
+        // canonical selection string (selection?.value ?: ""), exactly as
+        // LayoutStrategySelectionAccess publishes it.
+        fun selectionSnapshot(generation: Long, selection: StrategyId) = LayoutStrategySelectionSnapshot(
+            schemaVersion = 1,
+            generation = generation,
+            selection = selection,
+            identity = PolicyInputIdentity(
+                PolicySourceKind.LAYOUT_STRATEGY_SELECTION,
+                "schema-1-generation-$generation",
+                sha256Canonical(selection.value),
+            ),
+        )
+        val canonicalSelection = selectionSnapshot(1L, StrategyId("CANONICAL_PAGE_COMPACT_V1"))
+        val tidySelection = selectionSnapshot(2L, StrategyId("STABLE_PAGE_TIDY_V1"))
+
+        val canonicalReady = composer(
+            state,
+            SequenceOverrides(emptySnapshot(), emptySnapshot()),
+            SequenceEvidence(evidence(), evidence()),
+            selections = SequenceSelections(canonicalSelection, canonicalSelection),
+        ).composeFullOrganization() as OrganizationInputComposition.Ready
+        val tidyReady = composer(
+            state,
+            SequenceOverrides(emptySnapshot(), emptySnapshot()),
+            SequenceEvidence(evidence(), evidence()),
+            selections = SequenceSelections(tidySelection, tidySelection),
+        ).composeFullOrganization() as OrganizationInputComposition.Ready
+
+        assertEquals(StrategyId("CANONICAL_PAGE_COMPACT_V1"), canonicalReady.input.rules.organizationStrategy)
+        assertEquals(StrategyId("STABLE_PAGE_TIDY_V1"), tidyReady.input.rules.organizationStrategy)
+        assertEquals(canonicalReady.provenance.policyBundle, tidyReady.provenance.policyBundle)
+        assertNotEquals(canonicalReady.provenance.rules, tidyReady.provenance.rules)
+        assertEquals(canonicalSelection.identity, canonicalReady.provenance.layoutStrategySelection)
+        assertEquals(tidySelection.identity, tidyReady.provenance.layoutStrategySelection)
     }
 
     @Test
