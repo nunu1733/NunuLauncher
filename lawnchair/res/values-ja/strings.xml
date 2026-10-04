@@ -55,6 +55,27 @@
     <string name="organizer_usage_access_jit_settings_unavailable">システムの使用状況アクセス設定を開けませんでした。許可せずにこのまま続行できます。</string>
     <!-- Issue #38: placement locks -->
     <string name="organizer_lock_menu_title">配置ロック</string>
+    <!-- Issue #448: 項目単位の編集アクション -->
+    <string name="homeedit_menu_move_to_page">ページへ移動\u2026</string>
+    <string name="homeedit_menu_add_to_folder">フォルダへ入れる\u2026</string>
+    <string name="homeedit_menu_remove_from_home">ホームから外す</string>
+    <string name="homeedit_dialog_title_move_to_page">移動先のページ</string>
+    <string name="homeedit_dialog_title_add_to_folder">入れるフォルダ</string>
+    <string name="homeedit_dialog_title_new_folder_page">新しいフォルダの置き先ページ</string>
+    <string name="homeedit_list_new_folder">新しいフォルダ</string>
+    <string name="homeedit_page_label">ページ %1$d</string>
+    <string name="homeedit_folder_entry">%1$s（%2$d件）</string>
+    <string name="homeedit_folder_default_label">フォルダ</string>
+    <string name="homeedit_lock_note_locked">このアイコンは配置ロック中です。移動してもロックは保持されます。</string>
+    <string name="homeedit_lock_note_locked_remove">このアイコンは配置ロック中です。外すとロックも削除されます。</string>
+    <string name="homeedit_error_stale">レイアウトが変化したため実行できません。もう一度お試しください。</string>
+    <string name="homeedit_error_item_gone">アイコンはすでにありません。</string>
+    <string name="homeedit_error_no_space">選んだページに空きがありません。</string>
+    <string name="homeedit_error_redundant">アイコンはすでにその位置にあります。</string>
+    <string name="homeedit_error_folder_gone">フォルダはすでにありません。</string>
+    <string name="homeedit_error_profile_mismatch">仕事用プロファイルのアイコンはこのフォルダに入れられません。</string>
+    <string name="homeedit_error_unsupported">このアイコンは編集アクションの対象外です。</string>
+    <string name="homeedit_error_write_failed">書き込みに失敗しました。レイアウトは変更されていません。</string>
     <string name="organizer_lock_state_locked">ロック中</string>
     <string name="organizer_lock_state_unlocked">ロック解除済み</string>
     <string name="organizer_lock_state_unknown">要確認</string>
