@@ -206,6 +206,21 @@ class RecoveryPreviewProtocolTest {
     }
 
     @Test
+    fun trustedAuthoritativeIncompatibilityReturnsClosedRejectionWithoutCaptureOrMutation() {
+        store.storeAvailability = RecoveryStorePort.StoreAvailability.INCOMPATIBLE_VERSION
+
+        val result = protocol.inspect(pointId)
+
+        assertEquals(
+            RecoveryPreviewResult.NotRestorable(pointId, RecoveryPreviewRejection.INCOMPATIBLE_VERSION),
+            result,
+        )
+        assertEquals(1, store.inspectionProjectionReads)
+        assertEquals(0, writer.capturedSnapshots)
+        assertNoInspectionMutation()
+    }
+
+    @Test
     fun writerContentionReturnsBusyWithoutCaptureOrMutation() {
         seedRecord(LifecycleState.VERIFIED)
         writer.refuseLease = true
