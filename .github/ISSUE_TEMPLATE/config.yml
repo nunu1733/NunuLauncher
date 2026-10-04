@@ -2,4 +2,4 @@ blank_issues_enabled: false
 contact_links:
   - name: Report to Lawnchair upstream
     url: https://github.com/LawnchairLauncher/lawnchair/issues/new/choose
-    about: Report behavior that belongs to Lawnchair upstream directly; do not duplicate it in this fork.
+    about: Report non-security behavior that belongs to Lawnchair upstream; for security vulnerabilities, follow NunuLauncher SECURITY.md and do not post sensitive details publicly.
