@@ -2,7 +2,7 @@
 
 > Issue: #233
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: implemented ([PR #278](https://github.com/nunu1733/NunuLauncher/pull/278) merged as merge commit `1f2be5573d`. Phase 1 review addressed; independent audit + high-risk gate green)
 
 ## Current evidence
 
