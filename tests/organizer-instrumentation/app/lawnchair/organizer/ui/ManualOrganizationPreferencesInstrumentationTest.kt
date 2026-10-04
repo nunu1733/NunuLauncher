@@ -23,6 +23,8 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
@@ -403,6 +405,43 @@ class ManualOrganizationPreferencesInstrumentationTest {
     @Test
     fun failClosedUnavailableRendersNoDurableRow() {
         assertNoDurableRowRenders(OrganizerDurableStatus.UNAVAILABLE)
+    }
+
+    /**
+     * Issue #372 (EX-AC-01/EX-AC-02, rendered-UI oracle): the T-07 preamble
+     * offers the 「AIに相談」 method choice next to 「そのまま整理」 — and
+     * choosing it opens the T-15 request face WITHOUT run admission: the
+     * coordinator stays `Idle`, no detection/composition runs (the planner
+     * below would throw), and the removed idle entry row renders nothing.
+     */
+    @Test
+    fun t07AiConsultationOpensTheRequestFaceWithoutRunAdmission() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val runner = ManualOrganizationRun(
+            FakeApplication(),
+            OrganizationPlanner { error("planner must not run: AI相談 must not admit a run") },
+        )
+        composeRule.setContent {
+            LawnchairTheme {
+                ManualOrganizationPreferences(run = runner)
+            }
+        }
+        composeRule.waitUntil { runner.state is ManualOrganizationRun.State.Idle }
+        // The method choices coexist on the T-07 preamble.
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.exchange_entry_subtitle)).assertIsDisplayed()
+        // The removed idle entry row is gone.
+        composeRule.onAllNodesWithTag("exchange-entry-title").assertCountEquals(0)
+
+        composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("exchange-request-title").assertIsDisplayed()
+        composeRule.onNodeWithTag("exchange-request-capability").assertIsDisplayed()
+        // No run admission: still Idle (D-17 idle AI相談 = pre-run request flow).
+        assertEquals(ManualOrganizationRun.State.Idle, runner.state)
     }
 
     /**

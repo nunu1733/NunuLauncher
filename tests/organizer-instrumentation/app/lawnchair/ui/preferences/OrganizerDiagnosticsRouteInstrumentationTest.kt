@@ -36,11 +36,15 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -116,6 +120,7 @@ import app.lawnchair.ui.preferences.navigation.HomeScreen
 import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
 import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
 import app.lawnchair.ui.preferences.navigation.PreferenceNavigation
 import app.lawnchair.ui.preferences.navigation.PreferenceRoute
@@ -316,6 +321,118 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
                 ).fetchSemanticsNodes().isNotEmpty()
             }
         } finally {
+            installProcessLocalRunner(null)
+        }
+    }
+
+    /**
+     * Issue #372 (EX-AC-02 + EX-AC-01, rendered-UI oracle over the PRODUCTION
+     * navigation graph and the REAL user route): hub → start CTA → T-07 →
+     * 「AIに相談」→ T-15 shows the ACTIVE REQUEST pre-display; Back returns
+     * through T-07 to the hub; the hub materials row 「Organization strategy」
+     * opens T-05 where a real strategy radio write commits through the
+     * AUTHORING-token arbiter WITHOUT a lease rejection; returning start CTA →
+     * T-07 → 「AIに相談」 restores the T-15 pre-display for the SAME durable
+     * session. Every transition is a real UI row click / system Back.
+     */
+    @Test
+    fun issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute() {
+        val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
+        installProcessLocalRunner(fixture)
+        // The consultation session is seeded through the REAL durable store
+        // (#204 contract): the production controller's generation is covered
+        // by its own oracle suite; this test owns the persistence-and-
+        // materials-route interaction, so the session is written directly.
+        val sessionStore = app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
+            .store(context)
+        val now = System.currentTimeMillis()
+        sessionStore.save(
+            app.lawnchair.organizer.personalization.ExportSession(
+                exportId = "issue372-materials-route",
+                itemRefs = emptyMap(),
+                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
+                sourceContextDigest = "digest",
+                signalProvenance = null,
+                createdAtEpochMs = now,
+                expiresAtEpochMs = now + 24L * 60L * 60L * 1000L,
+            ),
+        )
+        try {
+            val navController = composeProductionGraph(startDestination = HomeScreen)
+
+            fun pressBack() {
+                composeRule.runOnUiThread {
+                    val resumed = androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+                        .getInstance()
+                        .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED)
+                        .filterIsInstance<androidx.activity.ComponentActivity>()
+                        .firstOrNull()
+                    checkNotNull(resumed).onBackPressedDispatcher.onBackPressed()
+                }
+                composeRule.waitForIdle()
+            }
+
+            // Hub → start CTA → T-07 → 「AIに相談」 → T-15 pre-display.
+            composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.manual_organization_start),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.exchange_method_consult),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // Back: T-15 closes zero-write to T-07, then T-07 returns to the hub.
+            pressBack()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isEmpty()
+            }
+            pressBack()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_strategy_title),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // The hub materials 「Organization strategy」 row opens T-05; one
+            // real strategy write commits (AUTHORING token, no rejection).
+            composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).performClick()
+            assertCurrentDestination(navController, HomeScreenOrganizerStrategy)
+            val tidy = context.getString(R.string.organization_strategy_tidy_name)
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
+            composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithText(tidy).assertIsSelected()
+
+            // Back to the hub, then the start CTA → T-07 → 「AIに相談」 again:
+            // the same durable request resurfaces through the T-15 pre-display.
+            pressBack()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.organizer_strategy_title),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_start)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.exchange_method_consult),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithText(context.getString(R.string.exchange_method_consult)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("exchange-request-active").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(ManualOrganizationRun.State.Idle, fixture.state)
+        } finally {
+            sessionStore.invalidate("issue372-materials-route")
             installProcessLocalRunner(null)
         }
     }
