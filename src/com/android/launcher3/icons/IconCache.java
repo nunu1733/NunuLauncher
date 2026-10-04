@@ -26,7 +26,6 @@ import static java.util.stream.Collectors.groupingBy;
 
 import android.content.ComponentName;
 import android.content.Context;
-import android.graphics.drawable.Drawable;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.LauncherActivityInfo;
@@ -182,12 +181,7 @@ public class IconCache extends BaseIconCache {
     }
 
     @NonNull
-    // Rebase Phase 2 bridge (fork adaptation): icon lookup by LauncherActivityInfo
-    // used by the homeedit surface for app-target previews.
-    public Drawable getFullResIcon(LauncherActivityInfo info) {
-        return getIconProvider().getIcon(info.getActivityInfo());
-    }
-
+    @Override
     public BaseIconFactory getIconFactory() {
         return mIconPool.obtain();
     }
