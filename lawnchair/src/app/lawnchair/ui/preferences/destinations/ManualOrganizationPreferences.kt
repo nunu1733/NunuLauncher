@@ -1,5 +1,6 @@
 package app.lawnchair.ui.preferences.destinations
 
+import android.content.Context
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.focusable
@@ -10,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,9 +26,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lawnchair.organizer.application.public.ApplyResult
+import app.lawnchair.organizer.application.public.PlanPreviewDetails
+import app.lawnchair.organizer.application.public.PreviewCounts
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.diagnostics.model.Trigger
@@ -38,6 +43,9 @@ import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
 import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.OrganizationPreviewContent
+import app.lawnchair.organizer.ui.OrganizationPreviewSection
+import app.lawnchair.organizer.ui.OrganizationPreviewWording
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLazyColumn
@@ -60,6 +68,16 @@ fun ManualOrganizationPreferences(
     val scope = rememberCoroutineScope()
     val state by coordinator.stateFlow.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
+
+    // Issue #195: the concrete change list is planned once per preview state.
+    // Expansion state is UI-local and resets when new details arrive.
+    val previewDetails = (state as? ManualOrganizationRun.State.Preview)?.details
+    val previewSections = remember(previewDetails, context) {
+        previewDetails
+            ?.let { OrganizationPreviewContent.sections(it, organizationPreviewWording(context)) }
+            .orEmpty()
+    }
+    val expandedPreviewGroups = remember(previewDetails) { mutableStateOf(emptySet<Int>()) }
 
     ManualOrganizationBackHandler(coordinator)
 
@@ -157,7 +175,24 @@ fun ManualOrganizationPreferences(
                             focusRequester = focusRequester,
                         )
                     }
-                    summaryItems(currentState.summary)
+                    if (currentState.details == null) {
+                        // Issue #195 spec D1: environmental preview failures keep the
+                        // existing count-only flow, but announce the missing details
+                        // instead of silently equating them with a normal preview.
+                        item {
+                            SummaryText(
+                                stringResource(R.string.manual_organization_preview_details_unavailable),
+                            )
+                        }
+                        summaryItems(currentState.summary)
+                    } else {
+                        previewDetailsItems(
+                            summary = currentState.summary,
+                            counts = currentState.details.counts,
+                            sections = previewSections,
+                            expandedGroups = expandedPreviewGroups,
+                        )
+                    }
                     item {
                         ClickablePreference(
                             label = stringResource(R.string.manual_organization_confirm),
@@ -379,6 +414,19 @@ private fun FocusTargetText(
 private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
     summary: ManualOrganizationRun.Summary,
 ) {
+    contextItems(summary)
+    changeCountItems(summary)
+    constraintItems(summary)
+}
+
+/**
+ * Input-context lines. These describe the captured planning input, not the
+ * changes, so both preview modes render them from [ManualOrganizationRun.Summary]
+ * (spec §D2: the PreviewCounts truth split covers change counts only).
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.contextItems(
+    summary: ManualOrganizationRun.Summary,
+) {
     item {
         SummaryText(
             stringResource(
@@ -399,6 +447,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
             ),
         )
     }
+}
+
+/**
+ * Change-count lines from the planning [ManualOrganizationRun.Summary]. Only
+ * the degraded count-only preview renders these; the concrete change list uses
+ * [previewDetailsItems] whose header counts come from `PreviewCounts` so rows
+ * and header always share one truth (spec 194).
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.changeCountItems(
+    summary: ManualOrganizationRun.Summary,
+) {
     item { SummaryText(stringResource(R.string.manual_organization_moved_count, summary.movedCount)) }
     summary.movedByReason.forEach { (reason, count) ->
         item { SummaryText(stringResource(movedReasonString(reason), count)) }
@@ -418,6 +477,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
     summary.warningCounts.forEach { (code, count) ->
         item { SummaryText(stringResource(warningString(code), count)) }
     }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.constraintItems(
+    summary: ManualOrganizationRun.Summary,
+) {
     val constraints = summary.constraints
     if (constraints.lockedCount > 0) {
         item { SummaryText(stringResource(R.string.manual_organization_locked_constraint, constraints.lockedCount)) }
@@ -443,6 +507,213 @@ private fun androidx.compose.foundation.lazy.LazyListScope.summaryItems(
         item { SummaryText(stringResource(R.string.manual_organization_empty_folder_constraint, constraints.emptyFolderCount)) }
     }
 }
+
+/**
+ * Issue #195: the concrete change list. Header counts come from the
+ * materialized-plan [PreviewCounts], groups render the projected rows in
+ * deterministic order, and large groups truncate behind a per-group expand
+ * action whose semantics carry the expansion state.
+ */
+private fun androidx.compose.foundation.lazy.LazyListScope.previewDetailsItems(
+    summary: ManualOrganizationRun.Summary,
+    counts: PreviewCounts,
+    sections: List<OrganizationPreviewSection>,
+    expandedGroups: MutableState<Set<Int>>,
+) {
+    contextItems(summary)
+    item { SummaryText(stringResource(R.string.manual_organization_moved_count, counts.movedCount)) }
+    item { SummaryText(stringResource(R.string.manual_organization_preserved_count, counts.preservedCount)) }
+    item { SummaryText(stringResource(R.string.manual_organization_new_folders_count, counts.newFolderCount)) }
+    item { SummaryText(stringResource(R.string.manual_organization_new_pages_count, counts.newPageCount)) }
+    counts.warningCounts.forEach { (code, count) ->
+        item { SummaryText(stringResource(warningString(code), count)) }
+    }
+    item {
+        Text(
+            text = stringResource(R.string.manual_organization_changes_heading),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+    sections.forEachIndexed { sectionIndex, section ->
+        // Stable keys keep the toggle's node identity across the expansion
+        // reflow so focus and item state survive the rows inserted before it.
+        item(key = "preview-section-$sectionIndex") {
+            Text(
+                text = section.heading,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        val expanded = sectionIndex in expandedGroups.value
+        val visibleRows = if (expanded) section.rows else section.rows.take(PREVIEW_ROWS_BEFORE_EXPANSION)
+        visibleRows.forEachIndexed { rowIndex, row ->
+            item(key = "preview-row-$sectionIndex-$rowIndex") { SummaryText(row) }
+        }
+        if (section.rows.size > PREVIEW_ROWS_BEFORE_EXPANSION) {
+            item(key = "preview-toggle-$sectionIndex") {
+                val expandedNow = sectionIndex in expandedGroups.value
+                val stateText = stringResource(
+                    if (expandedNow) {
+                        R.string.manual_organization_preview_expanded_state
+                    } else {
+                        R.string.manual_organization_preview_collapsed_state
+                    },
+                )
+                val label = stringResource(
+                    if (expandedNow) {
+                        R.string.manual_organization_preview_show_fewer
+                    } else {
+                        R.string.manual_organization_preview_show_all
+                    },
+                    if (expandedNow) PREVIEW_ROWS_BEFORE_EXPANSION else section.totalCount,
+                )
+                val toggleFocus = remember { FocusRequester() }
+                // Spec 52 focus restoration: the action that announced the extra
+                // rows keeps focus after the list reflows around it.
+                LaunchedEffect(expandedNow) {
+                    if (expandedNow) {
+                        withFrameNanos { }
+                        runCatching { toggleFocus.requestFocus() }
+                    }
+                }
+                ClickablePreference(
+                    label = label,
+                    modifier = Modifier
+                        .focusRequester(toggleFocus)
+                        .semantics { stateDescription = stateText },
+                    onClick = {
+                        expandedGroups.value = if (expandedNow) {
+                            expandedGroups.value - sectionIndex
+                        } else {
+                            expandedGroups.value + sectionIndex
+                        }
+                    },
+                )
+            }
+        }
+    }
+    constraintItems(summary)
+}
+
+/**
+ * Resolves the change-list wording with the given context; row planning itself
+ * stays in the pure [OrganizationPreviewContent] builder, which the caller
+ * caches per preview details.
+ */
+private fun organizationPreviewWording(context: Context): OrganizationPreviewWording = ResourceOrganizationPreviewWording(
+    groupMoved = context.getString(R.string.manual_organization_group_moved),
+    groupNewFolders = context.getString(R.string.manual_organization_group_new_folders),
+    groupNewPages = context.getString(R.string.manual_organization_group_new_pages),
+    groupPreserved = context.getString(R.string.manual_organization_group_preserved),
+    groupWarnings = context.getString(R.string.manual_organization_group_warnings),
+    moveRow = context.getString(R.string.manual_organization_preview_move_row),
+    sameBandMoveRow = context.getString(R.string.manual_organization_preview_same_band_move_row),
+    rowOrdinalNote = context.getString(R.string.manual_organization_preview_row_ordinal_note),
+    itemRow = context.getString(R.string.manual_organization_preview_item_row),
+    moveReasonSinglePlacement = context.getString(R.string.manual_organization_preview_move_reason_single_placement),
+    moveReasonFolderMember = context.getString(R.string.manual_organization_preview_move_reason_folder_member),
+    moveReasonFolderUnit = context.getString(R.string.manual_organization_preview_move_reason_folder_unit),
+    moveReasonUnspecified = context.getString(R.string.manual_organization_preview_move_reason_unspecified),
+    preservedReasonLocked = context.getString(R.string.manual_organization_preview_preserved_reason_locked),
+    preservedReasonReservedRegion = context.getString(R.string.manual_organization_preview_preserved_reason_reserved_region),
+    preservedReasonUnavailable = context.getString(R.string.manual_organization_preview_preserved_reason_unavailable),
+    preservedReasonDock = context.getString(R.string.manual_organization_preview_preserved_reason_dock),
+    preservedReasonWidget = context.getString(R.string.manual_organization_preview_preserved_reason_widget),
+    preservedReasonAppPair = context.getString(R.string.manual_organization_preview_preserved_reason_app_pair),
+    preservedReasonLegacyShortcut = context.getString(R.string.manual_organization_preview_preserved_reason_legacy_shortcut),
+    preservedReasonNonTarget = context.getString(R.string.manual_organization_preview_preserved_reason_non_target),
+    preservedReasonStructural = context.getString(R.string.manual_organization_preview_preserved_reason_structural),
+    preservedReasonAlreadyCanonical = context.getString(R.string.manual_organization_preview_preserved_reason_already_canonical),
+    warningLegacyShortcutReview = context.getString(R.string.manual_organization_preview_warning_legacy_shortcut_item),
+    warningFallbackCategory = context.getString(R.string.manual_organization_preview_warning_fallback_category_item),
+    warningUnavailablePreserved = context.getString(R.string.manual_organization_preview_warning_unavailable_item),
+    pagePosition = context.getString(R.string.manual_organization_preview_page),
+    newPagePosition = context.getString(R.string.manual_organization_preview_new_page_position),
+    workspacePosition = context.getString(R.string.manual_organization_preview_position_workspace),
+    regionTopLeft = context.getString(R.string.manual_organization_preview_region_top_left),
+    regionTopCenter = context.getString(R.string.manual_organization_preview_region_top_center),
+    regionTopRight = context.getString(R.string.manual_organization_preview_region_top_right),
+    regionMiddleLeft = context.getString(R.string.manual_organization_preview_region_middle_left),
+    regionMiddleCenter = context.getString(R.string.manual_organization_preview_region_middle_center),
+    regionMiddleRight = context.getString(R.string.manual_organization_preview_region_middle_right),
+    regionBottomLeft = context.getString(R.string.manual_organization_preview_region_bottom_left),
+    regionBottomCenter = context.getString(R.string.manual_organization_preview_region_bottom_center),
+    regionBottomRight = context.getString(R.string.manual_organization_preview_region_bottom_right),
+    dockPosition = context.getString(R.string.manual_organization_preview_position_dock),
+    folderPositionExisting = context.getString(R.string.manual_organization_preview_position_folder_existing),
+    folderPositionPlanned = context.getString(R.string.manual_organization_preview_position_folder_planned),
+    appPairPosition = context.getString(R.string.manual_organization_preview_position_app_pair),
+    kindApplication = context.getString(R.string.manual_organization_preview_kind_application),
+    kindDeepShortcut = context.getString(R.string.manual_organization_preview_kind_deep_shortcut),
+    kindShortcutLegacy = context.getString(R.string.manual_organization_preview_kind_shortcut_legacy),
+    kindFolder = context.getString(R.string.manual_organization_preview_kind_folder),
+    kindAppWidget = context.getString(R.string.manual_organization_preview_kind_app_widget),
+    kindCustomAppWidget = context.getString(R.string.manual_organization_preview_kind_custom_app_widget),
+    kindAppPair = context.getString(R.string.manual_organization_preview_kind_app_pair),
+    kindUnknown = context.getString(R.string.manual_organization_preview_kind_unknown),
+    newFolderRow = context.getString(R.string.manual_organization_preview_new_folder_row),
+    newPageRow = context.getString(R.string.manual_organization_preview_new_page_row),
+)
+
+/** Resource-backed [OrganizationPreviewWording]; all values resolved up front. */
+private class ResourceOrganizationPreviewWording(
+    override val groupMoved: String,
+    override val groupNewFolders: String,
+    override val groupNewPages: String,
+    override val groupPreserved: String,
+    override val groupWarnings: String,
+    override val moveRow: String,
+    override val sameBandMoveRow: String,
+    override val rowOrdinalNote: String,
+    override val itemRow: String,
+    override val moveReasonSinglePlacement: String,
+    override val moveReasonFolderMember: String,
+    override val moveReasonFolderUnit: String,
+    override val moveReasonUnspecified: String,
+    override val preservedReasonLocked: String,
+    override val preservedReasonReservedRegion: String,
+    override val preservedReasonUnavailable: String,
+    override val preservedReasonDock: String,
+    override val preservedReasonWidget: String,
+    override val preservedReasonAppPair: String,
+    override val preservedReasonLegacyShortcut: String,
+    override val preservedReasonNonTarget: String,
+    override val preservedReasonStructural: String,
+    override val preservedReasonAlreadyCanonical: String,
+    override val warningLegacyShortcutReview: String,
+    override val warningFallbackCategory: String,
+    override val warningUnavailablePreserved: String,
+    override val pagePosition: String,
+    override val newPagePosition: String,
+    override val workspacePosition: String,
+    override val regionTopLeft: String,
+    override val regionTopCenter: String,
+    override val regionTopRight: String,
+    override val regionMiddleLeft: String,
+    override val regionMiddleCenter: String,
+    override val regionMiddleRight: String,
+    override val regionBottomLeft: String,
+    override val regionBottomCenter: String,
+    override val regionBottomRight: String,
+    override val dockPosition: String,
+    override val folderPositionExisting: String,
+    override val folderPositionPlanned: String,
+    override val appPairPosition: String,
+    override val kindApplication: String,
+    override val kindDeepShortcut: String,
+    override val kindShortcutLegacy: String,
+    override val kindFolder: String,
+    override val kindAppWidget: String,
+    override val kindCustomAppWidget: String,
+    override val kindAppPair: String,
+    override val kindUnknown: String,
+    override val newFolderRow: String,
+    override val newPageRow: String,
+) : OrganizationPreviewWording
+
+/** Groups larger than this show the first rows plus a per-group expand action. */
+private const val PREVIEW_ROWS_BEFORE_EXPANSION = 5
 
 @Composable
 private fun SummaryText(text: String) {
