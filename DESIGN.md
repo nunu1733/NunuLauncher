@@ -2,7 +2,7 @@
 
 > Status: Proposed
 > Updated: 2026-08-09
-> Scope: 目標設計。baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定済み。正確なsource pathとplatform seamはDeck layoutの評価と関連decisionで確定する。
+> Scope: 目標設計。baselineは `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` に固定済み。Deck layoutは[ADR-0002](./docs/adr/0002-replace-deck-layout.md)でreplaceを採用した。正確なplatform seamは関連Issueで確定する。
 
 ## 1. Design goals
 
@@ -24,7 +24,6 @@
 
 ### Not yet confirmed
 
-- 既存Deck layoutを置換、refactor、または段階的に拡張するか。
 - 対象集合、ロックの伝播、trigger、配置戦略、rule file形式。
 - 15系から16系へ追従する時期と互換方針。
 
@@ -51,10 +50,12 @@ flowchart LR
 
 ### 4.1 Organization Planning module
 
-このmoduleがプロジェクトの中心となる深いmoduleである。外部interfaceは概念上1つに保つ。
+このmoduleがプロジェクトの中心となる深いmoduleである。外部interfaceは1つに保ち、Kotlinのfunctional interfaceとして契約とconcrete implementationを分離する。
 
-```text
-plan(OrganizationInput) -> PlanningResult
+```kotlin
+fun interface OrganizationPlanner {
+    fun plan(input: OrganizationInput): PlanningResult
+}
 ```
 
 `OrganizationInput` はlayout snapshot、device capabilities、整理ルール、分類と頻度のsignal、run modeを含む。`PlanningResult` はplan、理由、警告、適用不能理由を返す。interfaceへAndroid class、SQLite row、UI stateを露出しない。
@@ -158,7 +159,7 @@ signalがないことは原則として失敗ではない。頻度情報がな�
 
 ## 9. Target source layout
 
-基準source導入後、既存Deck layoutの調査Issueで最終決定する。新規実装が妥当な場合の論理構成は次を目安とする。
+[ADR-0002](./docs/adr/0002-replace-deck-layout.md)に従い、Deck layoutと並行する新規runtime hookは追加せず、organizerを次の論理構成で新設する。
 
 ```text
 lawnchair/src/app/lawnchair/organizer/
@@ -185,10 +186,9 @@ package数をこの図に合わせること自体を目的にしない。interfa
 
 実装を開始する前に、少なくとも次をIssueで解決する。
 
-1. 既存Deck layoutのreuse/refactor/replace
-2. 対象集合と既存itemの保持規則
-3. trigger、確認、recoveryのUX
-4. lock対象とfolder内への伝播
-5. grid非依存の配置policy v1
-6. category taxonomyと分類source
-7. 整理ルールのfile formatとversioning
+1. 対象集合と既存itemの保持規則
+2. trigger、確認、recoveryのUX
+3. lock対象とfolder内への伝播
+4. grid非依存の配置policy v1
+5. category taxonomyと分類source
+6. 整理ルールのfile formatとversioning

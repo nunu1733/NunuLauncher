@@ -342,6 +342,10 @@ android {
             kotlin.directories.addAll('quickstep/src', 'quickstep/dagger', 'quickstep/recents_ui_overrides/src', 'quickstep/src_protolog')
             manifest.srcFile "quickstep/AndroidManifest.xml"
         }
+
+        test {
+            java.srcDirs = ['tests/unit']
+        }
     }
 }
 
@@ -498,6 +502,8 @@ dependencies {
 
     debugImplementation libs.leakcanary.android
     debugImplementation libs.leakcanary.androidstudio
+
+    testImplementation libs.junit4
 }
 
 ksp {
@@ -514,7 +520,7 @@ spotless {
         removeUnusedImports()
     }
     kotlin {
-        target("lawnchair/src/**/*.kt")
+        target("lawnchair/src/**/*.kt", "tests/unit/**/*.kt")
         ktlint(libs.ktlint.get().version).customRuleSets([
             libs.composeRules.get().toString()
         ]).editorConfigOverride([

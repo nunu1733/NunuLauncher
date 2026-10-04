@@ -56,7 +56,7 @@
 | ID | Decision | Recommendation | Blocks |
 |---|---|---|---|
 | D-001 | 基準revision | 15 Beta 3を候補に再現buildと既存機能を評価し、commit SHAで固定 | 全実装 |
-| D-002 | Deck layoutの扱い | 並行実装せず、reuse/refactor/replaceをspikeで比較 | architecture |
+| D-002 | Deck layoutの扱い | replaceを採用。既存Deckのruntime除去は別Issueで扱う（[ADR-0002](../adr/0002-replace-deck-layout.md)） | architecture |
 | D-003 | 対象集合 | defaultで既存home itemを保持し、drawer全アプリ追加は明示的modeに分ける | FR-002, planner |
 | D-004 | trigger | 手動、onboarding提案、新規app増分を別policyにする | FR-006〜009 |
 | D-005 | safe UX | recoveryをFoundation、preview/confirmationをMVPに置く | apply/UI |
