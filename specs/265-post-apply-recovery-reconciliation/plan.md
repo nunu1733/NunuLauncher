@@ -1,6 +1,6 @@
 ---
 issue: "#265"
-status: draft
+status: accepted
 updated: 2026-09-11
 ---
 
