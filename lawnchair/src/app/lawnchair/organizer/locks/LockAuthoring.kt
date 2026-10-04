@@ -172,8 +172,15 @@ object LockAuthoringDecision {
             is PlacementState.Dock -> placement.rank in 0 until caps.hotseatSlots
 
             is PlacementState.FolderChild ->
-                placement.rank >= 0 &&
-                    placement.rank < caps.folderMaxColumns * caps.folderMaxRows
+                // Issue #287: the per-page folder capacity is a display
+                // pagination constant (FolderPagedView paginates), not a
+                // per-folder platform limit. Grid presets declare smaller
+                // folder grids than the workspace, so a grid change can lower
+                // the captured capacity below persisted member ranks; gating
+                // review on it left those rows permanently unreviewable and
+                // CAPTURE_UNKNOWN_LOCK unrecoverable. Any persisted rank
+                // loads, so only negativity is out of profile.
+                placement.rank >= 0
 
             is PlacementState.AppPairChild -> true
 

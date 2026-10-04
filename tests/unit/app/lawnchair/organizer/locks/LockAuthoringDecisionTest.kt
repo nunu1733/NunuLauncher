@@ -193,6 +193,75 @@ class LockAuthoringDecisionTest {
     }
 
     @Test
+    fun `folder child beyond one-page capacity is reviewable`() {
+        // Issue #287: the single-page folder capacity (fixture 4x4 = 16) is a
+        // display pagination constant, not a per-folder platform limit.
+        // Grid presets declare smaller folder grids than the workspace, so a
+        // grid change can lower the captured capacity below persisted member
+        // ranks; those members must stay reviewable or the grid-change
+        // recovery never completes (CAPTURE_UNKNOWN_LOCK stays permanent).
+        for (rank in listOf(15, 16, 17, 40)) {
+            val child = folderChild("211", parent = "201", rank = rank, lockState = OrganizerLockState.UNKNOWN)
+            val captureState = state(listOf(folder("201", children = listOf(child)), child))
+            for (target in LockTargetState.entries) {
+                val decision = LockAuthoringDecision.evaluateChange(
+                    capture(captureState),
+                    LockStateChangeRequest(ItemId("211"), target, intent),
+                )
+                assertTrue("rank $rank target $target must be reviewable: $decision", decision is LockDecision.Ready)
+            }
+        }
+    }
+
+    @Test
+    fun `negative folder child rank still rejects`() {
+        val child = folderChild("211", parent = "201", rank = -1, lockState = OrganizerLockState.UNKNOWN)
+        val decision = LockAuthoringDecision.evaluateChange(
+            capture(state(listOf(folder("201", children = listOf(child)), child))),
+            LockStateChangeRequest(ItemId("211"), LockTargetState.LOCKED, intent),
+        )
+        assertEquals(LockDecision.Rejected(LockRejection.PLACEMENT_OUT_OF_PROFILE), decision)
+    }
+
+    @Test
+    fun `batch review resolves folder members beyond one-page capacity atomically`() {
+        val members = listOf(
+            folderChild("211", parent = "201", rank = 0, lockState = OrganizerLockState.UNKNOWN),
+            folderChild("212", parent = "201", rank = 16, lockState = OrganizerLockState.UNKNOWN),
+            folderChild("213", parent = "201", rank = 40, lockState = OrganizerLockState.UNKNOWN),
+        )
+        val parent = folder("201", children = members, lockState = OrganizerLockState.UNKNOWN)
+        val decision = LockAuthoringDecision.evaluateReviewBatch(
+            capture(state(listOf(parent) + members)),
+            LockBatchReviewRequest(
+                listOf(ItemId("211"), ItemId("212"), ItemId("213")),
+                LockTargetState.UNLOCKED,
+                intent,
+            ),
+        )
+        assertTrue("batch with capacity-exceeding members must be ready: $decision", decision is LockDecision.Ready)
+        val writes = (decision as LockDecision.Ready).plan.writes
+        assertEquals(listOf("211", "212", "213"), writes.map { it.item.value })
+        assertTrue(writes.all { it.newState == LockTargetState.UNLOCKED })
+    }
+
+    @Test
+    fun `batch review still rejects atomically when any member is out of profile`() {
+        val good = folderChild("212", parent = "201", rank = 16, lockState = OrganizerLockState.UNKNOWN)
+        val negative = folderChild("213", parent = "201", rank = -1, lockState = OrganizerLockState.UNKNOWN)
+        val parent = folder("201", children = listOf(good, negative), lockState = OrganizerLockState.UNKNOWN)
+        val decision = LockAuthoringDecision.evaluateReviewBatch(
+            capture(state(listOf(parent, good, negative))),
+            LockBatchReviewRequest(
+                listOf(ItemId("212"), ItemId("213")),
+                LockTargetState.UNLOCKED,
+                intent,
+            ),
+        )
+        assertEquals(LockDecision.Rejected(LockRejection.PLACEMENT_OUT_OF_PROFILE), decision)
+    }
+
+    @Test
     fun `folder folder-child dock widget and app pair are all lockable`() {
         val childA = folderChild("211", parent = "201", rank = 0)
         val folder = folder("201", children = listOf(childA))
