@@ -5,7 +5,20 @@ import app.lawnchair.organizer.personalization.PersonalizationSignalSnapshot
 data class OrganizationInput(
     val snapshot: LayoutSnapshot,
     val rules: RuleSemantics,
+    /**
+     * The immutable built-in taxonomy contract. Its application-side role
+     * (`ValidatedLayoutPlan.taxonomyVersion` and the materializer's plan/input
+     * version check) keeps referring to the built-in taxonomy version only;
+     * the combined category surface lives in [catalog] (Issue #336).
+     */
     val taxonomy: TaxonomyContract,
+    /**
+     * Issue #336: the combined active category catalog — the built-in
+     * taxonomy (embedded for the one fail-closed consistency invariant) plus
+     * the user-defined entries. No default: every composition must name the
+     * catalog snapshot it was cut against.
+     */
+    val catalog: ActiveCategoryCatalog,
     val signals: ClassificationSignals,
     val targets: TargetSet,
     val runMode: RunMode,
@@ -225,7 +238,13 @@ data class ClassificationSignals(
 data class ClassificationSignal(
     val item: ItemId,
     val source: SignalSource,
-    val candidate: CategoryId,
+    /**
+     * Issue #336: the candidate is a closed [CategoryIdentity]. Only S1 may
+     * carry a user-defined candidate; planner validation rejects any other
+     * source as a typed failure (structurally, S2–S6 evidence is
+     * built-in-typed and cannot produce one).
+     */
+    val candidate: CategoryIdentity,
 )
 
 enum class SignalSource {

@@ -2,6 +2,8 @@ package app.lawnchair.organizer.personalization
 
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
+import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.DeviceCapabilities
 import app.lawnchair.organizer.planning.ExistingRole
@@ -22,14 +24,21 @@ import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.planning.UserCategoryId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
+
+/** Canonical lowercase UUID v4 fixture; a digest input only, never a field. */
+private const val TEST_USER_CATEGORY_ID = "3f2b8c4e-1234-4abc-9de0-1234567890ab"
 
 /**
  * Issue #204 AC-12: the structural `sourceContextDigest` is a deterministic
  * function of the canonical structural state, and #203 signal changes never
- * move it.
+ * move it. Issue #336: the resolved classification enters the rows as the
+ * identity's kind + stable ID (built-in bytes unchanged; user-defined as a
+ * `u:<uuid>` one-way digest input).
  */
 class SourceContextIdentityTest {
 
@@ -105,8 +114,32 @@ class SourceContextIdentityTest {
     @Test
     fun resolvedCategoryChangesMoveTheDigest() {
         val base = state(listOf(app("a")))
-        val overridden = base.copy(resolvedCategories = mapOf(ItemId("a") to "CAT_SOCIAL"))
+        val overridden = base.copy(
+            resolvedIdentities = mapOf(ItemId("a") to CategoryIdentity.BuiltIn(CategoryId("CAT_SOCIAL"))),
+        )
         assertNotEquals(SourceContextIdentity.digest(base), SourceContextIdentity.digest(overridden))
+    }
+
+    @Test
+    fun resolvedIdentityCanonicalRowKeepsBuiltInBytesAndKindDiscriminatesUserDefined() {
+        // Issue #336: the canonical row keeps the pre-336 raw built-in value,
+        // while a user-defined identity enters as `u:<uuid>` — a digest input
+        // only, never a persisted field.
+        val builtIn = state(listOf(app("a"))).copy(
+            resolvedIdentities = mapOf(ItemId("a") to CategoryIdentity.BuiltIn(CategoryId("CAT_SOCIAL"))),
+        )
+        assertTrue(
+            SourceContextIdentity.canonicalRepresentation(builtIn).endsWith("|CAT_SOCIAL"),
+        )
+        val userDefined = state(listOf(app("a"))).copy(
+            resolvedIdentities = mapOf(ItemId("a") to CategoryIdentity.UserDefined(UserCategoryId(TEST_USER_CATEGORY_ID))),
+        )
+        val row = SourceContextIdentity.canonicalRepresentation(userDefined)
+        assertTrue(row.endsWith("|u:$TEST_USER_CATEGORY_ID"))
+        assertNotEquals(
+            SourceContextIdentity.digest(builtIn),
+            SourceContextIdentity.digest(userDefined),
+        )
     }
 
     @Test

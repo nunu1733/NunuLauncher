@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.ui
 
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.PackageName
 import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
@@ -30,11 +31,11 @@ class CategoryOverrideAuthoringCoordinatorTest {
         val store = InMemoryStore()
         val coordinator = coordinator(store) { listOf(personal, work) }
 
-        assertEquals(CategoryOverrideAuthoringResult.Saved::class, coordinator.save(personal, CategoryId("OTHER"))::class)
+        assertEquals(CategoryOverrideAuthoringResult.Saved::class, coordinator.save(personal, CategoryIdentity.BuiltIn(CategoryId("OTHER")))::class)
         assertEquals(CategoryId("OTHER"), store.assignments[personal.key])
         assertFalse(work.key in store.assignments)
 
-        assertEquals(CategoryOverrideAuthoringResult.Saved::class, coordinator.save(personal, CategoryId("GAME"))::class)
+        assertEquals(CategoryOverrideAuthoringResult.Saved::class, coordinator.save(personal, CategoryIdentity.BuiltIn(CategoryId("GAME")))::class)
         assertEquals(CategoryId("GAME"), store.assignments[personal.key])
         assertFalse(work.key in store.assignments)
 
@@ -53,9 +54,9 @@ class CategoryOverrideAuthoringCoordinatorTest {
         val store = InMemoryStore()
         val coordinator = coordinator(store) { listOf(target) }
 
-        assertTrue(coordinator.save(target, CategoryId("GAME")) is CategoryOverrideAuthoringResult.Saved)
+        assertTrue(coordinator.save(target, CategoryIdentity.BuiltIn(CategoryId("GAME"))) is CategoryOverrideAuthoringResult.Saved)
         val committedGeneration = store.snapshot.identity.generation
-        val result = coordinator.save(target, CategoryId("GAME"))
+        val result = coordinator.save(target, CategoryIdentity.BuiltIn(CategoryId("GAME")))
 
         assertTrue(result is CategoryOverrideAuthoringResult.NoChange)
         assertEquals(committedGeneration, store.snapshot.identity.generation)
@@ -85,7 +86,7 @@ class CategoryOverrideAuthoringCoordinatorTest {
         val selected = snapshots.removeFirst().single()
         val coordinator = coordinator(store) { snapshots.removeFirst() }
 
-        assertEquals(CategoryOverrideAuthoringResult.TargetUnavailable, coordinator.save(selected, CategoryId("SOCIAL")))
+        assertEquals(CategoryOverrideAuthoringResult.TargetUnavailable, coordinator.save(selected, CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))))
         assertTrue(store.requests.isEmpty())
         assertEquals(0L, store.snapshot.identity.generation)
     }
@@ -132,6 +133,7 @@ class CategoryOverrideAuthoringCoordinatorTest {
 
         override fun read(capturedProfiles: Set<ProfileId>): OverrideSnapshotReadResult {
             val visible = assignments.filterKeys { it.profile in capturedProfiles }
+                .mapValues { (_, category) -> CategoryIdentity.BuiltIn(category) }
             return OverrideSnapshotReadResult.Ready(
                 CategoryOverrideSnapshot(
                     schemaVersion = 1,
@@ -142,7 +144,7 @@ class CategoryOverrideAuthoringCoordinatorTest {
                         "schema-1-generation-${snapshot.identity.generation}",
                         sha256Canonical(
                             visible.entries.sortedBy { it.key.profile.value }.joinToString("\n") {
-                                "${it.key.packageName.value}|${it.key.profile.value}|${it.value.value}"
+                                "${it.key.packageName.value}|${it.key.profile.value}|${(it.value as CategoryIdentity.BuiltIn).id.value}"
                             },
                         ),
                     ),
@@ -154,18 +156,26 @@ class CategoryOverrideAuthoringCoordinatorTest {
             request: CategoryOverrideMutation,
             expected: CategoryOverrideStoredIdentity,
             verificationProfiles: Set<ProfileId>,
-        ): CategoryOverrideWriteResult {
-            requests += request
-            val next = assignments.toMutableMap()
-            val changed = when (request) {
-                is CategoryOverrideMutation.Set -> if (next[request.key] == request.category) {
-                    false
-                } else {
-                    next[request.key] = request.category
-                    true
-                }
+        ): CategoryOverrideWriteResult = mutateAll(listOf(request), expected, verificationProfiles)
 
-                is CategoryOverrideMutation.Remove -> next.remove(request.key) != null
+        override fun mutateAll(
+            requests: List<CategoryOverrideMutation>,
+            expected: CategoryOverrideStoredIdentity,
+            verificationProfiles: Set<ProfileId>,
+        ): CategoryOverrideWriteResult {
+            requests.forEach { recorded -> this.requests += recorded }
+            val next = assignments.toMutableMap()
+            var changed = false
+            for (request in requests) {
+                val requestedCategory = (request as? CategoryOverrideMutation.Set)?.category as? CategoryIdentity.BuiltIn
+                when (request) {
+                    is CategoryOverrideMutation.Set -> if (next[request.key] != requestedCategory?.id) {
+                        next[request.key] = requestedCategory!!.id
+                        changed = true
+                    }
+
+                    is CategoryOverrideMutation.Remove -> changed = next.remove(request.key) != null || changed
+                }
             }
             if (!changed) {
                 return CategoryOverrideWriteResult.NoChange(
@@ -192,7 +202,7 @@ class CategoryOverrideAuthoringCoordinatorTest {
             ).joinToString("\n") { "${it.key.packageName.value}|${it.key.profile.value}|${it.value.value}" }
             return CategoryOverrideStoredSnapshot(
                 CategoryOverrideStoredIdentity(1, generation, sha256Canonical(canonical)),
-                entries,
+                entries.mapValues { (_, category) -> CategoryIdentity.BuiltIn(category) },
             )
         }
     }

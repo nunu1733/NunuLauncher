@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryIdentity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -88,6 +90,7 @@ class StablePageTidyStrategyTest {
         snapshot = LayoutSnapshot(RevisionId("rev"), device(), pages, items, emptyList()),
         rules = rules(),
         taxonomy = taxonomy(),
+        catalog = ActiveCategoryCatalog(taxonomy(), emptyList()),
         signals = ClassificationSignals(emptyList()),
         targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
         runMode = RunMode.FullOrganization,
@@ -285,8 +288,8 @@ class StablePageTidyStrategyTest {
         // the apps as singleton workspace placements.
         val signals = ClassificationSignals(
             listOf(
-                ClassificationSignal(ItemId("a"), SignalSource.S1, CategoryId("GAMES")),
-                ClassificationSignal(ItemId("b"), SignalSource.S1, CategoryId("GAMES")),
+                ClassificationSignal(ItemId("a"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                ClassificationSignal(ItemId("b"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
             ),
         )
         val base = input(listOf(app("a", 0, 0), app("b", 2, 0), app("c", 3, 0)))

@@ -15,6 +15,7 @@ import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.PlacementState
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.StructureState
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.AppPairId
 import app.lawnchair.organizer.planning.AppPairMember
 import app.lawnchair.organizer.planning.AppPairMetadata
@@ -26,6 +27,7 @@ import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ClassificationSignal
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.ComponentKey
@@ -58,6 +60,9 @@ import app.lawnchair.organizer.rules.OrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSource
 import app.lawnchair.organizer.rules.effectiveRulesIdentity
 import app.lawnchair.organizer.rules.sha256Canonical
 
@@ -152,6 +157,10 @@ class DefaultOrganizationInputComposer(
     // fifth policy input. Mandatory with no default so a call site cannot
     // silently fall back to the bundle default (mirrors overlapTolerance).
     private val layoutStrategySelections: LayoutStrategySelectionSource,
+    // Issue #336: the Rule Management-owned user-defined category catalog
+    // joins the mandatory dynamic cut. Mandatory with no default so a call
+    // site cannot silently compose against an implicitly empty catalog.
+    private val userDefinedCategories: UserDefinedCategoryCatalogSource,
     private val targetMaterializer: FullTargetSetMaterializer = FullTargetSetMaterializer(),
     // Issue #185 / ADR-0010 (PR #186 review): mandatory with no default so a
     // call site cannot silently fall back to unconditional acceptance. The
@@ -309,6 +318,22 @@ class DefaultOrganizationInputComposer(
                     InputCompositionCode.OVERRIDE_UNSUPPORTED_SCHEMA,
                 )
             }
+            // Issue #336: the catalog identity joins the mandatory dynamic cut —
+            // read before platform evidence, re-read for the stability
+            // comparison, subject to the same bounded two-attempt protocol.
+            val firstCatalog = when (val read = userDefinedCategories.read()) {
+                is UserDefinedCategoryCatalogReadResult.Ready -> read.snapshot
+
+                UserDefinedCategoryCatalogReadResult.Unreadable -> return notReady(
+                    InputReadinessReason.SourceUnreadable(PolicySourceKind.USER_DEFINED_CATEGORY_CATALOG),
+                    InputCompositionCode.CATALOG_UNREADABLE,
+                )
+
+                UserDefinedCategoryCatalogReadResult.UnsupportedSchema -> return notReady(
+                    InputReadinessReason.UnsupportedVersion(PolicySourceKind.USER_DEFINED_CATEGORY_CATALOG, null),
+                    InputCompositionCode.CATALOG_UNSUPPORTED_SCHEMA,
+                )
+            }
             val firstEvidence = when (val read = platformEvidence.read(requests, bundle.classification)) {
                 is PlatformEvidenceReadResult.Ready -> read.evidence
 
@@ -338,6 +363,19 @@ class DefaultOrganizationInputComposer(
                     InputCompositionCode.EVIDENCE_UNREADABLE,
                 )
             }
+            val secondCatalog = when (val read = userDefinedCategories.read()) {
+                is UserDefinedCategoryCatalogReadResult.Ready -> read.snapshot
+
+                UserDefinedCategoryCatalogReadResult.Unreadable -> return notReady(
+                    InputReadinessReason.SourceUnreadable(PolicySourceKind.USER_DEFINED_CATEGORY_CATALOG),
+                    InputCompositionCode.CATALOG_UNREADABLE,
+                )
+
+                UserDefinedCategoryCatalogReadResult.UnsupportedSchema -> return notReady(
+                    InputReadinessReason.UnsupportedVersion(PolicySourceKind.USER_DEFINED_CATEGORY_CATALOG, null),
+                    InputCompositionCode.CATALOG_UNSUPPORTED_SCHEMA,
+                )
+            }
             val secondSelection = when (val read = layoutStrategySelections.read()) {
                 is LayoutStrategySelectionReadResult.Ready -> read.snapshot
 
@@ -358,14 +396,42 @@ class DefaultOrganizationInputComposer(
                     secondSelection.identity.sha256,
                 )
             }
-            val firstCut = dynamicCutIdentity(bundle, firstOverrides.identity, firstEvidence.identity, firstSelection.identity)
-            val secondCut = dynamicCutIdentity(bundle, secondOverrides.identity, secondEvidence.identity, secondSelection.identity)
+            val firstCut = dynamicCutIdentity(
+                bundle,
+                firstOverrides.identity,
+                firstEvidence.identity,
+                firstSelection.identity,
+                firstCatalog.identity,
+            )
+            val secondCut = dynamicCutIdentity(
+                bundle,
+                secondOverrides.identity,
+                secondEvidence.identity,
+                secondSelection.identity,
+                secondCatalog.identity,
+            )
             if (firstCut != secondCut) {
                 expectedCut = firstCut
                 observedCut = secondCut
                 return@repeat
             }
-            if (firstOverrides.assignments.values.any { it !in bundle.taxonomy.allowedCategories }) {
+            // Issue #336: S1 membership is validated against the ACTIVE CATALOG,
+            // not the built-in set alone. An override referencing a user-defined
+            // ID absent from the catalog is contradictory evidence reachable
+            // only through external corruption — its own fail-closed code, so
+            // the generic invalid-category diagnosis stays exact.
+            val activeCatalog = ActiveCategoryCatalog(bundle.taxonomy, firstCatalog.categories)
+            firstOverrides.assignments.values
+                .filterIsInstance<CategoryIdentity.UserDefined>()
+                .firstOrNull { it !in activeCatalog }
+                ?.let {
+                    return notReady(
+                        InputReadinessReason.ContradictorySource(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
+                        InputCompositionCode.OVERRIDE_DANGLING_CATEGORY,
+                        firstCatalog.identity.sha256,
+                    )
+                }
+            if (firstOverrides.assignments.values.any { it !in activeCatalog }) {
                 return notReady(
                     InputReadinessReason.ContradictorySource(PolicySourceKind.CATEGORY_OVERRIDE_SNAPSHOT),
                     InputCompositionCode.OVERRIDE_CATEGORY_INVALID,
@@ -413,11 +479,16 @@ class DefaultOrganizationInputComposer(
             // after the mandatory cut is stable. Source failures degrade to
             // unavailable sections; they never reach the NotReady paths.
             val personalization = readPersonalizationSnapshot(mapped, additions)
+            // Issue #336: the composed input carries the catalog snapshot the
+            // cut read — the same user-defined entries the overrides and
+            // signals were validated against.
+            val composedCatalog = activeCatalog.copy(userDefined = firstCatalog.categories)
             return OrganizationInputComposition.Ready(
                 OrganizationInput(
                     mapped.snapshot,
                     effectiveRules,
                     bundle.taxonomy,
+                    composedCatalog,
                     signals.signals,
                     composedTargets.targets,
                     if (selection == null) RunMode.FullOrganization else RunMode.ScopeComposedOrganization,
@@ -432,6 +503,7 @@ class DefaultOrganizationInputComposer(
                     bundle.identity,
                     firstSelection.identity,
                     personalization.policyIdentity(),
+                    userDefinedCategoryCatalog = firstCatalog.identity,
                 ),
             )
         }
@@ -449,17 +521,23 @@ class DefaultOrganizationInputComposer(
         evidence: PlatformClassificationEvidence,
     ): MaterializedSignals? {
         val signals = mutableListOf<ClassificationSignal>()
+        val allowedBuiltIns = bundle.taxonomy.allowedCategories.mapTo(linkedSetOf()) {
+            app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(it)
+        }
         for (request in requests) {
             val candidate = overrideSnapshot.assignments[CategoryOverrideKey(request.packageName, request.profile)]
                 ?.let { SignalSource.S1 to it }
-                ?: evidence.s2[request.item]?.let { SignalSource.S2 to it }
-                ?: evidence.s5[request.item]?.let { SignalSource.S5 to it }
+                ?: evidence.s2[request.item]?.let { SignalSource.S2 to app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(it) }
+                ?: evidence.s5[request.item]?.let { SignalSource.S5 to app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(it) }
                 ?: continue
-            if (candidate.second !in bundle.taxonomy.allowedCategories) return null
+            // S2–S5 evidence is structurally built-in-typed and must stay inside
+            // the bundle taxonomy; S1 identities were already validated against
+            // the active catalog before this materialization.
+            if (candidate.second !in allowedBuiltIns && candidate.first != SignalSource.S1) return null
             signals += ClassificationSignal(request.item, candidate.first, candidate.second)
         }
-        val ordered = signals.sortedWith(compareBy({ it.item.value }, { it.source.ordinal }, { it.candidate.value }))
-        val canonical = ordered.joinToString("\n") { "${it.item.value}:${it.source.name}:${it.candidate.value}" }
+        val ordered = signals.sortedWith(compareBy({ it.item.value }, { it.source.ordinal }, { it.candidate }))
+        val canonical = ordered.joinToString("\n") { "${it.item.value}:${it.source.name}:${it.candidate.canonicalValue}" }
         return MaterializedSignals(
             ClassificationSignals(ordered),
             policyIdentity(
@@ -679,12 +757,14 @@ class DefaultOrganizationInputComposer(
         overrides: PolicyInputIdentity,
         evidence: PolicyInputIdentity,
         layoutStrategySelection: PolicyInputIdentity,
+        userDefinedCategoryCatalog: PolicyInputIdentity = UserDefinedCategoryCatalogIdentity.emptyCatalogSentinel(),
     ) = app.lawnchair.organizer.rules.PolicyBundleIdentity(
         bundle.identity.semanticVersion,
         // Generation AND digest of every dynamic input join the cut.
         sha256Canonical(
             "${bundle.identity.sha256}\n${overrides.versionOrGeneration}\n${overrides.sha256}\n" +
-                "${evidence.sha256}\n${layoutStrategySelection.versionOrGeneration}\n${layoutStrategySelection.sha256}",
+                "${evidence.sha256}\n${layoutStrategySelection.versionOrGeneration}\n${layoutStrategySelection.sha256}\n" +
+                "${userDefinedCategoryCatalog.versionOrGeneration}\n${userDefinedCategoryCatalog.sha256}",
         ),
     )
 

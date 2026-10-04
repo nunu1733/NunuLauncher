@@ -58,7 +58,10 @@ internal object GoldenOracleCorpus {
                 }
                 for (category in outcome.categories) {
                     append("category=").append(category.item.value)
-                        .append('|').append(category.category.value)
+                        // Issue #336: canonicalValue keeps the built-in raw
+                        // value byte for byte; user-defined identities use
+                        // the kind-discriminated form.
+                        .append('|').append(category.category.canonicalValue)
                         .append('|').append(category.decidedSignal.name)
                         .append('|').append(category.confidence.name)
                         .append('\n')
@@ -143,6 +146,7 @@ internal object GoldenOracleCorpus {
 
     private fun folderNamingToken(naming: FolderNaming): String = when (naming) {
         is FolderNaming.FromCategory -> "fromCategory:${naming.category.value}"
+        is FolderNaming.FromUserCategory -> "fromUserCategory:${naming.id.value}"
     }
 
     private fun warningToken(warning: app.lawnchair.organizer.planning.Warning): String = "${warning.code.name}|${warning.params.joinToString(",") { paramToken(it) }}"
@@ -156,6 +160,7 @@ internal object GoldenOracleCorpus {
         is DiagnosticParam.DimensionParam -> "dim:${param.dimension.name}:${param.value}"
         is DiagnosticParam.PageParam -> "page:${param.page.value}"
         is DiagnosticParam.CategoryParam -> "category:${param.category.value}"
+        is DiagnosticParam.UserCategoryParam -> "userCategory:${param.id.value}"
     }
 
     private fun pageRefValue(page: app.lawnchair.organizer.planning.PageTargetRef): String = when (page) {

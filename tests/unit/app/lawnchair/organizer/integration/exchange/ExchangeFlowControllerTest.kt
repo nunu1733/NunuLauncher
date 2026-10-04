@@ -114,13 +114,13 @@ class ExchangeFlowControllerTest {
             items,
         )
         val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
-        return CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, String?>())
+        return CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>())
     }
 
     private fun exportInputsOf(structural: CanonicalStructuralInputs, nowEpochMs: Long): ExportInputs = ExportInputs(
         snapshot = structural.snapshot,
         targets = structural.targets,
-        resolvedCategories = structural.resolvedCategories,
+        resolvedIdentities = structural.resolvedIdentities,
         nowEpochMs = nowEpochMs,
     )
 

@@ -27,7 +27,7 @@ internal class DeterministicOrganizationPlanner(
                 val classification = PlanningClassification.classify(
                     classifiableIds,
                     input.signals,
-                    input.taxonomy,
+                    input.catalog,
                 )
 
                 // Spec 182: strategy dispatch goes strictly through the

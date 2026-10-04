@@ -27,6 +27,7 @@ internal object PlanningValidation {
         reasons += checkTargetProfileMismatch(input)
         reasons += checkUnknownSignalItem(input)
         reasons += checkUnknownCategory(input)
+        reasons += checkCategoryProvenance(input)
         reasons += checkDuplicateTarget(input)
         reasons += checkMissingTarget(input)
         reasons += checkIncompleteTargetPartition(input)
@@ -66,6 +67,11 @@ internal object PlanningValidation {
             reasons += RejectionReason(RejectionCode.INVALID_RULES, emptyList())
         }
         if (input.taxonomy.fallbackCategory !in categories) {
+            reasons += RejectionReason(RejectionCode.INVALID_RULES, emptyList())
+        }
+        // Issue #336: one consistency invariant, fail-closed — the catalog's
+        // built-in projection must be exactly the input's taxonomy contract.
+        if (input.catalog.builtIn != input.taxonomy) {
             reasons += RejectionReason(RejectionCode.INVALID_RULES, emptyList())
         }
         return reasons
@@ -570,13 +576,38 @@ internal object PlanningValidation {
             .distinct()
     }
 
-    private fun checkUnknownCategory(input: OrganizationInput): List<RejectionReason> {
-        val allowed = input.taxonomy.allowedCategories.toSet()
-        return input.signals.entries
-            .filter { it.candidate !in allowed }
-            .map { RejectionReason(RejectionCode.UNKNOWN_CATEGORY, listOf(DiagnosticParam.CategoryParam(it.candidate))) }
-            .distinct()
-    }
+    /**
+     * Issue #336: membership is validated against the active catalog, not the
+     * built-in set alone. Built-in unknowns keep the pre-336
+     * [DiagnosticParam.CategoryParam] representation byte for byte; a
+     * user-defined unknown uses the new param kind that ranks after it.
+     */
+    private fun checkUnknownCategory(input: OrganizationInput): List<RejectionReason> = input.signals.entries
+        .filter { it.candidate !in input.catalog.allowedIdentities }
+        .map { signal ->
+            val param = when (val candidate = signal.candidate) {
+                is CategoryIdentity.BuiltIn -> DiagnosticParam.CategoryParam(candidate.id)
+                is CategoryIdentity.UserDefined -> DiagnosticParam.UserCategoryParam(candidate.id)
+            }
+            RejectionReason(RejectionCode.UNKNOWN_CATEGORY, listOf(param))
+        }
+        .distinct()
+
+    /**
+     * Issue #336: no automatic inference (S2–S6) may target a user-defined
+     * category. The S2–S6 evidence sources are structurally built-in-typed;
+     * this planner check is the typed defense-in-depth layer for direct-seam
+     * callers.
+     */
+    private fun checkCategoryProvenance(input: OrganizationInput): List<RejectionReason> = input.signals.entries
+        .filter { signal -> signal.source != SignalSource.S1 && signal.candidate is CategoryIdentity.UserDefined }
+        .map { signal ->
+            RejectionReason(
+                RejectionCode.INVALID_CATEGORY_PROVENANCE,
+                listOf(DiagnosticParam.UserCategoryParam((signal.candidate as CategoryIdentity.UserDefined).id)),
+            )
+        }
+        .distinct()
 
     private fun checkDuplicateTarget(input: OrganizationInput): List<RejectionReason> {
         val reasons = mutableListOf<RejectionReason>()
@@ -693,6 +724,8 @@ private fun compareDiagnosticParams(a: DiagnosticParam, b: DiagnosticParam): Int
 
         a is DiagnosticParam.CategoryParam && b is DiagnosticParam.CategoryParam -> a.category.compareTo(b.category)
 
+        a is DiagnosticParam.UserCategoryParam && b is DiagnosticParam.UserCategoryParam -> a.id.compareTo(b.id)
+
         else -> 0
     }
 }
@@ -706,4 +739,5 @@ private fun diagnosticParamTypeRank(param: DiagnosticParam): Int = when (param) 
     is DiagnosticParam.DimensionParam -> 5
     is DiagnosticParam.PageParam -> 6
     is DiagnosticParam.CategoryParam -> 7
+    is DiagnosticParam.UserCategoryParam -> 8
 }

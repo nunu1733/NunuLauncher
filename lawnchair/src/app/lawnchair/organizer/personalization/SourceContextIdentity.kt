@@ -3,6 +3,7 @@ package app.lawnchair.organizer.personalization
 import app.lawnchair.organizer.planning.Availability
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.LayoutSnapshot
 import app.lawnchair.organizer.planning.ReservedWorkspaceRegion
@@ -23,6 +24,12 @@ import java.security.MessageDigest
  * The projection is independent of the export envelope, `exportId`, `ref`
  * allocation, privacy tier, capability set, and content limits, so the digest
  * cannot become self-referential and never leaves the session.
+ *
+ * Issue #336: the resolved classification enters each item row as the
+ * [CategoryIdentity]'s kind discriminator + stable ID (`canonicalValue`) —
+ * built-in categories keep the pre-336 raw value byte for byte, a
+ * user-defined identity contributes `u:<uuid>` as a one-way digest input
+ * only, never as a persisted export/session field.
  */
 object SourceContextIdentity {
 
@@ -50,7 +57,7 @@ object SourceContextIdentity {
         for (item in snapshot.items.sortedBy { it.id }) {
             rows += item.canonicalRow(
                 role = rolesById[item.id]?.name ?: "-",
-                category = inputs.resolvedCategories[item.id] ?: "-",
+                category = inputs.resolvedIdentities[item.id],
             )
         }
         return rows.joinToString("\n")
@@ -61,8 +68,13 @@ object SourceContextIdentity {
 data class CanonicalStructuralInputs(
     val snapshot: LayoutSnapshot,
     val targets: TargetSet,
-    /** Resolved classification (override included) keyed by internal `ItemId`. */
-    val resolvedCategories: Map<ItemId, String?>,
+    /**
+     * Resolved classification (override included) keyed by internal `ItemId`,
+     * as identity-preserving freshness inputs — the closed planning
+     * identities the session digest digests (Issue #336), not the redacted
+     * export presentation fields.
+     */
+    val resolvedIdentities: Map<ItemId, CategoryIdentity?>,
 )
 
 private fun reservedRegionOrder(
@@ -75,7 +87,7 @@ private fun reservedRegionOrder(
 
 private fun ReservedWorkspaceRegion.canonicalRow(pageOrdinalOf: (app.lawnchair.organizer.planning.PageId) -> Int): String = "reservation|${pageOrdinalOf(page.pageId)}|${cell.x}|${cell.y}|${span.width}|${span.height}"
 
-private fun CapturedItem.canonicalRow(role: String, category: String): String = "item|${id.value}|${kindCanonical()}|$locked|${availability.name}|${placement.canonical()}|$role|$category"
+private fun CapturedItem.canonicalRow(role: String, category: CategoryIdentity?): String = "item|${id.value}|${kindCanonical()}|$locked|${availability.name}|${placement.canonical()}|$role|${category?.canonicalValue ?: "-"}"
 
 private fun CapturedItem.kindCanonical(): String = when (val k = kind) {
     is app.lawnchair.organizer.planning.ItemKind.APPLICATION -> "APPLICATION"

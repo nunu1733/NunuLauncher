@@ -120,6 +120,24 @@ data class NewPage(
  */
 sealed interface FolderNaming {
     data class FromCategory(val category: CategoryId) : FolderNaming
+
+    /**
+     * Issue #336: a folder formed under a user-defined category carries the
+     * stable ID; the display name is resolved from the same composition's
+     * catalog snapshot at materialization time and never enters the canonical
+     * plan representation, so a rename does not change the canonical bytes.
+     */
+    data class FromUserCategory(val id: UserCategoryId) : FolderNaming
+}
+
+/**
+ * Issue #336: canonical [FolderNaming] for a resolved category identity —
+ * built-in groups keep the pre-336 variant byte for byte; user-defined
+ * groups carry the stable ID.
+ */
+internal fun folderNamingFor(category: CategoryIdentity): FolderNaming = when (category) {
+    is CategoryIdentity.BuiltIn -> FolderNaming.FromCategory(category.id)
+    is CategoryIdentity.UserDefined -> FolderNaming.FromUserCategory(category.id)
 }
 
 data class NewFolder(
@@ -132,7 +150,8 @@ data class NewFolder(
 
 data class CategoryDecision(
     val item: ItemId,
-    val category: CategoryId,
+    /** Issue #336: the resolved identity (built-in or user-defined). */
+    val category: CategoryIdentity,
     val decidedSignal: SignalSource,
     val confidence: Confidence,
 )
@@ -168,6 +187,13 @@ sealed interface DiagnosticParam {
     data class DimensionParam(val dimension: DeviceDimension, val value: Int) : DiagnosticParam
     data class PageParam(val page: PageId) : DiagnosticParam
     data class CategoryParam(val category: CategoryId) : DiagnosticParam
+
+    /**
+     * Issue #336: a user-defined category identity in diagnostics. Sorts
+     * strictly after [CategoryParam] so every pre-336 built-in-only
+     * diagnostic ordering stays byte-identical.
+     */
+    data class UserCategoryParam(val id: UserCategoryId) : DiagnosticParam
 }
 
 enum class DeviceDimension {
@@ -220,4 +246,13 @@ enum class RejectionCode {
     TARGET_PROFILE_MISMATCH,
     UNKNOWN_SIGNAL_ITEM,
     UNKNOWN_CATEGORY,
+
+    /**
+     * Issue #336: a classification signal whose source is not S1 carries a
+     * user-defined candidate. Automatic inference (S2–S6) can never target a
+     * user-defined category; the planner rejects such a signal as a typed
+     * failure (defense-in-depth behind the structural built-in typing of the
+     * S2–S6 evidence sources).
+     */
+    INVALID_CATEGORY_PROVENANCE,
 }

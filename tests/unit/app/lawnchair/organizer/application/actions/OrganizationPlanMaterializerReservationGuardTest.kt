@@ -151,6 +151,14 @@ class OrganizationPlanMaterializerReservationGuardTest {
                 allowedCategories = listOf(app.lawnchair.organizer.planning.CategoryId("tools")),
                 fallbackCategory = app.lawnchair.organizer.planning.CategoryId("tools"),
             ),
+            catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+                TaxonomyContract(
+                    version = taxonomyVersion,
+                    allowedCategories = listOf(app.lawnchair.organizer.planning.CategoryId("tools")),
+                    fallbackCategory = app.lawnchair.organizer.planning.CategoryId("tools"),
+                ),
+                emptyList(),
+            ),
             signals = ClassificationSignals(emptyList()),
             targets = TargetSet(listOf(ExistingTargetMembership(ItemId("qsb"), ExistingRole.Preserved)), emptyList()),
             runMode = RunMode.FullOrganization,

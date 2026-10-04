@@ -8,6 +8,7 @@ import app.lawnchair.organizer.application.public.PlanPreviewRejection
 import app.lawnchair.organizer.application.public.PlanPreviewResult
 import app.lawnchair.organizer.application.public.PlanPreviewUnavailable
 import app.lawnchair.organizer.application.public.RunId
+import app.lawnchair.organizer.application.public.withCompositionCatalog
 import app.lawnchair.organizer.planning.OrganizationInput
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlanningResult
@@ -64,7 +65,16 @@ class PlanPreviewProtocol(
 
         val planned = result.outcome as? Planned
             ?: return PlanPreviewResult.NotPlannable(PlanPreviewRejection.OUTCOME_NOT_PLANNED)
-        val materialized = OrganizationPlanMaterializer.materialize(input, result, capture.layoutState, folderTitleResolver, candidateResolver)
+        // Issue #336: the preview resolves user-defined folder titles from the
+        // same input's catalog snapshot the apply will use — the composition
+        // cut contract, never a fresh store read.
+        val materialized = OrganizationPlanMaterializer.materialize(
+            input,
+            result,
+            capture.layoutState,
+            folderTitleResolver.withCompositionCatalog(input.catalog),
+            candidateResolver,
+        )
         // Issue #228 (review P2): keep the typed candidate-resolution failure
         // intact through the preview seam — the run coordinator maps it to
         // the re-detect outcome instead of a generic rejection.

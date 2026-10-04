@@ -393,19 +393,19 @@ class ContractShapeTest {
     fun categoryDecisionShapesAreConstructible() {
         val explicit = CategoryDecision(
             item = ItemId("app.calculator"),
-            category = CategoryId("TOOLS"),
+            category = CategoryIdentity.BuiltIn(CategoryId("TOOLS")),
             decidedSignal = SignalSource.S1,
             confidence = Confidence.EXPLICIT,
         )
         val fallback = CategoryDecision(
             item = ItemId("app.unknown"),
-            category = CategoryId("OTHER"),
+            category = CategoryIdentity.BuiltIn(CategoryId("OTHER")),
             decidedSignal = SignalSource.S6,
             confidence = Confidence.FALLBACK,
         )
         val rule = CategoryDecision(
             item = ItemId("app.game"),
-            category = CategoryId("GAMES"),
+            category = CategoryIdentity.BuiltIn(CategoryId("GAMES")),
             decidedSignal = SignalSource.S3,
             confidence = Confidence.RULE,
         )
@@ -496,7 +496,7 @@ class ContractShapeTest {
             categories = listOf(
                 CategoryDecision(
                     item = ItemId("app.in.folder"),
-                    category = CategoryId("GAMES"),
+                    category = CategoryIdentity.BuiltIn(CategoryId("GAMES")),
                     decidedSignal = SignalSource.S6,
                     confidence = Confidence.FALLBACK,
                 ),
@@ -618,13 +618,13 @@ class ContractShapeTest {
                 ClassificationSignal(
                     item = ItemId("unknown.item"),
                     source = SignalSource.S1,
-                    candidate = CategoryId("NONEXISTENT"),
+                    candidate = CategoryIdentity.BuiltIn(CategoryId("NONEXISTENT")),
                 ),
             ),
         )
         assertEquals(1, signals.entries.size)
         assertEquals(ItemId("unknown.item"), signals.entries[0].item)
-        assertEquals(CategoryId("NONEXISTENT"), signals.entries[0].candidate)
+        assertEquals(CategoryIdentity.BuiltIn(CategoryId("NONEXISTENT")), signals.entries[0].candidate)
     }
 
     @Test

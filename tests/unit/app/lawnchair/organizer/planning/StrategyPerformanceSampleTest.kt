@@ -1,5 +1,7 @@
 package app.lawnchair.organizer.planning
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.harness.ContractCheck
 import app.lawnchair.organizer.planning.harness.DEFAULT_PLANNER_CASE_COUNT
 import app.lawnchair.organizer.planning.harness.ExampleCorpus
@@ -208,7 +210,7 @@ class StrategyPerformanceSampleTest {
         val movableOneByOne = case.items - (if (case.name.startsWith("mixed")) 1 else 0)
         val gamesCount = minOf(case.games, movableOneByOne)
         return (0 until gamesCount).map { index ->
-            ClassificationSignal(ItemId("a$index"), SignalSource.S1, CategoryId("GAMES"))
+            ClassificationSignal(ItemId("a$index"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES")))
         }
     }
 
@@ -219,6 +221,7 @@ class StrategyPerformanceSampleTest {
             snapshot = LayoutSnapshot(RevisionId("rev"), device(case), pages, items, emptyList()),
             rules = rules(),
             taxonomy = taxonomy(),
+            catalog = ActiveCategoryCatalog(taxonomy(), emptyList()),
             signals = ClassificationSignals(signalsFor(case)),
             targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList()),
             runMode = RunMode.FullOrganization,

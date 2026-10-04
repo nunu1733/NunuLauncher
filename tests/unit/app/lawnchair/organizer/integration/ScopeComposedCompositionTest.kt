@@ -10,6 +10,7 @@ import app.lawnchair.organizer.planning.CandidateKind
 import app.lawnchair.organizer.planning.CandidatePlanningIds
 import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
@@ -31,6 +32,10 @@ import app.lawnchair.organizer.rules.OrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSnapshot
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -71,6 +76,7 @@ class ScopeComposedCompositionTest {
             override fun readActive(): BundleReadResult = BuiltInOrganizerPolicyBundleSource.readActive()
         },
         overrides = StaticOverrides(overrides),
+        userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
         layoutStrategySelections = StaticSelections(),
         platformEvidence = StaticEvidence(evidence),
         overlapTolerance = WorkspaceOverlapToleranceSource { true },
@@ -130,7 +136,7 @@ class ScopeComposedCompositionTest {
     fun candidatesClassifyThroughUserOverrideAndPlatformEvidence() {
         // S1 user override for the candidate's (package, profile).
         val override = overrideSnapshot(
-            mapOf(CategoryOverrideKey(PackageName("com.example.new"), ProfileId("personal")) to CategoryId("GAME")),
+            mapOf(CategoryOverrideKey(PackageName("com.example.new"), ProfileId("personal")) to CategoryIdentity.BuiltIn(CategoryId("GAME"))),
         )
         // S2 platform evidence keyed by the OTHER candidate's planning id.
         val evidence = evidence(s2 = mapOf(CandidatePlanningIds.planningId(otherApp) to CategoryId("MAPS")))
@@ -140,12 +146,12 @@ class ScopeComposedCompositionTest {
 
         val signals = composed.input.signals.entries
         assertEquals(
-            CategoryId("GAME"),
+            CategoryIdentity.BuiltIn(CategoryId("GAME")),
             signals.single { it.item == CandidatePlanningIds.planningId(newApp) }.candidate,
         )
         assertEquals(SignalSource.S1, signals.single { it.item == CandidatePlanningIds.planningId(newApp) }.source)
         assertEquals(
-            CategoryId("MAPS"),
+            CategoryIdentity.BuiltIn(CategoryId("MAPS")),
             signals.single { it.item == CandidatePlanningIds.planningId(otherApp) }.candidate,
         )
         assertEquals(SignalSource.S2, signals.single { it.item == CandidatePlanningIds.planningId(otherApp) }.source)
@@ -157,7 +163,7 @@ class ScopeComposedCompositionTest {
         // category must fail the composition exactly as it does for captured
         // items.
         val badOverride = overrideSnapshot(
-            mapOf(CategoryOverrideKey(PackageName("com.example.new"), ProfileId("personal")) to CategoryId("NOT_A_CATEGORY")),
+            mapOf(CategoryOverrideKey(PackageName("com.example.new"), ProfileId("personal")) to CategoryIdentity.BuiltIn(CategoryId("NOT_A_CATEGORY"))),
         )
 
         val composition = composer(badOverride).composeScopeComposedOrganization(listOf(newApp))
@@ -193,7 +199,7 @@ class ScopeComposedCompositionTest {
 
     private fun emptyOverrideSnapshot() = overrideSnapshot(emptyMap())
 
-    private fun overrideSnapshot(assignments: Map<CategoryOverrideKey, CategoryId>) = CategoryOverrideSnapshot(
+    private fun overrideSnapshot(assignments: Map<CategoryOverrideKey, CategoryIdentity>) = CategoryOverrideSnapshot(
         schemaVersion = 1,
         generation = 0L,
         assignments = assignments,
@@ -233,3 +239,10 @@ class ScopeComposedCompositionTest {
         override fun read(): LayoutStrategySelectionReadResult = LayoutStrategySelectionReadResult.Ready(snapshot)
     }
 }
+
+private fun emptyCatalogSnapshot() = UserDefinedCategoryCatalogSnapshot(
+    schemaVersion = 1,
+    generation = 0L,
+    categories = emptyList(),
+    identity = UserDefinedCategoryCatalogIdentity.emptyCatalogSentinel(),
+)

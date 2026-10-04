@@ -51,6 +51,7 @@ import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.navigation.HomeScreenCategoryOverrides
+import app.lawnchair.ui.preferences.navigation.HomeScreenCustomCategories
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
 import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
@@ -179,6 +180,13 @@ fun HomeScreenPreferences(
                 label = stringResource(id = R.string.organizer_category_overrides_title),
                 destination = HomeScreenCategoryOverrides,
                 subtitle = stringResource(id = R.string.organizer_category_overrides_summary),
+            )
+            // Issue #336: user-defined category management, adjacent to the
+            // #99 override editor.
+            NavigationActionPreference(
+                label = stringResource(id = R.string.organizer_custom_category_title),
+                destination = HomeScreenCustomCategories,
+                subtitle = stringResource(id = R.string.organizer_custom_category_summary),
             )
             SwitchPreference(
                 adapter = lockHomeScreenAdapter,

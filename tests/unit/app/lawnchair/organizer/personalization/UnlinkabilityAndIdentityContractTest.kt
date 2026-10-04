@@ -44,7 +44,7 @@ class UnlinkabilityAndIdentityContractTest {
             app.lawnchair.organizer.personalization.ExportInputs(
                 snapshot = snapshot,
                 targets = targets,
-                resolvedCategories = emptyMap(),
+                resolvedIdentities = emptyMap(),
                 userLabels = mapOf(app.lawnchair.organizer.planning.ItemId("a") to "Some App"),
                 nowEpochMs = 1L,
             ),

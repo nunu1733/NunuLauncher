@@ -271,7 +271,7 @@ class PlanningProjectionTest {
                 newPages = emptyList(),
                 newFolders = emptyList(),
                 categories = listOf(
-                    CategoryDecision(ItemId("item1"), CategoryId("cat1"), SignalSource.S1, Confidence.EXPLICIT),
+                    CategoryDecision(ItemId("item1"), app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(CategoryId("cat1")), SignalSource.S1, Confidence.EXPLICIT),
                 ),
                 warnings = listOf(
                     Warning(WarningCode.LEGACY_SHORTCUT_REVIEW, emptyList()),

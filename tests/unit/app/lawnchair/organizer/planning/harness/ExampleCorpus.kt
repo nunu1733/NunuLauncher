@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.planning.harness
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.AppPairId
 import app.lawnchair.organizer.planning.AppPairMember
 import app.lawnchair.organizer.planning.AppPairMetadata
@@ -12,6 +13,7 @@ import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ClassificationSignal
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.ComponentKey
@@ -143,6 +145,7 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(existing = emptyList(), additions = emptyList()),
             runMode = RunMode.FullOrganization,
@@ -213,11 +216,12 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(
                 entries = listOf(
-                    ClassificationSignal(items[0].id, SignalSource.S3, CategoryId("GAMES")),
-                    ClassificationSignal(items[1].id, SignalSource.S3, CategoryId("GAMES")),
-                    ClassificationSignal(items[2].id, SignalSource.S1, CategoryId("TOOLS")),
+                    ClassificationSignal(items[0].id, SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(items[1].id, SignalSource.S3, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(items[2].id, SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("TOOLS"))),
                 ),
             ),
             targets = TargetSet(
@@ -232,9 +236,9 @@ internal object ExampleCorpus {
             expectation = FixtureExpectation(
                 outcome = ExpectedOutcome.Planned(
                     requiredCategories = setOf(
-                        app.lawnchair.organizer.planning.CategoryDecision(items[0].id, CategoryId("GAMES"), SignalSource.S3, Confidence.RULE),
-                        app.lawnchair.organizer.planning.CategoryDecision(items[1].id, CategoryId("GAMES"), SignalSource.S3, Confidence.RULE),
-                        app.lawnchair.organizer.planning.CategoryDecision(items[2].id, CategoryId("TOOLS"), SignalSource.S1, Confidence.EXPLICIT),
+                        app.lawnchair.organizer.planning.CategoryDecision(items[0].id, CategoryIdentity.BuiltIn(CategoryId("GAMES")), SignalSource.S3, Confidence.RULE),
+                        app.lawnchair.organizer.planning.CategoryDecision(items[1].id, CategoryIdentity.BuiltIn(CategoryId("GAMES")), SignalSource.S3, Confidence.RULE),
+                        app.lawnchair.organizer.planning.CategoryDecision(items[2].id, CategoryIdentity.BuiltIn(CategoryId("TOOLS")), SignalSource.S1, Confidence.EXPLICIT),
                     ),
                     expectedNewFolderCount = 1,
                 ),
@@ -362,9 +366,10 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(
                 entries = listOf(
-                    ClassificationSignal(ItemId("app.shortcut"), SignalSource.S6, CategoryId("OTHER")),
+                    ClassificationSignal(ItemId("app.shortcut"), SignalSource.S6, CategoryIdentity.BuiltIn(CategoryId("OTHER"))),
                 ),
             ),
             targets = TargetSet(
@@ -391,7 +396,7 @@ internal object ExampleCorpus {
                     requiredCategories = setOf(
                         app.lawnchair.organizer.planning.CategoryDecision(
                             ItemId("app.shortcut"),
-                            CategoryId("OTHER"),
+                            CategoryIdentity.BuiltIn(CategoryId("OTHER")),
                             SignalSource.S6,
                             Confidence.FALLBACK,
                         ),
@@ -445,6 +450,7 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
@@ -523,6 +529,7 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
@@ -569,6 +576,7 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
@@ -637,6 +645,7 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
@@ -692,6 +701,7 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
@@ -734,9 +744,10 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(
                 entries = listOf(
-                    ClassificationSignal(items.single().id, SignalSource.S6, CategoryId("OTHER")),
+                    ClassificationSignal(items.single().id, SignalSource.S6, CategoryIdentity.BuiltIn(CategoryId("OTHER"))),
                 ),
             ),
             targets = TargetSet(
@@ -753,7 +764,7 @@ internal object ExampleCorpus {
                     requiredCategories = setOf(
                         app.lawnchair.organizer.planning.CategoryDecision(
                             items.single().id,
-                            CategoryId("OTHER"),
+                            CategoryIdentity.BuiltIn(CategoryId("OTHER")),
                             SignalSource.S6,
                             Confidence.FALLBACK,
                         ),
@@ -799,6 +810,7 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
@@ -866,6 +878,7 @@ internal object ExampleCorpus {
             ),
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
@@ -912,6 +925,7 @@ internal object ExampleCorpus {
             snapshot = validSnapshot,
             rules = defaultRules,
             taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
             signals = ClassificationSignals(entries = emptyList()),
             targets = TargetSet(
                 existing = listOf(ExistingTargetMembership(validItem.id, ExistingRole.Movable)),
@@ -1537,7 +1551,7 @@ internal object ExampleCorpus {
                         ClassificationSignal(
                             item = ItemId("nonexistent.item"),
                             source = SignalSource.S1,
-                            candidate = CategoryId("OTHER"),
+                            candidate = CategoryIdentity.BuiltIn(CategoryId("OTHER")),
                         ),
                     ),
                 ),
@@ -1557,7 +1571,7 @@ internal object ExampleCorpus {
                         ClassificationSignal(
                             item = ItemId("v.item"),
                             source = SignalSource.S1,
-                            candidate = CategoryId("NONEXISTENT"),
+                            candidate = CategoryIdentity.BuiltIn(CategoryId("NONEXISTENT")),
                         ),
                     ),
                 ),

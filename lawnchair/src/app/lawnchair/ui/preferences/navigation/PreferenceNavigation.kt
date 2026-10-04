@@ -25,6 +25,7 @@ import app.lawnchair.ui.preferences.components.search.SearchProviderPreferenceSc
 import app.lawnchair.ui.preferences.destinations.AppDrawerFoldersPreference
 import app.lawnchair.ui.preferences.destinations.AppDrawerPreferences
 import app.lawnchair.ui.preferences.destinations.CategoryOverridePreferences
+import app.lawnchair.ui.preferences.destinations.CustomCategoryPreferences
 import app.lawnchair.ui.preferences.destinations.CustomIconShapePreference
 import app.lawnchair.ui.preferences.destinations.DebugMenuPreferences
 import app.lawnchair.ui.preferences.destinations.DockPreferences
@@ -114,6 +115,8 @@ fun PreferenceNavigation(
         composable<HomeScreenPopupEditor> { LauncherPopupPreference() }
         composable<HomeScreenPlacementLocks> { PlacementLockPreferences() }
         composable<HomeScreenCategoryOverrides> { CategoryOverridePreferences() }
+        // Issue #336: user-defined category management destination.
+        composable<HomeScreenCustomCategories> { CustomCategoryPreferences() }
         composable<HomeScreenManualOrganization> { backStackEntry ->
             val route: HomeScreenManualOrganization = backStackEntry.toRoute()
             ManualOrganizationPreferences(

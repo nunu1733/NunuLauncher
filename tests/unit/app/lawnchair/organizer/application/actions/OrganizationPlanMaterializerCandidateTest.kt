@@ -354,6 +354,10 @@ class OrganizationPlanMaterializerCandidateTest {
                 organizationStrategy = StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
             taxonomy = TaxonomyContract(TaxonomyVersion("tv1"), listOf(app.lawnchair.organizer.planning.CategoryId("OTHER")), app.lawnchair.organizer.planning.CategoryId("OTHER")),
+            catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+                TaxonomyContract(TaxonomyVersion("tv1"), listOf(app.lawnchair.organizer.planning.CategoryId("OTHER")), app.lawnchair.organizer.planning.CategoryId("OTHER")),
+                emptyList(),
+            ),
             signals = ClassificationSignals(emptyList()),
             targets = TargetSet(capturedItems.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, additions),
             runMode = RunMode.ScopeComposedOrganization,

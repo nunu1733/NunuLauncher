@@ -95,7 +95,17 @@ internal class PlannerContractHarness(
             variants += input.copy(targets = input.targets.copy(additions = input.targets.additions.rotate()))
         }
         if (input.taxonomy.allowedCategories.size > 1) {
-            variants += input.copy(taxonomy = input.taxonomy.copy(allowedCategories = input.taxonomy.allowedCategories.rotate()))
+            // Issue #336: rotate the taxonomy AND the catalog's built-in
+            // projection together so the combined input stays consistent —
+            // membership ORDER is a permutation axis, membership divergence
+            // between catalog and taxonomy is a rejection.
+            val rotated = input.taxonomy.allowedCategories.rotate()
+            variants += input.copy(
+                taxonomy = input.taxonomy.copy(allowedCategories = rotated),
+                catalog = input.catalog.copy(
+                    builtIn = input.catalog.builtIn.copy(allowedCategories = rotated),
+                ),
+            )
         }
         input.snapshot.items.forEach { container ->
             if (container.kind == ItemKind.FOLDER && container.members.size > 1) {

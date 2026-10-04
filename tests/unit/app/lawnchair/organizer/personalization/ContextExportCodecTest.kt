@@ -105,7 +105,7 @@ class ContextExportCodecTest {
             ExportInputs(
                 snapshot = snapshot,
                 targets = targets,
-                resolvedCategories = snapshot.items.associate { it.id to longCategory },
+                resolvedIdentities = snapshot.items.associate { it.id to app.lawnchair.organizer.planning.CategoryIdentity.BuiltIn(app.lawnchair.organizer.planning.CategoryId(longCategory)) },
                 nowEpochMs = 1L,
             ),
             PrivacyTier.LOCAL_FULL,

@@ -19,6 +19,7 @@ import app.lawnchair.organizer.application.public.RecoveryRequest
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
+import app.lawnchair.organizer.application.public.withCompositionCatalog
 import app.lawnchair.organizer.application.store.RecoveryStore
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
 import app.lawnchair.organizer.diagnostics.journal.JournalSequence
@@ -236,7 +237,16 @@ internal class LayoutApplicationModule<S>(
             return@runWhenReady OrganizationPlanMaterializer.Result.Invalid
         }
         if (capture.revision != input.snapshot.revision) return@runWhenReady OrganizationPlanMaterializer.Result.Invalid
-        OrganizationPlanMaterializer.materialize(input, result, capture.layoutState, folderTitleResolver, candidateApplicationResolver)
+        // Issue #336: user-defined folder titles bind to THIS input's catalog
+        // snapshot — never a fresh store read — so preview and apply consume
+        // the same creation-time title from the same composition.
+        OrganizationPlanMaterializer.materialize(
+            input,
+            result,
+            capture.layoutState,
+            folderTitleResolver.withCompositionCatalog(input.catalog),
+            candidateApplicationResolver,
+        )
     }
 
     /** Internal run identity factory for the manual orchestration protocol. */

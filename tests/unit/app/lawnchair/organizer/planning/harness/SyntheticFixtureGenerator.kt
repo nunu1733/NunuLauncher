@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.planning.harness
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.AppPairId
 import app.lawnchair.organizer.planning.AppPairMember
 import app.lawnchair.organizer.planning.AppPairMetadata
@@ -12,6 +13,7 @@ import app.lawnchair.organizer.planning.CandidateTarget
 import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ClassificationSignal
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.ComponentKey
@@ -223,16 +225,18 @@ internal object SyntheticFixtureGenerator {
             emptyList()
         }
         val categories = listOf(CategoryId("category.default.$index"), CategoryId("category.games.$index"))
+        val taxonomy = TaxonomyContract(TaxonomyVersion("fixture.taxonomy.$index"), categories, categories.first())
+        val catalog = ActiveCategoryCatalog(taxonomy, emptyList())
         val signalItems = items.filter { it.kind == ItemKind.APPLICATION || it.kind == ItemKind.DEEP_SHORTCUT }.take(2)
         val signals = signalItems.flatMapIndexed { signalIndex, item ->
             if (template == 1 && signalIndex == 0) {
                 listOf(
-                    ClassificationSignal(item.id, SignalSource.S1, categories[1]),
-                    ClassificationSignal(item.id, SignalSource.S1, categories[0]),
-                    ClassificationSignal(item.id, SignalSource.S1, categories[1]),
+                    ClassificationSignal(item.id, SignalSource.S1, CategoryIdentity.BuiltIn(categories[1])),
+                    ClassificationSignal(item.id, SignalSource.S1, CategoryIdentity.BuiltIn(categories[0])),
+                    ClassificationSignal(item.id, SignalSource.S1, CategoryIdentity.BuiltIn(categories[1])),
                 )
             } else {
-                listOf(ClassificationSignal(item.id, SignalSource.S1, categories[0]))
+                listOf(ClassificationSignal(item.id, SignalSource.S1, CategoryIdentity.BuiltIn(categories[0])))
             }
         }
         val existingTargets = items.map { item ->
@@ -254,7 +258,8 @@ internal object SyntheticFixtureGenerator {
                 FallbackCategoryPolicy.KEEP_AS_SINGLETON,
                 StrategyId("CANONICAL_PAGE_COMPACT_V1"),
             ),
-            taxonomy = TaxonomyContract(TaxonomyVersion("fixture.taxonomy.$index"), categories, categories.first()),
+            taxonomy = taxonomy,
+            catalog = catalog,
             signals = ClassificationSignals(signals),
             targets = TargetSet(existingTargets, additions),
             runMode = runMode,
@@ -286,7 +291,7 @@ internal object SyntheticFixtureGenerator {
                     requiredCategories = setOf(
                         app.lawnchair.organizer.planning.CategoryDecision(
                             signalItems.first().id,
-                            categories[0],
+                            CategoryIdentity.BuiltIn(categories[0]),
                             SignalSource.S1,
                             Confidence.EXPLICIT,
                         ),

@@ -209,7 +209,7 @@ ErrorFamily =
 | `RECOVERY_REJECTION` | spec 13 `RecoveryRejection`（`MISSING` … `ALREADY_RESTORED`） |
 | `RECOVERY_FAILURE` | spec 13 `RecoveryFailure` |
 | `CONCURRENT` / `WRITER_BUSY` | 固定code（`CONCURRENT_RUN` / `WRITER_BUSY`）。phase と重複するがerror としての検索性のために持つ |
-| `INPUT_READINESS` | integration `InputCompositionCode`（17 定数、Issue #172 / Issue #185）。`RECONCILIATION_PENDING` / `RECONCILIATION_FAILED` / `CAPTURE_INVALID` / `CAPTURE_UNKNOWN_LOCK` / `CAPTURE_UNREPRESENTABLE` / `CAPTURE_RESERVED_OVERLAP` / `BUNDLE_MISSING` / `BUNDLE_CORRUPT` / `BUNDLE_UNSUPPORTED` / `BUNDLE_INVALID` / `OVERRIDE_UNREADABLE` / `OVERRIDE_UNSUPPORTED_SCHEMA` / `OVERRIDE_CATEGORY_INVALID` / `EVIDENCE_UNREADABLE` / `SIGNAL_CONTRADICTION` / `TARGET_PARTITION` / `DYNAMIC_CUT_UNSTABLE`。composer の失敗箇所と1:1対応する単一のclosed 集合である |
+| `INPUT_READINESS` | integration `InputCompositionCode` の全定数（composer の失敗箇所と1:1対応する単一のclosed 集合）。`RECONCILIATION_PENDING` / `RECONCILIATION_FAILED` / `CAPTURE_INVALID` / `CAPTURE_UNKNOWN_LOCK` / `CAPTURE_UNREPRESENTABLE` / `CAPTURE_RESERVED_OVERLAP` / `BUNDLE_MISSING` / `BUNDLE_CORRUPT` / `BUNDLE_UNSUPPORTED` / `BUNDLE_INVALID` / `OVERRIDE_UNREADABLE` / `OVERRIDE_UNSUPPORTED_SCHEMA` / `OVERRIDE_CATEGORY_INVALID` / `EVIDENCE_UNREADABLE` / `SIGNAL_CONTRADICTION` / `TARGET_PARTITION` / `DYNAMIC_CUT_UNSTABLE`（以上17 定数、Issue #172 / Issue #185）、`CANDIDATE_SELECTION_STALE`（Issue #228）、`SCOPE_BINDING_MISMATCH`（Issue #331）、`OVERRIDE_DANGLING_CATEGORY` / `CATALOG_UNREADABLE` / `CATALOG_UNSUPPORTED_SCHEMA`（Issue #336）。新code 追加は本表の同一PR更新を伴う |
 
 規則:
 
@@ -280,6 +280,8 @@ ADR またはspec の承認を必要とする。
 | personalization usage access state (Issue #203 / spec 203) | `UsageAccessState` の closed 定数名（`GRANTED` / `NOT_GRANTED` / `UNAVAILABLE`） | **Allowed**（将来のjournal 化時。schema v1 の `RunEvent` には格納 field が存在しないため、現行は出力なし。追加時は §3 のschema 更新が必要） | typed code のみ。permission UI と diagnostics の分岐用であり、raw 使用量・時刻・package は運ばない |
 | personalization snapshot identity (Issue #203 / spec 203) | `schemaVersion` 文字列（`personalization-signals-v1`）と contentDigest | **Allowed**（将来のjournal 化時。制約は上記行と同一） | content-addressed identity のみ。bucket 値・entries・package/profile identity・timestamp は含まない |
 | accepted personalization intent identity (Issue #204 / spec 204) | intent identity の contentDigest（`personalized-intent-v1` の64hex digest。`PlanningResult.personalizedIntentDigest` echo 対象） | **Allowed**（将来のjournal 化時。制約は上記行と同一） | content-addressed identity のみ。intent 本文・ref・label・rationale・座標・`exportId`・session 内容（ref↔ItemId map、structural digest、signal provenance）は含まない |
+| user-defined category catalog identity (Issue #336 / spec 336) | catalog identity の `(schema, generation, contentDigest)`（`PolicyInputIdentity`。空catalog は定義済みsentinel identity）。dynamic cut 入力 | **Allowed**（将来のjournal 化時。制約は#203/#204 の行と同一） | content-addressed identity のみ。`UserCategoryId`・表示名・エントリ一覧・`id\|displayName` 行は含まない |
+| user-defined category 内容 (Issue #336 / spec 336) | `UserCategoryId`、表示名、catalog エントリ内容 | **Never** | — |
 | personalization signal 内容 (Issue #203 / spec 203) | bucket 値、entries、`SignalField` 値、`LauncherOriginEntry` | **Never** | — |
 | capture 側例外のidentity（Issue #172） | exception class 単純名 | **Allowed**（`OrganizerDiag` tag・DEBUG level・debug build・capture 失敗時のみのlogcat 行。journal・export には書かない） | `phase=CAPTURE exceptionClass=<simple name>`。専用typed API（`Class<out Throwable>` のみ受取）が強制するため、message・layout 由来text は型として渡せない。raw `Throwable.message` とstack trace は本行にも含めない |
 | capture 側違反不変条件のcategory（Issue #299 / CI-AC-08） | 違反されたcapture不変条件のclosed enum（`CaptureInvariantCategory`）定数名 | **Allowed**（上記行に付随する `invariant=<constant name>` field。同一条件: debug build・capture 失敗時のみ。journal・export には書かない） | `invariant=INVALID_WIDGET_ROW` または `invariant=INVALID_CAPTURE_STATE`。定数名のみで、行内容・座標・package等は型として渡せない。typed違反は具体category、未型付けの `IllegalArgumentException` は汎用categoryを使う。他のRuntimeExceptionでは当field自体が現れない |
@@ -598,3 +600,13 @@ phase と `INPUT_READINESS` family（`InputCompositionCode` 16 値）を追加�
 `InputUnavailable` で終わるrun が理由コード付きでjournal を閉じるようになった。
 serialized enum 追加のupgrade/downgrade 規定（§3）と、capture 側例外のclass
 identity のみを許すdebug logcat の限定例外（§7/§10）を追加した。
+- 2026-09-17: [Issue #336](https://github.com/nunu1733/NunuLauncher/issues/336)
+（spec: specs/336-user-defined-categories）。`INPUT_READINESS` family に
+`OVERRIDE_DANGLING_CATEGORY`（catalog に存在しないuser-defined ID を参照する
+override。外部破損のみ到達可能でzero-write fail-closed）、`CATALOG_UNREADABLE`
+（catalog store の破損/重複/不正形式/digest 不一致。zero-write）、
+`CATALOG_UNSUPPORTED_SCHEMA`（本binary より新しいschema）を追加した。
+§7 にcatalog identity（`(schema, generation, contentDigest)`、空catalog は
+定義済みsentinel）のAllowed 行とuser-defined ID・表示名・エントリ内容の
+Never 行を追加した。`OVERRIDE_CATEGORY_INVALID` の意味はcatalog membership
+検証に拡張されるが、code 語彙自体は不変である。

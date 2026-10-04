@@ -113,7 +113,7 @@ class ExchangeFlowStateHolderTest {
     private fun exportInputs(nowEpochMs: Long): ExportInputs = ExportInputs(
         snapshot = structural().snapshot,
         targets = structural().targets,
-        resolvedCategories = emptyMap(),
+        resolvedIdentities = emptyMap(),
         nowEpochMs = nowEpochMs,
     )
 

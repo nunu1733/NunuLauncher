@@ -13,6 +13,7 @@ class RecordingFolderTitleResolver(
     private val titleFor: (FolderNaming) -> String = { naming ->
         when (naming) {
             is FolderNaming.FromCategory -> "synthetic:${naming.category.value}"
+            is FolderNaming.FromUserCategory -> "synthetic:userCategory:${naming.id.value}"
         }
     },
 ) : FolderTitleResolver {

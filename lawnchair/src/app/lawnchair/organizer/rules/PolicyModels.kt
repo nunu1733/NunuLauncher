@@ -34,6 +34,15 @@ enum class PolicySourceKind {
      * intent carry the canonical no-intent sentinel identity.
      */
     PERSONALIZED_INTENT,
+
+    /**
+     * Issue #336: the Rule Management-owned user-defined category catalog — a
+     * dynamic, content-addressed production policy source. It joins the
+     * mandatory dynamic cut; the defined empty catalog carries the canonical
+     * sentinel identity (`UserDefinedCategoryCatalogIdentity`), so a missing
+     * source is never represented as an empty catalog.
+     */
+    USER_DEFINED_CATEGORY_CATALOG,
 }
 
 data class PolicyInputIdentity(

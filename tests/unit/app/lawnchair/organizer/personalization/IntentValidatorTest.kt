@@ -53,7 +53,7 @@ class IntentValidatorTest {
     private fun buildState(items: List<CapturedItem>): Pair<BuiltExport, CanonicalStructuralInputs> {
         val snapshot = LayoutSnapshot(RevisionId("rev"), device(), listOf(Page(PageId("p0"), PageOrder(0))), items)
         val targets = TargetSet(items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) }, emptyList())
-        val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, String?>())
+        val structural = CanonicalStructuralInputs(snapshot, targets, emptyMap<ItemId, app.lawnchair.organizer.planning.CategoryIdentity?>())
         val inputs = ExportInputs(snapshot = snapshot, targets = targets, nowEpochMs = now)
         return ContextExportBuilder.build(inputs, PrivacyTier.LOCAL_FULL, SequentialIdAllocator()) to structural
     }

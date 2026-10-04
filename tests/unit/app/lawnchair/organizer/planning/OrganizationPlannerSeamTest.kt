@@ -100,6 +100,14 @@ class OrganizationPlannerSeamTest {
             allowedCategories = listOf(CategoryId("OTHER")),
             fallbackCategory = CategoryId("OTHER"),
         ),
+        catalog = ActiveCategoryCatalog(
+            TaxonomyContract(
+                version = TaxonomyVersion("tv-1"),
+                allowedCategories = listOf(CategoryId("OTHER")),
+                fallbackCategory = CategoryId("OTHER"),
+            ),
+            emptyList(),
+        ),
         signals = ClassificationSignals(entries = emptyList()),
         targets = TargetSet(existing = emptyList(), additions = emptyList()),
         runMode = RunMode.FullOrganization,

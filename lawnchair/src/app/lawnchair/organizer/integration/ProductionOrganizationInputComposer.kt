@@ -6,6 +6,7 @@ import app.lawnchair.organizer.application.protocol.LayoutWriterPort
 import app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.CategoryOverrideStoreModule
 import app.lawnchair.organizer.rules.LayoutStrategySelectionModule
+import app.lawnchair.organizer.rules.UserDefinedCategoryStoreModule
 
 /**
  * #83 production entry point. Callers provide only the existing canonical capture
@@ -22,6 +23,9 @@ class ProductionOrganizationInputComposer(
     // Spec 182: the persisted strategy selection joins the stable cut as the
     // fifth policy input.
     layoutStrategySelections = LayoutStrategySelectionModule.source(appContext),
+    // Issue #336: the user-defined category catalog joins the stable cut as
+    // the sixth policy input.
+    userDefinedCategories = UserDefinedCategoryStoreModule.source(appContext),
     platformEvidence = AndroidClassificationSignalSnapshotSource(appContext),
     // Issue #203: the optional personalization input — system usage and
     // launcher-origin reads composed into one snapshot per composition.

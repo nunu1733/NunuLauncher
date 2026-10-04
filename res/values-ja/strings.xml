@@ -254,4 +254,38 @@
     <string name="organizer_category_override_app_status">"%1$s · %2$s"</string>
     <string name="organizer_category_override_app_description">"%1$s、%2$s、%3$s"</string>
     <string name="organizer_category_override_app_description_with_profile">"%1$s、%2$s"</string>
+    <!-- Issue #336: user-defined categories. -->
+    <string name="organizer_category_override_custom_marker">"カスタム"</string>
+    <string name="organizer_category_override_custom_label">"%1$s（カスタム）"</string>
+    <string name="organizer_category_override_custom_description">"明示的なカテゴリとして%1$sを使用します。"</string>
+    <string name="organizer_category_custom_unnamed">"カスタムカテゴリ"</string>
+    <string name="organizer_custom_category_title">"カスタムカテゴリ"</string>
+    <string name="organizer_custom_category_summary">"自分専用のカテゴリを作成してアプリを整理できます。カスタムカテゴリは、明示的な割り当てによってのみアプリを受け付けます。"</string>
+    <string name="organizer_custom_category_create">"カテゴリを作成"</string>
+    <string name="organizer_custom_category_name_label">"カテゴリ名"</string>
+    <string name="organizer_custom_category_rename_label">"新しい名前"</string>
+    <string name="organizer_custom_category_save">"カテゴリを保存"</string>
+    <string name="organizer_custom_category_rename_confirm">"カテゴリの名前を変更"</string>
+    <string name="organizer_custom_category_cancel">"キャンセル"</string>
+    <string name="organizer_custom_category_back_to_list">"カテゴリ一覧に戻る"</string>
+    <string name="organizer_custom_category_retry">"カテゴリの削除を完了する"</string>
+    <string name="organizer_custom_category_partial_delete">"割り当てはすでに解除されています。空のカテゴリが残っています。削除を完了すると取り除かれます。"</string>
+    <string name="organizer_custom_category_error_invalid_name">"1〜50文字で、改行と「|」は使用できません。"</string>
+    <string name="organizer_custom_category_error_duplicate_name">"同じ名前のカテゴリが既に存在します。"</string>
+    <string name="organizer_custom_category_error_capacity">"カスタムカテゴリの上限に達しました。新しく作成する前に削除してください。"</string>
+    <string name="organizer_custom_category_busy">"整理処理が実行中です。終了してからカテゴリを編集してください。"</string>
+    <string name="organizer_custom_category_conflict">"カテゴリソースが変更されました。一覧を再読み込みしてやり直してください。"</string>
+    <string name="organizer_custom_category_unavailable">"カスタムカテゴリは利用できません。変更は保存されていません。"</string>
+    <string name="organizer_custom_category_failed">"変更を確認できませんでした。一覧を再読み込みしてやり直してください。"</string>
+    <string name="organizer_custom_category_delete_title">"カスタムカテゴリを削除しますか？"</string>
+    <string name="organizer_custom_category_delete_confirm">"削除"</string>
+    <string name="organizer_custom_category_delete_row">"このカテゴリを削除"</string>
+    <string name="organizer_custom_category_delete_action">"%1$sを削除"</string>
+    <string name="organizer_custom_category_rename_action">"%1$sの名前を変更"</string>
+    <plurals name="organizer_custom_category_entry_count">
+        <item quantity="other">"割り当て済みのアプリ: %1$d個"</item>
+    </plurals>
+    <plurals name="organizer_custom_category_delete_text">
+        <item quantity="other">"%1$sには%2$d個のアプリが割り当てられています。これらは次回の整理で自動分類に戻ります。アプリが別のカテゴリへ移動されることはありません。"</item>
+    </plurals>
 </resources>

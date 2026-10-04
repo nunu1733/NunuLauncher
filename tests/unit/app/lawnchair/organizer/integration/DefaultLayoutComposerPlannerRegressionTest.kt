@@ -17,6 +17,7 @@ import app.lawnchair.organizer.planning.AppPairId
 import app.lawnchair.organizer.planning.AppPairMember
 import app.lawnchair.organizer.planning.AppPairRef
 import app.lawnchair.organizer.planning.CapturedPlacement
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.DeterministicOrganizationPlanner
 import app.lawnchair.organizer.planning.DiagnosticParam
@@ -48,6 +49,10 @@ import app.lawnchair.organizer.rules.OrganizerPolicyBundleSource
 import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSnapshot
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -350,6 +355,7 @@ class DefaultLayoutComposerPlannerRegressionTest {
         overrides = object : CategoryOverrideSnapshotSource {
             override fun read(capturedProfiles: Set<ProfileId>) = OverrideSnapshotReadResult.Ready(emptyOverrideSnapshot())
         },
+        userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
         layoutStrategySelections = LayoutStrategySelectionSource {
             LayoutStrategySelectionReadResult.Ready(emptySelectionSnapshot())
         },
@@ -394,3 +400,10 @@ class DefaultLayoutComposerPlannerRegressionTest {
         ),
     )
 }
+
+private fun emptyCatalogSnapshot() = UserDefinedCategoryCatalogSnapshot(
+    schemaVersion = 1,
+    generation = 0L,
+    categories = emptyList(),
+    identity = UserDefinedCategoryCatalogIdentity.emptyCatalogSentinel(),
+)

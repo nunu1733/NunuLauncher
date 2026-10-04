@@ -251,6 +251,14 @@ class PlanPreviewProtocolTest {
                 listOf(app.lawnchair.organizer.planning.CategoryId("other")),
                 app.lawnchair.organizer.planning.CategoryId("other"),
             ),
+            catalog = app.lawnchair.organizer.planning.ActiveCategoryCatalog(
+                TaxonomyContract(
+                    TaxonomyVersion("v1"),
+                    listOf(app.lawnchair.organizer.planning.CategoryId("other")),
+                    app.lawnchair.organizer.planning.CategoryId("other"),
+                ),
+                emptyList(),
+            ),
             signals = ClassificationSignals(emptyList()),
             targets = TargetSet(
                 existing = listOf(ExistingTargetMembership(itemId, ExistingRole.Movable)),

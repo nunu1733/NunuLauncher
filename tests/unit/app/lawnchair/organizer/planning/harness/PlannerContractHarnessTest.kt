@@ -1,5 +1,6 @@
 package app.lawnchair.organizer.planning.harness
 
+import app.lawnchair.organizer.planning.ActiveCategoryCatalog
 import app.lawnchair.organizer.planning.AppPairId
 import app.lawnchair.organizer.planning.AppPairMember
 import app.lawnchair.organizer.planning.AppPairMetadata
@@ -13,6 +14,7 @@ import app.lawnchair.organizer.planning.CapturedItem
 import app.lawnchair.organizer.planning.CapturedPlacement
 import app.lawnchair.organizer.planning.CategoryDecision
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ClassificationSignal
 import app.lawnchair.organizer.planning.ClassificationSignals
 import app.lawnchair.organizer.planning.ComponentKey
@@ -153,6 +155,7 @@ private fun minimalInput(
         ),
         rules = defaultRules,
         taxonomy = taxonomy,
+        catalog = ActiveCategoryCatalog(taxonomy, emptyList()),
         signals = ClassificationSignals(entries = signals),
         targets = TargetSet(existing = resolvedExisting, additions = additions),
         runMode = runMode,
@@ -1173,7 +1176,7 @@ class PlannerContractHarnessTest {
 
     @Test
     fun permutationSkipsValueEqualNoOpRotation() {
-        val signal = ClassificationSignal(itemA.id, SignalSource.S1, defaultTaxonomy.fallbackCategory)
+        val signal = ClassificationSignal(itemA.id, SignalSource.S1, CategoryIdentity.BuiltIn(defaultTaxonomy.fallbackCategory))
         val input = minimalInput(
             items = listOf(itemA),
             signals = listOf(signal, signal),

@@ -11,6 +11,7 @@ import app.lawnchair.organizer.application.public.ItemAvailability
 import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.planning.CategoryId
+import app.lawnchair.organizer.planning.CategoryIdentity
 import app.lawnchair.organizer.planning.ComponentKey
 import app.lawnchair.organizer.planning.ExistingRole
 import app.lawnchair.organizer.planning.GridCell
@@ -38,6 +39,10 @@ import app.lawnchair.organizer.rules.OverrideSnapshotReadResult
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogIdentity
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogReadResult
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSnapshot
+import app.lawnchair.organizer.rules.UserDefinedCategoryCatalogSource
 import app.lawnchair.organizer.rules.sha256Canonical
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,7 +62,7 @@ class OrganizationInputComposerTest {
             ),
         )
         val overrides = snapshot(
-            assignments = mapOf(CategoryOverrideKey(app.lawnchair.organizer.planning.PackageName("com.example.personal"), ProfileId("personal")) to CategoryId("SOCIAL")),
+            assignments = mapOf(CategoryOverrideKey(app.lawnchair.organizer.planning.PackageName("com.example.personal"), ProfileId("personal")) to CategoryIdentity.BuiltIn(CategoryId("SOCIAL"))),
             digest = digest('a'),
         )
         val evidence = evidence(
@@ -77,7 +82,7 @@ class OrganizationInputComposerTest {
         assertEquals(1, ready.input.snapshot.pages.size)
         assertEquals(
             listOf("personal:S1:SOCIAL", "work:S2:MUSIC", "google:S5:TOOLS").sorted(),
-            ready.input.signals.entries.map { "${it.item.value}:${it.source.name}:${it.candidate.value}" }.sorted(),
+            ready.input.signals.entries.map { "${it.item.value}:${it.source.name}:${it.candidate.canonicalValue}" }.sorted(),
         )
         assertEquals(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, ready.provenance.rules.source)
         assertEquals(PolicySourceKind.ORGANIZER_POLICY_BUNDLE, ready.provenance.taxonomy.source)
@@ -157,7 +162,7 @@ class OrganizationInputComposerTest {
             items = listOf(app("override", "personal", "com.example.override/.Main")),
         )
         val source = CommittedOverrideSource().apply {
-            commit(CategoryOverrideKey(app.lawnchair.organizer.planning.PackageName("com.example.override"), ProfileId("personal")), CategoryId("OTHER"))
+            commit(CategoryOverrideKey(app.lawnchair.organizer.planning.PackageName("com.example.override"), ProfileId("personal")), CategoryIdentity.BuiltIn(CategoryId("OTHER")))
         }
         val platform = evidence(s2 = mapOf(ItemId("override") to CategoryId("GAME")))
 
@@ -168,7 +173,7 @@ class OrganizationInputComposerTest {
             val ready = composition as OrganizationInputComposition.Ready
             assertEquals(
                 listOf("override:S1:OTHER"),
-                ready.input.signals.entries.map { "${it.item.value}:${it.source.name}:${it.candidate.value}" },
+                ready.input.signals.entries.map { "${it.item.value}:${it.source.name}:${it.candidate.canonicalValue}" },
             )
         }
     }
@@ -223,7 +228,7 @@ class OrganizationInputComposerTest {
 
         val contradictorySnapshot = snapshot(
             assignments = mapOf(
-                CategoryOverrideKey(app.lawnchair.organizer.planning.PackageName("com.example.a"), ProfileId("personal")) to CategoryId("NOT_IN_V1"),
+                CategoryOverrideKey(app.lawnchair.organizer.planning.PackageName("com.example.a"), ProfileId("personal")) to CategoryIdentity.BuiltIn(CategoryId("NOT_IN_V1")),
             ),
         )
         val contradictory = composer(
@@ -457,6 +462,7 @@ class OrganizationInputComposerTest {
             override fun readActive(): BundleReadResult = bundle
         },
         overrides = overrideSource,
+        userDefinedCategories = UserDefinedCategoryCatalogSource { UserDefinedCategoryCatalogReadResult.Ready(emptyCatalogSnapshot()) },
         layoutStrategySelections = selections,
         platformEvidence = evidenceSource,
         overlapTolerance = WorkspaceOverlapToleranceSource { tolerance ?: true },
@@ -477,7 +483,7 @@ class OrganizationInputComposerTest {
     )
 
     private fun snapshot(
-        assignments: Map<CategoryOverrideKey, CategoryId> = emptyMap(),
+        assignments: Map<CategoryOverrideKey, CategoryIdentity> = emptyMap(),
         digest: String = digest('a'),
     ) = CategoryOverrideSnapshot(
         schemaVersion = 1,
@@ -508,10 +514,10 @@ class OrganizationInputComposerTest {
     private fun digest(char: Char) = char.toString().repeat(64)
 
     private class CommittedOverrideSource : CategoryOverrideSnapshotSource {
-        private var assignments: Map<CategoryOverrideKey, CategoryId> = emptyMap()
+        private var assignments: Map<CategoryOverrideKey, CategoryIdentity> = emptyMap()
         private var generation = 0L
 
-        fun commit(key: CategoryOverrideKey, category: CategoryId) {
+        fun commit(key: CategoryOverrideKey, category: CategoryIdentity) {
             assignments = assignments + (key to category)
             generation += 1L
         }
@@ -713,3 +719,10 @@ class OrganizationInputComposerTest {
         ): PlatformEvidenceReadResult = result ?: PlatformEvidenceReadResult.Ready(values[minOf(index++, values.lastIndex)])
     }
 }
+
+private fun emptyCatalogSnapshot() = UserDefinedCategoryCatalogSnapshot(
+    schemaVersion = 1,
+    generation = 0L,
+    categories = emptyList(),
+    identity = UserDefinedCategoryCatalogIdentity.emptyCatalogSentinel(),
+)

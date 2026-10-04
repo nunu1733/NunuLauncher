@@ -3,24 +3,26 @@ package app.lawnchair.organizer.planning
 /**
  * Canonical folder formation (spec 12 P-04/P-05): same-profile same-category
  * grouping with capacity partition, shared by the full-run strategy executor
- * and the incremental run.
+ * and the incremental run. Issue #336: the grouping key is the closed
+ * `(profile, CategoryIdentity)` pair, so user-defined groups participate
+ * identically under the canonical identity order.
  */
 internal data class FolderCandidate(
     val item: ItemId,
     val profile: ProfileId,
-    val category: CategoryId,
+    val category: CategoryIdentity,
 )
 
 internal data class FolderGroup(
     val ordinal: NewFolderOrdinal,
     val profile: ProfileId,
-    val category: CategoryId,
+    val category: CategoryIdentity,
     val members: List<ItemId>,
 )
 
 internal fun formFolderGroups(
     candidates: List<FolderCandidate>,
-    fallbackCategory: CategoryId,
+    fallbackCategory: CategoryIdentity,
     capacity: Long,
     minGroupSize: Int,
 ): List<FolderGroup> {
