@@ -53,6 +53,58 @@ internal class Allocator(
     }
 
     /**
+     * Issue #204 (spec 204 / Q1): preference-directed first fit. When the
+     * caller's [cellHint] (e.g. a preserved item's captured cell) is in
+     * bounds and free, it is used exactly; otherwise the call degrades to the
+     * canonical row-major first fit, so a preference can only improve — never
+     * worsen — the hinted item's displacement.
+     */
+    fun allocateWithCellHint(
+        span: GridSpan,
+        preferredPage: PageRef,
+        cellHint: GridCell,
+    ): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        val inBounds = cellHint.x >= 0 && cellHint.y >= 0 &&
+            cellHint.x + span.width <= device.columns && cellHint.y + span.height <= device.rows
+        if (inBounds) {
+            val occupied = occupancy[preferredPage] ?: emptyList()
+            val overlaps = occupied.any { rect ->
+                rect.y < cellHint.y + span.height && cellHint.y < rect.y + rect.height &&
+                    rect.x < cellHint.x + span.width && cellHint.x < rect.x + rect.width
+            }
+            if (!overlaps) return preferredPage to cellHint
+        }
+        return allocatePreferred(span, preferredPage)
+    }
+
+    /**
+     * Issue #204 (spec 204 / Q1): region-affinity band hint — row-restricted
+     * first fit on the preferred page. `rows` outside the grid or smaller
+     * than the span yields null; the caller falls back to the strategy's own
+     * allocation, so the hint stays soft.
+     */
+    fun allocatePreferredInBand(
+        span: GridSpan,
+        preferredPage: PageRef,
+        rows: IntRange,
+    ): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        val occupied = occupancy[preferredPage] ?: emptyList()
+        val cell = findRowMajorFirstFit(
+            occupied,
+            device.columns,
+            device.rows,
+            span,
+            cellTraversal,
+            rowWindow = rows,
+        )
+        return cell?.let { preferredPage to it }
+    }
+
+    /**
      * Page-local allocation for strategies that never create or cross pages
      * (`CAPTURED_PAGE_ONLY`, e.g. `STABLE_PAGE_TIDY_V1`): only [page]'s free
      * cells are considered; `null` means no fit on that page. Strategies whose
@@ -64,6 +116,51 @@ internal class Allocator(
 
         val occupied = occupancy[page] ?: emptyList()
         val cell = findRowMajorFirstFit(occupied, device.columns, device.rows, span, cellTraversal)
+        return cell?.let { page to it }
+    }
+
+    /**
+     * Issue #204 (spec 204 / Q1): page-local variant of the cell hint — the
+     * hint cell when free, else this page's row-major first fit. Never creates
+     * a page (page-local strategies keep that invariant).
+     */
+    fun allocateOnPageOnlyWithCellHint(
+        span: GridSpan,
+        page: PageRef,
+        cellHint: GridCell,
+    ): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        val inBounds = cellHint.x >= 0 && cellHint.y >= 0 &&
+            cellHint.x + span.width <= device.columns && cellHint.y + span.height <= device.rows
+        if (inBounds) {
+            val occupied = occupancy[page] ?: emptyList()
+            val overlaps = occupied.any { rect ->
+                rect.y < cellHint.y + span.height && cellHint.y < rect.y + rect.height &&
+                    rect.x < cellHint.x + span.width && cellHint.x < rect.x + rect.width
+            }
+            if (!overlaps) return page to cellHint
+        }
+        return allocateOnPageOnly(span, page)
+    }
+
+    /** Issue #204: page-local region-band hint (never creates a page). */
+    fun allocateOnPageOnlyInBand(
+        span: GridSpan,
+        page: PageRef,
+        rows: IntRange,
+    ): Pair<PageTargetRef, GridCell>? {
+        if (allocationFault == AllocationFault.FAIL_ALLOCATION) return null
+
+        val occupied = occupancy[page] ?: emptyList()
+        val cell = findRowMajorFirstFit(
+            occupied,
+            device.columns,
+            device.rows,
+            span,
+            cellTraversal,
+            rowWindow = rows,
+        )
         return cell?.let { page to it }
     }
 

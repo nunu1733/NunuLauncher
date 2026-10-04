@@ -1,7 +1,7 @@
 # Product Requirements
 
 > Status: Accepted — 要件ごとの実装・evidence・deferred dispositionは [MVP release readiness](./mvp-release-readiness.md) を正本とする。
-> Updated: 2026-09-04
+> Updated: 2026-09-15
 
 ## Functional requirements
 
@@ -23,6 +23,7 @@
 | FR-014 | Later | deferred | local分類が不明な場合だけ、明示的opt-inで外部分類adapterを利用できる |
 | FR-015 | MVP | implemented | 各移動、folder化、未配置、fallbackの主要理由を表示・診断できる |
 | FR-016 | Later | implemented ([spec 182](../../specs/182-layout-strategy-catalog/spec.md), [ADR-0012](../adr/0012-versioned-layout-strategy-catalog.md), [spec 237](../../specs/237-global-compact-v2-folder-relocation/spec.md)、widget移動対応の `STABLE_PAGE_TIDY_V2`/`BOTTOM_FIRST_V2` は [spec 235](../../specs/235-widget-strategy-placement/spec.md)) | ユーザーがversion付きの組み込みlayout strategyを選択でき、有効strategyのidentityと結果 (移動件数、新規folder/page、strategy固定item、警告) を確認前にpreviewできる。選択はversion付きで検証され、unsupported/破損/newer選択はfail-closedする。 |
+| FR-017 | Later | spec accepted ([spec 204](../../specs/204-ai-personalization-context-intent-contract/spec.md), [Issue #204](https://github.com/nunu1733/NunuLauncher/issues/204)) | ユーザーが明示的に選択した場合、local personalization contextから外部/内部AI等がsemantic organization intentを生成でき、その結果をvalidation・preview・confirmation後に既存safe planner/application pathで適用できる。**FR-014との境界**: FR-014は「local分類が不明な場合の外部分類adapter」であり、FR-017はlayout intent自体の提案 (personalization) である。provider接続 (#205/#206) は別Issue |
 
 ## Non-functional requirements
 
@@ -66,7 +67,7 @@
 | D-008 | category taxonomy | Android categoryをsignalの1つとし、project taxonomyを独立定義する | FR-010〜011 |
 | D-009 | rule format | typed model/version/migrationを先に決め、XML/JSONは比較後に選ぶ | FR-012 |
 | D-010 | usage access | optionalとし、拒否時のdeterministic fallbackを必須にする。spec 203で `NOT_GRANTED`/`UNAVAILABLE` をsection-level availabilityとしてtyped化し、launcher-origin signalを別sourceとして併用 | FR-013 |
-| D-011 | external LLM | privacy/threat modelとoffline behavior承認後まで導入しない | FR-014 |
+| D-011 | external LLM | privacy/threat modelとoffline behavior承認後まで導入しない。FR-017 (AI personalization intent契約、[spec 204](../../specs/204-ai-personalization-context-intent-contract/spec.md)) もD-011の対象であり、#205のprovider接続実装前にprivacy/threat model承認を要求する | FR-014, FR-017 |
 | D-012 | UI framework | 既存画面のconventionを優先し、Compose/Viewを画面ごとに判断 | UI work |
 
 ## Decision history

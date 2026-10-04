@@ -6,6 +6,13 @@ data class PlanningResult(
     val taxonomyVersion: TaxonomyVersion,
     val organizationStrategy: StrategyId,
     val outcome: PlanningOutcome,
+    /**
+     * Issue #204 (spec 204): the content identity (digest) of the accepted
+     * AI-personalization intent this plan consumed, for preview/diagnostics
+     * echo only. Null for runs without a personalization intent (existing
+     * plans are unchanged). Never carries personal data.
+     */
+    val personalizedIntentDigest: String? = null,
 )
 
 sealed interface PlanningOutcome

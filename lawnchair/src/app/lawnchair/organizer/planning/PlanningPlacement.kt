@@ -83,6 +83,7 @@ internal object PlanningPlacement {
                     allocator = allocator,
                     pageOrderMap = pageOrderMap,
                     preservationWarnings = preservationWarnings,
+                    preferences = input.intentPreferences,
                 ),
             )
 
@@ -140,6 +141,7 @@ internal object PlanningPlacement {
                 allocator = allocator,
                 pageOrderMap = pageOrderMap,
                 preservationWarnings = preservationWarnings,
+                preferences = input.intentPreferences,
             ),
         )
         val placements = fullOutput.placements.toMutableList()

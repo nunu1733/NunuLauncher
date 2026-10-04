@@ -19,6 +19,7 @@ internal object PlanningResultCanonicalization {
             ruleVersion = input.rules.version,
             taxonomyVersion = input.taxonomy.version,
             organizationStrategy = input.rules.organizationStrategy,
+            personalizedIntentDigest = input.intentPreferences?.identity?.digest,
             outcome = Planned(
                 placements = placement.placements,
                 newPages = placement.newPages,
@@ -42,6 +43,7 @@ internal object PlanningResultCanonicalization {
         ruleVersion = input.rules.version,
         taxonomyVersion = input.taxonomy.version,
         organizationStrategy = input.rules.organizationStrategy,
+        personalizedIntentDigest = input.intentPreferences?.identity?.digest,
         outcome = Rejected.Invalid(reasons = reasons, warnings = emptyList()),
     )
 
@@ -53,6 +55,7 @@ internal object PlanningResultCanonicalization {
         ruleVersion = input.rules.version,
         taxonomyVersion = input.taxonomy.version,
         organizationStrategy = input.rules.organizationStrategy,
+        personalizedIntentDigest = input.intentPreferences?.identity?.digest,
         outcome = Rejected.Impossible(unplaced = unplaced, warnings = emptyList()),
     )
 }
