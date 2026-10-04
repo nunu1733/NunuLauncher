@@ -12,6 +12,7 @@
 
 ## 1. 分類サマリ
 
+- candidate ownership inventory（初版）: **579 path**（`git diff --name-only 43a21b43 88af5218` の1,828 pathから、`docs/assessment/upstream-patch-surface-baseline.json` のexplicit exclusion規約（`.github/` `.idea/` `docs/` `specs/` `tests/` `tools/` prefix、`.md` suffix、明示paths）を除外したproduction差分。S4のG3で正式計測する。詳細計測はS4）
 - merge単位 234 / squash単位 50 / direct単位 16（合計300、PR番号持たないsquash/directはdocs/specマーカーや縦切りの直接commit）
 - A（非production）144 / B（production・adapt path非接触暫定）156。C判定（adapt path接触）はreplay実行時のconflict発生で確定し、結果列へ記録する。
 
@@ -324,7 +325,7 @@
 ## 3. 実行サマリ（2026-10-04）
 
 - **300単位すべて適用完了**。conflict発生は20単位（上表のconflict=行）。残り280単位はclean適用。
-- conflict解消はすべてplan §4に従い、fork側のaccepted契約（PR単位のtree内容）を正として復元する方式（keep相当）。16-dev側の新構造へのadaptが必要なsemantic解消は、Phase 3検証およびT4/T5/T7/T8追加oracle実装PRで扱う（plan §7 gate前提）。
+- conflict解消はすべてplan §4に従い、fork側のaccepted契約（PR単位のtree内容）を正として復元する方式（keep相当）。16-dev側の新構造へのadaptが必要なsemantic解消は、**Phase 2内（S1〜S3）の未完項目**としてplan §4.1で扱う（plan revision 2 / ADR-0018 Decision 9 acceptedに伴う訂正。旧記載の「Phase 3検証…で扱う」は誤り）。T4/T5/T7/T8追加oracle実装PRのgate前提（plan §7）は変更なし。
 - 挙動変更を意図した解消は発生していない（plan §4.6の停止条件に該当なし）。submodule pin判断点（§2）は到達しなかった（§0参照）。
 - commit messageは `PR #<番号>: <title>` 形式。direct commitは `Direct: <title>` 形式。
 
@@ -346,3 +347,9 @@
 ### 補足
 - 本判断はPhase 0 assessment §5のdisposition（keep 57 / adapt 48）が前提とした「adapt可能」の粒度を超える（ファイル単位ではなく層単位の統一が必要）。
 - submodule pin、settings.gradle/tomlの統合方針（anchor土台+fork追加）は確定済みで本判断の対象外。
+
+### 判断の解決（2026-10-04、plan §4.1 S0で追記）
+
+- **ADR-0018 Decision 9（方針1: anchor構造を正）がaccepted**（ADR-0018 revision 6 / plan revision 2。PR #534 merge、main `15ae5bf91700a5765ce48f80584469ab965ebb24`）。§4の「求める判断」は解決済み。本branchはplan §4.1のS0〜S4で作業を継続する。
+- モデル層の固定source比較の正本は [docs/assessment/issue-532-model-architecture-decision.md](../../docs/assessment/issue-532-model-architecture-decision.md)。
+- WIP（`4022708e33`〜`88af5218ce` の追加修復10 commit、253 path）は一括採択/一括revert禁止。path単位の採否初版は [wip-adoption-table.md](./wip-adoption-table.md)、source→replay対応表は [source-replay-map.md](./source-replay-map.md)。
