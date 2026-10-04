@@ -72,11 +72,20 @@ C群の代表（replay-logへ全量を記録）: PR #79（deck退役本体、95 
 
 **G4実行の固定情報**（[#522 assessment §6](../../docs/assessment/issue-522-rebase-data-compatibility.md)の要求）:
 
-- **source anchor**: T1〜T8の実行対象sourceはreplay完了後のrebase headで固定する（replay head確定後、各oracleをそのheadで実行した結果をevidenceとする。本表のclass/fixtureはanchor確定時点の正本）。T9は15↔16両APKの実build物（APK versionCode/名をreplay-logへ記録）。
-- **command/filter**: T1〜T3は `.github/workflows/ci.yml` の既存db-migration / surface_db_schema / layout_write lanes（`compute_ci_gating.py` のimpact判定で起動。PRでは対象classのfilter指定で実行）。T6/T2のNestedTransactionTestはAPI35 production-input lane。organizer-unit-tests（Permanent）に載るunitは [quality-strategy](../../docs/engineering/quality-strategy.md) のorganizer gate command。
+- **最終source SHAの記録手順**: replay完了時、`replay-log.md` 冒頭のG4 evidence headerへ **`REBASE_HEAD=<full 40桁SHA>`** を記録し、**その記録後にG4を開始する**。G4の全実行結果（command、lane run URL、成否）はREBASE_HEADと対にしてreplay-logへ記録する。
+- **command/script + class filter**（現在の実入口。実行時のci.yml/scriptが正本）:
+  - T1（schema33/列維持）: db-migration lane（ci.yml `organizer-instrumentation-db-migration-tests`）— `bash tools/ci/run-emulator-command-with-failure-capture.sh … -- ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=…` のfilterに既存の `DatabaseHelperSchema33Test,DowngradeSchema33Test,InactiveGridDbNormalizationTest` が含まれる。
+  - T2（transaction ownership）: 同db-migration lane filterの `MigrationTransactionOwnershipTest,Schema32RollbackBinaryTest` + shared-writer lane（ci.yml）の `NestedTransactionTest`。
+  - T3（grid migration分割）: 同db-migration lane filterの `GridMigrationSuccessTest,GridMigrationFailureTest`（tryMigrateDB/attemptMigrateDb両entryのgreen必須）。
+  - T4: 追加oracle `RestoreDbTaskSuccessPathTest` を **db-migration lane filterへ追加** + 既存 `RestoreLeaseSerializationTest,RestoreProfileRemapTest`（db-migration）と `ModelWriterTransactionReentryTest`（shared-writer lane）を再利用。
+  - T5: 追加oracle `RealZipRestoreE2E` を **db-migration lane filterへ追加**（unit部分はorganizer-unit-tests gate）。
+  - T6: RecoveryRecordCodecTest等はorganizer-unit-tests gate（Permanent）+ 既存reservation-recovery Conditional lane。
+  - T7: 追加oracle `PrefsLegacyXmlMigrationTest` のJVM部分を **organizer-unit-tests filterへ追加**、device依存readback部分を **db-migration lane filterへ追加** + 既存 `LauncherPrefsCommitTest,NovaRestoreGridApplicationTest,DeckRetirementMigrationInstrumentationTest`。
+  - T8: 追加oracle `NovaConverterBoundaryTest` を `tools/ci/run-restore-capture-instrumentation.sh` の **per-class独立invocationに1行追加**（#299契約のclass毎独立起動・A/B間force-stopを崩さない）+ 既存Nova A/B群を再利用。
+  - T9: on-demand release-compatibility evidence（既存connected invocationのみでは不十分。API 36 emulator + Pixel 9a / API 37実機。closureはPhase 4 owner decision）。
 - **fixture**: T1 `legacy32/fresh33` fixture群（既存）。T2 旧schema32 binary fixture（既存）。T3 grid migration fixture（fast/general、target既存/新規）。T4 実DB+profile remap fixture。T5 real ZIP32/33 fixture（新規作成）。T8 fractional四フィールド・subgrid・smartspace ON/OFF・clamp/skip fixture（新規作成）。
 - **追加oracle名と重複境界**: T4 `RestoreDbTaskSuccessPathTest`（責務: performRestore成功入口の実DB assert。既存3 classはlease/remap/reentryを所有し重複しない）。T5 `RealZipRestoreE2E`（real ZIP復元とcold-start状態。既存critical-section/mutex testsは並行制御のみ）。T7 `PrefsLegacyXmlMigrationTest`（legacy XML→DataStore key変換。既存commit testはwrite pathのみ）。T8 `NovaConverterBoundaryTest`（converter通常入口の境界fixture。既存A/B群はUI接続・process分離の確認）。
-- **routing同期**: T4/T5/T7/T8の追加oracleは実装PRで `tools/repo-contract/ci_portfolio_map.yml` / [ci-test-portfolio](../../docs/engineering/ci-test-portfolio.md) を同時同期する（新規恒久laneは増やさない）。
+- **routing同期**: T4/T5/T7/T8のfilter追加は実装PRで `tools/repo-contract/ci_portfolio_map.yml` / [ci-test-portfolio](../../docs/engineering/ci-test-portfolio.md) を同時同期し、test file自身が対象laneをself-triggerできることを `compute_ci_gating.py` のmapで確認する（新規恒久laneは増やさない）。
 - **T4/T5/T7/T8は追加oracleの実装がgateの前提**である。T9はPhase 2時点の証跡とcutover前の再確認を区別し、closureはPhase 4 owner decision（ADR-0018 Decision 5）。
 
 ## 8. 実行順のまとめ
