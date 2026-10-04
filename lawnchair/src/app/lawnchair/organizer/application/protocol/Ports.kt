@@ -306,6 +306,7 @@ interface RecoveryStorePort {
         data object PointIdCollision : CheckpointResult
         data object CreateFailed : CheckpointResult
         data object ValidateFailed : CheckpointResult
+        data object AdmissionBlocked : CheckpointResult
         data object StoreUnavailable : CheckpointResult
     }
 

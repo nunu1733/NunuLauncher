@@ -64,6 +64,16 @@ class ApplyProjectionTest {
     }
 
     @Test
+    fun admissionBlockedProjection() {
+        val result = ApplyResult.Rejected(runId, PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED)
+        val event = ApplyProjection.project(result, 5L, applyStage = ApplyStage.A4)
+        assertEquals(PhaseCode.CHECKPOINT_REJECTED, event.phase)
+        assertEquals(ApplyStage.A4, event.applyStage)
+        assertEquals(ErrorFamily.PRE_WRITE_REJECTED, event.error?.family)
+        assertEquals("RECOVERY_POINT_ADMISSION_BLOCKED", event.error?.code)
+    }
+
+    @Test
     fun rolledBackProjection() {
         val result = ApplyResult.RolledBack(runId, ApplyFailure.WRITE_FAILED)
         val event = ApplyProjection.project(result, 5L, applyStage = ApplyStage.A6)

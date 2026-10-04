@@ -236,7 +236,8 @@ PreWriteRejection =
   | INVALID_PLAN | STALE_REVISION | EXACT_PRECONDITION_FAILED
   | LOCK_STATE_UNAVAILABLE | IDENTITY_EXHAUSTED
   | CHECKPOINT_CREATE_FAILED | CHECKPOINT_VALIDATE_FAILED
-  | RECOVERY_STORE_UNAVAILABLE | WRITER_BUSY
+  | RECOVERY_STORE_UNAVAILABLE | RECOVERY_POINT_ADMISSION_BLOCKED
+  | WRITER_BUSY
 
 ApplyFailure =
   | WRITE_FAILED | COMMIT_OUTCOME_UNKNOWN
@@ -347,12 +348,15 @@ and never rewrite the Launcher layout.
 
 - A verified recovery point remains available for 24 hours
   (`86,400,000 ms`) from creation.
-- At most three non-expired points are retained.
+- At most three capacity-bearing point rows are retained; final
+  non-restorable rows retained as tombstones do not consume these slots.
 - Expiry/count cleanup and creation of the replacement point are one recovery
   DB transaction, so a failed creation does not discard the prior usable set.
-- If all three retained points are unresolved and therefore ineligible for
-  cleanup, a new apply is rejected with `RECOVERY_STORE_UNAVAILABLE`; no point
-  or Launcher state is changed.
+- If all three capacity-bearing points are active or unresolved and therefore
+  ineligible for cleanup, a new apply is rejected with
+  `RECOVERY_POINT_ADMISSION_BLOCKED`; no point or Launcher state is changed.
+  Genuine recovery-store availability, read, or write failures continue to
+  use `RECOVERY_STORE_UNAVAILABLE` or the applicable checkpoint failure code.
 - Cleanup is lazy on discovery or checkpoint creation; no alarm or background
   thread is required.
 - `APPLYING`, `COMMITTED_UNVERIFIED`, or `RESTORING` records are never expired
@@ -363,7 +367,15 @@ and never rewrite the Launcher layout.
   are safely quarantined or deleted. Their metadata, plus `RESTORED` and
   `EXPIRED` metadata, remains as a tombstone for a further 24 hours so requests
   return the exact typed reason; tombstones do not count toward the maximum
-  three.
+  three. During checkpoint admission, final non-restorable point rows may be
+  moved to the tombstone table immediately in the same transaction as the new
+  checkpoint. An early move preserves the record's existing final-state
+  deadline (`updatedAtMs + 24h`) rather than extending retention from the
+  admission time. `VERIFIED` remains restorable and capacity-bearing for its
+  full 24-hour window. If all three capacity-bearing records are active or
+  unresolved, admission is rejected with
+  `RECOVERY_POINT_ADMISSION_BLOCKED`; genuine store failures remain
+  `RECOVERY_STORE_UNAVAILABLE`.
 
 ## Apply protocol
 
@@ -384,7 +396,7 @@ store-failure result; a subsequent successful reconciliation opens the seam.
 | A1 | Validate the artifact, materialize the canonical intended state, and derive unique plan-local page/folder IDs without persistent allocation. | `Rejected(INVALID_PLAN/IDENTITY_EXHAUSTED)` |
 | A2 | Acquire layout-writer serialization and compare the complete current revision and every exact source/absence precondition. | `Rejected(WRITER_BUSY/STALE_REVISION/EXACT_PRECONDITION_FAILED/LOCK_STATE_UNAVAILABLE)` |
 | A3 | If the materialized action set has no mutation, return `NoChanges`; do not write either DB, create a point, or reload. | `NoChanges` |
-| A4 | Read every checkpoint resource through one consistent source snapshot, require its digest to equal the plan source state, commit the complete recovery record in its own recovery-DB transaction, then read it back and validate version/count/digest. | `Rejected(STALE_REVISION/CHECKPOINT_*)` |
+| A4 | Read every checkpoint resource through one consistent source snapshot, require its digest to equal the plan source state, commit the complete recovery record in its own recovery-DB transaction, then read it back and validate version/count/digest. | `Rejected(STALE_REVISION/CHECKPOINT_*/RECOVERY_POINT_ADMISSION_BLOCKED)` |
 | A5 | Mark the record `APPLYING` with post intent. Start one Launcher DB write transaction; **inside that transaction and after its writer lock is effective**, re-read the full current `RevisionId` and every exact precondition before the first mutation. | stale/precondition failure leaves Launcher DB unchanged and returns `Rejected`; the unused checkpoint is pruned, or left `READY` for restart reconciliation if cleanup is interrupted |
 | A6 | Execute inserts and updates, resolve references using the unique plan-local mapping, and finish the transaction. No page row and no apply deletion exist. | Outcome classified by authoritative re-read; see below |
 | A7 | Persist `COMMITTED_UNVERIFIED`, request a new model load, and wait for the generation caused by this request. Compare that model snapshot with an independent DB recapture. | Automatic recovery on reload/convergence failure |
@@ -549,7 +561,7 @@ The invariants themselves remain authoritative in `DESIGN.md` §5.
 | AC-9 | Multiple new pages/folders are unique and overflow-safe; rollback exposes no reservation; no page row is written. | Boundary fixtures through `apply`. |
 | AC-10 | Lock state missing is fail-closed with the seam-specific typed result; profiles, widgets, folders, and app pairs round-trip exactly. | Apply/recovery negative lock fixtures plus resource matrix. |
 | AC-11 | Recovery DB is absent from ZIP/Android backup and incompatible versions do not touch layout. | Backup-content inspection plus upgrade/downgrade tests. |
-| AC-12 | 24-hour/max-three retention is atomic and never removes an unresolved point. | Clock-controlled lifecycle tests. |
+| AC-12 | 24-hour/max-three retention is atomic, final non-restorable records may be retained as exact tombstones without consuming capacity, and no unresolved point is removed. Capacity blocking is `RECOVERY_POINT_ADMISSION_BLOCKED`; genuine store failures remain `RECOVERY_STORE_UNAVAILABLE`. | Clock-controlled lifecycle/admission tests plus production recovery-store transaction coverage. |
 | AC-13 | Production and failure-injection persistence adapters are exercised only through the same Layout Application interface. | Shared contract suite; no internal helper mocking. |
 | AC-14 | Every recovery-store/lifecycle write failure and `CREATING` crash boundary has a typed, restart-reconcilable outcome. | Combined evidence: the production RecoveryStore matrix fails every lifecycle transition before/after commit and reopens the recovery DB; public-seam fault tests assert typed results and unchanged/reopened Launcher state; API 36.1 process-death smoke reopens both DBs across `READY`, commit ambiguity, `COMMITTED_UNVERIFIED`, and `RESTORING`. |
 | AC-15 | Recovery rollback preserves and reports the exact reviewed-current state; writer contention is typed as `WRITER_BUSY`/`WriterBusy` on the respective public result. | Public-seam rollback, restart, and external-writer contention tests. |

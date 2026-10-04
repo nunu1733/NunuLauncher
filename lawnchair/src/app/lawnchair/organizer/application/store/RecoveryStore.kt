@@ -503,8 +503,8 @@ internal class RecoveryStore(
                 db.beginTransaction()
                 try {
                     when (val decision = RetentionPolicy.planCreate(listRetentionRecords(db), now)) {
-                        RetentionPolicy.CreateDecision.Unavailable ->
-                            return@run RecoveryStorePort.CheckpointResult.StoreUnavailable
+                        RetentionPolicy.CreateDecision.AdmissionBlocked ->
+                            return@run RecoveryStorePort.CheckpointResult.AdmissionBlocked
 
                         is RetentionPolicy.CreateDecision.Allowed -> decision.toEvict.forEach { record ->
                             val action = RetentionPolicy.actionFor(record, now).let { planned ->
@@ -516,7 +516,16 @@ internal class RecoveryStore(
                                     planned
                                 }
                             }
-                            writeTombstone(db, record, action, now)
+                            val originalDeadline = if (
+                                action is RetentionPolicy.RetentionAction.Tombstone &&
+                                action.reason == RetentionPolicy.ExpireReason.COUNT_RETENTION &&
+                                LifecycleTransitions.isFinal(record.lifecycle)
+                            ) {
+                                Math.addExact(record.updatedAtMillis, RetentionPolicy.TOMBSTONE_RETENTION_MILLIS)
+                            } else {
+                                null
+                            }
+                            writeTombstone(db, record, action, now, expiresAtMillis = originalDeadline)
                         }
                     }
                     purgeExpiredTombstones(db, now)
@@ -565,6 +574,12 @@ internal class RecoveryStore(
             }
 
             RecoveryStorePort.CheckpointResult.PointIdCollision -> {
+                snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.PROVEN_NO_COMMIT)
+                result
+            }
+
+            RecoveryStorePort.CheckpointResult.AdmissionBlocked,
+            -> {
                 snapshotFence.finish(mutation, InspectionSnapshotFence.MutationOutcome.PROVEN_NO_COMMIT)
                 result
             }
@@ -1404,6 +1419,7 @@ internal class RecoveryStore(
         action: RetentionPolicy.RetentionAction,
         nowMillis: Long,
         reasonOverride: RecoveryStorePort.TombstoneReason? = null,
+        expiresAtMillis: Long? = null,
     ) {
         val reason = reasonOverride ?: when (record.lifecycle) {
             LifecycleState.CORRUPT -> RecoveryStorePort.TombstoneReason.CORRUPT
@@ -1432,7 +1448,10 @@ internal class RecoveryStore(
         cv.put("reason", reason.canonicalInt)
         // Tombstones carry the logical record format, not the physical schema.
         cv.put("format_version", RecoveryRecordCodec.RECORD_FORMAT_VERSION)
-        cv.put("expires_at_ms", nowMillis + RetentionPolicy.TOMBSTONE_RETENTION_MILLIS)
+        cv.put(
+            "expires_at_ms",
+            expiresAtMillis ?: Math.addExact(nowMillis, RetentionPolicy.TOMBSTONE_RETENTION_MILLIS),
+        )
         db.insertWithOnConflict(
             RecoveryDbSchema.TABLE_RECOVERY_TOMBSTONES,
             null,

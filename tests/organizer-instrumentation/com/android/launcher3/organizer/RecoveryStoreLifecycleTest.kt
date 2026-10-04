@@ -11,9 +11,12 @@ import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.store.RecoveryDbSchema
 import app.lawnchair.organizer.application.store.RecoveryDbVersionGate
+import app.lawnchair.organizer.application.store.RecoveryManifestChunks
+import app.lawnchair.organizer.application.store.RecoveryRecordCodec
 import app.lawnchair.organizer.application.store.RecoveryStore
 import app.lawnchair.organizer.application.store.RecoveryInspectionSnapshotReader
 import app.lawnchair.organizer.application.store.RecoveryStoreFaultPort
+import app.lawnchair.organizer.application.lifecycle.RetentionPolicy
 import app.lawnchair.organizer.planning.RevisionId
 import android.database.sqlite.SQLiteDatabase
 import java.io.File
@@ -261,6 +264,276 @@ class RecoveryStoreLifecycleTest {
         now += 86_400_000L
         assertEquals(RecoveryStorePort.RetentionOutcome.Applied, store.runRetention(now))
         assertEquals(null, store.readTombstone(pointId))
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+    }
+
+    @Test
+    fun threeRestoredRecordsBecomeTombstonesAndAllowFourthCheckpoint() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        var now = 1_000L
+        val store = RecoveryStore(context) { now }
+        prepareForMutation(store)
+        val manifest = emptyManifest()
+        val digest = ByteArray(32)
+        val pointIds = listOf(
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"),
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2"),
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3"),
+        )
+        val tombstoneDeadlines = pointIds.mapIndexed { index, pointId ->
+            createRestored(store, pointId, index)
+        }
+
+        now = 2_000L
+        val fourthPoint = RecoveryPointId("ddddddddddddddddddddddddddddddd4")
+        val fourth = store.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId = fourthPoint,
+                runId = RunId("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+                preManifest = manifest,
+                preRevision = RevisionId("rev-fourth"),
+                preDigest = digest,
+                applyActionDigest = digest,
+                itemCount = 0,
+                resourceCount = 0,
+            ),
+        )
+        assertTrue("fourth checkpoint must be admitted: $fourth", fourth is RecoveryStorePort.CheckpointResult.Ready)
+
+        pointIds.forEachIndexed { index, pointId ->
+            assertEquals(RecoveryStorePort.RecordRead.Missing, store.readRecord(pointId))
+            val tombstone = store.readTombstone(pointId)
+            assertEquals(RecoveryStorePort.TombstoneReason.ALREADY_RESTORED, tombstone?.reason)
+            assertEquals(tombstoneDeadlines[index], tombstone?.expiresAtMs)
+        }
+        assertEquals(
+            LifecycleState.READY,
+            ((store.readRecord(fourthPoint) as RecoveryStorePort.RecordRead.Readable).record.lifecycle),
+        )
+
+        val reopened = RecoveryStore(context) { now }
+        pointIds.forEachIndexed { index, pointId ->
+            assertEquals(RecoveryStorePort.RecordRead.Missing, reopened.readRecord(pointId))
+            assertEquals(tombstoneDeadlines[index], reopened.readTombstone(pointId)?.expiresAtMs)
+        }
+        assertEquals(
+            LifecycleState.READY,
+            ((reopened.readRecord(fourthPoint) as RecoveryStorePort.RecordRead.Readable).record.lifecycle),
+        )
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(RecoveryDbSchema.FILE_NAME).absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        ).use { db ->
+            assertEquals(1L, android.database.DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM recovery_points", null))
+            assertEquals(3L, android.database.DatabaseUtils.longForQuery(db, "SELECT COUNT(*) FROM recovery_tombstones", null))
+            assertEquals(0L, RecoveryManifestChunks.countOrphanChunks(db))
+        }
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+    }
+
+    @Test
+    fun threeActiveRecordsRejectRepeatedCheckpointWithoutDirtyingInspectionFence() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        var now = 1_000L
+        val store = RecoveryStore(context) { now }
+        prepareForMutation(store)
+        val activePointIds = listOf(
+            RecoveryPointId("1".padStart(32, 'a')),
+            RecoveryPointId("2".padStart(32, 'a')),
+            RecoveryPointId("3".padStart(32, 'a')),
+        )
+        activePointIds.forEachIndexed { index, pointId ->
+            createApplying(store, pointId, index)
+        }
+
+        now = 2_000L
+        val digest = ByteArray(32)
+        fun checkpoint(pointId: RecoveryPointId) = store.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId = pointId,
+                runId = RunId(pointId.value),
+                preManifest = emptyManifest(),
+                preRevision = RevisionId("blocked-${pointId.value.takeLast(1)}"),
+                preDigest = digest,
+                applyActionDigest = digest,
+                itemCount = 0,
+                resourceCount = 0,
+            ),
+        )
+
+        assertEquals(
+            RecoveryStorePort.CheckpointResult.AdmissionBlocked,
+            checkpoint(RecoveryPointId("4".padStart(32, 'a'))),
+        )
+        // A proven no-commit rejection must preserve the valid inspection
+        // generation so a second ordinary mutation gets the same typed result.
+        assertEquals(
+            RecoveryStorePort.CheckpointResult.AdmissionBlocked,
+            checkpoint(RecoveryPointId("5".padStart(32, 'a'))),
+        )
+        activePointIds.forEach { pointId ->
+            assertEquals(LifecycleState.APPLYING, lifecycleOf(store, pointId))
+        }
+        assertEquals(
+            RecoveryStorePort.RecordRead.Missing,
+            store.readRecord(RecoveryPointId("4".padStart(32, 'a'))),
+        )
+        assertEquals(
+            RecoveryStorePort.RecordRead.Missing,
+            store.readRecord(RecoveryPointId("5".padStart(32, 'a'))),
+        )
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+    }
+
+    @Test
+    fun mixedActiveAndFinalAdmissionPreservesActiveAndExactTombstoneReasons() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        var now = 1_000L
+        val store = RecoveryStore(context) { now }
+        prepareForMutation(store)
+
+        val activePoint = RecoveryPointId("6".padStart(32, 'a'))
+        createApplying(store, activePoint, 0)
+        val restoredPoint = RecoveryPointId("7".padStart(32, 'a'))
+        val restoredDeadline = createRestored(store, restoredPoint, 1)
+        val corruptPoint = RecoveryPointId("8".padStart(32, 'a'))
+        createCheckpointed(store, corruptPoint, 2)
+        assertTrue(store.advance(corruptPoint, LifecycleState.CORRUPT))
+
+        now = 2_000L
+        val admissionPlan = RetentionPolicy.planCreate(store.listRetentionRecords(includeFinal = true), now)
+        assertTrue("mixed admission plan: $admissionPlan", admissionPlan is RetentionPolicy.CreateDecision.Allowed)
+        assertEquals(2, (admissionPlan as RetentionPolicy.CreateDecision.Allowed).toEvict.size)
+        val fourthPoint = RecoveryPointId("a".padStart(32, 'b'))
+        val result = store.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId = fourthPoint,
+                runId = RunId("b".padStart(32, 'c')),
+                preManifest = emptyManifest(),
+                preRevision = RevisionId("mixed-fourth"),
+                preDigest = ByteArray(32),
+                applyActionDigest = ByteArray(32),
+                itemCount = 0,
+                resourceCount = 0,
+            ),
+        )
+
+        assertTrue("mixed admission must succeed: $result", result is RecoveryStorePort.CheckpointResult.Ready)
+        assertEquals(LifecycleState.APPLYING, lifecycleOf(store, activePoint))
+        assertEquals(RecoveryStorePort.RecordRead.Missing, store.readRecord(restoredPoint))
+        assertEquals(RecoveryStorePort.RecordRead.Missing, store.readRecord(corruptPoint))
+        assertEquals(RecoveryStorePort.TombstoneReason.ALREADY_RESTORED, store.readTombstone(restoredPoint)?.reason)
+        assertEquals(restoredDeadline, store.readTombstone(restoredPoint)?.expiresAtMs)
+        assertEquals(RecoveryStorePort.TombstoneReason.CORRUPT, store.readTombstone(corruptPoint)?.reason)
+        assertEquals(1_000L + 86_400_000L, store.readTombstone(corruptPoint)?.expiresAtMs)
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+    }
+
+    @Test
+    fun incompatibleFinalRecordIsTombstonedWithExactReasonAtAdmission() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        var now = 1_000L
+        val store = RecoveryStore(context) { now }
+        prepareForMutation(store)
+        createApplying(store, RecoveryPointId("9".padStart(32, 'a')), 0)
+        createApplying(store, RecoveryPointId("a".padStart(32, 'a')), 1)
+        val incompatiblePoint = RecoveryPointId("b".padStart(32, 'a'))
+        createCheckpointed(store, incompatiblePoint, 2)
+        forceLifecycle(store, context, incompatiblePoint, LifecycleState.INCOMPATIBLE, now)
+
+        now = 2_000L
+        val fourthPoint = RecoveryPointId("c".padStart(32, 'b'))
+        val result = store.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId = fourthPoint,
+                runId = RunId("d".padStart(32, 'c')),
+                preManifest = emptyManifest(),
+                preRevision = RevisionId("incompatible-fourth"),
+                preDigest = ByteArray(32),
+                applyActionDigest = ByteArray(32),
+                itemCount = 0,
+                resourceCount = 0,
+            ),
+        )
+
+        assertTrue("incompatible admission must succeed: $result", result is RecoveryStorePort.CheckpointResult.Ready)
+        assertEquals(RecoveryStorePort.RecordRead.Missing, store.readRecord(incompatiblePoint))
+        assertEquals(
+            RecoveryStorePort.TombstoneReason.INCOMPATIBLE_VERSION,
+            store.readTombstone(incompatiblePoint)?.reason,
+        )
+        assertEquals(1_000L + 86_400_000L, store.readTombstone(incompatiblePoint)?.expiresAtMs)
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+    }
+
+    @Test
+    fun failedFourthCheckpointRollsBackAdmissionTombstones() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
+        var now = 1_000L
+        val store = RecoveryStore(context) { now }
+        prepareForMutation(store)
+        val pointIds = listOf(
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"),
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2"),
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3"),
+        )
+        pointIds.forEachIndexed { index, pointId ->
+            createRestored(store, pointId, index)
+        }
+
+        now = 2_000L
+        val failingStore = RecoveryStore(
+            context,
+            { now },
+            ThrowingFaultPort(RecoveryStoreFaultPort.Phase.CREATING, FaultTiming.BEFORE),
+        )
+        prepareForMutation(failingStore)
+        val fourthPoint = RecoveryPointId("ddddddddddddddddddddddddddddddd4")
+        val digest = ByteArray(32)
+        val result = failingStore.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId = fourthPoint,
+                runId = RunId("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+                preManifest = emptyManifest(),
+                preRevision = RevisionId("rev-fourth"),
+                preDigest = digest,
+                applyActionDigest = digest,
+                itemCount = 0,
+                resourceCount = 0,
+            ),
+        )
+
+        assertEquals(RecoveryStorePort.CheckpointResult.CreateFailed, result)
+        val physicalPointIds = SQLiteDatabase.openDatabase(
+            context.getDatabasePath(RecoveryDbSchema.FILE_NAME).absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        ).use { db ->
+            val ids = mutableListOf<String>()
+            db.rawQuery("SELECT point_id FROM recovery_points ORDER BY point_id", null).use { cursor ->
+                while (cursor.moveToNext()) ids += cursor.getString(0)
+            }
+            ids
+        }
+        assertEquals(
+            "physical point IDs after rollback",
+            pointIds.map { it.value },
+            physicalPointIds,
+        )
+        pointIds.forEach { pointId ->
+            val read = failingStore.readRecord(pointId)
+            assertTrue("$pointId read after rollback: $read", read is RecoveryStorePort.RecordRead.Readable)
+            val record = (read as RecoveryStorePort.RecordRead.Readable).record
+            assertEquals(LifecycleState.RESTORED, record.lifecycle)
+            assertNull(failingStore.readTombstone(pointId))
+        }
+        assertEquals(RecoveryStorePort.RecordRead.Missing, failingStore.readRecord(fourthPoint))
         context.deleteDatabase(RecoveryDbSchema.FILE_NAME)
     }
 
@@ -668,15 +941,44 @@ class RecoveryStoreLifecycleTest {
     private fun emptyManifest(): PersistenceManifest =
         PersistenceManifest(1, 33, 0, emptyList(), emptyList(), 0L)
 
-    private fun createCheckpointed(store: RecoveryStore): RecoveryPointId {
-        val pointId = RecoveryPointId("aabbccdd00112233445566778899aabb")
+    private fun createRestored(
+        store: RecoveryStore,
+        pointId: RecoveryPointId,
+        index: Int,
+    ): Long {
+        val digest = ByteArray(32)
+        val result = store.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId = pointId,
+                runId = RunId((index + 1).toString().padStart(32, 'b')),
+                preManifest = emptyManifest(),
+                preRevision = RevisionId("rev-$index"),
+                preDigest = digest,
+                applyActionDigest = ByteArray(32) { index.toByte() },
+                itemCount = 0,
+                resourceCount = 0,
+            ),
+        )
+        check(result is RecoveryStorePort.CheckpointResult.Ready) { "setup checkpoint failed: $result" }
+        check(store.advance(pointId, LifecycleState.APPLYING))
+        check(store.markRestoring(pointId, emptyManifest(), digest, digest))
+        check(store.advance(pointId, LifecycleState.RESTORED))
+        val restored = (store.readRecord(pointId) as RecoveryStorePort.RecordRead.Readable).record
+        return Math.addExact(restored.updatedAtMs, 86_400_000L)
+    }
+
+    private fun createCheckpointed(
+        store: RecoveryStore,
+        pointId: RecoveryPointId = RecoveryPointId("aabbccdd00112233445566778899aabb"),
+        index: Int = 0,
+    ): RecoveryPointId {
         val digest = ByteArray(32)
         val result = store.checkpoint(
             RecoveryStorePort.CheckpointPayload(
                 pointId,
-                RunId("aabbccdd00112233445566778899aabb"),
+                RunId((index + 1).toString().padStart(32, 'b')),
                 emptyManifest(),
-                RevisionId("rev"),
+                RevisionId("rev-$index"),
                 digest,
                 digest,
                 0,
@@ -691,6 +993,45 @@ class RecoveryStoreLifecycleTest {
         val pointId = createCheckpointed(store)
         check(store.markApplying(pointId, emptyManifest(), ByteArray(32), ByteArray(32), 0, 0))
         return pointId
+    }
+
+    private fun createApplying(store: RecoveryStore, pointId: RecoveryPointId, index: Int): RecoveryPointId {
+        createCheckpointed(store, pointId, index)
+        check(store.markApplying(pointId, emptyManifest(), ByteArray(32), ByteArray(32), 0, 0))
+        return pointId
+    }
+
+    private fun forceLifecycle(
+        store: RecoveryStore,
+        context: Context,
+        pointId: RecoveryPointId,
+        lifecycle: LifecycleState,
+        updatedAtMs: Long,
+    ) {
+        val current = (store.readRecord(pointId) as RecoveryStorePort.RecordRead.Readable).record
+        val encoded = (current as RecoveryStore.StoredRecord).encoded
+        val updated = encoded.copy(
+            updatedAtMs = updatedAtMs,
+            lifecycle = lifecycle,
+            priorLifecycle = encoded.lifecycle,
+        ).let { it.copy(payloadChecksum = RecoveryRecordCodec.computePayloadChecksum(it)) }
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(RecoveryDbSchema.FILE_NAME).absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.execSQL(
+                "UPDATE recovery_points SET lifecycle = ?, prior_lifecycle = ?, updated_at_ms = ?, " +
+                    "payload_checksum = ? WHERE point_id = ?",
+                arrayOf<Any>(
+                    updated.lifecycle.canonicalInt,
+                    updated.priorLifecycle?.canonicalInt ?: -1,
+                    updated.updatedAtMs,
+                    updated.payloadChecksum,
+                    pointId.value,
+                ),
+            )
+        }
     }
 
     private fun createCommittedUnverified(store: RecoveryStore): RecoveryPointId {

@@ -460,10 +460,71 @@ class ApplyProtocolTest {
         val result = protocol.apply(mutatingPlan())
         assertTrue(result is ApplyResult.Rejected)
         assertEquals(
-            PreWriteRejection.RECOVERY_STORE_UNAVAILABLE,
+            PreWriteRejection.RECOVERY_POINT_ADMISSION_BLOCKED,
             (result as ApplyResult.Rejected).reason,
         )
         assertEquals(0, writer.appliedWriteSets)
+    }
+
+    @Test
+    fun threeRestoredPointsAreTombstonedAndAllowFourthCheckpoint() {
+        val capture = writer.captureCurrent(CaptureId("seed"))
+        val restoredIds = listOf(
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"),
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2"),
+            RecoveryPointId("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3"),
+        )
+        val restoredDeadlines = restoredIds.mapIndexed { index, pointId ->
+            val checkpoint = store.checkpoint(
+                RecoveryStorePort.CheckpointPayload(
+                    pointId = pointId,
+                    runId = app.lawnchair.organizer.application.public.RunId(
+                        index.toString().padStart(32, 'b'),
+                    ),
+                    preManifest = capture.manifest,
+                    preRevision = capture.revision,
+                    preDigest = capture.digest,
+                    applyActionDigest = ByteArray(32) { index.toByte() },
+                    itemCount = capture.manifest.rowCount,
+                    resourceCount = capture.manifest.resources.size,
+                ),
+            )
+            assertTrue(checkpoint is RecoveryStorePort.CheckpointResult.Ready)
+            assertTrue(store.advance(pointId, LifecycleState.APPLYING))
+            assertTrue(
+                store.markRestoring(
+                    pointId,
+                    capture.manifest,
+                    capture.digest,
+                    capture.digest,
+                ),
+            )
+            assertTrue(store.advance(pointId, LifecycleState.RESTORED))
+            val record = (store.readRecord(pointId) as RecoveryStorePort.RecordRead.Readable).record
+            record.updatedAtMs + app.lawnchair.organizer.application.lifecycle.RetentionPolicy.TOMBSTONE_RETENTION_MILLIS
+        }
+
+        val fourthPoint = RecoveryPointId("ddddddddddddddddddddddddddddddd4")
+        val fourth = store.checkpoint(
+            RecoveryStorePort.CheckpointPayload(
+                pointId = fourthPoint,
+                runId = app.lawnchair.organizer.application.public.RunId("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+                preManifest = capture.manifest,
+                preRevision = capture.revision,
+                preDigest = capture.digest,
+                applyActionDigest = ByteArray(32),
+                itemCount = capture.manifest.rowCount,
+                resourceCount = capture.manifest.resources.size,
+            ),
+        )
+
+        assertTrue("Fourth checkpoint must be admitted: $fourth", fourth is RecoveryStorePort.CheckpointResult.Ready)
+        restoredIds.forEachIndexed { index, pointId ->
+            assertEquals(RecoveryStorePort.RecordRead.Missing, store.readRecord(pointId))
+            val tombstone = store.readTombstone(pointId)
+            assertEquals(RecoveryStorePort.TombstoneReason.ALREADY_RESTORED, tombstone?.reason)
+            assertEquals(restoredDeadlines[index], tombstone?.expiresAtMs)
+        }
     }
 
     // --- Finding 6: per-dimension A5 race tests (SA-04) ---
