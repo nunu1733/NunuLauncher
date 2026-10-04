@@ -16,6 +16,7 @@ Describe the observable outcome and the smallest implementation shape that deliv
 
 ## Risk review
 
+- Risk labels applied to this PR (`risk: layout-data`, `risk: migration`), or why none:
 - Layout/recovery impact:
 - Migration/backup/restore impact:
 - Privacy/permission/network impact:

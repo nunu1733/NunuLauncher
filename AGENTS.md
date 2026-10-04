@@ -82,6 +82,15 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 - UI: 確認、失敗、復旧、アクセシビリティを検証する。
 - 修正は失敗を再現するテストを伴う。テストできない場合は理由と代替証拠をPRに記載する。
 
+## 高リスクPRの独立エビデンス
+
+`risk: layout-data` または `risk: migration` のlabelが付いたPR、および高リスクpathを変更するPRは、次の両方を揃えるまでmergeしない。手順、audit記録形式、適用条件の正本は [docs/project/github-workflow.md](./docs/project/github-workflow.md) とする。
+
+- 検証対象commit上で、CIのmerge gate (`final-status`) が実際に成功していること。
+- `docs/assessment/pr-<PR番号>-<slug>.md` に独立audit記録があること。対象head SHA、参照したspec/ADRの受入条件、実行したtest表面、成功したCI runへのlinkを含む。
+
+`high-risk-gate` workflowがこの要件を機械検証する。PR本文への方針や結果主張を書き足すだけでは要件を満たせない。auditは実装を行ったagent/sessionとは別の作業として行い、solo保守では独立sessionによる再実行と再確認でこれを満たす。docs-only等の低リスクPRはこの要件の対象外である。
+
 ## 検証済みcommand
 
 JDK 21、Android SDK Platform 36.1、Build Tools 36.1.0を使う。環境詳細は [building guide](./docs/engineering/building.md) を正本とする。

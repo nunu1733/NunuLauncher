@@ -1,0 +1,48 @@
+name: High-risk gate
+
+# Issue #43: independent-evidence gate for PRs that can mutate persisted home
+# layout, recovery state, or schema migration. A high-risk PR (risk label or a
+# high-risk path change) must carry docs/assessment/pr-<N>-<slug>.md, whose
+# Head SHA lineage and referenced CI runs this gate machine-verifies against
+# the GitHub API. Editing the PR body alone can never satisfy it.
+#
+# This workflow deliberately does not rerun the test suite: the independent CI
+# evidence is the CI workflow's own run on the audited commit (Issue #41's
+# organizer gate included), referenced from the audit record and verified
+# here. There is no second test seam.
+#
+# Label events (labeled/unlabeled) must re-evaluate the gate, which is why
+# this lives outside ci.yml instead of widening ci.yml's triggers.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+concurrency:
+  group: high-risk-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  high-risk-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history: the gate proves the audit's Head SHA is an ancestor
+          # of the PR head and that everything after it is docs-only.
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - name: Evaluate high-risk evidence gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/repo-contract/validate_high_risk_evidence.py \
+            --repo '${{ github.repository }}' \
+            --pr-number '${{ github.event.pull_request.number }}' \
+            --head-sha '${{ github.event.pull_request.head.sha }}'

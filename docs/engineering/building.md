@@ -53,9 +53,12 @@ build-tools;36.1.0
 ./gradlew spotlessCheck
 ./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'
 ./gradlew assembleLawnWithQuickstepGithubDebug
+python3 tools/repo-contract/validate_repo_contract.py
+python3 tools/repo-contract/test_validate_repo_contract.py
+python3 tools/repo-contract/test_validate_high_risk_evidence.py
 ```
 
-organizer unit test commandは `.github/workflows/ci.yml` の `organizer-unit-tests` job（Issue #41）がsource PRで同じsurfaceを実行する。localでの詳細は [quality-strategy.md](./quality-strategy.md) を参照する。
+organizer unit test commandは `.github/workflows/ci.yml` の `organizer-unit-tests` job（Issue #41）がsource PRで同じsurfaceを実行する。repo-contract validatorと高リスクgate validatorのself-testは、同じく `ci.yml` の `validate-repo-contract` job（Issue #8、#43）が全PRで実行する。localでの詳細は [quality-strategy.md](./quality-strategy.md) を参照する。
 
 ## Planner generated-property runs
 
