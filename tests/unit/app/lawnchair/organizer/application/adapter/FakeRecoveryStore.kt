@@ -51,6 +51,9 @@ internal class FakeRecoveryStore(
         private set
     var advanceCalls: Int = 0
         private set
+    var markIncompatibleCalls: Int = 0
+        private set
+    var markIncompatibleFails: Boolean = false
     var pruneUnusedCalls: Int = 0
         private set
     var retentionCalls: Int = 0
@@ -193,6 +196,8 @@ internal class FakeRecoveryStore(
 
         override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean = isActive() && this@FakeRecoveryStore.advance(pointId, next)
 
+        override fun markIncompatible(pointId: RecoveryPointId): Boolean = isActive() && this@FakeRecoveryStore.markIncompatible(pointId)
+
         override fun markRestoring(
             pointId: RecoveryPointId,
             reviewedManifest: PersistenceManifest,
@@ -315,6 +320,17 @@ internal class FakeRecoveryStore(
         if (!LifecycleTransitions.isLegal(record.lifecycle, next)) return false
         record.priorLifecycle = record.lifecycle
         record.lifecycle = next
+        record.updatedAtMs = clock()
+        return true
+    }
+
+    fun markIncompatible(pointId: RecoveryPointId): Boolean {
+        markIncompatibleCalls += 1
+        if (markIncompatibleFails || advanceFails) return false
+        val record = records[pointId.value] ?: return false
+        if (!LifecycleTransitions.isLegal(record.lifecycle, LifecycleState.INCOMPATIBLE)) return false
+        record.priorLifecycle = record.lifecycle
+        record.lifecycle = LifecycleState.INCOMPATIBLE
         record.updatedAtMs = clock()
         return true
     }

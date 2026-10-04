@@ -698,6 +698,33 @@ internal class RecoveryStore(
     }
 
     /**
+     * Issue #407: spec 13 fixes `unsupported version -> INCOMPATIBLE`. The
+     * persisted logical format_version stays unsupported by definition, so
+     * the read-back cannot go through codec record decode; it validates the
+     * authoritative lifecycle write and the recomputed payload checksum
+     * instead.
+     */
+    private fun markIncompatibleRaw(pointId: RecoveryPointId): Boolean {
+        if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
+        return updateRecord(
+            pointId,
+            RecoveryStoreFaultPort.Phase.INCOMPATIBLE,
+            readBack = { read ->
+                read.record.lifecycle == LifecycleState.INCOMPATIBLE && read.record.checksumValid
+            },
+        ) { current ->
+            if (!LifecycleTransitions.isLegal(current.lifecycle, LifecycleState.INCOMPATIBLE)) {
+                return@updateRecord null
+            }
+            current.copy(
+                updatedAtMs = clock(),
+                lifecycle = LifecycleState.INCOMPATIBLE,
+                priorLifecycle = current.lifecycle,
+            )
+        }
+    }
+
+    /**
      * Persist the reviewed-current-state manifest/digest and complete recovery
      * action-set digest, mark `RESTORING`. Spec §“Recovery protocol” step 6.
      */
@@ -1030,6 +1057,7 @@ internal class RecoveryStore(
     private fun updateRecord(
         pointId: RecoveryPointId,
         phase: RecoveryStoreFaultPort.Phase,
+        readBack: (RecoveryStorePort.RecordRead.Readable) -> Boolean = ::validateReadable,
         transform: (RecoveryRecordCodec.Encoded) -> RecoveryRecordCodec.Encoded?,
     ): Boolean {
         if (availability() != RecoveryStorePort.StoreAvailability.READY) return false
@@ -1075,7 +1103,7 @@ internal class RecoveryStore(
         } catch (_: RuntimeException) {
             null
         }
-        return readback is RecoveryStorePort.RecordRead.Readable && validateReadable(readback)
+        return readback is RecoveryStorePort.RecordRead.Readable && readBack(readback)
     }
 
     private inner class ReconciliationSession(
@@ -1098,6 +1126,8 @@ internal class RecoveryStore(
         ): Boolean = reconcileMutation { quarantineUnmutatedRaw(pointId, expectedLifecycle) }
 
         override fun advance(pointId: RecoveryPointId, next: LifecycleState): Boolean = reconcileMutation { advanceRaw(pointId, next) }
+
+        override fun markIncompatible(pointId: RecoveryPointId): Boolean = reconcileMutation { markIncompatibleRaw(pointId) }
 
         override fun markRestoring(
             pointId: RecoveryPointId,

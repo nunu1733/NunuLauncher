@@ -41,32 +41,37 @@ enum class LifecycleState {
 object LifecycleTransitions {
 
     private val legal: Map<LifecycleState, Set<LifecycleState>> = mapOf(
-        LifecycleState.CREATING to setOf(LifecycleState.READY, LifecycleState.CORRUPT),
+        LifecycleState.CREATING to setOf(LifecycleState.READY, LifecycleState.CORRUPT, LifecycleState.INCOMPATIBLE),
         LifecycleState.READY to setOf(
             LifecycleState.APPLYING,
             LifecycleState.EXPIRED,
             LifecycleState.CORRUPT,
+            LifecycleState.INCOMPATIBLE,
         ),
         LifecycleState.APPLYING to setOf(
             LifecycleState.COMMITTED_UNVERIFIED,
             LifecycleState.RESTORING,
             LifecycleState.READY,
             LifecycleState.CORRUPT,
+            LifecycleState.INCOMPATIBLE,
         ),
         LifecycleState.COMMITTED_UNVERIFIED to setOf(
             LifecycleState.VERIFIED,
             LifecycleState.RESTORING,
             LifecycleState.READY,
             LifecycleState.CORRUPT,
+            LifecycleState.INCOMPATIBLE,
         ),
         LifecycleState.VERIFIED to setOf(
             LifecycleState.EXPIRED,
             LifecycleState.RESTORING,
             LifecycleState.CORRUPT,
+            LifecycleState.INCOMPATIBLE,
         ),
         LifecycleState.RESTORING to setOf(
             LifecycleState.RESTORED,
             LifecycleState.CORRUPT,
+            LifecycleState.INCOMPATIBLE,
         ),
         LifecycleState.RESTORED to emptySet(),
         LifecycleState.EXPIRED to emptySet(),
