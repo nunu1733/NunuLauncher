@@ -122,7 +122,7 @@ merge-base `b011d84c` から baseline `505dbc40` 側だけに存在する33 comm
 
 ## 6. 主要な発見
 
-1. **DB schemaは不変**: `SCHEMA_VERSION` 32は両側で同一、`res/raw/downgrade_schema.json` 無変更（`git diff` で確認）。Launcher DB migration/downgrade契約の連続性は高い。一方でgrid migration utilの分割・Kotlin化という構造変化がある（§5）。
+1. **upstream同士のDB schemaは不変**: `SCHEMA_VERSION` 32は旧upstream baselineと候補で同一、`res/raw/downgrade_schema.json` 無変更（`git diff` で確認）。現行forkはADR-0004のlock列を持つschema33であり、この32不変をfork APKの互換性保証へ使わない。fork33維持・rollback条件は [#522 assessment](./issue-522-rebase-data-compatibility.md) で確定した。一方でgrid migration utilの分割・Kotlin化という構造変化がある（§5）。
 2. **Quickstep/compat**: 16-devはAPI 36（Baklava）用 `QuickstepCompatFactoryVBaklava` と `QUICKSTEP_MIN_SDK=35 / MAX_SDK=36` を実装済み（`build.gradle:147-148`）。**API 37（Android 17）のcompat factoryは存在せず、`quickstepMaxSdk=36` のまま**。quickstep advertised support rangeはbaselineの29..35→35..36へ変化しており、API 29〜34端末での実挙動・サポート影響の確定は #520 の対象である（本Phaseでは影響を断定しない）。`QUICKSTEP_MAX_SDK` の単純な定数引き上げを先に採用しない（Epic Non-goals）。
 3. **targetSdk 37**: 16-devは `targetSdk = 37`、compileSdk 37（minor 2）、buildTools 37.0.0、minSdk 26。Android 16/17 behavior changesの分離はPhase 1子Issueへ委ねる。
 4. **build再編の規模**: AGP 9.0.1→9.4.1、Kotlin 2.3.0→2.4.20。vendored `wmshell/`（1,639 files +198k行、Gradle module `:wmshell`）、`flags`、`dagger`、`concurrent`、`modules:widgetpicker` 等の新moduleと、新submodule `platform_frameworks_libs_systemui`（branch 16-dev）の取込みが必要。toolchain詳細の正本更新（building guide）はPhase 4である。
@@ -154,3 +154,5 @@ merge-base `b011d84c` から baseline `505dbc40` 側だけに存在する33 comm
 - 2026-10-04（revision 2）: PR #523 review round 1（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975549572)）指摘対応: (1) §4の `--verify` 記録を実測（105 files +23,314/−1,098、anchor `8af117b6fc`）へ修正し、初回capture値（47/+3,993/−1,017）との混在を解消、(2) §5.1にbaseline側33 commitsの棚卸しを追加（30件不運搬可、3件port/pin判断）、(3) §5のdispositionを `keep / adapt` の単一結論（path内訳つき）へ変更しdrop判定の根拠を明記、(4) §6-2のquickstepMinSdk影響記述を「advertised range変化・実影響は#520で確定」へ修正、(5) §1のnetwork記述と§7のIssue番号を修正。
 - 2026-10-04（revision 3）: PR #523 review round 2（[ChatGPT review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975684996)）指摘対応: (1) §5.1 Group CのNova restore 2件を「UI＋restoreデータ変換契約」の挙動単位へ展開（`9b48473c`: subgrid警告＋`roundToInt()`座標変換〔16-devは `.toInt()` のまま〕、`53a2092541`: toggle＋rows+1補償・cellY shift・clamp/skip〔16-devに同等なし〕。いずれも16-dev候補で確認済み）し、採否確定を#522（Phase 1、rebase前）へ移管、(2) §5のdispositionを全groupでkeep/adapt subsetの統一粒度に変更（合計keep 57 / adapt 48 / drop 0）、(3) §4のanchor後差分説明を「docs/spec-only（#507/#508/#509を含むmerge群）でsurface差分なし」へ修正。
 - 2026-10-04（revision 4）: **acceptedへ遷移**。PR #523 review round 3（[review](https://github.com/nunu1733/NunuLauncher/pull/523#issuecomment-5975761227)）でblocking findingなしを確認し、ADR-0018のaccepted遷移とともに本書を受入。受入は本PR #523のmergeで完了する。
+
+- 2026-10-04（#522追記）: §6-1のschema32不変はupstream baseline/候補間の事実と明記。fork33の維持・rollback判断は#522 assessmentとADR-0018改訂へ接続（Phase0の固定SHA/計測値は変更しない）。
