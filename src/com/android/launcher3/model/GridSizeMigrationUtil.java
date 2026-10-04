@@ -18,7 +18,7 @@ package com.android.launcher3.model;
 
 import static com.android.launcher3.LauncherSettings.Favorites.TABLE_NAME;
 import static com.android.launcher3.LauncherSettings.Favorites.TMP_TABLE;
-import static com.android.launcher3.provider.LauncherDbUtils.copyTable;
+import static com.android.launcher3.provider.LauncherDbUtils.copyTableFromAttachedDb;
 import static com.android.launcher3.provider.LauncherDbUtils.dropTable;
 
 import android.content.ComponentName;
@@ -37,7 +37,6 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
 
-import com.android.launcher3.Flags;
 import com.android.launcher3.InvariantDeviceProfile;
 import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.Utilities;
@@ -124,78 +123,87 @@ public class GridSizeMigrationUtil {
         // Issue #14: cover both fast and general direct-SQLite migration paths.
         try (LayoutWriteCoordinator.Lease ignored = LayoutWriteCoordinator.getInstance()
                 .acquireBlockingQuietly(LayoutWriteCoordinator.OwnerKind.GRID_MIGRATION)) {
-            return migrateGridUnderLease(context, srcDeviceState, destDeviceState, target, source);
+            SQLiteDatabase targetDatabase = target.getWritableDatabase();
+            boolean attached = false;
+            try {
+                targetDatabase.execSQL("ATTACH DATABASE ? AS from_db",
+                        new Object[] { source.getPath() });
+                attached = true;
+                try (SQLiteTransaction transaction = new SQLiteTransaction(targetDatabase)) {
+                    migrateGridInTransaction(context, srcDeviceState, destDeviceState,
+                            target, transaction.getDb(),
+                            GridMigrationRuntime.DIRECT.enableGridMigrationFix(),
+                            GridMigrationRuntime.DIRECT);
+                    transaction.commit();
+                }
+                target.refreshMaxItemIdFromCommittedRows();
+                destDeviceState.writeToPrefs(context);
+                return true;
+            } catch (RuntimeException exception) {
+                Log.e(TAG, "Error during grid migration", exception);
+                return false;
+            } finally {
+                if (attached) {
+                    GridMigrationRuntime.DIRECT.execute(GridMigrationOperation.SOURCE_DETACH,
+                            () -> targetDatabase.execSQL("DETACH DATABASE from_db"));
+                }
+            }
         }
     }
 
-    private static boolean migrateGridUnderLease(
+    static void migrateGridInTransaction(
             @NonNull Context context,
             @NonNull DeviceGridState srcDeviceState,
             @NonNull DeviceGridState destDeviceState,
             @NonNull DatabaseHelper target,
-            @NonNull SQLiteDatabase source) {
-        // Issue #14: normalize both active/inactive grids before any positional or explicit copy.
-        ensureOrganizerLockColumn(source);
-        ensureOrganizerLockColumn(target.getWritableDatabase());
-        if (Flags.enableGridMigrationFix()
-                && srcDeviceState.getColumns().equals(destDeviceState.getColumns())
-                && srcDeviceState.getRows() < destDeviceState.getRows()) {
-            try (SQLiteTransaction t = new SQLiteTransaction(target.getWritableDatabase())) {
-                copyTable(source, TABLE_NAME, t.getDb(), TABLE_NAME, context);
-                // Issue #14: ADR-0004 — all migrated rows are UNKNOWN; organizer remains fail-closed.
-                markOrganizerLocksUnknown(t.getDb());
-                t.commit();
-            }
-            destDeviceState.writeToPrefs(context);
-            return true;
-        }
-        copyTable(source, TABLE_NAME, target.getWritableDatabase(), TMP_TABLE, context);
-
-        HashSet<String> validPackages = getValidPackages(context);
+            @NonNull SQLiteDatabase targetDatabase,
+            boolean enableGridMigrationFix,
+            @NonNull GridMigrationRuntime runtime) {
         long migrationStartTime = System.currentTimeMillis();
-        try (SQLiteTransaction t = new SQLiteTransaction(target.getWritableDatabase())) {
-            DbReader srcReader = new DbReader(t.getDb(), TMP_TABLE, context, validPackages);
-            DbReader destReader = new DbReader(t.getDb(), TABLE_NAME, context, validPackages);
-
-            Point targetSize = new Point(destDeviceState.getColumns(), destDeviceState.getRows());
-            migrate(target, srcReader, destReader, destDeviceState.getNumHotseat(),
-                    targetSize, srcDeviceState, destDeviceState);
-            // Issue #14: ADR-0004 — target-wide UNKNOWN marking inside the same migration transaction.
-            markOrganizerLocksUnknown(t.getDb());
-            dropTable(t.getDb(), TMP_TABLE);
-            t.commit();
-            // Issue #14: write destination prefs only after migration succeeds.
-            destDeviceState.writeToPrefs(context);
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "Error during grid migration", e);
-            return false;
+        try {
+            if (!hasOrganizerLockColumn(targetDatabase)) {
+                throw new IllegalStateException("Grid migration target is missing organizer lock column");
+            }
+            boolean fastPath = enableGridMigrationFix
+                    && srcDeviceState.getColumns().equals(destDeviceState.getColumns())
+                    && srcDeviceState.getRows() < destDeviceState.getRows();
+            String targetTable = fastPath ? TABLE_NAME : TMP_TABLE;
+            runtime.execute(GridMigrationOperation.TARGET_COPY,
+                    () -> copyTableFromAttachedDb(TABLE_NAME, targetDatabase, targetTable, context));
+            if (!fastPath) {
+                HashSet<String> validPackages = getValidPackages(context);
+                DbReader srcReader = new DbReader(
+                        targetDatabase, TMP_TABLE, context, validPackages);
+                DbReader destReader = new DbReader(
+                        targetDatabase, TABLE_NAME, context, validPackages);
+                Point targetSize = new Point(
+                        destDeviceState.getColumns(), destDeviceState.getRows());
+                runtime.execute(GridMigrationOperation.PLACEMENT,
+                        () -> migrate(target, srcReader, destReader,
+                                destDeviceState.getNumHotseat(), targetSize,
+                                srcDeviceState, destDeviceState));
+            }
+            runtime.execute(GridMigrationOperation.UNKNOWN_MARK,
+                    () -> markOrganizerLocksUnknown(targetDatabase));
+            runtime.execute(GridMigrationOperation.TMP_CLEANUP,
+                    () -> dropTable(targetDatabase, TMP_TABLE));
         } finally {
             Log.v(TAG, "Workspace migration completed in "
                     + (System.currentTimeMillis() - migrationStartTime));
         }
     }
 
-    @VisibleForTesting
-    public static void ensureOrganizerLockColumn(SQLiteDatabase db) {
-        boolean found = false;
+    private static boolean hasOrganizerLockColumn(SQLiteDatabase db) {
         try (android.database.Cursor cursor = db.rawQuery("PRAGMA table_info(favorites)", null)) {
             int nameIndex = cursor.getColumnIndexOrThrow("name");
             while (cursor.moveToNext()) {
                 if (LauncherSettings.Favorites.ORGANIZER_LOCK_STATE.equals(
                         cursor.getString(nameIndex))) {
-                    found = true;
-                    break;
+                    return true;
                 }
             }
         }
-        if (!found) {
-            db.execSQL("ALTER TABLE favorites ADD COLUMN "
-                    + LauncherSettings.Favorites.ORGANIZER_LOCK_STATE
-                    + " INTEGER NOT NULL DEFAULT 0");
-        }
-        db.execSQL("UPDATE favorites SET "
-                + LauncherSettings.Favorites.ORGANIZER_LOCK_STATE + " = 0");
+        return false;
     }
 
     /** Production migration primitive, exposed so instrumentation exercises the real SQL path. */

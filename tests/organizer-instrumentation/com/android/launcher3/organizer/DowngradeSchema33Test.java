@@ -13,6 +13,7 @@ import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.R;
 import com.android.launcher3.model.DatabaseHelper;
 import com.android.launcher3.model.DbDowngradeHelper;
+import com.android.launcher3.model.GridMigrationTestSupport;
 import java.io.InputStream;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -21,7 +22,7 @@ import org.junit.runner.RunWith;
 public class DowngradeSchema33Test {
     @Test public void productionRecipeRebuilds33To32WithoutLosingRows() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
-        context.deleteDatabase("organizer-downgrade.db");
+        GridMigrationTestSupport.deleteDatabase(context, "organizer-downgrade.db");
         try (DatabaseHelper helper = new DatabaseHelper(
                     context, "organizer-downgrade.db", user -> 0L, () -> { });
              InputStream schema = context.getResources().openRawResource(R.raw.downgrade_schema)) {
@@ -39,6 +40,8 @@ public class DowngradeSchema33Test {
             try (Cursor c = db.rawQuery("SELECT title FROM favorites WHERE _id=1", null)) {
                 assertTrue(c.moveToFirst()); assertTrue("kept".equals(c.getString(0)));
             }
-        } finally { context.deleteDatabase("organizer-downgrade.db"); }
+        } finally {
+            GridMigrationTestSupport.deleteDatabase(context, "organizer-downgrade.db");
+        }
     }
 }

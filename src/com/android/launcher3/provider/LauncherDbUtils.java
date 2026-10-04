@@ -93,18 +93,31 @@ public class LauncherDbUtils {
             String toTable, Context context) {
         long userSerial = UserCache.INSTANCE.get(context).getSerialNumberForUser(
                 Process.myUserHandle());
-        dropTable(toDb, toTable);
-        Favorites.addTableToDb(toDb, userSerial, false, toTable);
         if (fromDb != toDb) {
             toDb.execSQL("ATTACH DATABASE '" + fromDb.getPath() + "' AS from_db");
-            toDb.execSQL(
-                    "INSERT INTO " + toTable + " SELECT " + getColumns(userSerial)
-                        + " FROM from_db." + fromTable);
-            toDb.execSQL("DETACH DATABASE 'from_db'");
+            try {
+                replaceTable(toDb, "from_db." + fromTable, toTable, userSerial);
+            } finally {
+                toDb.execSQL("DETACH DATABASE 'from_db'");
+            }
         } else {
-            toDb.execSQL("INSERT INTO " + toTable + " SELECT " + getColumns(userSerial) + " FROM "
-                    + fromTable);
+            replaceTable(toDb, fromTable, toTable, userSerial);
         }
+    }
+
+    public static void copyTableFromAttachedDb(String fromTable, SQLiteDatabase toDb,
+            String toTable, Context context) {
+        long userSerial = UserCache.INSTANCE.get(context).getSerialNumberForUser(
+                Process.myUserHandle());
+        replaceTable(toDb, "from_db." + fromTable, toTable, userSerial);
+    }
+
+    private static void replaceTable(SQLiteDatabase toDb, String qualifiedFromTable,
+            String toTable, long userSerial) {
+        dropTable(toDb, toTable);
+        Favorites.addTableToDb(toDb, userSerial, false, toTable);
+        toDb.execSQL("INSERT INTO " + toTable + " SELECT " + getColumns(userSerial)
+                + " FROM " + qualifiedFromTable);
     }
 
     /**

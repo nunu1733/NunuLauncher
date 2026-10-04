@@ -391,6 +391,8 @@ No dependency, permission, network, telemetry, UI, planner, or trigger changes.
 
 ### Grid migration
 
+> Corrective implementation ownership: [Issue #59](../59-preserve-source-grid-migration-failure/spec.md) owns the source-preserving grid-migration failure fix; this historical plan remains unchanged.
+
 - `ModelDbController` keeps `oldHelper` installed while a local target helper is
   prepared. Opening each helper performs/validates schema 33 before any copy.
 - Refactor the current growth fast path and general path so copy, placement,

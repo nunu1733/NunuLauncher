@@ -1,0 +1,17 @@
+package com.android.launcher3.model;
+
+enum GridMigrationOperation {
+    BACKUP_SNAPSHOT,
+    JOURNAL_WRITE,
+    TARGET_COPY,
+    PLACEMENT,
+    UNKNOWN_MARK,
+    TMP_CLEANUP,
+    TRANSACTION_CLOSE,
+    SOURCE_DETACH,
+    SOURCE_HELPER_CLOSE,
+    DESTINATION_PREF_WRITE,
+    SOURCE_PREF_WRITE,
+    TARGET_RESTORE,
+    TARGET_DELETE
+}
