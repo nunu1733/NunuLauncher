@@ -1,0 +1,23 @@
+term	preferred_ja	avoid	surface_exceptions	rationale_reference
+organizer	整理機能	オーガナイザー	診断/サポートでは「オーガナイザー」を許容	通常UIは利用者の目的を表し、診断ではモジュール名の精度を残す。CONTEXT.md; Issue #161
+organization run	整理	整理run、実行ジョブ	診断では「整理run」を必要に応じて許容	CONTEXT.mdの「整理run」。通常UIでは行為名を短くする。
+organization proposal	整理案	提案された整理	タイトル/CTAでは「整理案を確認」など文脈に応じて変形	CTAの対象を明示し、英語構文を直訳しない。Issue #161
+placement	配置	ポジション、位置（配置全体を指す場合）	座標だけを指す診断では「位置」を許容	CONTEXT.mdの「配置」。
+locked placement	ロックした配置	ロック済みアイテム	短い見出しは「配置ロック」を許容	何が固定されるかを明示する。CONTEXT.md; ADR-0004
+lock state	ロック状態	ロックのステータス	診断表では「ロック状態」を維持	状態と操作を混同しない。Issue #161
+profile	プロファイル	プロフィール	Androidの既存表記に合わせる	仕事用・プライベート等の Android profile 概念。Issue #123 evidence
+work profile	仕事用プロファイル	仕事プロファイル	短い行ラベルでは「仕事用」を許容	Android/AOSPの既存利用者語を優先する。
+target	整理対象	ターゲット	diagnostic の内部フィールド名では「target」を許容	通常UIで操作対象を具体化する。CONTEXT.md
+legacy shortcut	旧形式のショートカット	レガシーショートカット、古いショートカット	診断のfield名では `legacy shortcut` を併記可	legacyは経過年数ではなくshortcut形式を指す。Issue #161 Reviewer B
+canonical	変更不要の配置	正規化済み	diagnostic の rejection/plan reason では「正規化済み」を許容	実装概念を通常利用者へ露出させない。Issue #161
+override	手動設定	オーバーライド	diagnostic/export の field 名は原語を許容	自動分類に対する明示設定であることを利用者語で表す。Issue #161
+automatic classification	自動分類	自動カテゴリ	category UIでは「自動分類を使用」を操作ラベルにする	分類方法とカテゴリ値を区別する。Issue #161
+category	カテゴリ	分類（カテゴリ値を指す場合）	説明文では「分類結果」を許容	Android app category と分類動作を文脈で分ける。
+checkpoint	チェックポイント	途中保存	説明文で意味を補足する場合は「適用前のチェックポイント」を許容	recovery contractを弱めない。ADR-0003
+recovery point	復旧ポイント	recovery、バックアップ	内部診断では `recovery point` を併記可	CONTEXT.mdでbackup/undoと区別。
+restore	復元	リストア	ユーザー向けCTAは「以前のレイアウトに戻す」を許容	復旧操作の結果を利用者語で明示する。ADR-0003
+rollback	取り消して元に戻す	ロールバック	diagnosticでは「ロールバック」を許容	通常UIで実装語を避けるが、以前の状態へ戻った事実は保持する。
+diagnostic	診断情報	診断ジャーナル	診断画面のタイトル/技術文脈では「オーガナイザー診断」を許容	通常UIでは利用者が得る情報を表す。Issue #161
+device profile	画面レイアウト	デバイスプロファイル	diagnosticでは「デバイスプロファイル」を維持可	列・行・Dock枠の利用者向け説明へ置換する。Issue #161
+Dock	Dock	ドック	既存Lawnchair表記を維持	固有UI領域名。
+placement summary	配置の概要	配置サマリー	diagnosticでは「サマリー」を許容	通常UIは日本語の目的語を優先する。

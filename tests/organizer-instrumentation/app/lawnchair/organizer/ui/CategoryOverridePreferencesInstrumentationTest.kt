@@ -75,10 +75,10 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.onNodeWithText("${context.getString(R.string.organizer_category_override_profile_work)} · ${context.getString(R.string.organizer_category_override_automatic)}")
             .assertIsDisplayed()
         composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).assertHasClickAction()
         composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_work)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_work),
         ).assertHasClickAction()
     }
 
@@ -98,7 +98,7 @@ class CategoryOverridePreferencesInstrumentationTest {
             composeRule.onAllNodesWithText(longLabel).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithContentDescription(
-            "$longLabel, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal, longLabel),
         ).assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNode(hasScrollAction()).performScrollToNode(
             hasText(context.getString(R.string.organizer_category_override_cancel)),
@@ -132,7 +132,7 @@ class CategoryOverridePreferencesInstrumentationTest {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNode(hasScrollAction()).performScrollToNode(
             hasText(context.getString(R.string.organizer_category_game)),
@@ -182,10 +182,10 @@ class CategoryOverridePreferencesInstrumentationTest {
         }
         composeRule.onNode(hasScrollAction()).printToLog("CategoryOverrideDpadFocus")
         composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).assertIsFocused()
         composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).performKeyInput {
             keyDown(Key.DirectionCenter)
             keyUp(Key.DirectionCenter)
@@ -210,7 +210,7 @@ class CategoryOverridePreferencesInstrumentationTest {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).assertHasClickAction().performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNode(hasScrollAction()).performScrollToNode(
             hasText(context.getString(R.string.organizer_category_override_use_automatic)),
@@ -229,7 +229,7 @@ class CategoryOverridePreferencesInstrumentationTest {
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appRow = composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal),
         )
         composeRule.waitUntil(5_000) {
             try {
@@ -265,7 +265,7 @@ class CategoryOverridePreferencesInstrumentationTest {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNode(hasScrollAction()).performScrollToNode(
             hasText(context.getString(R.string.organizer_category_override_save)),
@@ -302,11 +302,19 @@ class CategoryOverridePreferencesInstrumentationTest {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithContentDescription(
-            "Example, ${context.getString(R.string.organizer_category_override_profile_personal)}, ${context.getString(R.string.organizer_category_override_automatic)}",
+            appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).performSemanticsAction(SemanticsActions.OnClick)
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(longestLabel))
         composeRule.onNodeWithText(longestLabel).assertIsDisplayed()
     }
+
+    private fun appContentDescription(context: Context, profileResource: Int, label: String = "Example"): String =
+        context.getString(
+            R.string.organizer_category_override_app_description,
+            label,
+            context.getString(profileResource),
+            context.getString(R.string.organizer_category_override_automatic),
+        )
 
     private fun coordinator(
         label: String = "Example",
