@@ -45,6 +45,7 @@ import android.content.pm.PackageInstaller.SessionInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
 import android.os.Bundle;
+import android.os.Looper;
 import android.os.Trace;
 import android.os.UserHandle;
 import android.os.UserManager;
@@ -263,12 +264,31 @@ public class LoaderTask implements Runnable {
         // Issue #14: tokenless loaders defer rather than blocking MODEL_EXECUTOR behind the
         // organizer. The correlated loader installs its exact logical capability for all
         // nested ModelDbController cleanup writes.
+        // Issue #298: when this task is deferred, the coordinator drains the deferred FIFO
+        // inline on the lease-releasing thread — for a Nova restore that is the Looper-less
+        // NovaBackupRestore thread. Running the load there violates the icon cache's worker
+        // thread affinity and any Handler creation the load performs. Like the ModelWriter
+        // deferral, a tokenless load hands itself back to MODEL_EXECUTOR and retries
+        // admission there instead of executing on the releasing thread. The exact-token
+        // organizer path keeps running inline so its capability stays installed.
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
         coordinator.runOrDefer(
                 LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
                 mOrganizerLeaseToken,
                 mOrganizerLeaseToken != 0L,
-                this::runInternal);
+                mOrganizerLeaseToken != 0L
+                        ? this::runInternal
+                        : this::runInternalOnModelExecutor);
+    }
+
+    private void runInternalOnModelExecutor() {
+        if (Looper.myLooper() == MODEL_EXECUTOR.getLooper()) {
+            runInternal();
+        } else {
+            // Deferred entry drained on the lease-releasing thread (Issue #298):
+            // retry admission on the model worker thread instead of running here.
+            MODEL_EXECUTOR.execute(this);
+        }
     }
 
     private void runInternal() {

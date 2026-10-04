@@ -2,7 +2,8 @@
 
 > Issue: #298
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: Phase 1完了（decision gate分岐(A)）。Phase 2 fix実装済み（2026-09-15、
+> 調査記録は [docs/assessment/issue-298-wrong-thread-restore-reload.md](../../docs/assessment/issue-298-wrong-thread-restore-reload.md)）
 > Delivery: Phase 1 = investigation（本phaseの成果物はdocs/test計画のみ。production
 > code変更なし）→ decision gate（3分岐: fix / no-code resolution / 観測継続）→
 > Phase 2 = fix（分岐 (A) の場合のみ実施。gate後確定）
@@ -204,6 +205,8 @@ production code・既存testの変更は行わない（docs-only PRとして出�
     再開条件）を調査記録へ残す。spec受入条件（TA-AC-01〜06）は未達のまま引き継ぐ。
   修正が変更困難なthreading所有権の判断を含む場合はADRの3条件を再確認し、
   必要ならADRを作成する。
+  **判定（2026-09-15）: 分岐(A)。** chainを確定（assessment §1、決定論的red実行で
+  runtime裏付け取得: assessment §2.2）し、Phase 2 fixを実装した（assessment §4）。
 
 ### Phase 2: Fix（decision gate分岐 (A) の場合のみ実施。以下は候補でありgate後確定）
 
@@ -256,20 +259,19 @@ icon cache（mBgLooper == MODEL_EXECUTOR looper）→ commit後
 baseline fallback（model非活性）: `reloadAfterRestore` no-op → barrier無しで
 restore完了。
 
-## Change set
+## Change set（実装結果で確定。2026-09-15）
 
-| Area | Intended change | Why here |
+| Area | Change | Why here |
 |---|---|---|
-| `docs/assessment/issue-298-<slug>.md`（新規、Phase 1） | I-1/I-2/I-3の調査記録（証跡、確定chain、残存状態観測、再現なしの場合はその証跡） | 調査証跡の正本置き場（#299 assessmentと同一慣行） |
-| `lawnchair/src/app/lawnchair/backup/NovaBackupConverter.kt`（Phase 2、gate後確定） | decision gate後確定。barrier dispatch区間・callback実行threadが候補 | restore completion pathの所有者 |
-| `src/com/android/launcher3/LauncherModel.java`（Phase 2、gate後確定） | decision gate後確定。`dispatchRestoreReload` のthread構造が候補 | Launcher3/AOSP由来のためbridge最小変更 + 近傍文書にIssue番号と理由を記録 |
-| `src/com/android/launcher3/provider/RestoreDbTask.java`（Phase 2、gate後確定、不要の可能性あり） | decision gate後確定（baseline fallback経路のみ現存） | 同上 |
-| `tests/organizer-instrumentation/app/lawnchair/backup/NovaRestoreCaptureTestBase.kt` 系（Phase 2） | restore→reload完了のthreading観点拡張（TA-AC-06）。#299 harnessの拡張か、#298専用scenarioの追加かはgate後確定 | #299が確立したNova restore instrumentation seamが実在 |
-| `tests/organizer-instrumentation/app/lawnchair/backup/NovaRestoreGridApplicationTest.kt`（Phase 2） | restore→workspace使用可能の観点拡張（TA-AC-04） | #168のNova restore instrumentation seam |
-| `tests/src/com/android/launcher3/provider/RestoreDbTaskTest.java` または新規JVM test（Phase 2） | seam単位の回帰（decision gate後確定） | 既存restore系JVMテスト表面 |
+| `docs/assessment/issue-298-wrong-thread-restore-reload.md`（新規、Phase 1） | I-1/I-2/I-3の調査記録（確定chain、red/green runtime証跡、gate分岐(A)判定） | 調査証跡の正本置き場（#299 assessmentと同一慣行） |
+| `src/com/android/launcher3/model/LoaderTask.java`（Phase 2） | tokenless deferred loaderを `runInternalOnModelExecutor` 経由でMODEL_EXECUTORへ手渡し再admission（exact-token経路はcapability維持のためinlineのまま）。近傍にIssue番号と理由を注記（既存bridge グループ `model-reload-and-transaction-gates` 内） | 違反の唯一のbare deferred entry。ModelWriterと同じ既存規律の適用 |
+| `tests/organizer-instrumentation/com/android/launcher3/organizer/RestoreLeaseDeferredLoaderThreadAffinityTest.java`（新規） | T4窓の決定論的再構成test（red→greenで検証済み） | shared-writer coordinator instrumentation seamが実在 |
+| `.github/workflows/ci.yml` | shared-writer laneへ上記test classを追加 | 回帰をCI gateに接続 |
 
-実際の変更file集合はI-2の結果で確定し、本表を更新する。Phase 1のPRは
-docs-only（本表の1行目のみ）である。
+実際に変更しなかった候補: `NovaBackupConverter.kt` / `LauncherModel.java` /
+`RestoreDbTask.java`（chainがLoaderTask/coordinator境界で確定したため不要）。
+`NovaRestoreGridApplicationTest` / `NovaRestoreCapture*Test` / `RestoreDbTaskTest` は
+既存表面のまま非回帰確認に使用。
 
 ## Migration and recovery
 
@@ -308,22 +310,22 @@ review対象とする。
 
 ## Execution checklist
 
-### Phase 1
+### Phase 1（完了: 2026-09-15）
 
-- [ ] I-1: 現行main（`9821dec073` 以降）のemulatorで障害を再現し、3 signature +
-      barrier由来signatureのlog/stackを取得する。再現不能な場合は試行手順・回数・
-      logを証跡として記録する。
-- [ ] I-2: call chainを確定し、`docs/assessment/issue-298-<slug>.md` へ記録する
-      （TA-AC-01）。観測build構造と現行main構造の対応も記録する。
-- [ ] I-3: 中断時の残存状態を観測・記録する（#299 assessmentの観測を入力に、
-      actual path / barrier pathで追試、process再起動跨ぎを含む）。
-- [ ] Decision gate: I-2の結果を (A) chain確定 → Phase 2 fix / (B) 障害窓消滅確定 →
-      no-code resolution・close判定 / (C) 再現不能・消滅も証明不能 → 観測継続の
-      3分岐で判定し、`docs/assessment/issue-298-<slug>.md` へ記録する。
-      (A) の場合はspec statusと本planのPhase 2 Design/Change setを確定結果で更新する。
-- [ ] Phase 1 PR（docs-only）を出し、調査記録をreviewに付す。
+- [x] I-1: 現行mainのemulatorで違反窓を決定論的に再現し、3 signatureのうち
+      wrong-thread + interruptedを同一stack構造で取得（assessment §2.2）。
+      Handler signatureはISE先行のため本実行には出現せず、chain全体の排除対象と
+      して記録（§1.2/§2.2）。
+- [x] I-2: call chainを確定し、`docs/assessment/issue-298-wrong-thread-restore-reload.md`
+      へ記録（TA-AC-01）。観測build構造と現行main構造の対応も記録。
+- [x] I-3: 中断時の残存状態を観測・記録（assessment §3。transaction guardと
+      収束条件。#299 assessment観測との関係も記録）。
+- [x] Decision gate: 分岐(A)を判定・記録（assessment §4）。
+- [x] 調査記録をPR（#317 → 本fix PR）でreviewに付す。
 
-### Phase 2（decision gate通過後）
+### Phase 2（実装完了: 2026-09-15、merge待ち）
 
-- [ ] 失敗を再現するテストを先に追加する（修正前に失敗することを確認）。
-- [ ] Minimal implementation、rollback/recovery確認、full verification、PR evidence記録。
+- [x] 失敗を再現するテストを先に追加し、未修正コードで失敗することを確認
+      （red実行: assessment §2.2）。
+- [x] Minimal implementation（`LoaderTask.runInternalOnModelExecutor`）、
+      rollbackは単純revert、full verification、PR evidence記録。
