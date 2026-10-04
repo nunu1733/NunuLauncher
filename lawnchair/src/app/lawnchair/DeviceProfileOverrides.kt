@@ -3,48 +3,37 @@ package app.lawnchair
 import android.content.Context
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
-import app.lawnchair.preferences2.firstCached
+import app.lawnchair.preferences2.firstBlocking
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.InvariantDeviceProfile.INDEX_DEFAULT
 import com.android.launcher3.InvariantDeviceProfile.INDEX_LANDSCAPE
 import com.android.launcher3.InvariantDeviceProfile.INDEX_TWO_PANEL_LANDSCAPE
 import com.android.launcher3.InvariantDeviceProfile.INDEX_TWO_PANEL_PORTRAIT
-import com.android.launcher3.dagger.ApplicationContext
-import com.android.launcher3.dagger.LauncherAppComponent
-import com.android.launcher3.dagger.LauncherAppSingleton
-import com.android.launcher3.util.DaggerSingletonObject
+import com.android.launcher3.InvariantDeviceProfile.TYPE_MULTI_DISPLAY
+import com.android.launcher3.InvariantDeviceProfile.TYPE_PHONE
+import com.android.launcher3.InvariantDeviceProfile.TYPE_TABLET
+import com.android.launcher3.util.DisplayController
+import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
-import javax.inject.Inject
+import com.patrykmichalik.opto.core.firstBlocking
 
-@LauncherAppSingleton
-class DeviceProfileOverrides @Inject constructor(
-    @ApplicationContext private val context: Context,
-) : SafeCloseable {
+class DeviceProfileOverrides(context: Context) : SafeCloseable {
+    private val appContext = context.applicationContext
     private val prefs = PreferenceManager.getInstance(context)
     private val preferenceManager2 = PreferenceManager2.getInstance(context)
 
-    private val predefinedGrids = InvariantDeviceProfile.parseAllGridOptions(context)
-        .map { option ->
-            val gridInfo = DBGridInfo(
-                numHotseatColumns = option.numHotseatIcons,
-                numRows = option.numRows,
-                numColumns = option.numColumns,
-            )
-            gridInfo to option.name
-        }
-
     fun getGridInfo() = DBGridInfo(prefs)
 
-    fun getGridInfo(gridName: String) = predefinedGrids
-        .first { it.second == gridName }
-        .first
-
-    fun getGridName(gridInfo: DBGridInfo): String {
-        val match = predefinedGrids
-            .firstOrNull { it.first.numRows >= gridInfo.numRows && it.first.numColumns >= gridInfo.numColumns }
-            ?: predefinedGrids.last()
-        return match.second
+    fun getGridInfo(gridName: String): DBGridInfo {
+        val presets = enabledPresets()
+        return presets.firstOrNull { it.name == gridName }?.grid
+            ?: throw NoSuchElementException(
+                "grid preset \"$gridName\" is not enabled for deviceType=${currentDeviceType()}; " +
+                    "enabled presets=${presets.map { it.name }}",
+            )
     }
+
+    fun getGridName(gridInfo: DBGridInfo): String = ceilingMatchPreset(enabledPresets(), gridInfo).name
 
     fun getCurrentGridName() = getGridName(getGridInfo())
 
@@ -55,22 +44,34 @@ class DeviceProfileOverrides @Inject constructor(
         prefs.hotseatColumns.set(gridInfo.numHotseatColumns)
     }
 
-    fun getOverrides(
-        defaultGrid: InvariantDeviceProfile.GridOption,
-        deviceType: Int,
-        previewOverrides: PreviewOverrides? = null,
-    ) = Options(
+    fun getOverrides(defaultGrid: InvariantDeviceProfile.GridOption) = Options(
         prefs = prefs,
         prefs2 = preferenceManager2,
         defaultGrid = defaultGrid,
-        deviceType = deviceType,
-        previewOverrides = previewOverrides ?: PreviewOverrides(),
     )
 
     fun getTextFactors() = TextFactors(preferenceManager2)
     override fun close() {
         TODO("Not yet implemented")
     }
+
+    // Issue #134: the enabled-preset inventory is resolved against the current device
+    // type at query time. A construction-time snapshot freezes phone-category presets
+    // because InvariantDeviceProfile sets its static deviceType only inside initGrid,
+    // after both grid-driven constructors have already touched this singleton.
+    private fun enabledPresets(): List<DeclaredGridPreset> = resolveEnabledPresets(
+        InvariantDeviceProfile.parseAllDefinedGridOptions(appContext)
+            .map { option ->
+                DeclaredGridPreset(
+                    name = option.name,
+                    grid = DBGridInfo(option.numHotseatIcons, option.numRows, option.numColumns),
+                    enabledDeviceTypes = DEVICE_TYPES.filterTo(mutableSetOf()) { option.isEnabled(it) },
+                )
+            },
+        currentDeviceType(),
+    )
+
+    private fun currentDeviceType(): Int = DisplayController.INSTANCE.get(appContext).getInfo().getDeviceType()
 
     data class DBGridInfo(
         val numHotseatColumns: Int,
@@ -86,9 +87,15 @@ class DeviceProfileOverrides @Inject constructor(
         )
     }
 
-    /** Override for any other value that's not a DBGridInfo, extends this value when needed */
-    data class PreviewOverrides(
-        val foldableDatabaseHotseatIcons: Int? = null,
+    /**
+     * Platform-free declaration of one grid preset. [enabledDeviceTypes] mirrors
+     * `GridOption.isEnabled` over the known device types so the pure companion
+     * seam stays the single production filter path.
+     */
+    data class DeclaredGridPreset(
+        val name: String,
+        val grid: DBGridInfo,
+        val enabledDeviceTypes: Set<Int>,
     )
 
     data class Options(
@@ -98,62 +105,22 @@ class DeviceProfileOverrides @Inject constructor(
 
         val iconSizeFactor: Float,
         val allAppsIconSizeFactor: Float,
-        val allAppsIconTextSizeFactor: Float,
 
         val enableTaskbarOnPhone: Boolean,
-
-        val numHotseatRows: Int = 1,
-        val numDockPages: Int = 1,
-
-        // Foldable overrides (-1 means don't override)
-        val foldableShownHotseatIcons: Int = -1,
-        val foldableDatabaseHotseatIcons: Int = -1,
-        val foldableDatabaseAllAppsColumns: Int = -1,
     ) {
         constructor(
             prefs: PreferenceManager,
             prefs2: PreferenceManager2,
             defaultGrid: InvariantDeviceProfile.GridOption,
-            deviceType: Int,
-            previewOverrides: PreviewOverrides,
         ) : this(
-            numAllAppsColumns = prefs2.drawerColumns.firstCached(gridOption = defaultGrid),
+            numAllAppsColumns = prefs2.drawerColumns.firstBlocking(gridOption = defaultGrid),
             numFolderRows = prefs.folderRows.get(defaultGrid),
-            numFolderColumns = prefs2.folderColumns.firstCached(gridOption = defaultGrid),
+            numFolderColumns = prefs2.folderColumns.firstBlocking(gridOption = defaultGrid),
 
-            iconSizeFactor = prefs2.homeIconSizeFactor.firstCached(),
-            allAppsIconSizeFactor = prefs2.drawerIconSizeFactor.firstCached(),
-            allAppsIconTextSizeFactor =
-            if (prefs2.showIconLabelsInDrawer.firstCached()) {
-                prefs2.drawerIconLabelSizeFactor.firstCached()
-            } else {
-                0f
-            },
+            iconSizeFactor = prefs2.homeIconSizeFactor.firstBlocking(),
+            allAppsIconSizeFactor = prefs2.drawerIconSizeFactor.firstBlocking(),
 
-            enableTaskbarOnPhone = prefs2.enableTaskbarOnPhone.firstCached(),
-
-            numHotseatRows = prefs.hotseatRows.get().coerceIn(1, 2),
-            numDockPages = prefs.dockPages.get().coerceIn(1, 5),
-
-            foldableShownHotseatIcons = if (deviceType == InvariantDeviceProfile.TYPE_MULTI_DISPLAY) {
-                val folded = prefs.hotseatColumns.get()
-                val unfolded = previewOverrides.foldableDatabaseHotseatIcons ?: prefs.hotseatColumnsUnfolded.get()
-                folded.coerceAtMost(unfolded)
-            } else {
-                -1
-            },
-            foldableDatabaseHotseatIcons = if (deviceType == InvariantDeviceProfile.TYPE_MULTI_DISPLAY) {
-                previewOverrides.foldableDatabaseHotseatIcons ?: prefs.hotseatColumnsUnfolded.get()
-            } else {
-                -1
-            },
-            foldableDatabaseAllAppsColumns = if (deviceType == InvariantDeviceProfile.TYPE_MULTI_DISPLAY) {
-                val folded = prefs2.drawerColumns.firstCached(gridOption = defaultGrid)
-                val unfolded = prefs2.drawerColumnsUnfolded.firstCached(gridOption = defaultGrid)
-                folded.coerceAtLeast(unfolded)
-            } else {
-                -1
-            },
+            enableTaskbarOnPhone = prefs2.enableTaskbarOnPhone.firstBlocking(),
         )
 
         fun applyUi(idp: InvariantDeviceProfile) {
@@ -162,23 +129,6 @@ class DeviceProfileOverrides @Inject constructor(
             idp.numDatabaseAllAppsColumns = numAllAppsColumns
             idp.numFolderRows[INDEX_DEFAULT] = numFolderRows
             idp.numFolderColumns[INDEX_DEFAULT] = numFolderColumns
-
-            // Foldable overrides for hotseat and allapps columns
-            if (foldableShownHotseatIcons > 0) {
-                idp.numShownHotseatIcons = foldableShownHotseatIcons
-            }
-            if (foldableDatabaseHotseatIcons > 0) {
-                idp.numDatabaseHotseatIcons = foldableDatabaseHotseatIcons
-            }
-            if (foldableDatabaseAllAppsColumns > 0) {
-                idp.numDatabaseAllAppsColumns = foldableDatabaseAllAppsColumns
-            }
-
-            // Ensure database can hold enough icons for multi-row / multi-page dock
-            val requiredSlots = idp.numShownHotseatIcons * numHotseatRows * numDockPages
-            if (idp.numDatabaseHotseatIcons < requiredSlots) {
-                idp.numDatabaseHotseatIcons = requiredSlots
-            }
 
             // apply icon and text size
             idp.iconSize[INDEX_DEFAULT] *= iconSizeFactor
@@ -190,11 +140,6 @@ class DeviceProfileOverrides @Inject constructor(
             idp.allAppsIconSize[INDEX_LANDSCAPE] *= allAppsIconSizeFactor
             idp.allAppsIconSize[INDEX_TWO_PANEL_PORTRAIT] *= allAppsIconSizeFactor
             idp.allAppsIconSize[INDEX_TWO_PANEL_LANDSCAPE] *= allAppsIconSizeFactor
-
-            idp.allAppsIconTextSize[INDEX_DEFAULT] *= allAppsIconTextSizeFactor
-            idp.allAppsIconTextSize[INDEX_LANDSCAPE] *= allAppsIconTextSizeFactor
-            idp.allAppsIconTextSize[INDEX_TWO_PANEL_PORTRAIT] *= allAppsIconTextSizeFactor
-            idp.allAppsIconTextSize[INDEX_TWO_PANEL_LANDSCAPE] *= allAppsIconTextSizeFactor
         }
     }
 
@@ -206,12 +151,12 @@ class DeviceProfileOverrides @Inject constructor(
         constructor(
             prefs2: PreferenceManager2,
         ) : this(
-            enableIconText = prefs2.showIconLabelsOnHomeScreen.firstCached(),
-            iconTextSizeFactor = prefs2.homeIconLabelSizeFactor.firstCached(),
-            enableIconTextFolder = prefs2.showIconLabelsOnHomeScreenFolder.firstCached(),
-            iconFolderTextSizeFactor = prefs2.homeIconLabelFolderSizeFactor.firstCached(),
-            enableAllAppsIconText = prefs2.showIconLabelsInDrawer.firstCached(),
-            allAppsIconTextSizeFactor = prefs2.drawerIconLabelSizeFactor.firstCached(),
+            enableIconText = prefs2.showIconLabelsOnHomeScreen.firstBlocking(),
+            iconTextSizeFactor = prefs2.homeIconLabelSizeFactor.firstBlocking(),
+            enableIconTextFolder = prefs2.showIconLabelsOnHomeScreenFolder.firstBlocking(),
+            iconFolderTextSizeFactor = prefs2.homeIconLabelFolderSizeFactor.firstBlocking(),
+            enableAllAppsIconText = prefs2.showIconLabelsInDrawer.firstBlocking(),
+            allAppsIconTextSizeFactor = prefs2.drawerIconLabelSizeFactor.firstBlocking(),
         )
 
         constructor(
@@ -230,6 +175,25 @@ class DeviceProfileOverrides @Inject constructor(
 
     companion object {
         @JvmField
-        val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getDPO)
+        val INSTANCE = MainThreadInitializedObject(::DeviceProfileOverrides)
+
+        private val DEVICE_TYPES = intArrayOf(TYPE_PHONE, TYPE_TABLET, TYPE_MULTI_DISPLAY)
+
+        /** Enabled-preset inventory for [deviceType], preserving declaration order. */
+        fun resolveEnabledPresets(declared: List<DeclaredGridPreset>, deviceType: Int): List<DeclaredGridPreset> = declared.filter { deviceType in it.enabledDeviceTypes }
+
+        /**
+         * Deterministic ceiling match over a non-empty inventory: the first declared preset
+         * whose rows and columns both fit [target], else the last enabled preset. The
+         * fallback is the documented approximation for live dimensions that no enabled
+         * preset matches exactly (spec 134, scenario "current grid name").
+         */
+        fun ceilingMatchPreset(presets: List<DeclaredGridPreset>, target: DBGridInfo): DeclaredGridPreset {
+            require(presets.isNotEmpty()) { "enabled grid preset inventory must not be empty" }
+            return presets.firstOrNull {
+                it.grid.numRows >= target.numRows && it.grid.numColumns >= target.numColumns
+            }
+                ?: presets.last()
+        }
     }
 }

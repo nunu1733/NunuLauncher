@@ -29,11 +29,13 @@ import org.junit.runner.RunWith
  * Grid changes are always restored to the pre-test dimensions.
  *
  * The preset transition is applied through the same Lawnchair preference keys
- * that [DeviceProfileOverrides.setCurrentGrid] writes. The named-preset seam
- * itself is broken on non-phone hosts because its preset snapshot is built
- * before the launcher determines the device type (finding split from Issue
- * #108), so applying dimensions directly is the only working official path
- * here; the target preset must still be an enabled GridOption declaration.
+ * that [DeviceProfileOverrides.setCurrentGrid] writes, so this harness stays
+ * comparable with its historical runs. When the named-preset seam was broken
+ * on non-phone hosts by the frozen preset snapshot (Issue #108 finding, split
+ * to Issue #134), applying dimensions directly was the only working official
+ * path; the named-preset seam itself is covered by
+ * [Issue134GridPresetInstrumentationTest]. The target must still be an enabled
+ * GridOption declaration.
  */
 @RunWith(AndroidJUnit4::class)
 class Issue108GridEvidenceInstrumentationTest {

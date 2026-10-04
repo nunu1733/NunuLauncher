@@ -336,3 +336,41 @@ table above, and the residual blockers/gaps handed to
 [#100](https://github.com/nunu1733/NunuLauncher/issues/100) are listed in the
 handover section. #100 can consume this matrix for its release-readiness
 verdict.
+
+## Addendum (2026-08-25): #134 fix executed on branch `issue-134-grid-preset-snapshot`
+
+The preset-seam defect split to [#134](https://github.com/nunu1733/NunuLauncher/issues/134)
+is fixed by a lawnchair-only change: `DeviceProfileOverrides` now resolves its
+enabled-preset inventory from the authoritative device type at query time
+(`parseAllDefinedGridOptions` + `GridOption.isEnabled`) instead of a
+construction-time snapshot; no `src/` (Launcher3) change is involved.
+
+Evidence below was executed at source revision **`95f2ab6c9b`** (branch head
+under review; contains the fix and the seam-level tests; APK build id
+`Lawnchair.15.Dev.(95f2ab6)`). An earlier addendum revision recorded build id
+`6b89df5`, which predates the implementation commit — that record was corrected
+per review, and every result below was re-executed at `95f2ab6c9b`. The named
+transition and negative paths run through the production seam
+`InvariantDeviceProfile.INSTANCE.get(context).setCurrentGrid(context, name)`,
+which delegates to `DeviceProfileOverrides` and schedules the production
+re-initialization on `MAIN_EXECUTOR` (also per review).
+
+- API 36.1 Pixel Tablet AVD (`issue108_api36_pixel_tablet`, `TYPE_TABLET`):
+  `Issue134GridPresetInstrumentationTest` full class **OK (3/3)** — real
+  4×5/hotseat-4 → `6_by_5` named-preset transition through the IDP seam, the
+  documented ceiling-match approximation while resting on non-preset dimensions
+  (`getCurrentGridName()` == `6_by_5`), and fail-closed negative paths
+  (unknown and host-disabled names, both through the IDP seam) with all three
+  preference keys unchanged. A phased run additionally proved durability across
+  a real `am force-stop` + relaunch: after restart the host rests on 6×5/hotseat
+  6 with `getCurrentGridName()` == persisted `idp_grid_name` == `6_by_5`.
+- API 36.1 Pixel 6 AVD (`nunu_qpr2_api36_1`): existing
+  `Issue108GridEvidenceInstrumentationTest` lanes passed unchanged (**2/2**) and
+  the #134 negative/inventory parity tests passed (**2/2**).
+
+Once this branch passes its merge gates (it carries `risk: layout-data` and
+requires the independent audit record), the tablet 6×5 cell above can be closed
+as a production-seam result. Residual note recorded during evidence work:
+callers that resolve inventory before first grid initialization must not use
+the static-field-filtered `parseAllGridOptions`; the #134 instrumentation tests
+use an authoritative resolution helper for this reason.
