@@ -611,6 +611,38 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 5. **grid migration test doubleの再束縛除外**: `mActiveHelperTracksLiveIdpFile` flagは「overrideされた1引数seamのfixture binding」を再束縛から除外するための識別である。productionでは常にdefault seam経由なので挙動は変わらない。
 
 
+### 6.11 G5 CI x86_64 residual failuresの修復 第2次 — Issue265ManualEditRecoveryInstrumentationTest（2026-10-05）
+
+- **対象CI run**: `37271140884`（reservation-recovery lane）。同lane第6classまでfail-fastで停止していた§6.10の修復後、`Issue265ManualEditRecoveryInstrumentationTest` が **初回走査** で5/6失敗。全失敗は `IllegalStateException: model has no ItemInfo for row N`（N=20/27/33/39/51、throw箇所は `moveRowToDesktopViaWriter` 430行 / `moveRowToHotseatViaWriter` 461行 / `appPairSource...` 242行のlookup）。greenは `pathB_controlWithoutManualEdit` のみ（6 test中 `modelItemOf` を呼ばない唯一のtest）。REBASE_HEAD=`7f46ab6466075ebf5a39f954cf3376d2968e6353` は不変。修復は本commit（REBASE_HEAD対）。検証はローカルG4環境（API 36 arm64 `issue108_api36_pixel_9_pro_fold`、per-class runner、failure-capture wrapper同一entrypoint）。x86_64最終確認は次回dispatch。
+
+#### 6.11.1 根因（2層）
+
+| 層 | 内容 | 分類 |
+|---|---|---|
+| 1. test側API未追随（CI失敗の直接根因） | `modelItemOf` が反射で取得した `itemsIdMap` の値を `IntSparseArrayMap<*>` にcastしていた。S1のanchor model core復元（`de06b3da1f`、ADR-0018 Decision 9）で `BgDataModel.itemsIdMap` は旧java版の `public final IntSparseArrayMap<ItemInfo>` からKotlin版の `@JvmField val itemsIdMap: WorkspaceData`（`MutableWorkspaceData`）に変わっており、castは **lookup毎にClassCastException** → `catch (Throwable)` が握りつぶし（logcatに `model item lookup failed` 出力）→ `found=null` → `checkNotNull` が「model has no ItemInfo for row N」をthrow。対象rowはDBにもmodelにも存在し（pathBがgreen、直前のDB読取・organize Appliedも成立）、壊れていたのはlookup機構のみ。G4のcompile修復（`794db5dd50`）で検出されなかったのは、`IntSparseArrayMap` 型自体は現存するためcastがcompile成功する（実行時のみ失敗する）ため。 | test環境前提の未追随（test側修正。assert契約は不変） |
+| 2. production移植漏れ（1の修復後に顕在化） | spec 269 D1/D3（受入済み）の「`ModelWriter.moveItemInDatabase` は既存 `WorkspaceItemInfo` iconのdesktop entryでin-memory spanとDB書込みを1×1へ正規化」がS1のanchor ModelWriter復元で脱落（pre-S1実装は `ca14f42a6a`）。CI runではlookup失敗が先に停止するため未発火。anchor loader（`WorkspaceItemProcessor` 176行）はiconをin-memory 1×1へ復元するためin-memory側assertは成立するが、正規化書込みが無いと `querySpan` がdesktop移動後もraw span（NULL / 2×2 / legacy値）を返し、legacy hotseat系・pathA/C・appPair系の `assertEquals(1, querySpan(...))` 契約を満たせない（assert連鎖から確定的）。 | production移植漏れ（契約移植の補完。spec 269 D1/D3どおり） |
+
+#### 6.11.2 修復（1 commit）
+
+1. **test**: `Issue265ManualEditRecoveryInstrumentationTest.modelItemOf` をanchor APIへ追随。`LauncherModel.mBgDataModel` の反射取得は維持（private constructor propertyで公開accessor無し）し、`BgDataModel` にcastして `itemsIdMap[rowId]`（`WorkspaceData.get`）で解決するよう変更。`checkNotNull` メッセージと以降のspan assert契約は不変。
+2. **production**: `ModelWriter.moveItemInDatabase` へspec 269 D1/D3の正規化を再移植。`ca14f42a6a` のhunkと同一形（destinationが `CONTAINER_DESKTOP` かつ `WorkspaceItemInfo` の場合のみ、`notifyItemModified` 前にin-memory `spanX/spanY=1` を設定し、正規化時のみpending DB書込みへ `SPANX`/`SPANY` を追加。widget・folder・`moveItemsInDatabase`・hotseat中継・anchorの他writer methodは不変）。
+
+#### 6.11.3 再実行成績（ローカルarm64、per-class runner、2026-10-05）
+
+| class | 修復前 | 修復後 |
+|---|---|---|
+| `Issue265ManualEditRecoveryInstrumentationTest` | 1/6（CI run 37271140884と同一fail集合） | **6/6**（XML確認: pathA/pathB/pathC、legacy null/positive、appPairSource） |
+| 回帰: `OverlapAcceptanceGateSeamInstrumentationTest` / `LoaderCursorOverlapAcceptanceContractTest` | 2/2 / 1/1 | 2/2 / 1/1（XML確認） |
+| 回帰（2のproduction変更seam）: `DirectEditModelWriterTest` / `ModelWriterTransactionReentryTest` / `DirectEditWriteShapeTest` / `DirectEditUndoModelWriterTest` / `HotseatRestoreAdmissionTest` | green（§6.9.2-1検証set） | green（5 classともBUILD SUCCESSFUL、fail-fast契約exit 0。最終class `HotseatRestoreAdmissionTest` は14/14をXMLで確認） |
+| `spotlessCheck` / `assembleLawnWithQuickstepGithubDebug` | green | green |
+
+#### 6.11.4 残置リスク（G5報告）
+
+1. **reservation-recovery laneの残り未走査class**: 本classは同lane第7class。fail-fastのため第8class以降がanchor rebase後のCI未実行のまま（次回dispatchで初走査）。shared-writer第17〜18class（§6.10.4-1）も同様。
+2. **x86_64最終確認**: 本節の修復のCI確認は次回dispatch（x86_64 lane）で行う。本節の実行はローカルarm64。
+3. **desktop-entry正規化の将来干渉**: destination-desktopの `WorkspaceItemInfo` 移動は常に1×1で永続化される。anchorではiconはloaderが常に1×1で復元するため観測差は無いが、anchor側にicon resize等の将来変更が入る場合はspec 269 D1との整合をIssue #269側で再確認する。
+
+
 ## 7. G4完了（再実行）とS4準備（2026-10-04）
 
 - **D1〜D5・E1・E2 すべて解消**、再実行は **全green**: GridMigrationFailure 30/30、Lease 11/11、RealZipRestoreE2E 2/2、SuccessPath 1/1、NovaGrid 4/4、capture 5/5、converter boundary 3/3、cross-process StageA/StageB OK、GridMigrationSuccess 3/3、Nested 5/5、WriterReentry 5/5、DeckRetirement 2/2、PrefsLegacy 2/2、PrefsCommit 1/1。

@@ -520,10 +520,13 @@ class Issue265ManualEditRecoveryInstrumentationTest {
             try {
                 val modelField = LauncherModel::class.java.getDeclaredField("mBgDataModel")
                 modelField.isAccessible = true
+                // The anchor model core (S1, ADR-0018 Decision 9) exposes
+                // itemsIdMap as a WorkspaceData projection, not an
+                // IntSparseArrayMap; resolve the row through the anchor's
+                // own id lookup.
                 val bgDataModel = modelField.get(launcher.model)
-                val items = bgDataModel.javaClass.getField("itemsIdMap").get(bgDataModel)
-                    as com.android.launcher3.util.IntSparseArrayMap<*>
-                found = items.get(rowId.toInt()) as? ItemInfo
+                    as com.android.launcher3.model.BgDataModel
+                found = bgDataModel.itemsIdMap[rowId.toInt()]
             } catch (t: Throwable) {
                 android.util.Log.e(TAG, "model item lookup failed", t)
             } finally {
