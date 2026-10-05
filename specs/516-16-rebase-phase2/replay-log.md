@@ -708,3 +708,9 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 - category-override laneの3 class目 `OrganizerLockScreenTest`（#458でlane加入）が20分cap超過。dispatcher残存1 file（#505の `effectContext = StandardTestDispatcher()` 実験）であったため、CategoryOverride/CustomCategory の前例どおり撤去（6.15/6.16と同一処置）。
 - ローカルemulator無しのため検証はcompile+spotlessのみ。CI dispatch（x86_64）で確認。
 - これで tests/organizer-instrumentation の `createComposeRule(effectContext = StandardTestDispatcher())` はゼロになった。
+
+
+## 6.19. CustomCategory createFlow のwait budget引き上げ（2026-10-06、run 37337535040）
+
+- round 14: CategoryOverride 8/8 green、OrganizerLockScreenTest 通過（6.18のdispatcher撤去が有効）。残失敗は `CustomCategoryPreferencesInstrumentationTest.createFlow...` の `ComposeTimeoutException 5000ms`（§6.10で記録済みのclass-3系wait-timeout family、rerun-green既知）。
+- 対処: 本classのbounded `waitUntil` 待機上限を5秒→15秒へ（x86_64 CI のemulator timing差を吸収。assert契約・検証対象は不変で、上限引き上げのみ）。
