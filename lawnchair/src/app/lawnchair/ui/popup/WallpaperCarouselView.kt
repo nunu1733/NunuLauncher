@@ -14,14 +14,14 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import androidx.activity.ComponentActivity
-import androidx.activity.viewModels
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModelStoreOwner
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.data.wallpaper.Wallpaper
 import app.lawnchair.data.wallpaper.model.WallpaperViewModel
+import app.lawnchair.viewModels
 import app.lawnchair.views.component.IconFrame
 import com.android.launcher3.R
 import com.android.launcher3.util.Themes
@@ -38,7 +38,10 @@ class WallpaperCarouselView @JvmOverloads constructor(
     defStyleAttr: Int = 0,
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
-    private val viewModel: WallpaperViewModel by (context as ComponentActivity).viewModels()
+    // Issue #532 D5 (fork contract port): the launcher implements ViewModelStoreOwner
+    // (androidx), replacing the pre-rebase ComponentActivity cast that the anchor
+    // BaseActivity structure cannot satisfy.
+    private val viewModel: WallpaperViewModel by (context as ViewModelStoreOwner).viewModels()
     private val deviceProfile = ActivityContext.lookupContext<LawnchairLauncher>(context).deviceProfile
     private var currentItemIndex = 0
     private val iconFrame = IconFrame(context).apply {

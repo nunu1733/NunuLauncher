@@ -34,6 +34,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.HasDefaultViewModelProviderFactory
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelLazy
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.LawnchairApp.Companion.showQuickstepWarningIfNecessary
 import app.lawnchair.compat.LawnchairQuickstepCompat
@@ -100,10 +107,26 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
-class LawnchairLauncher : QuickstepLauncher() {
+/**
+ * Issue #532 D5 (fork contract port): the anchor 16-dev BaseActivity extends the
+ * framework android.app.Activity, so this launcher is not an
+ * androidx.activity.ComponentActivity. The fork contract "androidx viewModels() /
+ * by viewModels works from a launcher context" is re-expressed on the anchor
+ * structure instead: the launcher keeps an androidx ViewModelStore (cleared on
+ * destroy) and a default ViewModelProvider factory, exposed through
+ * ViewModelStoreOwner + HasDefaultViewModelProviderFactory. The androidx
+ * LifecycleOwner contract is already provided by the anchor (ActivityContext extends
+ * SavedStateRegistryOwner extends LifecycleOwner, backed by BaseActivity's
+ * LifecycleRegistry).
+ */
+class LawnchairLauncher :
+    QuickstepLauncher(),
+    ViewModelStoreOwner,
+    HasDefaultViewModelProviderFactory {
     private val defaultOverlay by unsafeLazy { OverlayCallbackImpl(this) }
     private val prefs by unsafeLazy { PreferenceManager.getInstance(this) }
     private val preferenceManager2 by unsafeLazy { PreferenceManager2.getInstance(this) }
+    private val androidxViewModelStoreDelegate: Lazy<ViewModelStore> = unsafeLazy { ViewModelStore() }
     private val launcherOriginLaunchRecorder by unsafeLazy {
         app.lawnchair.organizer.integration.LauncherOriginLaunchRecorder(
             store = app.lawnchair.organizer.integration.LauncherOriginLaunchCounterStore.from(applicationContext),
@@ -516,9 +539,21 @@ class LawnchairLauncher : QuickstepLauncher() {
             sCurrentInstance = null
         }
         super.onDestroy()
+        // Issue #532 D5: release the androidx ViewModelStore with the activity so
+        // retained ViewModels do not survive the launcher instance.
+        if (androidxViewModelStoreDelegate.isInitialized()) {
+            androidxViewModelStoreDelegate.value.clear()
+        }
         // Only actually closes if required, safe to call if not enabled
         SmartspacerClient.close()
     }
+
+    // Issue #532 D5 (fork contract port): see the class doc comment.
+    override val viewModelStore: ViewModelStore
+        get() = androidxViewModelStoreDelegate.value
+
+    override val defaultViewModelProviderFactory: ViewModelProvider.Factory
+        get() = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
 
     /**
      * Issue #203: the launcher-origin launch observation point. The override
@@ -604,4 +639,25 @@ val Context.launcherNullable: LawnchairLauncher? get() = try {
     launcher
 } catch (_: IllegalArgumentException) {
     null
+}
+
+/**
+ * Issue #532 D5 (fork contract port): the fork call sites use
+ * `by (context as ViewModelStoreOwner).viewModels()` — the pre-rebase fork relied on
+ * androidx.activity.viewModels, whose receiver is androidx.activity.ComponentActivity
+ * and which the anchor structure (BaseActivity extends framework Activity) cannot
+ * provide. Re-expresses that contract on the anchor's ViewModelStoreOwner support:
+ * the owner supplies the androidx ViewModelStore and the default ViewModelProvider
+ * factory (HasDefaultViewModelProviderFactory), exactly as ComponentActivity does.
+ */
+inline fun <reified VM : ViewModel> ViewModelStoreOwner.viewModels(): Lazy<VM> {
+    check(this is HasDefaultViewModelProviderFactory) {
+        "viewModels() requires a HasDefaultViewModelProviderFactory owner; " +
+            "LawnchairLauncher provides it for launcher contexts"
+    }
+    return ViewModelLazy(
+        VM::class,
+        { viewModelStore },
+        { defaultViewModelProviderFactory },
+    )
 }
