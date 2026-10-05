@@ -52,6 +52,7 @@ import app.lawnchair.views.ComposeBottomSheet
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.Launcher
+import com.android.launcher3.LauncherApplication
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.model.LayoutWriteCoordinator
@@ -61,7 +62,13 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
-class LawnchairApp : Application() {
+// Issue #532 D4 (S3 port completion): restore the anchor supertype. The anchor's
+// LawnchairApp extends LauncherApplication, whose component carries the real
+// PackageManager safe-mode flag; as a plain Application, LauncherComponentProvider
+// fell back to a secondary component hardwired with setSafeModeEnabled(true), so the
+// app ran in the dagger "safe mode" and WidgetInflater degraded every widget row to
+// TYPE_PENDING (the loader's restore repair never bound or updated the DB).
+class LawnchairApp : LauncherApplication() {
     internal lateinit var layoutApplicationModule: LayoutApplicationModule<RecoveryStore>
         private set
     private val compatible = Build.VERSION.SDK_INT in BuildConfig.QUICKSTEP_MIN_SDK..BuildConfig.QUICKSTEP_MAX_SDK
