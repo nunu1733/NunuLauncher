@@ -80,7 +80,7 @@ ALLOWLIST: Dict[str, List[Tuple[str, str]]] = {
         ("favorites-db",
          "Schema upgrade: db.delete on favorites table during schema cleanup"),
     ],
-    "src/com/android/launcher3/provider/LauncherDbUtils.java": [
+    "src/com/android/launcher3/provider/LauncherDbUtils.kt": [
         ("favorites-sql",
          "DB utility: execSQL ALTER TABLE favorites DROP COLUMN during schema repair"),
         ("favorites-db",
