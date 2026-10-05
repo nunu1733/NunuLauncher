@@ -83,6 +83,19 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         launcher = LauncherAppState.getInstance(context)
         preferenceManager = PreferenceManager2.getInstance(context)
         originalSmartspaceEnabled = preferenceManager.enableSmartspace.firstBlocking()
+        // Issue #532 G5: settle the fresh-app-data grid-migration reset BEFORE
+        // seeding. This class does not bind a Launcher activity, so no loader
+        // generation runs until this setUp forces one. On fresh app data that
+        // forced load runs the anchor attemptMigrateDb reset
+        // (gridMigrationRefactor): it writes EMPTY_DATABASE_CREATED, rewrites
+        // the grid prefs and — via loadDefaultFavoritesIfNecessary inside the
+        // same load — replaces the workspace with the default layout. Running
+        // that load BEFORE the fixture seeding (instead of racing it) and
+        // clearing the flag afterwards keeps every later reload from
+        // re-inserting the default workspace over the fixtures. Without this,
+        // the plan input contained the default workspace and
+        // reservationlessLegacyTarget planned zero newFolders.
+        reloadAndWait()
         originalRows = snapshotFavorites()
         overridePreferences = context.getSharedPreferences(OVERRIDE_STORE, Context.MODE_PRIVATE)
         originalOverrides = overridePreferences.all
@@ -98,6 +111,10 @@ class ManualOrganizationProductionE2EInstrumentationTest {
         ) { "Unable to install deterministic test classification override" }
 
         val db = launcher.model.modelDbController.db
+        // Clear the reset-written default-load flag BEFORE deleting rows so no
+        // reload triggered between the delete and the final reload (e.g. the
+        // QSB preference write) can re-insert the default workspace.
+        launcher.model.modelDbController.clearEmptyDbFlag()
         db.delete(Favorites.TABLE_NAME, null, null)
         // Enable QSB only after preserving and clearing the original layout.
         // This prevents the Loader from sanitizing a user's pre-test QSB-off
