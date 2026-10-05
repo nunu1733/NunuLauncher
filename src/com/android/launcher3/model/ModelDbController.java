@@ -160,6 +160,46 @@ public class ModelDbController {
         }
     }
 
+    /**
+     * Whether the active helper was created by the DEFAULT one-arg seam (the
+     * live-IDP binding). Overrides of the seam (the grid-migration test doubles
+     * bind fixture databases deliberately) must keep their binding — the §6.10
+     * rebind only governs the real production binding.
+     */
+    private boolean mActiveHelperTracksLiveIdpFile;
+
+    /**
+     * Issue #532 G5 (§6.10, D3 residual completion, fork file-lifecycle contract
+     * Issues #58/#120/#168): the active helper's dbFile binding must follow the live
+     * IDP dbFile — the single authority shared with LawnchairApp's renameRestoredDb /
+     * migrateDbName / cleanUpDatabases (all IDP-driven). D3 bound the helper at
+     * construction only, so an authority switch made after construction (the
+     * restore-family applyGridInfo seam) left the helper holding the abandoned file;
+     * cleanUpDatabases then deleted it under the open connection and every later
+     * write failed with SQLITE_READONLY_DBMOVED. Rebinding here — at the loader's
+     * grid-reconciliation entry, which is deferred behind writer/restore leases —
+     * reopens on the file the authority now names before cleanUpDatabases can run.
+     */
+    private void rebindActiveHelperToLiveIdpFile() {
+        if (mOpenHelper == null || mContext instanceof SandboxContext
+                || !mActiveHelperTracksLiveIdpFile) {
+            // Sandbox helpers are context-owned (same convention as the migration
+            // path's target-helper selection); helpers bound through an overridden
+            // one-arg seam (grid-migration test doubles) deliberately hold a
+            // fixture binding and must keep it. No file authority to follow.
+            return;
+        }
+        String liveDbName = mIdp.dbFile;
+        if (TextUtils.equals(mOpenHelper.getDatabaseName(), liveDbName)) {
+            return;
+        }
+        FileLog.d(TAG, "Rebinding the active helper to the live IDP dbFile: "
+                + mOpenHelper.getDatabaseName() + " -> " + liveDbName);
+        mOpenHelper.close();
+        mOpenHelper = null;
+        createDbIfNotExists();
+    }
+
     // Issue #532 D2/D3 (S3a port completion): the fork's one-arg construction seam.
     // The default derives the db file by purpose and delegates to the two-arg
     // implementation.
@@ -175,7 +215,9 @@ public class ModelDbController {
         // grid-pref seam rewrites DB_FILE: cleanUpDatabases then deletes the helper's
         // open file (SQLITE_READONLY_DBMOVED at the next createEmptyDB). The fork
         // never read DB_FILE for the active binding (write-only metadata).
-        return createDatabaseHelper(false, mIdp.dbFile);
+        DatabaseHelper helper = createDatabaseHelper(false, mIdp.dbFile);
+        mActiveHelperTracksLiveIdpFile = true;
+        return helper;
     }
 
     // Issue #532 S3a: fork (Issue #59) test hooks for migration-target indirection.
@@ -473,6 +515,15 @@ public class ModelDbController {
      */
     private boolean migrateGridIfNeeded(ModelDelegate modelDelegate) {
         createDbIfNotExists();
+        // Issue #532 G5 (§6.10, D3 residual completion): keep the active binding on
+        // the live IDP dbFile before any migration decision. D3 bound the helper to
+        // the live IDP dbFile at construction only; an external authority switch
+        // (the restore-family applyGridInfo seam) then left the old helper holding a
+        // file the IDP no longer names, and the same load's cleanUpDatabases deleted
+        // that file while it was still open (observed on the CI AVD: the converter
+        // restored to launcher_6_5_5.db while the process helper held
+        // launcher_5_4_4.db — the next write failed with SQLITE_READONLY_DBMOVED).
+        rebindActiveHelperToLiveIdpFile();
         DatabaseHelper activeHelper = mOpenHelper;
         Reconciliation activeReconciliation;
         try {
