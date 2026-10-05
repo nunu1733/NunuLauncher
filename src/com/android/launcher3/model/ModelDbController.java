@@ -17,8 +17,6 @@ package com.android.launcher3.model;
 
 import static android.provider.BaseColumns._ID;
 
-import static com.android.launcher3.LauncherPrefs.DB_FILE;
-import static com.android.launcher3.LauncherPrefs.NO_DB_FILES_RESTORED;
 import static com.android.launcher3.LauncherSettings.Favorites.CONTAINER;
 import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE;
 import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APP_PAIR;
@@ -152,19 +150,32 @@ public class ModelDbController {
         if (mOpenHelper == null) {
             // Initialize the restore task before opening the DB
             Consumer<ModelDbController> restoreTask = RestoreDbTask.createRestoreTask(mContext);
-            String dbFile = mPrefs.get(DB_FILE);
-            if (dbFile.isEmpty()) {
-                dbFile = mIdp.dbFile;
-            }
-            mOpenHelper = createDatabaseHelper(false /* forMigration */, dbFile);
+            // Issue #532 D2 (S3a port completion): route the active-helper construction
+            // through the fork's one-arg createDatabaseHelper seam (Issue #120 SR-06/AC-4
+            // matrix; also GridMigrationSuccessTest.Controller) so overridden controllers
+            // stay in the loop. The default implementation below binds the live IDP
+            // dbFile like the fork (see the D3 note on the one-arg overload).
+            mOpenHelper = createDatabaseHelper(false /* forMigration */);
             restoreTask.accept(this);
         }
     }
 
-    // Issue #532 S3a: fork (Issue #59) test hook retained for T3 coverage; the
-    // one-argument overload derives the db file from the IDP like the anchor.
+    // Issue #532 D2/D3 (S3a port completion): the fork's one-arg construction seam.
+    // The default derives the db file by purpose and delegates to the two-arg
+    // implementation.
     protected DatabaseHelper createDatabaseHelper(boolean forMigration) {
-        return createDatabaseHelper(forMigration, getMigrationTargetDatabaseName(mIdp));
+        if (forMigration) {
+            return createDatabaseHelper(true, getMigrationTargetDatabaseName(mIdp));
+        }
+        // Issue #532 D3 (fork file-lifecycle contract, Issues #58/#120/#168): the
+        // active helper binds the live IDP dbFile — the single authority shared with
+        // the fork's restore file operations (LawnchairApp.renameRestoredDb /
+        // migrateDbName / cleanUpDatabases, all IDP-driven). The anchor's
+        // DB_FILE-pref-first derivation splits the binding when a restore or the
+        // grid-pref seam rewrites DB_FILE: cleanUpDatabases then deletes the helper's
+        // open file (SQLITE_READONLY_DBMOVED at the next createEmptyDB). The fork
+        // never read DB_FILE for the active binding (write-only metadata).
+        return createDatabaseHelper(false, mIdp.dbFile);
     }
 
     // Issue #532 S3a: fork (Issue #59) test hooks for migration-target indirection.
