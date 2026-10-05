@@ -543,6 +543,33 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 5. **G5引継ぎ**: §6.4-1〜3に加え、本§の修復7 commitを含むheadでのCI実行（x86_64 pixel_7_pro）と、`Flags.gridMigrationRefactor()` 有効時の `attemptMigrateDb` reset pathがfork retain契約と二重に存在することの文書明確化（本§6.8.1 D1行）をreview packetへ含めること。
 
 
+### 6.9 G5 CI初回実行の失敗と修復（2026-10-05）
+
+- **対象CI run**: `37252942231`（workflow_dispatch、PR #535）。green: changes / check-style / organizer-unit-tests / validate-repo-contract / build-debug-apk / db-migration / production-input / method-choice / exchange-import / onboarding-proposal。**FAIL: shared-writer / manual-organization-ui / reservation-recovery**（各emulator lane、API 36 / google_apis / pixel_7_pro / x86_64）。
+- **修復head**: `db28608f0c`（shared-writer）→ `075c3240d2`（reservation-recovery）→ `6f4f3bdc84`（manual-organization-ui）。REBASE_HEAD不変。検証はローカルG4環境（API 36 arm64 `issue108_api36_pixel_9_pro_fold`、per-class runner、wrapper同一entrypoint）。`spotlessCheck` / `assembleLawnWithQuickstepGithubDebug` は最終headでgreen。
+- **G4局部greenの訂正**: §6.5/§6.8のローカル実行は全laneの全classを網羅していない。今回失敗した3 class（`DirectEditModelWriterTest` / `SanitizerInstrumentationTest` / `ManualOrganizationProductionE2EInstrumentationTest`）はG4のローカル実行表に含まれておらず、「ローカルG4ではgreen」はこれらのclassについては未実行を意味していた。3件ともローカルarm64で再現した（CI環境固有ではない）。
+
+#### 6.9.1 失敗classと根因（3根因）
+
+| lane | 失敗class | 根因 | 分類 |
+|---|---|---|---|
+| shared-writer | `DirectEditModelWriterTest.deferredMoveRejectsStaleTargetWithoutWrite`（FAIL、コールバック内assertがloader threadでthrowしprocess crash、`directEditMoveDefersUntilOrganizerLeaseReleases` が実行されず欠落） | S2bのModelWriter anchor移植で `ModelTask.executeOnModelThread()` のIssue #14 coordinator gate（main: `runOrDefer(MODEL_WRITER)`）が脱落。gate無しではdirect-edit taskがorganizer lease保持中にstage-2 validatorを実行し、defers後もpre-deferral決定のまま競合書込みの上にDB writeが成功（ADR-0013 defer-stale契約違反） | production移植漏れ（契約移植の補完。test契約はADR-0013どおり不変） |
+| reservation-recovery / manual-organization-ui | `SanitizerInstrumentationTest.correlatedReload...`（FAILED outcome）、`ManualOrganizationProductionE2EInstrumentationTest.manualRunUses...` / `recoveryConfirmation...`（`RecoveryFailed(MODEL_RELOAD_FAILED)`） | S2 commit `4081458f82` でcaptureが `itemsIdMap` 全体を走査するようになり、anchor loaderが毎load mergeする `PredictedContainerInfo`（非永続、itemType既定0=APPLICATION）を `WorkspaceItemInfo` にcastしてCCE → capture fail-closed → 全correlated reload失敗。#152のmodel-verifiable projectionはDB leg（非永続ref除外）とlike-with-likeで比較する契約であり、model legも非永続containerを除外するのが正 | production移植漏れ（同上） |
+| manual-organization-ui | `ManualOrganizationProductionE2EInstrumentationTest.reservationlessLegacyTarget...`（`newFolders.single()` → `NoSuchElementException`） | 本classはLauncher activityをbindしないためloaderはsetUpが強制する初回loadでしか走らない。fresh app dataではその初回loadがanchor `attemptMigrateDb` reset（§6.8 D1で意図的に保持したgridMigrationRefactor path）+ `loadDefaultFavoritesIfNecessary` を同load内で実行し、default workspaceがfixture seedingと競合して plan inputに混入（diag: 15 item — default folder6+7 member、dock 4、fixtureは混在）。plannerは0 new folderを計画 | test環境前提の未追随（test側修正。全assert契約は不変） |
+
+#### 6.9.2 修復（3 commit、いずれもfail-closed契約は緩めない）
+
+1. `db28608f0c` — `ModelWriter.ModelTask.executeOnModelThread()` をmain形式の `LayoutWriteCoordinator.runOrDefer(MODEL_WRITER, token=0, exactOrganizerToken=false, …)` gateへ復元（Issue #14契約の再移植）。検証: `DirectEditModelWriterTest` **6/6**（crashしていたcaseと欠落していたcaseの両方）、`ModelWriterTransactionReentryTest` / `DirectEditWriteShapeTest` / `DirectEditUndoModelWriterTest` / `HotseatRestoreAdmissionTest` green。
+2. `075c3240d2` — `ModelProjectionCodec.capture` が `PredictedContainerInfo`（itemsIdMapとextraItems双方）を除外。DB legの `projectedToModelVerifiable` と対称。検証: `SanitizerInstrumentationTest` **2/2**（correlated reload COMPLETED）。
+3. `6f4f3bdc84` — `ManualOrganizationProductionE2EInstrumentationTest.setUp` を「初回 `reloadAndWait()` でreset確定 → seeding前に `clearEmptyDbFlag()`」へ変更。検証: 同class **6/6**。
+
+#### 6.9.3 残置リスク（G5報告）
+
+1. **fail-fast per-classの未走査範囲**: CI run `37252942231` は各laneの最初の失敗classで停止したため、shared-writerの第3class以降・reservation-recoveryの第4class以降はanchor rebase後のCIを一度も通っていない。ローカル再確認は本§の対象classと隣接4 classのみ。残りclassの初回CI実行が次のdispatchで初めて行われる。
+2. **manual-org laneのcomma filter**: `tools/ci/run-manual-organization-ui-instrumentation.sh` はcomma区切り12 class filterのまま（§6.4-2のanchor AGP `k=v,k=v` parse問題）。anchor AGP下では **第1class（本class）しかdispatchされない** — 本laneは第1classがgreenでも残り11 classが静かに未実行。per-class runnerへの切替（§6.4-2引継ぎ事項）はlane構成変更のためowner判断として残す。
+3. **fresh app dataでのreset path**: `attemptMigrateDb` reset（EMPTY_DATABASE_CREATED + default workspace load）はfresh app dataでの初回loadごとに発生する（DB_FILE pref未書込みのため `isCompatible` がfalse → target==current → reset）。fresh install後の実質状態はdefault workspaceなので実害はないが、`Flags.gridMigrationRefactor()` 有効時のこの経路とfork retain契約（`tryMigrateDB`）の二重存在の文書明確化は§6.8.3-5のままowner review待ち。本§のtest修正はこの動作に依存しない形（reset済みであることを確認してからseeding）にした。
+
+
 ## 7. G4完了（再実行）とS4準備（2026-10-04）
 
 - **D1〜D5・E1・E2 すべて解消**、再実行は **全green**: GridMigrationFailure 30/30、Lease 11/11、RealZipRestoreE2E 2/2、SuccessPath 1/1、NovaGrid 4/4、capture 5/5、converter boundary 3/3、cross-process StageA/StageB OK、GridMigrationSuccess 3/3、Nested 5/5、WriterReentry 5/5、DeckRetirement 2/2、PrefsLegacy 2/2、PrefsCommit 1/1。
