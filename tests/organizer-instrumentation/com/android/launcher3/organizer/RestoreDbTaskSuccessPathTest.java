@@ -47,7 +47,16 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public class RestoreDbTaskSuccessPathTest {
 
-    private static final long OLD_DEFAULT_PROFILE_ID = 0L;
+    // G4 E1 adjust (assert contract unchanged, precondition made emulator-reproducible):
+    // the fixture simulates an old device whose default profile serial was not this
+    // device's live main-user serial. With the previous default of 0 the guard
+    // `assertNotEquals(OLD_DEFAULT_PROFILE_ID, serial)` was unsatisfiable on a standard
+    // emulator (main-user serial is 0 there), so the profile remap and the
+    // default-column rebuild could only run as no-ops. Seeding the old device default
+    // as 10 exercises the same production paths (migrateProfileId +
+    // changeDefaultColumn) on any device, and the guard keeps asserting exactly the
+    // remap precondition: the live serial must differ from the old-device default.
+    private static final long OLD_DEFAULT_PROFILE_ID = 10L;
     private static final long VANISHED_PROFILE_ID = 777L;
     private static final int OLD_WIDGET_ID = 42;
     private static final int NEW_WIDGET_ID = 43;
@@ -60,10 +69,17 @@ public class RestoreDbTaskSuccessPathTest {
         mContext = ApplicationProvider.getApplicationContext();
         mContext.deleteDatabase(SuccessPathController.TEST_DB_NAME);
         mController = new SuccessPathController(mContext);
-        // Real schema-33 helper: favorites with the production column set and
-        // profileId DEFAULT 0 (the old device's default profile id).
+        // Real schema-33 helper: favorites with the production column set.
         SQLiteDatabase db = mController.getDb();
         assertEquals(33, db.getVersion());
+
+        // Simulate the old device's favorites default profile id (the same table
+        // rebuild the production changeDefaultColumn performs), so the restore
+        // sanitize sees oldProfileId != the live serial.
+        db.execSQL("ALTER TABLE favorites RENAME TO favorites_old");
+        Favorites.addTableToDb(db, OLD_DEFAULT_PROFILE_ID, false /* optional */);
+        db.execSQL("INSERT INTO favorites SELECT * FROM favorites_old");
+        db.execSQL("DROP TABLE favorites_old");
 
         // Surviving app row on screen 0, carrying an organizer lock that must
         // travel through the full restore entry untouched.
@@ -115,7 +131,8 @@ public class RestoreDbTaskSuccessPathTest {
                 RestoreDbTask.performRestore(mContext, mController));
 
         long serial = mController.getSerialNumberForUser(myUserHandle());
-        assertNotEquals("test requires a non-default main-user serial",
+        assertNotEquals("test requires the live main-user serial to differ from the seeded"
+                        + " old-device default, otherwise the profile remap is a no-op",
                 OLD_DEFAULT_PROFILE_ID, serial);
         SQLiteDatabase db = mController.getDb();
 
@@ -149,7 +166,7 @@ public class RestoreDbTaskSuccessPathTest {
                 stringField(db, 4, Favorites.APPWIDGET_PROVIDER));
 
         // 6. The default column was rebuilt with the new serial
-        //    (changeDefaultColumn runs because serial != old default 0).
+        //    (changeDefaultColumn runs because serial != old default 10).
         assertEquals(serial, queryProfileIdDefault(db));
 
         // 7. Entry-boundary pref contract: performRestore consumed the widget
