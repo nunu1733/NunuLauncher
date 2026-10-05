@@ -4,7 +4,7 @@ status: accepted
 
 # Lawnchair 16 rebase — 採用baseline・移行方式・rollback（ADR-0018）
 
-> Status: Accepted revision 6（2026-10-04。PR #534 reviewでblocking findingなし・「accepted へ遷移可」を確認（[review](https://github.com/nunu1733/NunuLauncher/pull/534#issuecomment-5979154660)。head `d1e1811900277f2fd5f105075b1cef1dd7c1723a` を確認）。受入は本PR #534のmergeで完了する）。revision 5までのaccepted正本はmain `b759506e28f8922a2f4a02a7fbb83360b710b750`。本改訂はDecision 1〜8の契約を維持しDecision 9を追加する。
+> Status: Accepted revision 7（2026-10-04。revision 6はPR #534 review（[comment](https://github.com/nunu1733/NunuLauncher/pull/534#issuecomment-5979154660)）でaccept、merge済み。revision 7はDecision 9の実装境界明確化2点（activity base class、#59 commit seam）を追加し、Phase 2実装PRのreviewで確定）。revision 5までのaccepted正本はmain `b759506e28f8922a2f4a02a7fbb83360b710b750`。
 > Date: 2026-10-04
 > 対応: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) / Phase 0 [#519](https://github.com/nunu1733/NunuLauncher/issues/519)
 > 出典: [#442 最終結論C](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)（2026-09-28）、[upstream-strategy.md](../engineering/upstream-strategy.md) Upgrade policy 5比較軸、Phase 0計測 [issue-516 assessment](../assessment/issue-516-16-rebase-phase0-research.md)
@@ -35,6 +35,7 @@ status: accepted
    - anchorの `INSTANCE/getInstance` facadeは同じDI instanceを返す入口として利用できる。恒久的な二重model、旧Javaモデルを生成するmodel/BgDataModel provider、model同一性・transaction能力を暗黙に変えるbridgeを採用しない。fork-owned非model serviceの小さなDI bindingは既存のowner・scope・初期化順を説明できる場合に限り個別reviewする。
    - 停止head `88af5218cea51b8556b9935b35d3640714b96111` と300件replay履歴を保護する。WIPを一括採択・一括revertせず、新しいappend commitでanchor構造とfork契約を整合させる。path単位のownerと採否を記録し、semantic adaptはPhase 2内で完成させる。
    - この選択の技術review/accept後、[plan §4.1](../../specs/516-16-rebase-phase2/plan.md) に従って再開する。API/型/生成経路の追従はこの方針内で解決する。既存契約の緩和、schema変更、anchor刷新、disposition変更が必要なときだけ正本の追加判断へ戻す。G1の成功だけでPhase 2完了とはせずG1〜G5・高リスクauditを維持する。
+   - **実装境界の明確化（G4実行で確定、revision 7）**: ①activity base class も anchorを正とする（`BaseActivity` はframework `Activity` 継承）。forkのandroidx `viewModels()` 契約は `LawnchairLauncher` への `ViewModelStoreOwner`/`HasDefaultViewModelProviderFactory` 実装で移植する（基底クラスのandroidx化はしない）。②#59の「集約commit boolean」契約はanchor `putSync` seam上で表現できないため、「commit後readback検証」を正式な後継とする（[spec 59](../../specs/59-sqlite-migration-transaction-audit/spec.md) 側に注記）。旧boolean契約の復活を要求しない。
 
 ## Alternatives considered
 
@@ -71,3 +72,4 @@ status: accepted
 - 2026-10-04（revision 5、#522）: Nova二件のUI/データ変換を共に保持と確定。schema32不変の比較範囲をupstream B/Uに限定し、fork33維持・cutover直前15 forkへのrollbackと歴史的32 binaryの境界、preferences/recoveryを含む実証条件をDecision 2/5へ反映。既存永続化契約は変更しない。
 - 2026-10-04（revision 6 proposed、#532）: G1停止報告の統一方針をDecision 9として具体化。方針1を選択し、旧モデルprovider/恒久二重モデルを不採用、fork契約の移植境界・WIP保護・Phase 2内adaptを明示。既存specの観測可能な契約・G1〜G5・Phase 4 cutover条件は変更しない。実装再開は本revisionとplan revision 2の技術review/accept後。
 - 2026-10-04（revision 6、**acceptedへ遷移**）: PR #534 review（[comment](https://github.com/nunu1733/NunuLauncher/pull/534#issuecomment-5979154660)）でblocking findingなし・「ADR-0018 revision 6 / Phase 2 plan revision 2 は accepted へ遷移可」を確認。受入は本PR #534のmergeで完了する。
+- 2026-10-04（revision 7 proposed、#532 G4実行）: Decision 9に実装境界の明確化を2点追加（activity base class = anchor正、#59 commit boolean → readback検証への後継）。G4のboot blocker（androidx cast）と#59 seam消失のowner決定として記録。本Phase 2実装PRのreviewで確定。
