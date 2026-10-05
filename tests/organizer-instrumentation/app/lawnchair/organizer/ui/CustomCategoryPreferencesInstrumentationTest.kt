@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
@@ -67,7 +68,6 @@ import app.lawnchair.organizer.rules.storedSnapshot
 import app.lawnchair.ui.preferences.destinations.CustomCategoryPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
-import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -89,8 +89,13 @@ import org.junit.runner.RunWith
 class CustomCategoryPreferencesInstrumentationTest {
 
     @get:Rule
-    // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
-    val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
+    // Issue #505 queued this class's effects with a StandardTestDispatcher;
+    // replay-log §6.15/§6.16 found that dispatcher breaks D-pad key delivery
+    // and focus reflection timing here (local arm64 A/B: 2 failing tests with
+    // it, 10/10 green without), so the default rule — the rollback path named
+    // by the issue #490 assessment — is used. Async create/rename/save flows
+    // are bounded by explicit waitUntil below instead.
+    val composeRule = createComposeRule()
 
     private val userId = UserCategoryId("3f2b8c4e-1234-4abc-9de0-1234567890ab")
 
@@ -116,10 +121,22 @@ class CustomCategoryPreferencesInstrumentationTest {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isNotEmpty()
         }
 
-        // Duplicate name is a typed, localized failure — no write.
+        // Duplicate name is a typed, localized failure — no write. The
+        // "Commute" wait above also matches the editor field's EditableText,
+        // so it can pass before the list recomposition brings the create
+        // button back; wait for the button itself (issue #532 §6.16).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_create)).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_create)).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").performTextInput("Commute")
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_save)).performClick()
+        // The typed duplicate feedback lands after the coordinator's write
+        // returns; wait bounded, then keep the displayed assert.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_error_duplicate_name))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_error_duplicate_name)).assertIsDisplayed()
 
         // AC-6 state 2: the create editor's full semantics tree carries no raw id.
@@ -360,18 +377,26 @@ class CustomCategoryPreferencesInstrumentationTest {
         val summary = composeRule.onNodeWithText(
             context.getString(R.string.organizer_custom_category_summary),
         )
-        summary.requestFocus().assertIsFocused()
+        // Focus reflection into semantics can lag a frame on a loaded CI
+        // emulator (issue #532 §6.16), so every focus assert is preceded by a
+        // bounded wait; the assert still fails if focus never arrives.
+        summary.requestFocus()
+        awaitFocused(summary)
+        summary.assertIsFocused()
         // The create action is the first item under the summary, so one
         // DirectionDown from the summary must land on it.
         summary.performKeyInput {
             keyDown(Key.DirectionDown)
             keyUp(Key.DirectionDown)
         }
-        composeRule.onNodeWithText(create).assertIsFocused()
-        composeRule.onNodeWithText(create).performKeyInput {
-            keyDown(Key.DirectionCenter)
-            keyUp(Key.DirectionCenter)
-        }
+        val createTarget = composeRule.onNodeWithText(create)
+        awaitFocused(createTarget)
+        createTarget
+            .assertIsFocused()
+            .performKeyInput {
+                keyDown(Key.DirectionCenter)
+                keyUp(Key.DirectionCenter)
+            }
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("custom-category-name-field").fetchSemanticsNodes().isNotEmpty()
         }
@@ -490,15 +515,22 @@ class CustomCategoryPreferencesInstrumentationTest {
 
     // ---- shared helpers ------------------------------------------------------
 
-    private fun awaitSummaryFocus(summary: String) {
+    // Focus can reflect into semantics a frame late under load (CI flake,
+    // issue #532 §6.16), so focus asserts are gated on a bounded wait; the
+    // caller-level assert still fails if focus never arrives.
+    private fun awaitFocused(node: SemanticsNodeInteraction) {
         composeRule.waitUntil(5_000) {
             try {
-                composeRule.onNodeWithText(summary).assertIsFocused()
+                node.assertIsFocused()
                 true
             } catch (_: AssertionError) {
                 false
             }
         }
+    }
+
+    private fun awaitSummaryFocus(summary: String) {
+        awaitFocused(composeRule.onNodeWithText(summary))
     }
 
     private fun collectSemanticsStrings(node: SemanticsNode, out: MutableList<String>) {
