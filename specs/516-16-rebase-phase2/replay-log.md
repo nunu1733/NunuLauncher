@@ -695,3 +695,9 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 - `CategoryOverridePreferencesInstrumentationTest.switchEquivalentSemanticsActivationOpensEditor` と `OrganizerHubPreferencesInstrumentationTest.restoreFailureKeepsTheResultFaceAcrossTheDiagnosticsRoundTrip` が同一の `IndexOutOfBoundsException: Index 2, size 2 at MutableIntervalList.get` で失敗。別lane・別testで同一スタック = compose lazy listの再構成競合（timing flake）。
 - dispatcher残は1 file（OrganizerLockScreenTest、#505系）のみ。本flakeはdispatcher非依存の可能性。
 - 対応: 両testのfailure直前のnode照合にbounded waitUntilを追加（assert契約不変）。CI再実行で継続確認。
+- 修復結果（2026-10-05、ローカルarm64 G4環境）:
+  - CI evidence（同runのreports artifact）で発火点を確定: 両例外とも **main threadの`Choreographer.doFrame`内のmeasure** で発生（test threadの呼び出しframeではない）。category-override側のスタックは `LazyLayoutBeyondBoundsProviderModifierNode.measure` を含み、`performScrollToNode` が駆動するbeyond-bounds measureがlist→editorのinterval入替と競合。manual-org側はstate待ち（`runner.state` の直接読み、compose同期なし）が再構成前に通過し、直後のclick/`assertIsDisplayed` がpreview（2 item）→Recovering→result faceの二重interval入替の最中に同期measureを強制した窓と整合。
+  - 修復（assert契約不変）: `switchEquivalentSemanticsActivationOpensEditor` はlist viewの両app行が揃うまで（`"Example"` size==2、同class既存pattern）とeditorのcurrent-status text（editor専用の唯一のexact一致）存在までのbounded待ちを追加し、scrollを§6.14確立の `scrollToNodeBounded`（同一のauthoritative scroll機構のbounded retry）へ置換。`restoreFailureKeepsTheResultFaceAcrossTheDiagnosticsRoundTrip` はconfirm click、safe_terminal assert、diagnostics clickの直前にそれぞれ目標行の存在待ちを追加。
+  - ローカル再実行: hub class 33/33 green（1m58s）。category-override classは3実行中2回full green（8/8）、残る1回は **本修復対象外の `samePackageProfilesExposeTextStateAndIndependentAccessibleRows` が既存の:169待ちで `ComposeTimeoutException` 5000ms** — #490 assessmentが記録したclass-3系（assessment「Attempt 2/3」と同一signature）であり、修正した `switchEquivalent` は全3回green。監視継続。
+  - `assembleLawnWithQuickstepGithubDebug` + `spotlessCheck`（--rerun-tasks）green。x86_64最終確認は次回dispatch。
+

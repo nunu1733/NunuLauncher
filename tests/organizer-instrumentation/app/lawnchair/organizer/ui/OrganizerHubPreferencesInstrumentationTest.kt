@@ -1134,11 +1134,26 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
         composeRule.waitUntil(5_000) { application.previewRequests >= 1 }
+        // G5 (§6.17, run 37324581952): the state-only waits above can pass
+        // before the preview face recomposed, and clicking into the face swap
+        // crashed the frame measure in MutableIntervalList on the x86_64 CI
+        // emulator (IndexOutOfBoundsException). Wait for each target row to
+        // exist before operating; every assert target is unchanged.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery_confirm),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_recovery_confirm),
         ).performClick()
 
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryResultState }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_safe_terminal),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_safe_terminal),
         ).assertIsDisplayed()
@@ -1146,6 +1161,11 @@ class OrganizerHubPreferencesInstrumentationTest {
         // destination, come back, and the result/safe-support face must have
         // survived the run face's disposal — the handoff/process-id guard
         // must not re-run the admission (which would pop the result away).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_open_diagnostics),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_open_diagnostics),
         ).assertIsDisplayed().performClick()

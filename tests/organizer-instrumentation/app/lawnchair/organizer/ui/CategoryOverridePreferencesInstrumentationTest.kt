@@ -310,12 +310,29 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
+        // G5 (§6.17, run 37324581952): on the x86_64 CI emulator the scroll's
+        // beyond-bounds measure raced the list→editor interval swap and threw
+        // IndexOutOfBoundsException from MutableIntervalList. The first wait
+        // above can pass while the second app row is still composing, and the
+        // scroll could then land mid-swap. Settle each face with a bounded
+        // wait before operating; the contract — the equivalent semantics
+        // activation opens the editor and the use-automatic row is displayed —
+        // is unchanged.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().size == 2
+        }
         composeRule.onNodeWithContentDescription(
             appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).assertHasClickAction().performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.onNode(hasScrollAction()).performScrollToNode(
-            hasText(context.getString(R.string.organizer_category_override_use_automatic)),
-        )
+        // The editor's current-status text is the first editor-only exact
+        // match (the list view renders it only inside composite descriptions);
+        // its existence means the editor face composed and laid out.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_category_override_automatic),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        scrollToNodeBounded(hasText(context.getString(R.string.organizer_category_override_use_automatic)))
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_use_automatic)).assertIsDisplayed()
     }
 
