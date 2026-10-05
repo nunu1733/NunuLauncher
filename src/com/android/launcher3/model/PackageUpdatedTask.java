@@ -461,7 +461,7 @@ public class PackageUpdatedTask implements ModelUpdateTask {
             taskController.bindUpdatedWidgets(dataModel);
 
             // Rebase Phase 2 adapt (S2/S3): the anchor adds newly installed apps to the
-            // workspace through app.lawnchair.deck.LawndeckManager when the deck layout
+            // workspace through the retired deck runtime when the deck layout
             // pref is enabled. The fork retired the Deck runtime together with this
             // package-event hook (Issue #57; the pref only survives as a tombstone), so
             // the hook is not ported. Restore this block alongside the deck package if
