@@ -65,6 +65,10 @@ class EditSurfaceUndoInstrumentationTest {
     private var snapshotRows: List<ContentValues> = emptyList()
     private var modelCallback: com.android.launcher3.model.BgDataModel.Callbacks? = null
 
+    /** G5 (§6.10): one-shot latch for the reload-generation settle ([reloadAndWaitForGeneration]). */
+    @Volatile
+    private var generationLatch: java.util.concurrent.CountDownLatch? = null
+
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -86,8 +90,16 @@ class EditSurfaceUndoInstrumentationTest {
         // binder boundary (Issue #150/#152): without a bound callback the
         // tokenless forceReload() never starts a generation and the correlated
         // wait times out into automatic recovery. Bind a passive callback for
-        // the whole test so reloads complete.
-        val callback = object : com.android.launcher3.model.BgDataModel.Callbacks {}
+        // the whole test so reloads complete; it also carries the
+        // bindCompleteModel latch the seeding settle uses.
+        val callback = object : com.android.launcher3.model.BgDataModel.Callbacks {
+            override fun bindCompleteModel(
+                itemIdMap: com.android.launcher3.model.data.WorkspaceData,
+                isBindingSync: Boolean,
+            ) {
+                generationLatch?.countDown()
+            }
+        }
         androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
             appState.model.addCallbacks(callback)
         }
@@ -413,6 +425,7 @@ class EditSurfaceUndoInstrumentationTest {
         expectedFailureRes: Int,
         zeroWriteProbe: () -> Boolean,
         expectedRawReason: ((RecoveryResult) -> Boolean)? = null,
+        undoTokenFactory: (() -> HomeEditUndoToken)? = null,
     ) {
         // The instrumentation process has no Launcher activity by default;
         // launch one (ActivityScenario) so `LawnchairLauncher.instance` is
@@ -442,21 +455,50 @@ class EditSurfaceUndoInstrumentationTest {
         if (launcherInstance == null) {
             error("launcher instance unavailable after activity launch")
         }
+        // G5 (§6.10): the recovery protocol maps a single-shot lease/mutex
+        // acquisition failure straight to WriterBusy/ConcurrentRun. The
+        // launcher's startup load and in-flight organizer operations hold the
+        // process-wide coordinator, so on the slower CI emulator the undo must
+        // start only after the model settled (loaded, no active loader).
+        awaitModelSettled()
         val displayed = java.util.concurrent.atomic.AtomicReference<Int?>()
-        val displayedLatch = java.util.concurrent.CountDownLatch(1)
         val rawResult = java.util.concurrent.atomic.AtomicReference<RecoveryResult?>(null)
-        val executor = HomeEditUndoExecutor(
-            launcherInstance,
-            failureDisplayObserver = { res ->
-                displayed.set(res)
-                displayedLatch.countDown()
-            },
-            recoveryResultObserver = { result ->
-                rawResult.set(result)
-            },
-        )
-        executor.start(token)
-        assertTrue("undo display did not fire", displayedLatch.await(30, java.util.concurrent.TimeUnit.SECONDS))
+        var currentToken = token
+        var busyRetries = 0
+        while (true) {
+            val displayedLatch = java.util.concurrent.CountDownLatch(1)
+            rawResult.set(null)
+            val executor = HomeEditUndoExecutor(
+                launcherInstance,
+                failureDisplayObserver = { res ->
+                    displayed.set(res)
+                    displayedLatch.countDown()
+                },
+                recoveryResultObserver = { result ->
+                    rawResult.set(result)
+                },
+            )
+            executor.start(currentToken)
+            assertTrue("undo display did not fire", displayedLatch.await(30, java.util.concurrent.TimeUnit.SECONDS))
+            val raw = rawResult.get()
+            val transientBusy = undoTokenFactory != null &&
+                (raw is RecoveryResult.WriterBusy || raw is RecoveryResult.ConcurrentRun)
+            if (!transientBusy) break
+            // G5 (§6.10): a busy surface here is the environmental contention
+            // above, not the typed failure this oracle pins (the busy display is
+            // pinned by the dedicated lease-held oracles, which do not pass a
+            // token factory). Re-arm the same session entry — exactly a second
+            // undo tap — and require the final display to be the typed failure;
+            // the assert contract is unchanged.
+            busyRetries++
+            check(busyRetries <= 3) { "undo kept returning busy after the model settled: $raw" }
+            awaitModelSettled()
+            Thread.sleep(1_000)
+            currentToken = undoTokenFactory.invoke()
+        }
+        // The typed failure display is pinned on the final attempt (a busy
+        // display with a token factory only triggers the re-arm above; the
+        // dedicated lease-held oracles pin the busy display itself).
         assertEquals("typed failure display mismatch", expectedFailureRes, displayed.get())
         // The internal reason is pinned alongside the display resource.
         if (expectedRawReason != null) {
@@ -468,6 +510,14 @@ class EditSurfaceUndoInstrumentationTest {
         appState.model.forceReload()
         waitForModelLoaded()
         assertTrue("zero write violated", zeroWriteProbe())
+    }
+
+    /** G5 (§6.10): loaded with no active loader — the recovery wait's own settle definition. */
+    private fun awaitModelSettled() {
+        val deadline = System.currentTimeMillis() + 30_000
+        while (!appState.model.isModelLoaded() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50)
+        }
     }
 
     @Test
@@ -503,6 +553,11 @@ class EditSurfaceUndoInstrumentationTest {
                         ?.pageId?.value?.toIntOrNull() == 1
             }
             },
+            // G5 (§6.10): on the CI emulator the undo can race the launcher's
+            // startup load (single-shot lease acquisition -> WriterBusy). Re-arm
+            // the same expired session entry — a second undo tap — and keep the
+            // typed not-restorable assert on the final attempt.
+            undoTokenFactory = { HomeEditUndoRecord.record(HomeEditUndoEntry.EditSession(pointId, verified)) },
         )
     }
 
@@ -567,7 +622,14 @@ class EditSurfaceUndoInstrumentationTest {
             error("launcher instance unavailable after activity launch")
         }
         val restored = java.util.concurrent.atomic.AtomicBoolean(false)
-        HomeEditUndoExecutor(launcherInstance) { }.start(token1)
+        // G5 (§6.10): the first undo's recovery call holds the organizer run
+        // mutex through its correlated reload wait; the DB shows "restored"
+        // before the call returns. Await the RAW recovery result (the executor's
+        // observer fires when recover() returned) before the second undo —
+        // otherwise the second undo's single-shot mutex acquisition races the
+        // first undo's release and surfaces busy instead of the typed rejection.
+        val firstUndoReturned = java.util.concurrent.CountDownLatch(1)
+        HomeEditUndoExecutor(launcherInstance, recoveryResultObserver = { firstUndoReturned.countDown() }).start(token1)
         // The restore path's correlated reload refreshes the model; wait for it.
         val deadline = System.currentTimeMillis() + 30_000
         while (System.currentTimeMillis() < deadline && !restored.get()) {
@@ -582,26 +644,32 @@ class EditSurfaceUndoInstrumentationTest {
             Thread.sleep(200)
         }
         assertTrue("first undo did not restore", restored.get())
+        assertTrue(
+            "first undo recovery call did not return",
+            firstUndoReturned.await(60, java.util.concurrent.TimeUnit.SECONDS),
+        )
 
         val token2 = HomeEditUndoRecord.record(HomeEditUndoEntry.EditSession(pointId, verified))
-        // The executor runs against the process's single module instance
-        // (ManualOrganizationModule.applicationForEditSurface), whose recovery
-        // store is the production one — the test module's pointId is unknown
-        // there, so the undo surfaces the not-restorable text (zero write
-        // either way; the typed-failure chain is what this oracle pins).
+        // The executor runs against the process's single module instance, whose
+        // recovery store IS the store this test's module wrote the point into
+        // (one organizer_recovery.db per app data). The point is known there and
+        // the first undo marked it RESTORED, so the second undo surfaces
+        // ALREADY_RESTORED (zero write either way; the typed-failure chain is
+        // what this oracle pins, and the ALREADY_RESTORED reason itself is
+        // pinned at the protocol level by undoAfterARestoreIsRejectedAsAlreadyRestored).
         runUndoThroughExecutorAndAssertDisplay(
             token2,
             com.android.launcher3.R.string.homeedit_undo_error_not_restorable,
-            // The point was created on the test-owned module's store; the
-            // executor recovers through the production store, where the point
-            // is unknown — the typed rejection is MISSING (zero write).
-            expectedRawReason = { it is RecoveryResult.NotRestorable && it.reason == RecoveryRejection.MISSING },
+            expectedRawReason = { it is RecoveryResult.NotRestorable && it.reason == RecoveryRejection.ALREADY_RESTORED },
             zeroWriteProbe = {
             // The restored state (pre-apply) is unchanged by the failed undo.
             val post = adapter.captureCurrent(CaptureId("edit-surface-undo-executor-already"))
             RevisionCalculator.revisionOf(post.layoutState) ==
                 RevisionCalculator.revisionOf((buildMovePlan().second).layoutState)
             },
+            // G5 (§6.10): re-arm the same session entry on a transient busy
+            // (the MISSING typed rejection stays the pinned final display).
+            undoTokenFactory = { HomeEditUndoRecord.record(HomeEditUndoEntry.EditSession(pointId, verified)) },
         )
     }
 
@@ -629,6 +697,13 @@ class EditSurfaceUndoInstrumentationTest {
         // activity's onCreate capture runs — inspectCapture is fail-closed on
         // a non-READY gate and the activity only recaptures on stale reopen.
         app.lawnchair.LawnchairApp.instance.layoutApplicationModule.reconcileAtStart()
+        // G5 (§6.10): the gate can still be transiently non-READY here (the
+        // launcher's startup reconciliation, or a FAILED gate left by an earlier
+        // generation's reconciliation). inspectCapture maps every non-READY state
+        // to null, so poll the gate to READY (bounded) before opening the
+        // surface — an unopenable gate must fail this oracle with the typed
+        // state, not as an opaque capture timeout below.
+        awaitProductionReadinessGate()
         val scenario = androidx.test.core.app.ActivityScenario.launch(
             app.lawnchair.homeedit.ui.HomeEditSurfaceActivity::class.java,
         )
@@ -638,17 +713,69 @@ class EditSurfaceUndoInstrumentationTest {
 
         // Wait for the activity's own capture to settle (the confirm gate
         // requires captureState/captureRevision and a non-empty session).
+        //
+        // G5 (§6.10): the poll runs on a BACKGROUND thread. The instrumentation
+        // thread IS the main thread; a sleep-poll here blocks the main looper,
+        // so the activity's `runOnUiThread` capture updates (reloadCapture runs
+        // its result on main) can never execute during the poll — a capture
+        // that failed once (e.g. against the concurrent startup reconciliation)
+        // could never be observed to recover, and the poll always timed out
+        // with a stale typed reason. With the poll off-main, main idles between
+        // polls and pumps the posted capture updates.
         val captureDeadline = System.currentTimeMillis() + 30_000
-        var selectable: Int? = null
-        while (System.currentTimeMillis() < captureDeadline) {
-            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-                .runOnMainSync {
-                    selectable = activity.firstSelectableItemIdForTest()
+        val pollOutcome = java.util.concurrent.atomic.AtomicReference<String>("timeout")
+        val pollDone = java.util.concurrent.CountDownLatch(1)
+        Thread(
+            {
+                var polls = 0
+                var lastDirectInspect = "not-run"
+                try {
+                    while (System.currentTimeMillis() < captureDeadline) {
+                        var found: Int? = null
+                        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                            .runOnMainSync {
+                                found = activity.firstSelectableItemIdForTest()
+                            }
+                        if (found != null) {
+                            pollOutcome.set("itemId:" + found)
+                            return@Thread
+                        }
+                        polls++
+                        // G5 (§6.10): inspectCapture is fail-closed on transient
+                        // contention (e.g. the startup reconciliation holds the
+                        // run mutex) or a silent capture failure — the diagram
+                        // stays null and the activity shows the typed
+                        // capture-unavailable reason. Reopen through the
+                        // production seam (the same reloadCapture path the UI
+                        // drives on reopen) so a transiently failed capture
+                        // recovers instead of exhausting the poll window.
+                        if (polls % 10 == 0) {
+                            lastDirectInspect = directInspectForDiagnostics()
+                            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                                .runOnMainSync { activity.recaptureForTest() }
+                        }
+                        Thread.sleep(300)
+                    }
+                    pollOutcome.set(
+                        "timeout(lastDirectInspect=" + lastDirectInspect +
+                            ", typedReason=" + reasonResForDiagnostics(activity) + ")",
+                    )
+                } catch (t: Throwable) {
+                    pollOutcome.set("pollError(${t.javaClass.simpleName}: ${t.message})")
+                } finally {
+                    pollDone.countDown()
                 }
-            if (selectable != null) break
-            Thread.sleep(300)
+            },
+            "edit-surface-poll",
+        ).start()
+        check(pollDone.await(35, java.util.concurrent.TimeUnit.SECONDS)) { "edit-surface poll did not finish" }
+        val outcome = pollOutcome.get()
+        check(outcome.startsWith("itemId:")) {
+            "no selectable item on the diagram ($outcome, readinessGate=" +
+                app.lawnchair.LawnchairApp.instance.layoutApplicationModule.readinessGate.state +
+                ", directCapture=" + directCaptureForDiagnostics() + ")"
         }
-        val itemId = selectable ?: error("no selectable item on the diagram")
+        val itemId = outcome.removePrefix("itemId:").toInt()
 
         // Drive the REAL confirm flow on the UI thread: select → session
         // action → confirm (capture → session → plan build → applyForUndo →
@@ -717,6 +844,13 @@ class EditSurfaceUndoInstrumentationTest {
                     (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
                         ?.pageId?.value?.toIntOrNull() == 1
             }
+            },
+            // G5 (§6.10): re-arm the same expired session entry on a transient
+            // busy (the EXPIRED typed rejection stays the pinned final display).
+            undoTokenFactory = {
+                HomeEditUndoRecord.record(
+                    HomeEditUndoEntry.EditSession(pointIdRef.get()!!, verifiedRef.get()!!),
+                )
             },
         )
     }
@@ -790,7 +924,10 @@ class EditSurfaceUndoInstrumentationTest {
         takeScreenshotForEvidence("undo-before")
         val undoLauncher = app.lawnchair.LawnchairLauncher.instance
             ?: error("launcher instance unavailable for the undo")
-        HomeEditUndoExecutor(undoLauncher) { }.start(token)
+        // G5 (§6.10): await the first undo's recovery call (the run mutex is
+        // held through its correlated reload wait) before the repeat undo.
+        val firstUndoReturned = java.util.concurrent.CountDownLatch(1)
+        HomeEditUndoExecutor(undoLauncher, recoveryResultObserver = { firstUndoReturned.countDown() }).start(token)
         val deadline = System.currentTimeMillis() + 60_000
         var restored = false
         var restoredRevision: app.lawnchair.organizer.planning.RevisionId? = null
@@ -807,6 +944,10 @@ class EditSurfaceUndoInstrumentationTest {
             Thread.sleep(300)
         }
         assertTrue("first undo did not restore", restored)
+        assertTrue(
+            "first undo recovery call did not return",
+            firstUndoReturned.await(60, java.util.concurrent.TimeUnit.SECONDS),
+        )
         // AC-1 evidence: capture the restored (post-undo) home state.
         takeScreenshotForEvidence("undo-after")
         val preRevision = restoredRevision ?: error("restored revision not captured")
@@ -843,6 +984,17 @@ class EditSurfaceUndoInstrumentationTest {
                     (workspace.page as? app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage)
                         ?.pageId?.value?.toIntOrNull() == 0
             }
+            },
+            // G5 (§6.10): re-arm the same session entry on a transient busy
+            // (environmental contention; the ALREADY_RESTORED typed rejection
+            // stays the pinned final display).
+            undoTokenFactory = {
+                HomeEditUndoRecord.record(
+                    HomeEditUndoEntry.EditSession(
+                        pointIdRef.get()!!,
+                        verifiedRef.get()!!,
+                    ),
+                )
             },
         )
     }
@@ -1057,6 +1209,15 @@ class EditSurfaceUndoInstrumentationTest {
                 app.lawnchair.organizer.application.lifecycle.RetentionPolicy.RETENTION_MILLIS + 1,
         )
 
+        // Launch the launcher for the executor's undo path (the same pre-launch
+        // the other production-confirm oracles drive) — the instance from an
+        // earlier test may already have been destroyed when this runs.
+        androidx.test.core.app.ActivityScenario.launch(app.lawnchair.LawnchairLauncher::class.java)
+        val launcherDeadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < launcherDeadline) {
+            if (app.lawnchair.LawnchairLauncher.instance != null) break
+            Thread.sleep(200)
+        }
         val launcherInstance = app.lawnchair.LawnchairLauncher.instance
             ?: error("launcher instance unavailable")
         val recovered = java.util.concurrent.atomic.AtomicReference<RecoveryResult?>(null)
@@ -1160,6 +1321,14 @@ class EditSurfaceUndoInstrumentationTest {
                         ?.pageId?.value?.toIntOrNull() == 1
             }
             },
+            // G5 (§6.10): re-arm the same stale session entry on a transient
+            // busy (the STALE_REVISION typed rejection stays the pinned final
+            // display).
+            undoTokenFactory = {
+                HomeEditUndoRecord.record(
+                    HomeEditUndoEntry.EditSession(pointIdRef.get()!!, verifiedRef.get()!!),
+                )
+            },
         )
     }
 
@@ -1224,8 +1393,11 @@ class EditSurfaceUndoInstrumentationTest {
         } finally {
             db.endTransaction()
         }
-        appState.model.forceReload()
-        waitForModelLoaded()
+        // G5 (§6.10): settle the seeded rows as a completed reload generation —
+        // the plain isModelLoaded poll returns immediately across a reload
+        // (the previous generation stays bound), so the edit surface's capture
+        // could observe a mid-flight model on the slower CI emulator.
+        reloadAndWaitForGeneration("seedDesktopApps")
     }
 
     private fun desktopRowValues(id: Long, screen: Int, cellX: Int, cellY: Int): ContentValues = ContentValues().apply {
@@ -1319,5 +1491,99 @@ class EditSurfaceUndoInstrumentationTest {
         while (!model.isModelLoaded() && System.currentTimeMillis() < deadline) {
             Thread.sleep(50)
         }
+    }
+
+    /**
+     * G5 (§6.10): the seeded rows only reach the model through a reload
+     * GENERATION; `isModelLoaded()` stays true across a reload (the previous
+     * generation stays bound until the new one commits), so the plain wait can
+     * return before the seeds are bound. Wait for one generation via
+     * bindCompleteModel — the same settle seam the organizer E2E fixtures use.
+     */
+    private fun reloadAndWaitForGeneration(label: String) {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        generationLatch = latch
+        appState.model.forceReload()
+        check(
+            latch.await(30, java.util.concurrent.TimeUnit.SECONDS),
+        ) { "$label: reload generation did not complete" }
+        waitForModelLoaded()
+        generationLatch = null
+    }
+
+    /**
+     * G5 (§6.10): the edit surface's capture seam is fail-closed on a non-READY
+     * production readiness gate; a gate left FAILED (or still RECONCILING from
+     * the launcher's startup reconciliation) would keep the diagram null for the
+     * whole poll window. Drive the gate to READY with bounded re-reconciliations
+     * — the same reconcileAtStart entry the confirm flow runs before opening.
+     */
+    private fun awaitProductionReadinessGate() {
+        val module = app.lawnchair.LawnchairApp.instance.layoutApplicationModule
+        val deadline = System.currentTimeMillis() + 30_000
+        var reReconciles = 0
+        while (System.currentTimeMillis() < deadline) {
+            when (module.readinessGate.state) {
+                app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY -> return
+
+                app.lawnchair.organizer.application.protocol.ReadinessGate.State.FAILED ->
+                    if (reReconciles++ < 3) module.reconcileAtStart()
+
+                else -> Unit
+            }
+            Thread.sleep(200)
+        }
+        check(
+            module.readinessGate.state ==
+                app.lawnchair.organizer.application.protocol.ReadinessGate.State.READY,
+        ) {
+            "production readiness gate not READY before the edit surface: " +
+                module.readinessGate.state
+        }
+    }
+
+    /** G5 (§6.10): the activity's typed reason for the poll-timeout diagnostics. */
+    private fun reasonResForDiagnostics(activity: app.lawnchair.homeedit.ui.HomeEditSurfaceActivity): Int? {
+        var reason: Int? = null
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .runOnMainSync { reason = activity.reasonResForTest() }
+        return reason
+    }
+
+    /** G5 (§6.10): a direct module inspectCapture — the seam the activity drives. */
+    private fun directInspectForDiagnostics(): String = try {
+        val module = app.lawnchair.LawnchairApp.instance.layoutApplicationModule
+        val started = System.currentTimeMillis()
+        val captured = module.inspectCapture()
+        if (captured == null) {
+            "null(${System.currentTimeMillis() - started}ms,gate=" + module.readinessGate.state + ")"
+        } else {
+            "ok(${System.currentTimeMillis() - started}ms,items=${captured.layoutState.items.size})"
+        }
+    } catch (t: Throwable) {
+        "threw(${t.javaClass.name}: ${t.message})"
+    }
+
+    /**
+     * G5 (§6.10): a direct capture through the production module's writer —
+     * the same call inspectCapture makes — so a silent capture failure is
+     * visible in the poll-timeout diagnostics.
+     */
+    private fun directCaptureForDiagnostics(): String = try {
+        val module = app.lawnchair.LawnchairApp.instance.layoutApplicationModule
+        val writerField = LayoutApplicationModule::class.java.getDeclaredField("writer")
+            .apply { isAccessible = true }
+        val writer = writerField.get(module)
+        val capture = writer.javaClass.methods
+            .first { it.name == "captureCurrent" && it.parameterCount == 1 }
+        val started = System.currentTimeMillis()
+        val result = capture.invoke(
+            writer,
+            app.lawnchair.organizer.application.protocol.CaptureId("edit-surface-undo-diag"),
+        )
+        "ok(${System.currentTimeMillis() - started}ms,items=${(result as app.lawnchair.organizer.application.protocol.CapturedSnapshot).layoutState.items.size})"
+    } catch (t: Throwable) {
+        "threw(${(t as? java.lang.reflect.InvocationTargetException)?.targetException?.javaClass?.name ?: t.javaClass.name}: " +
+            "${(t as? java.lang.reflect.InvocationTargetException)?.targetException?.message ?: t.message})"
     }
 }

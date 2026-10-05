@@ -114,6 +114,22 @@ class LawnchairApp : LauncherApplication() {
     }
 
     fun onLauncherAppStateCreated(appState: com.android.launcher3.LauncherAppState) {
+        // Issue #532 G5 (§6.10, single-instance contract restore): the anchor's
+        // LauncherAppState binding is UNSCOPED — every getInstance() resolves a
+        // NEW wrapper, and this hook ran on every construction, replacing
+        // `layoutApplicationModule` with a fresh, never-reconciled module (its
+        // readiness gate back at IDLE, its run mutex and recovery-store binding
+        // re-created). The organizer module is a PROCESS-SINGLE instance
+        // ("Single instance per process", the module's own contract; the fork's
+        // v15 MainThreadInitializedObject hook this bridge replaced also ran
+        // once per process): surfaces that hold the module reference (the edit
+        // surface's process access) stayed permanently fail-closed against the
+        // first module — null captures, WriterBusy recoveries. Keep the first
+        // construction; later wrappers share the same scoped model, so
+        // composing the module from the first one is faithful to the fork.
+        if (::layoutApplicationModule.isInitialized) {
+            return
+        }
         registerActivityLifecycleCallbacks(activityHandler)
         // Issue #14: make restart reconciliation reachable before organizer requests are accepted.
         // Issue #201: the outer composition supplies the generated-folder title
