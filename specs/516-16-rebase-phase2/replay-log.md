@@ -701,3 +701,10 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
   - ローカル再実行: hub class 33/33 green（1m58s）。category-override classは3実行中2回full green（8/8）、残る1回は **本修復対象外の `samePackageProfilesExposeTextStateAndIndependentAccessibleRows` が既存の:169待ちで `ComposeTimeoutException` 5000ms** — #490 assessmentが記録したclass-3系（assessment「Attempt 2/3」と同一signature）であり、修正した `switchEquivalent` は全3回green。監視継続。
   - `assembleLawnWithQuickstepGithubDebug` + `spotlessCheck`（--rerun-tasks）green。x86_64最終確認は次回dispatch。
 
+
+
+## 6.18. OrganizerLockScreenTest のhang修復（2026-10-06、run 37331627184）
+
+- category-override laneの3 class目 `OrganizerLockScreenTest`（#458でlane加入）が20分cap超過。dispatcher残存1 file（#505の `effectContext = StandardTestDispatcher()` 実験）であったため、CategoryOverride/CustomCategory の前例どおり撤去（6.15/6.16と同一処置）。
+- ローカルemulator無しのため検証はcompile+spotlessのみ。CI dispatch（x86_64）で確認。
+- これで tests/organizer-instrumentation の `createComposeRule(effectContext = StandardTestDispatcher())` はゼロになった。
