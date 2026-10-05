@@ -35,7 +35,7 @@ status: accepted
    - anchorの `INSTANCE/getInstance` facadeは同じDI instanceを返す入口として利用できる。恒久的な二重model、旧Javaモデルを生成するmodel/BgDataModel provider、model同一性・transaction能力を暗黙に変えるbridgeを採用しない。fork-owned非model serviceの小さなDI bindingは既存のowner・scope・初期化順を説明できる場合に限り個別reviewする。
    - 停止head `88af5218cea51b8556b9935b35d3640714b96111` と300件replay履歴を保護する。WIPを一括採択・一括revertせず、新しいappend commitでanchor構造とfork契約を整合させる。path単位のownerと採否を記録し、semantic adaptはPhase 2内で完成させる。
    - この選択の技術review/accept後、[plan §4.1](../../specs/516-16-rebase-phase2/plan.md) に従って再開する。API/型/生成経路の追従はこの方針内で解決する。既存契約の緩和、schema変更、anchor刷新、disposition変更が必要なときだけ正本の追加判断へ戻す。G1の成功だけでPhase 2完了とはせずG1〜G5・高リスクauditを維持する。
-   - **実装境界の明確化（G4実行で確定、revision 7）**: ①activity base class も anchorを正とする（`BaseActivity` はframework `Activity` 継承）。forkのandroidx `viewModels()` 契約は `LawnchairLauncher` への `ViewModelStoreOwner`/`HasDefaultViewModelProviderFactory` 実装で移植する（基底クラスのandroidx化はしない）。②#59の「集約commit boolean」契約はanchor `putSync` seam上で表現できないため、「commit後readback検証」を正式な後継とする（[spec 59](../../specs/59-sqlite-migration-transaction-audit/spec.md) 側に注記）。旧boolean契約の復活を要求しない。
+   - **実装境界の明確化（G4実行で確定、revision 7）**: ①activity base class も anchorを正とする（`BaseActivity` はframework `Activity` 継承）。forkのandroidx `viewModels()` 契約は `LawnchairLauncher` への `ViewModelStoreOwner`/`HasDefaultViewModelProviderFactory` 実装で移植する（基底クラスのandroidx化はしない）。②#59の「集約commit boolean」契約はanchor `putSync` seam上で表現できないため、「commit後readback検証」を正式な後継とする（[spec 59](../../specs/59-preserve-source-grid-migration-failure/spec.md) 側に注記）。旧boolean契約の復活を要求しない。
 
 ## Alternatives considered
 

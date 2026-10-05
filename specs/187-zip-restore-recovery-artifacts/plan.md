@@ -50,7 +50,7 @@
       wait」の逆順は形成されず、循環待ちは存在しない。
     - 実装時に全call siteの再調査（grep audit）をassessmentへ記録し、lock-order drain testで
       機械的に担保する（AC-2(d)）。
-  - `quiesceForRestore`（[LauncherModel.java:333-338](../../src/com/android/launcher3/LauncherModel.java)）
+  - `quiesceForRestore`（[LauncherModel.java:333-338](../../src/com/android/launcher3/LauncherModel.kt)）
     はmodel lockのみを操作しorganizer mutexに触れないため、排他block内からの再入は発生しない。
 - **classifierの現行分類**（[RecoveryStartupStorageClassifier.kt](../../lawnchair/src/app/lawnchair/organizer/application/store/RecoveryStartupStorageClassifier.kt)）:
   DB不在+snapshot非空 → `SuspiciousAbsence`。両者不在 → `Pristine`。既存unit test
