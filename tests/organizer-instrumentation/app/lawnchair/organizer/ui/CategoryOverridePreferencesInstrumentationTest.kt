@@ -51,14 +51,36 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
+import org.junit.rules.Timeout
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalTestApi::class)
 class CategoryOverridePreferencesInstrumentationTest {
-    @get:Rule
+
     // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
-    val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
+    private val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
+
+    /**
+     * G5 (§6.12): per-method wall-clock bound around the compose rule. The
+     * compose test idling sync (and the rule's ActivityScenario launch) has no
+     * deadline of its own, so a never-idle composition on the CI emulator
+     * hangs the whole lane silently past the job timeout — with no evidence,
+     * because the failure-capture wrapper only sees command failures. This
+     * rule turns such a hang into a reported failure (with a stuck-thread
+     * stack dump) while the emulator is still alive. The waitUntil timeouts
+     * and every assert contract are unchanged.
+     */
+    @get:Rule
+    val composeTimeout: RuleChain = RuleChain
+        .outerRule(
+            Timeout.builder()
+                .withTimeout(5, java.util.concurrent.TimeUnit.MINUTES)
+                .withLookingForStuckThread(true)
+                .build(),
+        )
+        .around(composeRule)
 
     @Test
     fun samePackageProfilesExposeTextStateAndIndependentAccessibleRows() {

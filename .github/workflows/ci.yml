@@ -405,7 +405,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_layout_write == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -470,7 +470,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_db_schema == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -544,7 +544,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_backup_restore == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -606,7 +606,7 @@ jobs:
        needs.changes.outputs.surface_production_input == 'true' ||
        needs.changes.outputs.surface_layout_write == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -670,7 +670,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_organizer_ui == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -741,7 +741,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_layout_write == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -807,7 +807,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_organizer_ui == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -871,7 +871,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_organizer_ui == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -931,7 +931,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_organizer_ui == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -990,7 +990,7 @@ jobs:
       (needs.changes.outputs.full == 'true' ||
        needs.changes.outputs.surface_organizer_ui == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:

@@ -41,11 +41,47 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.Timeout
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class EditSurfaceUndoInstrumentationTest {
+
+    private companion object {
+        /**
+         * G5 (§6.12): transient-busy re-arm cap for
+         * [runUndoThroughExecutorAndAssertDisplay]. Unchanged from the §6.10
+         * contract (the typed-failure assert on the final attempt is the
+         * oracle; the cap only bounds the environmental retries).
+         */
+        const val BUSY_RETRY_LIMIT = 3
+
+        /**
+         * G5 (§6.12): wall-clock budget for the whole busy re-arm sequence.
+         * A busy result that survives the budget is reported as a failure
+         * (with the poll-timeout diagnostics shape) instead of retrying
+         * unbounded on a slow CI emulator.
+         */
+        const val BUSY_RETRY_BUDGET_MILLIS = 90_000L
+
+        /**
+         * G5 (§6.12): per-method wall-clock bound. Every visible wait loop in
+         * this class is deadline-bounded; this rule additionally bounds the
+         * waits outside test code (ActivityScenario launch, the executor's
+         * background recovery call) so a CI hang fails with a stuck-thread
+         * stack dump instead of silently burning the job timeout.
+         */
+        val METHOD_TIMEOUT = Timeout.builder()
+            .withTimeout(10, java.util.concurrent.TimeUnit.MINUTES)
+            .withLookingForStuckThread(true)
+            .build()
+    }
+
+    /** G5 (§6.12): a hang must surface as a reported failure, not a silent lane timeout. */
+    @get:Rule
+    val methodTimeout: Timeout = METHOD_TIMEOUT
 
     private lateinit var context: android.content.Context
     private lateinit var appState: LauncherAppState
@@ -465,7 +501,15 @@ class EditSurfaceUndoInstrumentationTest {
         val rawResult = java.util.concurrent.atomic.AtomicReference<RecoveryResult?>(null)
         var currentToken = token
         var busyRetries = 0
-        while (true) {
+        // G5 (§6.12): the busy re-arm loop is bounded by BOTH the retry cap
+        // and a wall-clock budget — no `while (true)`. A busy result that
+        // survives the budget exits the loop and is reported as a failure
+        // below with the same diagnostics shape as the poll-timeout oracle
+        // (raw result + model state); it must never retry unreported.
+        val busyLoopDeadline = System.currentTimeMillis() + BUSY_RETRY_BUDGET_MILLIS
+        var lastRaw: RecoveryResult? = null
+        var busyExhaustedBudget = true
+        while (System.currentTimeMillis() < busyLoopDeadline) {
             val displayedLatch = java.util.concurrent.CountDownLatch(1)
             rawResult.set(null)
             val executor = HomeEditUndoExecutor(
@@ -481,9 +525,13 @@ class EditSurfaceUndoInstrumentationTest {
             executor.start(currentToken)
             assertTrue("undo display did not fire", displayedLatch.await(30, java.util.concurrent.TimeUnit.SECONDS))
             val raw = rawResult.get()
+            lastRaw = raw
             val transientBusy = undoTokenFactory != null &&
                 (raw is RecoveryResult.WriterBusy || raw is RecoveryResult.ConcurrentRun)
-            if (!transientBusy) break
+            if (!transientBusy) {
+                busyExhaustedBudget = false
+                break
+            }
             // G5 (§6.10): a busy surface here is the environmental contention
             // above, not the typed failure this oracle pins (the busy display is
             // pinned by the dedicated lease-held oracles, which do not pass a
@@ -491,10 +539,20 @@ class EditSurfaceUndoInstrumentationTest {
             // undo tap — and require the final display to be the typed failure;
             // the assert contract is unchanged.
             busyRetries++
-            check(busyRetries <= 3) { "undo kept returning busy after the model settled: $raw" }
+            check(busyRetries <= BUSY_RETRY_LIMIT) {
+                "undo kept returning busy after the model settled: $raw"
+            }
             awaitModelSettled()
             Thread.sleep(1_000)
             currentToken = undoTokenFactory.invoke()
+        }
+        check(!busyExhaustedBudget) {
+            "undo stayed busy past the re-arm budget " +
+                "(busyRetries=$busyRetries, last=$lastRaw, modelLoaded=" +
+                appState.model.isModelLoaded() +
+                ", readinessGate=" +
+                app.lawnchair.LawnchairApp.instance.layoutApplicationModule.readinessGate.state +
+                ")"
         }
         // The typed failure display is pinned on the final attempt (a busy
         // display with a token factory only triggers the re-arm above; the
