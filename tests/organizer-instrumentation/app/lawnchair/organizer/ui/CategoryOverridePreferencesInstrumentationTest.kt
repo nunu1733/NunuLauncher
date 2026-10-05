@@ -422,12 +422,15 @@ class CategoryOverridePreferencesInstrumentationTest {
      * like any other unreachable-node contract violation).
      */
     private fun scrollToNodeBounded(matcher: SemanticsMatcher) {
-        val deadline = System.currentTimeMillis() + 10_000L
-        while (System.currentTimeMillis() < deadline) {
-            composeRule.waitForIdle()
-            if (composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()) return
-            composeRule.onNode(hasScrollAction()).performTouchInput {
-                swipeUp()
+        // performScrollToNode remains the authoritative scroll mechanism (a raw
+        // swipe can land on a nested scrollable); unreachability is retried
+        // until the deadline instead of hanging on a single idle sync.
+        composeRule.waitUntil(10_000) {
+            try {
+                composeRule.onNode(hasScrollAction()).performScrollToNode(matcher)
+                composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
+            } catch (t: Throwable) {
+                false
             }
         }
         composeRule.onNode(matcher).assertExists("not reachable after bounded scroll")

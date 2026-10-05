@@ -662,3 +662,10 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 - 修復: scrollを明示的なboundedループ（waitUntil+page swipe、10秒上限、失敗時はunreachable-node契約違反としてassert）へ置換。到達可能性契約は不変。
 - 同一commitでRuleChain/Timeoutラップ（`createComposeRule` のtest-thread契約を壊す）をrevert済み（`47a76a33e4`）。
 - onboarding laneの `launcher-resume-timeout`（frontmost=NexusLauncher）はCI環境flakeとして1回記録（retryでgreen）。manual-orgの `IndexOutOfBoundsException` は1回のみでretry green（compose list差分、監視継続）。
+
+
+## 6.14. bounded scrollの最終形（2026-10-05、run 37305919600）
+
+- §6.13のpage-swipe方式は200% fontScaleでcancel行に届かず「not reachable after bounded scroll」（raw swipeはnested scrollableに当たらない場合がある）。
+- 最終形: `performScrollToNode`（authoritative scroll機構）を10秒bounded `waitUntil` 内でretryし、到達できなければ既存のunreachable-node契約違反として失敗。失敗時も20分hangではなく即時に証跡付きで落ちる。
+- 残る2 test（`targetUnavailableReturnsToFreshDestinationAndRestoresFocus` / `editorIsReadableAtTwoHundredPercentFontScale`）は `InterruptedException in Espresso.onIdle` — 他test methodのThread.interrupt伝播（ComposeTestRule環境）であり、method順序依存のflake。retryでgreen確認済み（run 37291814239では同class green）。監視継続。
