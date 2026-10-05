@@ -429,15 +429,13 @@ abstract class NovaRestoreCaptureTestBase {
             originalGrid.dbFile,
             GridType.GRID_TYPE_NON_ONE_GRID,
         ).writeToPrefs(context, true)
-        // Issue #532 rebase: the fork's applyGridInfo(context, DBGridInfo) is
-        // not part of the anchor IDP. Mirror the anchor setCurrentGrid sequence
-        // synchronously (grid info -> preset grid name -> grid prefs -> IDP
-        // re-init) so the rebind completes before the restore steps continue.
+        // Issue #532 rebase: bind the class-original grid through the fork's exact
+        // DBGridInfo binding (Issue #168 applyGridInfo bridge, re-ported on the anchor
+        // IDP). The former setCurrentGrid(ceilingName) + onConfigChanged adaptation
+        // replaced a grid that no enabled preset declares with the ceiling preset's
+        // dimensions, splitting the IDP dbFile binding from the grid-state files.
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val overrides = DeviceProfileOverrides.INSTANCE.get(context)
-            val idp = InvariantDeviceProfile.INSTANCE.get(context)
-            overrides.setCurrentGrid(overrides.getGridName(originalGrid))
-            idp.onConfigChanged(context)
+            InvariantDeviceProfile.INSTANCE.get(context).applyGridInfo(context, originalGrid)
         }
     }
 

@@ -642,6 +642,24 @@ public class InvariantDeviceProfile {
         }
     }
 
+    // Issue #532 E2/D3 (fork Issue #168 bridge re-ported): apply a known grid (e.g. a
+    // converted Nova backup import, or a restored original grid) to the live singleton
+    // synchronously with the EXACT DBGridInfo binding. Unlike onConfigChanged this
+    // binds numColumns/numRows/hotseat and the dbFile from the given grid info instead
+    // of re-reading grid preferences, so a grid that no enabled preset declares still
+    // binds exactly (the ceiling-matched preset name is only the closestProfile label);
+    // and it notifies no IDP listeners, so a post-restore binding cannot be reverted by
+    // a stale pref read or trigger a mid-restore model reload. Callers hold the
+    // restore-family lease and run on the main thread.
+    public void applyGridInfo(Context context, DeviceProfileOverrides.DBGridInfo dbGridInfo) {
+        String gridName = DeviceProfileOverrides.INSTANCE.get(context).getGridName(dbGridInfo);
+        String oldDbFile = dbFile;
+        initGrid(context, gridName, dbGridInfo);
+        FileLog.d(TAG, "applyGridInfo: dbFile " + oldDbFile + " -> " + dbFile
+                + " (grid " + dbGridInfo.getNumRows() + "x" + dbGridInfo.getNumColumns()
+                + " h" + dbGridInfo.getNumHotseatColumns() + ")");
+    }
+
     private static boolean firstGridFilter(GridOption gridOption, int deviceType,
             boolean allowDisabledGrid, boolean isFixedLandscapeMode) {
         return (gridOption.isEnabled(deviceType) || allowDisabledGrid)

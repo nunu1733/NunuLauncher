@@ -50,15 +50,12 @@ class NovaRestoreGridApplicationTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
     }
 
-    // Issue #532 rebase: the fork's IDP.applyGridInfo(context, DBGridInfo) is
-    // not part of the anchor IDP. Mirror the anchor setCurrentGrid sequence
-    // synchronously (grid info -> preset grid name -> grid prefs -> IDP
-    // re-init); the anchor posts the re-init to the main executor, this helper
-    // runs it inline so the pre-rebase deterministic bind contract holds.
+    // Issue #532 E2: the fork's IDP.applyGridInfo(context, DBGridInfo) bridge is
+    // re-ported on the anchor IDP, so the oracle drives the production entry directly
+    // again (the interim setCurrentGrid + onConfigChanged adaptation could not express
+    // the exact DBGridInfo binding on preset-absent devices).
     private fun applyGridInfo(idp: InvariantDeviceProfile, gridInfo: DeviceProfileOverrides.DBGridInfo) {
-        val overrides = DeviceProfileOverrides.INSTANCE.get(context())
-        overrides.setCurrentGrid(overrides.getGridName(gridInfo))
-        idp.onConfigChanged(context())
+        idp.applyGridInfo(context(), gridInfo)
     }
 
     private fun databasesDir(): File {

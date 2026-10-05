@@ -403,10 +403,11 @@ class NovaBackupConverter(
     // the last grid-state mutation before the staged DB is bound.
     private suspend fun applyConvertedGrid(gridInfo: DeviceProfileOverrides.DBGridInfo) {
         withContext(Dispatchers.Main) {
-            // Issue #532 S3a: anchor IDP has no applyGridInfo; bind the converted dbFile
-            // directly so the restore window reads the converted grid (the same
-            // synchronous binding the fork's applyGridInfo performed).
-            InvariantDeviceProfile.INSTANCE.get(context).dbFile = gridInfo.dbFile
+            // Issue #532 E2 (fork Issue #168 bridge re-ported): bind the converted grid
+            // through the exact DBGridInfo binding — dbFile, rows, columns and hotseat
+            // all come from the converter's grid info, even when no enabled preset
+            // declares that grid.
+            InvariantDeviceProfile.INSTANCE.get(context).applyGridInfo(context, gridInfo)
         }
     }
 
