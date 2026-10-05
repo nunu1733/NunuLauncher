@@ -638,7 +638,21 @@ public class ModelWriter {
         }
 
         public final void executeOnModelThread() {
-            MODEL_EXECUTOR.execute(this);
+            // Issue #532 G5 (rebase of Issue #14 contract): gate through the
+            // coordinator; tokenless runnables defer when an organizer or
+            // restore-family lease is active so they never block the exact
+            // reload task, and direct-edit admission (the ADR-0013 stage-2
+            // validator) does not observe a pre-lease model state. Without
+            // this gate a deferred-stale move validated before the lease
+            // released and wrote on top of the competing writer (reproduced
+            // by DirectEditModelWriterTest.deferredMoveRejectsStaleTarget
+            // WithoutWrite and directEditMoveDefersUntilOrganizerLeaseReleases).
+            LayoutWriteCoordinator coord = LayoutWriteCoordinator.getInstance();
+            coord.runOrDefer(
+                    LayoutWriteCoordinator.OwnerKind.MODEL_WRITER,
+                    /* token= */ 0L,
+                    /* exactOrganizerToken= */ false,
+                    () -> MODEL_EXECUTOR.execute(this));
         }
 
         public abstract void runImpl();
