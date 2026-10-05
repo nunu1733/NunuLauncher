@@ -6,6 +6,7 @@ import android.os.Process
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.preferences2.firstCached
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
@@ -71,6 +72,15 @@ class LoaderCursorOverlapAcceptanceContractTest {
             // drift check (PR #186 review): a premise failure is an assertion,
             // not an assumption.
             prefs.enableSmartspace.setBlocking(true)
+            // G5 (§6.10): the loader's decision reads the preference through the
+            // anchor's in-memory cache (`firstCached`), which the DataStore
+            // collection refreshes asynchronously — on the CI emulator the
+            // collection loses the race against the immediately following loader
+            // read and the loader still sees the previous value. Settle the cache
+            // before deriving the fixture so the policy value the loader observes
+            // is the policy value this test pinned (same premise-assertion style
+            // as the overlap check below).
+            awaitCachedValue(expected = true) { prefs.enableSmartspace.firstCached(prefs) }
             val qsbColumns = idp.numSearchContainerColumns.coerceAtMost(idp.numColumns)
             assertTrue("QSB reservation must be positive", qsbColumns > 0)
             val reservation = ReservedWorkspaceRegion(
@@ -89,6 +99,7 @@ class LoaderCursorOverlapAcceptanceContractTest {
 
             for (tolerance in listOf(false, true)) {
                 prefs.allowWidgetOverlap.setBlocking(tolerance)
+                awaitCachedValue(expected = tolerance) { prefs.allowWidgetOverlap.firstCached(prefs) }
                 val loaderAccepts = loaderDecision(app, overlapCellX)
                 val organizerAccepts = !ReservationOverlapAcceptance.overlaps(
                     PageId("0"),
@@ -112,6 +123,22 @@ class LoaderCursorOverlapAcceptanceContractTest {
             prefs.allowWidgetOverlap.setBlocking(originalTolerance)
             prefs.enableSmartspace.setBlocking(originalSmartspace)
         }
+    }
+
+    /**
+     * G5 (§6.10): waits until the loader-visible in-memory preference cache
+     * (`PreferenceManager2.getCachedPreferences`, read by `firstCached`) reflects
+     * the pinned policy value. The cache is refreshed by the DataStore collection
+     * in [PreferenceManager2]'s init, asynchronously — asserting on the settled
+     * cache keeps the loader decision's premise (policy = what this test pinned)
+     * an assertion instead of a race.
+     */
+    private fun awaitCachedValue(expected: Boolean, readCached: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 10_000
+        while (readCached() != expected && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50)
+        }
+        assertEquals("cached policy must settle on the pinned value", expected, readCached())
     }
 
     /** Runs one real `LoaderCursor.checkItemPlacement` for the QSB-row overlap shape. */
