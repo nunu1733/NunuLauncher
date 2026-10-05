@@ -570,6 +570,47 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 3. **fresh app dataでのreset path**: `attemptMigrateDb` reset（EMPTY_DATABASE_CREATED + default workspace load）はfresh app dataでの初回loadごとに発生する（DB_FILE pref未書込みのため `isCompatible` がfalse → target==current → reset）。fresh install後の実質状態はdefault workspaceなので実害はないが、`Flags.gridMigrationRefactor()` 有効時のこの経路とfork retain契約（`tryMigrateDB`）の二重存在の文書明確化は§6.8.3-5のままowner review待ち。本§のtest修正はこの動作に依存しない形（reset済みであることを確認してからseeding）にした。
 
 
+### 6.10 G5 CI x86_64 residual failuresの修復（2026-10-05）
+
+- **対象CI run**: `37258841252`（workflow_dispatch、PR #535）。多数lane green。失敗は3 class: shared-writer `EditSurfaceUndoInstrumentationTest`（8/18）、reservation-recovery `LoaderCursorOverlapAcceptanceContractTest`（1/1、fail-fastで同lane第6class）、restore-capture `NovaConverterBoundarySmartspaceOffTest`（tearDown内、fail-fastで同lane最終class）。REBASE_HEAD=`7f46ab6466075ebf5a39f954cf3376d2968e6353` は不変。検証はローカルG4環境（API 36 arm64 `issue108_api36_pixel_9_pro_fold`、per-class runner）。x86_64最終確認は本headでの次回dispatch。
+- **調査手法の記録**: CI artifacts（per-test logcat / XML）だけでは確定しなかったため、ローカルarm64で失敗を再現した上で、(a) poll timeout時の診断（module束縛の同一性・gate状態・直接capture）をtest error messageに一時組み込み、(b) `kill -3` thread dumpでスレッド状態を観測して根因を確定した。診断のうち恒久化に値するもの（capture例外の #172 observer接続、poll timeout時のtypedReason/gate/直接capture通知）はtestに残した。
+
+#### 6.10.1 失敗classと根因
+
+| lane | 失敗class | 根因（確定） | 分類 |
+|---|---|---|---|
+| shared-writer | `EditSurfaceUndoInstrumentationTest` 8/18（6件「no selectable item on the diagram」+ 2件undo表示がbusy） | **(1) production**: S2cの `LauncherAppState` ブリッジが、unscoped Daggerバインディングの **getInstance()呼び出し毎の新wrapper構築のたびに** `onLauncherAppStateCreated` を発火し、`LawnchairApp.layoutApplicationModule` を **gate IDLE・未reconcileの新module** で都度置換していた。edit-surfaceのprocess単一access（`ManualOrganizationModule.editSurfaceApplication`）は初回束縛時にgate IDLEのmoduleを掴み、`inspectCapture` が恒久fail-closed（null → capture_unavailable → 「no selectable item」）、recoverが恒久ConcurrentRun/WriterBusy → busy表示。診断で `sameModule=false, gate=IDLE, inspect=null(0ms)` を直接観測。 | production移植漏れ（S2c橋の「moduleはprocess単一instance」契約の復元。`LayoutApplicationModule` 自身の契約文言およびfork v15のonPostInit＝process1回に整合） |
+| | | **(2) test**: pollループがinstrumentation thread（=main）で `Thread.sleep` し、activityの `runOnUiThread`（capture結果のdiagram反映）がpoll中に一度も実行されない。初回captureが(1)やstartup reconciliationとのmutex競合で失敗するとreopenがなく復旧不能。またundoのsingle-shot tryAcquire（RecoveryProtocol）がlauncher起動load・startup reconciliation・前回undoの相関reload待ちと競合しbusy表示になる。 | test堅牢化（reopenはproductionのreloadCapture seam、pollはmainを塞がない形。typed display・raw reason・zero-write assertは不変） |
+| reservation-recovery | `LoaderCursorOverlapAcceptanceContractTest.loaderAcceptanceMatchesOrganizerPredicateForQsbRowOverlap`（expected true, was false） | loaderの判定（`LoaderCursor.checkItemPlacement` のoverlap許容）は `firstCached`（`PreferenceManager2` のin-memory cache）を読む。cacheはDataStore収集で **非同期** 更新であり、`setBlocking(true)` 直後のloader読取がCIエミュレータ上で旧値を観測する（1巡目 tolerance=false はcache元値と一致するため恒定PASS、2巡目 true のみ競合）。grid/display依存ではない（fixture cellはlive QSB geometryから導出済み）。 | test堅牢化（cache settle待ち。前提「policy=loaderが観測する値」をassert化。契約本体のassert不変） |
+| restore-capture | `NovaConverterBoundarySmartspaceOffTest` tearDown `SQLITE_READONLY_DBMOVED` | **D3残置**: active helperのdbFile束縛（D3修正）は「生成時のlive IDP」のみで、生成後のIDP切替に追従しない。converter restoreが `applyConvertedGrid` でIDP dbFileを切替（CI pixel_7_pro既定 `launcher_5_4_4.db` → fixture `launcher_6_5_5.db`）した後、同一load内の `cleanUpDatabases`（IDP権威）がprocess helperの開いた旧fileを削除（logcatで `Deleting unmatched launcher database file: launcher_5_4_4.db (active: launcher_6_5_5.db)` を直接観測）→ tearDownの書込み（reset path `createEmptyDB` / `restoreFavorites`）でDBMOVED。ローカルfold AVDも同一grid遷移で再現条件一致（pre-fixローカルはhelper再open timingの競合で偶発green — CIは毒側に落ちた。再束縛は競合窗口そのものを除去する）。 | production移植漏れ（D3単一権威の完全化: 束縛のlive追従） |
+
+#### 6.10.2 修復（4 commit）
+
+1. **shared-writer cluster**: `LawnchairApp.onLauncherAppStateCreated` を冪等化（最初の構築でのみmoduleを生成し、以後のwrapper構築では維持。`activityHandler` 登録も1回化）+ `LayoutApplicationModule.inspectCapture` のcapture例外をIssue #172の `captureFailureObserver` へ接続（debug buildでcapture失敗がorganizer tagに現れる。composer capture経路と同契約）+ `EditSurfaceUndoInstrumentationTest` 堅牢化: (a) confirm flow前にproduction readiness gateのREADY待ち（FAILEDならreconcile再試行）、(b) pollをバックグラウンドスレッドへ移動（mainを塞がず、activityのcapture反映が走る）+ diagram null時の `recaptureForTest()`（production reopen seam）、(c) seedingをreload **generation** 待ちへ（`bindCompleteModel` latch。`isModelLoaded()` はreload中もtrueを返すため）、(d) undo前にmodel settle待ち、transient busy（WriterBusy/ConcurrentRun）時は同一session entryの再装填（2回tap相当）で再試行し最終displayのみassert、(e) 最初のundoのrecovery返却をobserverで待ってから2回目のundo、(f) shared store実態に合わせたraw reason期待値（MISSING→ALREADY_RESTORED）、(g) launcher instance依存を自前launchへ。
+2. **reservation-recovery cluster**: `LoaderCursorOverlapAcceptanceContractTest` にcache settle待ち（`firstCached` がpinned値に収束するまでpoll、10s上限でassert）。
+3. **restore-capture cluster**: `ModelDbController.migrateGridIfNeeded`（loaderのgrid reconciliation入口、writer/restore leaseの後ろにdeferされる）でactive helperをlive `mIdp.dbFile` へ再束縛（close→createDbIfNotExists再open）。SandboxContextと、overrideされた1引数seamで意図的にfixtureを束縛するgrid-migration test double（`mActiveHelperTracksLiveIdpFile` flagで識別）は対象外。
+4. **docs**: 本節。
+
+#### 6.10.3 再実行成績（ローカルarm64、per-class runner）
+
+| class | 修復前 | 修復後 |
+|---|---|---|
+| `EditSurfaceUndoInstrumentationTest` | 10/18（CI 10/18と同一fail集合） | **18/18** |
+| `LoaderCursorOverlapAcceptanceContractTest` | 0/1（CI 0/1） | **1/1** |
+| `NovaConverterBoundarySmartspaceOffTest` | 0/1（CI 0/1） | **1/1**（`Rebinding the active helper to the live IDP dbFile: launcher_6_5_5.db -> launcher_5_4_4.db` をlogcatで確認。同runで `cleanUpDatabases` は閉じた後のfileのみ削除） |
+| 回帰: `GridMigrationSuccessTest` / `GridMigrationFailureTest` | 3/3 / 30/30 | 3/3 / 30/30（初回実装ではFailureTest 1件が再束縛と干渉 → override seamのfixture bindingを対象外とするguard追加で解消。guard無しでの当該1件FAILとguard後30/30を両方確認） |
+| 回帰: `ManualOrganizationProductionE2EInstrumentationTest` / `SanitizerInstrumentationTest` / `RestoreLeaseSerializationTest` / `EditSurfaceApplyInstrumentationTest` | 6/6 / 2/2 / 11/11 / 3/3 | 6/6 / 2/2 / 11/11 / 3/3 |
+| `spotlessCheck` / `assemble` (app+androidTest) | green | green |
+
+#### 6.10.4 残置リスク（G5報告）
+
+1. **fail-fast per-classの未走査範囲（引継ぎ）**: reservation-recoveryは第6classで停止したため第7class以降（Issue265ManualEditRecovery等5 class）、shared-writerは第16classで停止したため第17〜18class（`HomeEditUndoAvailabilityInstrumentationTest` / `AppDestinationNoticeTest`）がanchor rebase後のCI未実行。次回dispatchで初走査。restore-captureは最終classまで到達済み。
+2. **manual-org laneのcomma filter**: §6.9.3-2のまま（owner判断待ち）。
+3. **`LauncherAppState` のunscoped binding自体はanchor構造どおり（Decision 9）**: getInstance()毎に新wrapperが生成される頻度は本節では変えていない。`onLauncherAppStateCreated` の冪等化のみで、Dagger構造・S2c橋の形状は不変。wrapper頻度自体の見直しはADR-0018範囲のowner判断事項。
+4. **`inspectCapture` の #172 observer接続**: 本節の診断目的に加え、#172の「capture失敗は単一organizer tagに出る」契約のinspect seam適用漏れ補完でもある（debug buildのみ出力）。
+5. **grid migration test doubleの再束縛除外**: `mActiveHelperTracksLiveIdpFile` flagは「overrideされた1引数seamのfixture binding」を再束縛から除外するための識別である。productionでは常にdefault seam経由なので挙動は変わらない。
+
+
 ## 7. G4完了（再実行）とS4準備（2026-10-04）
 
 - **D1〜D5・E1・E2 すべて解消**、再実行は **全green**: GridMigrationFailure 30/30、Lease 11/11、RealZipRestoreE2E 2/2、SuccessPath 1/1、NovaGrid 4/4、capture 5/5、converter boundary 3/3、cross-process StageA/StageB OK、GridMigrationSuccess 3/3、Nested 5/5、WriterReentry 5/5、DeckRetirement 2/2、PrefsLegacy 2/2、PrefsCommit 1/1。
