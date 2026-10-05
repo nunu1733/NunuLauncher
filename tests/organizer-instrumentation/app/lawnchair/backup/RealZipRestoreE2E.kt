@@ -175,7 +175,12 @@ class RealZipRestoreE2E : NovaRestoreCaptureTestBase() {
             put(Favorites.PROFILE_ID, 0L)
             put(Favorites.ORGANIZER_LOCK_STATE, lockState)
         }
-        assertTrue(db.insertOrThrow(Favorites.TABLE_NAME, null, values) >= 0)
+        // G4 test-infra repair (§6.3 family): insertOrThrow returns the inserted rowid,
+        // which for this fixture is the explicitly requested _id. Asserting the exact
+        // rowid pins that the requested row (including the negative-id old-epoch
+        // marker) was actually inserted; a >= 0 assert is unsatisfiable for negative
+        // ids and made every negative-id seeding fail.
+        assertEquals(id, db.insertOrThrow(Favorites.TABLE_NAME, null, values))
     }
 
     /** Seeds stale recovery artifacts so the post-restore classification is meaningful. */
