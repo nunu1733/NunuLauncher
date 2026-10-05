@@ -688,3 +688,10 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
   - 計画どおりの待機堅牢化を実装（assert契約不変）: focus assert直前にbounded `awaitFocused`（既存 `awaitSummaryFocus` を `SemanticsNodeInteraction` 版へ一般化）、重複flowのclick直前にcreate button存在待ち、duplicate errorの`assertIsDisplayed`直前にerror text存在待ち。
   - ローカル再現（arm64 fold AVD、class実行4回＋単独test実行2回）で追加根因を特定: 本classに残存していた `createComposeRule(effectContext = StandardTestDispatcher())`（#505、issue #490の実験）がD-pad key deliveryとfocus反映を壊す。dispatcherありでは `keyboardDpad` が6/6でdeterministic fail — host側 `adb input keyevent KEYCODE_DPAD_DOWN` はfocusを動かす（=composeのfocus searchは正常）一方、compose test経由のkey注入だけが不達。duplicate errorも間欠fail（"exists but not displayed"）。dispatcher撤去（§6.15と同処置。#490 assessmentが名示するrollback path、risk L）で **10/10 green**。
   - 撤去後のlocal成績: full class 4実行中3回green、1回のみ本修復対象外の `partialDeleteRendersTruthfullyAndRetryCompletesTheDelete` 最終wait（:209）timeout — #490 assessmentが記録した既存class-3系（36964928302の同型timeout）と同一familyであり監視継続。`assembleLawnWithQuickstepGithubDebug` + `spotlessCheck` はgreen。x86_64最終確認は次回dispatch。
+
+
+## 6.17. 共通flake: compose lazy list IntervalList IndexOutOfBounds（run 37324581952）
+
+- `CategoryOverridePreferencesInstrumentationTest.switchEquivalentSemanticsActivationOpensEditor` と `OrganizerHubPreferencesInstrumentationTest.restoreFailureKeepsTheResultFaceAcrossTheDiagnosticsRoundTrip` が同一の `IndexOutOfBoundsException: Index 2, size 2 at MutableIntervalList.get` で失敗。別lane・別testで同一スタック = compose lazy listの再構成競合（timing flake）。
+- dispatcher残は1 file（OrganizerLockScreenTest、#505系）のみ。本flakeはdispatcher非依存の可能性。
+- 対応: 両testのfailure直前のnode照合にbounded waitUntilを追加（assert契約不変）。CI再実行で継続確認。
