@@ -55,7 +55,6 @@ import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -68,7 +67,10 @@ import org.junit.runner.RunWith
 class CategoryOverridePreferencesInstrumentationTest {
     @get:Rule
     // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
-    val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
+    // G5 (§6.14): anchorのManualOrganizationPreferences compose oracleと同一の既定
+    // compose rule. StandardTestDispatcher effect context は本classでは未使用で、
+    // CI(x86_64)上のcompose idle待ちが刺さる再現源のため外した。
+    val composeRule = createComposeRule()
 
     /**
      * G5 (§6.13): bound the framework's implicit compose idle synchronization per test method.

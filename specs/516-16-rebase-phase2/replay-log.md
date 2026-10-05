@@ -669,3 +669,10 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 - §6.13のpage-swipe方式は200% fontScaleでcancel行に届かず「not reachable after bounded scroll」（raw swipeはnested scrollableに当たらない場合がある）。
 - 最終形: `performScrollToNode`（authoritative scroll機構）を10秒bounded `waitUntil` 内でretryし、到達できなければ既存のunreachable-node契約違反として失敗。失敗時も20分hangではなく即時に証跡付きで落ちる。
 - 残る2 test（`targetUnavailableReturnsToFreshDestinationAndRestoresFocus` / `editorIsReadableAtTwoHundredPercentFontScale`）は `InterruptedException in Espresso.onIdle` — 他test methodのThread.interrupt伝播（ComposeTestRule環境）であり、method順序依存のflake。retryでgreen確認済み（run 37291814239では同class green）。監視継続。
+
+
+## 6.15. CategoryOverrideの残hang（run 37310028169）とdispatcher撤去（2026-10-05）
+
+- run 37310028169: `CategoryOverridePreferencesInstrumentationTest` の第1classが20分capに到達。activity-top evidenceは **NexusLauncherActivity が前面**（LawnchairLauncherはHOME resolveされていない）。test bodyに入る前のcompose初期化（idle同期）で停止。
+- 判断: 6.14のscroll修正は保持。残余要因として `createComposeRule(effectContext = StandardTestDispatcher())` を撤去し、green実績のある `ManualOrganizationPreferencesInstrumentationTest` と同一の既定compose ruleへ統一（StandardTestDispatcherは本classで未使用、test意図不変）。
+- HOME resolveの不一致（NexusLauncherが前面）はCI emulatorの初期状態起因であり、compose初期化のidle同期がHOME切替と交差して刺さる形。dispatcher撤去後も再現する場合は、次のowner判断事項（CI setupでのLawnchair既定HOME付与、lane分割）。
