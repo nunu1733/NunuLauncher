@@ -676,3 +676,10 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 - run 37310028169: `CategoryOverridePreferencesInstrumentationTest` の第1classが20分capに到達。activity-top evidenceは **NexusLauncherActivity が前面**（LawnchairLauncherはHOME resolveされていない）。test bodyに入る前のcompose初期化（idle同期）で停止。
 - 判断: 6.14のscroll修正は保持。残余要因として `createComposeRule(effectContext = StandardTestDispatcher())` を撤去し、green実績のある `ManualOrganizationPreferencesInstrumentationTest` と同一の既定compose ruleへ統一（StandardTestDispatcherは本classで未使用、test意図不変）。
 - HOME resolveの不一致（NexusLauncherが前面）はCI emulatorの初期状態起因であり、compose初期化のidle同期がHOME切替と交差して刺さる形。dispatcher撤去後も再現する場合は、次のowner判断事項（CI setupでのLawnchair既定HOME付与、lane分割）。
+
+
+## 6.16. dispatcher撤去の効果と残flake（run 37314607807）
+
+- CategoryOverride本体は **green**（10 test実行、6.13/6.15の修復が有効）。
+- 残りは `CustomCategoryPreferencesInstrumentationTest` 2件のcompose focus/timing flake（`Focused=false`、flow順序のNode不在）。assert契約は不変のまま待機堅牢化（waitUntil(focused)）を行う。per-class cap内で2 classまで進行。
+- 修復はPR #535 reviewと並行で実施（CI flakeの重みは下がった）。
