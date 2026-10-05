@@ -541,3 +541,16 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 3. **E1の残置判断**: fixture-based旧device既定（10）により標準emulatorで成立した。二次userをlane側で作る方式は「非default main-user serial」をより直接に再現するが、CI権限・lane costのowner判断事項として残す（現行oracleはassert契約を満たす）。
 4. **§6.7のowner追認事項は変わりなし**（`LauncherPrefsCommitTest` boolean seam追認 / D5のADR-0018範囲明確化 / D0 bridgeのreview確認）。D5はowner決定どおりanchor構造維持+fork契約移植で実装済みであり、§6.7-2のADR明確化は「activity base classもanchor正とする」方向の追認作業として残る。
 5. **G5引継ぎ**: §6.4-1〜3に加え、本§の修復7 commitを含むheadでのCI実行（x86_64 pixel_7_pro）と、`Flags.gridMigrationRefactor()` 有効時の `attemptMigrateDb` reset pathがfork retain契約と二重に存在することの文書明確化（本§6.8.1 D1行）をreview packetへ含めること。
+
+
+## 7. G4完了（再実行）とS4準備（2026-10-04）
+
+- **D1〜D5・E1・E2 すべて解消**、再実行は **全green**: GridMigrationFailure 30/30、Lease 11/11、RealZipRestoreE2E 2/2、SuccessPath 1/1、NovaGrid 4/4、capture 5/5、converter boundary 3/3、cross-process StageA/StageB OK、GridMigrationSuccess 3/3、Nested 5/5、WriterReentry 5/5、DeckRetirement 2/2、PrefsLegacy 2/2、PrefsCommit 1/1。
+- **D5修復**: LawnchairLauncher を ViewModelStoreOwner + HasDefaultViewModelProviderFactory にし、fork契約（viewModels()）をanchor activity構造へ移植（ADR-0018 rev7 ①）。boot smoke OK。
+- **D1修復**: tryMigrateDB をfork契約「Migration failed: retaining launcher database」（Issue #59/spec 118）へ復元。anchor reset pathは attemptMigrateDb に限定。
+- **D2/D3**: helper構築をprotected seam経由へ復元、active helper束縛を mIdp.dbFile 単一権威へ復元（SQLITE_READONLY_DBMOVED 解消）。
+- **D4**: LawnchairApp supertype復元（LauncherApplication）。safe-mode fallback component回避。
+- **CI filter per-class化**: tools/ci/run-instrumentation-per-class.sh 新設、5 laneを同一class集合のままper-classへ。新規恒久laneなし。
+- **文書同期**: ADR-0018 revision 7（activity base class = anchor正、#59 readback後継）、spec 452 revision note（DEFAULT_ORDER 10項目）、spec 59 revision note。
+- 最終head: `cf76631499a9ac161742a722c2c7aacb7ad33db2`（REBASE_HEAD=7f46ab6466075ebf5a39f954cf3376d2968e6353）
+- G1再確認: assemble + spotlessCheck **green**（本head）。G2: organizer unit gate 1935 tests green。G3: ownership inventory 570 path全分類PASS。
