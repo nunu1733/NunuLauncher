@@ -31,6 +31,7 @@ import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.model.data.LauncherAppWidgetInfo
+import com.android.launcher3.model.data.PredictedContainerInfo
 import com.android.launcher3.model.data.WorkspaceItemInfo
 import com.android.launcher3.pm.UserCache
 
@@ -126,10 +127,22 @@ internal object ModelProjectionCodec {
         // containers through extraItems. Folders (collections) are FolderInfo
         // entries reachable from itemsIdMap; their children come from
         // FolderInfo.getContents().
+        //
+        // Issue #532 G5: anchor dynamic containers are excluded here. The
+        // anchor loader merges QuickstepModelDelegate.loadAndAddExtraModelItems
+        // into itemsIdMap on every load; those PredictedContainerInfo entries
+        // are never persisted (onAddToDatabase throws) and their itemType stays
+        // the ItemInfo default (0 = ITEM_TYPE_APPLICATION), so projecting them
+        // both crashed the legacy launch-identity cast and — without it — would
+        // never equal the DB leg, which persists no such rows. Exclusion mirrors
+        // LayoutState.projectedToModelVerifiable, which drops non-persistent
+        // refs so both verification legs compare like with like (Issue #152).
         val allInfos = ArrayList<ItemInfo>()
         synchronized(bgDataModel) {
-            bgDataModel.itemsIdMap.forEach { allInfos += it }
-            bgDataModel.extraItems.forEach { allInfos += it.items }
+            bgDataModel.itemsIdMap.forEach { if (it !is PredictedContainerInfo) allInfos += it }
+            bgDataModel.extraItems.forEach { fixedContainer ->
+                fixedContainer.items.forEach { if (it !is PredictedContainerInfo) allInfos += it }
+            }
         }
         val kindById = HashMap<Long, Int>()
         allInfos.forEach { kindById[it.id.toLong()] = it.itemType }
