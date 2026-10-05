@@ -315,12 +315,23 @@ constructor(
                 // Issue #152 (rebase Phase 2 port): the snapshot is captured inside the
                 // exact #150 terminal boundary via the binder completion hook, gated by
                 // the token identity check in completeOrganizerReload.
+                // Review (PR #535 round 2): the snapshot capture runs a full
+                // workspace projection — only an exact organizer-requested
+                // generation needs it, and the capture must stay on
+                // MODEL_EXECUTOR (the binder completion hook always runs
+                // there). Tokenless bind/restore generations skip the capture
+                // entirely and complete their tokens without a snapshot.
+                val needsSnapshot = organizerToken != null
                 val launcherBinder = binderFactory.createBinder(
                     callbacksList,
                     Runnable {
-                        val snapshot = try {
-                            ModelProjectionCodec.captureModelSnapshot(mBgDataModel, context)
-                        } catch (t: Throwable) {
+                        val snapshot = if (needsSnapshot) {
+                            try {
+                                ModelProjectionCodec.captureModelSnapshot(mBgDataModel, context)
+                            } catch (t: Throwable) {
+                                null
+                            }
+                        } else {
                             null
                         }
                         completeRestoreReload(restoreToken)

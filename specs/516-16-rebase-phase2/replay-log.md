@@ -714,3 +714,9 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 
 - round 14: CategoryOverride 8/8 green、OrganizerLockScreenTest 通過（6.18のdispatcher撤去が有効）。残失敗は `CustomCategoryPreferencesInstrumentationTest.createFlow...` の `ComposeTimeoutException 5000ms`（§6.10で記録済みのclass-3系wait-timeout family、rerun-green既知）。
 - 対処: 本classのbounded `waitUntil` 待機上限を5秒→15秒へ（x86_64 CI のemulator timing差を吸収。assert契約・検証対象は不変で、上限引き上げのみ）。
+
+
+## 6.20. PR #535 review round 2の指摘対応（2026-10-06、review comment 5999309905）
+
+- **P2（MODEL_EXECUTOR confinement）**: `startLoader` のbinder completion hookがtokenなし（通常bind/restore-only）でも `captureModelSnapshot` を無条件実行していた。organizer tokenが存在する場合のみcaptureするよう gate（`needsSnapshot = organizerToken != null`）。tokenless世代はsnapshot無しでtoken完了。
+- **P1（PR本文とADR-0018 Decision 3の不整合）**: PR本文の `Closes #532` / merge前提記述を `Refs` へ修正し、merge(cutover)はPhase 4（ADR-0018 Decision 3/5）であることを明記。handoff packetのheadを本revisionへ更新。
