@@ -654,3 +654,11 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 - **文書同期**: ADR-0018 revision 7（activity base class = anchor正、#59 readback後継）、spec 452 revision note（DEFAULT_ORDER 10項目）、spec 59 revision note。
 - 最終head: `cf76631499a9ac161742a722c2c7aacb7ad33db2`（REBASE_HEAD=7f46ab6466075ebf5a39f954cf3376d2968e6353）
 - G1再確認: assemble + spotlessCheck **green**（本head）。G2: organizer unit gate 1935 tests green。G3: ownership inventory 570 path全分類PASS。
+
+
+## 6.13. G5 CI compose-idle hangの恒久修復（2026-10-04、runs 37295512259/37299029278）
+
+- `CategoryOverridePreferencesInstrumentationTest` の `cancelRestoresFocusAndLongAppLabelRemainsReachableAtTwoHundredPercentFontScale` がCI x86_64で2/3回、`performScrollToNode` のimplicit idle-waitに刺さり（200% fontScaleでcancel行がfold外）、per-class 20分capが作動（fail-fast+証跡。設計どおり）。
+- 修復: scrollを明示的なboundedループ（waitUntil+page swipe、10秒上限、失敗時はunreachable-node契約違反としてassert）へ置換。到達可能性契約は不変。
+- 同一commitでRuleChain/Timeoutラップ（`createComposeRule` のtest-thread契約を壊す）をrevert済み（`47a76a33e4`）。
+- onboarding laneの `launcher-resume-timeout`（frontmost=NexusLauncher）はCI環境flakeとして1回記録（retryでgreen）。manual-orgの `IndexOutOfBoundsException` は1回のみでretry green（compose list差分、監視継続）。
