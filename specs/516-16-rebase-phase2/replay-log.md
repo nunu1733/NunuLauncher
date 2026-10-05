@@ -499,3 +499,45 @@ commit `794db5dd50`（REBASE_HEAD直後、本表の全実行より前）:
 1. **`LauncherPrefsCommitTest` boolean seam削除 — 追認が必要**。#59の「集約commit boolean」契約はS2/S3のproduction adapt（`ModelDbController.writeGridPreferences` のreadback検証方式、ModelDbController.java:1027に記録済み）によりanchor seam上で表現不能となった。spec 59 ownerが「readback検証による代替を#59契約の正式な後継とする」ことを追認するか、boolean契約の復活（拡張）をrequireするかの判断を要する。replay-log §6.3の記録は維持。
 2. **D5（BaseActivity base class）**: ADR-0018 Decision 9の及ぶ範囲明確化（model/DI層のみか、activity base classもanchor正とするか）をADR-0018改訂または補足ADRで決定する必要。
 3. **D0（gridType bridge）とE2（applyGridInfo適応のsemantics）**: 実装review packetでの確認事項としてreviewerへ提示。
+
+### 6.8 G4残存defect cluster修復（D1〜D5・E1・E2、2026-10-05）
+
+- **修復head**=`bb14aeb0c1`（REBASE_HEAD=`7f46ab6466075ebf5a39f954cf3376d2968e6353` は不変。§6.5実行head `7873c588d0` から7 commit: `f6d525e56d` D5 / `d049f07370` D1 / `e0dc750668` D2+D3 / `0638101561` D4 / `697d1ad615` E2 / `20f1b68bc1` E1 / `bb14aeb0c1` NE）。emulator・command形式は§6.1と同一（per-class invocation）。証跡XML 13件＋boot smoke＋cross-process記録を `build/g4-evidence3/` に保存。`./gradlew spotlessCheck` / `assembleLawnWithQuickstepGithubDebug` は最終headでgreen。
+- すべてのproduction修正は契約移植の補完であり、ADR-0018 Decision 9（anchor構造を正）に依拠する。testのassert契約は緩めていない（E1は前提をエミュレータ再現可能にしただけで、guardを含む全assertを維持。NEは誤っていたrowid比較をより強い等値assertへ修正）。§6.5表の全FAIL caseが解消された。
+
+#### 6.8.1 根因と修復（cluster順）
+
+| cluster | 根因（確定） | 修復 | 検証 |
+|---|---|---|---|
+| D5 | anchor 16-dev `BaseActivity` はframework `Activity` 継承。forkの2 viewが `context as ComponentActivity).viewModels()` を要求し起動時 `ClassCastException` | owner決定どおりanchor構造を維持しfork契約を移植: `LawnchairLauncher` が `ViewModelStoreOwner` + `HasDefaultViewModelProviderFactory` を実装（androidx `ViewModelStore` をactivity destroyでclear、`AndroidViewModelFactory` 既定）、`app.lawnchair.viewModels()` 拡張を新設し、2 call siteは `ViewModelStoreOwner` castへ適応。androidx `LifecycleOwner` はanchor既存（`ActivityContext extends SavedStateRegistryOwner extends LifecycleOwner`、`BaseActivity` の `LifecycleRegistry`）で提供済み | boot smoke: `am start` 成功、`mCurrentFocus=LawnchairLauncher`、crash buffer空（`build/g4-evidence3/boot-smoke.txt`、最終headで再取得） |
+| D1 | S3a移植版 `tryMigrateDB` がanchorのreset-to-empty fallback（`createEmptyDB` + `EMPTY_DATABASE_CREATED` 記録 + grid prefs上書き）をforkのpublic entryに持ち込んだ。fork契約（Issue #59 / spec 118監査表面）は「Migration failed: **retaining** launcher database」。失敗時にソースDBが破壊され、flag永続化で同一プロセス内の後続testが「new DB already created」早期bail → 20件の多様なfailure（journal未記録 / `expected:<3> but was:<4>` / process death未伝播） | `tryMigrateDB` をforkのretain契約へ復元（メトリクス送信のみ）。anchor reset pathは `attemptMigrateDb`（`gridMigrationRefactor` flag entry）に限定 | `GridMigrationFailureTest` **30/30 PASS**（10/30 → 30/30） |
+| D2 | S3a移植版 `createDbIfNotExists` が2引数 `createDatabaseHelper(false, dbFile)` を直接呼び、forkのprotected 1引数seam（`RestoreLeaseSerializationTest.HelperProbeController` / `GridMigrationSuccessTest.Controller` がoverride）をバイパス。test doubleが実DBを開き `issue120_replacement_marker` 不在・file削除可否assert失敗 | `createDbIfNotExists` を1引数seam経由へ復元。既定実装は目的別derive（migration target = IDP grid state、active DB はD3の単一権威） | `RestoreLeaseSerializationTest` **11/11 PASS**（8/11 → 11/11） |
+| D3 | active helperのdbFile束縛がanchor由来の「DB_FILE pref優先」で、forkのfile-lifecycle契約（`renameRestoredDb` / `migrateDbName` / `cleanUpDatabases` はすべて `idp.dbFile` 権威）と分裂。restore/grid-pref seamがDB_FILE prefを書くと `cleanUpDatabases` が開いたままのhelperのfileを削除 → 次の `createEmptyDB` で `SQLITE_READONLY_DBMOVED`（実機logcatで `launcher_5_4_4.db` 削除/active `launcher_6_4_4.db` を直接観測）。forkはDB_FILE prefをactive束縛に使わない（書き込み専用metadata） | active helperを `mIdp.dbFile` に束縛（単一権威） | `RealZipRestoreE2E` **2/2 PASS**、capture 4 class + boundary 2 class 計 **9/9 PASS** |
+| D4 | S3 portで `LawnchairApp` のsupertypeが `LauncherApplication` から `Application` に変わった。`LauncherComponentProvider.get()` がfallback component（**`setSafeModeEnabled(true)` ハードコード**）を作り、アプリ全体がdagger safe modeで動作 → `WidgetInflater.inflateAppWidget` が全widget行を `TYPE_PENDING` 早期returnし、loader修復（allocate+bind+DB update）が不発。`widgetRowCount` (0,1)期待 vs (1,0)実測＝「座標入れ替わり」ではなくwidget修復不発（§6.6の座標読みは訂正） | `LawnchairApp : LauncherApplication()` へ復帰（anchor構造どおり）。real safe-mode flagがcomponentへ流れる | `NovaRestoreCaptureWidgetWindowTest` PASS（`widgetIdValid=1`、`bindAppWidgetId()` 成功をlogcatで確認）、cross-process **StageA/StageB ともOK**（force-stop跨ぎ） |
+| E1 | oracle guard `assertNotEquals(0, serial)` が標準emulator（main-user serial=0）で恒久不成立。remap/default-column rebuildがno-op化する前提条件だった | fixtureが「旧device」を忠実に模擬: favorites既定profileIdを10に rebuild（production `changeDefaultColumn` と同一recipe）し、remapとrebuildをserial=0でも実行させる。guard・全8 assert契約は不変（guardは「live serial ≠ 旧device既定」を同じ形で主張） | `RestoreDbTaskSuccessPathTest` **1/1 PASS** |
+| E2 | S3a適応がpreset ceiling round-trip（`setCurrentGrid(ceiling)` + `onConfigChanged`、converter側はdbFile直接代入のみ）で、preset不在gridのexact DBGridInfo束縛を表現できなかった | fork `IDP.applyGridInfo(context, DBGridInfo)`（Issue #168 bridge）をanchor IDPへ再移植（既存private `initGrid(gridName, dbGridInfo)` へのdelegate、exact束縛・listener非通知）。converterと2 oracleがproduction seamを直接呼ぶ | `NovaRestoreGridApplicationTest` **4/4 PASS**（3/4 → 4/4） |
+| NE | `RealZipRestoreE2E.seedFavorite` が `insertOrThrow(...) >= 0` をassert。explicit `_id`（旧epoch markerは負id）では返却rowidが負になり構成的に不成立（§6.3と同種のtest-infra欠陥。T5 oracleは一度もgreenになっていなかった） | 要求rowidとの等値assertへ置換（旧比較より強い） | `RealZipRestoreE2E` **2/2 PASS**（最終headで再実行） |
+
+#### 6.8.2 再実行成績（§6.5残存FAIL 32 case + StageA crash のうち）
+
+| class | §6.5 | §6.8 |
+|---|---|---|
+| `GridMigrationFailureTest` | 10/30 | **30/30** |
+| `RestoreLeaseSerializationTest` | 8/11 | **11/11** |
+| `RealZipRestoreE2E` | 0/1 | **2/2** |
+| `RestoreDbTaskSuccessPathTest` | 0/1（guard） | **1/1** |
+| `NovaRestoreGridApplicationTest` | 3/4 | **4/4** |
+| `NovaRestoreCaptureControlTest` / `WidgetWindowTest` / `UnknownProviderTest` / `NoCallbacksTest` | 1/5 | **5/5** |
+| `NovaConverterBoundaryTest` / `SmartspaceOffTest` | 0/3 | **3/3** |
+| cross-process StageA / StageB | FAIL | **OK / OK** |
+| boot smoke | all_apps inflateでcrash | **launcher UI到達（crash buffer空）** |
+
+合計: §6.5の残存FAIL 32 case + StageA/StageB + boot crash はすべて解消。`GridMigrationSuccessTest` 3/3を最終headで再確認（既存PASSのregressionなし）。
+
+#### 6.8.3 判定の訂正と残置事項
+
+1. **§6.6 D4の「座標(0,1)≠(1,0)」読みは訂正**: 実体は `widgetRowCount` の (negative, valid) 集合であり、復元workspaceの座標入れ替わりではない。D4の根因はsafe-mode component（上表）。Nova converterの座標丸め/rows補償（#522採用port）の数学は本実行では不変で正常。
+2. **§6.6 D3の「lease/quiesce/cleanUpDatabases順序契約が未成立」仮説は訂正**: 順序契約（`prepareForRawFileRestore` quiesce→wipe、`runDbCleanupExclusively`）はanchor構造で成立していた。根因はヘルパー束縛の分裂（D2/D3）とsafe mode（D4）。
+3. **E1の残置判断**: fixture-based旧device既定（10）により標準emulatorで成立した。二次userをlane側で作る方式は「非default main-user serial」をより直接に再現するが、CI権限・lane costのowner判断事項として残す（現行oracleはassert契約を満たす）。
+4. **§6.7のowner追認事項は変わりなし**（`LauncherPrefsCommitTest` boolean seam追認 / D5のADR-0018範囲明確化 / D0 bridgeのreview確認）。D5はowner決定どおりanchor構造維持+fork契約移植で実装済みであり、§6.7-2のADR明確化は「activity base classもanchor正とする」方向の追認作業として残る。
+5. **G5引継ぎ**: §6.4-1〜3に加え、本§の修復7 commitを含むheadでのCI実行（x86_64 pixel_7_pro）と、`Flags.gridMigrationRefactor()` 有効時の `attemptMigrateDb` reset pathがfork retain契約と二重に存在することの文書明確化（本§6.8.1 D1行）をreview packetへ含めること。
