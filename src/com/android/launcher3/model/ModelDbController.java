@@ -430,33 +430,23 @@ public class ModelDbController {
     }
 
     /**
-     * Issue #532 S3a (rebase of Issue #59): the fork's public migration entry. Keeps
-     * the journal/digest/reconciliation contracts: recovery failures escape as
-     * RuntimeException (fail-closed), recoverable failures retain the source DB
-     * authority and leave {@code false} so the caller can decide on a reset.
+     * Issue #532 S3a port fix (Issue #59 contract, pre-S1 fork controller): the fork's
+     * public migration entry retains the launcher database on a recoverable migration
+     * failure — the source DB authority (rows, locks, grid preferences) survives and the
+     * journal/reconciliation machine owns recovery. The anchor's reset-to-empty fallback
+     * belongs only to {@link #attemptMigrateDb} (the {@code gridMigrationRefactor} flag
+     * path); porting it here wiped the retained source, recorded
+     * {@code EMPTY_DATABASE_CREATED} for the live DB and rewrote grid preferences, so
+     * T3 failure-injection oracles observed an early "new DB already created" bail on
+     * the next admission instead of the durable journal contracts.
      */
     public void tryMigrateDB(@Nullable LauncherRestoreEventLogger restoreEventLogger,
             ModelDelegate modelDelegate) {
         if (!migrateGridIfNeeded(modelDelegate)) {
             if (restoreEventLogger != null) {
-                if (mPrefs.get(NO_DB_FILES_RESTORED)) {
-                    restoreEventLogger.logLauncherItemsRestoreFailed(DATA_TYPE_DB_FILE, 1,
-                            RestoreError.DATABASE_FILE_NOT_RESTORED);
-                    mPrefs.put(NO_DB_FILES_RESTORED, false);
-                    FileLog.d(TAG, "There is no data to migrate: resetting launcher database");
-                } else {
-                    restoreEventLogger.logLauncherItemsRestored(DATA_TYPE_DB_FILE, 1);
-                    sendMetricsForFailedMigration(restoreEventLogger, getDb());
-                }
+                sendMetricsForFailedMigration(restoreEventLogger, getDb());
             }
-            FileLog.d(TAG, "tryMigrateDB: Migration failed: resetting launcher database");
-            createEmptyDB();
-            mPrefs.putSync(getEmptyDbCreatedKey(mOpenHelper.getDatabaseName()).to(true));
-
-            // Write the grid state to avoid another migration
-            new DeviceGridState(mIdp).writeToPrefs(mContext);
-        } else if (restoreEventLogger != null) {
-            restoreEventLogger.logLauncherItemsRestored(DATA_TYPE_DB_FILE, 1);
+            FileLog.d(TAG, "tryMigrateDB: Migration failed: retaining launcher database");
         }
     }
 
