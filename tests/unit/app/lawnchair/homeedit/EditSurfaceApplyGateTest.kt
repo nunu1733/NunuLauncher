@@ -2,15 +2,18 @@
  * Issue #526: JVM oracle for the process-wide in-flight apply gate's pure
  * state machine (spec 526, targetSdk 37 fork UI contract). The gate is the
  * single authority for in-flight applies: Confirm is admitted only from Idle,
- * every apply terminal moves InFlight → Correlating, and only a capture that
- * COMPLETES AFTER the terminal releases Correlating → Idle (a pre-terminal
- * capture must not re-enable Confirm on a possibly pre-apply layout). Terminals
- * are classified: world-moved / uncertain terminals (Applied, stale, rollback /
+ * every apply terminal moves InFlight → Correlating and advances a monotonic
+ * correlation generation, and only a capture that STARTED AT OR AFTER the
+ * terminal — proven by a ticket minted at capture start matching the pending
+ * generation — releases Correlating → Idle (a pre-terminal-started capture
+ * can never re-enable Confirm on a possibly pre-apply layout, and a destroyed
+ * instance's release is refused at the activity call site). Terminals are
+ * classified: world-moved / uncertain terminals (Applied, stale, rollback /
  * recovery, unresolved) release only through the correlated capture, while
- * zero-write world-unchanged terminals (non-stale rejection, ConcurrentRun,
- * defensive no-changes) release immediately via onTerminalWithoutWorldChange —
- * the existing apply-time STALE gate stays the fail-closed protection if the
- * world actually moved.
+ * zero-write no-local-recovery terminals (non-stale rejection, ConcurrentRun,
+ * defensive no-changes) release immediately via onTerminalWithoutLocalRecovery —
+ * this does NOT exclude the shared layout moving; the existing apply-time
+ * STALE gate stays the fail-closed protection on the next admission.
  */
 package app.lawnchair.homeedit
 
@@ -59,33 +62,60 @@ class EditSurfaceApplyGateTest {
     }
 
     @Test
-    fun `apply terminal from Correlating is a defensive no-op`() {
+    fun `apply terminal from Correlating is a defensive no-op that does not advance the correlation generation`() {
         val gate = EditSurfaceApplyGate()
         assertTrue(gate.beginApply())
         gate.onApplyTerminal()
+        val pendingTicket = gate.newCaptureTicket()
         gate.onApplyTerminal()
-        assertEquals(EditSurfaceApplyGate.State.Correlating, gate.state)
+        assertEquals("a second terminal must not leave Correlating", EditSurfaceApplyGate.State.Correlating, gate.state)
+        // Pinned defensive semantics: the no-op neither transitions nor moves
+        // the pending correlation generation — a ticket minted before the
+        // no-op still matches and releases exactly once.
+        gate.onCaptureReady(pendingTicket)
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
     }
 
-    // --- capture release (Correlating → Idle) ---
+    // --- capture release (Correlating → Idle, generation-bound ticket) ---
 
     @Test
-    fun `capture completion after the terminal releases Correlating to Idle`() {
+    fun `capture started after the terminal releases Correlating to Idle`() {
         val gate = EditSurfaceApplyGate()
         assertTrue(gate.beginApply())
         gate.onApplyTerminal()
-        gate.onCaptureReady()
+        gate.onCaptureReady(gate.newCaptureTicket())
         assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
         assertTrue("the next apply must be admitted after the correlated capture", gate.beginApply())
     }
 
     @Test
-    fun `capture completion before the terminal does not release the gate`() {
+    fun `capture started before the terminal cannot release the gate`() {
+        // The recreated-surface race (spec 526 review round 1): a capture that
+        // STARTED while the apply was still in flight carries a pre-terminal
+        // ticket. Its completion — whenever it lands — must never release
+        // Correlating; only a post-terminal-started capture may.
+        val gate = EditSurfaceApplyGate()
+        assertTrue(gate.beginApply())
+        val preTerminalTicket = gate.newCaptureTicket()
+        gate.onApplyTerminal()
+        gate.onCaptureReady(preTerminalTicket)
+        assertEquals(
+            "a pre-terminal-started capture must leave Correlating untouched",
+            EditSurfaceApplyGate.State.Correlating,
+            gate.state,
+        )
+        assertFalse(gate.beginApply())
+        gate.onCaptureReady(gate.newCaptureTicket())
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+    }
+
+    @Test
+    fun `capture completion while InFlight does not touch the state`() {
         // A capture that completes while the apply is still in flight may show
         // the pre-apply layout — it must never re-enable Confirm.
         val gate = EditSurfaceApplyGate()
         assertTrue(gate.beginApply())
-        gate.onCaptureReady()
+        gate.onCaptureReady(gate.newCaptureTicket())
         assertEquals("a pre-terminal capture must leave InFlight untouched", EditSurfaceApplyGate.State.InFlight, gate.state)
         assertFalse(gate.beginApply())
         gate.onApplyTerminal()
@@ -93,21 +123,45 @@ class EditSurfaceApplyGateTest {
     }
 
     @Test
-    fun `capture completion from Idle stays Idle`() {
+    fun `capture completion from Idle stays Idle whatever the ticket`() {
         val gate = EditSurfaceApplyGate()
-        gate.onCaptureReady()
+        gate.onCaptureReady(gate.newCaptureTicket())
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+        gate.onCaptureReady(12345)
         assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
     }
 
-    // --- terminal classification: world-moved vs zero-write world-unchanged ---
+    @Test
+    fun `stale tickets from earlier generations never release a later correlation`() {
+        val gate = EditSurfaceApplyGate()
+        assertTrue(gate.beginApply())
+        gate.onApplyTerminal() // correlation generation 1
+        val firstTicket = gate.newCaptureTicket()
+        gate.onCaptureReady(firstTicket)
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+        assertTrue(gate.beginApply())
+        gate.onApplyTerminal() // correlation generation 2
+        gate.onCaptureReady(0)
+        gate.onCaptureReady(firstTicket)
+        assertEquals(
+            "only the pending correlation generation's ticket may release",
+            EditSurfaceApplyGate.State.Correlating,
+            gate.state,
+        )
+        gate.onCaptureReady(gate.newCaptureTicket())
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+    }
+
+    // --- terminal classification: world-moved vs zero-write no-local-recovery ---
 
     @Test
     fun `release works for every world-moved terminal path`() {
         // Applied (then finish), stale reopen, rollback / recovery and the
         // unresolved family move the world (or leave it uncertain): they stay
-        // Correlating until a completed capture after the terminal releases
+        // Correlating until a capture started after the terminal releases
         // them. Pin one full cycle per class of terminal naming so a future
-        // terminal branch cannot forget the onApplyTerminal/onCaptureReady pair.
+        // terminal branch cannot forget the onApplyTerminal / newCaptureTicket /
+        // onCaptureReady triple.
         val terminals = listOf(
             "Applied",
             "STALE_REVISION",
@@ -122,18 +176,19 @@ class EditSurfaceApplyGateTest {
             assertTrue("terminal=$terminal", gate.beginApply())
             gate.onApplyTerminal()
             assertEquals("terminal=$terminal", EditSurfaceApplyGate.State.Correlating, gate.state)
-            gate.onCaptureReady()
+            gate.onCaptureReady(gate.newCaptureTicket())
             assertEquals("terminal=$terminal", EditSurfaceApplyGate.State.Idle, gate.state)
         }
     }
 
     @Test
-    fun `release works for every zero-write world-unchanged terminal path`() {
+    fun `release works for every zero-write no-local-recovery terminal path`() {
         // Rejected (non-stale), ConcurrentRun and the defensive no-changes
-        // family perform no write and no recovery action, so the on-screen
-        // capture stays authoritative and the gate releases to Idle without a
-        // correlated recapture. The existing apply-time STALE gate remains the
-        // fail-closed protection if the world actually moved.
+        // family perform no write and no local recovery action, so the gate
+        // releases to Idle without a correlated recapture. This does NOT pin
+        // "the world did not move": if the shared layout moved externally, the
+        // very next confirm's existing STALE admission fail-closes with zero
+        // write (spec 526 oracle 3b).
         val terminals = listOf(
             "rejected",
             "ConcurrentRun",
@@ -145,26 +200,26 @@ class EditSurfaceApplyGateTest {
             val gate = EditSurfaceApplyGate()
             assertTrue("terminal=$terminal", gate.beginApply())
             gate.onApplyTerminal()
-            gate.onTerminalWithoutWorldChange()
+            gate.onTerminalWithoutLocalRecovery()
             assertEquals("terminal=$terminal", EditSurfaceApplyGate.State.Idle, gate.state)
             assertTrue("terminal=$terminal next confirm admitted", gate.beginApply())
         }
     }
 
     @Test
-    fun `terminalWithoutWorldChange from InFlight releases directly`() {
+    fun `terminalWithoutLocalRecovery from InFlight releases directly`() {
         // Defensive: a caller that skips onApplyTerminal still gets a coherent
         // release instead of a stuck InFlight.
         val gate = EditSurfaceApplyGate()
         assertTrue(gate.beginApply())
-        gate.onTerminalWithoutWorldChange()
+        gate.onTerminalWithoutLocalRecovery()
         assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
     }
 
     @Test
-    fun `terminalWithoutWorldChange from Idle stays Idle`() {
+    fun `terminalWithoutLocalRecovery from Idle stays Idle`() {
         val gate = EditSurfaceApplyGate()
-        gate.onTerminalWithoutWorldChange()
+        gate.onTerminalWithoutLocalRecovery()
         assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
     }
 
@@ -185,7 +240,7 @@ class EditSurfaceApplyGateTest {
         repeat(3) {
             assertTrue(gate.beginApply())
             gate.onApplyTerminal()
-            gate.onCaptureReady()
+            gate.onCaptureReady(gate.newCaptureTicket())
             assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
         }
     }

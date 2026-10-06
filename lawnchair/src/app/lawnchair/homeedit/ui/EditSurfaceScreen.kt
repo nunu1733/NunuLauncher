@@ -103,6 +103,10 @@ fun EditSurfaceScreen(
     onCancel: () -> Unit,
     onPickPage: (Int) -> Unit,
     onPickFolder: (Int) -> Unit,
+    // Issue #526: picker dialogを開く操作（ActionBarの「ページ移動 / フォルダ追加」
+    // chipのtap）。破棄案内の消去をactivity側の単一入口へ一元化するためのwrapper。
+    // dialogの開閉状態自体はこの画面のlocal stateのまま。
+    onDialogOpening: () -> Unit,
     onOpenDuplicates: () -> Unit,
     onDismissDuplicates: () -> Unit,
     onToggleDuplicateMember: (Int) -> Unit,
@@ -195,8 +199,17 @@ fun EditSurfaceScreen(
             sessionChangeCount = sessionChangeCount,
             confirmGate = confirmGate,
             busy = busy,
-            onMoveToPage = { dialog = EditSurfaceDialog.MoveToPage },
-            onAddToFolder = { dialog = EditSurfaceDialog.AddToFolder },
+            // Issue #526: dialogを開くだけのtapも「次のユーザー操作」。開く操作を
+            // activity経由のwrapperへ流して破棄案内の消去を一元化する
+            // （dialogの開閉状態はこの画面のlocal stateのまま）。
+            onMoveToPage = {
+                onDialogOpening()
+                dialog = EditSurfaceDialog.MoveToPage
+            },
+            onAddToFolder = {
+                onDialogOpening()
+                dialog = EditSurfaceDialog.AddToFolder
+            },
             onCreateFolder = onCreateFolder,
             onRemove = onRemove,
             onConfirm = onConfirm,

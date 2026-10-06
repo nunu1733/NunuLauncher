@@ -15,18 +15,25 @@ import androidx.compose.runtime.setValue
  *
  * `Idle → InFlight →（旧applyのterminal結果受領）→ Correlating（相関capture
  * 再取得中）→ Idle` の遷移のみを行う。terminal結果（Applied / stale /
- * rejected / error のいずれも）を受けたあとは、terminal後の相関captureが
- * 完了するまで [beginApply] を許さない（旧適用前のcaptureをstale図として
- * 編集→確定→再読込の往復を発生させない。spec 526の適用進行中再作成契約）。
- * 表示と操作の権威であり、write経路は持たない（適用・DB・recovery契約は
- * 既存のまま）。
+ * rejected / error のいずれも）を受けたあとは、terminal後に開始された相関
+ * captureが完了するまで [beginApply] を許さない（旧適用前のcaptureをstale図と
+ * して編集→確定→再読込の往復を発生させない。spec 526の適用進行中再作成契約）。
+ *
+ * 解除の相関は世代ticketで固定する（review round 1）: terminalのたびに単調増加
+ * する相関世代を進めて待ち世代として記録し、captureは開始時に [newCaptureTicket]
+ * で世代を固定する。完了通知（[onCaptureReady]）はticketが待ち相関世代と一致する
+ * 場合 — すなわちterminal後に開始されたcaptureの完了 — だけ Correlating を解除
+ * する。terminal前に開始されたcapture（再作成直後の初回読込がin-flight適用と
+ * 競合する場合を含む）や破棄済みinstanceのcapture（呼び出し側で排除する）では
+ * 解除しない。1 terminal generation = 1 correlated reload。表示と操作の権威で
+ * あり、write経路は持たない（適用・DB・recovery契約は既存のまま）。
  *
  * 純粋なクラスとしてAndroid依存を持たない。状態はCompose observable
  * （back gateの有効化と確定gateのfeedback表示がUIから読む）。
  */
 class EditSurfaceApplyGate {
 
-    /** 適用gateの状態（spec 526。遷移は下記3メソッドのみ）。 */
+    /** 適用gateの状態（spec 526。遷移は下記のメソッドのみ）。 */
     enum class State {
         /** 適用なし。確定（beginApply）を許す。 */
         Idle,
@@ -46,6 +53,19 @@ class EditSurfaceApplyGate {
         private set
 
     /**
+     * Issue #526 review round 1: 相関captureの世代（単調増加）。terminal
+     * （InFlight → Correlating）のたびにだけ進む。captureは開始時点の世代を
+     * ticketとして固定し、完了通知はそのticketで行う。
+     */
+    private var correlationGeneration = 0
+
+    /**
+     * 現在のterminalが待っている相関世代（Correlatingの間のみ参照される。
+     * Idleでは不使用）。
+     */
+    private var pendingCorrelationGeneration = -1
+
+    /**
      * 確定の開始要求。Idle のみ InFlight へ遷移してtrue。InFlight /
      * Correlating では二重適用としてfalse（呼び出し側はbusy理由を表示する）。
      */
@@ -57,22 +77,27 @@ class EditSurfaceApplyGate {
 
     /**
      * 適用のterminal結果の受領（Applied / stale / rejected / error のいずれも）。
-     * InFlight → Correlating。他のstateからの呼び出しは防御的にno-op。
+     * InFlight → Correlating と同時に相関世代を進めて待ち世代として記録する。
+     * 他のstateからの呼び出しは防御的no-op（相関世代も進めない）。
      */
     fun onApplyTerminal() {
-        if (state == State.InFlight) state = State.Correlating
+        if (state == State.InFlight) {
+            state = State.Correlating
+            pendingCorrelationGeneration = ++correlationGeneration
+        }
     }
 
     /**
-     * Issue #526 revision（CI実測 #538）: 零書込みかつ世界不変のterminal
-     * （writer busy / lock系rejected / ConcurrentRun / NoChanges等の防御到達）での
-     * 解放。適用は起きずrecovery動作もないため画面のcaptureが現行のまま有効で、
-     * 相関再取得は不要。世界が動していた場合でも、次のconfirmは既存の
-     * STALE_REVISION / EXACT_PRECONDITION_FAILED gateが零書込みで止める
-     * （fail-closedは既存層が担う）。Correlating → Idle（InFlightからの呼び出しも
+     * Issue #526 review round 1（命名を規約へ同期）: 当該applyが零書込みかつ
+     * local recoveryなしのterminal（writer busy / lock系rejected / ConcurrentRun /
+     * NoChanges等の防御到達）での解放。適用もrecovery動作も起きないため画面側に
+     * 追加の復旧導線は不要だが、共有layoutが外側で動いていない保証はしない —
+     * 動いていた場合の保護は次のconfirmの既存STALE_REVISION /
+     * EXACT_PRECONDITION_FAILED gateが零書込みで止める（fail-closedは既存層が
+     * 担う。spec 526のoracle (3b)）。Correlating → Idle（InFlightからの呼び出しも
      * 防御的にIdleへ。Idleは不変）。
      */
-    fun onTerminalWithoutWorldChange() {
+    fun onTerminalWithoutLocalRecovery() {
         when (state) {
             State.InFlight, State.Correlating -> state = State.Idle
             State.Idle -> Unit
@@ -80,14 +105,23 @@ class EditSurfaceApplyGate {
     }
 
     /**
-     * capture 1回の完了の通知（初回読込・stale時の開き直し・rollback/recovery系
-     * terminal後の相関再取得を含む全reloadCapture完了から呼ばれる）。
-     * Correlating → Idle（terminal後の最初の完了captureだけが解除する。
-     * terminal前に完了したcaptureは旧適用前の図であり得るため解除しない）。
-     * IdleはIdleのまま。
+     * Issue #526 review round 1: これから開始するcapture用の相関世代ticket。
+     * capture開始の呼び出しスレッド上で取得し、完了通知にそのまま渡す
+     * （executor上での取得は開始順が入れ替わり得るため渡さない）。
      */
-    fun onCaptureReady() {
-        if (state == State.Correlating) state = State.Idle
+    fun newCaptureTicket(): Int = correlationGeneration
+
+    /**
+     * capture 1回の完了の通知（初回読込・stale時の開き直し・rollback/recovery系
+     * terminal後の相関再取得を含む全reloadCapture完了から、開始時のticket付きで
+     * 呼ばれる）。ticketが待ち相関世代と一致する（= terminal後に開始された）
+     * 完了だけが Correlating → Idle を許される。terminal前に開始されたcaptureや
+     * 世代のずれたticketでは解除しない。IdleはIdleのまま。
+     */
+    fun onCaptureReady(ticket: Int) {
+        if (state == State.Correlating && ticket == pendingCorrelationGeneration) {
+            state = State.Idle
+        }
     }
 }
 

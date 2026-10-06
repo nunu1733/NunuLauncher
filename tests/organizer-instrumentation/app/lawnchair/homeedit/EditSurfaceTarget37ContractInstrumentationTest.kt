@@ -14,14 +14,22 @@
  *     scoped to InFlight only).
  *  3. A recreated surface cannot confirm while the single authority is
  *     InFlight or Correlating: the real confirm() is refused with the busy
- *     reason and builds no plan, and Confirm is only re-admitted after the
- *     correlated capture completes (onCaptureReady). No apply runs in this
- *     oracle, so no recovery point / Undo path is exercised or added (the
- *     no-dummy-recovery rule of spec 526 is untouched by construction — the
- *     contract adds no write path at all).
+ *     reason and builds no plan, and Confirm is only re-admitted after a
+ *     correlated capture that STARTED AFTER the terminal completes (the
+ *     correlation-generation ticket: the release is driven through the real
+ *     production recapture path). A capture that started BEFORE the terminal
+ *     (the recreated instance's initial capture racing an in-flight apply)
+ *     can never release the gate — pinned end to end across recreation
+ *     (preTerminalCaptureTicketCannotReleaseTheGateAcrossRecreation). No
+ *     apply runs in these oracles, so no recovery point / Undo path is
+ *     exercised or added (the no-dummy-recovery rule of spec 526 is untouched
+ *     by construction — the contract adds no write path at all).
  *  4. The discard notice carries the liveRegion=Polite semantics in the
  *     accessibility tree when work existed, and there is no such node
- *     otherwise. The repo's instrumentation setup has no ComposeTestRule
+ *     otherwise; it clears on the next zero-write user operation (the
+ *     duplicates-open entry, not only a selection toggle) and does not
+ *     reappear on subsequent recomposition-forcing actions. The repo's
+ *     instrumentation setup has no ComposeTestRule
  *     seam for this activity (existing edit-surface oracles drive the REAL
  *     activity through ActivityScenario + internal hooks), so the semantics
  *     are asserted through the platform accessibility node attribute that
@@ -152,9 +160,38 @@ class EditSurfaceTarget37ContractInstrumentationTest {
                 activity.toggleSelectionForTest(itemId)
             }
             recreateAndWait(scenario)
-            awaitSelectableItem(currentActivity(scenario), "selection-only recreated capture")
+            val newActivity = currentActivity(scenario)
+            val recreatedItemId = awaitSelectableItem(newActivity, "selection-only recreated capture")
+            awaitNoticeText(present = true)
+
+            // Issue #526 review round 1: 案内は「次のユーザー操作」で消える —
+            // 選択toggle以外の零書込み操作（重複確認面のopen。dialog開閉のみの
+            // 操作）でも消えること、その後の再compositionを強制する操作
+            // （選択on/off）で再発火しないことを同じケースで固定する。
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                newActivity.openDuplicates()
+            }
+            awaitNoticeText(present = false)
+            // 面を閉じる（modal dialogのback = onDismiss相当）。backがdialogを
+            // 越えてactivityを離脱させないこともここで固定する。
+            device.pressBack()
+            val dialogDeadline = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < dialogDeadline) {
+                if (scenario.state == Lifecycle.State.RESUMED) break
+                Thread.sleep(200)
+            }
+            assertEquals(
+                "the duplicates surface dismissal must not finish the activity",
+                Lifecycle.State.RESUMED,
+                scenario.state,
+            )
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                newActivity.toggleSelectionForTest(recreatedItemId)
+                newActivity.toggleSelectionForTest(recreatedItemId)
+            }
+            awaitNoticeText(present = false)
+            openScenario = null
         }
-        awaitNoticeText(present = true)
     }
 
     @Test
@@ -294,18 +331,104 @@ class EditSurfaceTarget37ContractInstrumentationTest {
                 assertNull("still no plan during Correlating", newActivity.lastPlanForTest)
             }
 
-            // The correlated capture completes: Confirm is re-admitted. Assert
-            // the admission at the gate (driving the real apply here would be a
-            // write the oracle does not need).
+            // The correlated capture completes: Confirm is re-admitted. The
+            // release is driven through the REAL production path — a
+            // post-terminal recapture whose ticket is taken after the
+            // terminal's correlation generation (asserting the admission at
+            // the gate; driving the real apply here would be a write the
+            // oracle does not need).
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                editSurfaceApplyGate.onCaptureReady()
-                assertEquals(EditSurfaceApplyGate.State.Idle, editSurfaceApplyGate.state)
+                newActivity.recaptureForTest()
+            }
+            var correlatedRelease = false
+            val releaseDeadline = System.currentTimeMillis() + 30_000
+            while (System.currentTimeMillis() < releaseDeadline) {
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    correlatedRelease = editSurfaceApplyGate.state == EditSurfaceApplyGate.State.Idle
+                }
+                if (correlatedRelease) break
+                Thread.sleep(200)
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                assertTrue(
+                    "the post-terminal correlated capture must release the gate to Idle",
+                    correlatedRelease,
+                )
                 assertTrue("the next apply must be admitted after the correlated capture", editSurfaceApplyGate.beginApply())
                 // Leave the authority Idle for the next test.
                 editSurfaceApplyGate.onApplyTerminal()
-                editSurfaceApplyGate.onCaptureReady()
+                editSurfaceApplyGate.onCaptureReady(editSurfaceApplyGate.newCaptureTicket())
                 assertEquals(EditSurfaceApplyGate.State.Idle, editSurfaceApplyGate.state)
             }
+        }
+    }
+
+    // --- oracle 3 (race): a pre-terminal-started capture can never release ---
+
+    @Test
+    fun preTerminalCaptureTicketCannotReleaseTheGateAcrossRecreation() {
+        // Spec 526 review round 1 race oracle: the recreated instance's initial
+        // capture STARTS while the old apply is in flight and settles BEFORE
+        // the terminal. Its completion must never release the gate — the
+        // correlation-generation ticket pins this through the production
+        // reloadCapture path, and only a post-terminal recapture releases.
+        try {
+            launchSettledSurface().let { (scenario, _) ->
+                awaitSelectableItem(currentActivity(scenario), "pre-terminal ticket race")
+                // Deterministic in-flight state, then recreate: the new
+                // instance's onCreate capture begins pre-terminal.
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    assertTrue(editSurfaceApplyGate.beginApply())
+                }
+                recreateAndWait(scenario)
+                val newActivity = currentActivity(scenario)
+                // The recreated instance's initial capture settles before the
+                // terminal (its completion carries a pre-terminal ticket).
+                awaitSelectableItem(newActivity, "pre-terminal recreated capture")
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    assertEquals(
+                        "the pre-terminal capture must not release the in-flight gate",
+                        EditSurfaceApplyGate.State.InFlight,
+                        editSurfaceApplyGate.state,
+                    )
+                    // Terminal of the old apply: Correlating, with the settled
+                    // pre-terminal capture unable to release it.
+                    editSurfaceApplyGate.onApplyTerminal()
+                    assertEquals(EditSurfaceApplyGate.State.Correlating, editSurfaceApplyGate.state)
+                }
+                // Bounded window for any still-pending capture completion to
+                // (wrongly) land; the state must hold.
+                Thread.sleep(1_000)
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    assertEquals(
+                        "a settled pre-terminal capture must stay unable to release Correlating",
+                        EditSurfaceApplyGate.State.Correlating,
+                        editSurfaceApplyGate.state,
+                    )
+                }
+                // The production correlated reload (fresh post-terminal ticket)
+                // is what releases — bounded poll, real path.
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    newActivity.recaptureForTest()
+                }
+                var correlatedRelease = false
+                val releaseDeadline = System.currentTimeMillis() + 30_000
+                while (System.currentTimeMillis() < releaseDeadline) {
+                    InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                        correlatedRelease = editSurfaceApplyGate.state == EditSurfaceApplyGate.State.Idle
+                    }
+                    if (correlatedRelease) break
+                    Thread.sleep(200)
+                }
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    assertTrue(
+                        "the post-terminal correlated capture must release the gate to Idle",
+                        correlatedRelease,
+                    )
+                }
+            }
+        } finally {
+            forceGateIdleForNextTest()
         }
     }
 
@@ -329,14 +452,21 @@ class EditSurfaceTarget37ContractInstrumentationTest {
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 assertTrue(editSurfaceApplyGate.beginApply())
                 editSurfaceApplyGate.onApplyTerminal()
-                editSurfaceApplyGate.onTerminalWithoutWorldChange()
+                editSurfaceApplyGate.onTerminalWithoutLocalRecovery()
                 assertEquals(EditSurfaceApplyGate.State.Idle, editSurfaceApplyGate.state)
             }
 
             // The shared world moves EXTERNALLY after the release (a fresh
             // fixture generation through the harness's own settle seam).
-            val rowsBefore = favoritesRowCount()
             seedDesktopApps(Triple(0, 3, 2), Triple(0, 1, 3), Triple(1, 2, 2))
+
+            // Full-row snapshot AFTER the world move and BEFORE re-confirm
+            // (review round 1): a row COUNT cannot catch a forbidden UPDATE
+            // (container / screen / cell move), so the stale zero-write oracle
+            // compares every row. Also pin the single-slot undo record token:
+            // the stale branch must not replace it (Undo追加 0).
+            val rowsBefore = favoritesRowSnapshot()
+            val undoTokenBefore = HomeEditUndoRecord.currentTokenForTest()
 
             // Drive a session against the pre-move capture and confirm for
             // real: the plan builds against the stale capture revision, and
@@ -370,6 +500,17 @@ class EditSurfaceTarget37ContractInstrumentationTest {
                 }
                 if (sawResult == null) Thread.sleep(200)
             }
+            // The stale reopen's correlated capture (ticket taken after the
+            // terminal) must release the gate: wait bounded before pinning.
+            var reopenIdle = false
+            val reopenDeadline = System.currentTimeMillis() + 30_000
+            while (System.currentTimeMillis() < reopenDeadline) {
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    reopenIdle = editSurfaceApplyGate.state == EditSurfaceApplyGate.State.Idle
+                }
+                if (reopenIdle) break
+                Thread.sleep(200)
+            }
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 assertTrue(
                     "the stale world move must surface as a Rejected apply",
@@ -382,26 +523,59 @@ class EditSurfaceTarget37ContractInstrumentationTest {
                     "the stale rejection must reopen with the latest capture (reason shown or reopen done)",
                     sawStaleReason || sawGateIdle,
                 )
-                assertEquals(
-                    "a rejected pre-write admission must not change the workspace",
-                    rowsBefore,
-                    favoritesRowCount(),
+                assertTrue(
+                    "the stale reopen capture must release the gate to Idle",
+                    reopenIdle,
                 )
                 assertEquals(
-                    "the gate must be back to Idle after the stale reopen",
-                    EditSurfaceApplyGate.State.Idle,
-                    editSurfaceApplyGate.state,
+                    "a rejected pre-write admission must not change the workspace (full-row zero-write)",
+                    rowsBefore,
+                    favoritesRowSnapshot(),
+                )
+                assertEquals(
+                    "the stale zero-write branch must not add an undo record (Undo追加 0)",
+                    undoTokenBefore,
+                    HomeEditUndoRecord.currentTokenForTest(),
                 )
             }
             openScenario = null
         }
     }
 
-    /** Favorites row count straight from the launcher DB (zero-write oracle). */
-    private fun favoritesRowCount(): Int =
+    /**
+     * Favorites full-row snapshot straight from the launcher DB (zero-write
+     * oracle 3b, review round 1). Projects the stable placement columns
+     * [desktopRowValues] writes, ordered by _ID — a forbidden UPDATE
+     * (container / screen / cell move) changes rows without changing the
+     * count, so the stale oracle compares rows, not counts.
+     */
+    private fun favoritesRowSnapshot(): List<List<Long?>> {
+        val projection = arrayOf(
+            Favorites._ID,
+            Favorites.CONTAINER,
+            Favorites.SCREEN,
+            Favorites.CELLX,
+            Favorites.CELLY,
+            Favorites.SPANX,
+            Favorites.SPANY,
+            Favorites.RANK,
+            Favorites.ITEM_TYPE,
+            Favorites.PROFILE_ID,
+        )
+        val rows = mutableListOf<List<Long?>>()
         appState.model.modelDbController.db
-            .query(Favorites.TABLE_NAME, null, null, null, null, null, Favorites._ID)
-            .use { it.count }
+            .query(Favorites.TABLE_NAME, projection, null, null, null, null, Favorites._ID)
+            .use { cursor ->
+                while (cursor.moveToNext()) {
+                    rows.add(
+                        (0 until projection.size).map { index ->
+                            if (cursor.isNull(index)) null else cursor.getLong(index)
+                        },
+                    )
+                }
+            }
+        return rows
+    }
 
     // --- harness (same shape as EditSurfaceUndoInstrumentationTest) ---
 
@@ -551,14 +725,17 @@ class EditSurfaceTarget37ContractInstrumentationTest {
     /**
      * Restores the process-wide single authority to Idle (test hygiene: the
      * gate is process state and must not leak InFlight/Correlating into later
-     * edit-surface tests in the same process).
+     * edit-surface tests in the same process). A ticket minted NOW matches
+     * the pending correlation generation, so this deterministically releases
+     * a Correlating authority (test-only forced release — production code
+     * never bypasses the correlated capture).
      */
     private fun forceGateIdleForNextTest() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             if (editSurfaceApplyGate.state == EditSurfaceApplyGate.State.InFlight) {
                 editSurfaceApplyGate.onApplyTerminal()
             }
-            editSurfaceApplyGate.onCaptureReady()
+            editSurfaceApplyGate.onCaptureReady(editSurfaceApplyGate.newCaptureTicket())
         }
     }
 

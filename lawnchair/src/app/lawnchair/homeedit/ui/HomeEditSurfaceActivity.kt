@@ -187,8 +187,17 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             onCancel = { finish() },
             onPickPage = ::moveToPage,
             onPickFolder = ::addToFolder,
+            // Issue #526: ActionBarの「ページ移動 / フォルダ追加」chipのtapも
+            // 「次のユーザー操作」。dialogを開く操作をactivity側の消去入口へ流す
+            // （dialogの開閉状態自体は画面localのまま）。
+            onDialogOpening = ::onUserInteractionStarted,
             onOpenDuplicates = ::openDuplicates,
-            onDismissDuplicates = { duplicatesOpen = false },
+            // Issue #526: 重複確認面のdismissも「次のユーザー操作」
+            // （案内消去の入口に一元化）。
+            onDismissDuplicates = {
+                onUserInteractionStarted()
+                duplicatesOpen = false
+            },
             onToggleDuplicateMember = ::toggleDuplicateMember,
             onRemoveFromDuplicates = ::removeFromDuplicateDialog,
             // Issue #526: safeDrawing（status bar / cutout / navigation bar /
@@ -206,8 +215,9 @@ class HomeEditSurfaceActivity : ComponentActivity() {
      * Issue #526: [keepSession] = true（非Applied terminal後の相関再取得）は
      * セッション・選択・重複面・理由表示を保持する（UX回帰なしの零書込み）。
      * false（既定。初回読込とstale時の開き直し）は従来どおりセッションを破棄し、
-     * 再作成後の初回読込では破棄案内を表示する。完了したcaptureは単一権威の
-     * 相関capture解除条件（[editSurfaceApplyGate.onCaptureReady]）であり、
+     * 再作成後の初回読込では破棄案内を表示する。完了したcaptureは、破棄されて
+     * いないinstanceがterminal後に開始した（相関世代ticketが一致する）場合に限り
+     * 単一権威の相関解除条件（[editSurfaceApplyGate.onCaptureReady]）となり、
      * capture失敗時（fail-closedのnull）は解除しない — terminal前のcaptureを
      * stale図として確定させる往復を発生させない。
      */
@@ -216,6 +226,11 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         // keepSession=trueの投影は読み込み開始時点のセッションで固定する
         // （busy中はユーザー操作が遮断されるため完了まで変化しない）。
         val projectionSession = if (keepSession) session else EditSurfaceSession.EMPTY
+        // Issue #526 review round 1: capture開始時点の相関世代ticketを呼び出し
+        // スレッド上で取得する（executor上での取得は開始順が入れ替わり得る）。
+        // terminal前に開始されたcapture（再作成直後の初回読込がin-flight適用と
+        // 競合する場合を含む）は完了しても単一権威のCorrelatingを解除しない。
+        val captureTicket = editSurfaceApplyGate.newCaptureTicket()
         surfaceExecutor.execute {
             val captured = access.inspectCapture()
             if (captured == null) {
@@ -242,9 +257,14 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 duplicateGroups = EditSurfaceDuplicateGroups.groups(newDiagram)
                 profileLabels = labels
                 icons = resolved
-                // Issue #526: 完了captureは相関captureの単一の解除条件
-                // （Correlating → Idle。それ以外のstateではno-op）。
-                editSurfaceApplyGate.onCaptureReady()
+                // Issue #526 review round 1: 完了captureの相関解除は
+                // (1) このinstanceが破棄されていないこと（destroy済みinstanceの
+                // captureはliveな表面の相関再取得の保証にならない）、
+                // (2) capture開始時のticketがterminal後の相関世代と一致すること、
+                // の双方を要求する。capture失敗（fail-closedのnull）も解除しない。
+                if (!isDestroyed) {
+                    editSurfaceApplyGate.onCaptureReady(captureTicket)
+                }
                 if (!keepSession) {
                     session = EditSurfaceSession.EMPTY
                     duplicatesOpen = false
@@ -294,7 +314,20 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         }.toMap()
     }.getOrDefault(emptyMap())
 
+    /**
+     * Issue #526 review round 1: 破棄案内の消去の単一入口（spec Scenario 4の
+     * 「案内は次のユーザー操作で消える」）。選択toggle・重複確認面のopen/dismiss・
+     * picker dialogを開く操作・アクション実行・Resetの全操作入口から呼ぶ
+     * （表示状態のみの更新。零書込み）。
+     */
+    private fun onUserInteractionStarted() {
+        discardNotice = false
+    }
+
     private fun toggleSelection(itemId: Int) {
+        // Issue #526: 図上のtapは全て「次のユーザー操作」（SELECTABLE以外の
+        // LOCKED / LOCK_UNKNOWN tapを含む。消去の入口は一元化）。
+        onUserInteractionStarted()
         val currentDiagram = diagram ?: return
         val item = currentDiagram.itemById[itemId] ?: return
         when (item.eligibility) {
@@ -302,8 +335,6 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 if (itemId !in session.touchedIds) {
                     if (itemId in selection) selection.remove(itemId) else selection.add(itemId)
                     reasonRes = null
-                    // Issue #526: 案内は次のユーザー操作で消える。
-                    discardNotice = false
                 }
             }
 
@@ -316,8 +347,9 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     }
 
     private fun runAction(action: PendingSessionAction): SessionPlanResult {
-        // Issue #526: アクションの試行（成功/拒否の双方）で案内を消す。
-        discardNotice = false
+        // Issue #526: アクションの試行（成功/拒否の双方）で案内を消す
+        // （消去の入口はonUserInteractionStartedに一元化）。
+        onUserInteractionStarted()
         val snapshot = captureSnapshot ?: return SessionPlanResult.Rejected(HomeEditRejection.UNSUPPORTED)
         return when (
             val result = EditSurfaceSessionPlanner.plan(
@@ -400,14 +432,19 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         refreshDiagram(EditSurfaceSession.EMPTY)
         selection.clear()
         reasonRes = null
-        // Issue #526: 案内は次のユーザー操作で消える。
-        discardNotice = false
+        // Issue #526: 案内は次のユーザー操作で消える（入口は一元化）。
+        onUserInteractionStarted()
     }
 
     // Issue #507: 重複確認面の操作。表示・選択・guard拒否は零書込みであり、
     // 「ホームから外す」は既存のRemoveFromHomeアクションへの共通入口
     // （新規アクション種別なし。dispatch直前のguard含む）。
-    private fun openDuplicates() {
+    // Issue #526: Internal so the instrumentation oracle can drive the
+    // zero-write duplicates-open path (a discard-notice dismissal entry that
+    // is not a selection toggle); production callers are within this class.
+    internal fun openDuplicates() {
+        // Issue #526: 面を開く操作も「次のユーザー操作」（入口は一元化）。
+        onUserInteractionStarted()
         duplicatesOpen = true
         reasonRes = null
     }
@@ -418,6 +455,8 @@ class HomeEditSurfaceActivity : ComponentActivity() {
      * typedな理由表示で受け付けない（零書込み）。
      */
     private fun toggleDuplicateMember(itemId: Int) {
+        // Issue #526: 確認面の行tapも「次のユーザー操作」（入口は一元化）。
+        onUserInteractionStarted()
         val currentDiagram = diagram ?: return
         val item = currentDiagram.itemById[itemId] ?: return
         when (item.eligibility) {
@@ -513,7 +552,8 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         lastApplyResultForTest = if (result is ApplyResult.Applied) null else result
         // Issue #526: 全terminal（Applied / stale / rejected / errorのいずれも）で
         // まず単一権威をInFlight → Correlatingへ進める（他stateからの呼び出しは
-        // 防御的no-op）。Correlatingからの解除はterminal後の相関capture完了のみ。
+        // 防御的no-op）。Correlatingからの解除はterminal後に開始された相関capture
+        // の完了（相関世代ticket一致）のみ。
         editSurfaceApplyGate.onApplyTerminal()
         busy = false
         when {
@@ -531,9 +571,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                         HomeEditUndoSnackbar.show(launcher, token)
                     }
                 }
-                // Issue #526: Applied後はgateをCorrelatingのまま残し、次の表面の
-                // 初回capture完了（onCaptureReady）でIdleへ戻す（再作成済みなら
-                // 再作成先instanceの初回reloadが解除する）。
+                // Issue #526: Applied後はgateをCorrelatingのまま残し、terminal後に
+                // 開始された初回capture完了（相関世代ticket一致のonCaptureReady）
+                // でIdleへ戻す（再作成済みなら再作成先instanceの初回reloadは
+                // 再作成後に開始されるため、そのticketはterminal後の世代と一致する）。
                 finish()
                 return
             }
@@ -550,24 +591,25 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             }
 
             // 防御到達（実装不具合）: 零書込み。変更未反映の旨を表示しセッション保持。
-            // 適用もrecovery動作もないため世界不変 — gateは即時Idleへ（再取得不要）。
+            // 適用もlocal recoveryもないためgateは即時Idleへ（再取得不要。共有
+            // layoutが外側で動いていた場合の保護は次confirmの既存stale gate）。
             built is EditSurfaceApplyPlan.Inconsistent || result == null ||
                 result is ApplyResult.NoChanges -> {
                 reasonRes = R.string.edit_surface_error_no_changes
-                editSurfaceApplyGate.onTerminalWithoutWorldChange()
+                editSurfaceApplyGate.onTerminalWithoutLocalRecovery()
             }
 
             // stale以外のtyped拒否（writer busy / lock系 / admission等）: 零書込みで
-            // 世界不変。gateは即時Idleへ。世界が動していた場合の保護は次confirm時の
-            // 既存STALE_REVISION gate（fail-closed）が担う。
+            // local recoveryなし。gateは即時Idleへ。共有layoutが動していた場合の
+            // 保護は次confirm時の既存STALE_REVISION gate（fail-closed）が担う。
             result is ApplyResult.Rejected -> {
                 reasonRes = rejectionTextFor(result.reason)
-                editSurfaceApplyGate.onTerminalWithoutWorldChange()
+                editSurfaceApplyGate.onTerminalWithoutLocalRecovery()
             }
 
             result is ApplyResult.ConcurrentRun -> {
                 reasonRes = R.string.edit_surface_error_busy
-                editSurfaceApplyGate.onTerminalWithoutWorldChange()
+                editSurfaceApplyGate.onTerminalWithoutLocalRecovery()
             }
 
             // rollback / recovery系: recovery書込みで世界が動いた（または不確実）。
@@ -583,11 +625,11 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             }
         }
         // Issue #526: 上記のterminal分類 — Applied / stale系 / rollback・recovery系は
-        // gateをCorrelatingに残し、terminal後の相関capture完了（onCaptureReady）で
-        // Idleへ戻す。零書込みかつ世界不変のterminal（防御到達 / stale以外の拒否 /
-        // ConcurrentRun）はonTerminalWithoutWorldChangeで即時Idleへ（相関再取得は
-        // 走らせない。再発行・リトライUIはしない。dummy recovery / Undo追加も
-        // しない）。
+        // gateをCorrelatingに残し、terminal後に開始された相関captureの完了
+        // （相関世代ticket一致のonCaptureReady）でIdleへ戻す。零書込みかつlocal
+        // recoveryなしのterminal（防御到達 / stale以外の拒否 / ConcurrentRun）は
+        // onTerminalWithoutLocalRecoveryで即時Idleへ（相関再取得は走らせない。
+        // 再発行・リトライUIはしない。dummy recovery / Undo追加もしない）。
     }
 
     private fun rejectionTextFor(reason: PreWriteRejection): Int = editSurfaceRejectionText(reason)
