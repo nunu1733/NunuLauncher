@@ -39,6 +39,12 @@
 #                               owned by the organizer-unit-tests permanent gate
 lanes:
   organizer-instrumentation-shared-writer-tests:
+    # Issue #526 (spec specs/526-target37-fork-ui): EditSurfaceTarget37ContractInstrumentationTest
+    # was appended to the lane's runner class list. Edges are unchanged; the lane
+    # already owned surface_layout_write (the homeedit session drives the same
+    # apply path) and the edit-surface recreation / in-flight back / double-apply
+    # oracles need the same process + framework boundary as the sibling
+    # EditSurface* classes.
     surfaces:
       - surface_layout_write
   organizer-instrumentation-db-migration-tests:

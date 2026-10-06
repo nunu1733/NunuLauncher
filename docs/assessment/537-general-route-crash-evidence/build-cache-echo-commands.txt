@@ -1,0 +1,68 @@
+# build-cache-echo実証トランスクリプト（2026-10-06 調査session）
+
+Issue #537根因チェーン5/6（破損compile出力のbuild cache保存・復元と`--rerun-tasks`による回復）のコマンドとキャプチャ出力。出力行は調査sessionで実際に取得したものの転写である。
+
+> 証拠強度の注記（2026-10-07追補）: §1〜§4はbuild全体の集計行までの保存で、task単位の`FROM-CACHE`行は未保存。task単位の直接観測は§5（修復後のcache状態での追補実験、2026-10-07実施）で取得した。§1の「破損出力そのものがcache経由で復元された」は直接観測ではなく、§5の観測と整合する最有力の推論である（assessment本文の根因チェーン5/6参照）。
+
+## 1. fresh worktree通常ビルド → クラッシュAPK（cache復元を示す行）
+
+`git worktree add /Users/nunu/Documents/work/NunuLauncher-537-clean 575e37baad` で作成したfresh worktree（build dirは空）でのビルド。`377 from cache`はbuild全体でcache復元が起きたことを示す集計行であり、対象のcompile taskがその一つだったことは未保存ログのため推論である。その推論が指す復元元entryは、main worktreeの過去ビルド（クラッシュAPKを作ったincrementalビルド）が保存した破損出力と整合する。
+
+```text
+$ cd /Users/nunu/Documents/work/NunuLauncher-537-clean && ./gradlew assembleLawnWithQuickstepGithubDebug
+BUILD SUCCESSFUL in 44s
+643 actionable tasks: 266 executed, 377 from cache
+Configuration cache entry stored.
+```
+
+生成APK `Lawnchair.16.Dev.(575e37b).github.debug.apk` をemulatorにinstallしてGeneral routeを開くと`NoSuchFieldError`でクラッシュ（[general-route-crash-logcat.txt](general-route-crash-logcat.txt)）。
+
+## 2. 真の再コンパイル（up-to-date/build cacheを無視）
+
+```text
+$ cd /Users/nunu/Documents/work/NunuLauncher-537-clean && ./gradlew :compileLawnWithQuickstepGithubDebugKotlin --rerun-tasks --console=plain
+BUILD SUCCESSFUL in 1m 52s
+401 actionable tasks: 401 executed
+Configuration cache entry stored.
+```
+
+## 3. 回復確認（javap）
+
+```text
+$ javap -p -classpath "/Users/nunu/Documents/work/NunuLauncher-537-clean/build/intermediates/built_in_kotlinc/lawnWithQuickstepGithubDebug/compileLawnWithQuickstepGithubDebugKotlin/classes" 'app.lawnchair.preferences.BasePreferenceManager$FontPref'
+Compiled from "BasePreferenceManager.kt"
+public final class app.lawnchair.preferences.BasePreferenceManager$FontPref extends app.lawnchair.preferences.BasePreferenceManager$StringBasedPref<app.lawnchair.font.FontCache$Font> {
+  public static final int $stable;
+  final app.lawnchair.preferences.BasePreferenceManager this$0;
+  ...
+}
+```
+
+## 4. 修復後のcache entryからのfresh worktreeビルド
+
+`--rerun-tasks`の実行がcache entryを正常出力で上書きした後、別のfresh worktree（`/Users/nunu/Documents/work/NunuLauncher-537-clean2`、build dir空）で通常ビルド。`372 from cache`でcache復元が再び起きるが、今度は`$stable`を含む正常出力（[fontpref-stable-healed-apk-dexdump.txt](fontpref-stable-healed-apk-dexdump.txt)）が復元され、実機でGeneral routeがクラッシュ0で動作する。
+
+```text
+$ cd /Users/nunu/Documents/work/NunuLauncher-537-clean2 && ./gradlew assembleLawnWithQuickstepGithubDebug
+BUILD SUCCESSFUL in 2m 53s
+643 actionable tasks: 271 executed, 372 from cache
+Configuration cache entry stored.
+```
+
+## 5. task単位のcache-hit直接観測（追補実験、2026-10-07、修復後のcache状態）
+
+`--rerun-tasks`でcache entryが正常出力に置き換わった後の状態で、3つ目のfresh worktree（`/Users/nunu/Documents/work/NunuLauncher-537-clean3`、`575e37baad`、build dir空）の`:compileLawnWithQuickstepGithubDebugKotlin`を単独実行し、task単位の出力をconsole=plainで記録した。同じ入力（`575e37baad`のsource）に対してcompile taskのoutputがbuild cacheから提供されること、およびその出力が`$stable`を含む健全なものであることを直接観測できる。
+
+```text
+$ cd /Users/nunu/Documents/work/NunuLauncher-537-clean3 && rm -rf build && ./gradlew :compileLawnWithQuickstepGithubDebugKotlin --console=plain
+> Task :compileLawnWithQuickstepGithubDebugKotlin FROM-CACHE
+BUILD SUCCESSFUL in 6s
+
+$ javap -p -classpath ".../compileLawnWithQuickstepGithubDebugKotlin/classes" 'app.lawnchair.preferences.BasePreferenceManager$FontPref'
+public final class app.lawnchair.preferences.BasePreferenceManager$FontPref extends app.lawnchair.preferences.BasePreferenceManager$StringBasedPref<app.lawnchair.font.FontCache$Font> {
+  public static final int $stable;
+  ...
+}
+```
+
+この観測が示すこと: (a) この追補実験の条件下（同じ入力hashのfresh build dir）で、対象compile taskの出力がbuild cacheから復元された（§1の集計行`377 from cache`と整合）。(b) 現在のcache entryは健全な出力である。(c) したがって§1の時点でcache復元により破損出力が流れたという説明は、観測済みの事実すべてと整合する最有力の推論である。ただし§1のtask単位ログは未保存のため、「初回fresh worktreeでcompile task自身がFROM-CACHEだった」ことの直接観測は存在しない。

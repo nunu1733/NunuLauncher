@@ -126,12 +126,17 @@
 
         <!-- Issue #449: visual edit surface (ADR-0014 case B). Launcher-process
              internal only; the session is process-local and nothing persists. -->
+        <!-- Issue #526: targetSdk 37 predictive back contract — same
+             enableOnBackInvokedCallback declaration PreferenceActivity has;
+             in-flight-apply back blocking is enforced by the activity's own
+             Compose BackHandler. -->
         <activity
             android:name="app.lawnchair.homeedit.ui.HomeEditSurfaceActivity"
             android:autoRemoveFromRecents="true"
             android:exported="false"
             android:label="@string/edit_surface_title"
-            android:theme="@style/Theme.Lawnchair" />
+            android:theme="@style/Theme.Lawnchair"
+            android:enableOnBackInvokedCallback="true" />
 
         <activity
             android:name="app.lawnchair.smartspace.SmartspacePreferencesShortcut"

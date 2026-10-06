@@ -1,0 +1,15 @@
+# BasePreferenceManager$FontPref in Lawnchair.16.Dev.(575e37b).github.debug.apk (cache-echo reproduction build, 2026-10-06 20:57)
+# classes14.dex — $stable field ABSENT (NoSuchFieldError source)
+  Class descriptor  : 'Lapp/lawnchair/preferences/BasePreferenceManager$FontPref;'
+  Access flags      : 0x0011 (PUBLIC FINAL)
+  Superclass        : 'Lapp/lawnchair/preferences/BasePreferenceManager$StringBasedPref;'
+  Interfaces        -
+  Static fields     -
+  Instance fields   -
+    #0              : (in Lapp/lawnchair/preferences/BasePreferenceManager$FontPref;)
+      name          : 'this$0'
+      type          : 'Lapp/lawnchair/preferences/BasePreferenceManager;'
+      access        : 0x1010 (FINAL SYNTHETIC)
+  Direct methods    -
+    #0              : (in Lapp/lawnchair/preferences/BasePreferenceManager$FontPref;)
+      name          : '<init>'
