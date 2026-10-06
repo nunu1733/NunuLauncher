@@ -259,8 +259,10 @@ revision 2）。新instanceのcaptureが旧適用のstale判定に達する場�
   零書込みかつlocal recoveryなし」（即時Idle解放。解放後の共有世界の移動に対しては
   既存apply時stale gateが **stale captureからのpersistent writeを零書込みで
   成立させない** ことでfail-closedに担う）に分類する。変更されない契約:
-  1 apply = 1 recovery point = 1 Undo、dummy recovery / Undo追加禁止、
-  stale captureからpersistent writeを成立させないこと（Confirm操作自体の
-  可否は画面feedbackの問題で、書込み成立の保証ではない）。
-  revision 2実装headでのshared-writer lane green runは、PR #538の最終CIで
-  確認でき次第本historyへ追記する。
+  Applied時は1 apply = 1 recovery point = 1 Undo、non-Applied時は既存result別契約、
+  dummy recovery / Undo追加禁止、stale captureからpersistent writeを成立させない
+  こと（Confirm操作自体の可否は画面feedbackの問題で、書込み成立の保証ではない）。
+  revision 2実装head（`eb949dc5d2`）でのshared-writer lane greenはrun
+  [37421912411](https://github.com/nunu1733/NunuLauncher/actions/runs/37421912411)
+  job 112133072081（27分05秒で成功。修正前の同laneはjob 112115882132で40分後に
+  failure）で確認済み。
