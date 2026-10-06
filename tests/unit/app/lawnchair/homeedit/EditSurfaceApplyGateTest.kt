@@ -226,6 +226,43 @@ class EditSurfaceApplyGateTest {
         assertNull("the consumed claim must stay consumed until the next terminal", gate.claimCorrelatedCapture())
     }
 
+    @Test
+    fun `onOwnerDestroyed releases the claim so a live successor can hand off`() {
+        // Pinned semantics (review round 4): a claimed correlated reload whose
+        // owner Activity is destroyed BEFORE its capture completes must not
+        // orphan the correlation. onOwnerDestroyed re-opens the claim for the
+        // SAME generation (once), so the live successor can claim it and run
+        // the single correlated reload. The gate stays Correlating (release is
+        // still governed by the ticket contract), a destroy WITHOUT a claim is
+        // a no-op, and after the handoff the successor's completion (same
+        // ticket) releases normally.
+        val gate = EditSurfaceApplyGate()
+        assertTrue(gate.beginApply())
+        gate.onApplyTerminal()
+        // Destroy without a claim: the claim is still available untouched.
+        gate.onOwnerDestroyed()
+        val firstClaim = gate.claimCorrelatedCapture()
+        assertNotNull(firstClaim)
+        // Claim as the owner, then destroy: the claim re-opens exactly once.
+        gate.onOwnerDestroyed()
+        val successor = gate.claimCorrelatedCapture()
+        assertEquals(
+            "the released claim must be re-claimable for the same generation",
+            firstClaim,
+            successor,
+        )
+        assertNull("the handoff must not create a second reload slot", gate.claimCorrelatedCapture())
+        assertEquals(
+            "releasing a claim must not release the correlation itself",
+            EditSurfaceApplyGate.State.Correlating,
+            gate.state,
+        )
+        // The successor's completion (same ticket) releases normally.
+        gate.onCaptureReady(successor!!)
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+    }
+
+
     // --- terminal classification: world-moved vs zero-write no-local-recovery ---
 
     @Test

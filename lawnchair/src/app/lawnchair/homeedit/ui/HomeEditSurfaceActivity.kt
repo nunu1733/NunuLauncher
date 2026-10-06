@@ -157,6 +157,16 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         outState.putBoolean(KEY_HAD_USER_WORK, hasUserWork())
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        // Issue #526 review round 4: 破棄されるownerが未完了のclaimed相関reloadを
+        // 持っていた場合、claimを解放してlive successor（再作成先の初回読込 /
+        // Correlating観測）が単一の相関reloadを引き継げるようにする（claim孤児に
+        // よるLoading固定を防ぐ）。所有中でなければ何もしない。ここでの解放はgate
+        // 状態を変えない（解除はticket契約どおり完了captureが担う）。
+        editSurfaceApplyGate.onOwnerDestroyed()
+    }
+
     @Composable
     private fun Content() {
         // Issue #526: 適用進行中（InFlight）のシステムbackは握り潰す（DB適用の
@@ -303,6 +313,9 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 // captureはliveな表面の相関再取得の保証にならない）、
                 // (2) capture開始時のticketがterminal後の相関世代と一致すること、
                 // の双方を要求する。capture失敗（fail-closedのnull）も解除しない。
+                // claimの所有権解放（owner破棄時のhandoff）はonDestroyで行う
+                // （review round 4。完了時解放はsuccessorのclaimを誤って壊す
+                // edgeがあるため、ここでは行わない）。
                 if (!isDestroyed) {
                     editSurfaceApplyGate.onCaptureReady(captureTicket)
                 }

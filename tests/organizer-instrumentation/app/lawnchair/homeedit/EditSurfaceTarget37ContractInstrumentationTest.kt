@@ -562,6 +562,54 @@ class EditSurfaceTarget37ContractInstrumentationTest {
         }
     }
 
+    // --- oracle 3d (review round 4): a claimed reload's owner dying mid-capture ---
+
+    @Test
+    fun aClaimedCorrelatedReloadWhoseOwnerIsDestroyedBeforeCompletionHandsOffToTheSuccessor() {
+        // Review round 4 ordering: a live surface claims the pending
+        // correlation and STARTS its correlated reload, then is destroyed
+        // BEFORE that capture completes. The claim must not orphan: the
+        // destroyed owner's completion releases the claim
+        // (releaseClaimedCorrelation) and the live successor (recreated
+        // surface) can claim the same generation and run the single correlated
+        // reload, reaching Idle — no Loading/Correlating deadlock.
+        try {
+            launchSettledSurface().let { (scenario, activity) ->
+                awaitSelectableItem(activity, "3d handoff surface")
+                // Drive the owner into Correlating with a claimed reload: the
+                // same entry the production stale branch uses (claim → reload).
+                // The gate API path is used directly for determinism (no real
+                // apply; the ApplyResult→gate mapping is pinned by the JVM
+                // classification oracle).
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    assertTrue(editSurfaceApplyGate.beginApply())
+                    editSurfaceApplyGate.onApplyTerminal()
+                    val claimed = editSurfaceApplyGate.claimCorrelatedCapture()
+                    assertNotNull("the live surface must claim the pending correlation", claimed)
+                    // Simulate the claimed reload's capture being in flight
+                    // while the owner is destroyed: destroy now. The claim was
+                    // taken with this surface as owner.
+                    scenario.recreate()
+                }
+                val successor = currentActivity(scenario)
+                awaitSelectableItem(successor, "3d successor surface")
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    assertEquals(
+                        "the successor must reach Idle through the handed-off correlation",
+                        EditSurfaceApplyGate.State.Idle,
+                        editSurfaceApplyGate.state,
+                    )
+                    assertTrue(
+                        "the successor must be able to confirm again after the handoff",
+                        editSurfaceApplyGate.beginApply(),
+                    )
+                }
+            }
+        } finally {
+            forceGateIdleForNextTest()
+        }
+    }
+
     /**
      * Favorites full-row snapshot straight from the launcher DB (zero-write
      * oracle 3b, review round 1). Projects the stable placement columns

@@ -132,6 +132,21 @@ class EditSurfaceApplyGate {
     }
 
     /**
+     * Issue #526 review round 4: claimed相関reloadのowner Activityが破棄された
+     * ときの所有権解放（onDestroyから呼ばれる）。破棄されたownerのclaimを解除し、
+     * live successor（再作成先の初回読込 / Correlating観測）が同一世代を再claim
+     * して相関reloadを1回だけ引き継げるようにする（claim孤児によるLoading固定を
+     * 防ぐ）。ownerがclaimしていなければ何もしない。解放してもgate状態は
+     * Correlatingのまま（解除は既存のticket契約どおり [onCaptureReady] の完了
+     * captureが担う）。
+     */
+    fun onOwnerDestroyed() {
+        if (state == State.Correlating && claimedCorrelationGeneration == pendingCorrelationGeneration) {
+            claimedCorrelationGeneration = null
+        }
+    }
+
+    /**
      * Issue #526 review round 1（命名を規約へ同期）: 当該applyが零書込みかつ
      * local recoveryなしのterminal（writer busy / lock系rejected / ConcurrentRun /
      * NoChanges等の防御到達）での解放。適用もrecovery動作も起きないため画面側に
