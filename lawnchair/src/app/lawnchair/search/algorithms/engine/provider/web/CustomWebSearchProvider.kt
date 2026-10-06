@@ -12,7 +12,6 @@ import androidx.core.content.ContextCompat
 import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.R
 import com.patrykmichalik.opto.core.firstBlocking
-import javax.net.ssl.SSLException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -159,23 +158,6 @@ object CustomWebSearchProvider : WebSearchProvider {
         val context = appContext ?: return false
         return ContextCompat.checkSelfPermission(context, LanNetworkContract.PERMISSION_ACCESS_LOCAL_NETWORK) ==
             PackageManager.PERMISSION_GRANTED
-    }
-
-    /**
-     * Maps a fetch exception to the typed outcome. Detection is by exception
-     * type / message category; none of it carries URL or query text.
-     */
-    private fun mapFailureToOutcome(e: Exception): SuggestionFetchOutcome = when {
-        // Android's cleartext rejection surfaces as a SocketException whose
-        // message names the policy ("Cleartext HTTP traffic to <host> not
-        // permitted"); matching the category avoids logging the host.
-        e.message?.contains("Cleartext HTTP traffic", ignoreCase = true) == true -> SuggestionFetchOutcome.CLEARTEXT_BLOCKED
-
-        // SSLHandshakeException and SSLPeerUnverifiedException are both
-        // SSLException subclasses: certificate, trust and CT failures.
-        e is SSLException -> SuggestionFetchOutcome.TLS_CT_FAILURE
-
-        else -> SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE
     }
 
     private fun publishOutcome(templateAtFetchStart: String, outcome: SuggestionFetchOutcome) {

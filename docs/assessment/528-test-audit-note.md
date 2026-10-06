@@ -32,3 +32,36 @@ Applied per `.agents/skills/test-audit/SKILL.md` (authoring gate). Head: `issue-
    gate's regression oracle for a targetSdk-37 platform contract.
 8. **Cost vs confidence** — pure JVM tests (~ms), zero emulator/clean-state
    cost, high independent confidence on the exact contract seams.
+
+## Addendum — cleartext classification fix (regression test)
+
+Applied per the same authoring gate. `mapFailureToOutcome` moved from a private
+method of `CustomWebSearchProvider` to an internal pure top-level function in
+`SuggestionFetchOutcome.kt` (same pattern as `SuggestionFetchLog`: production
+caller, no test-only seam) so the classification is directly testable.
+
+1. **Protected contract** — the spec #528 typed-outcome contract: a cleartext
+   policy rejection must surface as `CLEARTEXT_BLOCKED`, never as
+   `GENERIC_NETWORK_FAILURE`; `SSLException` stays `TLS_CT_FAILURE`; anything
+   else stays generic.
+2. **Credible regression** — the verified bug this fix addresses: merged OkHttp
+   5.5.0 throws `java.net.UnknownServiceException("CLEARTEXT communication to
+   <host> not permitted by network security policy")`, which the old
+   `"Cleartext HTTP traffic"` message match missed, so every cleartext
+   rejection was mis-typed as generic. Demonstrated: the new tests fail on the
+   pre-fix logic (red run: 3 failed / 33) and pass on the fix (green).
+3. **Canonical owner** — the pure `mapFailureToOutcome` JVM seam, tested in the
+   existing `SuggestionFetchOutcomeLifecycleTest` at the lowest deterministic
+   boundary; no existing test owned exception→outcome classification.
+4. **Distinct higher-layer risk** — the emulator re-capture (evidence item 7a)
+   owns the end-to-end OkHttp/NSC integration; the CI lane does not replay it.
+5. **Seam cost** — none: internal pure function with a production caller; no
+   wrapper, flag, global, or test-only export.
+6. **Impact surface / lane** — joins the existing permanent merge-gate job via
+   the already-present `--tests 'app.lawnchair.search.*'` filter (no new lane,
+   no `ci_portfolio_map.yml` change; the map enumerates surfaces, not
+   packages).
+7. **CI classification** — Permanent (regression oracle for the fix in the
+   merge gate).
+8. **Cost vs confidence** — pure JVM tests (~ms), no emulator or clean-state
+   cost.

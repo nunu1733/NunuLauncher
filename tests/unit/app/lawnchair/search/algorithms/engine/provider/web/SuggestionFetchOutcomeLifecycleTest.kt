@@ -82,4 +82,47 @@ class SuggestionFetchOutcomeLifecycleTest {
         assertFalse(logged.contains("10.0.2.2"))
         assertFalse(logged.contains("secret"))
     }
+
+    @Test
+    fun `okhttp cleartext rejection is classified as cleartext-blocked`() {
+        // OkHttp 5.5.0 throws UnknownServiceException for a cleartext-policy
+        // rejection; the message names the policy, not the old platform wording.
+        val exception = java.net.UnknownServiceException(
+            "CLEARTEXT communication to 10.0.2.2 not permitted by network security policy",
+        )
+        assertEquals(SuggestionFetchOutcome.CLEARTEXT_BLOCKED, mapFailureToOutcome(exception))
+    }
+
+    @Test
+    fun `unknown service exception is cleartext-blocked regardless of message wording`() {
+        // Type-based detection must not depend on the message text, which
+        // varies across library versions.
+        assertEquals(
+            SuggestionFetchOutcome.CLEARTEXT_BLOCKED,
+            mapFailureToOutcome(java.net.UnknownServiceException("protocol not permitted")),
+        )
+    }
+
+    @Test
+    fun `cleartext message category fallback keeps non-ssl rejections classified`() {
+        // Robustness fallback: any exception whose message names the cleartext
+        // policy is cleartext-blocked even if a wrapper changes the type.
+        val exception = java.net.SocketException("CLEARTEXT communication to host not permitted by network security policy")
+        assertEquals(SuggestionFetchOutcome.CLEARTEXT_BLOCKED, mapFailureToOutcome(exception))
+    }
+
+    @Test
+    fun `ssl failures stay tls-ct-failure`() {
+        assertEquals(SuggestionFetchOutcome.TLS_CT_FAILURE, mapFailureToOutcome(javax.net.ssl.SSLException("certificate unknown")))
+        assertEquals(
+            SuggestionFetchOutcome.TLS_CT_FAILURE,
+            mapFailureToOutcome(javax.net.ssl.SSLHandshakeException("PKIX path validation failed")),
+        )
+    }
+
+    @Test
+    fun `other network failures stay generic`() {
+        assertEquals(SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE, mapFailureToOutcome(java.net.UnknownHostException("nas.local")))
+        assertEquals(SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE, mapFailureToOutcome(java.io.IOException("timeout")))
+    }
 }

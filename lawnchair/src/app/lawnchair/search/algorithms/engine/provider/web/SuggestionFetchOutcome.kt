@@ -1,5 +1,8 @@
 package app.lawnchair.search.algorithms.engine.provider.web
 
+import java.net.UnknownServiceException
+import javax.net.ssl.SSLException
+
 /**
  * Typed outcome of the latest custom suggestion fetch attempt (spec Issue
  * #528). The fetch path never degrades to a silent empty result without an
@@ -65,6 +68,32 @@ class SuggestionFetchOutcomeState(initialTemplate: String = "") {
         outcome = newOutcome
         return true
     }
+}
+
+/**
+ * Maps a suggestion fetch failure to its typed outcome (Issue #528). Detection
+ * is by exception type / message category only; neither the message content
+ * (which can carry the URL or the query) nor any other payload detail is used,
+ * and only the exception class name is ever logged. Pure and JVM-testable;
+ * [CustomWebSearchProvider] calls this for every fetch exception.
+ */
+internal fun mapFailureToOutcome(e: Exception): SuggestionFetchOutcome = when {
+    // OkHttp 5.5.0 rejects cleartext HTTP with UnknownServiceException
+    // ("CLEARTEXT communication to <host> not permitted by network security
+    // policy"). Detection is type-based so it survives message wording
+    // changes; the class name — never the message — is what reaches logcat.
+    e is UnknownServiceException -> SuggestionFetchOutcome.CLEARTEXT_BLOCKED
+
+    // Robustness fallback: any exception whose message names the cleartext
+    // policy (e.g. a wrapped rejection) stays cleartext-blocked. Matching the
+    // category avoids logging the host.
+    e.message?.contains("CLEARTEXT", ignoreCase = true) == true -> SuggestionFetchOutcome.CLEARTEXT_BLOCKED
+
+    // SSLHandshakeException and SSLPeerUnverifiedException are both
+    // SSLException subclasses: certificate, trust and CT failures.
+    e is SSLException -> SuggestionFetchOutcome.TLS_CT_FAILURE
+
+    else -> SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE
 }
 
 /**
