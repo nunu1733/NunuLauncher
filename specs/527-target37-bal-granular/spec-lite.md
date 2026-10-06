@@ -1,6 +1,6 @@
 ---
 issue: "#527"
-status: draft
+status: accepted
 tier: M
 requirements: []
 updated: 2026-10-06
@@ -286,3 +286,5 @@ API 34/35はlegacy分岐で現行どおり）。
   現方針（可視senderは`ALLOW_IF_VISIBLE`優先、非可視`ALLOW_ALWAYS`は依存契約・
   runtime evidence限定、G3は#524判断待ち）へ修正、Verificationの上流対象を3 fileへ
   修正、PR本文を現head・現分類へ同期。
+- 2026-10-06: Review round 3（PR #540コメント）で全指摘resolved・新規指摘なしを確認
+  （head `440ce8b27e` のCI green確定後）。acceptedへ遷移。
