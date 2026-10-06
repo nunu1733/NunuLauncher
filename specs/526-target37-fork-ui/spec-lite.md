@@ -84,10 +84,16 @@ diagnostics、backup/restore、destination picker（PreferenceActivity配下）�
   （既存process singletonに属するstate、または`HomeEditSurfaceAccess` companion等、
   全wrapper・全Activityが同一stateを参照するidentityとする。Activity/wrapperごとの
   コピーは禁止）。状態機械は `Idle → InFlight →（旧applyのterminal結果受領）→
-  Correlating（相関capture再取得中）→ Idle` とし、terminal結果（Applied / stale /
-  rejected / error のいずれも）を受けたあとは**新instanceが相関captureを再取得して
-  完了するまでConfirmを再有効化しない**。状態の二重化（Activity fieldと権威の併存）
-  はしない。表示用途のみでwrite経路は不変。
+  Correlating（相関capture再取得中）→ Idle` とし、**世界が動いたか不確実なterminal**
+  （Applied / stale系（`STALE_REVISION`・`EXACT_PRECONDITION_FAILED`）/ rollback・
+  recovery系（`RolledBack`・`Recovered`・`Unresolved`・`RecoveryFailed`））では
+  **新instanceが相関captureを再取得して完了するまでConfirmを再有効化しない**。
+  **零書込みかつ世界不変のterminal**（stale以外のtyped拒否 / `ConcurrentRun` /
+  `NoChanges`等の防御到達）では、適用もrecovery動作もなく画面のcaptureが現行のまま
+  有効なため、gateは即時にIdleへ解放する。世界が動していた場合の保護は、次confirm時の
+  既存`STALE_REVISION` / `EXACT_PRECONDITION_FAILED` gate（零書込みfail-closed）が
+  担う（revision 2）。状態の二重化（Activity fieldと権威の併存）はしない。
+  表示用途のみでwrite経路は不変。
 - back gate: **in-flightなDB適用が存在する間**のシステムbackを握り潰すCompose
   `BackHandler`。capture再読込・初回読込などのzero-write待機中は従来どおり
   finish（= cancel）可能とする。非適用時のbackは既存どおりzero-write終了。
@@ -159,11 +165,14 @@ Then 進行中の適用は既存契約どおり完走し、再発行されない
 non-Applied時は既存result別契約のまま — 少なくともstale / rejectedは
 零書込み・Undoなしで、oracleのためのrecovery / Undo追加をしない）。
 新instanceは単一権威によりin-flight中のConfirmを受け付けず、適用完了まで
-適用が始まらない旨が示される。適用のterminal後も、新instanceが相関captureを
-再取得して完了するまでConfirmは再有効化されない（旧適用前のcaptureをstale図として
-編集→Confirm→再読込の往復を発生させない）。terminalがApplied以外
-（stale / rejected / error）でも同じ解除条件を経る。新instanceのcaptureが
-旧適用のstale判定に達する場合は既存gateどおり零書込みで再読込する
+適用が始まらない旨が示される。適用のterminal後も、**世界が動いたか不確実なterminal**
+（Applied / stale系 / rollback・recovery系 / unresolved系）では、新instanceが
+相関captureを再取得して完了するまでConfirmは再有効化されない（旧適用前のcaptureを
+stale図として編集→Confirm→再読込の往復を発生させない）。**零書込みかつ世界不変の
+terminal**（stale以外の拒否 / `ConcurrentRun` / 防御到達）では、gateは即時にIdleへ
+戻りcaptureは現行のまま有効（世界が動していた場合の保護は既存stale gateが担う。
+revision 2）。新instanceのcaptureが旧適用のstale判定に達する場合は既存gateどおり
+零書込みで再読込する
 
 ## Verification
 
@@ -184,8 +193,9 @@ non-Applied時は既存result別契約のまま — 少なくともstale / rejec
   (3) 適用進行中の`recreate()`で二重適用が起きないこと（Applied時はDB更新1回 /
   1 recovery point / 1 Undo、non-Applied時は既存result別契約の維持 —
   少なくともstale / rejectedは零書込み・Undoなしで、oracleのためのdummy
-  recovery / Undo追加をしない）と、全terminal共通でterminal後・相関capture
-  再取得完了前にConfirmが不能であること、
+  recovery / Undo追加をしない）と、世界が動いたか不確実なterminalではterminal後・
+  相関capture再取得完了前にConfirmが不能であること（零書込みかつ世界不変の
+  terminalは即時解放。revision 2）、
   (4) 案内の`liveRegion` semantics（作業あり=Polite設定、作業なし=対象要素なし）と、
   再compositionで通知条件が再発火しないこと。
 - 既存edit surface系unit/instrumentation testがすべてgreenであること。
@@ -227,3 +237,11 @@ non-Applied時は既存result別契約のまま — 少なくともstale / rejec
   （無条件の1 transaction文は削除）。
 - 2026-10-06: Review round 5（PR #536コメント）で全指摘resolved・新規指摘なしを
   確認し、acceptedへ遷移。
+- 2026-10-06: Revision 2 — 実装PR #538のCI実測を受けた修正。
+  PR #535 lineage上のCIで`EditSurfaceUndoInstrumentationTest`（fault注入系）が
+  per-class 20分timeoutとなり、全terminal一律の相関再取得が零書込みterminalの
+  たびにfull captureを走らせてコストが爆発していることを確認。terminalを
+  「世界が動いたか不確実」（相関capture完了までCorrelating）と「零書込みかつ
+  世界不変」（即時Idle解放。世界移動時の保護は既存apply時stale gateがfail-closedで
+  担う）に分類する。安全性契約（世界移動後のstale図confirm禁止、
+  1 apply = 1 recovery point = 1 Undo、dummy recovery / Undo追加禁止）は不変。
