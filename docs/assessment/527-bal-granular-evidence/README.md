@@ -9,9 +9,9 @@ debug build限定StrictMode `detectBlockedBackgroundActivityLaunch`（penaltyLog
 
 追記（2026-10-07、review round 1対応）: StrictMode policyを既存VM policy継承
 （`VmPolicy.Builder(StrictMode.getVmPolicy())`）へ修正（review指摘 medium）。
-修正head `4e92d4d2c1` 以降のAPKでAPI 37 emulatorにて既知のrestart-PI blockを再現し、
-`BackgroundActivityLaunchViolation` が引き続き記録されることを確認
-（`api37-strictmode-policy-inherit-verify.txt`）。
+修正head `de913083dabc63cea0a23278cbc95432b8ae37f1` のAPKでAPI 37 emulatorにて
+既知のrestart-PI blockを再現し、`BackgroundActivityLaunchViolation` が引き続き
+記録されることを確認（`api37-strictmode-policy-inherit-verify.txt`）。
 
 ## 環境
 
