@@ -527,6 +527,41 @@ class EditSurfaceTarget37ContractInstrumentationTest {
         }
     }
 
+    // --- oracle 3c (review round 3): Correlating BEFORE the surface starts ---
+
+    @Test
+    fun aSurfaceStartedWhileCorrelatingClaimsThePendingCorrelationInsteadOfBypassingIt() {
+        // Review round 3 ordering: the terminal reaches Correlating BEFORE the
+        // recreated/launched surface's onCreate runs. The unconditional
+        // onCreate capture must NOT bypass the claim authority and start a
+        // second post-terminal full capture: onCreate itself claims the pending
+        // correlation and its initial capture IS the single correlated reload
+        // (claimed ticket), and no second capture may start from the
+        // Content() observer. Pinned by: gate reaches Correlating → launch a
+        // NEW surface → its capture settles → gate must be Idle (released by
+        // the onCreate-claimed capture alone) and the surface must be usable.
+        try {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                assertTrue(editSurfaceApplyGate.beginApply())
+                editSurfaceApplyGate.onApplyTerminal()
+                assertEquals(EditSurfaceApplyGate.State.Correlating, editSurfaceApplyGate.state)
+            }
+            launchSettledSurface().let { (scenario, activity) ->
+                awaitSelectableItem(activity, "correlating-start surface")
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    assertEquals(
+                        "the onCreate-claimed initial capture must release the gate (no bypass, no second capture)",
+                        EditSurfaceApplyGate.State.Idle,
+                        editSurfaceApplyGate.state,
+                    )
+                }
+                openScenario = null
+            }
+        } finally {
+            forceGateIdleForNextTest()
+        }
+    }
+
     /**
      * Favorites full-row snapshot straight from the launcher DB (zero-write
      * oracle 3b, review round 1). Projects the stable placement columns

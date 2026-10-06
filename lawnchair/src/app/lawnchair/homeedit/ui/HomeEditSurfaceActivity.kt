@@ -137,7 +137,19 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         // capture完了で破棄案内を出す（未確定セッションは保持しない）。
         pendingDiscardNotice = savedInstanceState?.getBoolean(KEY_HAD_USER_WORK) == true
         setContent { Content() }
-        reloadCapture()
+        // Issue #526 review round 3: 起動時にgateが既にCorrelating（terminalが
+        // 再作成先onCreateより先に到達した順序）でも、初回captureをclaim権威の
+        // 外へ起動しない。claimできたならこの初回capture自身が唯一の相関reload
+        // （claimed ticketで起動）、claimできない（別live instanceが所有済み /
+        // InFlight）ならInFlight以外はLaunchedEffectの観測に任せる — InFlightは
+        // 未claimのCorrelatingではないため通常の初回captureでよいが、Correlating
+        // でclaimに失敗した場合は起動しない（所有済みの相関reloadが解禁する）。
+        val claimedOnCreate = editSurfaceApplyGate.claimCorrelatedCapture()
+        if (claimedOnCreate != null) {
+            reloadCapture(keepSession = true, ticketOverride = claimedOnCreate)
+        } else if (editSurfaceApplyGate.state != EditSurfaceApplyGate.State.Correlating) {
+            reloadCapture()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
