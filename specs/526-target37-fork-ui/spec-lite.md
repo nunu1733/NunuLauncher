@@ -67,7 +67,8 @@ Activity field状態（`busy`/`applying`/`surfaceExecutor`）の分離により�
 targetSdk 37環境（API 36/37、gesture/3-button、cutout/IME、sw600dp以上の回転/resize）
 でも、編集画面の確認・キャンセル・図操作が被覆されず、適用進行中の戻るが画面離脱を
 起こさず、再作成で未確定セッションが案内付きで安全に破棄され、適用進行中の再作成でも
-1 apply = 1 recovery point = 1 Undoが維持される。organizer hub/preview/exchange/
+二重適用が起きない（件数契約はterminal別: Applied時は1 apply = 1 recovery point =
+1 Undo、non-Applied時は既存result別契約）。organizer hub/preview/exchange/
 diagnostics、backup/restore、destination picker（PreferenceActivity配下）の表示も
 同一matrixで確認し、実測した回帰のみ修正する。
 
@@ -97,8 +98,9 @@ diagnostics、backup/restore、destination picker（PreferenceActivity配下）�
   session.changes.isNotEmpty()`。将来の作業状態はこの述語へ集約）で判定する。
 - 再作成と適用の相互契約: 適用進行中の再作成では、進行中の適用は旧instance側で
   完走させ（再発行・リトライUIはしない）、新instanceは単一権威により二重Confirmを
-  許さない。stale captureは既存gateどおり適用しない。1 apply = 1 recovery point =
-  1 Undoを維持する（Undo記録・snackbarは既存flowのまま）。
+  許さない。stale captureは既存gateどおり適用しない。件数契約はterminal別で、
+  Applied時は1 apply = 1 recovery point = 1 Undo（Undo記録・snackbarは既存flowの
+  まま）、non-Applied時は既存result別契約を維持する。
 - PreferenceActivity配下のorganizer・backup・picker系routeの回転/resize・fontScale・
   対象言語での表示確認と、実測した回帰の修正（修正が生じた場合のみコード変更）。
 - 追加文字列（破棄案内）は`lawnchair/res/values/strings.xml`と`values-ja/strings.xml`。
@@ -161,8 +163,7 @@ non-Applied時は既存result別契約のまま — 少なくともstale / rejec
 再取得して完了するまでConfirmは再有効化されない（旧適用前のcaptureをstale図として
 編集→Confirm→再読込の往復を発生させない）。terminalがApplied以外
 （stale / rejected / error）でも同じ解除条件を経る。新instanceのcaptureが
-旧適用のstale判定に達する場合は既存gateどおり零書込みで再読込する。
-DBは旧適用の1回のtransactionのみで更新される
+旧適用のstale判定に達する場合は既存gateどおり零書込みで再読込する
 
 ## Verification
 
@@ -221,3 +222,6 @@ DBは旧適用の1回のtransactionのみで更新される
   適用中再作成Scenarioの件数条件をterminal別に分離（Applied=1 transaction /
   1 recovery point / 1 Undo、non-Applied=既存result別契約・dummy追加禁止）、
   全terminal共通のCorrelating解除条件を明記。
+- 2026-10-06: Review round 4（PR #536コメント）対応 — Outcome / Scope /
+  適用中再作成Scenario末尾の件数契約をterminal別の表現へ同期
+  （無条件の1 transaction文は削除）。
