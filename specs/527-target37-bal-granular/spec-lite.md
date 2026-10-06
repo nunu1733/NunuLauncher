@@ -161,7 +161,7 @@ flowに追加操作・やり直し・セッション破棄を発生させない�
 
 - Android公式: [behavior changes 17 — Activity Security](https://developer.android.com/about/versions/17/behavior-changes-17#activity-security)。確認日2026-10-06。採用: IntentSenderへのBAL保護拡大とlegacy `ALLOWED`からの移行要求をProblemの根拠にする。
 - Android公式: [Secure BAL](https://developer.android.com/guide/components/activities/secure-bal)。確認日2026-10-06。採用: sender/creator両側opt-inの要求version、`ALLOW_IF_VISIBLE`の「送信app可視」条件、`allowCrossUidActivitySwitchFromBelow`の意味と検証要求、logcat `ActivityTaskManager` とStrictMode `detectBlockedBackgroundActivityLaunch` による観測をVerificationに使う。
-- upstream 16-dev自身のgranular使用（`TaskAnimationManager.java:338-342` の `ALLOW_ALWAYS`、wmshell各所）。確認日2026-10-06。採用: 非可視経路には`ALLOW_ALWAYS`、可視経路には`ALLOW_IF_VISIBLE`という使い分けの先例としてG3/G4の分類に従う。
+- upstream 16-dev自身のgranular使用（`TaskAnimationManager.java:338-342` の `ALLOW_ALWAYS`、wmshell各所）。確認日2026-10-06。採用: 可視senderには`ALLOW_IF_VISIBLE`を優先し、非可視経路の`ALLOW_ALWAYS`は既存の依存契約（shell側grant）またはruntime evidenceがある場合に限る使い分けの先例とする。G3のcreator側移行は#524判断待ち（機械置換しない）。
 - それ以外の外部実装例は省略（調査済み）。対応はplatform契約の追従であり、新規設計の採用がない。
 
 ## Outcome
@@ -260,7 +260,7 @@ API 34/35はlegacy分岐で現行どおり）。
   assertは低価値で、振る舞いはemulator matrixとlintが一次証拠。既存
   `TaskAnimationManagerTest` の `ALLOW_ALWAYS` assertは対象外のため不変）。
 - 上流bridgeの計測: `python3 tools/repo-contract/measure_upstream_patch_surface.py
-  --target HEAD --enforce-baseline` の結果をPR本文へreportする（上流4 fileへの
+  --target HEAD --enforce-baseline` の結果をPR本文へreportする（上流3 fileへの
   最小変更であることの確認）。
 - 書込み経路を追加しないことの確認: 変diffはG1〜G2のmode選択・version gate・
   debug StrictMode追加に限り、PI作成契約・起動先・結果処理・DB pathは不変
@@ -282,3 +282,7 @@ API 34/35はlegacy分岐で現行どおり）。
   G6を「legacy 2 siteのみ対象外として追跡 + 依存grant確認」へ明確化、
   `ALLOW_ALWAYS` とlegacy `ALLOWED` の非同義性を明記、Outcome/Scope/Non-goals/
   Verificationを同一の所有境界へ同期。
+- 2026-10-06: Review round 2（PR #540コメント）対応 — Prior artのmode使い分け記述を
+  現方針（可視senderは`ALLOW_IF_VISIBLE`優先、非可視`ALLOW_ALWAYS`は依存契約・
+  runtime evidence限定、G3は#524判断待ち）へ修正、Verificationの上流対象を3 fileへ
+  修正、PR本文を現head・現分類へ同期。
