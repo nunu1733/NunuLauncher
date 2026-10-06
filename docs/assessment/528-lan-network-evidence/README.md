@@ -26,7 +26,7 @@
 | 6 | custom public HTTPS (DuckDuckGo) | PASS |
 | 7 | typed failures (cleartext / tls-ct / generic / not-run lifecycle) | PASS (7aは初回CONTRADICTION → fix `1600e0c857`で**再取得PASS**、下記「修正後再取得」) 、7b/7c/7dはPASS |
 | 8 | 初回未要求UX (Settingsへ誘導しない) | PASS |
-| 9 | katbin bugreport upload 成功/失敗通知 | **NOT COMPLETED** (debug buildのLeakCanaryがcrash経路を block。原因と証跡は下記) |
+| 9 | katbin bugreport upload 成功/失敗通知 | PASS (**release署名buildで再取得**、下記「Item 9再取得 (release build)」) |
 | 10 | log redaction契約 | PASS |
 | 11 | font scaling 2.0 | PASS |
 | 12 | ECH/CT適用状態の記録 | PASS (記録)。CT固有失敗の再現は **not reproduced** (emulatorのbootloaderがlockされsystem store不可変更。specのfallback分析を記載) |
@@ -74,15 +74,27 @@
 - `37-lan-item7a-05-cleartext-logcat-after-fix.txt` — 上記fetchのlogcat (`CustomWebSearchProvider` tagのみ)。**`java.net.UnknownServiceException`** (class名のみ。メッセージ内容・URL・queryは出ない) でredaction契約も維持。okhttp 5.5.0の予測どおりの例外型。
 - `38-lan-item7a-06-drawer-empty-cleartext.png` — 同一fetch時のdrawer検索: web候補は**即時に空** ("Search on Custom"のみ)。cleartext拒否はnetwork I/O前の短絡で、server access logに新規行なし (最終行は07:49のhttps fetch)。1行メモ: **検索flowは空候補で高速に完了し、hang・dialog・crashなし**。
 
+### Item 9再取得 (release署名build、fix `1600e0c857` / API 37 同一AVD)
+
+debug buildのLeakCanary block (旧 `24`〜`26` の記録) を回避するため、**release variant** (`assembleLawnWithQuickstepGithubRelease`、applicationId `app.lawnchair`、NSCなし) を debug keystoreでzipalign+apksigner署名して同一AVDへ追加installし、`am crash` → 通知のaction tapでE2Eを取得した。C4 (katbin upload経路) は#528で変更していないため、これは既存経路の動作確認である。
+
+- `39-lan-item9-03-release-crash-notification.png` — release build (`app.lawnchair`) で `am crash` → crash pre-handlerがreport fileを書き (**POST_NOTIFICATIONSを `pm grant` で付与する必要があった** — 未grantでは通知が `numBlocked` になりevidence取得不可)、shadeに "Lawnchair crashed" + **"Upload crash log"** actionが表示される。
+- `40-lan-item9-04-katbin-success-copy-link.png` — network ONで "Upload crash log" をtap → UploaderService (FGS, `:bugReport` process) が起動しkatbin upload成功 → 通知のactionが **"Copy link"** に切替 (`report.link != null` のtyped状態、`BugReportReceiver.notify` の分岐どおり)。
+- `41-lan-item9-05-katbin-paste-live.png` — 通知本体をtap → Chrome が **`https://katb.in/sevufucejik`** を開き、paste実体を表示: `Lawnchair bug report 2026-10-07_08-02-17` / `version: 16.Dev.(1600e0c) (1600020100)` / `commit: 1600e0c`。**URLが実在し、中身もfix commitのreportであることまで確認**。
+- `42-lan-item9-06-katbin-upload-logcat.txt` — 成功flowのlogcat抜粋 (crash → UploaderService FGS起動)。
+- `43-lan-item9-07-katbin-upload-failed-typed.png` — **失敗case**: `cmd connectivity airplane-mode enable` → 同手順で再発火 → 通知actionが **"Upload failed"** (`action_upload_error` のtyped表記) に切替。
+- `44-lan-item9-08-katbin-upload-error-logcat.txt` — 失敗flowのlogcat抜粋 (`UploaderService: failed to upload bug report`、FGS起動/停止)。airplane modeはcapture後に復元 (OFF確認済み)。
+- 観測の補足: (a) 通知のanti-spam guard (`notifications.size > 3`) は実働を確認 — system通知が4件ある状態でのcrashはreport fileなしでskipされた (既存仕様どおり)。(b) `am crash` は長時間起動済みprocessに対して効果がない場合があり、`am force-stop` → `am start` → `am crash` の手順で安定した (test harness側の事情でapp変更ではない)。(c) upload失敗から復帰した後も通知actionは `Upload failed` のまま残る (再uploadはnotificationからは再試行しない既存挙動)。
+
 ### API 36 (回帰)
 
 - `29-lan-item13-api36-no-lan-section.png` — **SDK 36ではLAN URL (statically-local) を設定してもLAN guard sectionが出ない** (要求button・rationale・granted表示なし。typed status `not-run` のみ)。guardがSDK 37+ gateであることのUI証跡。新規permission promptは一切出ない。← Verification「API 36 emulator: 既存public fetch・katbinの回帰なし、新規permission promptなし」+ Scenario「API 36・Internet-onlyは挙動不変」
 - `30-lan-item13-api36-drawer-lan-suggestions.png` — API 36で同一LAN URLのdrawer検索 → ローカル候補が表示 (LNP不存在のためpermission不要の現行動作)。host access log 07:18の行と対応。`34-lan-item13-api36-logcat.txt`: CustomWebSearchProviderのlog行ゼロ (guard不発火)。
 - `31-lan-item13-api36-provider-google.png` / `32-lan-item13-api36-google-suggestions.png` — 既定Google providerのpublic HTTPS取得の回帰なし。
 
-### katbin (Item 9) — NOT COMPLETED の詳細
+### katbin (Item 9) — 初回run (debug build) は NOT COMPLETED、release buildで再取得済み
 
-`am crash app.lawnchair.debug` によるcrash毎にLawnchairBugReporterのcrash handlerは起動しreport fileを書く (`25-*.txt`) が、**katbin upload通知 (action: "Upload crash log") は表示されない**。原因: debug buildのみ含まれるLeakCanaryがuncaught exception経路をwrapし、main threadが `handleApplicationCrash` のbinder呼び出しでblockされる (`26-*.txt` のANR trace)。その間にsystemがcrash dialog/stack収集を行いprocessがkillされるため、crash通知からのupload導線 (成功: katb.in URL、失敗: `action_upload_error`) をUIから実行できない。`notifications.size > 3` のanti-spam guard (既存仕様) もsystem通知が多い環境ではpostingをskipする。**debug-onlyのLeakCanary起因であり、#528の変更 (C4は変更なし) とは無関係**。release build / 保守者実機 (Pixel 9a / API 37, Epic #516 Phase 3 owner手順) での成功・失敗通知の確認への引き継ぎを推奨する。airplane modeを使う失敗caseも同導線のため未実施 (airplane modeは最終的に有効化していないため復元作業も不要)。
+初回run (`47400f0963` debug build) では `am crash` 毎にcrash handlerはreport fileを書いた (`25-*.txt`) が、**upload通知は表示されない**ままだった。原因: debug buildのみ含まれるLeakCanaryがuncaught exception経路をwrapし、main threadが `handleApplicationCrash` のbinder呼び出しでblockされる (`26-*.txt` のANR trace)。**この不成立はdebug-onlyのLeakCanary起因であり、#528の変更 (C4は変更なし) とは無関係**。再取得は上記「Item 9再取得 (release build)」のとおり成功・失敗両caseともPASS (`39`〜`44`)。
 
 ## 要対応 → 解消済み (fix `1600e0c857`)
 
@@ -114,6 +126,6 @@
 
 ## 未実施・引き継ぎ
 
-- Item 9 (katbin通知の成功/失敗E2E) — 上記のとおり。保守者実機 (Pixel 9a / API 37) とrelease buildでの確認をEpic #516 Phase 3へ引き継ぐ (#526/#527と同じ扱い)。
+- ~~Item 9 (katbin通知の成功/失敗E2E)~~ — release署名buildで成功・失敗とも再取得済み (上記)。emulator (release署名・user build相当のNSC) での確認のため、保守者実機 (Pixel 9a / API 37, Epic #516 Phase 3) での再確認は任意の tolerance として残す (#526/#527と同じ扱い)。
 - Item 12のCT失敗signature — not reproduced (上記)。
 - indeterminateの「hostname→private IP解決」subcase — spec明記の限界のままとする (typed failure `generic-network-failure` での扱いは `22-*.png` で確認済み)。
