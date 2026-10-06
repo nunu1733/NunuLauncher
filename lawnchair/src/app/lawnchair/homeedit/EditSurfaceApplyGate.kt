@@ -28,8 +28,18 @@ import androidx.compose.runtime.setValue
  * 解除しない。1 terminal generation = 1 correlated reload。表示と操作の権威で
  * あり、write経路は持たない（適用・DB・recovery契約は既存のまま）。
  *
+ * Issue #526 review round 2: 「1 terminal generation = 1 correlated reload」は
+ * 解除条件だけでなく起動側でも保証する。相関reloadの起動権は
+ * [claimCorrelatedCapture] の単一claimに一元化し、liveな表面だけがclaimして
+ * 起動する（旧instanceのterminal直接経路と、再作成先live instanceのCorrelating
+ * 観測経路の双方が同じclaimを通る）。destroy済み表面はclaimせず相関を未claimの
+ * まま残す — 起動権をliveな再作成先へ任せる所有規約。
+ *
  * 純粋なクラスとしてAndroid依存を持たない。状態はCompose observable
- * （back gateの有効化と確定gateのfeedback表示がUIから読む）。
+ * （back gateの有効化と確定gateのfeedback表示がUIから読む）。全状態変更
+ * （claimを含む）はmain threadからの単独呼び出しを契約とする（ActivityのUI
+ * event・handleApplyResult・Compose効果・instrumentation oracleの
+ * runOnMainSyncはすべてmainで動く。JVM testは単スレッドでこの契約を模す）。
  */
 class EditSurfaceApplyGate {
 
@@ -66,6 +76,16 @@ class EditSurfaceApplyGate {
     private var pendingCorrelationGeneration = -1
 
     /**
+     * Issue #526 review round 2: 相関reloadの起動権をclaim済みの相関世代。
+     * [claimCorrelatedCapture] が成功するたびに待ち相関世代を記録し、同一世代への
+     * 2回目のclaimをnullにする。次のterminalで待ち相関世代が進めば自然に無効に
+     * なる（明示的なclearは持たない。stale ticketの完了やcapture失敗
+     * （fail-closedのnull完了）でも再オープンしない — 起動権の単一化と解除条件は
+     * 別契約で、解除はclaim済みでも [onCaptureReady] の既存規約どおり行われる）。
+     */
+    private var claimedCorrelationGeneration: Int? = null
+
+    /**
      * 確定の開始要求。Idle のみ InFlight へ遷移してtrue。InFlight /
      * Correlating では二重適用としてfalse（呼び出し側はbusy理由を表示する）。
      */
@@ -85,6 +105,30 @@ class EditSurfaceApplyGate {
             state = State.Correlating
             pendingCorrelationGeneration = ++correlationGeneration
         }
+    }
+
+    /**
+     * Issue #526 review round 2: pending相関のreload起動権を1回だけclaimする。
+     * Correlating のときだけ成功し、待ち相関世代（[onCaptureReady] へそのまま
+     * 渡すticket。 [newCaptureTicket] と同値）を返す。同一世代への2回目の呼び出しは
+     * null — terminal直接経路（旧instanceのhandleApplyResult）とCorrelating観測経路
+     * （live instanceのCompose観測）の双方の起動がこのclaimを通るため、相関reload
+     * （full capture）は1 terminal generationにつき高々1回になる。Idle / InFlight
+     * でもnull（claimできるpending相関がない）。
+     *
+     * claimの消費は相関世代の比較のみで管理する: 待ち相関世代が次のterminalで進む
+     * まで再claimはできない。stale ticketの完了やcapture失敗でもclaimを再オープン
+     * しない — 自動起動の再試行権はclaimに持たせない。gateの解除自体はclaimと独立
+     * で、次に開始されたcapture（ticketが待ち世代と一致）の完了 [onCaptureReady]
+     * で既存どおり行われる（再作成先の初回読込やtestの既存再capture経路もこれで
+     * 解除できる。claimは起動権の単一化のみを担う）。
+     */
+    fun claimCorrelatedCapture(): Int? {
+        if (state != State.Correlating) return null
+        val pending = pendingCorrelationGeneration
+        if (claimedCorrelationGeneration == pending) return null
+        claimedCorrelationGeneration = pending
+        return pending
     }
 
     /**

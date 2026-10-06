@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -153,6 +154,27 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         BackHandler(enabled = editSurfaceApplyGate.state == EditSurfaceApplyGate.State.InFlight) {
             // 適用進行中は離脱しない
         }
+        // Issue #526 review round 2: terminal後の相関reloadの起動権をliveな表面が
+        // claimするproduction経路。旧instanceがdestroy済みのままterminalを迎えた
+        // 場合、旧instanceは相関reloadを起動せずclaimを開放したまま残す（所有規約:
+        // destroyed surface → claim開放。live surface → claim 1回）。そのため
+        // 再作成先のlive instanceがこの観測でCorrelatingへの遷移を検知して、単一の
+        // 相関reloadをclaimして起動する（1 terminal generation = 1 correlated
+        // reload。起動はclaim経路に一元化され、claim済みならここでは何もしない）。
+        // keepSession=true: このlive表面の未確定セッション・選択はzero-writeで保持
+        // する（適用したinstanceと別のinstanceが相関を担う場合、同一instanceでも
+        // Applied以外のterminalを迎えた場合の双方を含む）。
+        LaunchedEffect(editSurfaceApplyGate.state) {
+            if (
+                editSurfaceApplyGate.state == EditSurfaceApplyGate.State.Correlating &&
+                !isDestroyed
+            ) {
+                val claimed = editSurfaceApplyGate.claimCorrelatedCapture()
+                if (claimed != null) {
+                    reloadCapture(keepSession = true, ticketOverride = claimed)
+                }
+            }
+        }
         val currentDiagram = diagram
         val currentReasonRes = reasonRes
         if (currentDiagram == null) {
@@ -220,8 +242,13 @@ class HomeEditSurfaceActivity : ComponentActivity() {
      * 単一権威の相関解除条件（[editSurfaceApplyGate.onCaptureReady]）となり、
      * capture失敗時（fail-closedのnull）は解除しない — terminal前のcaptureを
      * stale図として確定させる往復を発生させない。
+     *
+     * Issue #526 review round 2: [ticketOverride] は相関reloadの起動権をclaimした
+     * 呼び出し側（[claimCorrelatedCapture] の戻り値）が待ち相関世代ticketを渡す
+     * ための経路。null（既定）なら従来どおり開始時点で [newCaptureTicket] で
+     * mintする。
      */
-    private fun reloadCapture(keepSession: Boolean = false) {
+    private fun reloadCapture(keepSession: Boolean = false, ticketOverride: Int? = null) {
         busy = true
         // keepSession=trueの投影は読み込み開始時点のセッションで固定する
         // （busy中はユーザー操作が遮断されるため完了まで変化しない）。
@@ -230,7 +257,9 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         // スレッド上で取得する（executor上での取得は開始順が入れ替わり得る）。
         // terminal前に開始されたcapture（再作成直後の初回読込がin-flight適用と
         // 競合する場合を含む）は完了しても単一権威のCorrelatingを解除しない。
-        val captureTicket = editSurfaceApplyGate.newCaptureTicket()
+        // Issue #526 review round 2: claim済み相関の起動（ticketOverride非null）は
+        // 起動権を保証されたticketで開始する。
+        val captureTicket = ticketOverride ?: editSurfaceApplyGate.newCaptureTicket()
         surfaceExecutor.execute {
             val captured = access.inspectCapture()
             if (captured == null) {
@@ -439,10 +468,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     // Issue #507: 重複確認面の操作。表示・選択・guard拒否は零書込みであり、
     // 「ホームから外す」は既存のRemoveFromHomeアクションへの共通入口
     // （新規アクション種別なし。dispatch直前のguard含む）。
-    // Issue #526: Internal so the instrumentation oracle can drive the
-    // zero-write duplicates-open path (a discard-notice dismissal entry that
-    // is not a selection toggle); production callers are within this class.
-    internal fun openDuplicates() {
+    // Issue #526 review round 2: instrumentation oracleからは開かない（実UIの
+    // zero-writeユーザー操作で案内消去を固定する。既存seamのみでproductionの
+    // test専用hookを広げない）。
+    private fun openDuplicates() {
         // Issue #526: 面を開く操作も「次のユーザー操作」（入口は一元化）。
         onUserInteractionStarted()
         duplicatesOpen = true
@@ -544,6 +573,25 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Issue #526 review round 2: terminal後の相関reloadの起動（claim経路）。
+     * liveなinstanceだけが単一権威から起動権をclaimして起動する
+     * （1 terminal generation = 1 correlated reload。旧instanceのterminal直接経路と
+     * 再作成先live instanceのContent()観測経路の双方が同じclaimを通るため、
+     * 相関reload（full capture）は世代ごとに高々1回）。
+     *
+     * 所有規約: destroy済み表面はclaimせず・reloadも起動せず、相関を未claimのまま
+     * 残す（terminal後の [handleApplyResult] はrunOnUiThread経由でdestroy後も
+     * 実行されるため、ここで [isDestroyed] を見て逃がす。起動権は再作成先live
+     * instanceのContent()観測が担う）。claimがnull（他のlive instanceが先に
+     * claim済み）でも起動しない — claim済みのreload完了がCorrelating解除を担う。
+     */
+    private fun claimAndReloadCorrelatedCapture(keepSession: Boolean) {
+        if (isDestroyed) return
+        val claimed = editSurfaceApplyGate.claimCorrelatedCapture() ?: return
+        reloadCapture(keepSession = keepSession, ticketOverride = claimed)
+    }
+
     // Internal so the instrumentation oracle can drive the #449 confirm-flow's
     // Applied branch directly (the flow the undo record + snackbar hook lives
     // in); production callers are unaffected.
@@ -575,18 +623,23 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 // 開始された初回capture完了（相関世代ticket一致のonCaptureReady）
                 // でIdleへ戻す（再作成済みなら再作成先instanceの初回reloadは
                 // 再作成後に開始されるため、そのticketはterminal後の世代と一致する）。
+                // Issue #526 review round 2: 適用した表面自身がまだliveなら、
+                // Content()のCorrelating観測がclaimして相関reloadを起動する
+                // （Applied branchはreloadを起動しない。所有規約はclaim経路に一元）。
                 finish()
                 return
             }
 
             // stale（ずれ検出）: 零書込み。セッションを破棄し最新captureで開き直す。
             // 開き直しのcapture完了がgateの相関解除（Correlating → Idle）になる。
+            // Issue #526 review round 2: 再読込の起動はclaim経路（live instanceのみ。
+            // destroy済みならclaimを開放したまま残し、再作成先live instanceが担う）。
             result is ApplyResult.Rejected && (
                 result.reason == PreWriteRejection.STALE_REVISION ||
                     result.reason == PreWriteRejection.EXACT_PRECONDITION_FAILED
                 ) -> {
                 reasonRes = R.string.edit_surface_error_stale_reopen
-                reloadCapture()
+                claimAndReloadCorrelatedCapture(keepSession = false)
                 return
             }
 
@@ -614,14 +667,15 @@ class HomeEditSurfaceActivity : ComponentActivity() {
 
             // rollback / recovery系: recovery書込みで世界が動いた（または不確実）。
             // セッション保持のまま相関再取得し、その完了でgateをIdleへ戻す。
+            // Issue #526 review round 2: 起動はclaim経路（live instanceのみ）。
             result is ApplyResult.RolledBack || result is ApplyResult.Recovered -> {
                 reasonRes = R.string.edit_surface_error_unchanged
-                reloadCapture(keepSession = true)
+                claimAndReloadCorrelatedCapture(keepSession = true)
             }
 
             result is ApplyResult.Unresolved || result is ApplyResult.RecoveryFailed -> {
                 reasonRes = R.string.edit_surface_error_unresolved
-                reloadCapture(keepSession = true)
+                claimAndReloadCorrelatedCapture(keepSession = true)
             }
         }
         // Issue #526: 上記のterminal分類 — Applied / stale系 / rollback・recovery系は
@@ -630,6 +684,9 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         // recoveryなしのterminal（防御到達 / stale以外の拒否 / ConcurrentRun）は
         // onTerminalWithoutLocalRecoveryで即時Idleへ（相関再取得は走らせない。
         // 再発行・リトライUIはしない。dummy recovery / Undo追加もしない）。
+        // Issue #526 review round 2: Correlatingに残った相関reloadの起動はclaim経路
+        // に一元化される（このinstanceがliveなら上記branchのclaim、destroy済みなら
+        // 再作成先live instanceのContent()観測。重複起動はclaimが排除する）。
     }
 
     private fun rejectionTextFor(reason: PreWriteRejection): Int = editSurfaceRejectionText(reason)

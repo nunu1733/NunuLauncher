@@ -14,11 +14,17 @@
  * defensive no-changes) release immediately via onTerminalWithoutLocalRecovery —
  * this does NOT exclude the shared layout moving; the existing apply-time
  * STALE gate stays the fail-closed protection on the next admission.
+ * Review round 2: the START of the correlated reload is also single per
+ * terminal generation — claimCorrelatedCapture hands the pending generation
+ * out exactly once (the live surface owns the reload; a destroyed surface
+ * leaves the claim open for the recreated live surface).
  */
 package app.lawnchair.homeedit
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -150,6 +156,74 @@ class EditSurfaceApplyGateTest {
         )
         gate.onCaptureReady(gate.newCaptureTicket())
         assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+    }
+
+    // --- correlated capture claim (1 terminal generation = 1 correlated reload) ---
+
+    @Test
+    fun `claim from Correlating returns the pending generation exactly once`() {
+        val gate = EditSurfaceApplyGate()
+        assertTrue(gate.beginApply())
+        gate.onApplyTerminal()
+        val pending = gate.newCaptureTicket()
+        val claimed = gate.claimCorrelatedCapture()
+        assertEquals(
+            "the claim must return the pending correlation generation as the capture ticket",
+            pending,
+            claimed,
+        )
+        assertNull("a second claim of the same generation must not re-open the reload", gate.claimCorrelatedCapture())
+    }
+
+    @Test
+    fun `claim from Idle and InFlight returns null`() {
+        val gate = EditSurfaceApplyGate()
+        assertNull("Idle has no pending correlation to claim", gate.claimCorrelatedCapture())
+        assertTrue(gate.beginApply())
+        assertNull("an in-flight apply has no terminal correlation to claim yet", gate.claimCorrelatedCapture())
+    }
+
+    @Test
+    fun `claimed capture completion releases the gate and the next terminal cycle is claimable again`() {
+        val gate = EditSurfaceApplyGate()
+        assertTrue(gate.beginApply())
+        gate.onApplyTerminal()
+        val claimed = gate.claimCorrelatedCapture()
+        assertNotNull(claimed)
+        gate.onCaptureReady(claimed!!)
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+        assertTrue("the next apply must be admitted after the claimed capture", gate.beginApply())
+        gate.onApplyTerminal()
+        val nextClaim = gate.claimCorrelatedCapture()
+        assertEquals(
+            "the new terminal generation must be claimable again",
+            gate.newCaptureTicket(),
+            nextClaim,
+        )
+        gate.onCaptureReady(nextClaim!!)
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+    }
+
+    @Test
+    fun `stale ticket completion after a claim neither releases nor re-opens the claim`() {
+        // Pinned semantics (review round 2): the claim is consumed per
+        // generation and only the next terminal re-opens it. A capture carrying
+        // a pre-terminal (stale) ticket completing after the claim must not
+        // release the gate and must not make the generation claimable again —
+        // the release itself stays governed by the ticket contract, not the
+        // claim.
+        val gate = EditSurfaceApplyGate()
+        assertTrue(gate.beginApply())
+        val preTerminalTicket = gate.newCaptureTicket()
+        gate.onApplyTerminal()
+        assertNotNull(gate.claimCorrelatedCapture())
+        gate.onCaptureReady(preTerminalTicket)
+        assertEquals(
+            "a stale-ticket completion must not release the claimed correlation",
+            EditSurfaceApplyGate.State.Correlating,
+            gate.state,
+        )
+        assertNull("the consumed claim must stay consumed until the next terminal", gate.claimCorrelatedCapture())
     }
 
     // --- terminal classification: world-moved vs zero-write no-local-recovery ---

@@ -16,18 +16,22 @@
  *     InFlight or Correlating: the real confirm() is refused with the busy
  *     reason and builds no plan, and Confirm is only re-admitted after a
  *     correlated capture that STARTED AFTER the terminal completes (the
- *     correlation-generation ticket: the release is driven through the real
- *     production recapture path). A capture that started BEFORE the terminal
- *     (the recreated instance's initial capture racing an in-flight apply)
- *     can never release the gate — pinned end to end across recreation
+ *     correlation-generation ticket). The post-terminal release is driven by
+ *     the production claim wiring alone (review round 2): the LIVE surface's
+ *     Correlating observation claims the pending generation and starts its own
+ *     correlated reload — no manual recapture injection. A capture that
+ *     started BEFORE the terminal (the recreated instance's initial capture
+ *     racing an in-flight apply) can never release the gate — pinned end to
+ *     end across recreation
  *     (preTerminalCaptureTicketCannotReleaseTheGateAcrossRecreation). No
  *     apply runs in these oracles, so no recovery point / Undo path is
  *     exercised or added (the no-dummy-recovery rule of spec 526 is untouched
  *     by construction — the contract adds no write path at all).
  *  4. The discard notice carries the liveRegion=Polite semantics in the
  *     accessibility tree when work existed, and there is no such node
- *     otherwise; it clears on the next zero-write user operation (the
- *     duplicates-open entry, not only a selection toggle) and does not
+ *     otherwise; it clears on the next zero-write user operation — a real-UI
+ *     tap on the Reset CTA (review round 2: the oracle uses existing UI/a11y
+ *     seams only and does not widen production test hooks), and it does not
  *     reappear on subsequent recomposition-forcing actions. The repo's
  *     instrumentation setup has no ComposeTestRule
  *     seam for this activity (existing edit-surface oracles drive the REAL
@@ -50,6 +54,7 @@ package app.lawnchair.homeedit
 import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Intent
+import android.graphics.Rect
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.lifecycle.Lifecycle
@@ -164,27 +169,14 @@ class EditSurfaceTarget37ContractInstrumentationTest {
             val recreatedItemId = awaitSelectableItem(newActivity, "selection-only recreated capture")
             awaitNoticeText(present = true)
 
-            // Issue #526 review round 1: 案内は「次のユーザー操作」で消える —
-            // 選択toggle以外の零書込み操作（重複確認面のopen。dialog開閉のみの
-            // 操作）でも消えること、その後の再compositionを強制する操作
-            // （選択on/off）で再発火しないことを同じケースで固定する。
-            InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                newActivity.openDuplicates()
-            }
+            // Issue #526 review round 1/2: 案内は「次のユーザー操作」で消える —
+            // 選択toggle以外の実UIの零書込み操作（上段のReset CTAのtap）でも
+            // 消えること、その後の再compositionを強制する操作（選択on/off）で
+            // 再発火しないことを同じケースで固定する。tapは実UI経路のみ
+            // （a11y treeでReset CTAを探してUiDeviceで押す。既存seamのみで
+            // productionのtest専用hookは広げない — review round 2）。
+            tapResetCta()
             awaitNoticeText(present = false)
-            // 面を閉じる（modal dialogのback = onDismiss相当）。backがdialogを
-            // 越えてactivityを離脱させないこともここで固定する。
-            device.pressBack()
-            val dialogDeadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < dialogDeadline) {
-                if (scenario.state == Lifecycle.State.RESUMED) break
-                Thread.sleep(200)
-            }
-            assertEquals(
-                "the duplicates surface dismissal must not finish the activity",
-                Lifecycle.State.RESUMED,
-                scenario.state,
-            )
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 newActivity.toggleSelectionForTest(recreatedItemId)
                 newActivity.toggleSelectionForTest(recreatedItemId)
@@ -332,14 +324,11 @@ class EditSurfaceTarget37ContractInstrumentationTest {
             }
 
             // The correlated capture completes: Confirm is re-admitted. The
-            // release is driven through the REAL production path — a
-            // post-terminal recapture whose ticket is taken after the
-            // terminal's correlation generation (asserting the admission at
-            // the gate; driving the real apply here would be a write the
-            // oracle does not need).
-            InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                newActivity.recaptureForTest()
-            }
+            // release is driven by the production wiring ALONE (review round 2):
+            // the live recreated surface observes Correlating, claims the
+            // pending correlation generation and starts its own correlated
+            // reload — the manual recapture injection is gone. (Driving the
+            // real apply here would be a write the oracle does not need.)
             var correlatedRelease = false
             val releaseDeadline = System.currentTimeMillis() + 30_000
             while (System.currentTimeMillis() < releaseDeadline) {
@@ -367,11 +356,19 @@ class EditSurfaceTarget37ContractInstrumentationTest {
 
     @Test
     fun preTerminalCaptureTicketCannotReleaseTheGateAcrossRecreation() {
-        // Spec 526 review round 1 race oracle: the recreated instance's initial
+        // Spec 526 review round 1/2 race oracle: the recreated instance's initial
         // capture STARTS while the old apply is in flight and settles BEFORE
         // the terminal. Its completion must never release the gate — the
-        // correlation-generation ticket pins this through the production
-        // reloadCapture path, and only a post-terminal recapture releases.
+        // correlation-generation ticket pins this (asserted on the settled
+        // capture while the gate is still InFlight, and by the JVM oracle for
+        // the post-terminal window). After the terminal the ONLY release path
+        // is the production claim wiring (review round 2): the LIVE recreated
+        // surface observes Correlating, claims the pending correlation
+        // generation and runs its own correlated reload — no manual
+        // recapture injection. The settled pre-terminal capture has no
+        // completion left in flight (its runOnUiThread update already ran
+        // before the terminal), so any release after the terminal can only
+        // come from that production-wired post-terminal capture.
         try {
             launchSettledSurface().let { (scenario, _) ->
                 awaitSelectableItem(currentActivity(scenario), "pre-terminal ticket race")
@@ -396,21 +393,9 @@ class EditSurfaceTarget37ContractInstrumentationTest {
                     editSurfaceApplyGate.onApplyTerminal()
                     assertEquals(EditSurfaceApplyGate.State.Correlating, editSurfaceApplyGate.state)
                 }
-                // Bounded window for any still-pending capture completion to
-                // (wrongly) land; the state must hold.
-                Thread.sleep(1_000)
-                InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                    assertEquals(
-                        "a settled pre-terminal capture must stay unable to release Correlating",
-                        EditSurfaceApplyGate.State.Correlating,
-                        editSurfaceApplyGate.state,
-                    )
-                }
-                // The production correlated reload (fresh post-terminal ticket)
-                // is what releases — bounded poll, real path.
-                InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                    newActivity.recaptureForTest()
-                }
+                // The live surface's production claim wiring (Correlating
+                // observation → claim → its own correlated reload) is what
+                // releases — bounded poll, no manual injection.
                 var correlatedRelease = false
                 val releaseDeadline = System.currentTimeMillis() + 30_000
                 while (System.currentTimeMillis() < releaseDeadline) {
@@ -422,7 +407,7 @@ class EditSurfaceTarget37ContractInstrumentationTest {
                 }
                 InstrumentationRegistry.getInstrumentation().runOnMainSync {
                     assertTrue(
-                        "the post-terminal correlated capture must release the gate to Idle",
+                        "the live surface's production claim wiring must release the gate to Idle",
                         correlatedRelease,
                     )
                 }
@@ -718,6 +703,42 @@ class EditSurfaceTarget37ContractInstrumentationTest {
         if (root.text?.toString() == text) return root
         for (index in 0 until root.childCount) {
             findNodeRecursive(root.getChild(index), text)?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * Oracle 4 (review round 2): the discard-notice dismissal through a REAL
+     * zero-write UI action — a tap on the top-bar Reset CTA
+     * (edit_surface_reset; resetSession clears the notice via
+     * onUserInteractionStarted). The button is located through the same a11y
+     * seam as the notice node, lifted to its clickable ancestor (the Compose
+     * TextButton) and clicked via UiDevice on its visible bounds. No internal
+     * production hook is driven for the dismissal and no new production test
+     * hook exists (the accepted spec's test-seam contract).
+     */
+    private fun tapResetCta() {
+        val resetText = context.getString(com.android.launcher3.R.string.edit_surface_reset)
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            val node = findA11yNodeWithText(resetText)
+            val clickable = node?.let { clickableAncestor(it) }
+            if (clickable != null) {
+                val bounds = Rect()
+                clickable.getBoundsInScreen(bounds)
+                device.click(bounds.centerX(), bounds.centerY())
+                return
+            }
+            Thread.sleep(300)
+        }
+        error("the Reset CTA was not found in the accessibility tree")
+    }
+
+    private fun clickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        while (current != null) {
+            if (current.isClickable) return current
+            current = current.parent
         }
         return null
     }
