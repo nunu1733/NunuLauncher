@@ -84,10 +84,18 @@ diagnostics、backup/restore、destination picker（PreferenceActivity配下）�
   （既存process singletonに属するstate、または`HomeEditSurfaceAccess` companion等、
   全wrapper・全Activityが同一stateを参照するidentityとする。Activity/wrapperごとの
   コピーは禁止）。状態機械は `Idle → InFlight →（旧applyのterminal結果受領）→
-  Correlating（相関capture再取得中）→ Idle` とし、terminal結果（Applied / stale /
-  rejected / error のいずれも）を受けたあとは**新instanceが相関captureを再取得して
-  完了するまでConfirmを再有効化しない**。状態の二重化（Activity fieldと権威の併存）
-  はしない。表示用途のみでwrite経路は不変。
+  Correlating（相関capture再取得中）→ Idle` とし、**世界が動いたか不確実なterminal**
+  （Applied / stale系（`STALE_REVISION`・`EXACT_PRECONDITION_FAILED`）/ rollback・
+  recovery系（`RolledBack`・`Recovered`・`Unresolved`・`RecoveryFailed`））では
+  **新instanceが相関captureを再取得して完了するまでConfirmを再有効化しない**。
+  **当該applyが零書込みかつlocal recoveryなしのterminal**（stale以外のtyped拒否 /
+  `ConcurrentRun` / `NoChanges`等の防御到達）では、このapplyは書かずrecovery動作も
+  ないためgateを即時にIdleへ解放する。これは「共有layoutが動いていないことの保証」
+  ではない — 共有世界が解放の前後で動いていた場合の保護は、次confirm時の既存
+  `STALE_REVISION` / `EXACT_PRECONDITION_FAILED` gateが **stale captureからの
+  persistent writeを零書込みで成立させない**（fail-closed）ことで担う
+  （revision 2）。状態の二重化（Activity fieldと権威の併存）はしない。
+  表示用途のみでwrite経路は不変。
 - back gate: **in-flightなDB適用が存在する間**のシステムbackを握り潰すCompose
   `BackHandler`。capture再読込・初回読込などのzero-write待機中は従来どおり
   finish（= cancel）可能とする。非適用時のbackは既存どおりzero-write終了。
@@ -159,11 +167,16 @@ Then 進行中の適用は既存契約どおり完走し、再発行されない
 non-Applied時は既存result別契約のまま — 少なくともstale / rejectedは
 零書込み・Undoなしで、oracleのためのrecovery / Undo追加をしない）。
 新instanceは単一権威によりin-flight中のConfirmを受け付けず、適用完了まで
-適用が始まらない旨が示される。適用のterminal後も、新instanceが相関captureを
-再取得して完了するまでConfirmは再有効化されない（旧適用前のcaptureをstale図として
-編集→Confirm→再読込の往復を発生させない）。terminalがApplied以外
-（stale / rejected / error）でも同じ解除条件を経る。新instanceのcaptureが
-旧適用のstale判定に達する場合は既存gateどおり零書込みで再読込する
+適用が始まらない旨が示される。適用のterminal後も、**世界が動いたか不確実なterminal**
+（Applied / stale系 / rollback・recovery系 / unresolved系）では、新instanceが
+相関captureを再取得して完了するまでConfirmは再有効化されない（旧適用前のcaptureを
+stale図として編集→Confirm→再読込の往復を発生させない）。**当該applyが零書込みかつ
+local recoveryなしのterminal**（stale以外の拒否 / `ConcurrentRun` / 防御到達）では、
+gateは即時にIdleへ戻る。この解放後に共有世界が動いていた場合は、同じsessionの
+再Confirmが既存`STALE_REVISION` / `EXACT_PRECONDITION_FAILED` gateで
+零書込みfail-closedする（stale captureからpersistent writeを成立させない。
+revision 2）。新instanceのcaptureが旧適用のstale判定に達する場合は既存gateどおり
+零書込みで再読込する
 
 ## Verification
 
@@ -184,8 +197,14 @@ non-Applied時は既存result別契約のまま — 少なくともstale / rejec
   (3) 適用進行中の`recreate()`で二重適用が起きないこと（Applied時はDB更新1回 /
   1 recovery point / 1 Undo、non-Applied時は既存result別契約の維持 —
   少なくともstale / rejectedは零書込み・Undoなしで、oracleのためのdummy
-  recovery / Undo追加をしない）と、全terminal共通でterminal後・相関capture
-  再取得完了前にConfirmが不能であること、
+  recovery / Undo追加をしない）と、世界が動いたか不確実なterminalではterminal後・
+  相関capture再取得完了前にConfirmが不能であること（当該applyが零書込みかつ
+  local recoveryなしのterminalは即時解放）、
+  (3b) 即時解放と既存stale gateの合成: 零書込みterminalで解放されたのちに
+  共有世界が外部から動いた場合、同じsessionの再Confirmは
+  `STALE_REVISION` / `EXACT_PRECONDITION_FAILED`で零書込みfail-closedし
+  （DB write 0、Undo追加 0。full captureの復活はしない — 既存seamでの
+  外部revision移動と既存stale admissionのcross-checkで固定する）、
   (4) 案内の`liveRegion` semantics（作業あり=Polite設定、作業なし=対象要素なし）と、
   再compositionで通知条件が再発火しないこと。
 - 既存edit surface系unit/instrumentation testがすべてgreenであること。
@@ -227,3 +246,23 @@ non-Applied時は既存result別契約のまま — 少なくともstale / rejec
   （無条件の1 transaction文は削除）。
 - 2026-10-06: Review round 5（PR #536コメント）で全指摘resolved・新規指摘なしを
   確認し、acceptedへ遷移。
+- 2026-10-06: Revision 2 — 実装PR #538のCI実測を受けた修正。
+  PR #535 lineage上のCI run
+  [37416372625](https://github.com/nunu1733/NunuLauncher/actions/runs/37416372625)
+  のshared-writer lane
+  （job 112115882132、failure report artifact
+  `organizer-instrumentation-shared-writer-reports`）で
+  `EditSurfaceUndoInstrumentationTest`（fault注入系）がテスト固有10分timeoutと
+  per-class 20分timeoutに達し、全terminal一律の相関再取得が零書込みterminalの
+  たびにfull captureを走らせてコストが爆発していることを確認。terminalを
+  「世界が動いたか不確実」（相関capture完了までCorrelating）と「当該applyが
+  零書込みかつlocal recoveryなし」（即時Idle解放。解放後の共有世界の移動に対しては
+  既存apply時stale gateが **stale captureからのpersistent writeを零書込みで
+  成立させない** ことでfail-closedに担う）に分類する。変更されない契約:
+  Applied時は1 apply = 1 recovery point = 1 Undo、non-Applied時は既存result別契約、
+  dummy recovery / Undo追加禁止、stale captureからpersistent writeを成立させない
+  こと（Confirm操作自体の可否は画面feedbackの問題で、書込み成立の保証ではない）。
+  revision 2実装head（`eb949dc5d2`）でのshared-writer lane greenはrun
+  [37421912411](https://github.com/nunu1733/NunuLauncher/actions/runs/37421912411)
+  job 112133072081（27分05秒で成功。修正前の同laneはjob 112115882132で40分後に
+  failure）で確認済み。
