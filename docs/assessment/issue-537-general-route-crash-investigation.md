@@ -8,7 +8,7 @@
 
 ## Outcome in one line
 
-クラッシュは **source defectではなく、ローカルビルド環境のKotlin incremental compilation出力に残存した古い`FontPref.class`（Compose compiler生成の`$stable`フィールド欠落）が原因**。依存側（`GeneralPreferences.kt:103`の呼び出し site）だけが現行toolchainで再コンパイルされ`$stable`読み出しを期待したため、実行時に`NoSuchFieldError`で落ちる。**決定的な増幅要因として、破損したcompile task出力がlocal Gradle build cacheに保存されており**、`gradle clean`や新規worktreeでの「クリーンビルド」でも同じ破損出力がcache復元され、クラッシュが再生産される（本調査で実際に再現）。1回の真の再コンパイル（`--rerun-tasks`等）でcache entryが正常出力に置き換わり、以後は全ビルド形式で健全になる（2つのfresh worktree + 実機で実証）。
+クラッシュは **source defectではなく、ローカルビルド環境のKotlin incremental compilation出力に残存した古い`FontPref.class`（Compose compiler生成の`$stable`フィールド欠落）が原因**。依存側（`GeneralPreferences.kt:103`の呼び出し site）だけが現行toolchainで再コンパイルされ`$stable`読み出しを期待したため、実行時に`NoSuchFieldError`で落ちる。**最有力の増幅要因は、破損したcompile task出力をcarrierとするlocal Gradle build cacheである**（task単位の初回ログは未保存のため推論、下記の証拠強度の境界を参照）。cacheが破損出力を保持していた間は、`gradle clean`や新規worktreeでの「クリーンビルド」でも同じ破損出力がcache復元され、クラッシュが再生産される（本調査で実際に再現）。1回の真の再コンパイル（`--rerun-tasks`等）でcache entryが正常出力に置き換わり、以後は全ビルド形式で健全になる（2つのfresh worktree + 実機で実証）。
 
 証拠強度の境界（2026-10-07追補）: 「fresh worktreeのcompile taskが同じ入力でbuild cacheから復元される」ことと「cache経由で復元されたビルドの`FontPref`が壊れている/健全である」ことはtask単位またはdexで直接観測した。一方、**初回fresh worktree（§1）でcompile task自身が`FROM-CACHE`だったこと、および復元された破損出力のcache keyは保存したログがなく直接観測していない**。「破損出力がbuild cache経由で流れた」は、観測済みの事実すべて（[追補実験](./537-general-route-crash-evidence/build-cache-echo-commands.txt) §5を含む）と整合する最有力の推論として記述する。
 

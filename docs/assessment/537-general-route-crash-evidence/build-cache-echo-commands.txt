@@ -6,7 +6,7 @@ Issue #537根因チェーン5/6（破損compile出力のbuild cache保存・復�
 
 ## 1. fresh worktree通常ビルド → クラッシュAPK（cache復元を示す行）
 
-`git worktree add /Users/nunu/Documents/work/NunuLauncher-537-clean 575e37baad` で作成したfresh worktree（build dirは空）でのビルド。`377 from cache`はcompile task出力がlocal Gradle build cache（`~/.gradle/caches/build-cache-1`）から復元されたことを示す。復元元entryはmain worktreeの過去ビルド（クラッシュAPKを作ったincrementalビルド）が保存した破損出力。
+`git worktree add /Users/nunu/Documents/work/NunuLauncher-537-clean 575e37baad` で作成したfresh worktree（build dirは空）でのビルド。`377 from cache`はbuild全体でcache復元が起きたことを示す集計行であり、対象のcompile taskがその一つだったことは未保存ログのため推論である。その推論が指す復元元entryは、main worktreeの過去ビルド（クラッシュAPKを作ったincrementalビルド）が保存した破損出力と整合する。
 
 ```text
 $ cd /Users/nunu/Documents/work/NunuLauncher-537-clean && ./gradlew assembleLawnWithQuickstepGithubDebug
@@ -65,4 +65,4 @@ public final class app.lawnchair.preferences.BasePreferenceManager$FontPref exte
 }
 ```
 
-この観測が示すこと: (a) fresh worktreeの`:compileLawnWithQuickstepGithubDebugKotlin`は同じ入力hashで常にbuild cacheから復元される（§1の集計行`377 from cache`と整合）。(b) 現在のcache entryは健全な出力である。(c) したがって§1の時点でcache復元により破損出力が流れたという説明は、観測済みの事実すべてと整合する最有力の推論である。ただし§1のtask単位ログは未保存のため、「初回fresh worktreeでcompile task自身がFROM-CACHEだった」ことの直接観測は存在しない。
+この観測が示すこと: (a) この追補実験の条件下（同じ入力hashのfresh build dir）で、対象compile taskの出力がbuild cacheから復元された（§1の集計行`377 from cache`と整合）。(b) 現在のcache entryは健全な出力である。(c) したがって§1の時点でcache復元により破損出力が流れたという説明は、観測済みの事実すべてと整合する最有力の推論である。ただし§1のtask単位ログは未保存のため、「初回fresh worktreeでcompile task自身がFROM-CACHEだった」ことの直接観測は存在しない。
