@@ -1,6 +1,6 @@
 ---
 issue: "#526"
-status: draft
+status: accepted
 tier: M
 requirements: []
 updated: 2026-10-06
@@ -225,3 +225,5 @@ non-Applied時は既存result別契約のまま — 少なくともstale / rejec
 - 2026-10-06: Review round 4（PR #536コメント）対応 — Outcome / Scope /
   適用中再作成Scenario末尾の件数契約をterminal別の表現へ同期
   （無条件の1 transaction文は削除）。
+- 2026-10-06: Review round 5（PR #536コメント）で全指摘resolved・新規指摘なしを
+  確認し、acceptedへ遷移。
