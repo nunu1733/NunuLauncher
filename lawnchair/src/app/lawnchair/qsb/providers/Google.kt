@@ -34,11 +34,8 @@ data object Google : QsbSearchProvider(
             val subscription = getSearchIntent(launcher)
             val pendingIntent = subscription.firstOrNull()
             val options = ActivityOptions.makeBasic()
-            if (Utilities.ATLEAST_U) {
-                options.setPendingIntentBackgroundActivityStartMode(
-                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED,
-                )
-            }
+            // NunuLauncher #527: granular BAL opt-in (version-gated in Utilities.allowBGLaunch).
+            Utilities.allowBGLaunch(options)
             if (pendingIntent != null) {
                 launcher.startIntentSender(
                     pendingIntent.intentSender,

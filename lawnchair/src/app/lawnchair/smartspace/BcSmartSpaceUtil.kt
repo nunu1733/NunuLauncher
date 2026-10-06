@@ -30,11 +30,8 @@ object BcSmartSpaceUtil {
         str: String?,
     ) {
         val options = ActivityOptions.makeBasic()
-        if (Utilities.ATLEAST_U) {
-            options.setPendingIntentBackgroundActivityStartMode(
-                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED,
-            )
-        }
+        // NunuLauncher #527: granular BAL opt-in (version-gated in Utilities.allowBGLaunch).
+        Utilities.allowBGLaunch(options)
         if (view == null || action == null) {
             Log.e(str, "No tap action can be set up")
             return
