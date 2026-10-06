@@ -11,9 +11,10 @@ updated: 2026-10-07
 階層Mの軽量specである（[Risk tiers](../../docs/project/github-workflow.md#risk-tiersリスク階層)）。
 Launcher DB書込み、schema migration、recovery store、上流model/loader bridgeを含まない。
 通信の追加（新endpoint・新DNS経路）も行わない。custom suggestion fetchへのLAN権限
-guardと、Android 17で既定化するECH/CTの適用状態確認・失敗の説明のみを扱い、検索UI
-構造と既存の適用・復旧経路の契約は変更しない。Android/platform APIの新規扱いのため
-外部参照調査（External reference scan）の対象であり、記録はPrior artへ行う
+guard、fetch結果の型付きoutcome分類とsettings表示、Android 17で既定化するECH/CTの
+適用状態確認・失敗の説明のみを扱い、検索UI構造と既存の適用・復旧経路の契約は変更しない。
+Android/platform APIの新規扱いのため外部参照調査（External reference scan）の対象であり、
+記録はPrior artへ行う
 （[GitHub workflow](../../docs/project/github-workflow.md#external-reference-scan設計時の外部参照調査)）。
 
 ## Problem
@@ -49,6 +50,9 @@ cutover後、target 36以下では動いていたLAN suggestionが無説明で�
   許可し、取消後は再blockされる。LAN DNS（port 53）は免除、VPN tunnel内trafficは
   「local network」に数えない
   （[LNP](https://developer.android.com/about/versions/17/behavior-changes-17#local-network-protection-permission)、[local-network-permission](https://developer.android.com/privacy-and-security/local-network-permission)）。
+  なおplatformのlocal network定義はlink-local / directly-connected / stub network /
+  multicast・broadcastもlocalに含み、URL文字列だけでは完全判定できない
+  （[local-network-definition](https://developer.android.com/privacy-and-security/local-network-definition)）。
 - ECH: target 37ではplatform側の既定条件を満たすが、networking libraryがECHを
   統合している接続にしか適用されない。OkHttp 5.5.0
   （`gradle/libs.versions.toml:108`）のECHはopt-inで、DNS HTTPS (TYPE65)
@@ -75,31 +79,61 @@ T14の「分ける」に従い、app自身がfetchするsuggestion URLとbrowser
 
 | # | 経路 | site | 対応方針 / 対象外理由 |
 |---|---|---|---|
-| C1 | custom suggestion fetch（LAN guard対象） | `lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/CustomWebSearchProvider.kt:45,57-83` | LAN分類URLにpermission guard + 設定画面の型付き案内（下記C1の詳細） |
+| C1 | custom suggestion fetch（LAN guard対象） | `lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/CustomWebSearchProvider.kt:45,57-83` | URL template分類に基づくpermission guard + fetch結果の型付きoutcome管理とsettings表示（下記C1の詳細） |
 | C2 | 既定suggestion fetch（Google/DDG等public HTTPS） | 同dir `BuiltInWebSearchProviders.kt` | 変更なし。API 37/36で取得成功の回帰確認のみ |
 | C3 | 検索URLのbrowser handoff | `CustomWebSearchProvider.kt:85-92`（`getSearchUrl`。app側fetchなし） | 対象外。通信主体はbrowserであり、LAN権限・ECH/CTはbrowser側の契約に従う（T14の「分ける」） |
 | C4 | katbin bugreport upload | `lawnchair/src/app/lawnchair/bugreport/KatbinService.kt:14,19`、`UploaderService.kt:53` | 変更なし。API 37/36で成功/失敗の確認のみ（失敗は既存 `action_upload_error` のtyped通知） |
 | C5 | organizer diagnostics / exchange / backup | `tests/unit/app/lawnchair/organizer/diagnostics/integration/NoTransportContractTest.kt`、`tools/repo-contract/validate_diagnostics_contract.py` | 対象外・維持確認。local / SAF専用でnetwork transportを持たない契約（DESIGN.md 4.5）をtestで強制。変更せずgreenを維持する |
 
-### C1の詳細: 分類・guard・設定案内
+### C1の詳細: 分類・guard・outcome・設定案内
 
 - **分類**（`SuggestionUrlClassifier`。新file。`CustomWebSearchProvider.kt` 近傍）:
-  URL文字列 → local-network要 / 不要 / 無効 の純粋関数で、platform型をinterfaceに
-  出さない（java.net.URI等でのparse）。分類対象はsuggestion URLのみで、platformの
-  ローカル宛先定義（RFC1918 / CGNAT 100.64/10 / link-local v4+v6 / IPv6 ULAの
-  IP literalと `.local` hostname）に揃える。private IPへ解決されるhostnameは静的に
-  分類できず、その失敗はfetch失敗として型付き案内で扱う（限界を明記する）。
-- **fetch guard**（`CustomWebSearchProvider.getSuggestions`）: local分類かつ
+  入力はsuggestion URL **template**（`%s` placeholderを含む文字列）とし、
+  canonicalizationを固定する — literalな `%s` を安全なdummy値へ**一度だけ**置換して
+  からparseする（例: `java.net.URI`）。settings UIとfetch guardはこの同一
+  canonicalizationを共有し、有効/無効判定が食い違わない。出力は4値の純粋関数で、
+  platform型をinterfaceに出さない:
+  - `statically-local` — IP literalがRFC1918 / CGNAT 100.64/10 / link-local
+    v4+v6 / IPv6 ULA、またはhostnameが `.local`。
+  - `statically-public` — IP literalが明にローカル範囲外。
+  - `indeterminate` — IP literal以外のhostname。`.local`以外のhostnameは解決前に
+    publicと断定できない。**indeterminateをpublicとして扱わない**ことを契約とする。
+  - `無効` — parse不能・scheme不在等（URL・placeholderとも）。
+  platformのlocal network定義（directly-connected / stub network / multicast・
+  broadcastを含む）への完全一致は主張しない。静的判定の限界であり、収まらない
+  caseは `indeterminate` とtyped failure契約で扱う（Baseline参照）。
+- **fetch guard**（`CustomWebSearchProvider.getSuggestions`）: `statically-local` かつ
   `ACCESS_LOCAL_NETWORK` 未許可のとき（SDK 37+ gateのみ。API 36以下では評価しない）、
   network呼び出しの前に空候補をemitしtyped logを出す。タイムアウト待ちを作らない。
-  それ以外の経路（internet URL、権限あり、API 36以下）は現行どおりで変更しない。
-- **設定UI**（custom suggestions URL欄）: URLがlocal分類で権限がないとき、inlineの
-  型付き状態 + rationale + permission要求buttonを出す。要求は設定画面のuser操作
-  文脈で行い（launcher可視。背景起動の新規経路は作らない）、拒否時はSettings path
-  （App permissions > Nearby devices）の案内へ切替える。取消（revoke）後は次回の
-  設定状態表示 / fetchで拒否と同等に扱う。権限ありなら通常のfetchに戻る。
-  非HTTPS URLが入力されたときは既存 `isErrorCheck` 機構の延長でtyped messageを
+  `indeterminate` はguardで短絡せずfetchを試み、その結果は下記のtyped failure契約へ
+  流す（権限未許可でのtimeout / connect失敗は「LAN権限不足の可能性を含む到達失敗」
+  として型付き扱いし、断定はしない）。`statically-public`・権限あり・API 36以下の
+  経路は現行どおりで変更しない。
+- **fetch結果の型付きoutcome**: fetch結果を最低でも
+  `success / blocked-by-permission(LNP) / cleartext-blocked / tls-ct-failure /
+  http-error / generic-network-failure` の型へ分類する。providerはメモリ内に
+  「現在の設定に対する最終outcome」を保持し、設定画面のcustom provider欄がそれを
+  読んで型付き状態として表示する。検索ポップアップ・drawer UIは変更しない
+  （Non-goals。settingsが失敗説明のsurface）。TLS / CT failureはgenericでなく
+  `tls-ct-failure` としてsettingsへ出る。outcomeはメモリのみでpersistent書込みは
+  しない（zero-write維持）。
+- **設定UI**（custom suggestions URL欄）: 権限状態を4状態のstate machineで扱う —
+  `granted` / `requestable-denied`（`shouldShowRequestPermissionRationale()` が
+  true。rationale表示 + 再request button）/ `settings-required`（恒久拒否。既存の
+  app permission settings導線pattern — `PermissionDialog` のonGoToSettings、
+  `openAppPermissionSettings()` — で案内）/ `revoked-or-reset`（granted→取消しは
+  次回観測で拒否相当へ）。requestable-deniedではSettings path（App permissions >
+  Nearby devices）の文言は補助説明に留める。NEARBY_DEVICES groupの別permission
+  （Bluetooth等）が既知付済みの場合、dialogが出ずに即grantedになり得る。
+  権限要求は設定画面のuser操作文脈で行い（launcher可視。背景起動の新規経路は
+  作らない）。URL欄のvalidation（非HTTPS・無効URL/placeholder）も同一
+  canonicalization結果を使い、既存 `isErrorCheck` 機構の延長でtyped messageを
   出す（`http://` LAN endpointはplatform既定のままblockされる）。
+- **log契約**: logcatに出すのは `reason category + permission state + SDK_INT`
+  のみ。raw query / full URL / userinfo / response body は出さない。hostを出す
+  場合は最小限・sanitizedに限る。既存catch log
+  （`CustomWebSearchProvider` の `Error during suggestion retrieval`）もこの基準へ
+  合わせて見直す。
 - **移行の限界**: 既存LAN-URL利用者はtarget 37 cutover後、settings訪問までfetchが
   停止する。settingsが唯一の説明surfaceであり、検索ポップアップ・drawer UI内の
   error表示はNon-goalsとする。Internet URLのみの利用者に新規permission promptは
@@ -120,57 +154,82 @@ targetSdk 37の通信変更への追従が、検索ポップアップ / drawer�
 
 - Android公式: [behavior changes 17 — Local network protection](https://developer.android.com/about/versions/17/behavior-changes-17#local-network-protection-permission)。確認日2026-10-07。採用: `ACCESS_LOCAL_NETWORK` のruntime権限化、block対象のローカル宛先定義、失敗shape（TCPはタイムアウト）をProblemとfetch guard（即時短絡）の根拠にする。
 - Android公式: [Local network permission](https://developer.android.com/privacy-and-security/local-network-permission)。確認日2026-10-07。採用: 許可dialog・Settings path（Nearby devices）、取消時の扱い、`.local`名解決・LAN DNS port 53免除・VPN非対象の意味論を設定案内とVerificationに使う。
+- Android公式: [Local network definition](https://developer.android.com/privacy-and-security/local-network-definition)。確認日2026-10-07。採用: platform判定がlink-local / directly-connected / stub network / multicast・broadcastを含みURL文字列だけでは完全再現できないという限界の根拠。classifierを `statically-local / statically-public / indeterminate / 無効` の4値にとどめ、indeterminateをpublic扱いしない契約の根拠にする。
 - Android公式: [behavior changes 17 — ECH by default](https://developer.android.com/about/versions/17/behavior-changes-17#ech-by-default)。確認日2026-10-07。採用: ECH適用をplatform条件とlibrary条件に分けて記録する枠組み（library未対応ではECH無効、failureはGREASEへのdegradeで接続失敗にならない）。
-- Android公式: [behavior changes 17 — CT](https://developer.android.com/about/versions/17/behavior-changes-17#ct-default) と [Network Security Config](https://developer.android.com/privacy-and-security/security-config)。確認日2026-10-07。採用: target 37でのCT既定有効、custom / user trust anchor とlocalhostの免除、domain単位opt-outの存在（本specでは不使用）を確認面の根拠にする。
+- Android公式: [behavior changes 17 — CT](https://developer.android.com/about/versions/17/behavior-changes-17#ct-default) と [Network Security Config](https://developer.android.com/privacy-and-security/security-config)。確認日2026-10-07。採用: target 37でのCT既定有効、custom / user trust anchor とlocalhostの免除、domain単位opt-outの存在（本specでは不使用）を確認面の根拠にする。debug source set限定NSCの `debug-overrides`（ユーザーCA信頼）も同文書を根拠にする（release契約は不変）。
 - OkHttp CHANGELOG 5.5.0（https://github.com/square/okhttp/blob/master/CHANGELOG.md）。確認日2026-10-07。採用: ECHがopt-in（DNS HTTPS record経路が前提）であることの確認。merged libraryの既定設定はECH不適合というVerification前提。
-- Android公式: [Request runtime permissions](https://developer.android.com/training/permissions/requesting)。確認日2026-10-07。採用: 設定文脈（user操作起点）でのrationale付き要求とSettings導線。repo内の既存pattern（`SearchProviderPreference.kt:136` のcontacts行 `rememberPermissionState`、`ui/preferences/components/PermissionDialog.kt`）と整合させる。
+- Android公式: [Request runtime permissions](https://developer.android.com/training/permissions/requesting)。確認日2026-10-07。採用: 設定文脈（user操作起点）でのrationale付き要求、`shouldShowRequestPermissionRationale()` による requestable-denied / settings-requiredの切替、恒久拒否時のSettings導線。repo内の既存pattern（`SearchProviderPreference.kt:136` のcontacts行 `rememberPermissionState`、`ui/preferences/components/PermissionDialog.kt` の `isPermanentlyDenied` / `onGoToSettings`、`app.lawnchair.util.openAppPermissionSettings`）と整合させる。
 - それ以外の外部実装例は省略（調査済み）。対応はplatform契約の追従であり、新規設計の採用がない。
 
 ## Outcome
 
-target 37環境で、LAN宛先のcustom suggestionは `ACCESS_LOCAL_NETWORK` 許可時に
-提供が継続し、拒否・取消時は黙示的な空候補ではなく設定画面の型付き案内で説明される
-（fetchは即時短絡し、タイムアウト待ちを作らない）。Internet URLのみの利用者と
-public HTTPS（既定suggestion、katbin upload）はAPI 37/36で現行どおり動作し、
-新規permission promptは発生しない。ECHはopt-inせず、CTは無効化しない。両者の
-適用状態はlibrary条件とplatform条件を分けてVerification evidenceへ記録する。
+target 37環境で、LAN宛先（statically-localと分類されるURL）のcustom suggestionは
+`ACCESS_LOCAL_NETWORK` 許可時に提供が継続し、拒否・取消時は黙示的な空候補ではなく
+設定画面の型付き案内で説明される（guard対象は即時短絡し、タイムアウト待ちを
+作らない）。IP literal以外のhostname（indeterminate）はpublicと断定せず、custom
+fetchの結果は `success / blocked-by-permission / cleartext-blocked / tls-ct-failure /
+http-error / generic-network-failure` の型付きoutcomeとしてsettingsへ表示され、
+TLS / CT不適合時の失敗もgenericな空候補への黙示的劣化で終わらない。Internet URL
+のみの利用者とpublic HTTPS（既定suggestion、katbin upload）はAPI 37/36で現行どおり
+動作し、新規permission promptは発生しない。ECHはopt-inせず、CTは無効化しない。
+両者の適用状態はlibrary条件とplatform条件を分けてVerification evidenceへ記録する。
+releaseのnetwork security config / trust policyは不変である。
 organizer / backupのlocal-only契約は不変である。
 
 ## Scope
 
 - manifest権限宣言（`lawnchair/AndroidManifest.xml`。INTERNET `:22` の近傍）。
-- `SuggestionUrlClassifier`（新file。`CustomWebSearchProvider.kt` 近傍。URL文字列 →
-  local-network要 / 不要 / 無効の純粋関数。分類はRFC1918 / CGNAT 100.64/10 /
-  link-local（v4+v6）/ IPv6 ULAのIP literalと `.local` hostname。unit test対象）。
-- `CustomWebSearchProvider` のfetch guard（SDK 37+ gate。guard時は空候補 + typed
-  log、タイムアウト待ちなし。guard対象はsuggestion fetchのみ）。
+- `SuggestionUrlClassifier`（新file。`CustomWebSearchProvider.kt` 近傍。URL
+  **template** — `%s` を安全なdummyへ一度だけ置換してからparseし、settings UIと
+  fetch guardで共有 — → `statically-local / statically-public / indeterminate /
+  無効` の純粋関数。分類はRFC1918 / CGNAT 100.64/10 / link-local（v4+v6）/
+  IPv6 ULAのIP literalと `.local` hostname。unit test対象）。
+- `CustomWebSearchProvider` のfetch guard（SDK 37+ gate。guard対象は
+  `statically-local` + 権限未許可のみ。guard時は空候補 + typed log、タイムアウト
+  待ちなし。`indeterminate` は短絡せずfetchし結果をtyped outcomeへ流す）。
+- fetch結果の型付きoutcome契約（provider内のメモリ保持と設定画面のcustom provider
+  欄からの読み取り表示。`success / blocked-by-permission(LNP) / cleartext-blocked /
+  tls-ct-failure / http-error / generic-network-failure`。既存catch logのredaction
+  見直しを含む）。
+- debug source set限定のnetwork security config（`lawnchair/src/debug/res/xml/` 新規
+  + debug用manifest overlayで `android:networkSecurityConfig` を参照。
+  `debug-overrides` でユーザーCAを信頼。release artifactには入らない）。
 - 設定UI（custom suggestions URL欄のinline型付き案内 + permission要求button。
-  非HTTPS URLへのtyped message。既存 `SearchPopupPreference` / `isErrorCheck`
-  機構の延長。権限要求は設定画面のuser操作文脈で行う）。
-- strings追加（en + ja。案内文・button。`values-ja/strings.xml` は既存）。
+  4状態permission machine（granted / requestable-denied / settings-required /
+  revoked-or-reset）。非HTTPS・無効templateへのtyped message。既存
+  `SearchPopupPreference` / `isErrorCheck` 機構の延長。権限要求は設定画面のuser操作
+  文脈で行う）。
+- log契約（reason category + permission state + SDK_INTのみ。raw query / full URL /
+  userinfo / response body禁止。hostは最小限・sanitized）。
+- strings追加（en + ja。案内文・button・失敗状態の文言。`values-ja/strings.xml` は
+  既存）。
 - `getSearchUrl`・`KatbinService`・organizer系はコード変更なし。
 
 ## Non-goals
 
 - ECH opt-in（AndroidDns / DnsOverHttpsのDNS経路変更を伴う別判断。将来の通信path
   変更として別Issueへ分離する）。
-- クリアテキスト許可・network security config追加（`http://` LAN endpointは
-  platform既定のままblock。NSCはcleartextをCIDR単位でscopeできない）。
+- クリアテキスト許可・**release**のnetwork security config / trust policy変更
+  （debug source set限定のNSC追加は行う。`http://` LAN endpointはplatform既定の
+  ままblock。NSCはcleartextをCIDR単位でscopeできない）。
 - CT・TLS検証の無効化（domain単位の例外が必要になった場合も別specで判断する）。
 - 検索ポップアップ・drawer UI内のエラー表示（説明surfaceはsettings限定。upstream
   bridgeを増やさない）。
+- route-levelのLNP完全再現（directly-connected / stub network / multicast・
+  broadcastを含むplatform判定をURL文字列から再現しない。indeterminateのtyped扱いと
+  限界明記で対応する）。
 - `ACCESS_NETWORK_STATE` 追加（使用しない）。
 - organizer diagnosticsのnetwork化・redaction契約変更（#521/C11、DESIGN.md）。
 - #522（schema / migration / backup互換）、#526（fork UI）、#527（BAL）の対象面。
-- hostnameがprivate IPへ解決されるcaseの静的分類（実測でfailure signatureを確認
-  するにとどめる）。
+- hostnameがprivate IPへ解決されるcaseの事前静的分類（解決前はindeterminateとして
+  fetchし、結果をtyped outcomeで扱う。実測でfailure signatureを確認するにとどめる）。
 
 ## Behavior scenarios
 
-### Scenario: API 37でLAN URL＋権限許可のsuggestion取得が成功する
+### Scenario: API 37でLAN URL（statically-local）＋権限許可のsuggestion取得が成功する
 
 Given API 37 emulatorでcustom suggestion URLにhost側HTTPS server（10.0.2.2。
-RFC1918として分類される）を設定し、設定画面の要求buttonから
+statically-localと分類される）を設定し、設定画面の要求buttonから
 `ACCESS_LOCAL_NETWORK` を許可する
 When 検索queryを入力する
 Then suggestion取得が成功し候補が表示される。logcatにfetch guardのlogは出ない。
@@ -179,48 +238,76 @@ Then suggestion取得が成功し候補が表示される。logcatにfetch guard
 
 Given API 37 emulatorでLAN URLを設定し、permission dialogを拒否する
 When 設定画面でcustom suggestions欄の状態を確認し、検索queryを入力する
-Then 設定画面にはrationaleとSettings path（App permissions > Nearby devices）の
-型付き案内が出る。fetchはnetwork呼び出しの前に空候補へ短絡し（guard logあり）、
-タイムアウト待ちが発生しない。persistent変更はしない（zero-write）。
+Then `shouldShowRequestPermissionRationale()` がtrueのrequestable-denied状態では
+rationaleと再request buttonが出る。恒久拒否（settings-required）ではapp permission
+settingsへの導線へ切替わる。fetchはnetwork呼び出しの前に空候補へ短絡し、settingsに
+は `blocked-by-permission(LNP)` の型付き状態が出る（guard logあり）。タイムアウト
+待ちとpersistent変更は発生しない（zero-write）。
 
 ### Scenario: 取消（revoke）後は次回表示・fetchで拒否と同等になる
 
 Given API 37 emulatorでLAN URLと権限を許可済みにする
 When Settingsで権限を取り消し、設定画面を再度開く（または検索でfetchが走る）
-Then 拒否時と同等の型付き状態になり、fetchは短絡する。
+Then `revoked-or-reset` として拒否時と同等の型付き状態になり、fetchは短絡する。
 
-### Scenario: public HTTPS・katbinはAPI 37で現行どおり動く
+### Scenario: public HTTPS・katbinは現行どおりで、custom fetch失敗はsettingsに型付き表示される
 
 Given API 37 emulatorで既定suggestion provider（public HTTPS）を使用する
 When drawer検索でsuggestionを取得し、custom public HTTPS URLでも取得し、
-bugreportをuploadする（失敗caseも試す）
-Then いずれも現行どおり動作し、upload失敗時は既存 `action_upload_error` の
-typed通知が出る。
+bugreportをuploadする（失敗caseも試す）。さらにcustom URLでTLS / CT不適合や
+HTTP errorになるfetchを起こす
+Then 既定providerとkatbinは現行どおり動作し、upload失敗時は既存
+`action_upload_error` のtyped通知が出る。custom fetchの失敗は検索UIを汚さず、
+settingsのcustom provider欄に `tls-ct-failure` / `http-error` 等の型付き状態として
+表示される。
 
-### Scenario: API 36とInternet-only設定では新規promptなしで挙動不変
+### Scenario: indeterminate hostnameのfetch失敗はsilent emptyでなくtyped状態になる
 
-Given API 36 emulator（またはSDK 37未満のruntime）。およびInternet URLのみを
-設定したAPI 37端末
+Given API 37 emulatorで存在しないhostnameを含むcustom suggestion URL
+（例: `https://no-such-host.invalid/suggest?q=%s`）を設定する
+When 検索queryを入力し、設定画面を開く
+Then fetchはguardで短絡されず実行され、失敗は空候補とlogのみで終わらず、settings
+に `generic-network-failure` 等の型付き状態として表示される（解決前のpublic断定は
+しない）。
+
+### Scenario: API 36・Internet-onlyは挙動不変で、NEARBY_DEVICES事前付済みではdialogなしでgranted
+
+Given API 36 emulator（またはSDK 37未満のruntime）。およびInternet URLのみを設定
+したAPI 37端末。さらにNEARBY_DEVICES groupの別permission（Bluetooth等）を既に許可
+したAPI 37端末
 When 検索と設定操作を行う
-Then 新規permission promptは発生せず、挙動は現行と同じである（Internet URLの
-利用者には全APIで新規promptなし）。
+Then API 36 / Internet-onlyでは新規permission promptは発生せず挙動は現行と同じ
+である。NEARBY_DEVICES事前付済みのLAN URL設定ではdialogが出ずに即grantedになる
+（prompt回数の受入はこのcaseを含めて判定する）。
 
 ## Verification
 
 - emulator matrix（主証跡。保守者実機Pixel 9a / API 37はEpic #516 Phase 3実機
   matrix（owner手順）へ引き継ぐ旨をPRへ明記。#526 / #527と同じ扱い）:
-  - API 37 emulator（必須）: LAN許可 / 拒否 / 取消の3状態で、(a) 設定UIの状態表示、
-    (b) logcat（fetch guard log、LNP block / timeout signature）、(c) public HTTPS
+  - API 37 emulator（必須）: LAN許可 / 拒否 / 取消の3状態で、(a) 設定UIの状態表示
+    （4状態permission machine + 型付きoutcome）、(b) logcat（fetch guard log、log
+    redaction契約の確認、LNP block / timeout signature）、(c) public HTTPS
     suggestion fetch成功・custom public HTTPS fetch成功・katbin upload成功と失敗時
-    表示、(d) ECH / CT適用状態の記録 — ECH非適合の根拠（library条件: merged
-    OkHttp 5.5.0既定configはDNS HTTPS recordを取得しない）とCT passの根拠
-    （public CAのSCT）をlibrary条件とplatform条件に分けて記録する。
-  - LAN fetchのE2Eはdebug build + ユーザーCA（debug-overrides）+ host側HTTPS
-    server（例: 10.0.2.2 をRFC1918として分類する経路）で行い、release挙動を
-    変えないことを明記する。
+    表示・custom fetch失敗時のsettings型付き表示、(d) ECH / CT適用状態の記録 —
+    ECH非適合の根拠（library条件: merged OkHttp 5.5.0既定configはDNS HTTPS recordを
+    取得しない）とCT passの根拠（public CAのSCT）をlibrary条件とplatform条件に分けて
+    記録する。
+  - LAN fetchのE2Eはdebug source set限定NSC（`lawnchair/src/debug/res/xml/` +
+    debug用manifest overlayで `android:networkSecurityConfig` を参照。
+    `debug-overrides` でユーザーCAを信頼）+ host側HTTPS server（例: 10.0.2.2 を
+    statically-localとして分類する経路）で行う。releaseのNSC / trust policyは
+    不変であり、**release merged manifest / artifactにdebug CA trustが入らない
+    こと**をmerged manifest確認で検証する。
+  - indeterminate実機確認は存在しないhostnameでtyped状態になることで契約を検証する。
+    「hostname→private IP解決」のsubcaseは限界として明記のままとする。
+  - CT failure再現は、可能ならsystem store版test CA（adb root可能なgoogle_apis
+    emulator image）でfailure signatureの記録を試みる。不成立の場合はplatform条件と
+    library条件の分析を代替evidenceとして明示する方針をPRへ記載する。
   - API 36 emulator: 既存public fetch・katbinの回帰なし、新規permission promptなし。
 - 既存test suite: organizer unit / repo-contract validator（diagnostics
-  local-only契約を含む）がgreen。新規unit test: `SuggestionUrlClassifier`
+  local-only契約を含む）がgreen。新規unit test: `SuggestionUrlClassifier` の
+  canonicalization契約（`%s` template置換、IPv6 literal、`.local`、public IP、
+  壊れたURL / placeholder、indeterminate hostname → 各state）とlog redaction契約
   （純粋関数。test-audit判断をPRで記録する）。
 - 実行コマンド: `./gradlew spotlessCheck`、
   `./gradlew testLawnWithQuickstepGithubDebugUnitTest`（organizer系は必須）、
@@ -228,18 +315,22 @@ Then 新規permission promptは発生せず、挙動は現行と同じである�
   `python3 tools/repo-contract/validate_repo_contract.py`。
 - 書込み経路を追加しないことの確認: 変更diffはmanifest宣言
   （`lawnchair/AndroidManifest.xml`）・search provider配下
-  （`lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/`）・
-  preferences UI（`lawnchair/src/app/lawnchair/ui/preferences/components/search/`）・
-  strings（`lawnchair/res/values/`、`lawnchair/res/values-ja/`）・新classifierに
-  限る。DB / model / loader / backup pathは不変。
+  （`lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/`。outcome
+  契約を含む）・preferences UI
+  （`lawnchair/src/app/lawnchair/ui/preferences/components/search/`）・
+  strings（`lawnchair/res/values/`、`lawnchair/res/values-ja/`）・新classifier・
+  debug source set（`lawnchair/src/debug/`。NSC XML + manifest overlay）に限る。
+  DB / model / loader / backup pathとrelease manifest / trust policyは不変。
 - `measure_upstream_patch_surface.py` は非該当（上流moduleに触れない）旨をPR本文へ
   記載する。
 
 ## Accessibility and localization
 
-- 新規文字列あり（設定画面の型付き案内・permission要求button）。en + ja を同じPRで
+- 新規文字列あり（設定画面の型付き案内・permission要求button・失敗状態の文言。
+  permission 4状態 + outcome 6型の表示分だけbaseline比で増える）。en + ja を同じPRで
   追加する。TalkBack label / focus・font scaling をemulator matrixで確認する。
 
 ## Change history
 
 - 2026-10-07: Draft created for #528.
+- 2026-10-07: Review round 1（PR #542コメント）対応 — classifier契約をtemplate入力+3状態へ再定義（%s canonicalization共通化）、typed fetch failure契約とsettings surfaceを追加、debug source set限定NSCでLAN E2Eを成立させrelease契約を不変に明確化、permission state machineを4状態へ定義、log redaction契約を追加、Scenario/Verificationを同期。
