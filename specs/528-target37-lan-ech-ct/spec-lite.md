@@ -1,6 +1,6 @@
 ---
 issue: "#528"
-status: draft
+status: accepted
 tier: M
 requirements: []
 updated: 2026-10-07
@@ -397,3 +397,5 @@ Then API 36 / Internet-onlyでは新規permission promptは発生せず挙動は
 - 2026-10-07: Draft created for #528.
 - 2026-10-07: Review round 1（PR #542コメント）対応 — classifier契約をtemplate入力+4値（statically-local / statically-public / indeterminate / 無効）へ再定義（%s canonicalization共通化）、typed fetch failure契約とsettings surfaceを追加、debug source set限定NSCでLAN E2Eを成立させrelease契約を不変に明確化、permission state machineを4状態へ定義、log redaction契約を追加、Scenario/Verificationを同期。
 - 2026-10-07: Review round 2（PR #542コメント）対応 — classifierのstatically集合を「addressだけで断定できる範囲」へ限定（multicast/broadcastをlocalへ、route依存のIPv6 global/ULAをindeterminateへ）、permission状態を観測可能情報のみで導出する3状態+session内遷移へ再定義（revoked-or-reset廃止・zero-write維持）、outcomeのlifecycle（template変更時clear・一致時のみpublish）を追加、tls-ct-failureの決定的検証を必須化、Change historyの状態数表記を修正。
+- 2026-10-07: Review round 3（PR #542コメント）で全指摘resolved・新規指摘なしを確認
+  （head `72517bc165` のCI green確定後）。acceptedへ遷移。
