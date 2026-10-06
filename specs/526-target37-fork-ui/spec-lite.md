@@ -152,7 +152,10 @@ Then 未確定セッションは保持されず、capture再読込後に「前�
 
 Given 編集画面でConfirmを実行しDB適用が進行中の状態で
 When sw600dp以上の画面で回転しActivityが再作成される
-Then 進行中の適用は完走し（1 recovery point / 1 Undo）、再発行されない。
+Then 進行中の適用は既存契約どおり完走し、再発行されない
+（Applied時は1 DB transaction / 1 recovery point / 1 Undo。
+non-Applied時は既存result別契約のまま — 少なくともstale / rejectedは
+零書込み・Undoなしで、oracleのためのrecovery / Undo追加をしない）。
 新instanceは単一権威によりin-flight中のConfirmを受け付けず、適用完了まで
 適用が始まらない旨が示される。適用のterminal後も、新instanceが相関captureを
 再取得して完了するまでConfirmは再有効化されない（旧適用前のcaptureをstale図として
@@ -177,9 +180,11 @@ DBは旧適用の1回のtransactionのみで更新される
   構成し、productionのtest専用hookを広げない）:
   (1) `recreate()` × {selection-only, 計画あり, 未操作} の3ケースで案内の有無を固定、
   (2) 適用進行中のシステムbackでfinishしないこと、
-  (3) 適用進行中の`recreate()`で二重適用が起きないこと（DB更新は旧適用の1回のみ、
-  1 recovery point / 1 Undo）と、terminal後・相関capture再取得完了前にConfirmが
-  不能であること、
+  (3) 適用進行中の`recreate()`で二重適用が起きないこと（Applied時はDB更新1回 /
+  1 recovery point / 1 Undo、non-Applied時は既存result別契約の維持 —
+  少なくともstale / rejectedは零書込み・Undoなしで、oracleのためのdummy
+  recovery / Undo追加をしない）と、全terminal共通でterminal後・相関capture
+  再取得完了前にConfirmが不能であること、
   (4) 案内の`liveRegion` semantics（作業あり=Polite設定、作業なし=対象要素なし）と、
   再compositionで通知条件が再発火しないこと。
 - 既存edit surface系unit/instrumentation testがすべてgreenであること。
@@ -212,3 +217,7 @@ DBは旧適用の1回のtransactionのみで更新される
   Correlating（相関capture再取得完了までConfirm無効）を追加、必須oracleに
   1 recovery point / 1 Undo固定とliveRegion semantics oracleを追加、
   emulator matrixへTalkBack ON実測を明記。
+- 2026-10-06: Review round 3（PR #536コメント）対応 — 必須oracle (3) と
+  適用中再作成Scenarioの件数条件をterminal別に分離（Applied=1 transaction /
+  1 recovery point / 1 Undo、non-Applied=既存result別契約・dummy追加禁止）、
+  全terminal共通のCorrelating解除条件を明記。
