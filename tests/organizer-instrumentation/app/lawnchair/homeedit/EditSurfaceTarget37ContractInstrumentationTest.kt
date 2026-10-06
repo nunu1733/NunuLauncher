@@ -309,6 +309,100 @@ class EditSurfaceTarget37ContractInstrumentationTest {
         }
     }
 
+    // --- oracle 3b: zero-write release composes with the existing stale gate ---
+
+    @Test
+    fun zeroWriteTerminalReleaseThenWorldMoveFailsClosedThroughTheStaleGate() {
+        // Spec 526 revision 2 oracle (3b): a zero-write, no-local-recovery
+        // terminal releases the gate to Idle immediately (no correlated
+        // recapture). The safety of that release does NOT depend on the world
+        // being unchanged — if the shared world moves afterwards, the very
+        // next real confirm must be refused by the EXISTING pre-write stale
+        // admission with zero DB write and no undo record. Full captures are
+        // not reintroduced here; the cross-check is external revision movement
+        // + the existing stale admission.
+        launchSettledSurface().let { (scenario, activity) ->
+            awaitSelectableItem(activity, "3b release")
+            // Deterministic zero-write terminal through the gate's own API
+            // (the ApplyResult → gate-call mapping itself is pinned by the
+            // JVM classification oracle in EditSurfaceApplyGateTest).
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                assertTrue(editSurfaceApplyGate.beginApply())
+                editSurfaceApplyGate.onApplyTerminal()
+                editSurfaceApplyGate.onTerminalWithoutWorldChange()
+                assertEquals(EditSurfaceApplyGate.State.Idle, editSurfaceApplyGate.state)
+            }
+
+            // The shared world moves EXTERNALLY after the release (a fresh
+            // fixture generation through the harness's own settle seam).
+            val rowsBefore = favoritesRowCount()
+            seedDesktopApps(Triple(0, 3, 2), Triple(0, 1, 3), Triple(1, 2, 2))
+
+            // Drive a session against the pre-move capture and confirm for
+            // real: the plan builds against the stale capture revision, and
+            // the apply-time pre-write admission must reject it as stale with
+            // zero write.
+            val itemId = awaitSelectableItem(activity, "3b stale confirm")
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                activity.toggleSelectionForTest(itemId)
+                activity.moveToPageForTest(1)
+                activity.confirm()
+            }
+            // Sample the terminal atomically on the main thread: the stale
+            // reason text is visible from handleApplyResult until the reopen
+            // capture's completion clears it, so the FIRST observation with a
+            // result must show either the stale reason or the already-completed
+            // reopen (gate Idle). Anything else means the contract broke.
+            var sawResult: app.lawnchair.organizer.application.public.ApplyResult? = null
+            var sawStaleReason = false
+            var sawGateIdle = false
+            val sampleDeadline = System.currentTimeMillis() + 30_000
+            while (System.currentTimeMillis() < sampleDeadline && sawResult == null) {
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    val r = activity.lastApplyResultForTest
+                    if (r != null) {
+                        sawResult = r
+                        sawStaleReason =
+                            activity.reasonResForTest() ==
+                            com.android.launcher3.R.string.edit_surface_error_stale_reopen
+                        sawGateIdle = editSurfaceApplyGate.state == EditSurfaceApplyGate.State.Idle
+                    }
+                }
+                if (sawResult == null) Thread.sleep(200)
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                assertTrue(
+                    "the stale world move must surface as a Rejected apply",
+                    sawResult is app.lawnchair.organizer.application.public.ApplyResult.Rejected &&
+                        (sawResult as app.lawnchair.organizer.application.public.ApplyResult.Rejected)
+                            .reason ==
+                        app.lawnchair.organizer.application.public.PreWriteRejection.STALE_REVISION,
+                )
+                assertTrue(
+                    "the stale rejection must reopen with the latest capture (reason shown or reopen done)",
+                    sawStaleReason || sawGateIdle,
+                )
+                assertEquals(
+                    "a rejected pre-write admission must not change the workspace",
+                    rowsBefore,
+                    favoritesRowCount(),
+                )
+                assertEquals(
+                    "the gate must be back to Idle after the stale reopen",
+                    EditSurfaceApplyGate.State.Idle,
+                    editSurfaceApplyGate.state,
+                )
+            }
+            openScenario = null
+        }
+    }
+
+    /** Favorites row count straight from the launcher DB (zero-write oracle). */
+    private fun favoritesRowCount(): Int =
+        appState.model.modelDbController.db
+            .query(Favorites.TABLE_NAME, null, null, null, null, null, Favorites._ID)
+            .use { it.count }
+
     // --- harness (same shape as EditSurfaceUndoInstrumentationTest) ---
 
     private fun launchSettledSurface(): Pair<ActivityScenario<HomeEditSurfaceActivity>, HomeEditSurfaceActivity> {
