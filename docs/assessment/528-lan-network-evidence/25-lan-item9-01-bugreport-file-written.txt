@@ -1,0 +1,36 @@
+Lawnchair (Debug) bug report 2026-10-07_06-53-11
+version: 16.Dev.(47400f0) (1600020100)
+commit: 47400f0
+build.brand: google
+build.device: emu64a
+build.display: sdk_gphone64_arm64-userdebug 17 CE2A.260420.019 15611780 dev-keys
+build.fingerprint: google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys
+build.hardware: ranchu
+build.id: CE2A.260420.019
+build.manufacturer: Google
+build.model: sdk_gphone64_arm64
+build.security.level: 2026-05-05
+build.product: sdk_gphone64_arm64
+build.type: userdebug
+version.codename: REL
+version.incremental: 15611780
+version.release: 17
+version.sdk_int: 37
+display.density_dpi: 420
+isRecentsEnabled: false
+
+error: Uncaught exception
+
+android.app.RemoteServiceException$CrashedByAdbException: shell-induced crash
+	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2581)
+	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(ActivityThread.java:0)
+	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2950)
+	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+	at android.os.Handler.dispatchMessage(Handler.java:125)
+	at android.os.Looper.loopOnce(Looper.java:296)
+	at android.os.Looper.loop(Looper.java:397)
+	at android.app.ActivityThread.main(ActivityThread.java:9523)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+

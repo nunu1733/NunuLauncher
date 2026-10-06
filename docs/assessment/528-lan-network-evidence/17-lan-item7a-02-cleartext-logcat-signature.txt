@@ -1,0 +1,2 @@
+10-07 06:33:10.924  8367  9620 E CustomWebSearchProvider: Error during suggestion retrieval: java.net.UnknownServiceException
+10-07 06:34:25.762  8367 10211 E CustomWebSearchProvider: Error during suggestion retrieval: java.net.UnknownServiceException
