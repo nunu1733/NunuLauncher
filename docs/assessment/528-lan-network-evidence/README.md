@@ -6,6 +6,7 @@
 - APK: `Lawnchair.16.Dev.(47400f0).github.debug.apk` (`assembleLawnWithQuickstepGithubDebug`)
 - applicationId: `app.lawnchair.debug` (debugsuffix)
 - 確認日: 2026-10-07
+- **修正後再取得 (2026-10-07)**: cleartext検出fix `1600e0c857` (`fix(528): クリアテキスト検出をOkHttp 5.5.0のUnknownServiceExceptionへ対応`) で Item 7a を再取得した。APK `Lawnchair.16.Dev.(1600e0c).github.debug.apk`、同一AVD `issue526_api37_pixel_9a` (serial emulator-5554)。修正後の証跡は `35`〜`38`。
 - emulator matrix:
   - API 37: AVD `issue526_api37_pixel_9a` (sdk_gphone64_arm64, Android 17 / SDK 37, google_apis) — serial emulator-5554
   - API 36: AVD `issue142_api36` (sdk_gphone64_arm64, Android 16 / SDK 36, google_apis) — serial emulator-5556
@@ -23,7 +24,7 @@
 | 4 | grant後のrevoke | PASS |
 | 5 | 既定providerのpublic HTTPS (Google) | PASS |
 | 6 | custom public HTTPS (DuckDuckGo) | PASS |
-| 7 | typed failures (cleartext / tls-ct / generic / not-run lifecycle) | **7aはCONTRADICTION** (下記「要対応」)、7b/7c/7dはPASS |
+| 7 | typed failures (cleartext / tls-ct / generic / not-run lifecycle) | PASS (7aは初回CONTRADICTION → fix `1600e0c857`で**再取得PASS**、下記「修正後再取得」) 、7b/7c/7dはPASS |
 | 8 | 初回未要求UX (Settingsへ誘導しない) | PASS |
 | 9 | katbin bugreport upload 成功/失敗通知 | **NOT COMPLETED** (debug buildのLeakCanaryがcrash経路を block。原因と証跡は下記) |
 | 10 | log redaction契約 | PASS |
@@ -66,6 +67,13 @@
 - `28-lan-item11-fontscale-2x-settings.png` — `font_scale 2.0` での設定LAN section: 文字の折返しはあるが切欠き・崩れなし。← Verification「TalkBack label / focus・font scaling をemulator matrixで確認」(font scaling 部分)
 - `33-lan-release-manifest-no-debug-nsc.txt` — release merged manifest に `networkSecurityConfig` なし (debug CA trust不混入) + debug merged manifest/NSCの内容。← Verification「release merged manifest / artifactにdebug CA trustが入らないこと」
 
+### 修正後再取得 (fix `1600e0c857`、API 37 / 同一AVD)
+
+- `35-lan-item7a-03-https-userCA-positive-control-fixedbuild.png` — **https positive control**: 同一build・同一user CA (`Issue528 Test CA`を`/data/misc/keychain/cacerts-added/d5f0c30b.0`として再導入) で `https://10.0.2.2:8443/suggest?q=%s` のdrawer検索 "evidence" → ローカル候補が表示 (server access log 07:49の行、`UA=okhttp/5.5.0`)。settingsのtyped statusは「Suggestions: last fetch succeeded.」(SUCCESS)。fix buildでCA経路が壊れていないことの対照証跡。
+- `36-lan-item7a-04-settings-cleartext-blocked-after-fix.png` — **7a再取得の決定的証跡**: URLを `http://10.0.2.2:8443/suggest?q=%s` に変更してdrawer検索発火後、settings UIは **`cleartext-blocked`** ("Suggestions: blocked, cleartext (HTTP) traffic is not allowed. Use an HTTPS address.") を表示。初回runの `16-*.png` (generic-network-failureと誤分類) がfixで解消された。LAN sectionは「Local network access is granted.」のまま (guard短絡ではなくfetch failure側の分類であることも示す)。
+- `37-lan-item7a-05-cleartext-logcat-after-fix.txt` — 上記fetchのlogcat (`CustomWebSearchProvider` tagのみ)。**`java.net.UnknownServiceException`** (class名のみ。メッセージ内容・URL・queryは出ない) でredaction契約も維持。okhttp 5.5.0の予測どおりの例外型。
+- `38-lan-item7a-06-drawer-empty-cleartext.png` — 同一fetch時のdrawer検索: web候補は**即時に空** ("Search on Custom"のみ)。cleartext拒否はnetwork I/O前の短絡で、server access logに新規行なし (最終行は07:49のhttps fetch)。1行メモ: **検索flowは空候補で高速に完了し、hang・dialog・crashなし**。
+
 ### API 36 (回帰)
 
 - `29-lan-item13-api36-no-lan-section.png` — **SDK 36ではLAN URL (statically-local) を設定してもLAN guard sectionが出ない** (要求button・rationale・granted表示なし。typed status `not-run` のみ)。guardがSDK 37+ gateであることのUI証跡。新規permission promptは一切出ない。← Verification「API 36 emulator: 既存public fetch・katbinの回帰なし、新規permission promptなし」+ Scenario「API 36・Internet-onlyは挙動不変」
@@ -76,16 +84,14 @@
 
 `am crash app.lawnchair.debug` によるcrash毎にLawnchairBugReporterのcrash handlerは起動しreport fileを書く (`25-*.txt`) が、**katbin upload通知 (action: "Upload crash log") は表示されない**。原因: debug buildのみ含まれるLeakCanaryがuncaught exception経路をwrapし、main threadが `handleApplicationCrash` のbinder呼び出しでblockされる (`26-*.txt` のANR trace)。その間にsystemがcrash dialog/stack収集を行いprocessがkillされるため、crash通知からのupload導線 (成功: katb.in URL、失敗: `action_upload_error`) をUIから実行できない。`notifications.size > 3` のanti-spam guard (既存仕様) もsystem通知が多い環境ではpostingをskipする。**debug-onlyのLeakCanary起因であり、#528の変更 (C4は変更なし) とは無関係**。release build / 保守者実機 (Pixel 9a / API 37, Epic #516 Phase 3 owner手順) での成功・失敗通知の確認への引き継ぎを推奨する。airplane modeを使う失敗caseも同導線のため未実施 (airplane modeは最終的に有効化していないため復元作業も不要)。
 
-## 要対応 (実装とspecの矛盾 — コードは修正せず記録のみ)
+## 要対応 → 解消済み (fix `1600e0c857`)
 
-**cleartext-blocked が generic-network-failure に分類される** (`16-*.png`, `17-*.txt`)
+**cleartext-blocked が generic-network-failure に分類される** (`16-*.png`, `17-*.txt`) — **初回runで検出、`1600e0c857` で修正し再取得PASS (`35`〜`38`)**
 
-- 手順: 権限granted / suggestions URLに `http://10.0.2.2:8443/suggest?q=%s` を設定 / drawer検索でfetch発火。
-- 期待 (spec Outcome・typed outcome契約): 設定UIに `cleartext-blocked` ("Suggestions: blocked, cleartext (HTTP) traffic is not allowed. Use an HTTPS address.")。
-- 実際: `generic-network-failure` ("...the address could not be reached.")。
-- 原因 (推定、コード読解): `CustomWebSearchProvider.mapFailureToOutcome` が例外メッセージの `"Cleartext HTTP traffic"` を見ているが、merged OkHttp 5.5.0 のcleartext拒否メッセージは `"CLEARTEXT communication to <host> not permitted by network security policy"` (okhttp `RealRoutePlanner` の定数を確認済み) で一致せず、`SSLException` でもないためfallbackの `GENERIC_NETWORK_FAILURE` に入る。
-- 影響: specの型付きoutcomeのうち `cleartext-blocked` が実機では到達不能。guard短絡や他の型には影響しない。
-- 記録のみでコード修正は行っていない (指示通り)。
+- 初回runの手順と現象: 権限granted / suggestions URLに `http://10.0.2.2:8443/suggest?q=%s` を設定 / drawer検索でfetch発火 → 設定UIは「Suggestions: failed, the address could not be reached.」(generic-network-failure) と表示。期待は `cleartext-blocked`。
+- 原因 (確定): `CustomWebSearchProvider.mapFailureToOutcome` が例外メッセージの `"Cleartext HTTP traffic"` を見ていたが、merged OkHttp 5.5.0 のcleartext拒否は `java.net.UnknownServiceException("CLEARTEXT communication to <host> not permitted by network security policy")` で一致せず、`SSLException` でもないためfallbackの `GENERIC_NETWORK_FAILURE` に入っていた。
+- 修正 (`1600e0c857`): 分類を `java.net.UnknownServiceException` の**型ベース**検出へ変更 (大文字小文字を無視する `"CLEARTEXT"` message-category fallbackを併設、メッセージ内容はlogに出さない契約は維持)。`SSLException` → TLS_CT_FAILURE とgeneric fallbackは不変。分類はpure関数 `mapFailureToOutcome` (`SuggestionFetchOutcome.kt`) としてunit testで回帰担保 (`SuggestionFetchOutcomeLifecycleTest`、pre-fix logicで3 testがfailすることをred-greenで確認)。
+- 再取得結果: settings UIは `cleartext-blocked` を表示 (`36`)、logcatは `java.net.UnknownServiceException` のみ (`37`)、drawer検索は即時に空でserver access logに新規行なし (`38`)。specのtyped outcome契約どおり。
 
 ## 観測 (契約適合の范围内だが記録する)
 

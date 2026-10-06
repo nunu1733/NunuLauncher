@@ -1,0 +1,8 @@
+--------- beginning of main
+10-07 07:55:14.925 E/CustomWebSearchProvider( 3893): Error during suggestion retrieval: java.net.UnknownServiceException
+10-07 07:55:14.975 E/CustomWebSearchProvider( 3893): Error during suggestion retrieval: java.net.UnknownServiceException
+10-07 07:55:15.009 E/CustomWebSearchProvider( 3893): Error during suggestion retrieval: java.net.UnknownServiceException
+10-07 07:55:15.178 E/CustomWebSearchProvider( 3893): Error during suggestion retrieval: java.net.UnknownServiceException
+10-07 07:55:15.753 E/CustomWebSearchProvider( 3893): Error during suggestion retrieval: java.net.UnknownServiceException
+10-07 07:55:16.240 E/CustomWebSearchProvider( 3893): Error during suggestion retrieval: java.net.UnknownServiceException
+10-07 07:55:16.568 E/CustomWebSearchProvider( 3893): Error during suggestion retrieval: java.net.UnknownServiceException
