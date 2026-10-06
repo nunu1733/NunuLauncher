@@ -77,12 +77,11 @@ BALを与えないことが`ALLOW_IF_VISIBLE`の契約であり、UI非表示時
 | `lawnchair/src/app/lawnchair/qsb/providers/Google.kt:37-41` | QSB search/voice（`startIntentSender`。target 34+でsender opt-in要求） | `ATLEAST_BAKLAVA ? ALLOW_IF_VISIBLE : ALLOWED` |
 | `lawnchair/src/app/lawnchair/smartspace/BcSmartSpaceUtil.kt:32-36` | smartspace card tap | `ATLEAST_BAKLAVA ? ALLOW_IF_VISIBLE : ALLOWED` |
 
-### G3: creator側 — 明示付与
+### G3: creator側 — 残置（本issueでは変更しない）
 
-| site | 経路 | 移行 |
+| site | 経路 | 残置理由 |
 |---|---|---|
-| `quickstep/src/com/android/quickstep/SystemUiProxy.kt:188-202` | recents遷移用PIをWMShellへ渡す。shellが発火する時点でlauncherは非可視になり得る | creator modeを `ATLEAST_BAKLAVA ? ALLOW_ALWAYS : ALLOWED` へ（launcher自身のrecents activity起点。upstream wmshellのcreator `ALLOW_ALWAYS` 使用と同一pattern） |
-| `lawnchair/src/app/lawnchair/util/LawnchairUtils.kt:104-115` | 再起動PI（`exitProcess`後にAlarmManagerが発火。self-target・`FLAG_IMMUTABLE`・launcher packageのlaunch intent限定） | creator側opt-inを付与（`ATLEAST_BAKLAVA` で `ALLOW_ALWAYS`）。HOME例外への依存をやめ自己再起動を明示的に許可。第三者appへの権限拡大なし |
+| `quickstep/src/com/android/quickstep/SystemUiProxy.kt:188-202` | recents遷移用PIをWMShellへ渡す。shellが発火する時点でlauncherは非可視になり得る | creator側は現状legacy `ALLOWED` のまま残置する。移行可否（creator `ALLOW_ALWAYS` 等）は、recents provider構成（`config_recentsComponentName` / QuickSwitch）を要求するruntime検証に依存するため、**#524のprovider/runtime matrix環境で確認して同Issue（またはEpic #516実機matrix）で処理する**。#527のemulator matrixでは当該発火を観測できず、検証できない面を変更しない。なお `ALLOW_ALWAYS` はlegacy `ALLOWED` と完全同義ではなく privileged BAL contextまで含む最も広いmodeのため、機械置換としない（review round 1） |
 
 ### G4: 既にgranular — 保持（変更なし）
 
@@ -114,19 +113,32 @@ BALを与えないことが`ALLOW_IF_VISIBLE`の契約であり、UI非表示時
 - `quickstep/src/com/android/launcher3/taskbar/TaskbarActivityContext.java:1604`
   （taskbar深shortcut、options bundleなし）: 送信時taskbar可視で一般例外が成立。
   `SYSTEM_DEFINED`（既定）のまま、明示付与を追加しない。
+- `lawnchair/src/app/lawnchair/util/LawnchairUtils.kt:104-115`（自己再起動PI）:
+  self-target（launcher packageのlaunch intent限定）・`FLAG_IMMUTABLE`・senderは
+  AlarmManager（systemがPIを実行する代表例で一般BAL例外に当たる）。現状の成功経路に
+  creator側の新規付与は加えず、既定のまま（legacy migrationではなく新規grantになる
+  ため。review round 1）。API37実測で「設定からのapp再起動」がblockされる場合のみ、
+  そのfailure signature（logcat）を根拠に別途最小modeを選ぶ。
 - `TaskbarDragController.java:441-448` / `SplitSelectDataHolder.kt:219-243`（drag/split
-  用PI）: foreground操作で生成しshell経由で消費。既定のまま。
+  用PI）: これらのPIは `SplitSelectStateController → SystemUiProxy → wmshell` 経由で
+  shellに消費され、消費側の `wmshell/.../splitscreen/StageCoordinator.java:2083-2084`
+  がsplit launch用 `ActivityOptions` にsender側 `ALLOW_ALWAYS` を設定済みであることが
+  creator側を既定のままにできる直接の根拠（review round 1。「foregroundで生成した」
+  ことはBAL判定の根拠にならない）。launcher側の当該PI作成には付与しない。
 
 ### G6: `wmshell/` module — 対象外（残置理由）
 
 `build.gradle:476`（`withQuickstepImplementation projects.wmshell`）でAPKに同梱される
-が、bubbles/desktop mode/splitscreenの実行主体はSystemUI側のshell契約であり、
-`e8aced7dbe` 時点のlegacy使用は `BubbleTaskViewHelper.java:105-106`（sender ALLOWED）と
-`DragToDesktopTransitionHandler.kt:147-148`（creator ALLOWED）のみ（他は既に
-`ALLOW_ALWAYS` / `DENIED`）。本issueでは対象外とする。理由: (1) 当該codeの起動可否は
+が、bubbles/desktop mode/splitscreenの実行主体はSystemUI側のshell契約である。本issue
+ではwmshellを「見ない」のではなく、**launcher側経路が依存する既存のgranular sender
+grant（`StageCoordinator.java:2083-2084` の `ALLOW_ALWAYS` 等）を依存契約として確認
+記録する**。wmshell内のlegacy mode使用は `BubbleTaskViewHelper.java:105-106`（sender
+ALLOWED）と `DragToDesktopTransitionHandler.kt:147-148`（creator ALLOWED）の2 site
+のみで、この2 siteのみ対象外として追跡する。理由: (1) 当該codeの起動可否は
 launcher単独のemulator matrixでは観測できずQuickstep provider/system構成（#524環境）
 を要求する、(2) shell契約の変更はrebase直後のbridge最小化に反する、(3) 残置は
-upstream 16-dev parity。実測環境が整うPhaseでの追跙はEpic #516へ記録する。
+upstream 16-dev parity。実測環境が整うPhaseでの追跙はEpic #516へ記録する。後続実装は
+launcher側で重複するcreator grantを追加しない。
 
 ### manifest属性 `allowCrossUidActivitySwitchFromBelow`
 
@@ -156,27 +168,30 @@ flowに追加操作・やり直し・セッション破棄を発生させない�
 
 API 36/37環境で、launcher可視状态下のユーザー起点起動（app/shortcut/widget tap、
 widget configure/result、QSB search/voice、smartspace、popup RemoteAction、通知action、
-SAF/exchange復帰、自己再起動）がすべて成功し、そのBAL付与が経路別の最小granular
-modeになる。launcher非可視時に無条件のBALを与える経路は、shell連携（recents/split）
-とself-target再起動など根拠を明示したものだけが残る。API 35以下の端末挙動は現行と
-同じである。
+SAF/exchange復帰）がすべて成功し、そのBAL付与が経路別の最小granular modeになる。
+launcher非可視時に動く経路（recents/split連携、自己再起動PI）は本issueでは新規grant
+を追加せず、現行の依存契約（shell側grant・system sender例外）と残置理由を明示して
+維持する。API 35以下の端末挙動は現行と同じである。
 
 ## Scope
 
 - `Utilities.allowBGLaunch` の移行（G1）。version gate: `ATLEAST_BAKLAVA` で
   `ALLOW_IF_VISIBLE`、`ATLEAST_U` で従来の `ALLOWED`、未満は設定なし。
-- G2の5 site（fallback 2経路のgap修正を含む）、G3の2 site（creator側付与）。
+- G2の5 site（fallback 2経路のgap修正を含む）。G3のSystemUiProxyとG5の自己再起動PIは
+  変更しない（残置理由は各節のとおり）。
 - 移行の検証用に、debug build限定で `StrictMode.VmPolicy.Builder().detectBlockedBackgroundActivityLaunch()
   .penaltyLog()` を `Application.onCreate` に追加する（`ATLEAST_BAKLAVA` gate。
   logのみでprocessを殺さない）。fork所有のApplication classに限る。
 - 経路表（本spec）の全経路について、移行差分または残置理由をPR本文で対応づける。
 - 上流ファイル（`Utilities.java`、`QuickstepInteractionHandler.java`、
-  `SystemApiWrapper.kt`、`SystemUiProxy.kt`）の変更は定数選択とversion gateに限定し、
-  近傍にissue番号付きcommentを残す。
+  `SystemApiWrapper.kt`）の変更は定数選択とversion gateに限定し、近傍にissue番号付き
+  commentを残す。
 
 ## Non-goals
 
 - Quickstep provider構成・`QUICKSTEP_MAX_SDK`・recents gesture matrixの実機検証（#524）。
+  `SystemUiProxy.getRecentsPendingIntent` のcreator mode移行も同環境での確認を前提と
+  するため本issueの対象外（G3の残置理由参照）。
 - `wmshell/` module内のBAL移行（G6の理由による。upstream parity維持）。
 - `allowCrossUidActivitySwitchFromBelow` の採用、Safer Intents (`intentMatchingFlags`)
   のopt-in（Issue本文の非対象。無条件opt-inしない）。
@@ -235,8 +250,10 @@ API 34/35はlegacy分岐で現行どおり）。
     Scenario 1〜5を実測する。観測は (a) 成功/拒否の操作結果、(b) logcat
     `ActivityTaskManager` のBAL blocked filter、(c) debug buildのStrictMode
     `detectBlockedBackgroundActivityLaunch` log、(d) 既存lintのdeprecated警告の有無。
-  - foreground/background軸: 通知action（receiver背景）、再起動PI（`exitProcess`後）、
-    proxy結果配送（configure返却時）。HOME有/無軸: default HOME設定/解除でScenario 5。
+  - foreground/background軸: 通知action（receiver背景）、自己再起動PI（`exitProcess`
+    後の発火。成功を確認し、blockされた場合のみそのfailure signatureをlogcatから記録
+    してG5のとおり別途最小mode判断に渡す）、proxy結果配送（configure返却時）。
+    HOME有/無軸: default HOME設定/解除でScenario 5。
   - 再起動PIは「設定からのapp再起動」flowで起動成功を確認する。
 - 既存test suite: organizer unit / 既存instrumentation gateがgreen（本変更は定数選択
   のみで、新規の永続testは追加しない — test-audit判断: framework shadow越しの定数
@@ -245,8 +262,9 @@ API 34/35はlegacy分岐で現行どおり）。
 - 上流bridgeの計測: `python3 tools/repo-contract/measure_upstream_patch_surface.py
   --target HEAD --enforce-baseline` の結果をPR本文へreportする（上流4 fileへの
   最小変更であることの確認）。
-- 書込み経路を追加しないことの確認: 変diffはG1〜G3のmode選択・version gate・
-  debug StrictMode追加に限り、PI作成契約・起動先・結果処理・DB pathは不変。
+- 書込み経路を追加しないことの確認: 変diffはG1〜G2のmode選択・version gate・
+  debug StrictMode追加に限り、PI作成契約・起動先・結果処理・DB pathは不変
+  （G3/G5の残置経路とG4/G6の保持経路にはコード変更を行わない）。
 
 ## Accessibility and localization
 
@@ -256,3 +274,11 @@ API 34/35はlegacy分岐で現行どおり）。
 ## Change history
 
 - 2026-10-06: Draft created for #527。
+- 2026-10-06: Review round 1（PR #540コメント）対応 — SystemUiProxy recents PIをG3の
+  移行対象から外し残置理由（#524のprovider/runtime matrix所有）へ変更、
+  `restartLauncher`へのcreator `ALLOW_ALWAYS` 新規付与を撤回してG5（AlarmManager =
+  system sender例外のため既定のまま、block実測時のみ別途最小mode）へ移動、
+  drag/split PIの残置理由を消費chain側 `StageCoordinator` sender grantに置き換え、
+  G6を「legacy 2 siteのみ対象外として追跡 + 依存grant確認」へ明確化、
+  `ALLOW_ALWAYS` とlegacy `ALLOWED` の非同義性を明記、Outcome/Scope/Non-goals/
+  Verificationを同一の所有境界へ同期。
