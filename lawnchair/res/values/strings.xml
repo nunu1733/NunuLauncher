@@ -1133,6 +1133,7 @@
 <string name="home_screen_organize">Organize home screen</string>
 <string name="edit_surface_title">Edit layout grid</string>
 <string name="edit_surface_snapshot_notice">Showing the layout captured when this screen opened. Changes made elsewhere are not reflected.</string>
+<string name="edit_surface_discard_notice">Previous unconfirmed edits were discarded.</string>
 <string name="edit_surface_selection_count">%1$d selected</string>
 <string name="edit_surface_action_move_to_page">Move to page\u2026</string>
 <string name="edit_surface_action_add_to_folder">Add to folder\u2026</string>

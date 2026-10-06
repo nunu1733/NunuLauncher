@@ -46,7 +46,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -85,6 +87,9 @@ fun EditSurfaceScreen(
     confirmGate: EditSurfaceSessionPlanner.ConfirmGate,
     icons: Map<Int, ImageBitmap?>,
     reasonText: String?,
+    // Issue #526: 再作成時の破棄案内（前回の未確定セッションが破棄された旨）。
+    // error色のreasonTextとは流用しない。表示はliveRegion=Politeで一度だけ通知。
+    discardNotice: Boolean,
     busy: Boolean,
     duplicateGroups: List<EditSurfaceDuplicateGroup>,
     duplicatesOpen: Boolean,
@@ -135,6 +140,19 @@ fun EditSurfaceScreen(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
+        if (discardNotice) {
+            // Issue #526: 再作成で未確定セッションを破棄した旨の案内。error色は
+            // 使わず標準色で、TalkBackへはliveRegion=Politeで一度だけ通知する
+            // （再compositionでの繰り返し通知はしない。次のユーザー操作で消える）。
+            Text(
+                text = stringResource(R.string.edit_surface_discard_notice),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
         if (duplicateGroups.isNotEmpty()) {
             TextButton(
                 onClick = onOpenDuplicates,

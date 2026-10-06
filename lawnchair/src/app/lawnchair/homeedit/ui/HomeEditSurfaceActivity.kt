@@ -19,9 +19,14 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.os.Process
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,6 +39,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.homeedit.EditSurfaceApplyGate
 import app.lawnchair.homeedit.EditSurfaceApplyPlan
 import app.lawnchair.homeedit.EditSurfaceDiagram
 import app.lawnchair.homeedit.EditSurfaceDuplicateGroup
@@ -51,6 +57,7 @@ import app.lawnchair.homeedit.HomeEditUndoRecord
 import app.lawnchair.homeedit.PendingSessionAction
 import app.lawnchair.homeedit.SelectionEligibility
 import app.lawnchair.homeedit.SessionPlanResult
+import app.lawnchair.homeedit.editSurfaceApplyGate
 import app.lawnchair.organizer.application.public.ApplyResult
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RunId
@@ -77,6 +84,9 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     private val surfaceExecutor by lazy { java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "homeedit-surface") } }
 
     companion object {
+        /** Issue #526: 再作成前の「ユーザー作業が存在した」述語の保存キー。 */
+        private const val KEY_HAD_USER_WORK = "homeedit.had_user_work"
+
         /** 編集画面を開く（workspace長押しメニューとOrganizer hubの共通入口）。 */
         fun start(context: Context) {
             context.startActivity(Intent(context, HomeEditSurfaceActivity::class.java))
@@ -94,7 +104,6 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     private var icons by mutableStateOf<Map<Int, ImageBitmap?>>(emptyMap())
     private var reasonRes by mutableStateOf<Int?>(null)
     private var busy by mutableStateOf(false)
-    private var applying = false
 
     /** セッション開始時captureにUNKNOWNロック行があるか（確定ゲート。AC-7）。 */
     private var captureHasUnknownLock by mutableStateOf(false)
@@ -105,14 +114,45 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     private var duplicatesOpen by mutableStateOf(false)
     private var profileLabels by mutableStateOf<Map<Long, String>>(emptyMap())
 
+    // Issue #526: 再作成時の破棄案内（T05/T24）。未確定セッションは保持せず破棄し、
+    // 再作成後の初回capture完了で案内を表示する。pendingDiscardNoticeはonCreateで
+    // 保存状態から復元した「案内をまだ出していない」印。discardNoticeは表示状態。
+    private var pendingDiscardNotice = false
+    private var discardNotice by mutableStateOf(false)
+
+    /**
+     * Issue #526: 「ユーザー作業が存在した」述語（spec-pinnedの単一権威。
+     * 将来の作業状態はこの述語へ集約する）。破棄案内の対象判定に使う。
+     */
+    private fun hasUserWork(): Boolean = selection.isNotEmpty() || session.changes.isNotEmpty()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Issue #526: targetSdk 37ではedge-to-edge強制のため、system bar /
+        // cutout / IMEを図とCTAの下に描画させる（PreferenceActivityと同一API）。
+        // inset自体の消費はContent()のWindowInsets.safeDrawingで行う。
+        enableEdgeToEdge()
+        // Issue #526: 再作成前にユーザー作業が存在した場合は、再作成後の初回
+        // capture完了で破棄案内を出す（未確定セッションは保持しない）。
+        pendingDiscardNotice = savedInstanceState?.getBoolean(KEY_HAD_USER_WORK) == true
         setContent { Content() }
         reloadCapture()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_HAD_USER_WORK, hasUserWork())
+    }
+
     @Composable
     private fun Content() {
+        // Issue #526: 適用進行中（InFlight）のシステムbackは握り潰す（DB適用の
+        // 進行中に画面を離脱させない）。Correlating（相関capture再取得中）や
+        // 初回読込中のzero-write待機では発動させず、従来どおりback = cancel
+        // （finish、zero-write終了）とする。
+        BackHandler(enabled = editSurfaceApplyGate.state == EditSurfaceApplyGate.State.InFlight) {
+            // 適用進行中は離脱しない
+        }
         val currentDiagram = diagram
         val currentReasonRes = reasonRes
         if (currentDiagram == null) {
@@ -133,6 +173,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             ),
             icons = icons,
             reasonText = currentReasonRes?.let { stringResource(it) },
+            discardNotice = discardNotice,
             busy = busy,
             duplicateGroups = duplicateGroups,
             duplicatesOpen = duplicatesOpen,
@@ -150,11 +191,31 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             onDismissDuplicates = { duplicatesOpen = false },
             onToggleDuplicateMember = ::toggleDuplicateMember,
             onRemoveFromDuplicates = ::removeFromDuplicateDialog,
+            // Issue #526: safeDrawing（status bar / cutout / navigation bar /
+            // IME）を編集画面ルートで消費する。上段（タイトル/Reset/Cancel）は
+            // status bar・cutoutと重ならず、下部ActionBar（確定含む）は
+            // navigation bar・IMEのinset分だけ持ち上がる。
+            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
         )
     }
 
-    private fun reloadCapture() {
+    /**
+     * 最新captureでの開き直し（初回読込・stale時の開き直し・非Applied terminal後の
+     * 相関再取得の共通経路）。零書込み。
+     *
+     * Issue #526: [keepSession] = true（非Applied terminal後の相関再取得）は
+     * セッション・選択・重複面・理由表示を保持する（UX回帰なしの零書込み）。
+     * false（既定。初回読込とstale時の開き直し）は従来どおりセッションを破棄し、
+     * 再作成後の初回読込では破棄案内を表示する。完了したcaptureは単一権威の
+     * 相関capture解除条件（[editSurfaceApplyGate.onCaptureReady]）であり、
+     * capture失敗時（fail-closedのnull）は解除しない — terminal前のcaptureを
+     * stale図として確定させる往復を発生させない。
+     */
+    private fun reloadCapture(keepSession: Boolean = false) {
         busy = true
+        // keepSession=trueの投影は読み込み開始時点のセッションで固定する
+        // （busy中はユーザー操作が遮断されるため完了まで変化しない）。
+        val projectionSession = if (keepSession) session else EditSurfaceSession.EMPTY
         surfaceExecutor.execute {
             val captured = access.inspectCapture()
             if (captured == null) {
@@ -166,7 +227,7 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             }
             val layoutState = captured.layoutState
             val snapshot = EditSurfaceProjection.homeEditSnapshot(layoutState)
-            val working = EditSurfaceProjection.workingSnapshot(snapshot, EditSurfaceSession.EMPTY)
+            val working = EditSurfaceProjection.workingSnapshot(snapshot, projectionSession)
             val newDiagram = EditSurfaceProjection.diagram(layoutState, working)
             val resolved = resolveIcons(newDiagram)
             val labels = resolveProfileLabels()
@@ -181,10 +242,19 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 duplicateGroups = EditSurfaceDuplicateGroups.groups(newDiagram)
                 profileLabels = labels
                 icons = resolved
-                session = EditSurfaceSession.EMPTY
-                duplicatesOpen = false
-                selection.clear()
-                reasonRes = null
+                // Issue #526: 完了captureは相関captureの単一の解除条件
+                // （Correlating → Idle。それ以外のstateではno-op）。
+                editSurfaceApplyGate.onCaptureReady()
+                if (!keepSession) {
+                    session = EditSurfaceSession.EMPTY
+                    duplicatesOpen = false
+                    selection.clear()
+                    reasonRes = null
+                    // Issue #526: 再作成後の初回capture完了で破棄案内を出す
+                    // （1回だけ。次のユーザー操作で消える）。
+                    discardNotice = pendingDiscardNotice
+                    pendingDiscardNotice = false
+                }
                 busy = false
             }
         }
@@ -232,6 +302,8 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 if (itemId !in session.touchedIds) {
                     if (itemId in selection) selection.remove(itemId) else selection.add(itemId)
                     reasonRes = null
+                    // Issue #526: 案内は次のユーザー操作で消える。
+                    discardNotice = false
                 }
             }
 
@@ -244,6 +316,8 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     }
 
     private fun runAction(action: PendingSessionAction): SessionPlanResult {
+        // Issue #526: アクションの試行（成功/拒否の双方）で案内を消す。
+        discardNotice = false
         val snapshot = captureSnapshot ?: return SessionPlanResult.Rejected(HomeEditRejection.UNSUPPORTED)
         return when (
             val result = EditSurfaceSessionPlanner.plan(
@@ -326,6 +400,8 @@ class HomeEditSurfaceActivity : ComponentActivity() {
         refreshDiagram(EditSurfaceSession.EMPTY)
         selection.clear()
         reasonRes = null
+        // Issue #526: 案内は次のユーザー操作で消える。
+        discardNotice = false
     }
 
     // Issue #507: 重複確認面の操作。表示・選択・guard拒否は零書込みであり、
@@ -392,13 +468,19 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     internal fun confirm() {
         val layoutState = captureState ?: return
         val revision = captureRevision ?: return
-        if (applying || session.isEmpty) return
+        if (session.isEmpty) return
         val versions = access.policyVersions()
         if (versions == null) {
             reasonRes = R.string.edit_surface_error_generic
             return
         }
-        applying = true
+        // Issue #526: gateは適用直前の最後の確認（単一権威。Activity fieldの
+        // 二重状態は持たない）。Idle以外（InFlight/Correlating）では二重適用を
+        // 拒否し、busy理由を表示して離脱する。
+        if (!editSurfaceApplyGate.beginApply()) {
+            reasonRes = R.string.edit_surface_error_busy
+            return
+        }
         busy = true
         reasonRes = null
         surfaceExecutor.execute {
@@ -429,7 +511,10 @@ class HomeEditSurfaceActivity : ComponentActivity() {
     internal fun handleApplyResult(receipt: HomeEditApplyReceipt?, built: EditSurfaceApplyPlan) {
         val result = receipt?.result
         lastApplyResultForTest = if (result is ApplyResult.Applied) null else result
-        applying = false
+        // Issue #526: 全terminal（Applied / stale / rejected / errorのいずれも）で
+        // まず単一権威をInFlight → Correlatingへ進める（他stateからの呼び出しは
+        // 防御的no-op）。Correlatingからの解除はterminal後の相関capture完了のみ。
+        editSurfaceApplyGate.onApplyTerminal()
         busy = false
         when {
             result is ApplyResult.Applied -> {
@@ -446,11 +531,15 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                         HomeEditUndoSnackbar.show(launcher, token)
                     }
                 }
+                // Issue #526: Applied後はgateをCorrelatingのまま残し、次の表面の
+                // 初回capture完了（onCaptureReady）でIdleへ戻す（再作成済みなら
+                // 再作成先instanceの初回reloadが解除する）。
                 finish()
                 return
             }
 
             // stale（ずれ検出）: 零書込み。セッションを破棄し最新captureで開き直す。
+            // 開き直しのcapture完了がgateの相関解除（Correlating → Idle）になる。
             result is ApplyResult.Rejected && (
                 result.reason == PreWriteRejection.STALE_REVISION ||
                     result.reason == PreWriteRejection.EXACT_PRECONDITION_FAILED
@@ -462,19 +551,34 @@ class HomeEditSurfaceActivity : ComponentActivity() {
 
             // 防御到達（実装不具合）: 零書込み。変更未反映の旨を表示しセッション保持。
             built is EditSurfaceApplyPlan.Inconsistent || result == null ||
-                result is ApplyResult.NoChanges ->
+                result is ApplyResult.NoChanges -> {
                 reasonRes = R.string.edit_surface_error_no_changes
+                reloadCapture(keepSession = true)
+            }
 
-            result is ApplyResult.Rejected -> reasonRes = rejectionTextFor(result.reason)
+            result is ApplyResult.Rejected -> {
+                reasonRes = rejectionTextFor(result.reason)
+                reloadCapture(keepSession = true)
+            }
 
-            result is ApplyResult.ConcurrentRun -> reasonRes = R.string.edit_surface_error_busy
+            result is ApplyResult.ConcurrentRun -> {
+                reasonRes = R.string.edit_surface_error_busy
+                reloadCapture(keepSession = true)
+            }
 
-            result is ApplyResult.RolledBack || result is ApplyResult.Recovered ->
+            result is ApplyResult.RolledBack || result is ApplyResult.Recovered -> {
                 reasonRes = R.string.edit_surface_error_unchanged
+                reloadCapture(keepSession = true)
+            }
 
-            result is ApplyResult.Unresolved || result is ApplyResult.RecoveryFailed ->
+            result is ApplyResult.Unresolved || result is ApplyResult.RecoveryFailed -> {
                 reasonRes = R.string.edit_surface_error_unresolved
+                reloadCapture(keepSession = true)
+            }
         }
+        // Issue #526: 上記の非Applied terminalは全てkeepSession=trueの相関再取得を
+        // 走らせており、そのcapture完了でgateがIdleへ戻る（再発行・リトライUIは
+        // しない。dummy recovery / Undo追加もしない）。
     }
 
     private fun rejectionTextFor(reason: PreWriteRejection): Int = editSurfaceRejectionText(reason)
