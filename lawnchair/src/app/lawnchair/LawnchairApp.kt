@@ -81,10 +81,11 @@ class LawnchairApp : LauncherApplication() {
 
     override fun onCreate() {
         super.onCreate()
-        // NunuLauncher #527: debug-only BAL block detection (log-only, never kills the process)
+        // NunuLauncher #527: debug-only BAL block detection (log-only, never kills the process).
+        // Base on the existing VM policy so no framework-provided detection is dropped.
         if (BuildConfig.DEBUG && Utilities.ATLEAST_BAKLAVA) {
             StrictMode.setVmPolicy(
-                StrictMode.VmPolicy.Builder()
+                StrictMode.VmPolicy.Builder(StrictMode.getVmPolicy())
                     .detectBlockedBackgroundActivityLaunch()
                     .penaltyLog()
                     .build(),

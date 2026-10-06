@@ -7,6 +7,12 @@ debug build限定StrictMode `detectBlockedBackgroundActivityLaunch`（penaltyLog
 保守者実機Pixel 9a / API 37はEpic #516 Phase 3の実機matrix（owner手順）へ引き継ぐ
 （spec Verificationどおり）。
 
+追記（2026-10-07、review round 1対応）: StrictMode policyを既存VM policy継承
+（`VmPolicy.Builder(StrictMode.getVmPolicy())`）へ修正（review指摘 medium）。
+修正head `4e92d4d2c1` 以降のAPKでAPI 37 emulatorにて既知のrestart-PI blockを再現し、
+`BackgroundActivityLaunchViolation` が引き続き記録されることを確認
+（`api37-strictmode-policy-inherit-verify.txt`）。
+
 ## 環境
 
 | AVD | API | 確認内容 |
@@ -18,7 +24,7 @@ debug build限定StrictMode `detectBlockedBackgroundActivityLaunch`（penaltyLog
 ## 結果サマリ
 
 **BAL block検出: API37で1件のみ（自己再起動PI。後述）。API36/35は0件。**
-当該1件を除き、全起動が成功し`ActivityTaskManager: Background activity launch blocked`は出ていない。
+当該1件を除き、実測した起動はすべて成功し`ActivityTaskManager: Background activity launch blocked`は出ていない。
 
 ### API 37（api37-*.png）
 
@@ -86,7 +92,7 @@ BAL block: 0件。
 | # | 証跡 | 結果 |
 |---|---|---|
 | 01 | api35-01-icon-tap-legacy.png | Chrome icon tap起動 ✓ |
-| 02 | api35-02-qsb-tap.png | QSB tap（当該imageのGoogle search gateway不在でlauncher留まり。legacy分岐は`ATLEAST_U`時の`ALLOWED`設定のみで変更前と同一） |
+| 02 | api35-02-qsb-tap.png | QSB tapは **E2E起動未確認**（当該imageにGoogle search gatewayが不在でlauncherに留まった。legacy分岐は`ATLEAST_U`時の`ALLOWED`設定のみでコード上変更前と同一。BAL block 0件） |
 
 BAL block: 0件。
 
