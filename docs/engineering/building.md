@@ -133,12 +133,18 @@ commandが失敗した場合、最初にJDK version、SDK packages、submodule S
 
 ### `NoSuchFieldError: No field $stable`の出た場合の診断手順
 
-Compose/Kotlin toolchainが更新された直後のローカルビルドで、実行時に `java.lang.NoSuchFieldError: No field $stable ... in class ...` が出た場合、まず「incremental出力+build cache起因」（Issue #537と同型）を疑う。ただし同じ例外signatureはsource/dependency binary mismatchや別のtoolchain defectでも起こり得るため、この手順だけでsource defectを結論づけない。手順:
+Compose/Kotlin toolchainが更新された直後のローカルビルドで、実行時に `java.lang.NoSuchFieldError: No field $stable ... in class ...` が出た場合、まず「stale/incremental出力+build cache起因」（Issue #537と同型）を疑う。ただし同じ例外signatureはsource/dependency binary mismatchや別のtoolchain defectでも起こり得るため、この手順だけでsource defectを結論づけない。判定は2段に分ける:
 
 ```bash
+# 第1段: up-to-date判定とbuild cacheを迂回してtaskを再実行する
 ./gradlew :compileLawnWithQuickstepGithubDebugKotlin --rerun-tasks
-# または cacheごと削除（GRADLE_USER_HOMEを独自設定している場合はその配下のcaches/build-cache-1）
+# 第2段: build cacheを消す（GRADLE_USER_HOMEを独自設定している場合はその配下のcaches/build-cache-1）
 rm -rf ~/.gradle/caches/build-cache-1
 ```
 
-そのうえで同一source・同一コマンドで生成したビルドを再実測する。**例外が消えた場合のみ**、旧toolchainでコンパイルされたclass fileのincremental残留をbuild cacheが復元していた（`gradle clean`では消えない）と判定してよい。改善しない場合はsource・dependency・toolchainの通常調査へ戻る。実例と証跡は[Issue #537の調査記録](../assessment/issue-537-general-route-crash-investigation.md)を参照する。
+そのうえで同一source・同一コマンドで生成したビルドを再実測する。**例外が消えた場合のみ**障害系の判定へ進む:
+
+- `--rerun-tasks`だけで治った場合 → 「再生成で治るstale/incremental/generated output系の残留」まで判定できる（旧toolchain出力のincremental残留を含む）。
+- cache削除単独で治った場合、または対象compile taskの`FROM-CACHE`行を観測できた場合 → build cacheが古い出力のcarrierだったことまで疑える。
+
+改善しない場合はsource・dependency・toolchainの通常調査へ戻る。実例と証跡は[Issue #537の調査記録](../assessment/issue-537-general-route-crash-investigation.md)を参照する。

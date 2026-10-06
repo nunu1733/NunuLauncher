@@ -10,6 +10,8 @@
 
 クラッシュは **source defectではなく、ローカルビルド環境のKotlin incremental compilation出力に残存した古い`FontPref.class`（Compose compiler生成の`$stable`フィールド欠落）が原因**。依存側（`GeneralPreferences.kt:103`の呼び出し site）だけが現行toolchainで再コンパイルされ`$stable`読み出しを期待したため、実行時に`NoSuchFieldError`で落ちる。**決定的な増幅要因として、破損したcompile task出力がlocal Gradle build cacheに保存されており**、`gradle clean`や新規worktreeでの「クリーンビルド」でも同じ破損出力がcache復元され、クラッシュが再生産される（本調査で実際に再現）。1回の真の再コンパイル（`--rerun-tasks`等）でcache entryが正常出力に置き換わり、以後は全ビルド形式で健全になる（2つのfresh worktree + 実機で実証）。
 
+証拠強度の境界（2026-10-07追補）: 「fresh worktreeのcompile taskが同じ入力でbuild cacheから復元される」ことと「cache経由で復元されたビルドの`FontPref`が壊れている/健全である」ことはtask単位またはdexで直接観測した。一方、**初回fresh worktree（§1）でcompile task自身が`FROM-CACHE`だったこと、および復元された破損出力のcache keyは保存したログがなく直接観測していない**。「破損出力がbuild cache経由で流れた」は、観測済みの事実すべて（[追補実験](./537-general-route-crash-evidence/build-cache-echo-commands.txt) §5を含む）と整合する最有力の推論として記述する。
+
 ## 事実の経緯
 
 Issue #537は#526のemulator検証で、lineage build `Lawnchair.16.Dev.(575e37b).github.debug.apk`（ローカルビルド。CI buildは`Dev.(#<run番号>)`命名、[build.gradle:178](../../build.gradle)）においてGeneral routeが`NoSuchFieldError: No field $stable in ...BasePreferenceManager$FontPref`（`GeneralPreferences.kt:103`）で使用不能になったことを記録し、「clean build / incrementalキャリア削除で解消するか」の判定を依頼していた。
@@ -22,8 +24,8 @@ Issue #537は#526のemulator検証で、lineage build `Lawnchair.16.Dev.(575e37b
 2. **dex比較**: クラッシュAPKの`BasePreferenceManager$FontPref`は**`$stable`フィールドを持たない**（[fontpref-no-stable-crash-apk-dexdump.txt](./537-general-route-crash-evidence/fontpref-no-stable-crash-apk-dexdump.txt)）。一方、同じdex内の具象siblingクラス（`BoolPref`/`IntPref`等）は`$stable`を持ち、抽象クラス（`StringBasedPref`）は両APKとも持たない。すなわち破損は`FontPref`1クラスのみ。
 3. **呼び出し側は同一**: クラッシュAPKと正常APKのclasses14.dexはともに6箇所の`sget FontPref;.$stable`を持ち（同じコンパイル済み呼び出し site）、差はクラス側のフィールド生成のみ。
 4. **真の再コンパイルでは生成される**: 同一worktreeで`:compileLawnWithQuickstepGithubDebugKotlin --rerun-tasks`（up-to-date/build cache無視の401 task全実行）→ `javap`で`FontPref`に`public static final int $stable`が確認できる（コマンドと出力の[トランスクリプト](./537-general-route-crash-evidence/build-cache-echo-commands.txt)）。**sourceは健全**。
-5. **増幅要因=Gradle build cache**: 初回のfresh worktreeビルドは「266 executed / 377 from cache」で、Kotlin compile taskの入力hashが一致したため、**main worktreeの過去ビルド（クラッシュAPKを作ったincrementalビルド）がcacheへ保存した破損出力を復元**した（[トランスクリプト §1](./537-general-route-crash-evidence/build-cache-echo-commands.txt)）。`gradle clean`はbuild cacheを消さないため、「クリーンビルドでも直らない」ように見える。
-6. **修復の実証**: `--rerun-tasks`の実行がcache entryを正常出力で上書き → 別のfresh worktree（2つ目）で通常ビルドしたAPKでは`$stable`が存在し（[fontpref-stable-healed-apk-dexdump.txt](./537-general-route-crash-evidence/fontpref-stable-healed-apk-dexdump.txt)、[トランスクリプト §4](./537-general-route-crash-evidence/build-cache-echo-commands.txt)）、実機でGeneral routeがクラッシュ0で動作する（[537-general-route-ok-healed-575e37b.png](./537-general-route-crash-evidence/537-general-route-ok-healed-575e37b.png)）。
+5. **増幅要因=Gradle build cache（観測と推論）**: 初回のfresh worktreeビルドは「266 executed / 377 from cache」で、worktreeにはbuild前の出力が存在しないためcache復元が起きたこと自体は集計行で裏づく（[トランスクリプト §1](./537-general-route-crash-evidence/build-cache-echo-commands.txt)）。task単位では「compile task自身が`FROM-CACHE`だった」ことのログは未保存だが、同じ入力に対してcompile taskがcache復元されることは[追補実験 §5](./537-general-route-crash-evidence/build-cache-echo-commands.txt)で直接観測した。**「main worktreeの過去ビルドがcacheへ保存した破損出力を復元した」は、これらの観測すべてと整合する最有力の推論である**（他に、そのworktreeに破損`FontPref.class`が入り得る経路がない）。`gradle clean`はbuild cacheを消さないため、「クリーンビルドでも直らない」ように見える。
+6. **修復の実証**: `--rerun-tasks`の実行で全taskが再実行され、`javap`で`$stable`が確認できたあと、別のfresh worktree（2つ目）で通常ビルドしたAPKでは`$stable`が存在し（[fontpref-stable-healed-apk-dexdump.txt](./537-general-route-crash-evidence/fontpref-stable-healed-apk-dexdump.txt)、[トランスクリプト §4](./537-general-route-crash-evidence/build-cache-echo-commands.txt)）、実機でGeneral routeがクラッシュ0で動作する（[537-general-route-ok-healed-575e37b.png](./537-general-route-crash-evidence/537-general-route-ok-healed-575e37b.png)）。§5の観測により、修復後のcache entryから復元される出力が健全であることも直接観測した。
 
 補助事実: `git diff 575e37baad..HEAD`はpreferences/font領域（`lawnchair/src/app/lawnchair/ui/preferences/`、`lawnchair/src/app/lawnchair/preferences/`、`lawnchair/src/app/lawnchair/font/`）に対して**空**。クラッシュ領域のsourceはクラッシュ時点から現headまで無変更であり、「後続commitで偶然直った」可能性はない。
 
@@ -34,12 +36,16 @@ Issue #537は#526のemulator検証で、lineage build `Lawnchair.16.Dev.(575e37b
 
 ## 解決手順（再発時）
 
+診断は2段に分ける（[building guide](../engineering/building.md#known-upstream-warnings)と同じ粒度）:
+
 ```bash
-# 破損したcompile出力のcache entryを正常出力で上書きする
+# 第1段: stale/incremental/generated output系を疑う（up-to-date判定とbuild cacheを迂回して再実行）
 ./gradlew :compileLawnWithQuickstepGithubDebugKotlin --rerun-tasks
-# または cacheごと消す
+# 第2段: build cache carrierまで疑う（cache削除はGRADLE_USER_HOME独自設定時はその配下）
 rm -rf ~/.gradle/caches/build-cache-1
 ```
+
+`--rerun-tasks`だけで例外が消えた場合は「再生成で治るstale/incremental/generated output系」まで判定できる。build cacheがcarrierだったことまで切り分けるには、cache削除単独での治癒、または対象compile taskの`FROM-CACHE`行の観測が必要である（本調査では事後の追補実験で`FROM-CACHE`を観測したが、初回の治癒自体は`--rerun-tasks`とcache状態の変化の同時観測である）。
 
 恒久文書として[building guide](../engineering/building.md#known-upstream-warnings)へ同手順を追記した（同じPR内）。
 
