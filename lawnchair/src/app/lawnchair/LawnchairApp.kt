@@ -25,6 +25,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.StrictMode
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -80,6 +81,15 @@ class LawnchairApp : LauncherApplication() {
 
     override fun onCreate() {
         super.onCreate()
+        // NunuLauncher #527: debug-only BAL block detection (log-only, never kills the process)
+        if (BuildConfig.DEBUG && Utilities.ATLEAST_BAKLAVA) {
+            StrictMode.setVmPolicy(
+                StrictMode.VmPolicy.Builder()
+                    .detectBlockedBackgroundActivityLaunch()
+                    .penaltyLog()
+                    .build(),
+            )
+        }
         instance = this
         QuickStepContract.sRecentsDisabled = !recentsEnabled
         if (isDefaultProcess()) {

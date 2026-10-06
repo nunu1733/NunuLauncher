@@ -753,7 +753,11 @@ public final class Utilities {
      * Utility method to allow background activity launch for the provided activity options
      */
     public static ActivityOptions allowBGLaunch(ActivityOptions options) {
-        if (ATLEAST_U) {
+        if (ATLEAST_BAKLAVA) {
+            // NunuLauncher #527: granular BAL opt-in — allow only while the sending app is visible.
+            options.setPendingIntentBackgroundActivityStartMode(
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_IF_VISIBLE);
+        } else if (ATLEAST_U) {
             options.setPendingIntentBackgroundActivityStartMode(
                     ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
         }

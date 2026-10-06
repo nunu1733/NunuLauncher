@@ -135,12 +135,8 @@ open class SystemApiWrapper @Inject constructor(@ApplicationContext context: Con
                             mContext
                                 .getSystemService(LauncherApps::class.java)!!
                                 .getAppMarketActivityIntent(packageName, user)
-                        options =
-                            ActivityOptions.makeBasic()
-                                .setPendingIntentBackgroundActivityStartMode(
-                                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-                                )
-                                .toBundle()
+                        // NunuLauncher #527: granular BAL opt-in (version-gated in Utilities.allowBGLaunch).
+                        options = Utilities.allowBGLaunch(ActivityOptions.makeBasic()).toBundle()
                         requireActivityResult = false
                     },
                 )
@@ -161,12 +157,8 @@ open class SystemApiWrapper @Inject constructor(@ApplicationContext context: Con
                             mContext
                                 .getSystemService(LauncherApps::class.java)
                                 ?.privateSpaceSettingsIntent ?: return null
-                        options =
-                            ActivityOptions.makeBasic()
-                                .setPendingIntentBackgroundActivityStartMode(
-                                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-                                )
-                                .toBundle()
+                        // NunuLauncher #527: granular BAL opt-in (version-gated in Utilities.allowBGLaunch).
+                        options = Utilities.allowBGLaunch(ActivityOptions.makeBasic()).toBundle()
                         requireActivityResult = false
                     }
                 )

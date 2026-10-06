@@ -30,6 +30,7 @@ import android.view.View;
 import android.widget.RemoteViews;
 import android.window.SplashScreen;
 
+import com.android.launcher3.Utilities;
 import com.android.launcher3.logging.StatsLogManager;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.util.ActivityOptionsWrapper;
@@ -64,8 +65,12 @@ class QuickstepInteractionHandler implements RemoteViews.InteractionHandler,
         LauncherAppWidgetHostView hostView = findHostViewAncestor(view);
         if (hostView == null) {
             Log.e(TAG, "View did not have a LauncherAppWidgetHostView ancestor.");
-            return RemoteViews.startPendingIntent(hostView, pendingIntent,
-                    remoteResponse.getLaunchOptions(view));
+            // NunuLauncher #527: apply the granular BAL opt-in to the widget-provided options.
+            Pair<Intent, ActivityOptions> fallbackOptions = remoteResponse.getLaunchOptions(view);
+            if (fallbackOptions.second != null) {
+                Utilities.allowBGLaunch(fallbackOptions.second);
+            }
+            return RemoteViews.startPendingIntent(hostView, pendingIntent, fallbackOptions);
         }
         if (mLauncher.isSplitSelectionActive()) {
             // Log metric
@@ -106,8 +111,8 @@ class QuickstepInteractionHandler implements RemoteViews.InteractionHandler,
         try {
             activityOptions.options.setPendingIntentLaunchFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activityOptions.options.setSplashScreenStyle(SplashScreen.SPLASH_SCREEN_STYLE_ICON);
-            activityOptions.options.setPendingIntentBackgroundActivityStartMode(
-                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+            // NunuLauncher #527: granular BAL opt-in (version-gated in Utilities.allowBGLaunch).
+            Utilities.allowBGLaunch(activityOptions.options);
         } catch (Throwable t) {
             // ignore
         }
@@ -122,8 +127,12 @@ class QuickstepInteractionHandler implements RemoteViews.InteractionHandler,
             return RemoteViews.startPendingIntent(hostView, pendingIntent, options);
         } else {
             Log.d("pE(C7evQZDJ)", "activityOptions is null!");
-            return RemoteViews.startPendingIntent(hostView, pendingIntent,
-                remoteResponse.getLaunchOptions(view));
+            // NunuLauncher #527: apply the granular BAL opt-in to the widget-provided options.
+            Pair<Intent, ActivityOptions> fallbackOptions = remoteResponse.getLaunchOptions(view);
+            if (fallbackOptions.second != null) {
+                Utilities.allowBGLaunch(fallbackOptions.second);
+            }
+            return RemoteViews.startPendingIntent(hostView, pendingIntent, fallbackOptions);
         }
     }
 
