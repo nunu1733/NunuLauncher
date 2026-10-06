@@ -75,7 +75,6 @@ class EditSurfaceApplyGate {
     fun onTerminalWithoutWorldChange() {
         when (state) {
             State.InFlight, State.Correlating -> state = State.Idle
-
             State.Idle -> Unit
         }
     }
