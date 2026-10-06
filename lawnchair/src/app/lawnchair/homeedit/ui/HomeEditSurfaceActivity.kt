@@ -550,22 +550,28 @@ class HomeEditSurfaceActivity : ComponentActivity() {
             }
 
             // 防御到達（実装不具合）: 零書込み。変更未反映の旨を表示しセッション保持。
+            // 適用もrecovery動作もないため世界不変 — gateは即時Idleへ（再取得不要）。
             built is EditSurfaceApplyPlan.Inconsistent || result == null ||
                 result is ApplyResult.NoChanges -> {
                 reasonRes = R.string.edit_surface_error_no_changes
-                reloadCapture(keepSession = true)
+                editSurfaceApplyGate.onTerminalWithoutWorldChange()
             }
 
+            // stale以外のtyped拒否（writer busy / lock系 / admission等）: 零書込みで
+            // 世界不変。gateは即時Idleへ。世界が動していた場合の保護は次confirm時の
+            // 既存STALE_REVISION gate（fail-closed）が担う。
             result is ApplyResult.Rejected -> {
                 reasonRes = rejectionTextFor(result.reason)
-                reloadCapture(keepSession = true)
+                editSurfaceApplyGate.onTerminalWithoutWorldChange()
             }
 
             result is ApplyResult.ConcurrentRun -> {
                 reasonRes = R.string.edit_surface_error_busy
-                reloadCapture(keepSession = true)
+                editSurfaceApplyGate.onTerminalWithoutWorldChange()
             }
 
+            // rollback / recovery系: recovery書込みで世界が動いた（または不確実）。
+            // セッション保持のまま相関再取得し、その完了でgateをIdleへ戻す。
             result is ApplyResult.RolledBack || result is ApplyResult.Recovered -> {
                 reasonRes = R.string.edit_surface_error_unchanged
                 reloadCapture(keepSession = true)
@@ -576,9 +582,12 @@ class HomeEditSurfaceActivity : ComponentActivity() {
                 reloadCapture(keepSession = true)
             }
         }
-        // Issue #526: 上記の非Applied terminalは全てkeepSession=trueの相関再取得を
-        // 走らせており、そのcapture完了でgateがIdleへ戻る（再発行・リトライUIは
-        // しない。dummy recovery / Undo追加もしない）。
+        // Issue #526: 上記のterminal分類 — Applied / stale系 / rollback・recovery系は
+        // gateをCorrelatingに残し、terminal後の相関capture完了（onCaptureReady）で
+        // Idleへ戻す。零書込みかつ世界不変のterminal（防御到達 / stale以外の拒否 /
+        // ConcurrentRun）はonTerminalWithoutWorldChangeで即時Idleへ（相関再取得は
+        // 走らせない。再発行・リトライUIはしない。dummy recovery / Undo追加も
+        // しない）。
     }
 
     private fun rejectionTextFor(reason: PreWriteRejection): Int = editSurfaceRejectionText(reason)

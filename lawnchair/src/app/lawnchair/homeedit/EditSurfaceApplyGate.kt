@@ -64,10 +64,28 @@ class EditSurfaceApplyGate {
     }
 
     /**
-     * capture 1回の完了の通知（初回読込・stale時の開き直し・非Applied terminal後の
-     * 相関再取得を含む全reloadCapture完了から呼ばれる）。Correlating → Idle
-     * （terminal後の最初の完了captureだけが解除する。terminal前に完了したcaptureは
-     * 旧適用前の図であり得るため解除しない）。IdleはIdleのまま。
+     * Issue #526 revision（CI実測 #538）: 零書込みかつ世界不変のterminal
+     * （writer busy / lock系rejected / ConcurrentRun / NoChanges等の防御到達）での
+     * 解放。適用は起きずrecovery動作もないため画面のcaptureが現行のまま有効で、
+     * 相関再取得は不要。世界が動していた場合でも、次のconfirmは既存の
+     * STALE_REVISION / EXACT_PRECONDITION_FAILED gateが零書込みで止める
+     * （fail-closedは既存層が担う）。Correlating → Idle（InFlightからの呼び出しも
+     * 防御的にIdleへ。Idleは不変）。
+     */
+    fun onTerminalWithoutWorldChange() {
+        when (state) {
+            State.InFlight, State.Correlating -> state = State.Idle
+
+            State.Idle -> Unit
+        }
+    }
+
+    /**
+     * capture 1回の完了の通知（初回読込・stale時の開き直し・rollback/recovery系
+     * terminal後の相関再取得を含む全reloadCapture完了から呼ばれる）。
+     * Correlating → Idle（terminal後の最初の完了captureだけが解除する。
+     * terminal前に完了したcaptureは旧適用前の図であり得るため解除しない）。
+     * IdleはIdleのまま。
      */
     fun onCaptureReady() {
         if (state == State.Correlating) state = State.Idle

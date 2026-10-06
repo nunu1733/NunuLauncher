@@ -4,10 +4,13 @@
  * single authority for in-flight applies: Confirm is admitted only from Idle,
  * every apply terminal moves InFlight → Correlating, and only a capture that
  * COMPLETES AFTER the terminal releases Correlating → Idle (a pre-terminal
- * capture must not re-enable Confirm on a possibly pre-apply layout). The
- * machine is terminal-agnostic — Applied, stale, rejected and error terminals
- * all go through the same onApplyTerminal/onCaptureReady pair, so the release
- * contract is pinned once for every terminal path.
+ * capture must not re-enable Confirm on a possibly pre-apply layout). Terminals
+ * are classified: world-moved / uncertain terminals (Applied, stale, rollback /
+ * recovery, unresolved) release only through the correlated capture, while
+ * zero-write world-unchanged terminals (non-stale rejection, ConcurrentRun,
+ * defensive no-changes) release immediately via onTerminalWithoutWorldChange —
+ * the existing apply-time STALE gate stays the fail-closed protection if the
+ * world actually moved.
  */
 package app.lawnchair.homeedit
 
@@ -96,24 +99,19 @@ class EditSurfaceApplyGateTest {
         assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
     }
 
-    // --- every terminal path releases through the same pair ---
+    // --- terminal classification: world-moved vs zero-write world-unchanged ---
 
     @Test
-    fun `release works for every terminal path`() {
-        // The state machine is terminal-agnostic: Applied (then finish), stale
-        // reopen, rejected, ConcurrentRun, defensive no-changes, rollback and
-        // unresolved all reach the same release. Pin one full cycle per class
-        // of terminal naming so a future terminal branch cannot forget the
-        // onApplyTerminal/onCaptureReady pair.
+    fun `release works for every world-moved terminal path`() {
+        // Applied (then finish), stale reopen, rollback / recovery and the
+        // unresolved family move the world (or leave it uncertain): they stay
+        // Correlating until a completed capture after the terminal releases
+        // them. Pin one full cycle per class of terminal naming so a future
+        // terminal branch cannot forget the onApplyTerminal/onCaptureReady pair.
         val terminals = listOf(
             "Applied",
             "STALE_REVISION",
             "EXACT_PRECONDITION_FAILED",
-            "rejected",
-            "ConcurrentRun",
-            "no-changes",
-            "Inconsistent",
-            "null receipt",
             "RolledBack",
             "Recovered",
             "Unresolved",
@@ -127,6 +125,47 @@ class EditSurfaceApplyGateTest {
             gate.onCaptureReady()
             assertEquals("terminal=$terminal", EditSurfaceApplyGate.State.Idle, gate.state)
         }
+    }
+
+    @Test
+    fun `release works for every zero-write world-unchanged terminal path`() {
+        // Rejected (non-stale), ConcurrentRun and the defensive no-changes
+        // family perform no write and no recovery action, so the on-screen
+        // capture stays authoritative and the gate releases to Idle without a
+        // correlated recapture. The existing apply-time STALE gate remains the
+        // fail-closed protection if the world actually moved.
+        val terminals = listOf(
+            "rejected",
+            "ConcurrentRun",
+            "no-changes",
+            "Inconsistent",
+            "null receipt",
+        )
+        for (terminal in terminals) {
+            val gate = EditSurfaceApplyGate()
+            assertTrue("terminal=$terminal", gate.beginApply())
+            gate.onApplyTerminal()
+            gate.onTerminalWithoutWorldChange()
+            assertEquals("terminal=$terminal", EditSurfaceApplyGate.State.Idle, gate.state)
+            assertTrue("terminal=$terminal next confirm admitted", gate.beginApply())
+        }
+    }
+
+    @Test
+    fun `terminalWithoutWorldChange from InFlight releases directly`() {
+        // Defensive: a caller that skips onApplyTerminal still gets a coherent
+        // release instead of a stuck InFlight.
+        val gate = EditSurfaceApplyGate()
+        assertTrue(gate.beginApply())
+        gate.onTerminalWithoutWorldChange()
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
+    }
+
+    @Test
+    fun `terminalWithoutWorldChange from Idle stays Idle`() {
+        val gate = EditSurfaceApplyGate()
+        gate.onTerminalWithoutWorldChange()
+        assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
     }
 
     @Test
