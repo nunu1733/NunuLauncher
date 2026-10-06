@@ -347,6 +347,7 @@ class EditSurfaceTarget37ContractInstrumentationTest {
      */
     private fun awaitSelectableItem(activity: HomeEditSurfaceActivity, label: String): Int {
         val captureDeadline = System.currentTimeMillis() + 30_000
+        var lastRecaptureDrive = 0L
         val pollOutcome = AtomicReference<String>("timeout")
         val pollDone = CountDownLatch(1)
         Thread(
@@ -363,6 +364,21 @@ class EditSurfaceTarget37ContractInstrumentationTest {
                         if (found != null) {
                             pollOutcome.set("itemId:$found")
                             return@Thread
+                        }
+                        // Issue #526 harness: the onCreate capture is fail-closed
+                        // and never retries by contract. When the typed reason is
+                        // the capture-unavailable path (a settle race between the
+                        // seeded model and the surface's first capture), re-drive
+                        // the production "Try again" path (the same reloadCapture
+                        // entry) at a bounded cadence instead of waiting out the
+                        // deadline on a surface that will never self-heal.
+                        if (typedReason ==
+                            com.android.launcher3.R.string.edit_surface_error_capture_unavailable &&
+                            System.currentTimeMillis() - lastRecaptureDrive >= 2_000
+                        ) {
+                            lastRecaptureDrive = System.currentTimeMillis()
+                            InstrumentationRegistry.getInstrumentation()
+                                .runOnMainSync { activity.recaptureForTest() }
                         }
                         Thread.sleep(300)
                     }
