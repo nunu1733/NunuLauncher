@@ -262,7 +262,6 @@ class EditSurfaceApplyGateTest {
         assertEquals(EditSurfaceApplyGate.State.Idle, gate.state)
     }
 
-
     // --- terminal classification: world-moved vs zero-write no-local-recovery ---
 
     @Test
