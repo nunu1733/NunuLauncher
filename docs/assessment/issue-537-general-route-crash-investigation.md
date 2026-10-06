@@ -4,7 +4,7 @@
 > Date: 2026-10-06
 > Issue: [#537](https://github.com/nunu1733/NunuLauncher/issues/537)（Refs #526 / #535 / #516）
 > Environment: emulator `issue526_api37_pixel_9a`（API 37 Pixel 9a、`sdk_gphone64_arm64`、serial `emulator-5554`）、debug build（`assembleLawnWithQuickstepGithubDebug`）
-> 証跡: [537-general-route-crash-evidence/](./537-general-route-crash-evidence/)
+> 証跡: [537-general-route-crash-evidence/README.md](./537-general-route-crash-evidence/README.md)（一覧）
 
 ## Outcome in one line
 
@@ -21,9 +21,9 @@ Issue #537は#526のemulator検証で、lineage build `Lawnchair.16.Dev.(575e37b
 1. **再現**: fresh worktreeで`575e37baad`を通常ビルド → General route tapで`NoSuchFieldError` → process kill。スタックはIssue報告と同一（[general-route-crash-logcat.txt](./537-general-route-crash-evidence/general-route-crash-logcat.txt)、2026-10-06 21:18再現分）。
 2. **dex比較**: クラッシュAPKの`BasePreferenceManager$FontPref`は**`$stable`フィールドを持たない**（[fontpref-no-stable-crash-apk-dexdump.txt](./537-general-route-crash-evidence/fontpref-no-stable-crash-apk-dexdump.txt)）。一方、同じdex内の具象siblingクラス（`BoolPref`/`IntPref`等）は`$stable`を持ち、抽象クラス（`StringBasedPref`）は両APKとも持たない。すなわち破損は`FontPref`1クラスのみ。
 3. **呼び出し側は同一**: クラッシュAPKと正常APKのclasses14.dexはともに6箇所の`sget FontPref;.$stable`を持ち（同じコンパイル済み呼び出し site）、差はクラス側のフィールド生成のみ。
-4. **真の再コンパイルでは生成される**: 同一worktreeで`:compileLawnWithQuickstepGithubDebugKotlin --rerun-tasks`（up-to-date/build cache無視の401 task全実行）→ `javap`で`FontPref`に`public static final int $stable`が確認できる。**sourceは健全**。
-5. **増幅要因=Gradle build cache**: 初回のfresh worktreeビルドは「266 executed / 377 from cache」で、Kotlin compile taskの入力hashが一致したため、**main worktreeの過去ビルド（クラッシュAPKを作ったincrementalビルド）がcacheへ保存した破損出力を復元**した。`gradle clean`はbuild cacheを消さないため、「クリーンビルドでも直らない」ように見える。
-6. **修復の実証**: `--rerun-tasks`の実行がcache entryを正常出力で上書き → 別のfresh worktree（2つ目）で通常ビルドしたAPKでは`$stable`が存在し（[fontpref-stable-healed-apk-dexdump.txt](./537-general-route-crash-evidence/fontpref-stable-healed-apk-dexdump.txt)）、実機でGeneral routeがクラッシュ0で動作する（[537-general-route-ok-healed-575e37b.png](./537-general-route-crash-evidence/537-general-route-ok-healed-575e37b.png)）。
+4. **真の再コンパイルでは生成される**: 同一worktreeで`:compileLawnWithQuickstepGithubDebugKotlin --rerun-tasks`（up-to-date/build cache無視の401 task全実行）→ `javap`で`FontPref`に`public static final int $stable`が確認できる（コマンドと出力の[トランスクリプト](./537-general-route-crash-evidence/build-cache-echo-commands.txt)）。**sourceは健全**。
+5. **増幅要因=Gradle build cache**: 初回のfresh worktreeビルドは「266 executed / 377 from cache」で、Kotlin compile taskの入力hashが一致したため、**main worktreeの過去ビルド（クラッシュAPKを作ったincrementalビルド）がcacheへ保存した破損出力を復元**した（[トランスクリプト §1](./537-general-route-crash-evidence/build-cache-echo-commands.txt)）。`gradle clean`はbuild cacheを消さないため、「クリーンビルドでも直らない」ように見える。
+6. **修復の実証**: `--rerun-tasks`の実行がcache entryを正常出力で上書き → 別のfresh worktree（2つ目）で通常ビルドしたAPKでは`$stable`が存在し（[fontpref-stable-healed-apk-dexdump.txt](./537-general-route-crash-evidence/fontpref-stable-healed-apk-dexdump.txt)、[トランスクリプト §4](./537-general-route-crash-evidence/build-cache-echo-commands.txt)）、実機でGeneral routeがクラッシュ0で動作する（[537-general-route-ok-healed-575e37b.png](./537-general-route-crash-evidence/537-general-route-ok-healed-575e37b.png)）。
 
 補助事実: `git diff 575e37baad..HEAD`はpreferences/font領域（`lawnchair/src/app/lawnchair/ui/preferences/`、`lawnchair/src/app/lawnchair/preferences/`、`lawnchair/src/app/lawnchair/font/`）に対して**空**。クラッシュ領域のsourceはクラッシュ時点から現headまで無変更であり、「後続commitで偶然直った」可能性はない。
 
@@ -45,7 +45,7 @@ rm -rf ~/.gradle/caches/build-cache-1
 
 ## #526検証matrix追補（backup route）
 
-クラッシュ解消後、PR #538の検証matrixで未完了だったPreferenceActivity配下のbackup/restore route確認を、HEAD `3019ca6782` の健康なビルド（API 37 Pixel 9a emulator）で完了した。証跡は[526-target37-ui-evidence/](./526-target37-ui-evidence/)へ。
+クラッシュ解消後、PR #538の検証matrixで未完了だったPreferenceActivity配下のbackup/restore route確認を、HEAD `3019ca6782` の健康なビルド（API 37 Pixel 9a emulator）で完了した。証跡は[526-target37-ui-evidence/README.md](./526-target37-ui-evidence/README.md)へ。
 
 | 項目 | 結果 | 証跡 |
 |---|---|---|

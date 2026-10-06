@@ -131,14 +131,14 @@ baselineはAGP built-in Kotlin migration、manifest namespace、deprecated API�
 
 commandが失敗した場合、最初にJDK version、SDK packages、submodule SHA、baseline commitを確認する。環境差を隠すためにsourceを変更しない。
 
-### ツールチェーン更新後の`NoSuchFieldError: No field $stable`（incremental出力+build cache）
+### `NoSuchFieldError: No field $stable`の出た場合の診断手順
 
-Compose/Kotlin toolchainが更新された直後のローカルビルドで、実行時に `java.lang.NoSuchFieldError: No field $stable ... in class ...` が出る場合、Kotlin incremental compilation出力に旧toolchainでコンパイルされたclass fileが残り、依存側だけが再コンパイルされた不整合である。sourceは正常なので変更しない。`gradle clean`では解消しないことがある（破損したcompile task出力が`~/.gradle/caches/build-cache-1`に保存され、入力hashが一致するclean buildへ復元されるため）。解消手順:
+Compose/Kotlin toolchainが更新された直後のローカルビルドで、実行時に `java.lang.NoSuchFieldError: No field $stable ... in class ...` が出た場合、まず「incremental出力+build cache起因」（Issue #537と同型）を疑う。ただし同じ例外signatureはsource/dependency binary mismatchや別のtoolchain defectでも起こり得るため、この手順だけでsource defectを結論づけない。手順:
 
 ```bash
 ./gradlew :compileLawnWithQuickstepGithubDebugKotlin --rerun-tasks
-# または cacheごと削除
+# または cacheごと削除（GRADLE_USER_HOMEを独自設定している場合はその配下のcaches/build-cache-1）
 rm -rf ~/.gradle/caches/build-cache-1
 ```
 
-実例と証跡は[Issue #537の調査記録](../assessment/issue-537-general-route-crash-investigation.md)を参照する。
+そのうえで同一source・同一コマンドで生成したビルドを再実測する。**例外が消えた場合のみ**、旧toolchainでコンパイルされたclass fileのincremental残留をbuild cacheが復元していた（`gradle clean`では消えない）と判定してよい。改善しない場合はsource・dependency・toolchainの通常調査へ戻る。実例と証跡は[Issue #537の調査記録](../assessment/issue-537-general-route-crash-investigation.md)を参照する。
