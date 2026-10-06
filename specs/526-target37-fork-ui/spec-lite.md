@@ -78,9 +78,15 @@ diagnostics、backup/restore、destination picker（PreferenceActivity配下）�
   bar / IME）。manifestへの`android:enableOnBackInvokedCallback="true"`付与
   （`PreferenceActivity`と同一）。
 - **適用中操作の単一権威**: in-flightなDB適用（`applying`相当）の状態をActivity
-  instance外のprocess内単一権威（`HomeEditSurfaceAccess`層を予定。表示用途のみで
-  write経路は不変）へ置き、確認gate・back gate・再作成後の新instanceがすべてこれを
-  参照する。状態の二重化（Activity fieldと権威の併存）はしない。
+  instance外の**process-wideな単一holder**へ置く。`HomeEditSurfaceAccess.get(context)`
+  は呼び出しごとに新しいwrapper instanceを返すため、wrapperのfieldへ置かない
+  （既存process singletonに属するstate、または`HomeEditSurfaceAccess` companion等、
+  全wrapper・全Activityが同一stateを参照するidentityとする。Activity/wrapperごとの
+  コピーは禁止）。状態機械は `Idle → InFlight →（旧applyのterminal結果受領）→
+  Correlating（相関capture再取得中）→ Idle` とし、terminal結果（Applied / stale /
+  rejected / error のいずれも）を受けたあとは**新instanceが相関captureを再取得して
+  完了するまでConfirmを再有効化しない**。状態の二重化（Activity fieldと権威の併存）
+  はしない。表示用途のみでwrite経路は不変。
 - back gate: **in-flightなDB適用が存在する間**のシステムbackを握り潰すCompose
   `BackHandler`。capture再読込・初回読込などのzero-write待機中は従来どおり
   finish（= cancel）可能とする。非適用時のbackは既存どおりzero-write終了。
@@ -148,8 +154,12 @@ Given 編集画面でConfirmを実行しDB適用が進行中の状態で
 When sw600dp以上の画面で回転しActivityが再作成される
 Then 進行中の適用は完走し（1 recovery point / 1 Undo）、再発行されない。
 新instanceは単一権威によりin-flight中のConfirmを受け付けず、適用完了まで
-適用が始まらない旨が示される。新instanceのcaptureが旧適用のstale判定に達する場合は
-既存gateどおり零書込みで再読込する。DBは旧適用の1回のtransactionのみで更新される
+適用が始まらない旨が示される。適用のterminal後も、新instanceが相関captureを
+再取得して完了するまでConfirmは再有効化されない（旧適用前のcaptureをstale図として
+編集→Confirm→再読込の往復を発生させない）。terminalがApplied以外
+（stale / rejected / error）でも同じ解除条件を経る。新instanceのcaptureが
+旧適用のstale判定に達する場合は既存gateどおり零書込みで再読込する。
+DBは旧適用の1回のtransactionのみで更新される
 
 ## Verification
 
@@ -158,7 +168,8 @@ Then 進行中の適用は完走し（1 recovery point / 1 Undo）、再発行�
   Epic側へ引き継ぐことをPRへ明記する）:
   API 36とAPI 37のemulator、gesture/3-button navigation、portrait↔landscape、
   sw600dp以上のtablet設定での回転/resize、cutout/IME表示、fontScale 1.3/2.0、
-  ja/enでScenario 1〜5を確認し、スクリーンショット/録画をPRへ添付する。
+  ja/en、および **TalkBack ON** でのScenario 1〜5を実測し（破棄案内の自動通知を
+  含む）、スクリーンショット/録画をPRへ添付する。
 - PreferenceActivity配下のorganizer hub/preview/exchange/diagnostics、backup/restore、
   destination picker、編集pickerを同一emulator matrixで回転/resize・fontScale・ja表示し、
   実測した回帰のみ修正して記録する。
@@ -166,7 +177,11 @@ Then 進行中の適用は完走し（1 recovery point / 1 Undo）、再発行�
   構成し、productionのtest専用hookを広げない）:
   (1) `recreate()` × {selection-only, 計画あり, 未操作} の3ケースで案内の有無を固定、
   (2) 適用進行中のシステムbackでfinishしないこと、
-  (3) 適用進行中の`recreate()`で二重適用が起きないこと（DB更新は旧適用の1回のみ）。
+  (3) 適用進行中の`recreate()`で二重適用が起きないこと（DB更新は旧適用の1回のみ、
+  1 recovery point / 1 Undo）と、terminal後・相関capture再取得完了前にConfirmが
+  不能であること、
+  (4) 案内の`liveRegion` semantics（作業あり=Polite設定、作業なし=対象要素なし）と、
+  再compositionで通知条件が再発火しないこと。
 - 既存edit surface系unit/instrumentation testがすべてgreenであること。
 - 書込み経路を追加しないことの確認: 変diffは`HomeEditSurfaceActivity.kt`、
   `EditSurfaceScreen.kt`、`HomeEditSurfaceAccess.kt`（in-flight権威の追加。適用経路
@@ -192,3 +207,8 @@ Then 進行中の適用は完走し（1 recovery point / 1 Undo）、再発行�
   （被覆増分ゼロと再作成trade-offの分離）、適用進行中と再作成の相互契約
   （単一権威・二重適用禁止）を追加、back gateをin-flight適用限定に締め直し、
   破棄案内の述語定義と3ケースoracle・TalkBack liveRegion契約を明記。
+- 2026-10-06: Review round 2（PR #536コメント）対応 — 単一権威をprocess-wide
+  holderとしてidentityを明確化（wrapper fieldの禁止）、状態機械にterminal後の
+  Correlating（相関capture再取得完了までConfirm無効）を追加、必須oracleに
+  1 recovery point / 1 Undo固定とliveRegion semantics oracleを追加、
+  emulator matrixへTalkBack ON実測を明記。
