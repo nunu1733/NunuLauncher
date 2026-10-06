@@ -71,6 +71,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -586,11 +587,11 @@ class EditSurfaceTarget37ContractInstrumentationTest {
                     editSurfaceApplyGate.onApplyTerminal()
                     val claimed = editSurfaceApplyGate.claimCorrelatedCapture()
                     assertNotNull("the live surface must claim the pending correlation", claimed)
-                    // Simulate the claimed reload's capture being in flight
-                    // while the owner is destroyed: destroy now. The claim was
-                    // taken with this surface as owner.
-                    scenario.recreate()
                 }
+                // Simulate the claimed reload's capture being in flight while
+                // the owner is destroyed: recreate off the main thread (the
+                // claim was taken with this surface as owner).
+                scenario.recreate()
                 val successor = currentActivity(scenario)
                 awaitSelectableItem(successor, "3d successor surface")
                 InstrumentationRegistry.getInstrumentation().runOnMainSync {
