@@ -117,20 +117,27 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 ## rollback
 
 - 実装PR全体をrevertすればbase `e214b7b190` に戻る（単一機能commit群）。
-  実装commitと`quickstepMaxSdk` commitを分離するため、検証不成立時は定数commitだけを
-  dropできる。stack自体（PR #546 → 本PR）のrollbackはPR #546の取り扱いに従う。
+  compat修正commitと検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
+  不成立時はcandidate commitだけをdrop/revertして36維持とできる（spec Owner decision 7 / AC-6）。
+  stack自体（PR #546 → 本PR）のrollbackはPR #546の取り扱いに従う。
 
-## 実装順序
+## 実装順序（candidate model。spec Owner decision 7 / Verification の実施順序どおり）
 
-1. 修正前対照の再現確認は実施済み（#524 (a)/(b) failure signature。本検証では対照として参照するのみで
+1. 修正前対照は実施済み（#524 (a)/(b) failure signature。本検証では対照として参照するのみで
    再実施しない）。
 2. `InputConsumerController.java` のcompat修正を1 commitで適用（`fix(545): ...`）。
-3. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）。
-4. 検証matrix (a)(d)(f) → (b)(G3/AC-4) → (e) の順に実施（(b)はrelease buildを要するため
-   `assembleLawnWithQuickstepGithubRelease` を追加build）。
-5. 検証成立後、`quickstepMaxSdk` 36→37 commit（`feat(545): raise quickstepMaxSdk ...`）＋
-   ADR-0018 revision 9 commit。manifest placeholder静的確認（AC-6）。
-6. 実装PR本文へReview / handoff packet（github-workflow.md 定形）＋patch surface計測結果を記載。
+3. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
+   **matrix (a) をこのSHA（compat修正commit）で実施**（実行SHAをevidence READMEへ記録）。
+4. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
+   として適用し、`assembleLawnWithQuickstepGithubRelease` でrelease APKをbuild。
+   **以降のmatrix (b)/(d)/(e)/(f) とG3はこのcandidate SHA固定で実施**（実行SHAをevidence READMEへ記録）。
+5. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
+   candidate releaseのmanifest placeholder静的確認（AC-6）。
+   **不成立時**: candidate commitをdrop/revertして `quickstepMaxSdk` 36を維持し、failure evidenceを
+   記録する（compat修正自体はprovider修復として保持可否を(a)結果で判定。hiddenapi block時は
+   spec Scenario 4どおり停止）。
+6. 実装PR本文へReview / handoff packet（github-workflow.md 定形）＋patch surface計測結果＋
+   matrix↔SHA対応表を記載。
 
 ## test
 
@@ -150,20 +157,25 @@ rm→push→chmod→restorecon→reboot。priv-app配置は `/product/priv-app/`
 allowlist XML。run毎に `cmd overlay lookup` とSystemUI `mRecentsComponentName` の一致を
 preflight証跡化）。
 
-- (a) API 37 debug＋debug用overlay＋priv-app: bind成功・クラッシュ無し（#524 signature非再現を
-  logcatで確認）・`isConnected=true`・APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
+- (a) API 37 debug＋debug用overlay＋priv-app（**実行SHA: compat修正commit**）: bind成功・
+  クラッシュ無し（#524 signature非再現をlogcatで確認）・`isConnected=true`・
+  APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
   同logcatからhiddenapi観測抜粋（AC-3）と `PipInputConsumer` 監視（AC-1付帯）。
-- (b) API 37 release（maxSdk 37）＋release用overlay＋priv-app: preflight・`compatible=true`
-  （"disabling recents" 無し・sheet非表示screenshot）・overview成立・task切替。
+- (b) API 37 release（maxSdk 37のcandidate build。**実行SHA: candidate commit**）＋release用overlay＋
+  priv-app: preflight・`compatible=true`（"disabling recents" 無し・sheet非表示screenshot）・
+  overview成立・task切替。
   G3: overview→task切替の遷移時間帯logcatを取得し `ActivityTaskManager` BAL block有無を判定（AC-4）。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。
-- (e) API 36 debug＋debug用overlay＋priv-app: (a)と同一観測で回帰なし確認。
-- (f) stock構成: overlay無しAPI 37へ修正後releaseを通常install→"disabling recents" 診断log、
-  sheet無し、system overview継続。
+- (e) API 36 debug＋debug用overlay＋priv-app（**実行SHA: candidate commit**）: (a)と同一観測で
+  回帰なし確認。
+- (f) stock構成（**実行SHA: candidate commit**）: overlay無しAPI 37へcandidate releaseを通常install→
+  "disabling recents" 診断log、sheet無し、system overview継続、launcher crash無し。
+  **API 36 stockの簡易確認もcandidate releaseで実施**（通常install→HOME設定→system overview継続・
+  crash無し・gate/sheet状態を記録。#524 (d)-API36相当を修正後buildで再取得）。
 - 証跡は `docs/assessment/545-api37-provider-fix-evidence/` へ `a-*`〜`f-*` 形式（#524と同型）で
-  保存しREADMEへ一覧化する。
+  保存しREADMEへ一覧化する。**READMEにはmatrixごとの実行SHA対応表を必ず含める**（AC-9）。
 
 ## 未確認範囲（plan時点）
 

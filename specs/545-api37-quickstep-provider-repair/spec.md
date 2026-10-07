@@ -77,9 +77,13 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    launcher processで構築されないためlauncher側から到達しないのが前提だが、matrix (a)/(b) の
    logcatからwmshell起源の `NoSuchMethodError` を監視し、観測された場合はfailure signatureを
    記録して別Issueへ分離する（本PRではwmshellを変更しない）。
-7. **`QUICKSTEP_MAX_SDK` 36→37は修復検証（matrix (a)/(b) 成立）を前提に本実装PRで実施し、
-   ADR-0018 revision 9（Decision 7のadvertised range 35..37）へ反映する**。
-   検証が成立しない場合は実施しない。
+7. **`QUICKSTEP_MAX_SDK` 36→37は「検証candidateへの包含」と「確定採用」を分離して扱う**。
+   matrix (b) はmaxSdk 37のrelease APKを要求するため、定数変更を **検証candidate commit** として
+   compat修正後に適用し、そのcandidate SHA固定で (b) 以降を実施する。全matrix成立時にのみ
+   candidateを最終成果物として保持し、ADR-0018 revision 9（Decision 7のadvertised range 35..37）へ
+   反映する。matrix (b)（または AC-3/AC-4/AC-5 のoracle）が成立しない場合はcandidate commitを
+   drop/revertして `quickstepMaxSdk` 36を維持し、failure evidenceを記録する
+   （検証に先行する宣言の禁止は「確定採用」に対して働く。検証artifactへの包含はこれに当たらない）。
 
 ## Baseline（本specの前提事実）
 
@@ -132,10 +136,10 @@ provider構成環境では既存のquickstep機能がAPI 37で再び成立する
   （android17-release。https://android.googlesource.com/platform/frameworks/base/+/0ef7f5a0e27f7270d1b6282176aa5b6be660bd1e 。確認日2026-10-07）。
   採用: 破壊の一次根拠（in-place置換・旧form削除・`@UnsupportedAppUsage` 削除）と
   「return形式を呼ぶ」修正shapeの根拠。main branchには未入る（API 37系統のみ）。
-- AOSP `packages/SystemUI/shared/.../InputConsumerController.java`（android17-release、
-  行143。https://android.googlesource.com/platform/platform_testing/+/refs/heads/android17-release ではなく
-  frameworks/base packages/SystemUI/shared。確認日2026-10-07）。採用: 上流での修正後shape
-  （`inputChannel = createInputConsumer(token, name, display)`）の一次根拠。
+- AOSP `InputConsumerController.java` @ commit `0ef7f5a0e27f`（
+  https://android.googlesource.com/platform/frameworks/base/+/0ef7f5a0e27f7270d1b6282176aa5b6be660bd1e/packages/SystemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java 。確認日2026-10-07）。
+  採用: 上流での修正後shape（`inputChannel = createInputConsumer(token, name, display)`）の一次根拠。
+  AIDL変更と上流call-site修正を同一snapshotで確認できる。
 - repo内reflection先例: `RecentsAnimationControllerCompat.java:98-113`（SDK gate +
   `getDeclaredMethod`）、`ActivityManagerWrapper.java:160-171`（exact SDK gate +
   reflection、fallback直呼出し）。確認日2026-10-07。採用: in-file reflection hookのrepo内慣習根拠。
@@ -227,36 +231,40 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 
 - [ ] AC-1: matrix (a)（API 37 debug＋debug用overlay＋priv-app）で、bind後にクラッシュせず
   `isConnected=true`、overview成立・task切替成功。#524 failure signature非再現。
-- [ ] AC-2: matrix (b)（API 37 release（maxSdk 37）＋release用overlay＋priv-app）で
-  `compatible=true`、overview成立・task切替成功、`quickstep_incompatible` sheet非表示。
+- [ ] AC-2: matrix (b)（API 37 release（maxSdk 37の **検証candidate build**）＋release用overlay＋
+  priv-app）で `compatible=true`、overview成立・task切替成功、`quickstep_incompatible` sheet非表示。
 - [ ] AC-3: hiddenapi enforcementの一次出力（(a)/(b) runのlogcat。取得可能なら
   `hiddenapi list` 等のflags一次出力）がevidenceへ記録され、新formの呼出可否が確定している。
-  block時はScenario 4どおり停止・記録し定数変更していない。
+  block時はScenario 4どおり停止・記録しcandidateをdropしている。
 - [ ] AC-4: G3の確定観測（(b)構成でshell→launcher遷移を発生させ、logcat
   `ActivityTaskManager` のBAL block有無を確定判定）が記録され、creator mode判断
   （evidence無し→legacy保持確定／blockあり→別判断分離）がPRへ記載されている。
 - [ ] AC-5: matrix (e)（API 36 debug＋debug用overlay＋priv-app）でprovider pathに回帰がなく、
   matrix (f)（stock構成API 36/37）で挙動変化がない。
-- [ ] AC-6: `QUICKSTEP_MAX_SDK` 36→37が検証成立後に適用され、release buildのmanifest
-  placeholderが `35 / 37` となる静的確認（aapt2 dump等）が記録されている（AC-1〜AC-5が
-  成立しない場合は適用しない）。
+- [ ] AC-6: `QUICKSTEP_MAX_SDK` 36→37が **検証artifact（(b)以降のrelease build）には含まれ**、
+  全matrix成立時にのみ最終成果物として保持される。保持されたcandidateについてrelease buildの
+  manifest placeholderが `35 / 37` となる静的確認（aapt2 dump等）が記録されている。
+  不成立時はcandidateをdropし、36維持とfailure evidenceを記録する。
 - [ ] AC-7: ADR-0018 revision 9（Decision 7: advertised 35..37、revision 8保留判断の更新）
-  が実装PR内で反映されている。
+  が実装PR内で反映されている（candidate不成立時はrevision 9を適用しない）。
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
+- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**（(a): compat修正commit、
+  (b)〜(f): candidate commit）が明記され、artifactとSHAの取り違えが起きない。
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| AC-1 | matrix (a) runtime証跡（preflight＋logcat＋screenshot/録画。evidence dir `docs/assessment/545-api37-provider-fix-evidence/`） |
-| AC-2 | matrix (b) runtime証跡（同上＋sheet非表示screenshot） |
+| AC-1 | matrix (a) runtime証跡（preflight＋logcat＋screenshot/録画。evidence dir `docs/assessment/545-api37-provider-fix-evidence/`。実行SHA: compat修正commit） |
+| AC-2 | matrix (b) runtime証跡（同上＋sheet非表示screenshot。実行SHA: candidate commit） |
 | AC-3 | (a)/(b) logcatのhiddenapi観測抜粋＋取得可能なflags一次出力file |
 | AC-4 | (b)構成のG3 logcat抜粋＋PR本文のcreator mode判断記載 |
-| AC-5 | matrix (e)/(f) runtime証跡 |
-| AC-6 | `assembleLawnWithQuickstepGithubRelease` 後のmanifest placeholder静的確認出力 |
-| AC-7 | ADR-0018 diff（実装PR内） |
+| AC-5 | matrix (e)/(f) runtime証跡（実行SHA: candidate commit） |
+| AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
+| AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
+| AC-9 | evidence READMEのmatrix↔SHA対応表＋packet記載 |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
 消失すること」自体が原因であり、JVM/Robolectricでは再現不能。振る舞いの一次証拠は
@@ -266,20 +274,26 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
 
 ## Verification
 
+- **実施順序（candidate model。Owner decision 7）**: ①compat修正commit → build debug →
+  ②matrix (a)（実行SHA=compat修正commit）→ ③`quickstepMaxSdk` 36→37を **candidate commit** として
+  適用しrelease APKをbuild → ④matrix (b)/(d)/(e)/(f) とG3（実行SHA=candidate commit）→
+  ⑤全成立ならcandidate保持＋ADR-0018 rev 9。不成立ならcandidate drop（36維持）＋failure evidence記録。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
-  - (a) API 37 debug @ 修正後head＋debug用overlay＋priv-app → クラッシュ無し、
+  - (a) API 37 debug @ compat修正commit＋debug用overlay＋priv-app → クラッシュ無し、
     `isConnected=true`、overview成立、task切替成功。
-  - (b) API 37 release @ 修正後head（maxSdk 37）＋release用overlay＋priv-app →
+  - (b) API 37 release @ candidate commit（maxSdk 37）＋release用overlay＋priv-app →
     `compatible=true`、overview成立、sheet非表示、task切替成功。
   - (d) hiddenapi一次出力: (a)/(b)のregisterInputConsumer実行時間帯のlogcatを取得し
     hidden API access系のdenial/block有無を判定。可能ならroot shellで
     `hiddenapi list`（またはflags table）から該当signature行を一次取得する。
   - (e) API 36 debug＋debug用overlay＋priv-app → 回帰なし。
-  - (f) stock構成（overlay無し）API 37＋修正後release → 無影響（API 36 stockも#524 (d)-API36相当の
-    簡易確認）。
+  - (f) stock構成（overlay無し）API 37＋candidate release → 無影響。**API 36 stockの簡易確認も
+    candidate releaseで実施する**（通常install→HOME設定→system overview継続・launcher crash無し・
+    gate/sheet状態の記録。#524 (d)-API36相当の観測を今回の修正後buildで再取得する）。
   - wmshell監視: (a)/(b)のlogcat全体から `PipInputConsumer` 起源の例外をgrep（0件確認または
     failure signature記録）。
 - 観測手段: 操作結果、logcat、screenshot/録画をevidence dirへ保存しPRへ要約する。
+  **evidence READMEにはmatrixごとの実行SHAの対応表を必ず記載する**（AC-9）。
 - **G3**: (b)構成を主証跡としてScenario「G3確定観測」を実施する（#527 spec G3節の委譲条件の完結）。
 - **実機の位置づけ**: provider構成は非root実機では不可のため、主証跡はemulator matrix
   （#524と同じ制約。実機は通常構成の無影響確認をEpic #516 Phase 3実機matrixへ引き継ぐ）。
@@ -300,3 +314,8 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
 - 2026-10-07: Draft created for #545（入力: #524 runtime検証結果（PR #546証跡）、
   AOSP android17-release commit `0ef7f5a0e27f` 調査、hiddenapi enforcementソース調査、
   repo内compat先例調査）。
+- 2026-10-07: Review round 1（PR #548コメント。blocking 1・中1・低1）対応 —
+  (1) `QUICKSTEP_MAX_SDK` 36→37を「検証candidateへの包含」と「確定採用」に分離
+  （Owner decision 7改訂、実施順序をcandidate modelへ変更、AC-2/AC-6をcandidate前提へ修正）し、
+  matrixごとの実行SHA明記をAC-9として追加。(2) matrix (f)へAPI 36 stock簡易確認を明記。
+  (3) Prior artのAOSP `InputConsumerController` 参照をcommit固定URLへ修正。
