@@ -1,0 +1,49 @@
+=== matrix (a): #545 compat fix seam-level evidence (registerInputConsumer on API 37) ===
+date: 2026-10-07 20:41:50
+head under test: 416273ce2f33d7d91a84e6cbd7925df8a290c5b2 (fix(545): invoke API 37 return-InputChannel createInputConsumer reflectively)
+
+1) #524 failure signature (InputConsumerController.java:143 NoSuchMethodError,
+   createInputConsumer(Landroid/os/IBinder;Ljava/lang/String;ILandroid/view/InputChannel;)V): NOT reproduced.
+   grep NoSuchMethodError over the full boot+bind logcat: 0 real hits (1 false hit = adbd echo of the grep command itself).
+
+2) Crash point MOVED past the repaired call: TouchInteractionService crash stacks in this run
+   go through onUserUnlocked(TouchInteractionService.java:889) — mTaskbarManager.onUserUnlocked() —
+   which is 16 lines AFTER mInputConsumer.registerInputConsumer() (TouchInteractionService.java:873).
+   The line-873 call therefore completed without throwing on every process start.
+   Example stack (full text in a-bind-logcat.txt):
+10-07 20:21:49.032 D/AndroidRuntime( 1211): Shutting down VM
+10-07 20:21:49.033 E/AndroidRuntime( 1211): FATAL EXCEPTION: main
+10-07 20:21:49.033 E/AndroidRuntime( 1211): Process: app.lawnchair.debug, PID: 1211
+10-07 20:21:49.033 E/AndroidRuntime( 1211): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.taskbar.TaskbarRecentAppsController.<init>(TaskbarRecentAppsController.kt:69)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.taskbar.TaskbarActivityContext.<init>(TaskbarActivityContext.java:383)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.taskbar.TaskbarManagerImpl.createTaskbarActivityContext(TaskbarManagerImpl.java:1407)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.taskbar.TaskbarManagerImpl.recreateTaskbarForDisplay(TaskbarManagerImpl.java:838)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.taskbar.TaskbarManagerImpl.recreateTaskbars(TaskbarManagerImpl.java:791)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.taskbar.TaskbarManagerImpl.onUserUnlocked(TaskbarManagerImpl.java:668)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.taskbar.TaskbarManagerImplWrapper.onUserUnlocked(TaskbarManagerImplWrapper.kt:39)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.quickstep.TouchInteractionService.onUserUnlocked(TouchInteractionService.java:889)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.quickstep.TouchInteractionService$$ExternalSyntheticLambda10.run(D8$$SyntheticClass:0)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.util.RunnableList.executeAllAndClear(RunnableList.java:68)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.util.RunnableList.executeAllAndDestroy(RunnableList.java:56)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.util.LockedUserState.notifyUserUnlocked(LockedUserState.kt:81)
+10-07 20:21:49.033 E/AndroidRuntime( 1211): 	at com.android.launcher3.util.LockedUserState.setUserUnlocked(LockedUserState.kt:39)
+
+3) Reflection path success markers (absence of degrade logs + positive monitor evidence):
+   - 'Failed to invoke createInputConsumer (API 37 form, #545)' (compat catch block): 0 hits
+0
+   - 'Input consumer not registered (see #545)' (compat null-channel degrade): 0 hits
+0
+   - NOTE: the 'InputMonitorCompat (swipe-up) ... created' lines in a-bind-logcat.txt are from
+     TouchInteractionService.initInputMonitor (a separate monitor from the recents-animation input
+     consumer) and are recorded as incidental corroboration only. The primary seam evidence is the
+     deterministic absence of the #524 signature plus crash points moved past :873 to :889.
+10-07 20:21:46.325 D/InputMonitorCompat( 1211): Input monitor (swipe-up-disp0) created
+10-07 20:21:46.325 D/InputMonitorCompat( 1211): Input event receiver for monitor (swipe-up-disp0) created
+10-07 20:21:46.389 D/InputMonitorCompat( 1211): Input event receiver for monitor (swipe-up-disp0) disposed
+10-07 20:21:46.399 D/InputMonitorCompat( 1211): Input monitor (swipe-up-disp0) disposed
+10-07 20:21:46.583 D/InputMonitorCompat( 1211): Input monitor (swipe-up-disp0) created
+10-07 20:21:46.583 D/InputMonitorCompat( 1211): Input event receiver for monitor (swipe-up-disp0) created
+
+4) hiddenapi enforcement: no denial/block for IWindowManager.createInputConsumer
+   (hiddenapi lines in this window are from unrelated apps — see d-hiddenapi-logcat-a.txt)

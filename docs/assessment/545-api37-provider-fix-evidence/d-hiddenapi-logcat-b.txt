@@ -1,0 +1,11 @@
+=== matrix (d) hiddenapi observation — API 37 release @ candidate commit (window: b-bind-logcat.txt) ===
+
+--- all hiddenapi-related lines:
+2556:10-07 20:44:10.036 I/SystemConfig(  650): Reading permissions from /system/etc/sysconfig/hiddenapi-package-whitelist.xml
+2645:10-07 20:44:10.062 I/SystemConfig(  650): Reading permissions from /product/etc/sysconfig/google-hiddenapi-package-whitelist.xml
+31349:10-07 20:44:22.696 E/droid.deskclock( 2694): hiddenapi: Accessing hidden field Ljava/util/Collections$SynchronizedCollection;->mutex:Ljava/lang/Object; (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+31350:10-07 20:44:22.696 E/droid.deskclock( 2694): hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedSet;-><init>(Ljava/util/Set;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+31351:10-07 20:44:22.696 E/droid.deskclock( 2694): hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedCollection;-><init>(Ljava/util/Collection;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+
+--- createInputConsumer-related denial/warning: NONE expected; count:
+0
