@@ -259,3 +259,19 @@ Then 検証を実施せず未確認範囲としてIssue/PRへ記録し、`QUICKS
   通常構成でない旨を明記）。(c)のfailure signatureから "disabling recents" を分離
   （`checkRecentsComponent` true時は出ない。該当logはoverlay不一致・無効系の診断log）、
   sheet表示＋overview不成立＋preflight一致をoracleへ固定。
+
+## Verification outcome（2026-10-07、runtime検証実施後のowner decision更新）
+
+検証matrix (a)〜(e)を実施した結果、**本specの主oracle（Scenario 1: provider構成済みAPI 37でrelease buildのoverview成立）は成立しない**ことが実測された。原因はAPI 37.0 frameworkのhidden API破壊である: `IWindowManager.createInputConsumer` が `(IBinder, String, int, InputChannel) → void`（launcherがcompileするout-param形式）から `(IBinder, String, int) → InputChannel`（return形式）へ変更され、旧formは削除されている（hiddenapi BLOCKED）。`TouchInteractionService.onUserUnlocked → InputConsumerController.registerInputConsumer` は `compatible` gate非依存で呼ばれるため、このクラッシュはdebug/release・変更前/後・`QUICKSTEP_MAX_SDK` の値と無関係に発生する。
+
+検証に先行する宣言の禁止（§Problem、#520 assessment §3.2）により、**owner decisionを次のとおり更新する**:
+
+1. **`quickstepMaxSdk` 36→37は保留し、36を維持する**（source変更を行わない）。
+2. **compatLib V37 moduleの追加も行わない**（Scopeで「別判断」とした箇所の判断）。signature追従の空subclassでは不十分であり、vendored `systemUI/shared` のcompat抽象化＋hiddenapi exemption要件の調査を伴うため、**provider修復は別Issue #545へ分離**する。
+3. **G3判断は legacy `MODE_BACKGROUND_ACTIVITY_START_ALLOWED` の保持で確定**（コード変更なし）。根拠: API 36 provider構成で同一PI経路の遷移が成功しBAL block 0件。API 37での確定観測は#545に含める。
+4. **サポート境界は min 35 / max 36 を維持**し、ADR-0018 Decision 7へ反映する（revision 8。実装はrebase branch stack上のPR #546）。
+
+本検証で確定した副次事実: (1) provider構成にはlauncherのsystem/priv-app配置が必須（AOSP `LauncherProxyService.updateEnabledState()` の `MATCH_SYSTEM_ONLY`。RRO overlayだけではprovider pathに入れない）、(2) (d)のstock `config_recentsComponentName` はAVD image依存（google_apis Pixel imageでは `com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity`）、(3) API 36ではprovider path全体が機能する（破壊はAPI 37固有）。詳細証跡はPR #546の `docs/assessment/524-api37-quickstep-evidence/`（failure signature `a-bind-crash-signature.txt` / `b-bind-crash-signature.txt` を含む）を参照する。
+
+Change historyに追記:
+- 2026-10-07: Verification outcome — runtime検証（PR #546）でAPI 37のhidden API破壊を実測し、主oracle不成立を確認。owner decision更新（maxSdk 37保留・36維持、V37 module不追加、G3 legacy保持、provider修復は#545へ分離）。
