@@ -195,6 +195,23 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    reflection成功実証済み）と同一値のためruntime denialと相関しないが、これを実行時の可否の
    仮定には使わず、fixへ識別可能なfailure log markerを設け、qva/qvbで **marker 0＋実thumbnail
    レンダリング** をoracleとする（hiddenapi denialの補助観測も実施）。
+12. **qva検証（2026-10-08、実行SHA `bdea76ea75`）で実測された第六の破壊
+   （`TaskSnapshot.getHardwareBuffer()` がAPI 37.0でdeprecated・unconditional null化により
+   thumbnail bitmapが取得できない。クラッシュではなく黒fallback）も本Issueのoverview成立範囲に
+   含め、`ThumbnailData.makeThumbnail` の当該経路1箇所へ **API 37+で `wrapToBitmap()` の
+   reflection呼出し** を追加する（失敗時は既存の黒bitmap fallbackへdegrade。marker付きlog）**。
+   根拠: (a) 一次対照 `wraptobitmap-contrast.txt`（実装branch commit `8babd3bb10`）: device
+   dexdumpで `getHardwareBuffer()` がdeprecated log＋null returnのbodyを持つこと（android17-release
+   sourceと一致）、`wrapToBitmap()`（`(Landroid/graphics/ColorSpace;)` と無引数のPUBLIC override）
+   が37.0 imageに存在すること、compile classpath（framework-16.jar）にwrapToBitmapが不在である
+   ことを固定。(b) qva (a) では第5修正によりoverview/task切替/bindが成立（5 signature 0・
+   marker 0）したうえでthumbnailが黒fallbackになり、`getHardwareBuffer is deprecated!` が
+   launcher pidで出力された（`qva-crash-check.txt` / `qva-overview.png`）。黒thumbnailは
+   overview UIの破綻であり、spec Scenario 1の「破綻なく成立」を満たさない。
+   (c) `SDK_INT >= 37` gateによりAPI <=36のhardwareBuffer経路（matrix (e) で正常レンダリング実績）は
+   byte identical。(d) 変更は1 file 1箇所の最小bridge（Owner decision 8/10/11と同型）。
+   (e) dex metadataのhiddenapiラベルは第11 decisionと同様にruntime denialと相関させず、
+   failure marker＋qva/qbv再検証での実thumbnailレンダリングをoracleとする。
 
 ## Baseline（本specの前提事実）
 
@@ -307,6 +324,16 @@ When SystemUIが `TouchInteractionService` をbindし（user unlock後）、rece
 Then `registerInputConsumer` でクラッシュせず、`LauncherProxyService.isConnected=true` となり、
 overview表示・task切替が破綻なく成立する。#524のfailure signature
 （`NoSuchMethodError ... createInputConsumer(...InputChannel;)V`）は再現しない。
+
+### Scenario: getHardwareBuffer廃止環境でthumbnail bitmapがwrapToBitmap経由で取得される
+
+Given API 37.0 image（`TaskSnapshot.getHardwareBuffer()` がdeprecated・unconditional null。
+一次対照 `wraptobitmap-contrast.txt`）でprovider構成済みLawnchairのoverviewがthumbnailを
+読み込む
+When `ThumbnailData.makeThumbnail` が呼ばれる
+Then API 37+では `wrapToBitmap()` 経由でsnapshot bitmapが取得され、task cardに実app screenshotが
+レンダリングされる。reflection失敗時はmarker付きlogを残し既存の黒bitmap fallbackへdegradeする
+（クラッシュしない）。API <=36ではhardwareBuffer経路がbyte identicalに維持される。
 
 ### Scenario: getTaskSnapshot削除環境でoverview thumbnail読み込みがクラッシュせず継続する
 
@@ -424,13 +451,19 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
   が実装PR内で反映されている（candidate不成立時はrevision 9を適用しない）。
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
-- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**のv4 mapping
-  （qva (a): **compat修正5 commits適用後head**、qvb (b)/G3: **新candidate commit**、
-  (e)/(f)＋hiddenapi/wmshellの再利用分: **旧candidate `2987e525bd`**。qa/qb diagnostic run
-  （第4修正実証・第五破壊発見）は旧candidate `40eb5dbfab`＋`71c6251203` 証跡として別行）と
-  使用APKの対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない
-  （再利用分の一次出力は`fc5169566c` 固定のpost-guard matrix（ma-〜mf-）と各行で対応づける）。
-- [ ] AC-10c: v4再検証matrix qva (a)/qvb (b) で `getTaskSnapshot` の `NoSuchMethodError` と
+- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**のv5 mapping
+  （qva2 (a): **compat修正6 commits適用後head**、qvb2 (b)/G3: **新candidate commit**、
+  (e)/(f)＋hiddenapi/wmshellの再利用分: **旧candidate `2987e525bd`**）と使用APKの対応、
+  およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない。diagnostic run群
+  （pre-guard: `f5a3977281`〜`5c6d40a56d`／post-guard＋(e)(f)再利用元: `fc5169566c`／
+  qa-qb: `71c6251203`（第4修正実証＋第五破壊diag）／qva-qbv: `8babd3bb10`（第5修正実証＋
+  第六破壊diag。旧candidate `212097886b`））は **最終matrix（qva2/qvb2）と混同しない別行** で
+  記載する（再利用分の一次出力は`fc5169566c` 固定のpost-guard matrix（ma-〜mf-）と各行で対応づける）。
+- [ ] AC-10d: v5再検証matrix qva (a)/qvb (b) で、overview task cardに **実app screenshotの
+  thumbnailがレンダリングされる**（黒fallbackでないことをscreenshotで実証）。`wrapToBitmap`
+  reflection failure markerが0件であり、新reflection起因のcrashが無い。diffがcode reviewで
+  確認され、API <=36のhardwareBuffer経路不変が確認されている。
+- [ ] AC-10c: v4 matrix qva (a)/qvb (b) で実証済み（diagnostic。`8babd3bb10`）:  `getTaskSnapshot` の `NoSuchMethodError` と
   reflection failure log marker（識別可能なtag。plan実装詳細4）が **ともに0件** で、
   (a) でbind完了・overview成立（**実thumbnailのレンダリングを含む**）・task切替、(b) で
   `compatible=true`・overview/task切替・G3確定観測が成立する。加えてqva/qvbのlogcatに
@@ -466,6 +499,7 @@ class存在環境・`SDK_INT_FULL<3600001` 環境（API 36）の挙動不変が�
 | AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError / Resources$NotFoundException 0件・bind完了）＋guard/dimen diff（code review） |
 | AC-10b | v3再検証matrix (a)/(b)のruntime証跡（KeyButtonRipple NoClassDefFoundError 0件・bind完了/compatible=true。qa実績: bind成立を `qa-crash-check.txt` が実証）＋guard diff（code review） |
 | AC-10c | v4再検証matrix qva (a)/qvb (b)のruntime証跡（NoSuchMethodError 0件＋failure marker 0件＋実thumbnailレンダリング＋hiddenapi補助観測）＋reflection diff（code review） |
+| AC-10d | v5再検証matrix qva2 (a)/qvb2 (b)のruntime証跡（実app screenshot thumbnailレンダリングscreenshot＋wrapToBitmap failure marker 0）＋reflection diff（code review） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
 消失すること」自体が原因であり、JVM/Robolectricでは再現不能。振る舞いの一次証拠は
@@ -483,6 +517,13 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
   （実行SHA=candidate commit）→ ⑦全成立ならcandidate保持＋ADR-0018 rev 9。
   不成立ならcandidate drop（36維持）＋failure evidence記録。
+  **v5追記（Owner decision 12。実行手順）**: qva検証（実行SHA `bdea76ea75`。`qva-crash-check.txt`/
+  `qva-preflight.txt`）で第5修正の成立（bind・overview・task切替・5 signature 0・reflection
+  marker 0）を確認したうえでthumbnail黒fallback（第6破壊。クラッシュなしの視覚劣化）が発覚
+  したため、12の修正commit適用後に **candidateを再度作り直し（`212097886b`を明示revertして36へ
+  戻す→`ThumbnailData` fix→qva (a)をcompat 6修正headで実施→新candidate→qvb (b)+G3）**
+  （prefix `qva2-*`/`qvb2-*`。旧candidate `212097886b` とqva/qbv artifactは第六破壊の
+  diagnostic/superseded evidenceとしてREADMEへ記録）。(e)/(f)等の再利用契約は不変。
   **v4追記（Owner decision 11。実行手順。revert方式）**: qa/qb検証（実行SHA `68e68a6a45` /
   `40eb5dbfab`。証跡は実装branch commit **`71c6251203`** に固定: `qa-crash-check.txt`/
   `qa-preflight.txt`/`qb-crash-check.txt`/`qb-preflight.txt`）で **bind完了（両leg
@@ -629,3 +670,11 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   実装branch commit `1777e348c9`）にもとづき、API 37+での同manager経由reflection呼出し
   （lookup失敗時は空 `ThumbnailData` degrade）を本Issue範囲へ追加（AC-10c・新Scenario・
   実施順序v4追記）。qa/qb再実施は第5修正後の新candidateで実施（(e)/(f)再利用契約は不変）。
+- 2026-10-08: Addendum v5（qva検証結果にもとづくOwner decision 12追加）— qva (a)（実行SHA
+  `bdea76ea75`、native density）で第5修正の成立（bind・overview・task切替・5 signature 0・
+  reflection marker 0）を実証したうえで、thumbnail黒fallback（第六破壊。
+  `TaskSnapshot.getHardwareBuffer()` が37.0でdeprecated・unconditional null。
+  `wraptobitmap-contrast.txt`。実装branch commit `8babd3bb10`）を発見。
+  supported pixel source `wrapToBitmap()`（compile classpath不在）のreflection呼出しを
+  本Issue範囲へ追加（AC-10d・新Scenario・実施順序v5追記）。再検証は第6修正後の新candidateで
+  qva2 (a)/qvb2 (b)+G3を実施（(e)/(f)等の再利用契約は不変）。
