@@ -1,0 +1,8 @@
+=== qva wmshell watch — PipInputConsumer / NoSuchMethodError in WindowManagerShell ===
+date: 2026-10-08 02:07:54; source: qva-bind-logcat.txt (   22927 lines)
+
+PipInputConsumer: (none)
+
+NoSuchMethodError: (none)
+
+RESULT: 0 hits for both.

@@ -1,0 +1,16 @@
+=== qva hiddenapi watch — denials/blocks mentioning app.lawnchair (esp. TaskSnapshotManager / new reflection call) ===
+date: 2026-10-08 02:07:54; source: qva-bind-logcat.txt (   22927 lines)
+
+--- 'hiddenapi' occurrences ---
+7063:10-08 01:57:04.050  3861  3861 I app_process: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+7831:10-08 01:57:06.170  3911  3911 I app_process: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+
+--- 'Access denied.*hidden|blocked.*hidden API|hidden API.*blocked' style occurrences ---
+
+--- TaskSnapshotManager mentions ---
+(none)
+
+--- getHardwareBuffer deprecation (framework stub returns null; see qva-crash-check.txt dexdump) ---
+9
+
+RESULT: hiddenapi DENIAL caused by the new reflection call = 0. No 'Accessing hidden API' denial/block lines for app.lawnchair*.

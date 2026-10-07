@@ -1,0 +1,21 @@
+=== qvb hiddenapi watch — denials/blocks mentioning app.lawnchair (esp. TaskSnapshotManager / new reflection call) ===
+date: 2026-10-08 02:22:26; sources: qvb-bind-logcat.txt (   26700 lines) + qvb-g3-logcat.txt (    9707 lines)
+
+--- 'hiddenapi' occurrences (bind window) ---
+17855:10-08 02:12:48.752  3664  3664 I app_process: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+18759:10-08 02:12:59.827  3743  3743 I app_process: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+--- 'hiddenapi' occurrences (G3 window) ---
+(none)
+
+--- accessing-hidden / non-sdk style lines (both windows) ---
+
+--- TaskSnapshotManager mentions (both windows) ---
+(none)
+
+--- getHardwareBuffer deprecation stub (framework returns null; 6th break, not a denial) ---
+bind window: 4
+G3 window: 2
+
+RESULT: hiddenapi DENIAL caused by the new reflection call = 0. No 'Accessing hidden API' denial/block lines for app.lawnchair*.
+(Framework TaskSnapshot.getHardwareBuffer is flagged hiddenapi BLOCKED in dexdump but executed in the launcher process —
+ runtime enforcement did not hard-block; method itself returns null by design. qva-tasksnapshot-gethardwarebuffer-dexdump.txt)

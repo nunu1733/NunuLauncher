@@ -1,0 +1,52 @@
+=== qva (a) preflight — API 37 debug @ bdea76ea75 (compat5-debug-bdea76e.apk, sha256 f9116a72ff2b476e226e7a404593d10566901c96e861090ea771a2cd3232a01a) ===
+date: 2026-10-08 01:55:08
+AVD: issue526_api37_pixel_9a (API 37.0, SDK 37), serial emulator-5554
+[ro.build.fingerprint]: [google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys]
+[ro.product.name]: [sdk_gphone64_arm64]
+config: /product/priv-app/LawnchairDebug/LawnchairDebug.apk + /product/etc/permissions/privapp-permissions-app.lawnchair.debug.xml (55 perms, deduped superset of declared android.* permissions); overlay nunu.overlay.quickstepconfig -> app.lawnchair.debug/com.android.quickstep.RecentsActivity; HOME=app.lawnchair.debug
+
+--- wm density (NATIVE, no override; after 'wm density reset'):
+Physical density: 420
+
+--- cmd overlay lookup --user 0 android android:string/config_recentsComponentName:
+app.lawnchair.debug/com.android.quickstep.RecentsActivity
+
+--- SystemUI mRecentsComponentName:
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+
+--- package install state:
+    codePath=/product/priv-app/LawnchairDebug
+    versionName=16.Dev.(e7d6b4c)
+    pkgFlags=[ SYSTEM DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE BACKUP_IN_FOREGROUND PARTIALLY_DIRECT_BOOT_AWARE PRIVILEGED PRODUCT PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+
+--- default launcher:
+Launcher: ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+Success
+
+--- LauncherProxyService state:
+    LauncherProxyService state:
+      isConnected=true
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair.debug }
+      mBound=true
+      mCurrentBoundedUserId=0
+      mConnectionBackoffAttempts=0
+      mActiveNavBarRegion=null
+      mNavBarMode=2
+      mIsPrevServiceCleanedUp=false
+    SysUiState state:
+      mSysUiStateFlags=268566528
+
+--- sha256 of installed priv-app:
+f9116a72ff2b476e226e7a404593d10566901c96e861090ea771a2cd3232a01a  /product/priv-app/LawnchairDebug/LawnchairDebug.apk
+
+--- manifest static check (aapt2 dump xmltree, from /tmp artifact /tmp/545-evidence-apk/compat5-debug-bdea76e.apk):
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="xyz.paphonb.quickstepswitcher.minSdk" (Raw: "xyz.paphonb.quickstepswitcher.minSdk")
+            A: http://schemas.android.com/apk/res/android:value(0x01010024)=0
+--
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="xyz.paphonb.quickstepswitcher.maxSdk" (Raw: "xyz.paphonb.quickstepswitcher.maxSdk")
+            A: http://schemas.android.com/apk/res/android:value(0x01010024)=100000
+
+--- density override: NONE expected (only 'Physical density: 420' printed above)

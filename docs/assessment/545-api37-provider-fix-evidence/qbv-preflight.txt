@@ -1,0 +1,51 @@
+=== qvb (b) preflight — API 37 release @ 212097886b (candidate4-release-2120978.apk, sha256 b701173e978e3f44f36251c403320d81fde1f732f432ce3ba1e41e8f1cab9678) ===
+date: 2026-10-08 02:14:04
+AVD: issue526_api37_pixel_9a (API 37.0, SDK 37), serial emulator-5554
+google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys
+config: /product/priv-app/LawnchairRelease/LawnchairRelease.apk + /product/etc/permissions/privapp-permissions-app.lawnchair.xml (54 perms, deduped superset of declared android.* permissions); overlay nunu.overlay.quickstepconfig -> app.lawnchair/com.android.quickstep.RecentsActivity; HOME=app.lawnchair
+
+--- wm density (NATIVE, no override; 'wm density reset' done at qva leg start, no override since):
+Physical density: 420
+
+--- cmd overlay lookup --user 0 android android:string/config_recentsComponentName:
+app.lawnchair/com.android.quickstep.RecentsActivity
+
+--- SystemUI mRecentsComponentName:
+      mRecentsComponentName=ComponentInfo{app.lawnchair/com.android.quickstep.RecentsActivity}
+
+--- package install state:
+    codePath=/product/priv-app/LawnchairRelease
+    versionName=16.Dev.(2120978)
+    pkgFlags=[ SYSTEM HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE BACKUP_IN_FOREGROUND PARTIALLY_DIRECT_BOOT_AWARE PRIVILEGED PRODUCT PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+
+--- default launcher:
+Launcher: ComponentInfo{app.lawnchair/app.lawnchair.LawnchairLauncher}
+Success
+
+--- LauncherProxyService state:
+    LauncherProxyService state:
+      isConnected=true
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair }
+      mBound=true
+      mCurrentBoundedUserId=0
+      mConnectionBackoffAttempts=0
+      mActiveNavBarRegion=null
+      mNavBarMode=2
+      mIsPrevServiceCleanedUp=false
+    SysUiState state:
+      mSysUiStateFlags=268566528
+
+--- sha256 of installed priv-app:
+b701173e978e3f44f36251c403320d81fde1f732f432ce3ba1e41e8f1cab9678  /product/priv-app/LawnchairRelease/LawnchairRelease.apk
+
+--- manifest static check (aapt2 dump xmltree, from /tmp artifact /tmp/545-evidence-apk/candidate4-release-2120978.apk):
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="xyz.paphonb.quickstepswitcher.minSdk" (Raw: "xyz.paphonb.quickstepswitcher.minSdk")
+            A: http://schemas.android.com/apk/res/android:value(0x01010024)=35
+--
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="xyz.paphonb.quickstepswitcher.maxSdk" (Raw: "xyz.paphonb.quickstepswitcher.maxSdk")
+            A: http://schemas.android.com/apk/res/android:value(0x01010024)=37
+
+--- density override: NONE (only 'Physical density: 420' printed)
