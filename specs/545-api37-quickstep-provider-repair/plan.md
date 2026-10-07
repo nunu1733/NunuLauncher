@@ -1,21 +1,22 @@
 ---
 issue: "#545"
 status: accepted
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: revision 2 accepted / revision 3 **accepted**（ Owner decision 10 addendum）
+> Status: revision 3 accepted / **revision 4 accepted（Owner decision 11 addendum）**
+> （revision 4はPR #552 review round 4でblocking 0・Clear
+> （head `0b8c2ae41b4ebc9471158b5e21bccc4e4753d23d` を確認）。受入は本PR #552のmergeで完了する。
+> 前提: revision 2 accepted / revision 3 accepted（Owner decision 10 addendum、#551 merge済み））
 > （prerequisite: revision 2の受入 2026-10-07。revision 1はPR #548 review round 3でblocking 0・
 > Clear（[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
 > revision 2（Owner decision 8/9 addendum）はPR #549 review round 4でblocking 0・Clear
 > （[review](https://github.com/nunu1733/NunuLauncher/pull/549#issuecomment-6039007333)。
 > head `96f5c66d4c322daa3af5f2f1cce7618181151666` を確認）でaccepted。
 > revision 3（Owner decision 10 addendum）はPR #551 review round 4でblocking 0・Clear
-> （[review](https://github.com/nunu1733/NunuLauncher/issues/551) 最後のコメント。
-> head `9768862b9b869a55831b1886919a6b113ff15e54` を確認）でaccepted。
-> 受入は本PR #551のmergeで完了する）。
+> （head `9768862b9b869a55831b1886919a6b113ff15e54` を確認）でaccepted（#551 merge済み）。
 
 **Risk tier: H**（[spec.md](./spec.md) 冒頭の判定どおり。vendored upstream file変更＋provider bind path）。
 
@@ -47,6 +48,9 @@ updated: 2026-10-07
   `DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` を参照。fieldは
   framework-16.jarに存在するがAPI 37.0 imageのframework.jarから削除済み。provider bind後にのみ
   実行され37.0 imageで `NoSuchFieldError`。spec Owner decision 8 / AC-10）。
+- `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java:140`
+  （`getTaskThumbnail` の `getTaskSnapshot(IZ)`。37.0 imageで削除済み（`(II)`/`(IJI)`のみを
+  dexdump実測）。overview thumbnail path。spec Owner decision 11 / AC-10c）。
 - `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java:108`
   （`SDK_INT_FULL >= 3600001` ガード下で `android.companion.virtualdevice.flags.Flags.viewconfigurationApis()`
   を参照。post-guard matrix (a)/(b)でAPI 37.0 imageのapp-visibleなclass不在
@@ -60,8 +64,9 @@ updated: 2026-10-07
 | `systemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java` | `registerInputConsumer()` のみを修正し、`createInputConsumer` のAPI 37 return形式をreflection呼出しするprivate helperを追加（近傍に#545理由comment）。diffはこの1 fileに限定する |
 | `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt` | `enableRecentTasksThrottle` のflag参照1箇所へ `NoSuchFieldError` degrade guard（throttle無効として継続。近傍に#545理由comment。spec Owner decision 8） |
 | `res/values/dimens.xml` | `taskbar_phone_size` のframework参照（`:437`）をliteral `48dp` へ置換（#545参照comment付き。spec Owner decision 9。37.0 imageでのbaked ID shift / `Resources$NotFoundException` を解消。確認対象levelの意図値（`navigation_bar_frame_height` dereference先）は48dpで同一だが、API 36の現APKは別resource（10dp）へ、API 35のtableでは別resource（20dp）へ誤解決が一次出力済み） |
+| `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java` | `getTaskThumbnail` の `getTaskSnapshot` 呼出し1箇所へAPI 37+の `TaskSnapshotManager` 経由reflection分岐を追加（lookup失敗時は既存null経路どおり空 `ThumbnailData`。近傍に#545理由comment。spec Owner decision 11。上流android17-releaseの移行shapeと同型。compile classpathに当該class不在のためreflection） |
 | `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java` | `:108` のflag読取り1箇所へ `NoClassDefFoundError` degrade guard（`ViewConfiguration.getTapTimeout()` 旧挙動へfallback。近傍に#545理由comment。spec Owner decision 10。post-guard matrix (a)/(b)で `NoClassDefFoundError` 実測。直接参照式はchecked例外を送出しないためcatchは`NoClassDefFoundError`のみ） |
-| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（4 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
+| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（5 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
 | `docs/adr/0018-lawnchair-16-rebase.md` | revision 7→8の次の改訂としてrevision 9: Decision 7にadvertised range 35..37・保留解除（修復検証の証跡参照）を記録 |
 | `docs/assessment/545-api37-provider-fix-evidence/` | 検証証跡（README＋logcat/png/txt。APKはcommitしない。sha256をREADMEへ） |
 
@@ -186,6 +191,57 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
   値は同一。`:441` の `rounded_corner_content_padding`（同種の `@*android:dimen` 参照）は
   失敗経路に未到達のため本Issueでは触れない（検証で到達が判明した場合は別判断）。
 
+## 実装詳細4（getTaskThumbnail のTaskSnapshotManager reflection。spec Owner decision 11）
+
+`systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java`
+`getTaskThumbnail` 内の呼出しを次の構造にする（#545参照comment付き。reflection failureは
+識別可能なlog marker `"TaskSnapshotManager reflection failed (see #545)"` で記録する）:
+
+base `e214b7b190` の `getTaskThumbnail` は直接呼出し1経路のみである（UDC 3-arg reflectionは
+このfileに存在しない。v15系main側fileとの取り違えに注意。review round 2指摘どおり）:
+
+```java
+    public @NonNull ThumbnailData getTaskThumbnail(int taskId, boolean isLowResolution) {
+        TaskSnapshot snapshot = null;
+        try {
+            if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                // #545: Android 17 (API 37) removed IActivityTaskManager.getTaskSnapshot(int,
+                // boolean) (device exposes (II)/(IJI); dexdump contrast in
+                // docs/assessment/545-api37-provider-fix-evidence/gettasksnapshot-class-contrast.txt).
+                // Upstream android17-release routes this through
+                // android.window.TaskSnapshotManager, which framework-16.jar does not carry —
+                // invoke it reflectively. The int mapping mirrors upstream
+                // TaskSnapshotManager.convertRetrieveFlag (RESOLUTION_LOW=2 / RESOLUTION_HIGH=1,
+                // device bytecode confirmed in tasksnapshotmanager-reflection-targets.txt).
+                // Any failure is logged and degrades to the empty ThumbnailData path below
+                // instead of crashing the overview thumbnail path.
+                Object tsm = Class.forName("android.window.TaskSnapshotManager")
+                        .getMethod("getInstance").invoke(null);
+                snapshot = (TaskSnapshot) tsm.getClass()
+                        .getMethod("getTaskSnapshot", int.class, int.class)
+                        .invoke(tsm, taskId, isLowResolution ? 2 : 1);
+            } else {
+                snapshot = getService().getTaskSnapshot(taskId, isLowResolution);
+            }
+        } catch (RemoteException e) {
+            Log.w(TAG, "Failed to retrieve task snapshot", e);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "TaskSnapshotManager reflection failed (see #545)", e);
+        }
+        ...
+    }
+```
+
+- `convertRetrieveFlag` はreflectionせず、bytecode確認済みの定数写像（`? 2 : 1`）をinlineする
+  （review勧告どおりpatch surface最小）。
+- 既存catchへ `ClassNotFoundException` を追加（`Class.forName` はchecked例外を送出するため
+  compile成立。第4破壊の直接参照式とは異なる）。既存 `RemoteException` catchはそのまま。
+- degrade先は既存のnull経路（`snapshot == null` → 空 `ThumbnailData`）で、新規の経路は増やさない。
+- **API <=36は既存の直接 `(IZ)` 1経路がbyte identical**（UDC分岐は存在しない）。
+  qva/qvb oracle: NoSuchMethodError 0＋failure marker 0＋実thumbnailレンダリング＋
+  hiddenapi denial補助観測（spec AC-10c）。
+
 ## migration
 
 - なし（DB・preference・schemaに触れない）。
@@ -193,8 +249,9 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 ## rollback
 
 - 実装PR全体をrevertすればbase `e214b7b190` に戻る（単一機能commit群）。
-  compat修正4 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
-  `taskbar_phone_size` literal化＋`KeyButtonRipple` guard）と
+  compat修正5 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
+  `taskbar_phone_size` literal化＋`KeyButtonRipple` guard＋`ActivityManagerWrapper` TaskSnapshotManager
+  分岐）と
   検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
   不成立時はcandidate commitだけをrevertして36維持とできる（spec Owner decision 7 / AC-6）。
   reconciliationの旧candidate `e2fe6f80df` とそのrevert pairはsuperseded historyとして保持される
@@ -203,6 +260,16 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 
 ## 実装順序（candidate model。spec Owner decision 7/8/9＋post-guard追記（Owner decision 10））
 
+> **v4追記（Owner decision 11。revert方式）**: qa/qb検証（証跡 `71c6251203`）で第4修正の成立
+> （bind完了・4 signature 0件）を確認後、第五破壊（`getTaskSnapshot`）がoverview経路で発覚。
+> 残存step: ①**明示revert `40eb5dbfab`（maxSdk 36へ戻す。revert pairをsuperseded historyとして
+> READMEへ記録）** → ②`ActivityManagerWrapper` fixを1 commit適用（実装詳細4）→ ③debug build＋
+> **qva (a)をcompat 5修正headで実施** → ④新maxSdk 37 candidate commit → debug/release build →
+> **qvb (b)+G3を新candidate SHAで実施**（prefix `qva-*`/`qvb-*`）。旧 `40eb5dbfab` とqa/qb
+> artifactは第五破壊のdiagnostic/superseded evidenceとしてREADMEへ記録。
+> (e)/(f)/hiddenapi/wmshellの再利用契約はv3どおり。qva/qvbでは新reflectionのhiddenapi denial
+> 補助観測とfailure marker確認を追加。
+>
 > 実行履歴: 以下step 1〜9のうち1〜7相当は実施済み（commit `416273ce2f`〜`2987e525bd`、
 > pre-guard diagnostic run、post-guard最終matrix `(e)/(f)` PASS・`(a)/(b)`が第四破壊でFAIL。
 > **post-guard証跡はcommit `fc5169566c` に固定**）。Owner decision 10に従い、残存stepは次のとおり:
@@ -243,7 +310,7 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
    根拠として保持）。
 7. **〔Owner decision 10前のhistorical execution〕** `quickstepMaxSdk` 36→37を **検証candidate
    commit**（`feat(545): raise quickstepMaxSdk ...`）として適用し、debug/release両build済み
-   （旧candidate `2987e525bd`。v3では pea: の再candidateが正本）。**matrix (b)/(f) はcandidate
+   （旧candidate `2987e525bd`。v3では再candidateが正本（typo修正。v4では更に新candidateが正本））。**matrix (b)/(f) はcandidate
    release APK、matrix (e) はcandidate debug APKで実施**(historical。v3では (b)=再candidate、
    (e)/(f)=旧candidate `2987e525bd` の再利用)。
 8. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
@@ -272,20 +339,25 @@ rm→push→chmod→restorecon→reboot。priv-app配置は `/product/priv-app/`
 allowlist XML。run毎に `cmd overlay lookup` とSystemUI `mRecentsComponentName` の一致を
 preflight証跡化）。
 
-- (a) API 37 debug＋debug用overlay＋priv-app（**v3実行SHA: compat修正4 commits適用後head。qa-run**。
-  historical: 3-commit版は `fc5169566c` のpre-guard側）: bind成功・
-  クラッシュ無し（#524 signature非再現をlogcatで確認）・`isConnected=true`・
+- (a) API 37 debug＋debug用overlay＋priv-app（**v4実行SHA: compat修正5 commits適用後head。prefix `qva-*`**。
+  historical: qa-run（4修正head `68e68a6a45`）と3-commit版は `71c6251203` / `fc5169566c` 側の
+  diagnostic/superseded記録）: bind成功・
+  クラッシュ無し（4修復signature＋`getTaskSnapshot` NoSuchMethodError 0をlogcatで確認）・
+  **reflection failure marker 0・実thumbnailレンダリング**（AC-10c）・新reflection起因hiddenapi
+  denial補助観測（0件）・`isConnected=true`・
   APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
   同logcatからhiddenapi観測抜粋（AC-3）と `PipInputConsumer` 監視（AC-1付帯）。
-- (b) API 37 release（maxSdk 37のcandidate build。**実行SHA: candidate commit**）＋release用overlay＋
-  priv-app: preflight・`compatible=true`（"disabling recents" 無し・sheet非表示screenshot）・
-  overview成立・task切替。
+- (b) API 37 release（maxSdk 37のcandidate build。**v4実行SHA: 新candidate commit。prefix `qvb-*`**）＋
+  release用overlay＋priv-app: preflight・`compatible=true`（"disabling recents" 無し・sheet非表示
+  screenshot）・overview成立（**実thumbnailレンダリング＋reflection failure marker 0**）・task切替。
   G3: overview→task切替の遷移時間帯logcatを取得し `ActivityTaskManager` BAL block有無を判定（AC-4）。
+  hiddenapi補助観測へ **新TaskSnapshotManager call由来denialの監視** を追加。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。**v3: image上のflags table不在（`d-hiddenapi-logcat-post.txt` /
-  `hiddenapi-flags-post.txt`。`fc5169566c`）を確定証跡として再利用**。qa-/qb-runで同種logcatの
-  補助観測が取れる場合はacceptanceの既取得PASSを置き換えない。
+  `hiddenapi-flags-post.txt`。`fc5169566c`）を確定証跡として再利用**。qva/qvbで同種logcat
+  （新TaskSnapshotManager call由来denialの監視を含む）の補助観測が取れる場合はacceptanceの
+  既取得PASSを置き換えない。
 - (e) API 36 debug＋debug用overlay＋priv-app（**v3: 再実行しない。実行SHA: 旧candidate
   `2987e525bd`、candidate debug APK使用。`fc5169566c` 固定のpost-guard証跡（`me-*`）を再利用**）:
   bind・overview成立・task切替のprovider path機能回帰なし＋**Taskbar geometry正規化のrecord**

@@ -2,7 +2,7 @@
 issue: "#545"
 status: accepted
 requirements: []
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
@@ -166,6 +166,35 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    `me-apk-dimen-check.txt`（48dp pin静的確認）・`d-hiddenapi-logcat-post.txt`/`g3-bal-check-post.txt`）。
    (e)/(f)/hiddenapi/wmshell のPASS結果は本修正で変わり得ない（pathはAPI 37のTaskbar初期化のみ）
    ため、第10 decision適用後の再検証は (a)/(b)+G3 のみを対象とする。
+11. **qa検証（2026-10-08、実行SHA `68e68a6a45`）で実測された第五のAPI 37.0破壊
+   （`ActivityManagerWrapper.getTaskThumbnail` の `IActivityTaskManager.getTaskSnapshot(int, boolean)`
+   削除による `NoSuchMethodError`）も本Issueのprovider修復範囲に含め、当該呼出し1箇所へ
+   **API 37+で `android.window.TaskSnapshotManager` 経由のreflection呼出し**を追加する
+   （lookup失敗時は既存のnull経路どおり空 `ThumbnailData` へdegrade。crashしない）**。根拠:
+   (a) 一次対照 `gettasksnapshot-class-contrast.txt`（実装branch commit `1777e348c9`）:
+   compile classpath（framework-16.jar）の `(IZ)` formは37.0 imageのframework.jarから削除され、
+   deviceは `(II)` / `(IJI)` のみ。crash stackは `ActivityManagerWrapper.getTaskThumbnail:140`（
+   overview thumbnail path。provider構成時のみ到達）。
+   (b) 上流自身の修正（android17-release `ActivityManagerWrapper`）が同一pathを
+   `TaskSnapshotManager.getInstance().getTaskSnapshot(taskId, convertRetrieveFlag(isLowResolution))`
+   へ移行済みであり、本修正はそのcompile時参照できない（framework-16.jarにclass不在）
+   reflection版である。`TaskSnapshotManager` は37.0 imageでapp-visible（class descriptor実測。
+   第4破壊のhidden_from_bootclasspath対照）。
+   (c) `convertRetrieveFlag` の意味論（`isLowResolution ? RESOLUTION_LOW(2) : RESOLUTION_HIGH(1)`）は
+   上流source確認済み（同対照file）。
+   (d) `SDK_INT >= 37` gate（リテラル。`InputConsumerController` のAPI_37定数と同様）により
+   API <=36の経路（既存の直接 `(IZ)` 1経路。base `e214b7b190` にUDC 3-arg reflection分岐は
+   存在しない）はbyte identical。matrix (e)/(f) のPASS結果は引き続き有効。
+   (e) 変更は1 file 1箇所の最小bridge（Owner decision 8/10と同型）。qa/qb検証でのbind完了
+   （両leg `isConnected=true`・4 signature 0件）は第4修正の成立を実証しており、
+   `qa-crash-check.txt` / `qa-preflight.txt` / `qb-crash-check.txt` / `qb-preflight.txt`
+   （`71c6251203`）を第11 decisionの根拠証跡とする。
+   (f) reflection targetの実image一次出力（`getInstance`/`getTaskSnapshot(II)`/`convertRetrieveFlag(Z)I`
+   descriptor。`tasksnapshotmanager-reflection-targets.txt`。実装branch commit `65729184c8`）で
+   対象methodの存在を固定済み。dex metadataのhiddenapiラベルは `createInputConsumer`（qa/qbで
+   reflection成功実証済み）と同一値のためruntime denialと相関しないが、これを実行時の可否の
+   仮定には使わず、fixへ識別可能なfailure log markerを設け、qva/qvbで **marker 0＋実thumbnail
+   レンダリング** をoracleとする（hiddenapi denialの補助観測も実施）。
 
 ## Baseline（本specの前提事実）
 
@@ -201,6 +230,12 @@ PR #546。#524検証証跡とADR-0018 revision 8を含む）固定。実装branc
   `android/window/DesktopExperienceFlags.class` に存在。API 37.0 imageのframework.jarからは削除済みを
   dexdump実測）を参照。provider bind → `TouchInteractionService.onUserUnlocked:889` →
   `TaskbarManager.onUserUnlocked` で毎回実行され、37.0 image上で `NoSuchFieldError` クラッシュ。
+- 第五破壊の対象（Owner decision 11）: `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java:140`
+  （`getTaskThumbnail` 内の `getService().getTaskSnapshot(taskId, isLowResolution)`。compileは
+  framework-16.jarの `(IZ)` form。37.0 imageで削除済み（`(II)`/`(IJI)`のみをdexdump実測）。
+  overview thumbnail path（provider構成時のみ到達）で `NoSuchMethodError`。base `e214b7b190` の
+  同methodは直接 `(IZ)` 呼出し1経路のみで、reflection分岐は存在しない（v15系main側fileとの
+  取り違え訂正。review round 2）。
 - 第四破壊の対象（Owner decision 10）: `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java:108`
   （`SDK_INT_FULL >= 3600001` ガード下で `android.companion.virtualdevice.flags.Flags.viewconfigurationApis()`
   を呼ぶ。compileはframework-16.jarの当該classで解決。API 37.0 imageではapp-visibleなclassが
@@ -272,6 +307,16 @@ When SystemUIが `TouchInteractionService` をbindし（user unlock後）、rece
 Then `registerInputConsumer` でクラッシュせず、`LauncherProxyService.isConnected=true` となり、
 overview表示・task切替が破綻なく成立する。#524のfailure signature
 （`NoSuchMethodError ... createInputConsumer(...InputChannel;)V`）は再現しない。
+
+### Scenario: getTaskSnapshot削除環境でoverview thumbnail読み込みがクラッシュせず継続する
+
+Given API 37.0 image（`IActivityTaskManager.getTaskSnapshot(int, boolean)` が削除済み。
+一次対照 `gettasksnapshot-class-contrast.txt`）でprovider構成済みLawnchairがbindされ、
+overview表示により `TaskThumbnailCache` がthumbnailを読み込む
+When `ActivityManagerWrapper.getTaskThumbnail` が呼ばれる
+Then API 37+では `TaskSnapshotManager` 経由のreflection呼出しが行われ、snapshot取得の成否にかかわらず
+launcher processはクラッシュしない。reflection lookup失敗時は既存のnull経路どおり空 `ThumbnailData`
+を返す。API 36以下では既存経路（直接 `(IZ)` 1経路）がbyte identicalに維持される。
 
 ### Scenario: flag class欠損環境でKeyButtonRippleがクラッシュせず旧tap timeoutへfallbackする
 
@@ -379,12 +424,18 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
   が実装PR内で反映されている（candidate不成立時はrevision 9を適用しない）。
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
-- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**のv3 mapping
-  （(a)qa-run: **compat修正4 commits適用後head**、(b)/G3 qb-run: **新candidate commit**、
-  (e)/(f)＋hiddenapi/wmshellの再利用分: **旧candidate `2987e525bd`**）と使用APK
-  ((a): compat 4修正debug、(b)/(f): candidate release〔(b)は新candidate、(f)は旧candidate〕、
-  (e): 旧candidate debug)の対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが
-  起きない（再利用分の一次出力は`fc5169566c` 固定のpost-guard matrix（ma-〜mf-）と各行で対応づける）。
+- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**のv4 mapping
+  （qva (a): **compat修正5 commits適用後head**、qvb (b)/G3: **新candidate commit**、
+  (e)/(f)＋hiddenapi/wmshellの再利用分: **旧candidate `2987e525bd`**。qa/qb diagnostic run
+  （第4修正実証・第五破壊発見）は旧candidate `40eb5dbfab`＋`71c6251203` 証跡として別行）と
+  使用APKの対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない
+  （再利用分の一次出力は`fc5169566c` 固定のpost-guard matrix（ma-〜mf-）と各行で対応づける）。
+- [ ] AC-10c: v4再検証matrix qva (a)/qvb (b) で `getTaskSnapshot` の `NoSuchMethodError` と
+  reflection failure log marker（識別可能なtag。plan実装詳細4）が **ともに0件** で、
+  (a) でbind完了・overview成立（**実thumbnailのレンダリングを含む**）・task切替、(b) で
+  `compatible=true`・overview/task切替・G3確定観測が成立する。加えてqva/qvbのlogcatに
+  新reflection呼出し起因のhiddenapi denialが無いこと（補助観測）。`TaskSnapshotManager`
+  reflectionのdiffがcode reviewで確認され、API 36以下の経路不変が確認されている。
 - [ ] AC-10b: post-guard matrix (a)/(b) で新たに実測された `KeyButtonRipple` の
   `NoClassDefFoundError`（`android.companion.virtualdevice.flags.Flags`）が出ず、(a) で
   bind完了（`isConnected=true`）・overview成立・task切替、(b) で `compatible=true`・sheet非表示・
@@ -411,8 +462,10 @@ class存在環境・`SDK_INT_FULL<3600001` 環境（API 36）の挙動不変が�
 | AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
-| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。**pre-guard diagnostic run（Owner decision 8/9の証跡。commit `f5a3977281`〜`5c6d40a56d`）とpost-guard matrix（Owner decision 10の証跡＋(e)/(f)/hiddenapi/wmshell再利用分。commit `fc5169566c`）をv3最終matrixと混同しない別行で記載**）＋packet記載 |
+| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。pre-guard diagnostic run（`f5a3977281`〜`5c6d40a56d`）・post-guard matrix（`fc5169566c`。再利用分）・qa/qb diagnostic run（`71c6251203`。第五破壊diag/superseded）をv4最終matrix（qva/qvb）と混同しない別行で記載）＋packet記載 |
 | AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError / Resources$NotFoundException 0件・bind完了）＋guard/dimen diff（code review） |
+| AC-10b | v3再検証matrix (a)/(b)のruntime証跡（KeyButtonRipple NoClassDefFoundError 0件・bind完了/compatible=true。qa実績: bind成立を `qa-crash-check.txt` が実証）＋guard diff（code review） |
+| AC-10c | v4再検証matrix qva (a)/qvb (b)のruntime証跡（NoSuchMethodError 0件＋failure marker 0件＋実thumbnailレンダリング＋hiddenapi補助観測）＋reflection diff（code review） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
 消失すること」自体が原因であり、JVM/Robolectricでは再現不能。振る舞いの一次証拠は
@@ -430,6 +483,18 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
   （実行SHA=candidate commit）→ ⑦全成立ならcandidate保持＋ADR-0018 rev 9。
   不成立ならcandidate drop（36維持）＋failure evidence記録。
+  **v4追記（Owner decision 11。実行手順。revert方式）**: qa/qb検証（実行SHA `68e68a6a45` /
+  `40eb5dbfab`。証跡は実装branch commit **`71c6251203`** に固定: `qa-crash-check.txt`/
+  `qa-preflight.txt`/`qb-crash-check.txt`/`qb-preflight.txt`）で **bind完了（両leg
+  `isConnected=true`・4 signature 0件・(b)は`compatible=true`/G3遷移開始）を確認**したうえで
+  第五破壊がoverview thumbnail pathで発覚したため、**`71c6251203` の後で明示revert
+  `40eb5dbfab`（maxSdk 36へ戻す。旧candidateとrevert pairはsuperseded historyとして保持し
+  READMEへ記録）→ `ActivityManagerWrapper` fix → debug build＋qva (a)をcompat 5修正headで実施 →
+  新maxSdk 37 candidate commit → debug/release build＋qvb (b)+G3を新candidate SHAで実施**
+  （prefix `qva-*`/`qvb-*`）。旧 `40eb5dbfab` とqa/qb artifactは第五破壊のdiagnostic/superseded
+  evidenceとしてREADMEへ記録。(e)/(f)/hiddenapi/wmshellの再利用契約はv3どおり（旧candidate
+  `2987e525bd`＋`fc5169566c`証跡）。**qva/qvbの新reflection呼出しについてhiddenapi denialの
+  補助観測を追加**（既存hiddenapi PASSは本callを未実行のため）。
   **post-guard追記（Owner decision 10。実行手順）**: post-guard matrix (a)/(b) が第四破壊
   （`KeyButtonRipple`）でFAILしたため、post-guard証跡commit **`fc5169566c`** の後に
   **`2987e525bd` を明示revertしてmaxSdk 36へ戻す → `KeyButtonRipple` guard → debug build＋
@@ -452,10 +517,13 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   `e70a58c1fd` / `206850b3d7` に固定し、AC-9対応表の別行「pre-guard diagnostic run」として
   最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
-  - (a) API 37 debug @ **compat修正4 commits適用後head（v3。qa-run）**＋debug用overlay＋priv-app → クラッシュ無し、
-    `isConnected=true`、overview成立、task切替成功。
-  - (b) API 37 release @ candidate commit（maxSdk 37）＋release用overlay＋priv-app →
-    `compatible=true`、overview成立、sheet非表示、task切替成功。
+  - (a) API 37 debug @ **compat修正5 commits適用後head（v4。prefix `qva-*`）**＋debug用overlay＋priv-app →
+    クラッシュ無し（4修復signature＋`getTaskSnapshot` NoSuchMethodError 0）、
+    reflection failure marker 0、**実thumbnailレンダリング**、`isConnected=true`、overview成立、
+    task切替成功。新reflection呼出し起因のhiddenapi denial補助観測（0件）。
+  - (b) API 37 release @ **新candidate commit（maxSdk 37。prefix `qvb-*`）**＋release用overlay＋priv-app →
+    `compatible=true`、overview成立（reflection failure marker 0・**実thumbnailレンダリング**）、
+    sheet非表示、task切替成功。新reflectionのhiddenapi denial補助観測（0件）。
   - (d) hiddenapi一次出力: (a)/(b)のregisterInputConsumer実行時間帯のlogcatを取得し
     hidden API access系のdenial/block有無を判定。可能ならroot shellで
     `hiddenapi list`（またはflags table）から該当signature行を一次取得する。
@@ -470,8 +538,8 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
     launcher crash無し・gate/sheet状態）を再利用する**
     （#524 (d)-API36相当の観測を今回の修正後buildで取得済み）。
   - wmshell監視・hiddenapi観測（matrix (d)）: **v3では旧candidate `2987e525bd` の既取得PASSを
-    `fc5169566c` 証跡から再利用する**（(a)/(b)のqa-/qb-run logcatで同種ログが自然に再取得される
-    場合は補助観測であり、acceptanceの既取得PASSを置き換えない）。
+    `fc5169566c` 証跡から再利用する**（qva/qvbのlogcatで同種ログ〔新TaskSnapshotManager call由来
+    denialを含む〕が自然に再取得される場合は補助観測であり、acceptanceの既取得PASSを置き換えない）。
 - 観測手段: 操作結果、logcat、screenshot/録画をevidence dirへ保存しPRへ要約する。
   **evidence READMEにはmatrixごとの実行SHAの対応表を必ず記載する**（AC-9）。
 - **G3**: (b)構成を主証跡としてScenario「G3確定観測」を実施する（#527 spec G3節の委譲条件の完結）。
@@ -553,3 +621,11 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   `KeyButtonRipple.java` 行追加、build.gradle行を4 commitsへ同期、matrix詳細をv3表記へ更新。
   旧3-commit記述はhistorical明示）。(4) plan Statusを「revision 2 accepted / revision 3 proposed
   addendum」へ更新。
+- 2026-10-08: Addendum v4（qa検証結果にもとづくOwner decision 11追加）— qa (a)（実行SHA
+  `68e68a6a45`、native density）で第4修正成立（bind完了 `isConnected=true`・4 signature 0件）を
+  実証したうえで、第五破壊（`ActivityManagerWrapper.getTaskThumbnail` の `getTaskSnapshot(IZ)`
+  削除。overview thumbnail path。`NoSuchMethodError` 実測）を発見。上流android17-releaseが
+  `TaskSnapshotManager` 経由へ移行済みであること（`gettasksnapshot-class-contrast.txt`。
+  実装branch commit `1777e348c9`）にもとづき、API 37+での同manager経由reflection呼出し
+  （lookup失敗時は空 `ThumbnailData` degrade）を本Issue範囲へ追加（AC-10c・新Scenario・
+  実施順序v4追記）。qa/qb再実施は第5修正後の新candidateで実施（(e)/(f)再利用契約は不変）。
