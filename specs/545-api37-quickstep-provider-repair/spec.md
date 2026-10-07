@@ -213,6 +213,18 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    byte identical。(d) 変更は1 file 1箇所の最小bridge（Owner decision 8/10/11と同型）。
    (e) dex metadataのhiddenapiラベルは第11 decisionと同様にruntime denialと相関させず、
    failure marker＋qva/qbv再検証での実thumbnailレンダリングをoracleとする。
+13. **qvb検証（2026-10-08、実行SHA `212097886b`）で実測された第七の破壊
+   （`IActivityTaskManager.takeTaskSnapshot(int, boolean)` 削除による `NoSuchMethodError`。
+   `takeTaskThumbnail` はRemoteExceptionのみcatchのためlauncher processがクラッシュ）も
+   本Issueのprovider修復範囲に含め、当該呼出し1箇所へ **API 37+で `TaskSnapshotManager`
+   経由のreflection呼出し**（第11 decisionと同一target class）を追加する**。根拠:
+   (a) 一次対照 `taketasksnapshot-contrast.txt`（実装branch commit `3f31768d04`）: device dexdumpで
+   compiled `(IZ)` formが消失（`(IZZZ)` のみ）、`TaskSnapshotManager.takeTaskSnapshot(int, boolean)`
+   がapp-visible・PUBLICで実在、上流android17-releaseの同methodが同一manager経路へ移行済み。
+   (b) qvbで3回のlauncher FATAL（bind window x2・G3 window x1）を `qbv-crash-check.txt`（
+   `8108e3a1aa`）が実測。(c) `SDK_INT >= 37` gateでAPI <=36はbyte identical。(d) 1 file 1箇所の
+   最小bridge。failureは第11/12 decisionと同型のmarker付きlogで既存の空 `ThumbnailData`
+   経路へdegradeする。
 
 ## Baseline（本specの前提事実）
 
@@ -325,6 +337,16 @@ When SystemUIが `TouchInteractionService` をbindし（user unlock後）、rece
 Then `registerInputConsumer` でクラッシュせず、`LauncherProxyService.isConnected=true` となり、
 overview表示・task切替が破綻なく成立する。#524のfailure signature
 （`NoSuchMethodError ... createInputConsumer(...InputChannel;)V`）は再現しない。
+
+### Scenario: takeTaskSnapshot削除環境でlauncherがクラッシュせずempty thumbnailへdegradeする
+
+Given API 37.0 image（`IActivityTaskManager.takeTaskSnapshot(int, boolean)` が削除済み。
+一次対照 `taketasksnapshot-contrast.txt`）でprovider構成済みLawnchairが `takeTaskThumbnail` を
+呼ぶ
+When `TaskSnapshotManager.takeTaskSnapshot(taskId, true)` のreflection呼出しが行われる
+Then 成功時はsnapshotから `ThumbnailData` が構成され、失敗時はmarker付きlogを残して既存の
+空 `ThumbnailData` 経路へdegradeする（launcher processはクラッシュしない）。
+API <=36では既存の直接 `(IZ)` 呼出しがbyte identicalに維持される。
 
 ### Scenario: getHardwareBuffer廃止環境でthumbnail bitmapがwrapToBitmap経由で取得される
 
@@ -453,13 +475,16 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
 - [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**のv5 mapping
-  （qva2 (a): **compat修正6 commits適用後head**、qvb2 (b)/G3: **新candidate commit**、
+  （qva2 (a): **compat修正7 commits適用後head**、qvb2 (b)/G3: **新candidate commit**、
   (e)/(f)＋hiddenapi/wmshellの再利用分: **旧candidate `2987e525bd`**）と使用APKの対応、
   およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない。diagnostic run群
   （pre-guard: `f5a3977281`〜`5c6d40a56d`／post-guard＋(e)(f)再利用元: `fc5169566c`／
   qa-qb: `71c6251203`（第4修正実証＋第五破壊diag）／qva-qbv: `8babd3bb10`（第5修正実証＋
   第六破壊diag。旧candidate `212097886b`））は **最終matrix（qva2/qvb2）と混同しない別行** で
   記載する（再利用分の一次出力は`fc5169566c` 固定のpost-guard matrix（ma-〜mf-）と各行で対応づける）。
+- [ ] AC-10e: v5再検証matrix qva2 (a)/qvb2 (b) で `takeTaskSnapshot` の `NoSuchMethodError`
+  （第7破壊）と `takeTaskSnapshot` reflection failure markerが **ともに0件** で、launcher FATALが
+  全windowで0件であること。diffがcode reviewで確認され、API <=36の経路不変が確認されている。
 - [ ] AC-10d: v5再検証matrix **qva2 (a)/qvb2 (b)** で、overview task cardに **実app screenshotの
   thumbnailがレンダリングされる**（黒fallbackでないことをscreenshotで実証）。既存5 crash
   signature・`TaskSnapshotManager reflection failed` marker・`TaskSnapshot.wrapToBitmap
@@ -503,6 +528,7 @@ class存在環境・`SDK_INT_FULL<3600001` 環境（API 36）の挙動不変が�
 | AC-10b | v3再検証matrix (a)/(b)のruntime証跡（KeyButtonRipple NoClassDefFoundError 0件・bind完了/compatible=true。qa実績: bind成立を `qa-crash-check.txt` が実証）＋guard diff（code review） |
 | AC-10c | v4再検証matrix qva (a)/qvb (b)のruntime証跡（NoSuchMethodError 0件＋failure marker 0件＋実thumbnailレンダリング＋hiddenapi補助観測）＋reflection diff（code review） |
 | AC-10d | v5再検証matrix qva2 (a)/qvb2 (b)のruntime証跡（実app screenshot thumbnailレンダリングscreenshot＋wrapToBitmap failure marker 0）＋reflection diff（code review） |
+| AC-10e | v5再検証matrix qva2 (a)/qvb2 (b)のruntime証跡（takeTaskSnapshot NoSuchMethodError 0・marker 0・launcher FATAL 0）＋reflection diff（code review） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
 消失すること」自体が原因であり、JVM/Robolectricでは再現不能。振る舞いの一次証拠は
@@ -520,6 +546,11 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
   （実行SHA=candidate commit）→ ⑦全成立ならcandidate保持＋ADR-0018 rev 9。
   不成立ならcandidate drop（36維持）＋failure evidence記録。
+  **v5追記2（Owner decision 13。qvb検証で第7破壊追加）**: qvbで `takeTaskSnapshot` の
+  launcher FATAL x3を実測（`taketasksnapshot-contrast.txt`。実装branch commit `3f31768d04`）。
+  第6修正（`ThumbnailData`）と第7修正（`ActivityManagerWrapper.takeTaskThumbnail`）を
+  同一v5 revisionで適用し、compat 7修正headとする。oracleへmarker 0＋launcher FATAL 0を追加
+  （AC-10e）。
   **v5追記（Owner decision 12。実行手順）**: qva検証（実行SHA `bdea76ea75`。`qva-crash-check.txt`/
   `qva-preflight.txt`）で第5修正の成立（bind・overview・task切替・5 signature 0・reflection
   marker 0）を確認したうえでthumbnail黒fallback（第6破壊。クラッシュなしの視覚劣化）が発覚
@@ -562,13 +593,13 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   `e70a58c1fd` / `206850b3d7` に固定し、AC-9対応表の別行「pre-guard diagnostic run」として
   最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
-  - (a) API 37 debug @ **compat修正6 commits適用後head（v5。prefix `qva2-*`）**＋debug用overlay＋priv-app →
-    クラッシュ無し（5修復signature＋`getTaskSnapshot` NoSuchMethodError 0）、
-    両reflection failure marker 0、**実thumbnailレンダリング（黒fallbackでない）**、
+  - (a) API 37 debug @ **compat修正7 commits適用後head（v5。prefix `qva2-*`）**＋debug用overlay＋priv-app →
+    クラッシュ無し（6修復signature＋`getTaskSnapshot`/`takeTaskSnapshot` NoSuchMethodError 0）、
+    3reflection failure marker 0（TaskSnapshotManager get/take・wrapToBitmap）、**実thumbnailレンダリング（黒fallbackでない）**、
     `isConnected=true`、overview成立、task切替成功。新reflection呼出し起因のhiddenapi denial
     補助観測（0件）。
   - (b) API 37 release @ **新candidate commit（maxSdk 37。prefix `qvb2-*`）**＋release用overlay＋priv-app →
-    `compatible=true`、overview成立（両reflection failure marker 0・**実thumbnailレンダリング**）、
+    `compatible=true`、overview成立（3reflection failure marker 0（TaskSnapshotManager get/take・wrapToBitmap）・**実thumbnailレンダリング**）、
     sheet非表示、task切替成功、G3確定観測。新reflectionのhiddenapi denial補助観測（0件）。
   - (d) hiddenapi一次出力: (a)/(b)のregisterInputConsumer実行時間帯のlogcatを取得し
     hidden API access系のdenial/block有無を判定。可能ならroot shellで
@@ -683,3 +714,10 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   supported pixel source `wrapToBitmap()`（compile classpath不在）のreflection呼出しを
   本Issue範囲へ追加（AC-10d・新Scenario・実施順序v5追記）。再検証は第6修正後の新candidateで
   qva2 (a)/qvb2 (b)+G3を実施（(e)/(f)等の再利用契約は不変）。
+- 2026-10-08: Addendum v5 round 1対応＋Owner decision 13追加（PR #553コメント）—
+  (1) qva/qbv runtime証跡を実装branch commit `8108e3a1aa` にcommit固定（pre-v5 qva/qbvを
+  第六破壊diagnostic行としてREADME別行契約へ明記）。(2) qva2/qvb2契約をAC-10d/Verification/
+  plan matrixへ全面同期。(3) qvbで第7破壊（`takeTaskSnapshot(IZ)` 削除によるlauncher FATAL x3。
+  `taketasksnapshot-contrast.txt`。実装branch commit `3f31768d04`）を発見し、第6修正
+  （wrapToBitmap）と第7修正（TaskSnapshotManager takeTaskSnapshot reflection）を同一v5 revisionで
+  適用する判断をOwner decision 13として追加（AC-10e・新Scenario・compat 7修正head）。

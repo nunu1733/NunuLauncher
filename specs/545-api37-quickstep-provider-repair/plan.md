@@ -401,11 +401,12 @@ preflight証跡化）。
   denial補助観測（0件）・`isConnected=true`・
   APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
   同logcatからhiddenapi観測抜粋（AC-3）と `PipInputConsumer` 監視（AC-1付帯）。
-- (b) API 37 release（maxSdk 37のcandidate build。**v4実行SHA: 新candidate commit。prefix `qvb-*`**）＋
+- (b) API 37 release（maxSdk 37のcandidate build。**v5実行SHA: 新candidate commit。prefix `qvb2-*`**）＋
   release用overlay＋priv-app: preflight・`compatible=true`（"disabling recents" 無し・sheet非表示
-  screenshot）・overview成立（**実thumbnailレンダリング＋reflection failure marker 0**）・task切替。
+  screenshot）・overview成立（**3reflection failure marker 0・実thumbnailレンダリング**）・task切替・
+  launcher FATAL 0。
   G3: overview→task切替の遷移時間帯logcatを取得し `ActivityTaskManager` BAL block有無を判定（AC-4）。
-  hiddenapi補助観測へ **新TaskSnapshotManager call由来denialの監視** を追加。
+  hiddenapi補助観測へ **新TaskSnapshotManager/wrapToBitmap call由来denialの監視** を追加。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。**v3: image上のflags table不在（`d-hiddenapi-logcat-post.txt` /
