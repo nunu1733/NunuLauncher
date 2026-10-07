@@ -1,10 +1,14 @@
 ---
 issue: "#545"
-status: draft
+status: accepted
 updated: 2026-10-07
 ---
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
+
+> Status: accepted revision 1（2026-10-07。PR #548 review round 3でblocking 0・Clear
+> （[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)。
+> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する）。
 
 **Risk tier: H**（[spec.md](./spec.md) 冒頭の判定どおり。vendored upstream file変更＋provider bind path）。
 
