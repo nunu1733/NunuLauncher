@@ -127,8 +127,12 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    意図した修復（10dp誤解決 → 仕様値48dpへの正規化）** であり、matrix (e) で
    native-density screenshot＋overview/task切替に加え、この幾何正規化をrecordする。
    (c) ID解決先のlevel間差異は再発し得るため、baked IDに依存しないliteral化が最も破壊抵抗が高い。
-   値48dpは全levelの `navigation_bar_frame_height` → `@navigation_bar_height` dereference先と
-   一致する（sw900dp 56dp variantはtablet経路のreaderから到達しない）。
+   値48dpは確認対象level（SDK 35/37.2 table、image 36/37.0）の `navigation_bar_frame_height` →
+   `@navigation_bar_height` dereference先と一致し（API 35は静的table確認のみ。`api36-image-
+   framework-res-contrast.txt` §3'。runtime matrixは追加しない。sw900dp 56dp variantはtablet
+   経路のreaderから到達しない）。API 35でも現APKのbaked IDは別resource
+   （`notification_right_icon_headerless_margin` 20dp）へ誤解決するため、literal化は
+   quickstepMinSdk=35の範囲全体で意図した値を復元する。
    (d) `wm density 280` のaccommodationは **superseded pre-guard diagnostic run限定** であり
    （reversible。diagnostic runはOwner decision 8/9の証跡収集が目的）、**最終検証matrixはnative
    density（override無し）で実施し**、本修正が意図するphone profile経路をそのまま検証する。
@@ -245,8 +249,9 @@ When `TaskbarRecentAppsController` が `enableRecentTasksThrottle` を評価し�
 `TaskbarStashController` が `R.dimen.taskbar_phone_size` を解決する
 Then `NoSuchFieldError` をcatchしてthrottle無効（false）として継続し、`taskbar_phone_size` は
 literal値（48dp）として解決し、launcher processはクラッシュしない。provider bind完了
-（`isConnected=true`）に到達する。flag guardはflagが存在する環境（API 36等）で既存の挙動を
-変えない。dimen literal化はAPI 36では意図した正規化（`notification_2025_action_list_min_height`
+（`isConnected=true`）に到達する。flag guardはfield有無によらず `ATLEAST_BAKLAVA_1=false` の
+環境（API 36等。当該imageにfieldは無い）では参照自体を行わないため既存の挙動を変えない。
+dimen literal化はAPI 36では意図した正規化（`notification_2025_action_list_min_height`
 約10dpへの静かな誤解決 → 仕様値48dp）であり、API 36 matrix (e) で幾何正規化をrecordする。
 
 ### Scenario: API 36では旧formのcompile時参照が継続し回帰がない
@@ -336,8 +341,8 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 - [ ] AC-10: matrix (a) で `TaskbarRecentAppsController` の `NoSuchFieldError`
   （`ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX`）と `Resources$NotFoundException`
   （`taskbar_phone_size`）の **いずれも出ず**、native densityのままbind完了
-  （`isConnected=true`）へ到達する。flag guardのdiffはcode reviewで、API 36で挙動が変わらないこと
-  （`ATLEAST_BAKLAVA_1` false経路の不変）が確認される。dimen literal化のdiffは、36 imageでの
+  （`isConnected=true`）へ到達する。flag guardのdiffはcode reviewで、field有無によらず
+  `ATLEAST_BAKLAVA_1=false` で参照しない経路（API 36）の不変性が確認される。dimen literal化のdiffは、36 imageでの
   誤解決先（`api36-image-framework-res-contrast.txt`）と37.2 dereference先（48dp）への一次出力
   つきでreviewされ、「API 36での10dp→48dpは意図した正規化である」ことが確認される。
 
@@ -349,11 +354,11 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 | AC-2 | matrix (b) runtime証跡（同上＋sheet非表示screenshot。実行SHA: candidate commit） |
 | AC-3 | (a)/(b) logcatのhiddenapi観測抜粋＋取得可能なflags一次出力file |
 | AC-4 | (b)構成のG3 logcat抜粋＋PR本文のcreator mode判断記載 |
-| AC-5 | matrix (e)/(f) runtime証跡（実行SHA: candidate commit） |
+| AC-5 | matrix (e)/(f) runtime証跡（実行SHA: candidate commit）＋(e)のgeometry正規化record（post-fix screenshot＋APK静的確認＋誤解決先対照） |
 | AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
-| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。**pre-guard diagnostic run（Owner decision 8/9の証跡。commit `f5a3977281` / `e70a58c1fd`）を最終matrixと混同しない別行で記載**）＋packet記載 |
+| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。**pre-guard diagnostic run（Owner decision 8/9の証跡。commit `f5a3977281` / `e70a58c1fd` / `206850b3d7` / `5c6d40a56d`）を最終matrixと混同しない別行で記載**）＋packet記載 |
 | AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError / Resources$NotFoundException 0件・bind完了）＋guard/dimen diff（code review） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
@@ -384,14 +389,19 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   `e70a58c1fd` / `206850b3d7` に固定し、AC-9対応表の別行「pre-guard diagnostic run」として
   最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
-  - (a) API 37 debug @ compat修正commit＋debug用overlay＋priv-app → クラッシュ無し、
+  - (a) API 37 debug @ compat修正3 commits適用後head＋debug用overlay＋priv-app → クラッシュ無し、
     `isConnected=true`、overview成立、task切替成功。
   - (b) API 37 release @ candidate commit（maxSdk 37）＋release用overlay＋priv-app →
     `compatible=true`、overview成立、sheet非表示、task切替成功。
   - (d) hiddenapi一次出力: (a)/(b)のregisterInputConsumer実行時間帯のlogcatを取得し
     hidden API access系のdenial/block有無を判定。可能ならroot shellで
     `hiddenapi list`（またはflags table）から該当signature行を一次取得する。
-  - (e) API 36 debug＋debug用overlay＋priv-app → 回帰なし。
+  - (e) API 36 debug＋debug用overlay＋priv-app（candidate debug APK。**`wm density reset` 後の
+    native density**）→ bind・overview成立・task切替の従来oracleに加え、**Taskbar geometry
+    正規化のrecord**: post-fix screenshot（native density）＋built APKの
+    `taskbar_phone_size=48dp` 静的確認（aapt2 dump等）＋pre-fixの誤解決先
+    （`notification_2025_action_list_min_height` 10dp。`api36-image-framework-res-contrast.txt`）
+    との対応を証跡化。
   - (f) stock構成（overlay無し）API 37＋candidate release → 無影響。**API 36 stockの簡易確認も
     candidate releaseで実施する**（通常install→HOME設定→system overview継続・launcher crash無し・
     gate/sheet状態の記録。#524 (d)-API36相当の観測を今回の修正後buildで再取得する）。
@@ -454,3 +464,12 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   幾何正規化のrecord（native-density screenshot＋overview/task切替）を追加。(2) reconciliationを
   drop/resetから **revert方式** へ変更（証跡commitの到達可能性を維持）。(3) PR本文をheadの正本へ
   同期。
+- 2026-10-07: Addendum round 3（PR #549コメント。中1・低1、blocking無し）対応 —
+  (1) matrix (e)詳細へgeometry正規化oracleを同期（native density・post-fix screenshot・APKの
+  `taskbar_phone_size=48dp` 静的確認・誤解決先対照。Test oracle AC-5行も同期）。(a)の実行SHA表記を
+  「compat修正3 commits適用後head」へ統一、AC-9対応表の証跡commitへ `206850b3d7` / `5c6d40a56d` を
+  追加。(2) 旧文言の掃除: flag guardの「flagが存在する環境（API 36等）」表現を
+  「field有無によらず `ATLEAST_BAKLAVA_1=false` で参照しない」へ修正。誤解決先の正確な値
+  （10.000000dp）を一次出力fileへ追記し、minSdk 35分の静的table確認
+  （SDK 35: `0x01050283` = `notification_right_icon_headerless_margin` 20dp。runtime matrix不追加）
+  を§3'として記録。
