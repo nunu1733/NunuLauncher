@@ -407,7 +407,7 @@ class存在環境・`SDK_INT_FULL<3600001` 環境（API 36）の挙動不変が�
 | AC-2 | matrix (b) runtime証跡（同上＋sheet非表示screenshot。実行SHA: candidate commit） |
 | AC-3 | (a)/(b) logcatのhiddenapi観測抜粋＋取得可能なflags一次出力file |
 | AC-4 | (b)構成のG3 logcat抜粋＋PR本文のcreator mode判断記載 |
-| AC-5 | matrix (e)/(f) runtime証跡（実行SHA: candidate commit）＋(e)のgeometry正規化record（post-fix screenshot＋APK静的確認＋誤解決先対照） |
+| AC-5 | matrix (e)/(f) runtime証跡（**実行SHA: 旧candidate `2987e525bd`。再実行せず `fc5169566c` 固定のpost-guard証跡を再利用**）＋(e)のgeometry正規化record（post-fix screenshot＋APK静的確認＋誤解決先対照） |
 | AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
@@ -459,17 +459,19 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   - (d) hiddenapi一次出力: (a)/(b)のregisterInputConsumer実行時間帯のlogcatを取得し
     hidden API access系のdenial/block有無を判定。可能ならroot shellで
     `hiddenapi list`（またはflags table）から該当signature行を一次取得する。
-  - (e) API 36 debug＋debug用overlay＋priv-app（candidate debug APK。**`wm density reset` 後の
-    native density**）→ bind・overview成立・task切替の従来oracleに加え、**Taskbar geometry
-    正規化のrecord**: post-fix screenshot（native density）＋built APKの
-    `taskbar_phone_size=48dp` 静的確認（aapt2 dump等）＋pre-fixの誤解決先
-    （`notification_2025_action_list_min_height` 10dp。`api36-image-framework-res-contrast.txt`）
-    との対応を証跡化。
-  - (f) stock構成（overlay無し）API 37＋candidate release → 無影響。**API 36 stockの簡易確認も
-    candidate releaseで実施する**（通常install→HOME設定→system overview継続・launcher crash無し・
-    gate/sheet状態の記録。#524 (d)-API36相当の観測を今回の修正後buildで再取得する）。
-  - wmshell監視: (a)/(b)のlogcat全体から `PipInputConsumer` 起源の例外をgrep（0件確認または
-    failure signature記録）。
+  - (e) API 36 debug＋debug用overlay＋priv-app（**実行SHA: 旧candidate `2987e525bd`、candidate debug APK。
+    v3では再実行しない。`fc5169566c` 固定のpost-guard証跡（`me-*`）を再利用**）→
+    bind・overview成立・task切替の従来oracle＋**Taskbar geometry正規化のrecord**
+    （post-fix screenshot＋APKの `taskbar_phone_size=48dp` 静的確認＋pre-fix誤解決先10dp対照）は
+    いずれも `fc5169566c` の `me-*` fileで成立済み。
+  - (f) stock構成（overlay無し）API 37＋candidate release → 無影響。API 36 stockの簡易確認も
+    同様。**v3では再実行しない。実行SHA: 旧candidate `2987e525bd`、candidate release APK。
+    `fc5169566c` 固定のpost-guard証跡（`mf-*`: 通常install→HOME設定→system overview継続・
+    launcher crash無し・gate/sheet状態）を再利用する**
+    （#524 (d)-API36相当の観測を今回の修正後buildで取得済み）。
+  - wmshell監視・hiddenapi観測（matrix (d)）: **v3では旧candidate `2987e525bd` の既取得PASSを
+    `fc5169566c` 証跡から再利用する**（(a)/(b)のqa-/qb-run logcatで同種ログが自然に再取得される
+    場合は補助観測であり、acceptanceの既取得PASSを置き換えない）。
 - 観測手段: 操作結果、logcat、screenshot/録画をevidence dirへ保存しPRへ要約する。
   **evidence READMEにはmatrixごとの実行SHAの対応表を必ず記載する**（AC-9）。
 - **G3**: (b)構成を主証跡としてScenario「G3確定観測」を実施する（#527 spec G3節の委譲条件の完結）。

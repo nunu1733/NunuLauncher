@@ -239,11 +239,11 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
    で実施**（実行SHAをevidence READMEへ記録。中間証跡: ①commit単体時点の2026-10-07 diagnostic run
    （wm density 280）はcommit `f5a3977281` / `e70a58c1fd` / `206850b3d7` に固定しOwner decision 8/9の
    根拠として保持）。
-7. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
-   として適用し、`assembleLawnWithQuickstepGithubDebug` と `assembleLawnWithQuickstepGithubRelease`
-   の **両方をbuild**（candidate debug/release APK。APKごとのsha256をevidence READMEへ記録）。
-   **matrix (b)/(f) はcandidate release APK、matrix (e) はcandidate debug APKで実施**
-   （実行SHA=candidate commitをevidence READMEへ記録）。
+7. **〔Owner decision 10前のhistorical execution〕** `quickstepMaxSdk` 36→37を **検証candidate
+   commit**（`feat(545): raise quickstepMaxSdk ...`）として適用し、debug/release両build済み
+   （旧candidate `2987e525bd`。v3では pea: の再candidateが正本）。**matrix (b)/(f) はcandidate
+   release APK、matrix (e) はcandidate debug APKで実施**(historical。v3では (b)=再candidate、
+   (e)/(f)=旧candidate `2987e525bd` の再利用)。
 8. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
    candidate releaseのmanifest placeholder静的確認（AC-6）。
    **不成立時**: candidate commitをdrop/revertして `quickstepMaxSdk` 36を維持し、failure evidenceを
@@ -281,17 +281,21 @@ preflight証跡化）。
   G3: overview→task切替の遷移時間帯logcatを取得し `ActivityTaskManager` BAL block有無を判定（AC-4）。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
-  logcat観測を一次出力とする）。
-- (e) API 36 debug＋debug用overlay＋priv-app（**実行SHA: candidate commit、candidate debug APK使用**。
-  **`wm density reset` 後のnative density**）: (a)と同一観測（bind・overview成立・task切替）で
-  provider path機能の回帰なし確認に加え、**Taskbar geometry正規化のrecord**: post-fix screenshot
-  （native density）＋built APKの `taskbar_phone_size=48dp` 静的確認（aapt2 dump等）＋pre-fixの
-  誤解決先（`notification_2025_action_list_min_height` 10dp。`api36-image-framework-res-contrast.txt`）
-  との対応を証跡化（意図した変化としてrecord）。
-- (f) stock構成（**実行SHA: candidate commit**）: overlay無しAPI 37へcandidate releaseを通常install→
-  "disabling recents" 診断log、sheet無し、system overview継続、launcher crash無し。
-  **API 36 stockの簡易確認もcandidate releaseで実施**（通常install→HOME設定→system overview継続・
-  crash無し・gate/sheet状態を記録。#524 (d)-API36相当を修正後buildで再取得）。
+  logcat観測を一次出力とする）。**v3: image上のflags table不在（`d-hiddenapi-logcat-post.txt` /
+  `hiddenapi-flags-post.txt`。`fc5169566c`）を確定証跡として再利用**。qa-/qb-runで同種logcatの
+  補助観測が取れる場合はacceptanceの既取得PASSを置き換えない。
+- (e) API 36 debug＋debug用overlay＋priv-app（**v3: 再実行しない。実行SHA: 旧candidate
+  `2987e525bd`、candidate debug APK使用。`fc5169566c` 固定のpost-guard証跡（`me-*`）を再利用**）:
+  bind・overview成立・task切替のprovider path機能回帰なし＋**Taskbar geometry正規化のrecord**
+  （post-fix screenshot＋APKの `taskbar_phone_size=48dp` 静的確認＋pre-fix誤解決先10dp対照）は
+  `fc5169566c` の `me-*` fileで成立済み（意図した変化としてrecord済み）。
+- (f) stock構成（**v3: 再実行しない。実行SHA: 旧candidate `2987e525bd`、candidate release APK。
+  `fc5169566c` 固定のpost-guard証跡（`mf-*`）を再利用**）: overlay無しAPI 37へcandidate releaseを
+  通常install→"disabling recents" 診断log、sheet無し、system overview継続、launcher crash無し。
+  API 36 stockの簡易確認も `mf-*` fileで成立済み（#524 (d)-API36相当を修正後buildで取得済み）。
+- wmshell監視: **v3: 旧candidate `2987e525bd` の既取得PASS（`ma-wmshell-watch.txt` /
+  `mb-wmshell-watch.txt`＝0件）を `fc5169566c` 証跡から再利用**。qa-/qb-run logcatで同種grepが
+  取れる場合も補助観測であり、既取得PASSを置き換えない。
 - 証跡は `docs/assessment/545-api37-provider-fix-evidence/` へ `a-*`〜`f-*` 形式（#524と同型）で
   保存しREADMEへ一覧化する。**READMEにはmatrixごとの実行SHA・使用APK・APK sha256の対応表を
   必ず含める**（AC-9）。
