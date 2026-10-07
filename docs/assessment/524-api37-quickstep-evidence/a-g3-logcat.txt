@@ -1,0 +1,91 @@
+--------- beginning of main
+10-07 15:55:45.657   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 15:55:45.657   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 15:55:45.657   639   804 D InetDiagMessage: Destroyed live tcp sockets for uids={10158} in 0ms
+10-07 15:55:45.657   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 15:55:45.657   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 15:55:45.657   639   804 D InetDiagMessage: Destroyed live tcp sockets for uids={20158} in 0ms
+10-07 15:55:45.734  3521  3521 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:input swipe 540 2350 540 1300 900'
+10-07 15:55:45.745   639   661 D AutofillManager: Fill dialog is enabled:false, hints=[]
+10-07 15:55:46.016   639   798 D WifiClientModeImpl[3415:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=1 freq=2447 RxLinkSpeed=2
+10-07 15:55:46.016   639   798 D WifiDataStall: tx tput in kbps: 11000
+10-07 15:55:46.016   639   798 D WifiDataStall: rx tput in kbps: 11000
+10-07 15:55:46.016   639   798 V WifiConfigManager: Updating scan detail cache freq=2447 BSSID=00:13:10:85:fe:01 RSSI=-50 for "AndroidWifi"NONE
+10-07 15:55:46.016   639   798 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 15:55:46.016   639   798 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 15:55:46.016   639   798 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 15:55:46.016   639   798 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 15:55:46.016   639   798 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 15:55:46.016   639   798 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 15:55:46.016   639   798 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 15:55:46.016   639   798 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 15:55:46.017   639   798 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+10-07 15:55:46.017   639   798 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 295228467 SSID: "AndroidWifi", BSSID: 00:13:10:85:fe:01, MAC: 02:15:b2:00:00:00, IP: /10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Calculated Tx : 0Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Calculated Rx : 0Mbps, Frequency: 2447MHz, Net ID: 0, Metered hint: false, score: 100, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"AndroidWifi"openMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-07 15:55:46.017   639   798 D WifiScoreCard: txRate: 2 txSpeed: 1
+10-07 15:55:46.017   639   798 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 1934263910 RSSI -50 txSpeed -1
+10-07 15:55:46.017   639   798 D WifiClientModeImpl[3415:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 00:13:10:85:fe:01 rssi=-50 f=2447 sc=100 link=1 tx=1.6, 0.0, 0.0 rx=1.5 bcn=0 [on:0 tx:0 rx:0 period:3002] from screen [on:0 period:354783585] score=100
+10-07 15:55:47.987   430  3583 I netd    : tetherGetStats() -> {[]} <0.44ms>
+10-07 15:55:48.554   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 15:55:48.555   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 15:55:48.555   639   804 D InetDiagMessage: Destroyed live tcp sockets for uids={10169} in 1ms
+10-07 15:55:48.555   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 15:55:48.555   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 15:55:48.555   639   804 D InetDiagMessage: Destroyed live tcp sockets for uids={20169} in 0ms
+10-07 15:55:48.666  3521  3521 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:input keyevent KEYCODE_APP_SWITCH'
+--------- beginning of system
+10-07 15:55:48.977   639  1433 D OomAdjuster: Not killing cached processes
+10-07 15:55:49.019   639   798 D WifiClientModeImpl[3415:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=1 freq=2447 RxLinkSpeed=2
+10-07 15:55:49.019   639   798 D WifiDataStall: tx tput in kbps: 11000
+10-07 15:55:49.019   639   798 D WifiDataStall: rx tput in kbps: 11000
+10-07 15:55:49.019   639   798 V WifiConfigManager: Updating scan detail cache freq=2447 BSSID=00:13:10:85:fe:01 RSSI=-50 for "AndroidWifi"NONE
+10-07 15:55:49.019   639   798 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 15:55:49.019   639   798 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 15:55:49.019   639   798 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 15:55:49.019   639   798 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 15:55:49.019   639   798 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 15:55:49.019   639   798 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 15:55:49.019   639   798 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 15:55:49.019   639   798 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 15:55:49.020   639   798 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+10-07 15:55:49.020   639   798 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 295228467 SSID: "AndroidWifi", BSSID: 00:13:10:85:fe:01, MAC: 02:15:b2:00:00:00, IP: /10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Calculated Tx : 0Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Calculated Rx : 0Mbps, Frequency: 2447MHz, Net ID: 0, Metered hint: false, score: 100, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"AndroidWifi"openMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-07 15:55:49.020   639   798 D WifiScoreCard: txRate: 2 txSpeed: 1
+10-07 15:55:49.020   639   798 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 1934263910 RSSI -50 txSpeed -1
+10-07 15:55:49.020   639   798 D WifiClientModeImpl[3415:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 00:13:10:85:fe:01 rssi=-50 f=2447 sc=100 link=1 tx=1.0, 0.0, 0.0 rx=0.9 bcn=0 [on:0 tx:0 rx:0 period:3003] from screen [on:0 period:354786588] score=100
+10-07 15:55:49.021   430  3583 I netd    : setProcSysNet(4, 2, wlan0, retrans_time_ms, 750) <0.03ms>
+10-07 15:55:49.021   430  3583 I netd    : setProcSysNet(4, 2, wlan0, ucast_solicit, 5) <0.00ms>
+10-07 15:55:49.021   430  3583 I netd    : setProcSysNet(6, 2, wlan0, retrans_time_ms, 750) <0.02ms>
+10-07 15:55:49.021   430   477 I netd    : setProcSysNet(6, 2, wlan0, ucast_solicit, 5) <0.00ms>
+10-07 15:55:49.022   998  1126 D IpClient/wlan0: interfaceLinkStateChanged: ifindex 16 up
+10-07 15:55:49.027   430  3583 I netd    : setProcSysNet(4, 2, wlan0, retrans_time_ms, 750) <0.01ms>
+10-07 15:55:49.027   430  3583 I netd    : setProcSysNet(4, 2, wlan0, ucast_solicit, 10) <0.01ms>
+10-07 15:55:49.027   430  3583 I netd    : setProcSysNet(6, 2, wlan0, retrans_time_ms, 750) <0.07ms>
+10-07 15:55:49.027   430  3583 I netd    : setProcSysNet(6, 2, wlan0, ucast_solicit, 10) <0.01ms>
+10-07 15:55:49.028   998  1126 D IpClient/wlan0: interfaceLinkStateChanged: ifindex 16 up
+10-07 15:55:49.710  1552  2201 I libbinder.IPCThreadState: oneway function results for code 2 on binder at 0xb400007e36867840 will be dropped but finished with status UNKNOWN_TRANSACTION
+10-07 15:55:49.710  1969  1969 I AstreaGrpcService: AstreaGrpcService#onDestroy called.
+10-07 15:55:50.583   639   663 W ActivityTaskManager: Launch timeout has expired, giving up wake lock!
+10-07 15:55:50.590   430  3583 I netd    : tetherGetStats() -> {[]} <0.25ms>
+10-07 15:55:50.630   639   738 D ActivityManager: freezing 2797 com.android.providers.calendar
+10-07 15:55:50.631   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 15:55:50.631   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 15:55:50.631   639   804 D InetDiagMessage: Destroyed live tcp sockets for uids={10112} in 1ms
+10-07 15:55:50.652   639   738 D ActivityManager: freezing 3341 com.google.android.settings.intelligence
+10-07 15:55:50.652   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 15:55:50.653   639   804 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 15:55:50.653   639   804 D InetDiagMessage: Destroyed live tcp sockets for uids={10158} in 1ms
+10-07 15:55:51.541  1527  1542 I libbinder.IPCThreadState: oneway function results for code 2 on binder at 0xb400007e3683e590 will be dropped but finished with status UNKNOWN_TRANSACTION
+10-07 15:55:51.693  3521  3521 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:dumpsys window'
+10-07 15:55:51.715  3521  3521 I adbd    : adbd service requested 'exec:screencap '-p''
+10-07 15:55:51.764  3620  3620 W libbinder.BackendUnifiedServiceManager: Thread Pool max thread count is 0. Cannot cache binder as linkToDeath cannot be implemented. serviceName: SurfaceFlingerAIDL
+10-07 15:55:51.764  3620  3620 W libbinder.BpBinder: Linking to death on android.gui.ISurfaceComposer but there are no threads (yet?) listening to incoming transactions. See ProcessState::startThreadPool and ProcessState::setThreadPoolMaxThreadCount. Generally you should setup the binder threadpool before other initialization steps.
+10-07 15:55:51.764  3620  3620 W libbinder.ProcessState: Extra binder thread started, but 0 threads requested. Do not use *startThreadPool when zero threads are requested.
+10-07 15:55:51.767   489   578 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 15:55:51.768   489   578 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 15:55:51.768   489   578 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 15:55:51.768   489   578 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 15:55:51.768   489   578 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+--------- beginning of kernel
+10-07 15:55:51.791   288   288 I servicemanager: Caller(pid=3620,uid=0,sid=u:r:su:s0) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+10-07 15:55:51.792   288   288 I servicemanager: Caller(pid=3620,uid=0,sid=u:r:su:s0) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+10-07 15:55:51.792   288   288 I servicemanager: Caller(pid=3620,uid=0,sid=u:r:su:s0) Found mapper/ranchu in device VINTF manifest.
+10-07 15:55:51.862  3521  3521 I adbd    : adbd service requested 'shell,v2,TERM=dumb:export ANDROID_LOG_TAGS=''; exec logcat '-d''

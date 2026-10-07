@@ -1,0 +1,37 @@
+=== evidence: adb-installed launcher is NOT bound by SystemUI (MATCH_SYSTEM_ONLY)
+date: 2026-10-07 15:33:13
+LauncherProxyService.updateEnabledState(): resolveServiceAsUser(mQuickStepIntent, MATCH_SYSTEM_ONLY, user) requires the provider to be a system app.
+adb install -r された app.lawnchair.debug は FLAG_SYSTEM を持たないため mIsEnabled=false となり bind されない。
+--- dumpsys LauncherProxyService (after adb install + reboot):
+    LauncherProxyService state:
+      isConnected=false
+      mIsEnabled=false
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE pkg=app.lawnchair.debug }
+      mBound=false
+      mCurrentBoundedUserId=-1
+      mConnectionBackoffAttempts=0
+      mActiveNavBarRegion=null
+      mNavBarMode=2
+      mIsPrevServiceCleanedUp=true
+    SysUiState state:
+      mSysUiStateFlags=268566528
+--- logcat disconnect evidence:
+10-07 15:31:15.513   909   909 D LauncherProxyService: disconnectFromLauncherService bound?: false currentProxy: null disconnectReason: startConnectionToCurrentUser
+10-07 15:31:15.513   909   909 D LauncherProxyService: java.lang.Throwable
+10-07 15:31:15.513   909   909 D LauncherProxyService: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5644)
+10-07 15:31:15.513   909   909 D LauncherProxyService: 	at android.app.ActivityThread.-$$Nest$mhandleCreateService(ActivityThread.java:0)
+10-07 15:31:15.513   909   909 D LauncherProxyService: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2804)
+10-07 15:31:15.513   909   909 D LauncherProxyService: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+10-07 15:31:15.513   909   909 D LauncherProxyService: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+10-07 15:31:15.513   909   909 D LauncherProxyService: 	at android.os.Looper.loopOnce(Looper.java:296)
+10-07 15:31:15.513   909   909 D LauncherProxyService: 	at android.os.Looper.loop(Looper.java:397)
+10-07 15:31:15.513   909   909 D LauncherProxyService: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+--- probe時代のevidenceも同一状態（overlay解決のみ検証済みでbindは未検証）:
+    LauncherProxyService state:
+      isConnected=false
+      mIsEnabled=false
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE pkg=app.lawnchair.debug }
+      mBound=false
+      mCurrentBoundedUserId=-1

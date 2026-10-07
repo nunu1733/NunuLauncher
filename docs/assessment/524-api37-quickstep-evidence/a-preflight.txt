@@ -1,0 +1,47 @@
+=== leg (a) preflight — API 37 emulator-5554, head debug build app.lawnchair.debug
+date: 2026-10-07 15:24:42
+--- cmd overlay list (quickstepconfig)
+[x] nunu.overlay.quickstepconfig
+--- cmd overlay lookup --user 0 android android:string/config_recentsComponentName
+app.lawnchair.debug/com.android.quickstep.RecentsActivity
+--- dumpsys SystemUI LauncherProxyService block
+      isLaunchTransitionFadingAway: false
+
+    CRITICAL dump took 1ms -- KeyguardStateControllerImpl
+
+    LauncherProxyService:
+    ----------------------------------------------------------------------------
+    LauncherProxyService state:
+      isConnected=false
+      mIsEnabled=false
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE pkg=app.lawnchair.debug }
+      mBound=false
+      mCurrentBoundedUserId=-1
+      mConnectionBackoffAttempts=0
+      mActiveNavBarRegion=null
+--
+        backGestureDisabled=false
+        assistantGestureDisabled=false
+        pendingStateChanges=StateChange(flagsToSet=, flagsToClear=)
+
+    CRITICAL dump took 1ms -- LauncherProxyService
+
+    LeakDetector:
+    ----------------------------------------------------------------------------
+    SYSUI LEAK DETECTOR
+      TrackedCollections:
+        Garbage: NaN (start-30min) / NaN (30min-now) / 225.53 (start-now) (growth rate in #/hour); 2 (current size)
+        TunerService.mTunables: NaN (start-30min) / NaN (30min-now) / 712.44 (start-now) (growth rate in #/hour); 11 (current size)
+      
+--
+          Receivers:
+            com.android.systemui.statusbar.NotificationLockscreenUserManagerImpl$1@3ca3dd1
+            com.google.android.systemui.dreamliner.kitt.KittFeatureStateRepository$registerUserUnlockedReceiver$receiver$1@f72bc0a
+            com.android.keyguard.KeyguardUpdateMonitor$7@f3a656f
+            com.android.systemui.LauncherProxyService$2@c1930c5
+            com.android.systemui.media.controls.domain.resume.MediaResumeListener$userUnlockReceiver$1@6c21d1f
+            com.android.systemui.statusbar.policy.SecurityControllerImpl$3@4147ea3
+            com.google.android.systemui.dreamliner.kitt.DreamComponentMigrator$registerUserUnlockedReceiver$receiver$1@756c262
+          Categories: 
+        (systemui.power.action.dismissIncompatibleChargerWarning: exported):

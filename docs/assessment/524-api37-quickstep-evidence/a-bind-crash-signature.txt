@@ -1,0 +1,26 @@
+=== leg (a) bind-crash signatures — boot 15:54 cycle (API 37, head debug as priv-app provider)
+
+--- (1) pre-unlock bind: Application onCreate crash (CE storage)
+--- (2) post-unlock bind: NoSuchMethodError on IWindowManager.createInputConsumer
+    API 37.0 device framework signature: (IBinder, String, int) -> InputChannel [hiddenapi BLOCKED]
+    launcher shared lib compiled form:  (IBinder, String, int, InputChannel) -> void
+
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: java.lang.NoSuchMethodError: No interface method createInputConsumer(Landroid/os/IBinder;Ljava/lang/String;ILandroid/view/InputChannel;)V in class Landroid/view/IWindowManager; or its super classes (declaration of 'android.view.IWindowManager' appears in /system/framework/framework.jar!classes4.dex)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at com.android.systemui.shared.system.InputConsumerController.registerInputConsumer(InputConsumerController.java:143)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at com.android.quickstep.TouchInteractionService.onUserUnlocked(TouchInteractionService.java:873)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at com.android.quickstep.TouchInteractionService$$ExternalSyntheticLambda10.run(D8$$SyntheticClass:0)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at com.android.launcher3.util.RunnableList.add(RunnableList.java:34)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at com.android.launcher3.util.LockedUserState.runOnUserUnlocked(LockedUserState.kt:90)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at com.android.quickstep.TouchInteractionService.onCreate(TouchInteractionService.java:781)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at android.app.ActivityThread.handleCreateService(ActivityThread.java:5644)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleCreateService(ActivityThread.java:0)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2804)
+10-07 15:54:46.764  1841  1841 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+
+--- bind/crash loop state (LauncherProxyService backoff):
+      isConnected=false
+      mIsEnabled=true
+      mBound=true
+      mConnectionBackoffAttempts=5
+      mIsPrevServiceCleanedUp=false
+      mIsEnabled=true
