@@ -156,21 +156,24 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 `res/values/dimens.xml:437` を次のとおり変更する（#545参照comment付き）:
 
 ```xml
-    <!-- #545: the @*android:dimen/navigation_bar_frame_height reference bakes a framework
-         resource ID that shifted between 36.1/37.2 and 37.0 (0x01050283 became
-         navigation_bar_height_portrait, which has no default-config value), crashing
-         TaskbarStashController init on API 37.0 with Resources$NotFoundException in phone
-         profile. navigation_bar_frame_height dereferences to navigation_bar_height = 48dp
-         (default config) on every level (aapt2 dump contrast in
-         pre-guard-field-and-resource-contrast.txt), and taskbar_phone_size readers only run
-         in phone mode, so the literal is semantically exact. -->
+    <!-- #545: the @*android:dimen/navigation_bar_frame_height reference bakes framework
+         resource ID 0x01050283, whose resolution differs per API level (contrast in
+         docs/assessment/545-api37-provider-fix-evidence/api36-image-framework-res-contrast.txt):
+         on API 37.0 images it became navigation_bar_height_portrait (no default-config value),
+         crashing TaskbarStashController init with Resources$NotFoundException in phone
+         profile; on API 36 images it silently resolves to
+         notification_2025_action_list_min_height (~10dp). navigation_bar_frame_height
+         dereferences to navigation_bar_height = 48dp (default config) on every level, and
+         taskbar_phone_size readers only run in phone mode, so the literal is the intended
+         value everywhere (crash fix on 37.0, geometry normalization 10dp -> 48dp on 36). -->
     <dimen name="taskbar_phone_size">48dp</dimen>
 ```
 
-- 36.1 image（leg (e)）では同一の値で解決していたため挙動は不変。37.2端末でも
-  `navigation_bar_frame_height` → `navigation_bar_height` → 48dp defaultであり同一である。
-  `:441` の `rounded_corner_content_padding`（同種の `@*android:dimen` 参照）は失敗経路に
-  未到達のため本Issueでは触れない（検証で到達が判明した場合は別判断）。
+- API 36では **挙動不変ではなく意図した正規化**（10dp誤解決 → 48dp）であり、matrix (e) で
+  native-density screenshot＋overview/task切替に加えてこの幾何正規化をrecordする。
+  37.2端末では `navigation_bar_frame_height` → `navigation_bar_height` → 48dp defaultで
+  値は同一。`:441` の `rounded_corner_content_padding`（同種の `@*android:dimen` 参照）は
+  失敗経路に未到達のため本Issueでは触れない（検証で到達が判明した場合は別判断）。
 
 ## migration
 
@@ -182,17 +185,21 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
   compat修正3 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
   `taskbar_phone_size` literal化）と
   検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
-  不成立時はcandidate commitだけをdrop/revertして36維持とできる（spec Owner decision 7 / AC-6）。
+  不成立時はcandidate commitだけをrevertして36維持とできる（spec Owner decision 7 / AC-6）。
+  reconciliationの旧candidate `e2fe6f80df` とそのrevert pairはsuperseded historyとして保持される
+  （spec Owner decision 8/9の証跡commit到達可能性の維持）。
   stack自体（PR #546 → 本PR）のrollbackはPR #546の取り扱いに従う。
 
 ## 実装順序（candidate model。spec Owner decision 7 / Verification の実施順序どおり）
 
 1. 修正前対照は実施済み（#524 (a)/(b) failure signature。本検証では対照として参照するのみで
    再実施しない）。
-2. **branch reconciliation**: 現在のcandidate commit `e2fe6f80df`（quickstepMaxSdk 36→37。既に
-   push済み）をdrop/resetし、①→②→③→matrix (a)→新candidate commitの順へ組み直す
-   （spec実施順序どおり）。旧candidateのartifactとcommit message記述は **superseded
-   （acceptance不使用）** としてevidence READMEへ記録する。
+2. **branch reconciliation（revert方式）**: 現在のcandidate commit `e2fe6f80df`（quickstepMaxSdk
+   36→37。既にpush済み）は証跡commit（`f5a3977281` / `e70a58c1fd` / `206850b3d7`）の祖先のため
+   drop/resetせず、**`git revert e2fe6f80df` で明示revertしてtreeを36へ戻す**。以降
+   ①（既存`416273ce2f`）→②→③→matrix (a)→新candidate commitの順（spec実施順序どおり）。
+   旧candidateとrevertのpairはsuperseded historyとして保持し、旧candidateのartifactとcommit
+   message記述は **superseded（acceptance不使用）** としてevidence READMEへ記録する。
 3. `InputConsumerController.java` のcompat修正（1 commit。既存 `416273ce2f` を保持）。
 4. `TaskbarRecentAppsController.kt` のflag guardを1 commitで適用（`fix(545): ...`。spec Owner
    decision 8）。
@@ -201,7 +208,8 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 6. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
    **matrix (a) をこのSHA（compat修正3 commits適用後head）でnative density（`wm density reset` 済み）
    で実施**（実行SHAをevidence READMEへ記録。中間証跡: ①commit単体時点の2026-10-07 diagnostic run
-   （wm density 280）はcommit `f5a3977281` / `e70a58c1fd` に固定しOwner decision 8/9の根拠として保持）。
+   （wm density 280）はcommit `f5a3977281` / `e70a58c1fd` / `206850b3d7` に固定しOwner decision 8/9の
+   根拠として保持）。
 7. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
    として適用し、`assembleLawnWithQuickstepGithubDebug` と `assembleLawnWithQuickstepGithubRelease`
    の **両方をbuild**（candidate debug/release APK。APKごとのsha256をevidence READMEへ記録）。

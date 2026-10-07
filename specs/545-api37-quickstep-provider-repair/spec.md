@@ -110,21 +110,27 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    https://github.com/nunu1733/NunuLauncher/tree/f5a39772819eb0a958db8f27d777292e18bc7fcb/docs/assessment/545-api37-provider-fix-evidence ）と
    `e70a58c1fd`（field/resource一次対照 `pre-guard-field-and-resource-contrast.txt`）に固定する。
 9. **第三の破壊（resource-ID skew: `dimen/taskbar_phone_size` のbaked framework ID不一致）は
-   test-rig限定ではなく実機17.0端末でも再現する実破壊と分類し、本Issue内で修正する**
+   test-rig限定ではなく実機でも到達する実破壊と分類し、本Issue内で修正する**
    （`res/values/dimens.xml:437` の `@*android:dimen/navigation_bar_frame_height` 参照を
    literal `48dp` へ置換。#545参照comment付き）。根拠: (a) compileSdk 37.2でlinkしたAPKは
-   framework resource ID `0x01050283` をbakeするが、37.0 imageでは当該IDが
-   `navigation_bar_height_portrait`（default config値なし）へ変わり、phone profileでの
-   `TaskbarStashController` 初期化（provider bind後のみ実行）が `Resources$NotFoundException` で
-   クラッシュする（一次対照: `pre-guard-field-and-resource-contrast.txt` §2）。
-   (b) 値は全API levelで同一（37.2/37.0とも `navigation_bar_frame_height` = `@navigation_bar_height`
-   = 48dp default。36.1 imageでは同一baked IDが正常解決し leg (e) が成立）であり、
-   `taskbar_phone_size` の読み出しは全てphone mode経路であるため、literal 48dpは
-   全readerで意味的に完全一致する（sw900dp 56dp variantはtablet経路のreaderから到達しない）。
-   (c) ID shiftは再発し得るため、値が不変であることを実測にもとづくliteral化が最も破壊抵抗が高い
-   （framework参照のbaked IDに依存しない）。
+   framework resource ID `0x01050283` をbakeするが、当該IDの解決先はlevel毎に異なる
+   （一次出力: `api36-image-framework-res-contrast.txt` / `pre-guard-field-and-resource-contrast.txt` §2）:
+   SDK 37.2 tableでは `navigation_bar_frame_height`（→ `@navigation_bar_height` → 48dp）だが、
+   API 37.0 imageでは `navigation_bar_height_portrait`（default config値なし）となりphone
+   profileの `TaskbarStashController` 初期化（provider bind後のみ実行）が
+   `Resources$NotFoundException` でクラッシュする。
+   (b) **API 36 imageでは当該IDは `notification_2025_action_list_min_height`（約10dp）へ
+   静かに誤解決している**（実imageのframework-res.aatp dump一次出力。leg (e)のoracleは
+   bind/overview/task切替で成立していたがgeometryは検証していなかった。pre-guard diagnosticの
+   `a-resource-skew-analysis.txt` の記載が正しく、本addendum初版の「36でも48dp解決」という
+   推論は誤りとして撤回する）。したがってliteral 48dp化は **API 36では挙動不変ではなく
+   意図した修復（10dp誤解決 → 仕様値48dpへの正規化）** であり、matrix (e) で
+   native-density screenshot＋overview/task切替に加え、この幾何正規化をrecordする。
+   (c) ID解決先のlevel間差異は再発し得るため、baked IDに依存しないliteral化が最も破壊抵抗が高い。
+   値48dpは全levelの `navigation_bar_frame_height` → `@navigation_bar_height` dereference先と
+   一致する（sw900dp 56dp variantはtablet経路のreaderから到達しない）。
    (d) `wm density 280` のaccommodationは **superseded pre-guard diagnostic run限定** であり
-   （reversible。diagnostic runはOwner decision 8の証跡収集が目的）、**最終検証matrixはnative
+   （reversible。diagnostic runはOwner decision 8/9の証跡収集が目的）、**最終検証matrixはnative
    density（override無し）で実施し**、本修正が意図するphone profile経路をそのまま検証する。
    density変更は最終matrixの手順に含めない。
 
@@ -164,10 +170,13 @@ PR #546。#524検証証跡とADR-0018 revision 8を含む）固定。実装branc
   `TaskbarManager.onUserUnlocked` で毎回実行され、37.0 image上で `NoSuchFieldError` クラッシュ。
 - 第三破壊の対象（Owner decision 9）: `res/values/dimens.xml:437`
   （`<dimen name="taskbar_phone_size">@*android:dimen/navigation_bar_frame_height</dimen>`。
-  compileSdk 37.2でID `0x01050283` をbake。37.0 imageでは同IDが `navigation_bar_height_portrait`
-  （default config値なし）に変わりphone profileで `Resources$NotFoundException`。
-  値は両API levelで48dp defaultに同一。同file `:441` の `rounded_corner_content_padding` も
-  `@*android:dimen` 参照だが失敗経路に未到達のため本Issueでは触れない）。
+  compileSdk 37.2でID `0x01050283` をbake。当該IDの解決先はlevel毎に異なる: 37.0 imageでは
+  `navigation_bar_height_portrait`（default config値なし）でphone profileが
+  `Resources$NotFoundException`、API 36 imageでは `notification_2025_action_list_min_height`
+  （約10dp）へ静かに誤解決（一次出力 `api36-image-framework-res-contrast.txt`）。
+  37.2 tableでは `navigation_bar_frame_height`（→48dp）。同file `:441` の
+  `rounded_corner_content_padding` も `@*android:dimen` 参照だが失敗経路に未到達のため
+  本Issueでは触れない）。
 - ADR-0018 revision 8（Decision 7: advertised 35..36維持・maxSdk 37保留・provider構成検証方法論）
   が前提であり、修復検証成立時にrevision 9で更新する。Decision 8（rebase差分への混入禁止）のとおり
   実装はrebase branch stack上に置く。
@@ -236,7 +245,9 @@ When `TaskbarRecentAppsController` が `enableRecentTasksThrottle` を評価し�
 `TaskbarStashController` が `R.dimen.taskbar_phone_size` を解決する
 Then `NoSuchFieldError` をcatchしてthrottle無効（false）として継続し、`taskbar_phone_size` は
 literal値（48dp）として解決し、launcher processはクラッシュしない。provider bind完了
-（`isConnected=true`）に到達する。flag・IDが正常な環境（API 36等）では既存の挙動が変わらない。
+（`isConnected=true`）に到達する。flag guardはflagが存在する環境（API 36等）で既存の挙動を
+変えない。dimen literal化はAPI 36では意図した正規化（`notification_2025_action_list_min_height`
+約10dpへの静かな誤解決 → 仕様値48dp）であり、API 36 matrix (e) で幾何正規化をrecordする。
 
 ### Scenario: API 36では旧formのcompile時参照が継続し回帰がない
 
@@ -307,8 +318,10 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 - [ ] AC-4: G3の確定観測（(b)構成でshell→launcher遷移を発生させ、logcat
   `ActivityTaskManager` のBAL block有無を確定判定）が記録され、creator mode判断
   （evidence無し→legacy保持確定／blockあり→別判断分離）がPRへ記載されている。
-- [ ] AC-5: matrix (e)（API 36 debug＋debug用overlay＋priv-app）でprovider pathに回帰がなく、
-  matrix (f)（stock構成API 36/37）で挙動変化がない。
+- [ ] AC-5: matrix (e)（API 36 debug＋debug用overlay＋priv-app）でprovider path機能
+  （bind・overview成立・task切替）に回帰がなく、matrix (f)（stock構成API 36/37）で挙動変化がない。
+  ただしmatrix (e) では `taskbar_phone_size` の幾何正規化（10dp誤解決 → 48dp。Owner decision 9(b)）
+  が意図した変化としてnative-density screenshot付きでrecordされる。
 - [ ] AC-6: `QUICKSTEP_MAX_SDK` 36→37が **検証artifact（(b)以降のrelease build）には含まれ**、
   全matrix成立時にのみ最終成果物として保持される。保持されたcandidateについてrelease buildの
   manifest placeholderが `35 / 37` となる静的確認（aapt2 dump等）が記録されている。
@@ -323,9 +336,10 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 - [ ] AC-10: matrix (a) で `TaskbarRecentAppsController` の `NoSuchFieldError`
   （`ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX`）と `Resources$NotFoundException`
   （`taskbar_phone_size`）の **いずれも出ず**、native densityのままbind完了
-  （`isConnected=true`）へ到達する。flag guardおよびdimen literal化のdiffがcode reviewで
-  確認され、API 36で挙動が変わらないこと（`ATLEAST_BAKLAVA_1` false経路・36.1 imageでの
-  dimen解決）が確認されている。
+  （`isConnected=true`）へ到達する。flag guardのdiffはcode reviewで、API 36で挙動が変わらないこと
+  （`ATLEAST_BAKLAVA_1` false経路の不変）が確認される。dimen literal化のdiffは、36 imageでの
+  誤解決先（`api36-image-framework-res-contrast.txt`）と37.2 dereference先（48dp）への一次出力
+  つきでreviewされ、「API 36での10dp→48dpは意図した正規化である」ことが確認される。
 
 ## Test oracle
 
@@ -358,14 +372,17 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
   （実行SHA=candidate commit）→ ⑦全成立ならcandidate保持＋ADR-0018 rev 9。
   不成立ならcandidate drop（36維持）＋failure evidence記録。
-  **既存branchのreconciliation**: 現在のcandidate commit `e2fe6f80df`（`quickstepMaxSdk` 36→37）は
-  ②③の前に積まれているため、一度drop/resetして①→②→③→matrix (a)→新candidate commitの順へ
-  組み直す。旧 `e2fe6f80df` のbuild artifact（`/tmp/545-evidence-apk/candidate-*`）と
-  そのcommit messageの「matrix (a) provider repair is confirmed」記述は **superseded
-  （acceptanceには不使用）** としてevidence READMEへ記録する。中間証跡（①commit単体時点の
-  2026-10-07 diagnostic run。実行SHA `416273ce2f`、debug APK sha256 `4c091d8d0b…`、
-  AVD `issue526_api37_pixel_9a`、wm density 280）はcommit `f5a3977281` / `e70a58c1fd` に
-  固定し、AC-9対応表の別行「pre-guard diagnostic run」として最終matrixと混同しない。
+  **既存branchのreconciliation（revert方式）**: 現在のcandidate commit `e2fe6f80df`
+  （`quickstepMaxSdk` 36→37）は証跡commit（`f5a3977281` / `e70a58c1fd` / `206850b3d7`）の祖先に
+  あるため、drop/resetは行わず **`e2fe6f80df` の差分を明示revertしてtreeを36へ戻す**。その後
+  ②③→matrix (a)→新candidate commitの順へ進める。旧candidateとrevertのpairはsuperseded historyと
+  してbranch上に保持し（証跡commitの到達可能性を維持）、旧candidateのbuild artifact
+  （`/tmp/545-evidence-apk/candidate-*`）とそのcommit messageの「matrix (a) provider repair is
+  confirmed」記述は **superseded（acceptanceには不使用）** としてevidence READMEへ記録する。
+  中間証跡（①commit単体時点の2026-10-07 diagnostic run。実行SHA `416273ce2f`、debug APK sha256
+  `4c091d8d0b…`、AVD `issue526_api37_pixel_9a`、wm density 280）はcommit `f5a3977281` /
+  `e70a58c1fd` / `206850b3d7` に固定し、AC-9対応表の別行「pre-guard diagnostic run」として
+  最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
   - (a) API 37 debug @ compat修正commit＋debug用overlay＋priv-app → クラッシュ無し、
     `isConnected=true`、overview成立、task切替成功。
@@ -427,3 +444,13 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   comment付き）として追加。最終matrixはnative densityで実施し、density 280はsuperseded
   diagnostic run限定へ。(3) branch reconciliation手順（旧candidate `e2fe6f80df` のdrop・組み直し・
   superseded記録）を実施順序へ追加。(4) plan Statusをrevision 2 proposed表記へ修正。
+- 2026-10-07: Addendum round 2（PR #549コメント。blocking 1・中2）対応 —
+  (1) 実API 36 imageのframework-res.aapt2 dump一次出力（`api36-image-framework-res-contrast.txt`、
+  実装branch commit `206850b3d7`）により `0x01050283` は36 imageでは
+  `notification_2025_action_list_min_height`（約10dp）への静かな誤解決と確定。初版の
+  「36でも48dp解決」推論（`pre-guard-field-and-resource-contrast.txt` §2のAPI 36段落）を撤回・
+  訂正し、`a-resource-skew-analysis.txt` の記載が正しかったことを明記。Owner decision 9 /
+  Scenario / AC-5 / AC-10を「API 36では10dp→48dpの意図した正規化」へ改訂し、matrix (e) へ
+  幾何正規化のrecord（native-density screenshot＋overview/task切替）を追加。(2) reconciliationを
+  drop/resetから **revert方式** へ変更（証跡commitの到達可能性を維持）。(3) PR本文をheadの正本へ
+  同期。
