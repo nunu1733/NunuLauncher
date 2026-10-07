@@ -379,9 +379,12 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
   が実装PR内で反映されている（candidate不成立時はrevision 9を適用しない）。
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
-- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**（(a): compat修正3 commits適用後head、
-  (b)〜(f): candidate commit）と使用APK（(b)/(f): candidate release、(e): candidate debug）の
-  対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない。
+- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**のv3 mapping
+  （(a)qa-run: **compat修正4 commits適用後head**、(b)/G3 qb-run: **新candidate commit**、
+  (e)/(f)＋hiddenapi/wmshellの再利用分: **旧candidate `2987e525bd`**）と使用APK
+  ((a): compat 4修正debug、(b)/(f): candidate release〔(b)は新candidate、(f)は旧candidate〕、
+  (e): 旧candidate debug)の対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが
+  起きない（再利用分の一次出力は`fc5169566c` 固定のpost-guard matrix（ma-〜mf-）と各行で対応づける）。
 - [ ] AC-10b: post-guard matrix (a)/(b) で新たに実測された `KeyButtonRipple` の
   `NoClassDefFoundError`（`android.companion.virtualdevice.flags.Flags`）が出ず、(a) で
   bind完了（`isConnected=true`）・overview成立・task切替、(b) で `compatible=true`・sheet非表示・
@@ -408,7 +411,7 @@ class存在環境・`SDK_INT_FULL<3600001` 環境（API 36）の挙動不変が�
 | AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
-| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。**pre-guard diagnostic run（Owner decision 8/9の証跡。commit `f5a3977281` / `e70a58c1fd` / `206850b3d7` / `5c6d40a56d`）を最終matrixと混同しない別行で記載**）＋packet記載 |
+| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。**pre-guard diagnostic run（Owner decision 8/9の証跡。commit `f5a3977281`〜`5c6d40a56d`）とpost-guard matrix（Owner decision 10の証跡＋(e)/(f)/hiddenapi/wmshell再利用分。commit `fc5169566c`）をv3最終matrixと混同しない別行で記載**）＋packet記載 |
 | AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError / Resources$NotFoundException 0件・bind完了）＋guard/dimen diff（code review） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
@@ -449,7 +452,7 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   `e70a58c1fd` / `206850b3d7` に固定し、AC-9対応表の別行「pre-guard diagnostic run」として
   最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
-  - (a) API 37 debug @ compat修正3 commits適用後head＋debug用overlay＋priv-app → クラッシュ無し、
+  - (a) API 37 debug @ **compat修正4 commits適用後head（v3。qa-run）**＋debug用overlay＋priv-app → クラッシュ無し、
     `isConnected=true`、overview成立、task切替成功。
   - (b) API 37 release @ candidate commit（maxSdk 37）＋release用overlay＋priv-app →
     `compatible=true`、overview成立、sheet非表示、task切替成功。
@@ -540,3 +543,11 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   hidden_from_bootclasspath名前空間のみ実在をdexdump実測）を発見。(a)/(b)/G3が再びbind未達。
   当該flag読取り1箇所のdegrade guard（旧tap timeout fallback）を本Issue範囲へ追加
   （AC-10b・新Scenario・実施順序追記）。再検証は(a)/(b)+G3に限定（(e)/(f)はpath不変）。
+- 2026-10-07: Addendum v3 round 1〜2（PR #551 inline review blocking 3＋round 2 blocking 1/低1）対応 —
+  (1) guard契約を `NoClassDefFoundError` のみcatchへ修正（compile不能問題の解消）。
+  (2) post-guard matrix証跡を実装branch commit `fc5169566c` にcommit固定参照。(3) matrix↔SHA契約を
+  v3 mappingへ全面同期（AC-9: (a)qa-run=compat 4修正head／(b)qb-run=新candidate／
+  (e)(f)＋hiddenapi/wmshell再利用分=旧candidate `2987e525bd`。spec/plan module表へ
+  `KeyButtonRipple.java` 行追加、build.gradle行を4 commitsへ同期、matrix詳細をv3表記へ更新。
+  旧3-commit記述はhistorical明示）。(4) plan Statusを「revision 2 accepted / revision 3 proposed
+  addendum」へ更新。

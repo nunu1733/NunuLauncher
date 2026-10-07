@@ -6,11 +6,14 @@ updated: 2026-10-07
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: **accepted revision 2**（2026-10-07。revision 1はPR #548 review round 3でblocking 0・
+> Status: revision 2 accepted / **revision 3 proposed addendum（review pending）**
+> （2026-10-07。revision 1はPR #548 review round 3でblocking 0・
 > Clear（[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
 > revision 2（Owner decision 8/9 addendum）はPR #549 review round 4でblocking 0・Clear
 > （[review](https://github.com/nunu1733/NunuLauncher/pull/549#issuecomment-6039007333)。
-> head `96f5c66d4c322daa3af5f2f1cce7618181151666` を確認）。受入は本PR #549のmergeで完了する）。
+> head `96f5c66d4c322daa3af5f2f1cce7618181151666` を確認）でaccepted。
+> revision 3（Owner decision 10 addendum）は本PR #551のreview Clearをもってrevision 3 acceptedへ
+> 更新する）。
 
 **Risk tier: H**（[spec.md](./spec.md) 冒頭の判定どおり。vendored upstream file変更＋provider bind path）。
 
@@ -55,7 +58,8 @@ updated: 2026-10-07
 | `systemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java` | `registerInputConsumer()` のみを修正し、`createInputConsumer` のAPI 37 return形式をreflection呼出しするprivate helperを追加（近傍に#545理由comment）。diffはこの1 fileに限定する |
 | `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt` | `enableRecentTasksThrottle` のflag参照1箇所へ `NoSuchFieldError` degrade guard（throttle無効として継続。近傍に#545理由comment。spec Owner decision 8） |
 | `res/values/dimens.xml` | `taskbar_phone_size` のframework参照（`:437`）をliteral `48dp` へ置換（#545参照comment付き。spec Owner decision 9。37.0 imageでのbaked ID shift / `Resources$NotFoundException` を解消。確認対象levelの意図値（`navigation_bar_frame_height` dereference先）は48dpで同一だが、API 36の現APKは別resource（10dp）へ、API 35のtableでは別resource（20dp）へ誤解決が一次出力済み） |
-| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（3 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
+| `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java` | `:108` のflag読取り1箇所へ `NoClassDefFoundError` degrade guard（`ViewConfiguration.getTapTimeout()` 旧挙動へfallback。近傍に#545理由comment。spec Owner decision 10。post-guard matrix (a)/(b)で `NoClassDefFoundError` 実測。直接参照式はchecked例外を送出しないためcatchは`NoClassDefFoundError`のみ） |
+| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（4 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
 | `docs/adr/0018-lawnchair-16-rebase.md` | revision 7→8の次の改訂としてrevision 9: Decision 7にadvertised range 35..37・保留解除（修復検証の証跡参照）を記録 |
 | `docs/assessment/545-api37-provider-fix-evidence/` | 検証証跡（README＋logcat/png/txt。APKはcommitしない。sha256をREADMEへ） |
 
@@ -230,7 +234,8 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 5. `res/values/dimens.xml` の `taskbar_phone_size` literal化を1 commitで適用（`fix(545): ...`。
    spec Owner decision 9）。
 6. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
-   **matrix (a) をこのSHA（compat修正3 commits適用後head）でnative density（`wm density reset` 済み）
+   **matrix (a) をこのSHA（historical: compat修正3 commits適用後head。v3では Owner decision 10 の
+   追記step c. の compat 4修正head** を正本とする）でnative density（`wm density reset` 済み）
    で実施**（実行SHAをevidence READMEへ記録。中間証跡: ①commit単体時点の2026-10-07 diagnostic run
    （wm density 280）はcommit `f5a3977281` / `e70a58c1fd` / `206850b3d7` に固定しOwner decision 8/9の
    根拠として保持）。
@@ -265,7 +270,8 @@ rm→push→chmod→restorecon→reboot。priv-app配置は `/product/priv-app/`
 allowlist XML。run毎に `cmd overlay lookup` とSystemUI `mRecentsComponentName` の一致を
 preflight証跡化）。
 
-- (a) API 37 debug＋debug用overlay＋priv-app（**実行SHA: compat修正3 commits適用後head**）: bind成功・
+- (a) API 37 debug＋debug用overlay＋priv-app（**v3実行SHA: compat修正4 commits適用後head。qa-run**。
+  historical: 3-commit版は `fc5169566c` のpre-guard側）: bind成功・
   クラッシュ無し（#524 signature非再現をlogcatで確認）・`isConnected=true`・
   APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
   同logcatからhiddenapi観測抜粋（AC-3）と `PipInputConsumer` 監視（AC-1付帯）。
