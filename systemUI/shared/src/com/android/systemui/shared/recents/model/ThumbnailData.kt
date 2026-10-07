@@ -19,6 +19,7 @@ import android.app.WindowConfiguration
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Bitmap.Config.ARGB_8888
+import android.os.Build
 import android.graphics.Color
 import android.graphics.Rect
 import android.util.Log
@@ -48,8 +49,20 @@ data class ThumbnailData(
         private fun makeThumbnail(snapshot: TaskSnapshot): Bitmap {
             var thumbnail: Bitmap? = null
             try {
-                snapshot.hardwareBuffer?.use { buffer ->
-                    thumbnail = Bitmap.wrapHardwareBuffer(buffer, snapshot.colorSpace)
+                if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                    // #545: Android 17 (API 37) deprecated TaskSnapshot.getHardwareBuffer() to
+                    // unconditionally return null (device dexdump:
+                    // docs/assessment/545-api37-provider-fix-evidence/wraptobitmap-contrast.txt);
+                    // the supported pixel source is TaskSnapshot.wrapToBitmap(), which
+                    // framework-16.jar does not carry — invoke it reflectively. Failure is
+                    // logged with a tagged marker and falls back to the black-bitmap path
+                    // below instead of crashing the overview.
+                    thumbnail = snapshot.javaClass.getMethod("wrapToBitmap")
+                        .invoke(snapshot) as? Bitmap
+                } else {
+                    snapshot.hardwareBuffer?.use { buffer ->
+                        thumbnail = Bitmap.wrapHardwareBuffer(buffer, snapshot.colorSpace)
+                    }
                 }
             } catch (ex: IllegalArgumentException) {
                 // TODO(b/157562905): Workaround for a crash when we get a snapshot without this
@@ -60,6 +73,8 @@ data class ThumbnailData(
                         "${snapshot.hardwareBuffer}",
                     ex,
                 )
+            } catch (ex: ReflectiveOperationException) {
+                Log.e("ThumbnailData", "TaskSnapshot.wrapToBitmap reflection failed (see #545)", ex)
             }
 
             return thumbnail
