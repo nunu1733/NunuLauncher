@@ -206,7 +206,8 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    が37.0 imageに存在すること、compile classpath（framework-16.jar）にwrapToBitmapが不在である
    ことを固定。(b) qva (a) では第5修正によりoverview/task切替/bindが成立（5 signature 0・
    marker 0）したうえでthumbnailが黒fallbackになり、`getHardwareBuffer is deprecated!` が
-   launcher pidで出力された（`qva-crash-check.txt` / `qva-overview.png`）。黒thumbnailは
+   launcher pidで出力された（runtime証跡は実装branch commit **`8108e3a1aa`** に固定:
+   https://github.com/nunu1733/NunuLauncher/tree/8108e3a1aa89318c6f59beb9b6160f1a8002fc33/docs/assessment/545-api37-provider-fix-evidence 。実行SHA `bdea76ea75`、debug APK sha256 `f9116a72…`（qva）/`b701173e…`（qbv））。黒thumbnailは
    overview UIの破綻であり、spec Scenario 1の「破綻なく成立」を満たさない。
    (c) `SDK_INT >= 37` gateによりAPI <=36のhardwareBuffer経路（matrix (e) で正常レンダリング実績）は
    byte identical。(d) 変更は1 file 1箇所の最小bridge（Owner decision 8/10/11と同型）。
@@ -459,10 +460,12 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
   qa-qb: `71c6251203`（第4修正実証＋第五破壊diag）／qva-qbv: `8babd3bb10`（第5修正実証＋
   第六破壊diag。旧candidate `212097886b`））は **最終matrix（qva2/qvb2）と混同しない別行** で
   記載する（再利用分の一次出力は`fc5169566c` 固定のpost-guard matrix（ma-〜mf-）と各行で対応づける）。
-- [ ] AC-10d: v5再検証matrix qva (a)/qvb (b) で、overview task cardに **実app screenshotの
-  thumbnailがレンダリングされる**（黒fallbackでないことをscreenshotで実証）。`wrapToBitmap`
-  reflection failure markerが0件であり、新reflection起因のcrashが無い。diffがcode reviewで
-  確認され、API <=36のhardwareBuffer経路不変が確認されている。
+- [ ] AC-10d: v5再検証matrix **qva2 (a)/qvb2 (b)** で、overview task cardに **実app screenshotの
+  thumbnailがレンダリングされる**（黒fallbackでないことをscreenshotで実証）。既存5 crash
+  signature・`TaskSnapshotManager reflection failed` marker・`TaskSnapshot.wrapToBitmap
+  reflection failed` markerが **すべて0件** で、bind/overview/task切替が成立する（qvb2では
+  `compatible=true`/sheet非表示＋G3確定観測を含む）。diffがcode reviewで確認され、
+  API <=36のhardwareBuffer経路不変が確認されている。
 - [ ] AC-10c: v4 matrix qva (a)/qvb (b) で実証済み（diagnostic。`8babd3bb10`）:  `getTaskSnapshot` の `NoSuchMethodError` と
   reflection failure log marker（識別可能なtag。plan実装詳細4）が **ともに0件** で、
   (a) でbind完了・overview成立（**実thumbnailのレンダリングを含む**）・task切替、(b) で
@@ -520,10 +523,11 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   **v5追記（Owner decision 12。実行手順）**: qva検証（実行SHA `bdea76ea75`。`qva-crash-check.txt`/
   `qva-preflight.txt`）で第5修正の成立（bind・overview・task切替・5 signature 0・reflection
   marker 0）を確認したうえでthumbnail黒fallback（第6破壊。クラッシュなしの視覚劣化）が発覚
-  したため、12の修正commit適用後に **candidateを再度作り直し（`212097886b`を明示revertして36へ
-  戻す→`ThumbnailData` fix→qva (a)をcompat 6修正headで実施→新candidate→qvb (b)+G3）**
-  （prefix `qva2-*`/`qvb2-*`。旧candidate `212097886b` とqva/qbv artifactは第六破壊の
-  diagnostic/superseded evidenceとしてREADMEへ記録）。(e)/(f)等の再利用契約は不変。
+  したため、**`8108e3a1aa` の後で明示revert `212097886b`（36へ戻す）→ `ThumbnailData` fix →
+  debug build＋qva2 (a)をcompat 6修正headで実施 → 新candidate commit → release build＋
+  qvb2 (b)+G3を新candidate SHAで実施**（prefix `qva2-*`/`qvb2-*`）。旧qva（`bdea76ea75`）と
+  旧candidate `212097886b` のartifactは第六破壊のdiagnostic/superseded evidenceとしてREADMEへ
+  別行記録（v5 acceptanceには不使用）。(e)/(f)等の再利用契約は不変。
   **v4追記（Owner decision 11。実行手順。revert方式）**: qa/qb検証（実行SHA `68e68a6a45` /
   `40eb5dbfab`。証跡は実装branch commit **`71c6251203`** に固定: `qa-crash-check.txt`/
   `qa-preflight.txt`/`qb-crash-check.txt`/`qb-preflight.txt`）で **bind完了（両leg
@@ -558,13 +562,14 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   `e70a58c1fd` / `206850b3d7` に固定し、AC-9対応表の別行「pre-guard diagnostic run」として
   最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
-  - (a) API 37 debug @ **compat修正5 commits適用後head（v4。prefix `qva-*`）**＋debug用overlay＋priv-app →
-    クラッシュ無し（4修復signature＋`getTaskSnapshot` NoSuchMethodError 0）、
-    reflection failure marker 0、**実thumbnailレンダリング**、`isConnected=true`、overview成立、
-    task切替成功。新reflection呼出し起因のhiddenapi denial補助観測（0件）。
-  - (b) API 37 release @ **新candidate commit（maxSdk 37。prefix `qvb-*`）**＋release用overlay＋priv-app →
-    `compatible=true`、overview成立（reflection failure marker 0・**実thumbnailレンダリング**）、
-    sheet非表示、task切替成功。新reflectionのhiddenapi denial補助観測（0件）。
+  - (a) API 37 debug @ **compat修正6 commits適用後head（v5。prefix `qva2-*`）**＋debug用overlay＋priv-app →
+    クラッシュ無し（5修復signature＋`getTaskSnapshot` NoSuchMethodError 0）、
+    両reflection failure marker 0、**実thumbnailレンダリング（黒fallbackでない）**、
+    `isConnected=true`、overview成立、task切替成功。新reflection呼出し起因のhiddenapi denial
+    補助観測（0件）。
+  - (b) API 37 release @ **新candidate commit（maxSdk 37。prefix `qvb2-*`）**＋release用overlay＋priv-app →
+    `compatible=true`、overview成立（両reflection failure marker 0・**実thumbnailレンダリング**）、
+    sheet非表示、task切替成功、G3確定観測。新reflectionのhiddenapi denial補助観測（0件）。
   - (d) hiddenapi一次出力: (a)/(b)のregisterInputConsumer実行時間帯のlogcatを取得し
     hidden API access系のdenial/block有無を判定。可能ならroot shellで
     `hiddenapi list`（またはflags table）から該当signature行を一次取得する。
