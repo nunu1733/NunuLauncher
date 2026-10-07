@@ -517,10 +517,13 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   `e70a58c1fd` / `206850b3d7` に固定し、AC-9対応表の別行「pre-guard diagnostic run」として
   最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
-  - (a) API 37 debug @ **compat修正4 commits適用後head（v3。qa-run）**＋debug用overlay＋priv-app → クラッシュ無し、
-    `isConnected=true`、overview成立、task切替成功。
-  - (b) API 37 release @ candidate commit（maxSdk 37）＋release用overlay＋priv-app →
-    `compatible=true`、overview成立、sheet非表示、task切替成功。
+  - (a) API 37 debug @ **compat修正5 commits適用後head（v4。prefix `qva-*`）**＋debug用overlay＋priv-app →
+    クラッシュ無し（4修復signature＋`getTaskSnapshot` NoSuchMethodError 0）、
+    reflection failure marker 0、**実thumbnailレンダリング**、`isConnected=true`、overview成立、
+    task切替成功。新reflection呼出し起因のhiddenapi denial補助観測（0件）。
+  - (b) API 37 release @ **新candidate commit（maxSdk 37。prefix `qvb-*`）**＋release用overlay＋priv-app →
+    `compatible=true`、overview成立（reflection failure marker 0・**実thumbnailレンダリング**）、
+    sheet非表示、task切替成功。新reflectionのhiddenapi denial補助観測（0件）。
   - (d) hiddenapi一次出力: (a)/(b)のregisterInputConsumer実行時間帯のlogcatを取得し
     hidden API access系のdenial/block有無を判定。可能ならroot shellで
     `hiddenapi list`（またはflags table）から該当signature行を一次取得する。
@@ -535,8 +538,8 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
     launcher crash無し・gate/sheet状態）を再利用する**
     （#524 (d)-API36相当の観測を今回の修正後buildで取得済み）。
   - wmshell監視・hiddenapi観測（matrix (d)）: **v3では旧candidate `2987e525bd` の既取得PASSを
-    `fc5169566c` 証跡から再利用する**（(a)/(b)のqa-/qb-run logcatで同種ログが自然に再取得される
-    場合は補助観測であり、acceptanceの既取得PASSを置き換えない）。
+    `fc5169566c` 証跡から再利用する**（qva/qvbのlogcatで同種ログ〔新TaskSnapshotManager call由来
+    denialを含む〕が自然に再取得される場合は補助観測であり、acceptanceの既取得PASSを置き換えない）。
 - 観測手段: 操作結果、logcat、screenshot/録画をevidence dirへ保存しPRへ要約する。
   **evidence READMEにはmatrixごとの実行SHAの対応表を必ず記載する**（AC-9）。
 - **G3**: (b)構成を主証跡としてScenario「G3確定観測」を実施する（#527 spec G3節の委譲条件の完結）。

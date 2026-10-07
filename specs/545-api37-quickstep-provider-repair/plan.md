@@ -340,7 +340,9 @@ preflight証跡化）。
 - (a) API 37 debug＋debug用overlay＋priv-app（**v4実行SHA: compat修正5 commits適用後head。prefix `qva-*`**。
   historical: qa-run（4修正head `68e68a6a45`）と3-commit版は `71c6251203` / `fc5169566c` 側の
   diagnostic/superseded記録）: bind成功・
-  クラッシュ無し（#524 signature非再現をlogcatで確認）・`isConnected=true`・
+  クラッシュ無し（4修復signature＋`getTaskSnapshot` NoSuchMethodError 0をlogcatで確認）・
+  **reflection failure marker 0・実thumbnailレンダリング**（AC-10c）・新reflection起因hiddenapi
+  denial補助観測（0件）・`isConnected=true`・
   APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
   同logcatからhiddenapi観測抜粋（AC-3）と `PipInputConsumer` 監視（AC-1付帯）。
 - (b) API 37 release（maxSdk 37のcandidate build。**v4実行SHA: 新candidate commit。prefix `qvb-*`**）＋
