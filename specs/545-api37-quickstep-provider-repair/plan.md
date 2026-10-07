@@ -42,6 +42,11 @@ updated: 2026-10-07
   `DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` を参照。fieldは
   framework-16.jarに存在するがAPI 37.0 imageのframework.jarから削除済み。provider bind後にのみ
   実行され37.0 imageで `NoSuchFieldError`。spec Owner decision 8 / AC-10）。
+- `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java:108`
+  （`SDK_INT_FULL >= 3600001` ガード下で `android.companion.virtualdevice.flags.Flags.viewconfigurationApis()`
+  を参照。post-guard matrix (a)/(b)でAPI 37.0 imageのapp-visibleなclass不在
+  （hidden_from_bootclasspath名前空間のみ実在をdexdump実測）により `NoClassDefFoundError` を毎回
+  実測。spec Owner decision 10 / AC-10b）。
 
 ## 変更moduleとinterface/seam
 
@@ -57,8 +62,8 @@ updated: 2026-10-07
 **seam**: 呼出側・テストは既存の `InputConsumerController` public interface
 （`registerInputConsumer()` / `unregisterInputConsumer()`）を変えない。bridgeは
 `registerInputConsumer()` 内のframework呼出し形式の切替、`TaskbarRecentAppsController`
-のflag参照1箇所のdegrade、`taskbar_phone_size` のres値literal化（いずれも#545 provider修復の
-最小範囲）である。呼出側（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象
+のflag参照1箇所のdegrade、`taskbar_phone_size` のres値literal化、`KeyButtonRipple` のflag読取り
+1箇所のdegrade（いずれも#545 provider修復の最小範囲）である。呼出側（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象
 （`SystemUiProxy`）・5箇所のdimen reader（res側で解決されるため無変更）は変更しない。
 wmshellは変更しない（spec Owner decision 6）。
 
@@ -190,7 +195,19 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
   （spec Owner decision 8/9の証跡commit到達可能性の維持）。
   stack自体（PR #546 → 本PR）のrollbackはPR #546の取り扱いに従う。
 
-## 実装順序（candidate model。spec Owner decision 7 / Verification の実施順序どおり）
+## 実装順序（candidate model。spec Owner decision 7/8/9＋post-guard追記（Owner decision 10））
+
+> 実行履歴: 以下step 1〜9のうち1〜7相当は実施済み（commit `416273ce2f`〜`2987e525bd`、
+> pre-guard diagnostic run、post-guard最終matrix `(e)/(f)` PASS・`(a)/(b)`が第四破壊でFAIL。
+> 証跡は実装branch evidence `ma-*`〜`mf-*`）。Owner decision 10に従い、残存stepは次のとおり:
+> a. `KeyButtonRipple.java` degrade guardを1 commit適用（`fix(545): ...`）→ spotlessCheck →
+>    `assembleLawnWithQuickstepGithubDebug`（compile確認）
+> b. `quickstepMaxSdk` 36→37を **candidate commitとして再作成**（guard commitより後の新SHAで
+>    debug/release両build。旧candidate `2987e525bd` はsupersededとしてREADMEに記録
+>    — guardで検証対象が変わるため新candidatesより後へ積み直す）
+> c. **再検証matrix (a)/(b)+G3を新candidate SHAで実施**（prefix `qa-*`/`qb-*`。Owner decision
+>    10(e): (e)/(f)/hiddenapi/wmshellのPASS結果はpath不変として有効。READMEで対応づける）
+> d. 全成立ならcandidate保持＋ADR-0018 rev 9。不成立ならcandidate revert＋36維持。
 
 1. 修正前対照は実施済み（#524 (a)/(b) failure signature。本検証では対照として参照するのみで
    再実施しない）。
