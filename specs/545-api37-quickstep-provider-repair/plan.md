@@ -6,9 +6,10 @@ updated: 2026-10-07
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: accepted revision 1（2026-10-07。PR #548 review round 3でblocking 0・Clear
-> （[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)。
-> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する）。
+> Status: accepted revision 2（2026-10-07。revision 1はPR #548 review round 3でblocking 0・Clear
+> （[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
+> revision 2は検証中間証跡にもとづくspec addendum（Owner decision 8）への同期であり、
+> 本PRのreviewで確定する）。
 
 **Risk tier: H**（[spec.md](./spec.md) 冒頭の判定どおり。vendored upstream file変更＋provider bind path）。
 
@@ -35,19 +36,26 @@ updated: 2026-10-07
 - `docs/adr/0018-lawnchair-16-rebase.md` revision 8（Decision 7にmaxSdk 37保留が記録済み）。
   revision 9への改訂対象。
 - `quickstep/src/com/android/quickstep/SystemUiProxy.kt:188-198`（G3対象。**コード変更しない**）。
+- `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt:67-76`
+  （`enableRecentTasksThrottle`。`Utilities.ATLEAST_BAKLAVA_1` ガード下で
+  `DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` を参照。fieldは
+  framework-16.jarに存在するがAPI 37.0 imageのframework.jarから削除済み。provider bind後にのみ
+  実行され37.0 imageで `NoSuchFieldError`。spec Owner decision 8 / AC-10）。
 
 ## 変更moduleとinterface/seam
 
 | path | 変更 |
 |---|---|
 | `systemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java` | `registerInputConsumer()` のみを修正し、`createInputConsumer` のAPI 37 return形式をreflection呼出しするprivate helperを追加（近傍に#545理由comment）。diffはこの1 fileに限定する |
-| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
+| `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt` | `enableRecentTasksThrottle` のflag参照1箇所へ `NoSuchFieldError` degrade guard（throttle無効として継続。近傍に#545理由comment。spec Owner decision 8） |
+| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（2 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
 | `docs/adr/0018-lawnchair-16-rebase.md` | revision 7→8の次の改訂としてrevision 9: Decision 7にadvertised range 35..37・保留解除（修復検証の証跡参照）を記録 |
 | `docs/assessment/545-api37-provider-fix-evidence/` | 検証証跡（README＋logcat/png/txt。APKはcommitしない。sha256をREADMEへ） |
 
 **seam**: 呼出側・テストは既存の `InputConsumerController` public interface
 （`registerInputConsumer()` / `unregisterInputConsumer()`）を変えない。bridgeは
-`registerInputConsumer()` 内のframework呼出し形式の切替だけである。呼出側
+`registerInputConsumer()` 内のframework呼出し形式の切替と、`TaskbarRecentAppsController`
+のflag参照1箇所のdegrade（両方とも#545 provider修復の最小範囲）である。呼出側
 （`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象（`SystemUiProxy`）は変更しない。
 wmshellは変更しない（spec Owner decision 6）。
 
@@ -114,6 +122,32 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 - `unregisterInputConsumer()` は変更しない。receiver未登録時に呼ばれても現行のままno-opである。
 - debug/release・flavor差の分岐は存在しない（vendor fileの1経路のみ）。
 
+## 実装詳細2（Taskbar flag guard。spec Owner decision 8）
+
+`quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt:67-76` の
+`enableRecentTasksThrottle` を次の構造にする（#545参照commentを近傍に残す）:
+
+```kotlin
+    val enableRecentTasksThrottle =
+        if (Utilities.ATLEAST_BAKLAVA_1) {
+            // #545: ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX exists in the framework-16.jar
+            // compile classpath but was removed from the API 37.0 device framework; degrade to
+            // disabled instead of crashing the provider bind path (NoSuchFieldError in
+            // TaskbarActivityContext init). Absent-flag behavior equals throttle-off.
+            try {
+                DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX.isTrue
+            } catch (e: NoSuchFieldError) {
+                false
+            }
+        } else {
+            false
+        }
+```
+
+- flagが存在する環境（API 36 image等）では既存の読み取り挙動が変わらない
+  （`ATLEAST_BAKLAVA_1` false経路は完全に不変）。37.0 imageではguardにより
+  `NoSuchFieldError` を吸収してthrottle無効で初期化を継続する（spec新Scenario）。
+
 ## migration
 
 - なし（DB・preference・schemaに触れない）。
@@ -121,7 +155,8 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 ## rollback
 
 - 実装PR全体をrevertすればbase `e214b7b190` に戻る（単一機能commit群）。
-  compat修正commitと検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
+  compat修正2 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard）と
+  検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
   不成立時はcandidate commitだけをdrop/revertして36維持とできる（spec Owner decision 7 / AC-6）。
   stack自体（PR #546 → 本PR）のrollbackはPR #546の取り扱いに従う。
 
@@ -130,19 +165,22 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 1. 修正前対照は実施済み（#524 (a)/(b) failure signature。本検証では対照として参照するのみで
    再実施しない）。
 2. `InputConsumerController.java` のcompat修正を1 commitで適用（`fix(545): ...`）。
-3. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
-   **matrix (a) をこのSHA（compat修正commit）で実施**（実行SHAをevidence READMEへ記録）。
-4. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
+3. `TaskbarRecentAppsController.kt` のflag guardを1 commitで適用（`fix(545): ...`。spec Owner
+   decision 8）。
+4. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
+   **matrix (a) をこのSHA（compat修正2 commits適用後head）で実施**（実行SHAをevidence READMEへ記録。
+   中間証跡: ①commit単体時点の2026-10-07実施分はOwner decision 8の根拠として保持）。
+5. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
    として適用し、`assembleLawnWithQuickstepGithubDebug` と `assembleLawnWithQuickstepGithubRelease`
    の **両方をbuild**（candidate debug/release APK。APKごとのsha256をevidence READMEへ記録）。
    **matrix (b)/(f) はcandidate release APK、matrix (e) はcandidate debug APKで実施**
    （実行SHA=candidate commitをevidence READMEへ記録）。
-5. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
+6. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
    candidate releaseのmanifest placeholder静的確認（AC-6）。
    **不成立時**: candidate commitをdrop/revertして `quickstepMaxSdk` 36を維持し、failure evidenceを
    記録する（compat修正自体はprovider修復として保持可否を(a)結果で判定。hiddenapi block時は
    spec Scenario 4どおり停止）。
-6. 実装PR本文へReview / handoff packet（github-workflow.md 定形）＋patch surface計測結果＋
+7. 実装PR本文へReview / handoff packet（github-workflow.md 定形）＋patch surface計測結果＋
    matrix↔SHA対応表を記載。
 
 ## test

@@ -89,6 +89,24 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    反映する。matrix (b)（または AC-3/AC-4/AC-5 のoracle）が成立しない場合はcandidate commitを
    drop/revertして `quickstepMaxSdk` 36を維持し、failure evidenceを記録する
    （検証に先行する宣言の禁止は「確定採用」に対して働く。検証artifactへの包含はこれに当たらない）。
+8. **provider bind後のTaskbar初期化で実測された第二のAPI 37.0破壊
+   （`DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` の `NoSuchFieldError`）も
+   本Issueのprovider修復範囲に含め、当該flag参照1箇所に最小のdegrade guard（`NoSuchFieldError`
+   catch → throttle無効として継続）を追加する**。根拠: (a) 2026-10-07検証（matrix (a) 中間証跡
+   `a-resource-skew-analysis.txt` / `a-bind-crash-check.txt`）で、createInputConsumer修復後に
+   `TouchInteractionService.onUserUnlocked:889 → TaskbarManager.onUserUnlocked` 経由で当該field参照が
+   毎回クラッシュし、provider bind完了oracle（isConnected=true・overview）が到達不能であることが実測された。
+   (b) 当該pathはprovider構成時のみ実行されるため、QuickSwitch構成の実機Android 17.0端末でも
+   同一クラッシュが起こる（#545の目的である「provider修復」を完遂するために必要）。
+   (c) taskbar生成は `ENABLE_TASKBAR_NAVBAR_UNIFICATION` 強制でruntime switch不存在が実測済みであり
+   （navigation mode・aconfig・RROのいずれでも回避不能。同分析file）、検証環境の工夫では回避できない。
+   (d) fieldはcompile classpathのframework-16.jarには存在するがAPI 37.0 imageのframework.jarからは
+   削除済み（dexdump実測）であり、`Utilities.ATLEAST_BAKLAVA_1`（SDK_INT_FULL>=3600001）ガードでは
+   37.0 imageを除外できない。guard後の挙動（throttle無効）は、当該flagが存在しないimage上の
+   自然な挙動である。(e) 変更は1 file 1箇所の最小bridgeであり、#545参照commentを近傍に残す。
+   なお同一検証で実測されたresource-ID skew（`dimen/taskbar_phone_size` のbaked ID不一致。
+   NativeNotFoundException）は **source変更を要しない**（`wm density 280` のtest-rig accommodationで
+   回避済み。 reversible system setting。同分析file参照）。
 
 ## Baseline（本specの前提事実）
 
@@ -117,6 +135,13 @@ PR #546。#524検証証跡とADR-0018 revision 8を含む）固定。実装branc
   （リテラルまたは `> BAKLAVA`。具体形はplan.mdで確定）。
 - G3対象: `quickstep/src/com/android/quickstep/SystemUiProxy.kt:188-198`
   （`getRecentsPendingIntent`。creator側 `MODE_BACKGROUND_ACTIVITY_START_ALLOWED`）。
+- 第二破壊の対象（Owner decision 8）: `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt:67-76`
+  （`enableRecentTasksThrottle`。`Utilities.ATLEAST_BAKLAVA_1`（`Utilities.java:168`、
+  `SDK_INT>=BAKLAVA && SDK_INT_FULL>=3600001`）ガード下で
+  `DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX`（framework-16.jarの
+  `android/window/DesktopExperienceFlags.class` に存在。API 37.0 imageのframework.jarからは削除済みを
+  dexdump実測）を参照。provider bind → `TouchInteractionService.onUserUnlocked:889` →
+  `TaskbarManager.onUserUnlocked` で毎回実行され、37.0 image上で `NoSuchFieldError` クラッシュ。
 - ADR-0018 revision 8（Decision 7: advertised 35..36維持・maxSdk 37保留・provider構成検証方法論）
   が前提であり、修復検証成立時にrevision 9で更新する。Decision 8（rebase差分への混入禁止）のとおり
   実装はrebase branch stack上に置く。
@@ -174,6 +199,16 @@ When SystemUIが `TouchInteractionService` をbindし（user unlock後）、rece
 Then `registerInputConsumer` でクラッシュせず、`LauncherProxyService.isConnected=true` となり、
 overview表示・task切替が破綻なく成立する。#524のfailure signature
 （`NoSuchMethodError ... createInputConsumer(...InputChannel;)V`）は再現しない。
+
+### Scenario: Taskbar flag field欠損環境でprovider bindがクラッシュせずthrottle無効として継続する
+
+Given API 37.0 image（`DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` が
+framework.jarから削除済み。dexdump一次出力あり）でprovider構成済みLawnchairがbindされ、
+`TouchInteractionService.onUserUnlocked` からTaskbar初期化に到達する
+When `TaskbarRecentAppsController` が `enableRecentTasksThrottle` を評価する
+Then `NoSuchFieldError` をcatchしてthrottle無効（false）として初期化を継続し、launcher processは
+クラッシュしない。provider bind完了（`isConnected=true`）に到達する。flagが存在する環境では
+既存の挙動（flag値の読み取り）が変わらない。
 
 ### Scenario: API 36では旧formのcompile時参照が継続し回帰がない
 
@@ -254,9 +289,13 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
   が実装PR内で反映されている（candidate不成立時はrevision 9を適用しない）。
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
-- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**（(a): compat修正commit、
+- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**（(a): compat修正2 commits適用後head、
   (b)〜(f): candidate commit）と使用APK（(b)/(f): candidate release、(e): candidate debug）の
   対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない。
+- [ ] AC-10: matrix (a) で `TaskbarRecentAppsController` の `NoSuchFieldError`
+  （`ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX`）が出ず、bind完了（`isConnected=true`）へ到達する。
+  guard適用を示すdiffと、API 36で挙動が変わらないこと（`ATLEAST_BAKLAVA_1` false経路の不変性）が
+  code reviewで確認されている。
 
 ## Test oracle
 
@@ -271,6 +310,7 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
 | AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む）＋packet記載 |
+| AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError 0件・bind完了）＋guard diff（code review） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
 消失すること」自体が原因であり、JVM/Robolectricでは再現不能。振る舞いの一次証拠は
@@ -280,12 +320,15 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
 
 ## Verification
 
-- **実施順序（candidate model。Owner decision 7）**: ①compat修正commit → build debug →
-  ②matrix (a)（実行SHA=compat修正commit）→ ③`quickstepMaxSdk` 36→37を **candidate commit** として
-  適用し **debug/release両方のAPKをbuild** → ④matrix (b)/(f) はcandidate **release** APK、
+- **実施順序（candidate model。Owner decision 7/8）**: ①`InputConsumerController` reflection commit →
+  ②Taskbar flag guard commit（Owner decision 8）→ build debug →
+  ③matrix (a)（実行SHA=②head。debug APK）→ ④`quickstepMaxSdk` 36→37を **candidate commit** として
+  適用し **debug/release両方のAPKをbuild** → ⑤matrix (b)/(f) はcandidate **release** APK、
   matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
-  （実行SHA=candidate commit）→ ⑤全成立ならcandidate保持＋ADR-0018 rev 9。
-  不成立ならcandidate drop（36維持）＋failure evidence記録。
+  （実行SHA=candidate commit）→ ⑥全成立ならcandidate保持＋ADR-0018 rev 9。
+  不成立ならcandidate drop（36維持）＋failure evidence記録。なお①単体時点の中間証跡
+  （2026-10-07実施。`a-bind-crash-check.txt` 等のseam oracle成立・Taskbar破壊の発見）は
+  Owner decision 8の根拠として保持する。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
   - (a) API 37 debug @ compat修正commit＋debug用overlay＋priv-app → クラッシュ無し、
     `isConnected=true`、overview成立、task切替成功。
@@ -332,3 +375,9 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   (b)/(f)はcandidate release APK使用へ固定（AC-9へAPK対応とsha256記録を追加）。(2)
   Owner decision 3・Scenario 4等の要約文言をcandidate modelへ同期（block時はcandidate drop・
   確定採用しない）。
+- 2026-10-07: Addendum（検証中間証跡にもとづくOwner decision 8追加）— matrix (a) 中間実施で
+  createInputConsumer修復のseam oracle成立を確認したうえで、第二の破壊
+  （`ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` NoSuchFieldError。provider bind後のTaskbar初期化。
+  API 37.0 imageから当該field削除を実測、taskbar生成のruntime回避不能も実測）を発見。
+  当該flag参照1箇所のdegrade guardを本Issue範囲へ追加（AC-10・新Scenario・実施順序②へ反映）。
+  resource-ID skewは `wm density 280` accommodationで対処（source変更不要）を記録。
