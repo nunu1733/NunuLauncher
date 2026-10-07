@@ -104,9 +104,29 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    削除済み（dexdump実測）であり、`Utilities.ATLEAST_BAKLAVA_1`（SDK_INT_FULL>=3600001）ガードでは
    37.0 imageを除外できない。guard後の挙動（throttle無効）は、当該flagが存在しないimage上の
    自然な挙動である。(e) 変更は1 file 1箇所の最小bridgeであり、#545参照commentを近傍に残す。
-   なお同一検証で実測されたresource-ID skew（`dimen/taskbar_phone_size` のbaked ID不一致。
-   NativeNotFoundException）は **source変更を要しない**（`wm density 280` のtest-rig accommodationで
-   回避済み。 reversible system setting。同分析file参照）。
+   本判断の一次証跡（diagnostic runの実行SHA/APK sha256/AVD fingerprint、crash stack、
+   field有無対照、seam oracle出力、runtime回避不能の実測）は実装branch
+   `issue-545-api37-provider-fix` commit `f5a3977281`（
+   https://github.com/nunu1733/NunuLauncher/tree/f5a39772819eb0a958db8f27d777292e18bc7fcb/docs/assessment/545-api37-provider-fix-evidence ）と
+   `e70a58c1fd`（field/resource一次対照 `pre-guard-field-and-resource-contrast.txt`）に固定する。
+9. **第三の破壊（resource-ID skew: `dimen/taskbar_phone_size` のbaked framework ID不一致）は
+   test-rig限定ではなく実機17.0端末でも再現する実破壊と分類し、本Issue内で修正する**
+   （`res/values/dimens.xml:437` の `@*android:dimen/navigation_bar_frame_height` 参照を
+   literal `48dp` へ置換。#545参照comment付き）。根拠: (a) compileSdk 37.2でlinkしたAPKは
+   framework resource ID `0x01050283` をbakeするが、37.0 imageでは当該IDが
+   `navigation_bar_height_portrait`（default config値なし）へ変わり、phone profileでの
+   `TaskbarStashController` 初期化（provider bind後のみ実行）が `Resources$NotFoundException` で
+   クラッシュする（一次対照: `pre-guard-field-and-resource-contrast.txt` §2）。
+   (b) 値は全API levelで同一（37.2/37.0とも `navigation_bar_frame_height` = `@navigation_bar_height`
+   = 48dp default。36.1 imageでは同一baked IDが正常解決し leg (e) が成立）であり、
+   `taskbar_phone_size` の読み出しは全てphone mode経路であるため、literal 48dpは
+   全readerで意味的に完全一致する（sw900dp 56dp variantはtablet経路のreaderから到達しない）。
+   (c) ID shiftは再発し得るため、値が不変であることを実測にもとづくliteral化が最も破壊抵抗が高い
+   （framework参照のbaked IDに依存しない）。
+   (d) `wm density 280` のaccommodationは **superseded pre-guard diagnostic run限定** であり
+   （reversible。diagnostic runはOwner decision 8の証跡収集が目的）、**最終検証matrixはnative
+   density（override無し）で実施し**、本修正が意図するphone profile経路をそのまま検証する。
+   density変更は最終matrixの手順に含めない。
 
 ## Baseline（本specの前提事実）
 
@@ -142,6 +162,12 @@ PR #546。#524検証証跡とADR-0018 revision 8を含む）固定。実装branc
   `android/window/DesktopExperienceFlags.class` に存在。API 37.0 imageのframework.jarからは削除済みを
   dexdump実測）を参照。provider bind → `TouchInteractionService.onUserUnlocked:889` →
   `TaskbarManager.onUserUnlocked` で毎回実行され、37.0 image上で `NoSuchFieldError` クラッシュ。
+- 第三破壊の対象（Owner decision 9）: `res/values/dimens.xml:437`
+  （`<dimen name="taskbar_phone_size">@*android:dimen/navigation_bar_frame_height</dimen>`。
+  compileSdk 37.2でID `0x01050283` をbake。37.0 imageでは同IDが `navigation_bar_height_portrait`
+  （default config値なし）に変わりphone profileで `Resources$NotFoundException`。
+  値は両API levelで48dp defaultに同一。同file `:441` の `rounded_corner_content_padding` も
+  `@*android:dimen` 参照だが失敗経路に未到達のため本Issueでは触れない）。
 - ADR-0018 revision 8（Decision 7: advertised 35..36維持・maxSdk 37保留・provider構成検証方法論）
   が前提であり、修復検証成立時にrevision 9で更新する。Decision 8（rebase差分への混入禁止）のとおり
   実装はrebase branch stack上に置く。
@@ -200,15 +226,17 @@ Then `registerInputConsumer` でクラッシュせず、`LauncherProxyService.is
 overview表示・task切替が破綻なく成立する。#524のfailure signature
 （`NoSuchMethodError ... createInputConsumer(...InputChannel;)V`）は再現しない。
 
-### Scenario: Taskbar flag field欠損環境でprovider bindがクラッシュせずthrottle無効として継続する
+### Scenario: API 37.0 imageでTaskbar初期化がクラッシュせずprovider bindが完了する
 
-Given API 37.0 image（`DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` が
-framework.jarから削除済み。dexdump一次出力あり）でprovider構成済みLawnchairがbindされ、
+Given API 37.0 image（`ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` がframework.jarから削除済み、
+`taskbar_phone_size` のbaked IDが別resourceへ移動済み。一次対照
+`pre-guard-field-and-resource-contrast.txt`）でprovider構成済みLawnchairがbindされ、
 `TouchInteractionService.onUserUnlocked` からTaskbar初期化に到達する
-When `TaskbarRecentAppsController` が `enableRecentTasksThrottle` を評価する
-Then `NoSuchFieldError` をcatchしてthrottle無効（false）として初期化を継続し、launcher processは
-クラッシュしない。provider bind完了（`isConnected=true`）に到達する。flagが存在する環境では
-既存の挙動（flag値の読み取り）が変わらない。
+When `TaskbarRecentAppsController` が `enableRecentTasksThrottle` を評価し、
+`TaskbarStashController` が `R.dimen.taskbar_phone_size` を解決する
+Then `NoSuchFieldError` をcatchしてthrottle無効（false）として継続し、`taskbar_phone_size` は
+literal値（48dp）として解決し、launcher processはクラッシュしない。provider bind完了
+（`isConnected=true`）に到達する。flag・IDが正常な環境（API 36等）では既存の挙動が変わらない。
 
 ### Scenario: API 36では旧formのcompile時参照が継続し回帰がない
 
@@ -289,13 +317,15 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
   が実装PR内で反映されている（candidate不成立時はrevision 9を適用しない）。
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
-- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**（(a): compat修正2 commits適用後head、
+- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**（(a): compat修正3 commits適用後head、
   (b)〜(f): candidate commit）と使用APK（(b)/(f): candidate release、(e): candidate debug）の
   対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない。
 - [ ] AC-10: matrix (a) で `TaskbarRecentAppsController` の `NoSuchFieldError`
-  （`ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX`）が出ず、bind完了（`isConnected=true`）へ到達する。
-  guard適用を示すdiffと、API 36で挙動が変わらないこと（`ATLEAST_BAKLAVA_1` false経路の不変性）が
-  code reviewで確認されている。
+  （`ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX`）と `Resources$NotFoundException`
+  （`taskbar_phone_size`）の **いずれも出ず**、native densityのままbind完了
+  （`isConnected=true`）へ到達する。flag guardおよびdimen literal化のdiffがcode reviewで
+  確認され、API 36で挙動が変わらないこと（`ATLEAST_BAKLAVA_1` false経路・36.1 imageでの
+  dimen解決）が確認されている。
 
 ## Test oracle
 
@@ -309,8 +339,8 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 | AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
-| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む）＋packet記載 |
-| AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError 0件・bind完了）＋guard diff（code review） |
+| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。**pre-guard diagnostic run（Owner decision 8/9の証跡。commit `f5a3977281` / `e70a58c1fd`）を最終matrixと混同しない別行で記載**）＋packet記載 |
+| AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError / Resources$NotFoundException 0件・bind完了）＋guard/dimen diff（code review） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
 消失すること」自体が原因であり、JVM/Robolectricでは再現不能。振る舞いの一次証拠は
@@ -320,15 +350,22 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
 
 ## Verification
 
-- **実施順序（candidate model。Owner decision 7/8）**: ①`InputConsumerController` reflection commit →
-  ②Taskbar flag guard commit（Owner decision 8）→ build debug →
-  ③matrix (a)（実行SHA=②head。debug APK）→ ④`quickstepMaxSdk` 36→37を **candidate commit** として
-  適用し **debug/release両方のAPKをbuild** → ⑤matrix (b)/(f) はcandidate **release** APK、
+- **実施順序（candidate model。Owner decision 7/8/9）**: ①`InputConsumerController` reflection commit →
+  ②Taskbar flag guard commit（Owner decision 8）→ ③`taskbar_phone_size` dimen literal化 commit
+  （Owner decision 9）→ build debug → ④matrix (a)（実行SHA=③head。debug APK。**native density**
+  ・`wm density reset` 済み）→ ⑤`quickstepMaxSdk` 36→37を **candidate commit** として
+  適用し **debug/release両方のAPKをbuild** → ⑥matrix (b)/(f) はcandidate **release** APK、
   matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
-  （実行SHA=candidate commit）→ ⑥全成立ならcandidate保持＋ADR-0018 rev 9。
-  不成立ならcandidate drop（36維持）＋failure evidence記録。なお①単体時点の中間証跡
-  （2026-10-07実施。`a-bind-crash-check.txt` 等のseam oracle成立・Taskbar破壊の発見）は
-  Owner decision 8の根拠として保持する。
+  （実行SHA=candidate commit）→ ⑦全成立ならcandidate保持＋ADR-0018 rev 9。
+  不成立ならcandidate drop（36維持）＋failure evidence記録。
+  **既存branchのreconciliation**: 現在のcandidate commit `e2fe6f80df`（`quickstepMaxSdk` 36→37）は
+  ②③の前に積まれているため、一度drop/resetして①→②→③→matrix (a)→新candidate commitの順へ
+  組み直す。旧 `e2fe6f80df` のbuild artifact（`/tmp/545-evidence-apk/candidate-*`）と
+  そのcommit messageの「matrix (a) provider repair is confirmed」記述は **superseded
+  （acceptanceには不使用）** としてevidence READMEへ記録する。中間証跡（①commit単体時点の
+  2026-10-07 diagnostic run。実行SHA `416273ce2f`、debug APK sha256 `4c091d8d0b…`、
+  AVD `issue526_api37_pixel_9a`、wm density 280）はcommit `f5a3977281` / `e70a58c1fd` に
+  固定し、AC-9対応表の別行「pre-guard diagnostic run」として最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
   - (a) API 37 debug @ compat修正commit＋debug用overlay＋priv-app → クラッシュ無し、
     `isConnected=true`、overview成立、task切替成功。
@@ -381,3 +418,12 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   API 37.0 imageから当該field削除を実測、taskbar生成のruntime回避不能も実測）を発見。
   当該flag参照1箇所のdegrade guardを本Issue範囲へ追加（AC-10・新Scenario・実施順序②へ反映）。
   resource-ID skewは `wm density 280` accommodationで対処（source変更不要）を記録。
+- 2026-10-07: Addendum round 1（PR #549コメント。blocking 2・中1・低1）対応 —
+  (1) Owner decision 8の一次証跡を実装branch commit `f5a3977281` / `e70a58c1fd` に固定参照し、
+  実行SHA/APK sha256/AVD fingerprint/crash stack/field有無対照/seam oracle/runtime回避不能実測を
+  packetへ記載。AC-9対応表へ「pre-guard diagnostic run」別行を追加。(2) resource-ID skewを
+  test-rig限定から **実機17.0で再現する実破壊へ再分類**（値が全API levelで48dpに同一であることの
+  aapt2実測にもとづく）し、Owner decision 9（`taskbar_phone_size` をliteral 48dpへ。#545参照
+  comment付き）として追加。最終matrixはnative densityで実施し、density 280はsuperseded
+  diagnostic run限定へ。(3) branch reconciliation手順（旧candidate `e2fe6f80df` のdrop・組み直し・
+  superseded記録）を実施順序へ追加。(4) plan Statusをrevision 2 proposed表記へ修正。

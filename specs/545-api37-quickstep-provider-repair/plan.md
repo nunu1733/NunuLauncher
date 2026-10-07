@@ -6,10 +6,11 @@ updated: 2026-10-07
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: accepted revision 2（2026-10-07。revision 1はPR #548 review round 3でblocking 0・Clear
+> Status: revision 1 accepted / **revision 2 proposed addendum（review pending）**
+> （2026-10-07。revision 1はPR #548 review round 3でblocking 0・Clear
 > （[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
-> revision 2は検証中間証跡にもとづくspec addendum（Owner decision 8）への同期であり、
-> 本PRのreviewで確定する）。
+> revision 2は検証中間証跡にもとづくspec addendum（Owner decision 8/9）への同期であり、
+> 本PR #549のreview Clearをもってrevision 2 acceptedへ更新する）。
 
 **Risk tier: H**（[spec.md](./spec.md) 冒頭の判定どおり。vendored upstream file変更＋provider bind path）。
 
@@ -48,15 +49,17 @@ updated: 2026-10-07
 |---|---|
 | `systemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java` | `registerInputConsumer()` のみを修正し、`createInputConsumer` のAPI 37 return形式をreflection呼出しするprivate helperを追加（近傍に#545理由comment）。diffはこの1 fileに限定する |
 | `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt` | `enableRecentTasksThrottle` のflag参照1箇所へ `NoSuchFieldError` degrade guard（throttle無効として継続。近傍に#545理由comment。spec Owner decision 8） |
-| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（2 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
+| `res/values/dimens.xml` | `taskbar_phone_size` のframework参照（`:437`）をliteral `48dp` へ置換（#545参照comment付き。spec Owner decision 9。37.0 imageでのbaked ID shift / `Resources$NotFoundException` を解消。値は全API levelで同一を実測） |
+| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（3 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
 | `docs/adr/0018-lawnchair-16-rebase.md` | revision 7→8の次の改訂としてrevision 9: Decision 7にadvertised range 35..37・保留解除（修復検証の証跡参照）を記録 |
 | `docs/assessment/545-api37-provider-fix-evidence/` | 検証証跡（README＋logcat/png/txt。APKはcommitしない。sha256をREADMEへ） |
 
 **seam**: 呼出側・テストは既存の `InputConsumerController` public interface
 （`registerInputConsumer()` / `unregisterInputConsumer()`）を変えない。bridgeは
-`registerInputConsumer()` 内のframework呼出し形式の切替と、`TaskbarRecentAppsController`
-のflag参照1箇所のdegrade（両方とも#545 provider修復の最小範囲）である。呼出側
-（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象（`SystemUiProxy`）は変更しない。
+`registerInputConsumer()` 内のframework呼出し形式の切替、`TaskbarRecentAppsController`
+のflag参照1箇所のdegrade、`taskbar_phone_size` のres値literal化（いずれも#545 provider修復の
+最小範囲）である。呼出側（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象
+（`SystemUiProxy`）・5箇所のdimen reader（res側で解決されるため無変更）は変更しない。
 wmshellは変更しない（spec Owner decision 6）。
 
 ## 実装詳細（コードshape）
@@ -148,6 +151,27 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
   （`ATLEAST_BAKLAVA_1` false経路は完全に不変）。37.0 imageではguardにより
   `NoSuchFieldError` を吸収してthrottle無効で初期化を継続する（spec新Scenario）。
 
+## 実装詳細3（taskbar_phone_size literal化。spec Owner decision 9）
+
+`res/values/dimens.xml:437` を次のとおり変更する（#545参照comment付き）:
+
+```xml
+    <!-- #545: the @*android:dimen/navigation_bar_frame_height reference bakes a framework
+         resource ID that shifted between 36.1/37.2 and 37.0 (0x01050283 became
+         navigation_bar_height_portrait, which has no default-config value), crashing
+         TaskbarStashController init on API 37.0 with Resources$NotFoundException in phone
+         profile. navigation_bar_frame_height dereferences to navigation_bar_height = 48dp
+         (default config) on every level (aapt2 dump contrast in
+         pre-guard-field-and-resource-contrast.txt), and taskbar_phone_size readers only run
+         in phone mode, so the literal is semantically exact. -->
+    <dimen name="taskbar_phone_size">48dp</dimen>
+```
+
+- 36.1 image（leg (e)）では同一の値で解決していたため挙動は不変。37.2端末でも
+  `navigation_bar_frame_height` → `navigation_bar_height` → 48dp defaultであり同一である。
+  `:441` の `rounded_corner_content_padding`（同種の `@*android:dimen` 参照）は失敗経路に
+  未到達のため本Issueでは触れない（検証で到達が判明した場合は別判断）。
+
 ## migration
 
 - なし（DB・preference・schemaに触れない）。
@@ -155,7 +179,8 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 ## rollback
 
 - 実装PR全体をrevertすればbase `e214b7b190` に戻る（単一機能commit群）。
-  compat修正2 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard）と
+  compat修正3 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
+  `taskbar_phone_size` literal化）と
   検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
   不成立時はcandidate commitだけをdrop/revertして36維持とできる（spec Owner decision 7 / AC-6）。
   stack自体（PR #546 → 本PR）のrollbackはPR #546の取り扱いに従う。
@@ -164,23 +189,30 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 
 1. 修正前対照は実施済み（#524 (a)/(b) failure signature。本検証では対照として参照するのみで
    再実施しない）。
-2. `InputConsumerController.java` のcompat修正を1 commitで適用（`fix(545): ...`）。
-3. `TaskbarRecentAppsController.kt` のflag guardを1 commitで適用（`fix(545): ...`。spec Owner
+2. **branch reconciliation**: 現在のcandidate commit `e2fe6f80df`（quickstepMaxSdk 36→37。既に
+   push済み）をdrop/resetし、①→②→③→matrix (a)→新candidate commitの順へ組み直す
+   （spec実施順序どおり）。旧candidateのartifactとcommit message記述は **superseded
+   （acceptance不使用）** としてevidence READMEへ記録する。
+3. `InputConsumerController.java` のcompat修正（1 commit。既存 `416273ce2f` を保持）。
+4. `TaskbarRecentAppsController.kt` のflag guardを1 commitで適用（`fix(545): ...`。spec Owner
    decision 8）。
-4. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
-   **matrix (a) をこのSHA（compat修正2 commits適用後head）で実施**（実行SHAをevidence READMEへ記録。
-   中間証跡: ①commit単体時点の2026-10-07実施分はOwner decision 8の根拠として保持）。
-5. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
+5. `res/values/dimens.xml` の `taskbar_phone_size` literal化を1 commitで適用（`fix(545): ...`。
+   spec Owner decision 9）。
+6. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
+   **matrix (a) をこのSHA（compat修正3 commits適用後head）でnative density（`wm density reset` 済み）
+   で実施**（実行SHAをevidence READMEへ記録。中間証跡: ①commit単体時点の2026-10-07 diagnostic run
+   （wm density 280）はcommit `f5a3977281` / `e70a58c1fd` に固定しOwner decision 8/9の根拠として保持）。
+7. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
    として適用し、`assembleLawnWithQuickstepGithubDebug` と `assembleLawnWithQuickstepGithubRelease`
    の **両方をbuild**（candidate debug/release APK。APKごとのsha256をevidence READMEへ記録）。
    **matrix (b)/(f) はcandidate release APK、matrix (e) はcandidate debug APKで実施**
    （実行SHA=candidate commitをevidence READMEへ記録）。
-6. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
+8. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
    candidate releaseのmanifest placeholder静的確認（AC-6）。
    **不成立時**: candidate commitをdrop/revertして `quickstepMaxSdk` 36を維持し、failure evidenceを
    記録する（compat修正自体はprovider修復として保持可否を(a)結果で判定。hiddenapi block時は
    spec Scenario 4どおり停止）。
-7. 実装PR本文へReview / handoff packet（github-workflow.md 定形）＋patch surface計測結果＋
+9. 実装PR本文へReview / handoff packet（github-workflow.md 定形）＋patch surface計測結果＋
    matrix↔SHA対応表を記載。
 
 ## test
