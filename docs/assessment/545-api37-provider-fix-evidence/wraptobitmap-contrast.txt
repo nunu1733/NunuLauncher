@@ -1,0 +1,36 @@
+=== sixth break primary contrast — TaskSnapshot.getHardwareBuffer deprecated-null on API 37.0 (addendum v5 Owner decision 12) ===
+recorded: 2026-10-08
+
+--- runtime evidence (qva leg, API 37.0, debug @ bdea76ea75; qva-crash-check.txt) ---
+  TaskSnapshotManager reflection route SUCCEEDED (marker=0, no NoSuchMethodError, TaskSnapshot
+  object returned) — but overview task cards rendered NO app screenshot (blank/scrim-colored
+  interior; qva-overview.png). logcat: 'E TaskSnapshot: getHardwareBuffer is deprecated!' x4 from
+  the launcher pid during thumbnail load.
+  Vendored path: systemUI/shared/src/com/android/systemui/shared/recents/model/ThumbnailData.kt
+  makeThumbnail() -> snapshot.hardwareBuffer (getHardwareBuffer()) -> null on 37.0 -> falls back
+  to the existing black-bitmap path (createBitmap + eraseColor(BLACK)).
+
+--- device framework.jar primary output (dexdump -d classes4.dex, pulled from emulator-5554) ---
+  Class 'Landroid/window/TaskSnapshot;':
+    getHardwareBuffer
+      type          : '()Landroid/hardware/HardwareBuffer;'
+      (dexdump of the method body: const-string "getHardwareBuffer is deprecated!" -> Log.e ->
+       const/4 v0 0 -> return-object v0  — unconditional null, matches android17-release source
+       core/java/android/window/TaskSnapshot.java:203-208 @Deprecated)
+    wrapToBitmap
+      type          : '()Landroid/graphics/Bitmap;'
+      access        : 0x0001 (PUBLIC)      [second overload: (Landroid/graphics/ColorSpace;)...]
+  (dex metadata hiddenapi label is 0x0002, the same value as createInputConsumer — which the
+   launcher reflection calls successfully — so the label does not correlate with runtime denial
+   for this priv-app configuration; not assumed here either: the fix carries a failure marker and
+   the qva/qbv oracle requires real thumbnails.)
+
+--- compile classpath (framework-16.jar javap android.window.TaskSnapshot) ---
+  getHardwareBuffer() present (returns real buffer on API 36 — matrix (e) leg renders thumbnails
+  correctly); wrapToBitmap ABSENT -> the API 37 pixel source must be reflectively invoked.
+
+--- fix shape (plan 実装詳細5) ---
+  ThumbnailData.makeThumbnail: SDK_INT >= 37 branch invokes
+  snapshot.getClass().getMethod("wrapToBitmap").invoke(snapshot) as? Bitmap (failure logs tagged
+  marker, falls back to the existing black-bitmap path — no crash); API <= 36 keeps the existing
+  hardwareBuffer path byte-identical.
