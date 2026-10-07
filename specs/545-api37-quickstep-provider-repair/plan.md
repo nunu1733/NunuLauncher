@@ -6,8 +6,10 @@ updated: 2026-10-08
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: revision 3 accepted / **revision 4 proposed addendum（Owner decision 11。review pending）**
-> （previous status line: revision 2 accepted / revision 3 accepted（ Owner decision 10 addendum））
+> Status: revision 3 accepted / **revision 4 accepted（Owner decision 11 addendum）**
+> （revision 4はPR #552 review round 4でblocking 0・Clear
+> （head `0b8c2ae41b4ebc9471158b5e21bccc4e4753d23d` を確認）。受入は本PR #552のmergeで完了する。
+> 前提: revision 2 accepted / revision 3 accepted（Owner decision 10 addendum、#551 merge済み））
 > （prerequisite: revision 2の受入 2026-10-07。revision 1はPR #548 review round 3でblocking 0・
 > Clear（[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
 > revision 2（Owner decision 8/9 addendum）はPR #549 review round 4でblocking 0・Clear
@@ -353,8 +355,9 @@ preflight証跡化）。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。**v3: image上のflags table不在（`d-hiddenapi-logcat-post.txt` /
-  `hiddenapi-flags-post.txt`。`fc5169566c`）を確定証跡として再利用**。qa-/qb-runで同種logcatの
-  補助観測が取れる場合はacceptanceの既取得PASSを置き換えない。
+  `hiddenapi-flags-post.txt`。`fc5169566c`）を確定証跡として再利用**。qva/qvbで同種logcat
+  （新TaskSnapshotManager call由来denialの監視を含む）の補助観測が取れる場合はacceptanceの
+  既取得PASSを置き換えない。
 - (e) API 36 debug＋debug用overlay＋priv-app（**v3: 再実行しない。実行SHA: 旧candidate
   `2987e525bd`、candidate debug APK使用。`fc5169566c` 固定のpost-guard証跡（`me-*`）を再利用**）:
   bind・overview成立・task切替のprovider path機能回帰なし＋**Taskbar geometry正規化のrecord**
