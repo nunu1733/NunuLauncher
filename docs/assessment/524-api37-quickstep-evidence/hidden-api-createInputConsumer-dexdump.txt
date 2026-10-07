@@ -1,0 +1,27 @@
+# IWindowManager.createInputConsumer — dexdump一次出力（抜粋）
+# 取得日: 2026-10-07
+# 方法: 各AVDから adb pull /system/framework/framework.jar → classes*.dex を展開し、build-tools 37.0.0 の dexdump で Landroid/view/IWindowManager; を抽出。
+#       下記はその抽出に対する grep -A6 "name.*: 'createInputConsumer'" の結果（name/type行のみ表示）。完全dexdumpは64MB超のため保存せず、抜粋を一次出力とする。
+
+## API 37（emulator-5554 / AVD issue526_api37_pixel_9a / ro.build.version.sdk=37 / google_apis）
+
+      name          : 'createInputConsumer'
+      type          : '(Landroid/os/IBinder;Ljava/lang/String;I)Landroid/view/InputChannel;'
+      name          : 'createInputConsumer'
+      type          : '(Landroid/os/IBinder;Ljava/lang/String;I)Landroid/view/InputChannel;'
+      name          : 'createInputConsumer'
+      type          : '(Landroid/os/IBinder;Ljava/lang/String;I)Landroid/view/InputChannel;'
+
+## API 36（emulator-5556 / AVD issue142_api36 / ro.build.version.sdk=36 / google_apis）
+
+      name          : 'createInputConsumer'
+      type          : '(Landroid/os/IBinder;Ljava/lang/String;ILandroid/view/InputChannel;)V'
+      name          : 'createInputConsumer'
+      type          : '(Landroid/os/IBinder;Ljava/lang/String;ILandroid/view/InputChannel;)V'
+      name          : 'createInputConsumer'
+      type          : '(Landroid/os/IBinder;Ljava/lang/String;ILandroid/view/InputChannel;)V'
+
+## 要約
+# API 37: createInputConsumer (Landroid/os/IBinder;Ljava/lang/String;I)Landroid/view/InputChannel; （return形式。旧out-param形式はclass内に存在しない）
+# API 36: createInputConsumer (Landroid/os/IBinder;Ljava/lang/String;ILandroid/view/InputChannel;)V （out-param形式。launcherがcompileするform）
+# hiddenapi enforcement flagの一次出力は未取得。新formの呼出可否（BLOCKED/非BLOCKED）は #545 の調査事項。
