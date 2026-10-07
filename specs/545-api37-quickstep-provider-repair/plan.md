@@ -6,10 +6,10 @@ updated: 2026-10-08
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: revision 3 accepted / **revision 4 accepted（Owner decision 11 addendum）**
-> （revision 4はPR #552 review round 4でblocking 0・Clear
-> （head `0b8c2ae41b4ebc9471158b5e21bccc4e4753d23d` を確認）。受入は本PR #552のmergeで完了する。
-> 前提: revision 2 accepted / revision 3 accepted（Owner decision 10 addendum、#551 merge済み））
+> Status: revision 4 accepted / **revision 5 accepted（Owner decision 12＋13 addendum）**
+> （revision 5はPR #553 review round 4でblocking 0・Clear
+> （head `3fcce3e7b25a508cd0d039dce760b328646208d5` を確認）でaccepted。受入は本PR #553のmergeで完了する。
+> 前提: revision 4 accepted（Owner decision 11 addendum。#552 merge済み）。）
 > （prerequisite: revision 2の受入 2026-10-07。revision 1はPR #548 review round 3でblocking 0・
 > Clear（[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
 > revision 2（Owner decision 8/9 addendum）はPR #549 review round 4でblocking 0・Clear
@@ -48,6 +48,13 @@ updated: 2026-10-08
   `DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` を参照。fieldは
   framework-16.jarに存在するがAPI 37.0 imageのframework.jarから削除済み。provider bind後にのみ
   実行され37.0 imageで `NoSuchFieldError`。spec Owner decision 8 / AC-10）。
+- `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java:192-203`
+  （`takeTaskThumbnail` の既存 `takeTaskSnapshot(taskId, true)` 直接 `(IZ)` 1経路。37.0 imageで
+  削除。RemoteExceptionのみcatchのためNMEがクラッシュになる。spec Owner decision 13 / AC-10e）。
+- `systemUI/shared/src/com/android/systemui/shared/recents/model/ThumbnailData.kt:48-66`
+  （`makeThumbnail`。`snapshot.hardwareBuffer`（`getHardwareBuffer()`）は37.0 imageで
+  deprecated・unconditional null（dexdump body実測）→黒bitmap fallback。spec Owner decision 12 /
+  AC-10d）。
 - `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java:140`
   （`getTaskThumbnail` の `getTaskSnapshot(IZ)`。37.0 imageで削除済み（`(II)`/`(IJI)`のみを
   dexdump実測）。overview thumbnail path。spec Owner decision 11 / AC-10c）。
@@ -64,9 +71,10 @@ updated: 2026-10-08
 | `systemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java` | `registerInputConsumer()` のみを修正し、`createInputConsumer` のAPI 37 return形式をreflection呼出しするprivate helperを追加（近傍に#545理由comment）。diffはこの1 fileに限定する |
 | `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt` | `enableRecentTasksThrottle` のflag参照1箇所へ `NoSuchFieldError` degrade guard（throttle無効として継続。近傍に#545理由comment。spec Owner decision 8） |
 | `res/values/dimens.xml` | `taskbar_phone_size` のframework参照（`:437`）をliteral `48dp` へ置換（#545参照comment付き。spec Owner decision 9。37.0 imageでのbaked ID shift / `Resources$NotFoundException` を解消。確認対象levelの意図値（`navigation_bar_frame_height` dereference先）は48dpで同一だが、API 36の現APKは別resource（10dp）へ、API 35のtableでは別resource（20dp）へ誤解決が一次出力済み） |
-| `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java` | `getTaskThumbnail` の `getTaskSnapshot` 呼出し1箇所へAPI 37+の `TaskSnapshotManager` 経由reflection分岐を追加（lookup失敗時は既存null経路どおり空 `ThumbnailData`。近傍に#545理由comment。spec Owner decision 11。上流android17-releaseの移行shapeと同型。compile classpathに当該class不在のためreflection） |
+| `systemUI/shared/src/com/android/systemui/shared/recents/model/ThumbnailData.kt` | `makeThumbnail` のpixel取得1箇所へAPI 37+の `wrapToBitmap()` reflection分岐を追加（失敗時は既存の黒bitmap fallbackへdegrade＋marker log。近傍に#545理由comment。spec Owner decision 12。`getHardwareBuffer()` は37.0でdeprecated null化を実測） |
+| `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java` | `takeTaskThumbnail` の `takeTaskSnapshot` 呼出し1箇所へAPI 37+の `TaskSnapshotManager.takeTaskSnapshot(taskId, true)` reflection分岐を追加（第7破壊。spec Owner decision 13。marker＋既存空 `ThumbnailData` degrade。実装詳細6）＋`getTaskThumbnail` の `getTaskSnapshot` 呼出し1箇所へAPI 37+の `TaskSnapshotManager` 経由reflection分岐を追加（lookup失敗時は既存null経路どおり空 `ThumbnailData`。近傍に#545理由comment。spec Owner decision 11。上流android17-releaseの移行shapeと同型。compile classpathに当該class不在のためreflection） |
 | `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java` | `:108` のflag読取り1箇所へ `NoClassDefFoundError` degrade guard（`ViewConfiguration.getTapTimeout()` 旧挙動へfallback。近傍に#545理由comment。spec Owner decision 10。post-guard matrix (a)/(b)で `NoClassDefFoundError` 実測。直接参照式はchecked例外を送出しないためcatchは`NoClassDefFoundError`のみ） |
-| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（5 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
+| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（7 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
 | `docs/adr/0018-lawnchair-16-rebase.md` | revision 7→8の次の改訂としてrevision 9: Decision 7にadvertised range 35..37・保留解除（修復検証の証跡参照）を記録 |
 | `docs/assessment/545-api37-provider-fix-evidence/` | 検証証跡（README＋logcat/png/txt。APKはcommitしない。sha256をREADMEへ） |
 
@@ -74,7 +82,10 @@ updated: 2026-10-08
 （`registerInputConsumer()` / `unregisterInputConsumer()`）を変えない。bridgeは
 `registerInputConsumer()` 内のframework呼出し形式の切替、`TaskbarRecentAppsController`
 のflag参照1箇所のdegrade、`taskbar_phone_size` のres値literal化、`KeyButtonRipple` のflag読取り
-1箇所のdegrade（いずれも#545 provider修復の最小範囲）である。呼出側（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象
+1箇所のdegrade、`ActivityManagerWrapper.getTaskThumbnail` のTaskSnapshotManager reflection分岐
+（Owner decision 11）、`ThumbnailData.makeThumbnail` のwrapToBitmap reflection分岐
+（Owner decision 12）、`ActivityManagerWrapper.takeTaskThumbnail` のTaskSnapshotManager
+reflection分岐（Owner decision 13）（いずれも#545 provider修復の最小範囲）である。呼出側（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象
 （`SystemUiProxy`）・5箇所のdimen reader（res側で解決されるため無変更）は変更しない。
 wmshellは変更しない（spec Owner decision 6）。
 
@@ -242,6 +253,90 @@ base `e214b7b190` の `getTaskThumbnail` は直接呼出し1経路のみであ�
   qva/qvb oracle: NoSuchMethodError 0＋failure marker 0＋実thumbnailレンダリング＋
   hiddenapi denial補助観測（spec AC-10c）。
 
+## 実装詳細5（makeThumbnail のwrapToBitmap reflection。spec Owner decision 12）
+
+`systemUI/shared/src/com/android/systemui/shared/recents/model/ThumbnailData.kt`
+`makeThumbnail` を次の構造にする（#545参照comment付き。failure marker:
+`"TaskSnapshot.wrapToBitmap reflection failed (see #545)"`）:
+
+```kotlin
+        private fun makeThumbnail(snapshot: TaskSnapshot): Bitmap {
+            var thumbnail: Bitmap? = null
+            try {
+                if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                    // #545: Android 17 (API 37) deprecated TaskSnapshot.getHardwareBuffer() to
+                    // unconditionally return null (device dexdump:
+                    // docs/assessment/545-api37-provider-fix-evidence/wraptobitmap-contrast.txt);
+                    // the supported pixel source is TaskSnapshot.wrapToBitmap(), which
+                    // framework-16.jar does not carry — invoke it reflectively. Failure is
+                    // logged with a tagged marker and falls back to the black-bitmap path
+                    // below instead of crashing the overview.
+                    thumbnail = snapshot.javaClass.getMethod("wrapToBitmap")
+                        .invoke(snapshot) as? Bitmap
+                } else {
+                    snapshot.hardwareBuffer?.use { buffer ->
+                        thumbnail = Bitmap.wrapHardwareBuffer(buffer, snapshot.colorSpace)
+                    }
+                }
+            } catch (ex: IllegalArgumentException) {
+                ... 既存 ...
+            } catch (ex: ReflectiveOperationException) {
+                Log.e("ThumbnailData", "TaskSnapshot.wrapToBitmap reflection failed (see #545)", ex)
+            }
+            return thumbnail ?: Bitmap.createBitmap(...).apply { eraseColor(Color.BLACK) }
+        }
+```
+
+- 既存 `IllegalArgumentException` catch維持＋ `ReflectiveOperationException` catch追加
+  （`NoSuchMethodException`/`IllegalAccessException`/`InvocationTargetException` の親。Kotlin）。
+- `as? Bitmap` によりinvoke戻り値のnull/型不適合も既存fallbackへ流れる（新規経路を増やさない）。
+- API <=36は既存hardwareBuffer経路がbyte identical（matrix (e) で正常レンダリング実績）。
+- qva2/qvb2 oracle: 実app screenshot thumbnailレンダリング（黒fallbackでないscreenshot実証）＋
+  marker 0（spec AC-10d）。
+
+## 実装詳細6（takeTaskThumbnail のTaskSnapshotManager reflection。spec Owner decision 13）
+
+`systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java`
+`takeTaskThumbnail` を次の構造にする（第11 decisionのgetTaskThumbnail分岐と同一target class。
+failure marker: `"TaskSnapshotManager takeTaskSnapshot reflection failed (see #545)"`）:
+
+```java
+    public ThumbnailData takeTaskThumbnail(int taskId) {
+        TaskSnapshot snapshot = null;
+        try {
+            if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                // #545: Android 17 (API 37) removed IActivityTaskManager.takeTaskSnapshot(int,
+                // boolean) (device exposes only (IZZZ); dexdump contrast in
+                // docs/assessment/545-api37-provider-fix-evidence/taketasksnapshot-contrast.txt).
+                // Upstream android17-release routes this through TaskSnapshotManager —
+                // invoke it reflectively (same target class as getTaskThumbnail's #545 branch).
+                // Failure degrades to the empty ThumbnailData path below instead of crashing.
+                Object tsm = Class.forName("android.window.TaskSnapshotManager")
+                        .getMethod("getInstance").invoke(null);
+                snapshot = (TaskSnapshot) tsm.getClass()
+                        .getMethod("takeTaskSnapshot", int.class, boolean.class)
+                        .invoke(tsm, taskId, true);
+            } else {
+                snapshot = getService().takeTaskSnapshot(taskId, /* updateCache= */ true);
+            }
+        } catch (RemoteException e) {
+            Log.w(TAG, "Failed to take task snapshot", e);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "TaskSnapshotManager takeTaskSnapshot reflection failed (see #545)", e);
+        }
+        if (snapshot != null) {
+            return ThumbnailData.fromSnapshot(snapshot);
+        } else {
+            return new ThumbnailData();
+        }
+    }
+```
+
+- `RemoteException` catchは既存のまま。reflection failureはmarker log＋既存の空 `ThumbnailData`
+  経路へdegrade（新規経路を増やさない）。API <=36は既存直接 `(IZ)` 呼出しがbyte identical。
+- qva2/qvb2 oracle: `takeTaskSnapshot` NoSuchMethodError 0＋marker 0＋launcher FATAL 0（AC-10e）。
+
 ## migration
 
 - なし（DB・preference・schemaに触れない）。
@@ -249,9 +344,10 @@ base `e214b7b190` の `getTaskThumbnail` は直接呼出し1経路のみであ�
 ## rollback
 
 - 実装PR全体をrevertすればbase `e214b7b190` に戻る（単一機能commit群）。
-  compat修正5 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
-  `taskbar_phone_size` literal化＋`KeyButtonRipple` guard＋`ActivityManagerWrapper` TaskSnapshotManager
-  分岐）と
+    compat修正7 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
+  `taskbar_phone_size` literal化＋`KeyButtonRipple` guard＋`ActivityManagerWrapper`
+  TaskSnapshotManager getTaskThumbnail分岐＋`ThumbnailData` wrapToBitmap分岐＋
+  `ActivityManagerWrapper` takeTaskSnapshot分岐）と
   検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
   不成立時はcandidate commitだけをrevertして36維持とできる（spec Owner decision 7 / AC-6）。
   reconciliationの旧candidate `e2fe6f80df` とそのrevert pairはsuperseded historyとして保持される
@@ -260,6 +356,16 @@ base `e214b7b190` の `getTaskThumbnail` は直接呼出し1経路のみであ�
 
 ## 実装順序（candidate model。spec Owner decision 7/8/9＋post-guard追記（Owner decision 10））
 
+> **v5追記（Owner decision 12＋13。revert方式）**: qva/qbv検証（証跡 `8108e3a1aa`。実行SHA
+> `bdea76ea75`/`212097886b`）で第5修正の成立（bind・overview・task切替・marker 0）を確認後、
+> 第六破壊（thumbnail黒fallback）と第七破壊（`takeTaskSnapshot` launcher FATAL x3）が発覚。
+> 残存step: ①**明示revert `212097886b`（36へ戻す）** → ②`ThumbnailData.kt` fix（実装詳細5）と
+> ③`ActivityManagerWrapper.takeTaskThumbnail` fix（実装詳細6）を各1 commit適用 →
+> debug build＋qva2 (a)をcompat 7修正headで実施 → ④新candidate commit → release build →
+> qvb2 (b)+G3を新candidate SHAで実施（prefix `qva2-*`/`qvb2-*`）。旧candidate `212097886b` と
+> qva/qbv artifactは第六/第七破壊のdiagnostic/superseded evidenceとしてREADMEへ記録
+> （v5 acceptanceには不使用）。(e)/(f)等の再利用契約はv3どおり。
+>
 > **v4追記（Owner decision 11。revert方式）**: qa/qb検証（証跡 `71c6251203`）で第4修正の成立
 > （bind完了・4 signature 0件）を確認後、第五破壊（`getTaskSnapshot`）がoverview経路で発覚。
 > 残存step: ①**明示revert `40eb5dbfab`（maxSdk 36へ戻す。revert pairをsuperseded historyとして
@@ -339,19 +445,23 @@ rm→push→chmod→restorecon→reboot。priv-app配置は `/product/priv-app/`
 allowlist XML。run毎に `cmd overlay lookup` とSystemUI `mRecentsComponentName` の一致を
 preflight証跡化）。
 
-- (a) API 37 debug＋debug用overlay＋priv-app（**v4実行SHA: compat修正5 commits適用後head。prefix `qva-*`**。
-  historical: qa-run（4修正head `68e68a6a45`）と3-commit版は `71c6251203` / `fc5169566c` 側の
-  diagnostic/superseded記録）: bind成功・
-  クラッシュ無し（4修復signature＋`getTaskSnapshot` NoSuchMethodError 0をlogcatで確認）・
-  **reflection failure marker 0・実thumbnailレンダリング**（AC-10c）・新reflection起因hiddenapi
-  denial補助観測（0件）・`isConnected=true`・
+- (a) API 37 debug＋debug用overlay＋priv-app（**v5実行SHA: compat修正7 commits適用後head。prefix `qva2-*`**。
+  diagnostic: qva-run（5修正head `bdea76ea75`。`8108e3a1aa`）等はsuperseded記録）: bind成功・
+  クラッシュ無し（6修復signature＋`getTaskSnapshot`/`takeTaskSnapshot` NoSuchMethodError 0を
+  logcatで確認）・**3reflection failure marker 0（get/take/wrapToBitmap）・実thumbnailレンダリング
+  （黒fallbackでない）**（AC-10c diagnostic実績を引き継ぐ形でAC-10d/eのfinal oracle）・
+  launcher FATAL 0・新reflection起因hiddenapi denial補助観測（0件）・`isConnected=true`・
   APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
   同logcatからhiddenapi観測抜粋（AC-3）と `PipInputConsumer` 監視（AC-1付帯）。
-- (b) API 37 release（maxSdk 37のcandidate build。**v4実行SHA: 新candidate commit。prefix `qvb-*`**）＋
+- (b) API 37 release（maxSdk 37のcandidate build。**v5実行SHA: 新candidate commit。prefix `qvb2-*`**）＋
   release用overlay＋priv-app: preflight・`compatible=true`（"disabling recents" 無し・sheet非表示
-  screenshot）・overview成立（**実thumbnailレンダリング＋reflection failure marker 0**）・task切替。
+  screenshot）・overview成立（**3reflection failure marker 0・実thumbnailレンダリング**）・task切替・
+  launcher FATAL 0。
   G3: overview→task切替の遷移時間帯logcatを取得し `ActivityTaskManager` BAL block有無を判定（AC-4）。
-  hiddenapi補助観測へ **新TaskSnapshotManager call由来denialの監視** を追加。
+  hiddenapi補助観測へ **新TaskSnapshotManager/wrapToBitmap call由来denialの監視** を追加。
+  **parcel例外oracle（AC-10e2）**: launcher pidで `BadParcelableException: Parcel data not fully
+  consumed` / `Bundle length is not aligned by 4` と `ShellRecents: No matching remote found to
+  takeover` を0件確認（再現時はcandidate FAILとしてfailure signature固定→別Owner decision）。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。**v3: image上のflags table不在（`d-hiddenapi-logcat-post.txt` /
