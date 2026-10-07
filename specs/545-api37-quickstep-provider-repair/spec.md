@@ -9,7 +9,7 @@ updated: 2026-10-07
 
 > Status: accepted（2026-10-07。PR #548 review round 3でblocking 0・追加指摘なし・Clear
 > （[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)。
-> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する）
+> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する。revision 2/3 addendum（PR #549/#551）の説明はChange history参照。Spec status は本ブロックが正とし、addendum（Owner decision 8/9/10）は受入済み。)
 
 **Risk tier: H**（判定理由: vendored upstream code（`systemUI/shared` のAOSP由来file）への変更であり、
 provider bind path（SystemUIからの起動経路でlauncher processの生存に直結する）を変える。
@@ -137,6 +137,35 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    （reversible。diagnostic runはOwner decision 8/9の証跡収集が目的）、**最終検証matrixはnative
    density（override無し）で実施し**、本修正が意図するphone profile経路をそのまま検証する。
    density変更は最終matrixの手順に含めない。
+10. **post-guard検証で実測された第四のAPI 37.0破壊（`KeyButtonRipple` の
+   `android.companion.virtualdevice.flags.Flags` クラス欠損による `NoClassDefFoundError`）も
+   本Issueのprovider修復範囲に含め、当該flag読取り1箇所にdegrade guard
+   （**`NoClassDefFoundError` のみをcatch** → `ViewConfiguration.getTapTimeout()`
+   旧挙動へfallback。直接参照式はchecked例外を送出しないため
+   `ClassNotFoundException` をcatchに含めるとcompile不能）を追加する**。根拠: (a) post-guard最終matrix (a)（2026-10-07、実行SHA
+   `63a8a3a7d5`、native density）で、Owner decision 8/9修正後に
+   `SystemUiProxy` 側のTaskbar初期化へ到達したうえで、
+   `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java:108`
+   （`SDK_INT_FULL >= 3600001` ガード下で `Flags.viewconfigurationApis()` を呼ぶ）が
+   API 37.0 imageで毎回 `NoClassDefFoundError` → provider bind完了oracleが再び未達
+   （`ma-keybuttonripple-flags-class-check.txt` / `ma-crash-check.txt`）。
+   (b) 当該クラスは37.0 imageのframeworkで `com.android.internal.hidden_from_bootclasspath`
+   名前空間にのみ存在し、app-visibleな `android.companion.virtualdevice.flags.Flags` は
+   class descriptor実測で0件。API 36 imageでは同hidden名前空間はあるが
+   `SDK_INT_FULL=36.0` でgate falseのため参照しない（API 36は性格的に不変）。
+   (c) fallback値は修正のない旧挙動（`ViewConfiguration.getTapTimeout()`）であり、flag
+   （ck ViewConfiguration一部APIの移行）が参照できても得られる差分は小さい。
+   (d) 変更は1 file 1箇所の最小bridge（Owner decision 8と同型）。
+   本post-guard matrixの全証跡は実装branch commit **`fc5169566c`** に固定（
+   https://github.com/nunu1733/NunuLauncher/tree/fc5169566c6782b3e3f30c1deec58a37e667fe0f/docs/assessment/545-api37-provider-fix-evidence 。diagnostic run provenance:
+   (a) 実行SHA `63a8a3a7d5`＋debug APK sha256 `bed40262614f…`、(b)(e)(f) 実行SHA
+   `2987e525bd`＋candidate2 APK sha256（release `c198865852ed…`/debug `5098ceb4d7af…`）、
+   AVD `issue526_api37_pixel_9a` / `issue142_api36`（fingerprintは各preflight fileへ記録済み）。
+   具体file: `ma-crash-check.txt`（crash stack + 3修正分signature 0）・
+   `ma-keybuttonripple-flags-class-check.txt`（class descriptor対照＋`SDK_INT_FULL` 実測）・
+   `me-apk-dimen-check.txt`（48dp pin静的確認）・`d-hiddenapi-logcat-post.txt`/`g3-bal-check-post.txt`）。
+   (e)/(f)/hiddenapi/wmshell のPASS結果は本修正で変わり得ない（pathはAPI 37のTaskbar初期化のみ）
+   ため、第10 decision適用後の再検証は (a)/(b)+G3 のみを対象とする。
 
 ## Baseline（本specの前提事実）
 
@@ -172,6 +201,11 @@ PR #546。#524検証証跡とADR-0018 revision 8を含む）固定。実装branc
   `android/window/DesktopExperienceFlags.class` に存在。API 37.0 imageのframework.jarからは削除済みを
   dexdump実測）を参照。provider bind → `TouchInteractionService.onUserUnlocked:889` →
   `TaskbarManager.onUserUnlocked` で毎回実行され、37.0 image上で `NoSuchFieldError` クラッシュ。
+- 第四破壊の対象（Owner decision 10）: `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java:108`
+  （`SDK_INT_FULL >= 3600001` ガード下で `android.companion.virtualdevice.flags.Flags.viewconfigurationApis()`
+  を呼ぶ。compileはframework-16.jarの当該classで解決。API 37.0 imageではapp-visibleなclassが
+  存在せず（`com.android.internal.hidden_from_bootclasspath` 名前空間のみ。dexdump実測）
+  `NoClassDefFoundError`。provider bind後のTaskbar初期化で実行）。
 - 第三破壊の対象（Owner decision 9）: `res/values/dimens.xml:437`
   （`<dimen name="taskbar_phone_size">@*android:dimen/navigation_bar_frame_height</dimen>`。
   compileSdk 37.2でID `0x01050283` をbake。当該IDの解決先はlevel毎に異なる: 37.0 imageでは
@@ -238,6 +272,16 @@ When SystemUIが `TouchInteractionService` をbindし（user unlock後）、rece
 Then `registerInputConsumer` でクラッシュせず、`LauncherProxyService.isConnected=true` となり、
 overview表示・task切替が破綻なく成立する。#524のfailure signature
 （`NoSuchMethodError ... createInputConsumer(...InputChannel;)V`）は再現しない。
+
+### Scenario: flag class欠損環境でKeyButtonRippleがクラッシュせず旧tap timeoutへfallbackする
+
+Given API 37.0 image（app-visibleな `android.companion.virtualdevice.flags.Flags` が存在しない。
+一次出力 `ma-keybuttonripple-flags-class-check.txt`）でprovider構成済みLawnchairがbindされ、
+Taskbar初期化（KeyButtonRipple生成）に到達する
+When `KeyButtonRipple` が `Flags.viewconfigurationApis()` を評価する
+Then `NoClassDefFoundError` をcatchして
+`ViewConfiguration.getTapTimeout()`（旧挙動）へfallbackし、launcher processはクラッシュしない。
+classが存在する環境では既存のflag評価挙動が変わらない。
 
 ### Scenario: API 37.0 imageでTaskbar初期化がクラッシュせずprovider bindが完了する
 
@@ -335,9 +379,18 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
   が実装PR内で反映されている（candidate不成立時はrevision 9を適用しない）。
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
-- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**（(a): compat修正3 commits適用後head、
-  (b)〜(f): candidate commit）と使用APK（(b)/(f): candidate release、(e): candidate debug）の
-  対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない。
+- [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**のv3 mapping
+  （(a)qa-run: **compat修正4 commits適用後head**、(b)/G3 qb-run: **新candidate commit**、
+  (e)/(f)＋hiddenapi/wmshellの再利用分: **旧candidate `2987e525bd`**）と使用APK
+  ((a): compat 4修正debug、(b)/(f): candidate release〔(b)は新candidate、(f)は旧candidate〕、
+  (e): 旧candidate debug)の対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが
+  起きない（再利用分の一次出力は`fc5169566c` 固定のpost-guard matrix（ma-〜mf-）と各行で対応づける）。
+- [ ] AC-10b: post-guard matrix (a)/(b) で新たに実測された `KeyButtonRipple` の
+  `NoClassDefFoundError`（`android.companion.virtualdevice.flags.Flags`）が出ず、(a) で
+  bind完了（`isConnected=true`）・overview成立・task切替、(b) で `compatible=true`・sheet非表示・
+  overview/task切替が成立する。guard diff（`NoClassDefFoundError` catchのみ。
+直接参照式にchecked例外は送出されないためcompile成立）がcode reviewで確認され、
+class存在環境・`SDK_INT_FULL<3600001` 環境（API 36）の挙動不変が確認されている。
 - [ ] AC-10: matrix (a) で `TaskbarRecentAppsController` の `NoSuchFieldError`
   （`ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX`）と `Resources$NotFoundException`
   （`taskbar_phone_size`）の **いずれも出ず**、native densityのままbind完了
@@ -354,11 +407,11 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 | AC-2 | matrix (b) runtime証跡（同上＋sheet非表示screenshot。実行SHA: candidate commit） |
 | AC-3 | (a)/(b) logcatのhiddenapi観測抜粋＋取得可能なflags一次出力file |
 | AC-4 | (b)構成のG3 logcat抜粋＋PR本文のcreator mode判断記載 |
-| AC-5 | matrix (e)/(f) runtime証跡（実行SHA: candidate commit）＋(e)のgeometry正規化record（post-fix screenshot＋APK静的確認＋誤解決先対照） |
+| AC-5 | matrix (e)/(f) runtime証跡（**実行SHA: 旧candidate `2987e525bd`。再実行せず `fc5169566c` 固定のpost-guard証跡を再利用**）＋(e)のgeometry正規化record（post-fix screenshot＋APK静的確認＋誤解決先対照） |
 | AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
-| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。**pre-guard diagnostic run（Owner decision 8/9の証跡。commit `f5a3977281` / `e70a58c1fd` / `206850b3d7` / `5c6d40a56d`）を最終matrixと混同しない別行で記載**）＋packet記載 |
+| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。**pre-guard diagnostic run（Owner decision 8/9の証跡。commit `f5a3977281`〜`5c6d40a56d`）とpost-guard matrix（Owner decision 10の証跡＋(e)/(f)/hiddenapi/wmshell再利用分。commit `fc5169566c`）をv3最終matrixと混同しない別行で記載**）＋packet記載 |
 | AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError / Resources$NotFoundException 0件・bind完了）＋guard/dimen diff（code review） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
@@ -377,6 +430,16 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
   （実行SHA=candidate commit）→ ⑦全成立ならcandidate保持＋ADR-0018 rev 9。
   不成立ならcandidate drop（36維持）＋failure evidence記録。
+  **post-guard追記（Owner decision 10。実行手順）**: post-guard matrix (a)/(b) が第四破壊
+  （`KeyButtonRipple`）でFAILしたため、post-guard証跡commit **`fc5169566c`** の後に
+  **`2987e525bd` を明示revertしてmaxSdk 36へ戻す → `KeyButtonRipple` guard → debug build＋
+  matrix (a)をcompat 4修正headで実施 → 新maxSdk 37 candidate → debug/release build＋(b)+G3**
+  の順で進める。（現headのmaxSdkが既に37のため「candidateの再作成」は不能。revertで36へ戻してから
+  再積む。matrix (a)の実行SHAはこのcompat 4修正head＝④の「compat修正適用後head」の正しい状態であり、
+  AC-9の(a)契約と整合する。）**(e)/(f)/hiddenapi/wmshellのPASS結果は旧candidate `2987e525bd` の
+  artifact（sha256はdecision 10参照）に固定して再利用**し、READMEのmatrix↔SHA↔APK対応表は
+  SHAを分けて記載する（(a)=compat 4修正head、(b)=新candidate、(e)/(f)=旧candidate `2987e525bd`）。
+  以下の①〜⑦はOwner decision 10適用前の記録として保持する。
   **既存branchのreconciliation（revert方式）**: 現在のcandidate commit `e2fe6f80df`
   （`quickstepMaxSdk` 36→37）は証跡commit（`f5a3977281` / `e70a58c1fd` / `206850b3d7`）の祖先に
   あるため、drop/resetは行わず **`e2fe6f80df` の差分を明示revertしてtreeを36へ戻す**。その後
@@ -389,24 +452,26 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   `e70a58c1fd` / `206850b3d7` に固定し、AC-9対応表の別行「pre-guard diagnostic run」として
   最終matrixと混同しない。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
-  - (a) API 37 debug @ compat修正3 commits適用後head＋debug用overlay＋priv-app → クラッシュ無し、
+  - (a) API 37 debug @ **compat修正4 commits適用後head（v3。qa-run）**＋debug用overlay＋priv-app → クラッシュ無し、
     `isConnected=true`、overview成立、task切替成功。
   - (b) API 37 release @ candidate commit（maxSdk 37）＋release用overlay＋priv-app →
     `compatible=true`、overview成立、sheet非表示、task切替成功。
   - (d) hiddenapi一次出力: (a)/(b)のregisterInputConsumer実行時間帯のlogcatを取得し
     hidden API access系のdenial/block有無を判定。可能ならroot shellで
     `hiddenapi list`（またはflags table）から該当signature行を一次取得する。
-  - (e) API 36 debug＋debug用overlay＋priv-app（candidate debug APK。**`wm density reset` 後の
-    native density**）→ bind・overview成立・task切替の従来oracleに加え、**Taskbar geometry
-    正規化のrecord**: post-fix screenshot（native density）＋built APKの
-    `taskbar_phone_size=48dp` 静的確認（aapt2 dump等）＋pre-fixの誤解決先
-    （`notification_2025_action_list_min_height` 10dp。`api36-image-framework-res-contrast.txt`）
-    との対応を証跡化。
-  - (f) stock構成（overlay無し）API 37＋candidate release → 無影響。**API 36 stockの簡易確認も
-    candidate releaseで実施する**（通常install→HOME設定→system overview継続・launcher crash無し・
-    gate/sheet状態の記録。#524 (d)-API36相当の観測を今回の修正後buildで再取得する）。
-  - wmshell監視: (a)/(b)のlogcat全体から `PipInputConsumer` 起源の例外をgrep（0件確認または
-    failure signature記録）。
+  - (e) API 36 debug＋debug用overlay＋priv-app（**実行SHA: 旧candidate `2987e525bd`、candidate debug APK。
+    v3では再実行しない。`fc5169566c` 固定のpost-guard証跡（`me-*`）を再利用**）→
+    bind・overview成立・task切替の従来oracle＋**Taskbar geometry正規化のrecord**
+    （post-fix screenshot＋APKの `taskbar_phone_size=48dp` 静的確認＋pre-fix誤解決先10dp対照）は
+    いずれも `fc5169566c` の `me-*` fileで成立済み。
+  - (f) stock構成（overlay無し）API 37＋candidate release → 無影響。API 36 stockの簡易確認も
+    同様。**v3では再実行しない。実行SHA: 旧candidate `2987e525bd`、candidate release APK。
+    `fc5169566c` 固定のpost-guard証跡（`mf-*`: 通常install→HOME設定→system overview継続・
+    launcher crash無し・gate/sheet状態）を再利用する**
+    （#524 (d)-API36相当の観測を今回の修正後buildで取得済み）。
+  - wmshell監視・hiddenapi観測（matrix (d)）: **v3では旧candidate `2987e525bd` の既取得PASSを
+    `fc5169566c` 証跡から再利用する**（(a)/(b)のqa-/qb-run logcatで同種ログが自然に再取得される
+    場合は補助観測であり、acceptanceの既取得PASSを置き換えない）。
 - 観測手段: 操作結果、logcat、screenshot/録画をevidence dirへ保存しPRへ要約する。
   **evidence READMEにはmatrixごとの実行SHAの対応表を必ず記載する**（AC-9）。
 - **G3**: (b)構成を主証跡としてScenario「G3確定観測」を実施する（#527 spec G3節の委譲条件の完結）。
@@ -473,3 +538,18 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   （10.000000dp）を一次出力fileへ追記し、minSdk 35分の静的table確認
   （SDK 35: `0x01050283` = `notification_right_icon_headerless_margin` 20dp。runtime matrix不追加）
   を§3'として記録。
+- 2026-10-07: Addendum v3（post-guard最終matrix結果にもとづくOwner decision 10追加）—
+  post-guard matrix（実装branch evidence `ma-*`〜`mf-*`）で (e)/(f) PASS・hiddenapi 0件・wmshell 0件・
+  `taskbar_phone_size=48dp` pinのAPK静的確認成立を確認したうえで、第四破壊
+  （`KeyButtonRipple.java:108` の `android.companion.virtualdevice.flags.Flags` クラス欠損。
+  hidden_from_bootclasspath名前空間のみ実在をdexdump実測）を発見。(a)/(b)/G3が再びbind未達。
+  当該flag読取り1箇所のdegrade guard（旧tap timeout fallback）を本Issue範囲へ追加
+  （AC-10b・新Scenario・実施順序追記）。再検証は(a)/(b)+G3に限定（(e)/(f)はpath不変）。
+- 2026-10-07: Addendum v3 round 1〜2（PR #551 inline review blocking 3＋round 2 blocking 1/低1）対応 —
+  (1) guard契約を `NoClassDefFoundError` のみcatchへ修正（compile不能問題の解消）。
+  (2) post-guard matrix証跡を実装branch commit `fc5169566c` にcommit固定参照。(3) matrix↔SHA契約を
+  v3 mappingへ全面同期（AC-9: (a)qa-run=compat 4修正head／(b)qb-run=新candidate／
+  (e)(f)＋hiddenapi/wmshell再利用分=旧candidate `2987e525bd`。spec/plan module表へ
+  `KeyButtonRipple.java` 行追加、build.gradle行を4 commitsへ同期、matrix詳細をv3表記へ更新。
+  旧3-commit記述はhistorical明示）。(4) plan Statusを「revision 2 accepted / revision 3 proposed
+  addendum」へ更新。
