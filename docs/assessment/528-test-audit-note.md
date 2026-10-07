@@ -65,3 +65,55 @@ caller, no test-only seam) so the classification is directly testable.
    merge gate).
 8. **Cost vs confidence** — pure JVM tests (~ms), no emulator or clean-state
    cost.
+
+## Addendum — review round 1 fixes (F2 cancellation gate, F3 invalid-template short-circuit, F4 blank-template hook)
+
+Applied per the same authoring gate for the review-round-1 tests added to
+`SuggestionFetchOutcomeLifecycleTest`.
+
+1. **Protected contract** — three accepted-contract seams: (a) a publish is
+   refused when the fetching coroutine is no longer active, so a blocking call
+   completing after the outer `.timeout()` cancellation can never flip the
+   user-visible timeout state (`generic-network-failure`) to `SUCCESS`; the
+   gate lives in `SuggestionFetchOutcomeState.publishIfActive`, so the full
+   publish decision (template currency + coroutine state) is testable at the
+   state-holder seam; (b) the timeout hook's publish-if-template-current
+   semantics: `GENERIC_NETWORK_FAILURE` publishes only for the template that
+   was actually being fetched, and a stale hook after a template change is
+   refused; (c) the template-change lifecycle also holds across
+   `A → blank → A` (the hook runs for blank in the UI layer; the state seam
+   asserts the clearing), and the new `guardInvalidTemplate` log builder keeps
+   the redaction contract (reason category + SDK_INT only, no URL/placeholder/
+   query material).
+2. **Credible regression** — plausible breaks: `publishIfActive` ignoring the
+   coroutine flag (reintroduces the review's finding 2 race where the late
+   completing call overwrites the timeout outcome); the timeout hook
+   publishing against the current template instead of the fetch-start template
+   (would mark a newly saved configuration as failed); moving the UI hook back
+   into the non-blank-only composable (would resurface stale failures for
+   `A → blank → A` — the production wiring risk is accepted and covered by the
+   emulator oracle; the state seam pins the lifecycle it must produce); logging
+   URL/query material in the invalid-template guard.
+3. **Canonical owner** — `SuggestionFetchOutcomeState` / `SuggestionFetchLog`
+   remain the canonical pure JVM seams; `publishIfActive` has a production
+   caller (the suspend `publishOutcome` in `CustomWebSearchProvider`), so no
+   test-only seam was added. The `A → blank → A` hook placement itself is a
+   Compose-structure property not representable on the JVM; it is covered by
+   evidence oracle item 4 instead of a duplicated, weaker unit test.
+4. **Distinct higher-layer risk** — the emulator oracles own the
+   production-binding behaviors this lane cannot see: no OkHttp call for an
+   INVALID template, no LAN prompt for it, the timeout →
+   generic-network-failure → no-late-SUCCESS flip end-to-end, and the
+   request-button state after system-initiated process death. The unit lane
+   does not replay those.
+5. **Overlap** — extends the existing `SuggestionFetchOutcomeLifecycleTest`;
+   no new file, no overlap with the classifier tests (the double-`%s` →
+   INVALID verdict itself was already pinned there; the new tests cover the
+   fetch-path consequences, not the verdict).
+6. **Impact surface / lane** — same `surface_jvm` coverage via the existing
+   `--tests 'app.lawnchair.search.*'` filter in the permanent merge-gate job;
+   no new lane, no `ci_portfolio_map.yml` change.
+7. **CI classification** — Permanent (merge-gate regression oracles for the
+   review-round-1 contracts).
+8. **Cost vs confidence** — pure JVM tests (~ms), no emulator or clean-state
+   cost.

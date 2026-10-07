@@ -13,9 +13,11 @@ import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.R
 import com.patrykmichalik.opto.core.firstBlocking
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.isActive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -52,6 +54,17 @@ object CustomWebSearchProvider : WebSearchProvider {
     private val okHttpClient = OkHttpClient()
 
     /**
+     * The template whose fetch is (or was last) in flight, set at fetch start
+     * (Issue #528 review round 1). The outer timeout hook
+     * [onFetchTimeout] publishes through the publish-if-template-current
+     * lifecycle against THIS template, so a timeout that arrives after the
+     * user already changed the template is refused as stale instead of
+     * marking the new configuration as failed.
+     */
+    @Volatile
+    private var lastFetchStartTemplate: String? = null
+
+    /**
      * In-memory typed outcome for the current suggestions URL template
      * (Issue #528). Memory-only (zero-write); cleared to
      * [SuggestionFetchOutcome.NOT_RUN] when the template changes, and a result
@@ -81,6 +94,30 @@ object CustomWebSearchProvider : WebSearchProvider {
         lastOutcome = outcomeState.outcome
     }
 
+    /**
+     * Timeout hook for the outer suggestion wrapper (Issue #528 review round
+     * 1, F2): `WebSuggestionProvider.search()` applies `.timeout()` OUTSIDE
+     * this provider's flow, so a timeout cancels the flow and the in-flow
+     * typed publishes never run — without this hook the timeout path would
+     * bypass the typed-outcome contract (empty suggestions in the search
+     * surface while settings still shows the previous outcome or `not-run`).
+     *
+     * Publishes `GENERIC_NETWORK_FAILURE` for [lastFetchStartTemplate] through
+     * the existing publish-if-template-current lifecycle: refused as stale
+     * when the template changed since fetch start. A late completing fetch
+     * cannot overwrite this state because its cancelled coroutine fails the
+     * [SuggestionFetchOutcomeState.publishIfActive] gate.
+     *
+     * Runs in the wrapper's catch block (still-active context) and never
+     * performs network work. Log redaction: class name and fixed strings
+     * only — no URL, no query.
+     */
+    fun onFetchTimeout() {
+        val template = lastFetchStartTemplate ?: return
+        outcomeState.publish(template, SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE)
+        lastOutcome = outcomeState.outcome
+    }
+
     override fun configure(context: Context): WebSearchProvider {
         val prefs = PreferenceManager2.getInstance(context)
         appContext = context.applicationContext
@@ -96,16 +133,33 @@ object CustomWebSearchProvider : WebSearchProvider {
             return@flow
         }
 
+        // Issue #528: the classifier verdict is decided ONCE per fetch, before
+        // any network activity, and shared by both guards below (review round
+        // 1, F3) so the fetch path can never execute a template the settings
+        // UI classifies differently.
+        val templateAtFetchStart = suggestionsUrlTemplate
+        val category = SuggestionUrlClassifier.classify(templateAtFetchStart)
+
+        // Review round 1, F3: an INVALID template (e.g. two `%s` placeholders
+        // or an unsupported scheme) short-circuits BEFORE any network call and
+        // without a LAN permission prompt. The settings UI's typed invalid
+        // message owns that surface, so no outcome is published (stays
+        // NOT_RUN). Redaction: reason category and SDK_INT only.
+        if (category == SuggestionUrlCategory.INVALID) {
+            Log.i(TAG, SuggestionFetchLog.guardInvalidTemplate(sdkInt = Build.VERSION.SDK_INT))
+            emit(emptyList())
+            return@flow
+        }
+
         // Issue #528 fetch guard: on SDK 37+ a statically-local (LAN) template
         // requires ACCESS_LOCAL_NETWORK. Short-circuit BEFORE any network call
         // so the user never waits for the LNP timeout. `indeterminate` is
         // never short-circuited here — it fetches and flows into the typed
         // outcome contract. `statically-public`, granted permissions and
         // API 36 and below keep the unchanged fetch path.
-        val templateAtFetchStart = suggestionsUrlTemplate
         if (
             Build.VERSION.SDK_INT >= LanNetworkContract.SDK_CINNAMON_BUN &&
-            SuggestionUrlClassifier.classify(templateAtFetchStart) == SuggestionUrlCategory.STATICALLY_LOCAL &&
+            category == SuggestionUrlCategory.STATICALLY_LOCAL &&
             !isLocalNetworkPermissionGranted()
         ) {
             publishOutcome(templateAtFetchStart, SuggestionFetchOutcome.BLOCKED_BY_PERMISSION)
@@ -114,9 +168,11 @@ object CustomWebSearchProvider : WebSearchProvider {
             return@flow
         }
 
+        lastFetchStartTemplate = templateAtFetchStart
+
         try {
             val encodedQuery = Uri.encode(query)
-            val url = suggestionsUrlTemplate.replace("%s", encodedQuery)
+            val url = templateAtFetchStart.replace("%s", encodedQuery)
 
             val request = Request.Builder().url(url).build()
             okHttpClient.newCall(request).execute().use { response ->
@@ -160,9 +216,17 @@ object CustomWebSearchProvider : WebSearchProvider {
             PackageManager.PERMISSION_GRANTED
     }
 
-    private fun publishOutcome(templateAtFetchStart: String, outcome: SuggestionFetchOutcome) {
-        outcomeState.publish(templateAtFetchStart, outcome)
-        lastOutcome = outcomeState.outcome
+    /**
+     * Publishes a fetch result through the publish-if-template-current
+     * lifecycle, additionally gated on the fetching coroutine still being
+     * active (Issue #528 review round 1, F2): when the outer `.timeout()` has
+     * cancelled this flow, a blocking call that completes afterwards must not
+     * flip the user-visible timeout state (published by [onFetchTimeout]) to
+     * SUCCESS. Cancellation is cooperative, so the check is required here.
+     */
+    private suspend fun publishOutcome(templateAtFetchStart: String, outcome: SuggestionFetchOutcome) {
+        val published = outcomeState.publishIfActive(templateAtFetchStart, currentCoroutineContext().isActive, outcome)
+        if (published) lastOutcome = outcomeState.outcome
     }
 
     private fun parseOpenSearchResponse(responseBody: String): List<String> {

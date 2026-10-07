@@ -20,7 +20,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -96,6 +95,15 @@ fun WebSearchProvider(
                 // error verdict can never diverge from the typed guidance.
                 isErrorCheck = { SuggestionUrlClassifier.classify(it) == SuggestionUrlCategory.INVALID },
             )
+            // Issue #528 review round 1: the zero-write template-change hook
+            // must run for blank templates too, so `A → blank → A` re-clears
+            // the outcome instead of resurfacing the stale failure. It lives
+            // in the custom-provider scope, before/independent of the
+            // non-blank condition; the status UI itself stays hidden while
+            // the template is blank.
+            LaunchedEffect(suggestionsTemplate) {
+                CustomWebSearchProvider.onSuggestionsTemplateChanged(suggestionsTemplate)
+            }
             if (suggestionsTemplate.isNotBlank()) {
                 CustomSuggestionStatus(template = suggestionsTemplate)
             }
@@ -116,11 +124,9 @@ private fun CustomSuggestionStatus(
     template: String,
     modifier: Modifier = Modifier,
 ) {
-    // Zero-write template-change hook: keeps the provider's in-memory outcome
-    // in sync with the edited template (cleared to NOT_RUN on change).
-    LaunchedEffect(template) {
-        CustomWebSearchProvider.onSuggestionsTemplateChanged(template)
-    }
+    // The template-change hook does not live here (Issue #528 review round 1):
+    // this composable is only composed for non-blank templates, so a hook here
+    // would miss `A → blank`. It runs in the parent custom-provider scope.
 
     val category = remember(template) { SuggestionUrlClassifier.classify(template) }
 
@@ -190,13 +196,24 @@ private fun SuggestionFetchOutcome.toDisplayRes(): Int = when (this) {
  * within the same session, after a request was launched in that session and
  * rationale stopped showing. Nothing persists across processes (zero-write);
  * a fresh process starts with the plain request button again.
+ *
+ * The session flag is deliberately process-local `remember`, NOT
+ * `rememberSaveable` (Issue #528 review round 1): `rememberSaveable` restores
+ * through saved instance state across a system-initiated process death, which
+ * would carry the previous process's request history into the new process and
+ * could resurface the Settings guidance there, violating the accepted
+ * "同一sessionのみ・zero-write" contract. Accepted consequence: a configuration
+ * change / activity recreation also resets the in-session history. That is
+ * strictly narrower — the UI can only fall back to the plain request button
+ * again, it can never show stale settings-guidance — which is the safe side
+ * of the contract.
  */
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 private fun LanPermissionGuidance(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val permissionState = rememberPermissionState(LanNetworkContract.PERMISSION_ACCESS_LOCAL_NETWORK)
-    var requestedThisSession by rememberSaveable { mutableStateOf(false) }
+    var requestedThisSession by remember { mutableStateOf(false) }
 
     val granted = permissionState.status.isGranted
     val rationaleRequired = !granted && permissionState.status.shouldShowRationale

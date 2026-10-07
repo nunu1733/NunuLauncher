@@ -63,6 +63,74 @@ class SuggestionFetchOutcomeLifecycleTest {
     }
 
     @Test
+    fun `publish after cancellation is refused even for the current template`() {
+        // Review round 1 F2: the outer `.timeout()` cancels the fetching
+        // coroutine while a blocking call may still complete; the late SUCCESS
+        // must never flip the user-visible timeout state.
+        val template = "https://nas.local/s?q=%s"
+        val state = SuggestionFetchOutcomeState(template)
+        state.publish(template, SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE)
+
+        assertFalse(state.publishIfActive(template, coroutineActive = false, SuggestionFetchOutcome.SUCCESS))
+        assertEquals(SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE, state.outcome)
+    }
+
+    @Test
+    fun `active publish with current template still publishes through the cancellation gate`() {
+        val template = "https://nas.local/s?q=%s"
+        val state = SuggestionFetchOutcomeState(template)
+
+        assertTrue(state.publishIfActive(template, coroutineActive = true, SuggestionFetchOutcome.SUCCESS))
+        assertEquals(SuggestionFetchOutcome.SUCCESS, state.outcome)
+    }
+
+    @Test
+    fun `timeout outcome publishes only while the fetched template is current`() {
+        // Review round 1 F2: the timeout hook publishes GENERIC_NETWORK_FAILURE
+        // for the template that was actually being fetched; if the user already
+        // changed the template, the stale hook is refused and the new
+        // configuration stays not-run.
+        val fetchedTemplate = "https://nas.local/s?q=%s"
+        val state = SuggestionFetchOutcomeState(fetchedTemplate)
+
+        assertTrue(state.publish(fetchedTemplate, SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE))
+        assertEquals(SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE, state.outcome)
+
+        state.onTemplateChanged("https://example.com/s?q=%s")
+        assertEquals(SuggestionFetchOutcome.NOT_RUN, state.outcome)
+        assertFalse(state.publish(fetchedTemplate, SuggestionFetchOutcome.GENERIC_NETWORK_FAILURE))
+        assertEquals(SuggestionFetchOutcome.NOT_RUN, state.outcome)
+    }
+
+    @Test
+    fun `A to blank to A never resurfaces the old outcome`() {
+        // Review round 1 F4: the template-change hook must run for blank too,
+        // so re-entering the same failing URL starts from not-run.
+        val templateA = "https://nas.local/s?q=%s"
+        val state = SuggestionFetchOutcomeState(templateA)
+        state.publish(templateA, SuggestionFetchOutcome.TLS_CT_FAILURE)
+        assertEquals(SuggestionFetchOutcome.TLS_CT_FAILURE, state.outcome)
+
+        state.onTemplateChanged("")
+        assertEquals(SuggestionFetchOutcome.NOT_RUN, state.outcome)
+
+        state.onTemplateChanged(templateA)
+        assertEquals(SuggestionFetchOutcome.NOT_RUN, state.outcome)
+    }
+
+    @Test
+    fun `invalid-template guard log carries only reason and sdk int`() {
+        val message = SuggestionFetchLog.guardInvalidTemplate(sdkInt = 37)
+        assertTrue(message.contains("reason=invalid-template"))
+        assertTrue(message.contains("sdkInt=37"))
+        // The redaction contract: no URL, host, path, placeholder or query
+        // material (the canonical INVALID example is the double-%s template).
+        listOf("https", "%s", "query", "10.0.2.2", "example.com").forEach { forbidden ->
+            assertFalse("must not contain $forbidden", message.contains(forbidden, ignoreCase = true))
+        }
+    }
+
+    @Test
     fun `guard log carries only category, permission state and sdk int`() {
         val message = SuggestionFetchLog.guardBlocked(permissionGranted = false, sdkInt = 37)
         assertTrue(message.contains("reason=lnp-statically-local"))

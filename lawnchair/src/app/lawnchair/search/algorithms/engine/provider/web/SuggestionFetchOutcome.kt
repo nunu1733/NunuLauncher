@@ -68,6 +68,29 @@ class SuggestionFetchOutcomeState(initialTemplate: String = "") {
         outcome = newOutcome
         return true
     }
+
+    /**
+     * Publishes [newOutcome] only when [templateAtFetchStart] is still the
+     * current template AND [coroutineActive] is true. Returns whether the
+     * outcome was published.
+     *
+     * Issue #528 review round 1: the outer suggestion `.timeout()` cancels the
+     * fetching coroutine while a blocking OkHttp call may still complete on the
+     * IO dispatcher afterwards. Cancellation is cooperative, so plain code
+     * after the call keeps running; without this gate a late completing call
+     * could flip the user-visible timeout state (`generic-network-failure`,
+     * published by the timeout hook) back to `SUCCESS`. The caller observes
+     * the coroutine state; the decision lives here so the full publish gate is
+     * JVM-testable at the state-holder seam.
+     */
+    fun publishIfActive(
+        templateAtFetchStart: String,
+        coroutineActive: Boolean,
+        newOutcome: SuggestionFetchOutcome,
+    ): Boolean {
+        if (!coroutineActive) return false
+        return publish(templateAtFetchStart, newOutcome)
+    }
 }
 
 /**
@@ -108,6 +131,13 @@ internal object SuggestionFetchLog {
     /** Typed log for the LAN fetch guard short-circuit (no host, no URL). */
     fun guardBlocked(permissionGranted: Boolean, sdkInt: Int): String = "suggestion fetch short-circuited: reason=lnp-statically-local " +
         "permissionGranted=$permissionGranted sdkInt=$sdkInt"
+
+    /**
+     * Typed log for the invalid-template short-circuit (Issue #528 review
+     * round 1: no network call is made for a classifier-INVALID template).
+     * No host, no URL, no query — reason category and `SDK_INT` only.
+     */
+    fun guardInvalidTemplate(sdkInt: Int): String = "suggestion fetch short-circuited: reason=invalid-template sdkInt=$sdkInt"
 
     /**
      * The exception message can contain the URL or the query (e.g.
