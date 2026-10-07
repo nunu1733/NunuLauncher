@@ -769,4 +769,20 @@
     <plurals name="exchange_import_summary_keep">
         <item quantity="other">位置の維持の希望: %1$d件</item>
     </plurals>
+
+    <!-- Issue #528: custom suggestion LAN permission guard and typed fetch outcomes -->
+    <string name="custom_suggestion_lan_rationale">ローカルネットワーク上のアドレスから検索候補を取得するには、このアプリにローカルネットワークへのアクセスを許可してください。</string>
+    <string name="custom_suggestion_lan_request_button">ローカルネットワークへのアクセスを許可</string>
+    <string name="custom_suggestion_lan_granted">ローカルネットワークへのアクセスは許可されています。</string>
+    <string name="custom_suggestion_lan_denied_guidance">ローカルネットワークへのアクセスは拒否されています。許可するには、アプリ設定を開いて権限の「付近のデバイス」を許可してください。</string>
+    <string name="custom_suggestion_lan_open_settings_button">アプリ設定を開く</string>
+    <string name="custom_suggestion_status_not_run">検索候補: 現在のアドレスではまだ実行されていません。</string>
+    <string name="custom_suggestion_status_success">検索候補: 前回の取得に成功しました。</string>
+    <string name="custom_suggestion_status_blocked_by_permission">検索候補: ブロックされました。ローカルネットワーク権限が許可されていません。</string>
+    <string name="custom_suggestion_status_cleartext_blocked">検索候補: ブロックされました。平文（HTTP）通信は許可されていません。HTTPSのアドレスを使用してください。</string>
+    <string name="custom_suggestion_status_tls_ct_failure">検索候補: 失敗しました。TLS証明書の検証で失敗しました。</string>
+    <string name="custom_suggestion_status_http_error">検索候補: 失敗しました。サーバーがHTTPエラーを返しました。</string>
+    <string name="custom_suggestion_status_generic_network_failure">検索候補: 失敗しました。アドレスに接続できませんでした。</string>
+    <string name="custom_suggestion_url_not_https">http/httpsのURLのみ対応しています。平文（http）のエンドポイントはAndroidによってブロックされます。</string>
+    <string name="custom_suggestion_url_invalid">URLテンプレートが無効です。http://またはhttps://で始まり、検索クエリの位置に&#37;sを含めてください。</string>
 </resources>

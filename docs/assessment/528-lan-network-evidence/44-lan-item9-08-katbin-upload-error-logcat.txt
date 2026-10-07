@@ -1,0 +1,6 @@
+# katbin upload failure (airplane mode) logcat excerpt — release build app.lawnchair
+# airplane mode ON -> tap 'Upload crash log' -> UploaderService FGS -> upload throws -> report.uploadError=true -> UPLOAD_COMPLETE -> notification action becomes 'Upload failed' (action_upload_error, see 43-*.png). Airplane mode restored to OFF after capture.
+10-07 08:14:27.394 I/ActivityManager(  649): Start proc 6584:app.lawnchair:bugReport/u0a232 for started-service {app.lawnchair/app.lawnchair.bugreport.UploaderService}
+10-07 08:14:27.703 I/ActivityManager(  649): Background started FGS: Allowed [callingPackage: app.lawnchair; callingUid: 10232; uidState: SVC ; uidBFSL: n/a; BFGS denied: false; intent: Intent { cmp=app.lawnchair/.bugreport.UploaderService }; code:ACTIVITY_STARTER; tempAllowListReason:<setPendingIntentAllowlistDuration,reason:NotificationManagerService,pendingintent:u0a194:app.lawnchair.bugreport.UPLOAD,reasonCode:NOTIFICATION_SERVICE,duration:30000,callingUid:10194>; allowWiu:52; targetSdkVersion:37; callerTargetSdkVersion:37; startForegroundCount:0; bindFromPackage:null; isBindService:false]
+10-07 08:14:27.739 D/UploaderService( 6584): failed to upload bug report
+10-07 08:14:27.742 D/ActivityManager(  649): Stop FGS timeout: ServiceRecord{d6b05c u0 app.lawnchair/.bugreport.UploaderService c:app.lawnchair}

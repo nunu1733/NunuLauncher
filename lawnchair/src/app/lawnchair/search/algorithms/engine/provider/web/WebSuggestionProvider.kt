@@ -41,6 +41,16 @@ object WebSuggestionProvider : SearchProvider {
             .catch {
                 if (it is TimeoutCancellationException) {
                     Log.w(TAG, "Web suggestion request timed out")
+                    // Issue #528 review round 1 (F2): the outer timeout cancels
+                    // the custom provider's flow, so its in-flow typed publishes
+                    // never run. Connect the timeout to the typed-outcome
+                    // lifecycle so the settings state matches the empty
+                    // suggestions just shown (and a late completing fetch
+                    // cannot flip it back to SUCCESS). Built-in providers have
+                    // no typed state and keep the existing behavior.
+                    if (webProvider is CustomWebSearchProvider) {
+                        webProvider.onFetchTimeout()
+                    }
                     emit(emptyList())
                 }
             }
