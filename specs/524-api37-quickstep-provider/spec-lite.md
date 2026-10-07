@@ -151,16 +151,23 @@ debug build（SDK gate 0..100000 override、debug用overlay `app.lawnchair.debug
 ### Scenario: 変更前相当release buildはprovider gateが閉じたまま失敗する（効果対照）
 
 Given 同一release用overlay環境でmaxSdk 36のrelease build（変更前相当）を用意する
+（preflightでoverlay値とSystemUI参照がrelease用componentに一致していることを確認済み。
+`checkRecentsComponent()` はtrueを返す状態）
 When recents gestureを発火する
 Then `compatible=false` → `recentsEnabled=false` となり、`quickstep_incompatible` sheetが表示され、
-overviewが破綻するfailure signature（logcat "disabling recents" ほか）を記録する。
+overviewが不成立となる挙動（sheet表示・SystemUI側の観測）をfailure signatureとして記録する
+（`checkRecentsComponent` がtrueのためlogcat "disabling recents" は出ない。
+このlogはoverlay不一致・無効系の診断logであり、(c)のoracleには使わない）。
 この記録は変更の効果対照であり、永続的な状態変更は行われない。
 
 ### Scenario: 通常構成とAPI 36で無影響・回帰なし
 
-Given overlay無効（`config_recentsComponentName` がLawnchairを指さない）のAPI 36/37 emulator
+Given overlayをdisable/removeし、stock `config_recentsComponentName` に戻したAPI 36/37 emulator
+（preflightで `cmd overlay lookup` がstock値 `com.android.launcher3/com.android.quickstep.RecentsActivity`
+へ戻ったことを証跡化。**不一致値のoverlayを有効のまま残した状態は通常構成ではない**
+— SystemUI側は別variantをproviderとみなすため無影響oracleに使わない）
 When 通常操作（home・recents gesture・default HOME設定）を行う
-Then 挙動変化がなく（recentsはsystem側提供のまま、sheet非表示）、API 36 debug＋overlay有効の
+Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、sheet非表示）、API 36 debug＋debug用overlayの
 provider動作にも回帰がない（maxSdk 37は36を含む）。
 
 ### Scenario: G3のrecents遷移PI発火でBAL blockが出ない
@@ -202,14 +209,20 @@ Then 検証を実施せず未確認範囲としてIssue/PRへ記録し、`QUICKS
     破綻なし（debugは `build.gradle:267-274` でSDK gate 0..100000 override、`compatible` 常時true）。
   - (b) API 37 release build（変更後 maxSdk 37）＋release用overlay → `compatible=true`、
     overview成立。
-  - (c) API 37 release build（変更前相当 maxSdk 36）＋release用overlay → `compatible=false` →
-    `recentsEnabled=false` → `quickstep_incompatible` sheet（`LawnchairApp.kt:399-402`）と
-    overview破綻のfailure signature記録（変更の効果対照）。
-  - (d) overlay無効（通常構成。overlayをdisableまたは不一致値のまま）API 36/37 → 挙動変化なし
-    （recentsはsystem側提供のまま、sheet非表示）。
+  - (c) API 37 release build（変更前相当 maxSdk 36）＋release用overlay（preflight一致済み）→
+    `compatible=false` → `recentsEnabled=false` → `quickstep_incompatible` sheet
+    （`LawnchairApp.kt:399-402`）表示＋overview不成立のfailure signature記録
+    （`checkRecentsComponent` はtrueのため "disabling recents" は出ない。変更の効果対照）。
+  - (d) overlay無効（disable/removeしてstock `config_recentsComponentName`
+    `com.android.launcher3/com.android.quickstep.RecentsActivity` に戻した状態。preflightで
+    `cmd overlay lookup` がstock値へ戻ったことを証跡化）API 36/37 → 挙動変化なし
+    （Lawnchair側quickstepは無効のまま、sheet非表示）。
+    **不一致値のoverlayを有効のまま残した状態は通常構成ではない**ため無影響oracleに使わない
+    （SystemUI側は別variantをproviderとみなす。provider-path preflight失敗の診断に限る）。
   - (e) API 36 debug＋debug用overlay → provider動作に回帰なし（maxSdk 37は36を含む）。
-- 観測手段: 操作結果、logcat（`LawnchairApp` の "disabling recents" / `ActivityTaskManager` の
-  BAL block / SystemUI `OverviewProxyService`）、screenshot/録画をPRへ添付する。
+- 観測手段: 操作結果、logcat（`ActivityTaskManager` のBAL block / SystemUI
+  `OverviewProxyService`/`LauncherProxyService`。`LawnchairApp` の "disabling recents" は
+  overlay不一致・無効・resource欠落系の診断logとして分離）、screenshot/録画をPRへ添付する。
 - **G3観測**: provider構成環境のうち **(b) release構成（release用overlay＋maxSdk 37）を主証跡**、
   (a) debug構成を補助としてScenario 4を観測し、creator mode判断（保持またはgranular移行提案）を
   証拠つきでPRへ記録する。
@@ -241,3 +254,8 @@ Then 検証を実施せず未確認範囲としてIssue/PRへ記録し、`QUICKS
   Verificationへ追加。BaselineへapplicationId事実（`build.gradle:267-268`/`:309`）と
   `checkRecentsComponent` の完全一致要求（`LawnchairApp.kt:362`）を追記。G3観測の主証跡を
   (b) release構成へ同期、Scenarios/Scopeを同期。
+- 2026-10-07: Review round 2（PR #544コメント。round 1のblocking解消確認）対応 —
+  (d)を「overlay disable/removeしてstock値へ戻した状態」に限定（不一致overlayの有効残置は
+  通常構成でない旨を明記）。(c)のfailure signatureから "disabling recents" を分離
+  （`checkRecentsComponent` true時は出ない。該当logはoverlay不一致・無効系の診断log）、
+  sheet表示＋overview不成立＋preflight一致をoracleへ固定。
