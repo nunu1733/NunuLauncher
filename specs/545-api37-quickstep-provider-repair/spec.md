@@ -9,7 +9,7 @@ updated: 2026-10-08
 
 > Status: accepted（2026-10-07。PR #548 review round 3でblocking 0・追加指摘なし・Clear
 > （[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)。
-> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する。revision 2/3 addendum（PR #549/#551）の説明はChange history参照。Spec status は本ブロックが正とし、addendum（Owner decision 8/9/10）は受入済み。)
+> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する。revision 2〜5 addendum（PR #549/#551/#553。Owner decision 8/9/10/11/12/13。11まで受入済み、12/13は本PR #553 review pending）の説明はChange history参照。Spec status は本ブロックが正とする。)
 
 **Risk tier: H**（判定理由: vendored upstream code（`systemUI/shared` のAOSP由来file）への変更であり、
 provider bind path（SystemUIからの起動経路でlauncher processの生存に直結する）を変える。
@@ -491,12 +491,17 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
   reflection failed` markerが **すべて0件** で、bind/overview/task切替が成立する（qvb2では
   `compatible=true`/sheet非表示＋G3確定観測を含む）。diffがcode reviewで確認され、
   API <=36のhardwareBuffer経路不変が確認されている。
-- [ ] AC-10c: v4 matrix qva (a)/qvb (b) で実証済み（diagnostic。`8babd3bb10`）:  `getTaskSnapshot` の `NoSuchMethodError` と
-  reflection failure log marker（識別可能なtag。plan実装詳細4）が **ともに0件** で、
-  (a) でbind完了・overview成立（**実thumbnailのレンダリングを含む**）・task切替、(b) で
-  `compatible=true`・overview/task切替・G3確定観測が成立する。加えてqva/qvbのlogcatに
-  新reflection呼出し起因のhiddenapi denialが無いこと（補助観測）。`TaskSnapshotManager`
-  reflectionのdiffがcode reviewで確認され、API 36以下の経路不変が確認されている。
+- [ ] AC-10e2: qvb2のG3 windowで、qvb diagnosticで観測されたparcel例外signature
+  （`BadParcelableException: Parcel data not fully consumed` /
+  `Bundle length is not aligned by 4`。launcher pid）と
+  `ShellRecents: No matching remote found to takeover` が **0件** であること
+  （0件なら追加修正なしで閉じる。再現した場合はcandidate FAILとしてfailure signatureを
+  evidence固定し、別Owner decisionへ分離する）。
+- [ ] AC-10c: **diagnostic（qva/qbv。`8108e3a1aa`）で第11 decision自体の成立を確認した範囲**:
+  qva (a) で `getTaskSnapshot` の `NoSuchMethodError` 0・`TaskSnapshotManager` reflection
+  failure marker 0・bind完了・overview到達・task切替成立（diffはcode review確認済み）。
+  **実thumbnailレンダリングとqvb2のG3確定観測はAC-10d/eのfinal（qva2/qvb2）へ委譲**
+  （qva実績はthumbnail黒fallback、qvb実績は第7破壊FATALのため未達。`8108e3a1aa`）。
 - [ ] AC-10b: post-guard matrix (a)/(b) で新たに実測された `KeyButtonRipple` の
   `NoClassDefFoundError`（`android.companion.virtualdevice.flags.Flags`）が出ず、(a) で
   bind完了（`isConnected=true`）・overview成立・task切替、(b) で `compatible=true`・sheet非表示・
@@ -546,19 +551,18 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
   （実行SHA=candidate commit）→ ⑦全成立ならcandidate保持＋ADR-0018 rev 9。
   不成立ならcandidate drop（36維持）＋failure evidence記録。
-  **v5追記2（Owner decision 13。qvb検証で第7破壊追加）**: qvbで `takeTaskSnapshot` の
-  launcher FATAL x3を実測（`taketasksnapshot-contrast.txt`。実装branch commit `3f31768d04`）。
-  第6修正（`ThumbnailData`）と第7修正（`ActivityManagerWrapper.takeTaskThumbnail`）を
-  同一v5 revisionで適用し、compat 7修正headとする。oracleへmarker 0＋launcher FATAL 0を追加
-  （AC-10e）。
-  **v5追記（Owner decision 12。実行手順）**: qva検証（実行SHA `bdea76ea75`。`qva-crash-check.txt`/
-  `qva-preflight.txt`）で第5修正の成立（bind・overview・task切替・5 signature 0・reflection
-  marker 0）を確認したうえでthumbnail黒fallback（第6破壊。クラッシュなしの視覚劣化）が発覚
-  したため、**`8108e3a1aa` の後で明示revert `212097886b`（36へ戻す）→ `ThumbnailData` fix →
-  debug build＋qva2 (a)をcompat 6修正headで実施 → 新candidate commit → release build＋
-  qvb2 (b)+G3を新candidate SHAで実施**（prefix `qva2-*`/`qvb2-*`）。旧qva（`bdea76ea75`）と
-  旧candidate `212097886b` のartifactは第六破壊のdiagnostic/superseded evidenceとしてREADMEへ
-  別行記録（v5 acceptanceには不使用）。(e)/(f)等の再利用契約は不変。
+  **v5追記（Owner decision 12＋13。現行手順。compat 7修正head。旧compat 6手順はsuperseded /
+  acceptance不使用のdiagnostic記録）**: qva/qbv検証（証跡 `8108e3a1aa`）で第5修正の成立
+  （bind・overview・task切替・5 signature 0・reflection marker 0）と第六破壊
+  （thumbnail黒fallback。`wraptobitmap-contrast.txt`）・第七破壊（`takeTaskSnapshot` launcher
+  FATAL x3。`taketasksnapshot-contrast.txt`）を確認。**`8108e3a1aa` の後で明示revert
+  `212097886b`（36へ戻す）→ `ThumbnailData` wrapToBitmap fix（decision 12）→
+  `takeTaskThumbnail` fix（decision 13）→ debug build＋qva2 (a)をcompat 7修正headで実施 →
+  新candidate commit → release build＋qvb2 (b)+G3を新candidate SHAで実施**
+  （prefix `qva2-*`/`qvb2-*`。oracle: 既存signature＋両marker＋wrapToBitmap/takeTaskSnapshot
+  marker 0＋実thumbnail＋launcher FATAL 0＋parcel例外signature 0〔AC-10e2〕）。
+  旧qva/qbv（`bdea76ea75`/`212097886b`）は第六/第七破壊のdiagnostic/superseded evidenceとして
+  README別行へ記録。(e)/(f)等の再利用契約は不変。
   **v4追記（Owner decision 11。実行手順。revert方式）**: qa/qb検証（実行SHA `68e68a6a45` /
   `40eb5dbfab`。証跡は実装branch commit **`71c6251203`** に固定: `qa-crash-check.txt`/
   `qa-preflight.txt`/`qb-crash-check.txt`/`qb-preflight.txt`）で **bind完了（両leg
