@@ -6,7 +6,8 @@ updated: 2026-10-07
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: revision 2 accepted / revision 3 **accepted**（ Owner decision 10 addendum）
+> Status: revision 3 accepted / **revision 4 proposed addendum（Owner decision 11。review pending）**
+> （previous status line: revision 2 accepted / revision 3 accepted（ Owner decision 10 addendum））
 > （prerequisite: revision 2の受入 2026-10-07。revision 1はPR #548 review round 3でblocking 0・
 > Clear（[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
 > revision 2（Owner decision 8/9 addendum）はPR #549 review round 4でblocking 0・Clear
@@ -65,7 +66,7 @@ updated: 2026-10-07
 | `res/values/dimens.xml` | `taskbar_phone_size` のframework参照（`:437`）をliteral `48dp` へ置換（#545参照comment付き。spec Owner decision 9。37.0 imageでのbaked ID shift / `Resources$NotFoundException` を解消。確認対象levelの意図値（`navigation_bar_frame_height` dereference先）は48dpで同一だが、API 36の現APKは別resource（10dp）へ、API 35のtableでは別resource（20dp）へ誤解決が一次出力済み） |
 | `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java` | `getTaskThumbnail` の `getTaskSnapshot` 呼出し1箇所へAPI 37+の `TaskSnapshotManager` 経由reflection分岐を追加（lookup失敗時は既存null経路どおり空 `ThumbnailData`。近傍に#545理由comment。spec Owner decision 11。上流android17-releaseの移行shapeと同型。compile classpathに当該class不在のためreflection） |
 | `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java` | `:108` のflag読取り1箇所へ `NoClassDefFoundError` degrade guard（`ViewConfiguration.getTapTimeout()` 旧挙動へfallback。近傍に#545理由comment。spec Owner decision 10。post-guard matrix (a)/(b)で `NoClassDefFoundError` 実測。直接参照式はchecked例外を送出しないためcatchは`NoClassDefFoundError`のみ） |
-| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（4 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
+| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（5 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
 | `docs/adr/0018-lawnchair-16-rebase.md` | revision 7→8の次の改訂としてrevision 9: Decision 7にadvertised range 35..37・保留解除（修復検証の証跡参照）を記録 |
 | `docs/assessment/545-api37-provider-fix-evidence/` | 検証証跡（README＋logcat/png/txt。APKはcommitしない。sha256をREADMEへ） |
 
@@ -190,6 +191,51 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
   値は同一。`:441` の `rounded_corner_content_padding`（同種の `@*android:dimen` 参照）は
   失敗経路に未到達のため本Issueでは触れない（検証で到達が判明した場合は別判断）。
 
+## 実装詳細4（getTaskThumbnail のTaskSnapshotManager reflection。spec Owner decision 11）
+
+`systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java`
+`getTaskThumbnail` 内の呼出しを次の構造にする（#545参照comment付き。reflection failureは
+識別可能なlog marker `"TaskSnapshotManager reflection failed (see #545)"` で記録する）:
+
+```java
+        try {
+            if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                // #545: Android 17 (API 37) removed IActivityTaskManager.getTaskSnapshot(int,
+                // boolean) (device exposes (II)/(IJI); dexdump contrast in
+                // docs/assessment/545-api37-provider-fix-evidence/gettasksnapshot-class-contrast.txt).
+                // Upstream android17-release routes this through
+                // android.window.TaskSnapshotManager, which framework-16.jar does not carry —
+                // invoke it reflectively. The int mapping mirrors upstream
+                // TaskSnapshotManager.convertRetrieveFlag (RESOLUTION_LOW=2 / RESOLUTION_HIGH=1,
+                // device bytecode confirmed in tasksnapshotmanager-reflection-targets.txt).
+                // Any failure is logged and degrades to the empty ThumbnailData path below
+                // instead of crashing the overview thumbnail path.
+                Object tsm = Class.forName("android.window.TaskSnapshotManager")
+                        .getMethod("getInstance").invoke(null);
+                snapshot = (TaskSnapshot) tsm.getClass()
+                        .getMethod("getTaskSnapshot", int.class, int.class)
+                        .invoke(tsm, taskId, isLowResolution ? 2 : 1);
+            } else if (Build.VERSION.SDK_INT == Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ... 既存の3-arg reflection ...
+            } else {
+                ... 既存の直接 (IZ) 呼出し ...
+            }
+        } catch (RemoteException e) {
+            Log.w(TAG, "Failed to retrieve task snapshot", e);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "TaskSnapshotManager reflection failed (see #545)", e);
+        }
+```
+
+- `convertRetrieveFlag` はreflectionせず、bytecode確認済みの定数写像（`? 2 : 1`）をinlineする
+  （review勧告どおりpatch surface最小）。
+- 既存catchに `ClassNotFoundException` を追加（`Class.forName` はchecked例外を送出するため
+  compile成立。第4破壊の直接参照式とは異なる）。
+- degrade先は既存のnull経路（`snapshot == null` → 空 `ThumbnailData`）で、新規の経路は增やさない。
+- API 36以下の経路はbyte identical。qva/qvb oracle: NoSuchMethodError 0＋failure marker 0＋
+  実thumbnailレンダリング＋hiddenapi denial補助観測（spec AC-10c）。
+
 ## migration
 
 - なし（DB・preference・schemaに触れない）。
@@ -208,11 +254,15 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 
 ## 実装順序（candidate model。spec Owner decision 7/8/9＋post-guard追記（Owner decision 10））
 
-> **v4追記（Owner decision 11）**: qa/qb検証（証跡 `71c6251203`）で第4修正の成立
+> **v4追記（Owner decision 11。revert方式）**: qa/qb検証（証跡 `71c6251203`）で第4修正の成立
 > （bind完了・4 signature 0件）を確認後、第五破壊（`getTaskSnapshot`）がoverview経路で発覚。
-> 残存step: ①`ActivityManagerWrapper` fixを1 commit適用 → ②candidate再作成（`40eb5dbfab`をrevertせず
-> fix commitを上に積み新candidate commit）→ ③qa (a)/qb (b)+G3を新headで再実施（prefix `qva-*`/`qvb-*`）。
-> (e)/(f)/hiddenapi/wmshellの再利用契約はv3どおり。
+> 残存step: ①**明示revert `40eb5dbfab`（maxSdk 36へ戻す。revert pairをsuperseded historyとして
+> READMEへ記録）** → ②`ActivityManagerWrapper` fixを1 commit適用（実装詳細4）→ ③debug build＋
+> **qva (a)をcompat 5修正headで実施** → ④新maxSdk 37 candidate commit → debug/release build →
+> **qvb (b)+G3を新candidate SHAで実施**（prefix `qva-*`/`qvb-*`）。旧 `40eb5dbfab` とqa/qb
+> artifactは第五破壊のdiagnostic/superseded evidenceとしてREADMEへ記録。
+> (e)/(f)/hiddenapi/wmshellの再利用契約はv3どおり。qva/qvbでは新reflectionのhiddenapi denial
+> 補助観測とfailure marker確認を追加。
 >
 > 実行履歴: 以下step 1〜9のうち1〜7相当は実施済み（commit `416273ce2f`〜`2987e525bd`、
 > pre-guard diagnostic run、post-guard最終matrix `(e)/(f)` PASS・`(a)/(b)`が第四破壊でFAIL。
@@ -254,7 +304,7 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
    根拠として保持）。
 7. **〔Owner decision 10前のhistorical execution〕** `quickstepMaxSdk` 36→37を **検証candidate
    commit**（`feat(545): raise quickstepMaxSdk ...`）として適用し、debug/release両build済み
-   （旧candidate `2987e525bd`。v3では pea: の再candidateが正本）。**matrix (b)/(f) はcandidate
+   （旧candidate `2987e525bd`。v3では再candidateが正本（typo修正。v4では更に新candidateが正本））。**matrix (b)/(f) はcandidate
    release APK、matrix (e) はcandidate debug APKで実施**(historical。v3では (b)=再candidate、
    (e)/(f)=旧candidate `2987e525bd` の再利用)。
 8. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
