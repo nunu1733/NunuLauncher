@@ -2,7 +2,7 @@
 issue: "#545"
 status: accepted
 requirements: []
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
@@ -183,8 +183,8 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    (c) `convertRetrieveFlag` の意味論（`isLowResolution ? RESOLUTION_LOW(2) : RESOLUTION_HIGH(1)`）は
    上流source確認済み（同対照file）。
    (d) `SDK_INT >= 37` gate（リテラル。`InputConsumerController` のAPI_37定数と同様）により
-   API 36以下の経路（直接 `(IZ)` 呼出し・UPSIDE_DOWN_CAKE 3-arg reflection先例）は
-   byte identical。matrix (e)/(f) のPASS結果は引き続き有効。
+   API <=36の経路（既存の直接 `(IZ)` 1経路。base `e214b7b190` にUDC 3-arg reflection分岐は
+   存在しない）はbyte identical。matrix (e)/(f) のPASS結果は引き続き有効。
    (e) 変更は1 file 1箇所の最小bridge（Owner decision 8/10と同型）。qa/qb検証でのbind完了
    （両leg `isConnected=true`・4 signature 0件）は第4修正の成立を実証しており、
    `qa-crash-check.txt` / `qa-preflight.txt` / `qb-crash-check.txt` / `qb-preflight.txt`
@@ -233,8 +233,9 @@ PR #546。#524検証証跡とADR-0018 revision 8を含む）固定。実装branc
 - 第五破壊の対象（Owner decision 11）: `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java:140`
   （`getTaskThumbnail` 内の `getService().getTaskSnapshot(taskId, isLowResolution)`。compileは
   framework-16.jarの `(IZ)` form。37.0 imageで削除済み（`(II)`/`(IJI)`のみをdexdump実測）。
-  overview thumbnail path（provider構成時のみ到達）で `NoSuchMethodError`。同file `:160-171` に
-  UPSIDE_DOWN_CAKE向けの同一path reflection先例がある）。
+  overview thumbnail path（provider構成時のみ到達）で `NoSuchMethodError`。base `e214b7b190` の
+  同methodは直接 `(IZ)` 呼出し1経路のみで、reflection分岐は存在しない（v15系main側fileとの
+  取り違え訂正。review round 2）。
 - 第四破壊の対象（Owner decision 10）: `systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java:108`
   （`SDK_INT_FULL >= 3600001` ガード下で `android.companion.virtualdevice.flags.Flags.viewconfigurationApis()`
   を呼ぶ。compileはframework-16.jarの当該classで解決。API 37.0 imageではapp-visibleなclassが
@@ -315,8 +316,7 @@ overview表示により `TaskThumbnailCache` がthumbnailを読み込む
 When `ActivityManagerWrapper.getTaskThumbnail` が呼ばれる
 Then API 37+では `TaskSnapshotManager` 経由のreflection呼出しが行われ、snapshot取得の成否にかかわらず
 launcher processはクラッシュしない。reflection lookup失敗時は既存のnull経路どおり空 `ThumbnailData`
-を返す。API 36以下では既存経路（直接 `(IZ)` 呼出し・UPSIDE_DOWN_CAKE 3-arg reflection）が
-byte identicalに維持される。
+を返す。API 36以下では既存経路（直接 `(IZ)` 1経路）がbyte identicalに維持される。
 
 ### Scenario: flag class欠損環境でKeyButtonRippleがクラッシュせず旧tap timeoutへfallbackする
 

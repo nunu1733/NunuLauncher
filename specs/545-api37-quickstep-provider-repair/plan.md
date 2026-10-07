@@ -1,7 +1,7 @@
 ---
 issue: "#545"
 status: accepted
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
@@ -14,9 +14,7 @@ updated: 2026-10-07
 > （[review](https://github.com/nunu1733/NunuLauncher/pull/549#issuecomment-6039007333)。
 > head `96f5c66d4c322daa3af5f2f1cce7618181151666` を確認）でaccepted。
 > revision 3（Owner decision 10 addendum）はPR #551 review round 4でblocking 0・Clear
-> （[review](https://github.com/nunu1733/NunuLauncher/issues/551) 最後のコメント。
-> head `9768862b9b869a55831b1886919a6b113ff15e54` を確認）でaccepted。
-> 受入は本PR #551のmergeで完了する）。
+> （head `9768862b9b869a55831b1886919a6b113ff15e54` を確認）でaccepted（#551 merge済み）。
 
 **Risk tier: H**（[spec.md](./spec.md) 冒頭の判定どおり。vendored upstream file変更＋provider bind path）。
 
@@ -197,7 +195,12 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 `getTaskThumbnail` 内の呼出しを次の構造にする（#545参照comment付き。reflection failureは
 識別可能なlog marker `"TaskSnapshotManager reflection failed (see #545)"` で記録する）:
 
+base `e214b7b190` の `getTaskThumbnail` は直接呼出し1経路のみである（UDC 3-arg reflectionは
+このfileに存在しない。v15系main側fileとの取り違えに注意。review round 2指摘どおり）:
+
 ```java
+    public @NonNull ThumbnailData getTaskThumbnail(int taskId, boolean isLowResolution) {
+        TaskSnapshot snapshot = null;
         try {
             if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
                 // #545: Android 17 (API 37) removed IActivityTaskManager.getTaskSnapshot(int,
@@ -215,10 +218,8 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
                 snapshot = (TaskSnapshot) tsm.getClass()
                         .getMethod("getTaskSnapshot", int.class, int.class)
                         .invoke(tsm, taskId, isLowResolution ? 2 : 1);
-            } else if (Build.VERSION.SDK_INT == Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                ... 既存の3-arg reflection ...
             } else {
-                ... 既存の直接 (IZ) 呼出し ...
+                snapshot = getService().getTaskSnapshot(taskId, isLowResolution);
             }
         } catch (RemoteException e) {
             Log.w(TAG, "Failed to retrieve task snapshot", e);
@@ -226,15 +227,18 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
                 | InvocationTargetException e) {
             Log.e(TAG, "TaskSnapshotManager reflection failed (see #545)", e);
         }
+        ...
+    }
 ```
 
 - `convertRetrieveFlag` はreflectionせず、bytecode確認済みの定数写像（`? 2 : 1`）をinlineする
   （review勧告どおりpatch surface最小）。
-- 既存catchに `ClassNotFoundException` を追加（`Class.forName` はchecked例外を送出するため
-  compile成立。第4破壊の直接参照式とは異なる）。
-- degrade先は既存のnull経路（`snapshot == null` → 空 `ThumbnailData`）で、新規の経路は增やさない。
-- API 36以下の経路はbyte identical。qva/qvb oracle: NoSuchMethodError 0＋failure marker 0＋
-  実thumbnailレンダリング＋hiddenapi denial補助観測（spec AC-10c）。
+- 既存catchへ `ClassNotFoundException` を追加（`Class.forName` はchecked例外を送出するため
+  compile成立。第4破壊の直接参照式とは異なる）。既存 `RemoteException` catchはそのまま。
+- degrade先は既存のnull経路（`snapshot == null` → 空 `ThumbnailData`）で、新規の経路は増やさない。
+- **API <=36は既存の直接 `(IZ)` 1経路がbyte identical**（UDC分岐は存在しない）。
+  qva/qvb oracle: NoSuchMethodError 0＋failure marker 0＋実thumbnailレンダリング＋
+  hiddenapi denial補助観測（spec AC-10c）。
 
 ## migration
 
@@ -333,15 +337,17 @@ rm→push→chmod→restorecon→reboot。priv-app配置は `/product/priv-app/`
 allowlist XML。run毎に `cmd overlay lookup` とSystemUI `mRecentsComponentName` の一致を
 preflight証跡化）。
 
-- (a) API 37 debug＋debug用overlay＋priv-app（**v3実行SHA: compat修正4 commits適用後head。qa-run**。
-  historical: 3-commit版は `fc5169566c` のpre-guard側）: bind成功・
+- (a) API 37 debug＋debug用overlay＋priv-app（**v4実行SHA: compat修正5 commits適用後head。prefix `qva-*`**。
+  historical: qa-run（4修正head `68e68a6a45`）と3-commit版は `71c6251203` / `fc5169566c` 側の
+  diagnostic/superseded記録）: bind成功・
   クラッシュ無し（#524 signature非再現をlogcatで確認）・`isConnected=true`・
   APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
   同logcatからhiddenapi観測抜粋（AC-3）と `PipInputConsumer` 監視（AC-1付帯）。
-- (b) API 37 release（maxSdk 37のcandidate build。**実行SHA: candidate commit**）＋release用overlay＋
-  priv-app: preflight・`compatible=true`（"disabling recents" 無し・sheet非表示screenshot）・
-  overview成立・task切替。
+- (b) API 37 release（maxSdk 37のcandidate build。**v4実行SHA: 新candidate commit。prefix `qvb-*`**）＋
+  release用overlay＋priv-app: preflight・`compatible=true`（"disabling recents" 無し・sheet非表示
+  screenshot）・overview成立（**実thumbnailレンダリング＋reflection failure marker 0**）・task切替。
   G3: overview→task切替の遷移時間帯logcatを取得し `ActivityTaskManager` BAL block有無を判定（AC-4）。
+  hiddenapi補助観測へ **新TaskSnapshotManager call由来denialの監視** を追加。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。**v3: image上のflags table不在（`d-hiddenapi-logcat-post.txt` /
