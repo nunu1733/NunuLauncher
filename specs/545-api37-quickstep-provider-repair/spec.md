@@ -59,7 +59,8 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    削除されており（commit `0ef7f5a0e27f` のdiff）、unlisted→unsupported tier扱いであれば
    enforcement非該当（呼出可）の見込みだが、これは検証matrix (d) のlogcat一次出力で確定するまで
    仮定に留める。**enforcement blockが観測された場合、本PRはそこで停止してfailure signatureを記録し、
-   `QUICKSTEP_MAX_SDK` の変更を行わない**（検証に先行する宣言の禁止。exemption lever
+   検証candidate（`quickstepMaxSdk` 36→37）をdropして確定採用しない（36維持）**（検証に先行する
+   宣言の禁止。exemption lever
    —sysconfig hiddenapi-package-whitelist / `android:usesNonSdkApi` / HiddenApiBypass依存追加—
    は別判断として記録するだけで、本specでは採用しない）。
 4. **WMS側の権限gateは対処不要とする**。`createInputConsumer` のserver側許可は
@@ -191,8 +192,8 @@ log以外の永続状態変更はない。
 Given matrix (a)/(b) のrunで、registerInputConsumer実行時のlogcatにhidden API accessの
 denial/block（`Accessing hidden ... blocked` 系）が出た
 When 検証結果を判定する
-Then failure signatureを一次出力つきで記録し、`QUICKSTEP_MAX_SDK` の変更を行わず
-spec/Issueへ未達を記録する（検証に先行する宣言の禁止）。exemption対処は本PRでは行わない。
+Then failure signatureを一次出力つきで記録し、検証candidate（`quickstepMaxSdk` 36→37）を
+dropして確定採用せず（36維持）、spec/Issueへ未達を記録する（検証に先行する宣言の禁止）。exemption対処は本PRでは行わない。
 
 ### Scenario: wmshell起源のクラッシュが出た場合は本PRでは触れず分離する
 
@@ -250,7 +251,8 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 - [ ] AC-8: 調査結果（AOSP変更の一次出力URL/commit、対応方式判断と根拠、framework-17.jarの
   不要判断と必要時の入手方法、hiddenapi要件の実測）がspec/PR/evidenceに記録されている。
 - [ ] AC-9: evidence READMEと実装PR packetへ **matrixごとの実行SHA**（(a): compat修正commit、
-  (b)〜(f): candidate commit）が明記され、artifactとSHAの取り違えが起きない。
+  (b)〜(f): candidate commit）と使用APK（(b)/(f): candidate release、(e): candidate debug）の
+  対応、およびAPKごとのsha256が明記され、artifactとSHAの取り違えが起きない。
 
 ## Test oracle
 
@@ -264,7 +266,7 @@ Then 挙動変化がなく（Lawnchair側quickstepは無効のまま、"disablin
 | AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
-| AC-9 | evidence READMEのmatrix↔SHA対応表＋packet記載 |
+| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む）＋packet記載 |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
 消失すること」自体が原因であり、JVM/Robolectricでは再現不能。振る舞いの一次証拠は
@@ -276,8 +278,10 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
 
 - **実施順序（candidate model。Owner decision 7）**: ①compat修正commit → build debug →
   ②matrix (a)（実行SHA=compat修正commit）→ ③`quickstepMaxSdk` 36→37を **candidate commit** として
-  適用しrelease APKをbuild → ④matrix (b)/(d)/(e)/(f) とG3（実行SHA=candidate commit）→
-  ⑤全成立ならcandidate保持＋ADR-0018 rev 9。不成立ならcandidate drop（36維持）＋failure evidence記録。
+  適用し **debug/release両方のAPKをbuild** → ④matrix (b)/(f) はcandidate **release** APK、
+  matrix (e) はcandidate **debug** APK、matrix (d) とG3は(b)構成で実施
+  （実行SHA=candidate commit）→ ⑤全成立ならcandidate保持＋ADR-0018 rev 9。
+  不成立ならcandidate drop（36維持）＋failure evidence記録。
 - **matrix（provider path主証跡。構成手段・preflightは#524 README §2/§4を再利用）**:
   - (a) API 37 debug @ compat修正commit＋debug用overlay＋priv-app → クラッシュ無し、
     `isConnected=true`、overview成立、task切替成功。
@@ -319,3 +323,8 @@ provider構成runtime matrixであり、定数assert等の低価値testを追加
   （Owner decision 7改訂、実施順序をcandidate modelへ変更、AC-2/AC-6をcandidate前提へ修正）し、
   matrixごとの実行SHA明記をAC-9として追加。(2) matrix (f)へAPI 36 stock簡易確認を明記。
   (3) Prior artのAOSP `InputConsumerController` 参照をcommit固定URLへ修正。
+- 2026-10-07: Review round 2（PR #548コメント。中1・低1、blocking無し）対応 —
+  (1) candidate commit適用後のbuild対象をdebug/release両方へ明記し、(e)はcandidate debug APK、
+  (b)/(f)はcandidate release APK使用へ固定（AC-9へAPK対応とsha256記録を追加）。(2)
+  Owner decision 3・Scenario 4等の要約文言をcandidate modelへ同期（block時はcandidate drop・
+  確定採用しない）。

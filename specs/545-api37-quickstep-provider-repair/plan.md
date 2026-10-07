@@ -37,7 +37,7 @@ updated: 2026-10-07
 | path | 変更 |
 |---|---|
 | `systemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java` | `registerInputConsumer()` のみを修正し、`createInputConsumer` のAPI 37 return形式をreflection呼出しするprivate helperを追加（近傍に#545理由comment）。diffはこの1 fileに限定する |
-| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。検証成立後に適用するcommitとして実装PR内で分離する |
+| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
 | `docs/adr/0018-lawnchair-16-rebase.md` | revision 7→8の次の改訂としてrevision 9: Decision 7にadvertised range 35..37・保留解除（修復検証の証跡参照）を記録 |
 | `docs/assessment/545-api37-provider-fix-evidence/` | 検証証跡（README＋logcat/png/txt。APKはcommitしない。sha256をREADMEへ） |
 
@@ -129,8 +129,10 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 3. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
    **matrix (a) をこのSHA（compat修正commit）で実施**（実行SHAをevidence READMEへ記録）。
 4. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
-   として適用し、`assembleLawnWithQuickstepGithubRelease` でrelease APKをbuild。
-   **以降のmatrix (b)/(d)/(e)/(f) とG3はこのcandidate SHA固定で実施**（実行SHAをevidence READMEへ記録）。
+   として適用し、`assembleLawnWithQuickstepGithubDebug` と `assembleLawnWithQuickstepGithubRelease`
+   の **両方をbuild**（candidate debug/release APK。APKごとのsha256をevidence READMEへ記録）。
+   **matrix (b)/(f) はcandidate release APK、matrix (e) はcandidate debug APKで実施**
+   （実行SHA=candidate commitをevidence READMEへ記録）。
 5. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
    candidate releaseのmanifest placeholder静的確認（AC-6）。
    **不成立時**: candidate commitをdrop/revertして `quickstepMaxSdk` 36を維持し、failure evidenceを
@@ -168,14 +170,15 @@ preflight証跡化）。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。
-- (e) API 36 debug＋debug用overlay＋priv-app（**実行SHA: candidate commit**）: (a)と同一観測で
-  回帰なし確認。
+- (e) API 36 debug＋debug用overlay＋priv-app（**実行SHA: candidate commit、candidate debug APK使用**）:
+  (a)と同一観測で回帰なし確認。
 - (f) stock構成（**実行SHA: candidate commit**）: overlay無しAPI 37へcandidate releaseを通常install→
   "disabling recents" 診断log、sheet無し、system overview継続、launcher crash無し。
   **API 36 stockの簡易確認もcandidate releaseで実施**（通常install→HOME設定→system overview継続・
   crash無し・gate/sheet状態を記録。#524 (d)-API36相当を修正後buildで再取得）。
 - 証跡は `docs/assessment/545-api37-provider-fix-evidence/` へ `a-*`〜`f-*` 形式（#524と同型）で
-  保存しREADMEへ一覧化する。**READMEにはmatrixごとの実行SHA対応表を必ず含める**（AC-9）。
+  保存しREADMEへ一覧化する。**READMEにはmatrixごとの実行SHA・使用APK・APK sha256の対応表を
+  必ず含める**（AC-9）。
 
 ## 未確認範囲（plan時点）
 
