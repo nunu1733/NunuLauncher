@@ -6,9 +6,11 @@ updated: 2026-10-07
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: accepted revision 1（2026-10-07。PR #548 review round 3でblocking 0・Clear
-> （[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)。
-> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する）。
+> Status: **accepted revision 2**（2026-10-07。revision 1はPR #548 review round 3でblocking 0・
+> Clear（[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
+> revision 2（Owner decision 8/9 addendum）はPR #549 review round 4でblocking 0・Clear
+> （[review](https://github.com/nunu1733/NunuLauncher/pull/549#issuecomment-6039007333)。
+> head `96f5c66d4c322daa3af5f2f1cce7618181151666` を確認）。受入は本PR #549のmergeで完了する）。
 
 **Risk tier: H**（[spec.md](./spec.md) 冒頭の判定どおり。vendored upstream file変更＋provider bind path）。
 
@@ -35,20 +37,29 @@ updated: 2026-10-07
 - `docs/adr/0018-lawnchair-16-rebase.md` revision 8（Decision 7にmaxSdk 37保留が記録済み）。
   revision 9への改訂対象。
 - `quickstep/src/com/android/quickstep/SystemUiProxy.kt:188-198`（G3対象。**コード変更しない**）。
+- `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt:67-76`
+  （`enableRecentTasksThrottle`。`Utilities.ATLEAST_BAKLAVA_1` ガード下で
+  `DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` を参照。fieldは
+  framework-16.jarに存在するがAPI 37.0 imageのframework.jarから削除済み。provider bind後にのみ
+  実行され37.0 imageで `NoSuchFieldError`。spec Owner decision 8 / AC-10）。
 
 ## 変更moduleとinterface/seam
 
 | path | 変更 |
 |---|---|
 | `systemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java` | `registerInputConsumer()` のみを修正し、`createInputConsumer` のAPI 37 return形式をreflection呼出しするprivate helperを追加（近傍に#545理由comment）。diffはこの1 fileに限定する |
-| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
+| `quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt` | `enableRecentTasksThrottle` のflag参照1箇所へ `NoSuchFieldError` degrade guard（throttle無効として継続。近傍に#545理由comment。spec Owner decision 8） |
+| `res/values/dimens.xml` | `taskbar_phone_size` のframework参照（`:437`）をliteral `48dp` へ置換（#545参照comment付き。spec Owner decision 9。37.0 imageでのbaked ID shift / `Resources$NotFoundException` を解消。確認対象levelの意図値（`navigation_bar_frame_height` dereference先）は48dpで同一だが、API 36の現APKは別resource（10dp）へ、API 35のtableでは別resource（20dp）へ誤解決が一次出力済み） |
+| `build.gradle` | `quickstepMaxSdk` `"36"` → `"37"`（1行。`quickstepMinSdk` 不変）。**検証candidate commit** としてcompat修正（3 commits）後に適用し、全matrix成立時にのみ確定保持する（不成立時はdrop/revert） |
 | `docs/adr/0018-lawnchair-16-rebase.md` | revision 7→8の次の改訂としてrevision 9: Decision 7にadvertised range 35..37・保留解除（修復検証の証跡参照）を記録 |
 | `docs/assessment/545-api37-provider-fix-evidence/` | 検証証跡（README＋logcat/png/txt。APKはcommitしない。sha256をREADMEへ） |
 
 **seam**: 呼出側・テストは既存の `InputConsumerController` public interface
 （`registerInputConsumer()` / `unregisterInputConsumer()`）を変えない。bridgeは
-`registerInputConsumer()` 内のframework呼出し形式の切替だけである。呼出側
-（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象（`SystemUiProxy`）は変更しない。
+`registerInputConsumer()` 内のframework呼出し形式の切替、`TaskbarRecentAppsController`
+のflag参照1箇所のdegrade、`taskbar_phone_size` のres値literal化（いずれも#545 provider修復の
+最小範囲）である。呼出側（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象
+（`SystemUiProxy`）・5箇所のdimen reader（res側で解決されるため無変更）は変更しない。
 wmshellは変更しない（spec Owner decision 6）。
 
 ## 実装詳細（コードshape）
@@ -114,6 +125,56 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 - `unregisterInputConsumer()` は変更しない。receiver未登録時に呼ばれても現行のままno-opである。
 - debug/release・flavor差の分岐は存在しない（vendor fileの1経路のみ）。
 
+## 実装詳細2（Taskbar flag guard。spec Owner decision 8）
+
+`quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt:67-76` の
+`enableRecentTasksThrottle` を次の構造にする（#545参照commentを近傍に残す）:
+
+```kotlin
+    val enableRecentTasksThrottle =
+        if (Utilities.ATLEAST_BAKLAVA_1) {
+            // #545: ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX exists in the framework-16.jar
+            // compile classpath but was removed from the API 37.0 device framework; degrade to
+            // disabled instead of crashing the provider bind path (NoSuchFieldError in
+            // TaskbarActivityContext init). Absent-flag behavior equals throttle-off.
+            try {
+                DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX.isTrue
+            } catch (e: NoSuchFieldError) {
+                false
+            }
+        } else {
+            false
+        }
+```
+
+- field有無によらず `ATLEAST_BAKLAVA_1=false` の環境（API 36 image等。当該imageにfieldは無い）では
+  参照自体を行わないため既存の読み取り挙動が変わらない（同経路は完全に不変）。37.0 imageではguardにより
+  `NoSuchFieldError` を吸収してthrottle無効で初期化を継続する（spec新Scenario）。
+
+## 実装詳細3（taskbar_phone_size literal化。spec Owner decision 9）
+
+`res/values/dimens.xml:437` を次のとおり変更する（#545参照comment付き）:
+
+```xml
+    <!-- #545: the @*android:dimen/navigation_bar_frame_height reference bakes framework
+         resource ID 0x01050283, whose resolution differs per API level (contrast in
+         docs/assessment/545-api37-provider-fix-evidence/api36-image-framework-res-contrast.txt):
+         on API 37.0 images it became navigation_bar_height_portrait (no default-config value),
+         crashing TaskbarStashController init with Resources$NotFoundException in phone
+         profile; on API 36 images it silently resolves to
+         notification_2025_action_list_min_height (~10dp). navigation_bar_frame_height
+         dereferences to navigation_bar_height = 48dp (default config) on every level, and
+         taskbar_phone_size readers only run in phone mode, so the literal is the intended
+         value everywhere (crash fix on 37.0, geometry normalization 10dp -> 48dp on 36). -->
+    <dimen name="taskbar_phone_size">48dp</dimen>
+```
+
+- API 36では **挙動不変ではなく意図した正規化**（10dp誤解決 → 48dp）であり、matrix (e) で
+  native-density screenshot＋overview/task切替に加えてこの幾何正規化をrecordする。
+  37.2端末では `navigation_bar_frame_height` → `navigation_bar_height` → 48dp defaultで
+  値は同一。`:441` の `rounded_corner_content_padding`（同種の `@*android:dimen` 参照）は
+  失敗経路に未到達のため本Issueでは触れない（検証で到達が判明した場合は別判断）。
+
 ## migration
 
 - なし（DB・preference・schemaに触れない）。
@@ -121,28 +182,45 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 ## rollback
 
 - 実装PR全体をrevertすればbase `e214b7b190` に戻る（単一機能commit群）。
-  compat修正commitと検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
-  不成立時はcandidate commitだけをdrop/revertして36維持とできる（spec Owner decision 7 / AC-6）。
+  compat修正3 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
+  `taskbar_phone_size` literal化）と
+  検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
+  不成立時はcandidate commitだけをrevertして36維持とできる（spec Owner decision 7 / AC-6）。
+  reconciliationの旧candidate `e2fe6f80df` とそのrevert pairはsuperseded historyとして保持される
+  （spec Owner decision 8/9の証跡commit到達可能性の維持）。
   stack自体（PR #546 → 本PR）のrollbackはPR #546の取り扱いに従う。
 
 ## 実装順序（candidate model。spec Owner decision 7 / Verification の実施順序どおり）
 
 1. 修正前対照は実施済み（#524 (a)/(b) failure signature。本検証では対照として参照するのみで
    再実施しない）。
-2. `InputConsumerController.java` のcompat修正を1 commitで適用（`fix(545): ...`）。
-3. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
-   **matrix (a) をこのSHA（compat修正commit）で実施**（実行SHAをevidence READMEへ記録）。
-4. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
+2. **branch reconciliation（revert方式）**: 現在のcandidate commit `e2fe6f80df`（quickstepMaxSdk
+   36→37。既にpush済み）は証跡commit（`f5a3977281` / `e70a58c1fd` / `206850b3d7`）の祖先のため
+   drop/resetせず、**`git revert e2fe6f80df` で明示revertしてtreeを36へ戻す**。以降
+   ①（既存`416273ce2f`）→②→③→matrix (a)→新candidate commitの順（spec実施順序どおり）。
+   旧candidateとrevertのpairはsuperseded historyとして保持し、旧candidateのartifactとcommit
+   message記述は **superseded（acceptance不使用）** としてevidence READMEへ記録する。
+3. `InputConsumerController.java` のcompat修正（1 commit。既存 `416273ce2f` を保持）。
+4. `TaskbarRecentAppsController.kt` のflag guardを1 commitで適用（`fix(545): ...`。spec Owner
+   decision 8）。
+5. `res/values/dimens.xml` の `taskbar_phone_size` literal化を1 commitで適用（`fix(545): ...`。
+   spec Owner decision 9）。
+6. `spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug`（compile確認）→
+   **matrix (a) をこのSHA（compat修正3 commits適用後head）でnative density（`wm density reset` 済み）
+   で実施**（実行SHAをevidence READMEへ記録。中間証跡: ①commit単体時点の2026-10-07 diagnostic run
+   （wm density 280）はcommit `f5a3977281` / `e70a58c1fd` / `206850b3d7` に固定しOwner decision 8/9の
+   根拠として保持）。
+7. `quickstepMaxSdk` 36→37を **検証candidate commit**（`feat(545): raise quickstepMaxSdk ...`）
    として適用し、`assembleLawnWithQuickstepGithubDebug` と `assembleLawnWithQuickstepGithubRelease`
    の **両方をbuild**（candidate debug/release APK。APKごとのsha256をevidence READMEへ記録）。
    **matrix (b)/(f) はcandidate release APK、matrix (e) はcandidate debug APKで実施**
    （実行SHA=candidate commitをevidence READMEへ記録）。
-5. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
+8. **全matrix成立時**: candidateを最終成果物として保持し、ADR-0018 revision 9 commitを追加、
    candidate releaseのmanifest placeholder静的確認（AC-6）。
    **不成立時**: candidate commitをdrop/revertして `quickstepMaxSdk` 36を維持し、failure evidenceを
    記録する（compat修正自体はprovider修復として保持可否を(a)結果で判定。hiddenapi block時は
    spec Scenario 4どおり停止）。
-6. 実装PR本文へReview / handoff packet（github-workflow.md 定形）＋patch surface計測結果＋
+9. 実装PR本文へReview / handoff packet（github-workflow.md 定形）＋patch surface計測結果＋
    matrix↔SHA対応表を記載。
 
 ## test
@@ -163,7 +241,7 @@ rm→push→chmod→restorecon→reboot。priv-app配置は `/product/priv-app/`
 allowlist XML。run毎に `cmd overlay lookup` とSystemUI `mRecentsComponentName` の一致を
 preflight証跡化）。
 
-- (a) API 37 debug＋debug用overlay＋priv-app（**実行SHA: compat修正commit**）: bind成功・
+- (a) API 37 debug＋debug用overlay＋priv-app（**実行SHA: compat修正3 commits適用後head**）: bind成功・
   クラッシュ無し（#524 signature非再現をlogcatで確認）・`isConnected=true`・
   APP_SWITCH→overview成立・task card tap→切替成功・screenshot。
   同logcatからhiddenapi観測抜粋（AC-3）と `PipInputConsumer` 監視（AC-1付帯）。
@@ -174,8 +252,12 @@ preflight証跡化）。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。
-- (e) API 36 debug＋debug用overlay＋priv-app（**実行SHA: candidate commit、candidate debug APK使用**）:
-  (a)と同一観測で回帰なし確認。
+- (e) API 36 debug＋debug用overlay＋priv-app（**実行SHA: candidate commit、candidate debug APK使用**。
+  **`wm density reset` 後のnative density**）: (a)と同一観測（bind・overview成立・task切替）で
+  provider path機能の回帰なし確認に加え、**Taskbar geometry正規化のrecord**: post-fix screenshot
+  （native density）＋built APKの `taskbar_phone_size=48dp` 静的確認（aapt2 dump等）＋pre-fixの
+  誤解決先（`notification_2025_action_list_min_height` 10dp。`api36-image-framework-res-contrast.txt`）
+  との対応を証跡化（意図した変化としてrecord）。
 - (f) stock構成（**実行SHA: candidate commit**）: overlay無しAPI 37へcandidate releaseを通常install→
   "disabling recents" 診断log、sheet無し、system overview継続、launcher crash無し。
   **API 36 stockの簡易確認もcandidate releaseで実施**（通常install→HOME設定→system overview継続・
