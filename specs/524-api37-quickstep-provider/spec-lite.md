@@ -1,6 +1,6 @@
 ---
 issue: "#524"
-status: draft
+status: accepted
 tier: M
 requirements: []
 updated: 2026-10-07
