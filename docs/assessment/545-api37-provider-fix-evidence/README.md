@@ -1,0 +1,92 @@
+# Issue #545 runtime検証matrix — API 37 Quickstep provider修復（compat対応）
+
+- 実施日: 2026-10-07〜10-08
+- accepted spec: `specs/545-api37-quickstep-provider-repair/spec.md`（revision 1: PR #548、
+  addendum revision 2〜5: PR #549/#551/#553。Owner decision 1〜13）
+- plan: 同dir `plan.md`（revision 5 accepted）
+- 実装PR: #550（`issue-545-api37-provider-fix`、base PR #546 `issue-524-api37-quickstep` stack。
+  ADR-0018 Decision 3/8によりcutoverまでmergeしない）
+- この記録は検証証跡であり、正本の判断はIssue #545 / spec / ADR-0018に従う。
+
+## 総合判定（v5 acceptance結果）
+
+**candidate FAIL**（AC-10d thumbnail oracle／AC-10e2 parcel oracleのstop rule発火）。
+`QUICKSTEP_MAX_SDK` 36→37は実施せず **36を維持**（Owner decision 7 / AC-6どおり）。
+provider **bind pathのクラッシュ修復は成立**（7件の破壊をcompat修正で解消、bind完了・
+overview起動・task切替がcrash-freeで到達）。残存gapは「thumbnail bitmap生成」と
+「recents遷移のparcel schema」の2系統で、別Issueへ分離（#545はopen継続）。
+
+## 実装commit（実装PR #550。branch `issue-545-api37-provider-fix`、base `e214b7b190`）
+
+| commit | 内容 | spec根拠 |
+|---|---|---|
+| `416273ce2f` | `InputConsumerController.registerInputConsumer` — API 37+でreturn-InputChannel形式をreflection呼出し | decision 1 |
+| `7cc0a8398c` | `TaskbarRecentAppsController` throttle flag読取りにNoSuchFieldError guard | decision 8 |
+| `63a8a3a7d5` | `taskbar_phone_size` をliteral 48dpへpin | decision 9 |
+| `68e68a6a45` | `KeyButtonRipple` flags-class読取りにNoClassDefFoundError guard | decision 10 |
+| `bdea76ea75` | `getTaskThumbnail` をTaskSnapshotManager経由reflectionへ | decision 11 |
+| `e77311059e` | `ThumbnailData.makeThumbnail` をwrapToBitmap reflectionへ（black fallback維持） | decision 12 |
+| `0c25041285` | `takeTaskThumbnail` をTaskSnapshotManager経由reflectionへ | decision 13 |
+| candidate群（`e2fe6f80df`→revert `6cc8e88725`、`2987e525bd`→revert `cf5fee009f`、`40eb5dbfab`→revert `e7d6b4ce11`、`212097886b`→revert `ca015d173f`、`da15f4b2e7`→revert `6dce6c26e6`） | quickstepMaxSdk 36→37の検証candidate。 **全て検証不成立でdrop/revert。確定採用なし** | decision 7 |
+| evidence commits（`f5a3977281`/`e70a58c1fd`/`206850b3d7`/`5c6d40a56d`/`fc5169566c`/`1777e348c9`/`65729184c8`/`71c6251203`/`8babd3bb10`/`8108e3a1aa`/`3f31768d04`/`4daa239e0f`） | 検証証跡（diagnostic含む） | 各decision |
+
+## matrix↔実行SHA↔APK対応表（AC-9）
+
+**最終acceptance（v5。現行契約）**
+
+| matrix | 実行SHA | APK（sha256） | 判定 |
+|---|---|---|---|
+| qva2 (a) API 37 debug＋debug overlay＋priv-app、native density | compat 7修正head `0c25041285` | compat7b-debug-0c25041 `04d048b2…` | **PARTIAL**: 6 signature 0・3 marker 0・FATAL 0・bind完了・overview起動・task切替成功／thumbnail AC-10d FAIL（黒fallback） |
+| qvb2 (b)+G3 API 37 release＋release overlay＋priv-app、native density | candidate `da15f4b2e7` | candidate5-release `e584e078…` | **FAIL**: bind・compatible=true・sheet非表示までPASS／AC-10e2 parcel例外再現（SystemUiProxy parcel schema skew）→G3未達 |
+
+**diagnostic run（superseded。acceptance不使用）**
+
+| run | 実行SHA | APK（sha256） | 役割・結果 |
+|---|---|---|---|
+| pre-guard diagnostic | `416273ce2f`（reflection単体） | compat-debug-416273c `4c091d8d…` | decision 8/9の根拠。seam oracle成立（createInputConsumer NME 0・receiver生成）・Taskbar破壊発見。wm density 280 accommodation（superseded） |
+| post-guard matrix | compat 3修正head `63a8a3a7d5`（debug）／candidate `e2fe6f80df`（release/debug） | compat3 `bed40262…`／candidate2 `166beaea…`/`74adbbca…` | (e) API 36 provider PASS・(f) stock PASS・hiddenapi 0・wmshell 0・48dp pin静的確認／(a)(b)はTaskbar throttle FATALで未達（第4破壊発見） |
+| qa/qb diagnostic | `68e68a6a45`（debug）／`40eb5dbfab` candidate（release） | compat4 `489b9f1f…`／candidate3 `04d048b2…`/`6c0e0272…` | 第4修正実証（bind完了）／thumbnail黒fallback（第6破壊発見）＋takeTaskSnapshot FATAL（第7破壊発見） |
+| qva/qbv diagnostic | `bdea76ea75`（debug）／`212097886b` candidate（release） | compat5 `f9116a72…`／candidate4 `1265c7fc…`/`b701173e…` | 第5修正実証（overview・task切替到達）／thumbnail黒fallback継続（第6破壊確認）＋parcel例外oracle発見（第7破壊FATAL） |
+
+API 36/stock leg（(e)/(f)）のPASS実績: post-guard matrix（`fc5169566c`。実行SHA=candidate `2987e525bd`、
+APK `166beaea…`/`74adbbca…`。6修正はAPI 37のTaskbar/thumbnail/take経路のみで変化しないため有効）。
+
+## 確定した事実（一次出力は各contrast/evidence file参照）
+
+1. **bind path修復の成立**: 7件の破壊（createInputConsumer削除、Taskbar throttle flag欠損、
+   `taskbar_phone_size` ID shift、KeyButtonRipple flags class欠損、getTaskSnapshot削除、
+   getHardwareBuffer廃止、takeTaskSnapshot削除）を修正し、qva2で6 signature 0・3 marker 0・
+   FATAL 0・`isConnected=true`まで到達。
+2. **thumbnail bitmap未解決**: wrapToBitmap分岐は実行される（旧deprecation log消滅・marker 0）が、
+   bitmapがcardへ到達しない（pixel-identicalな黒fallback）。root cause未診断（要diagnostic build）。
+3. **G3/parcel schema未解決**: shell→launcher recents遷移のbinder callbackで
+   `BadParcelableException unread size: 8`／`Bundle length is not aligned by 4: 6226041`
+   （`SystemUiProxy$RecentsAnimationListenerStub.onTransact`）＋`No matching remote found to
+   takeover` がqvb2で再現。vendored AIDL surface（36-era）と37.0 shellのschema drift。
+   個別bridgeの範囲を超えるため分離。
+4. **CE pre-unlock FATAL**: provider/role切替boot時に既存の二次signature（#524 leg (e)と同一）。
+   oracle範囲外として記録。
+5. hiddenapi: 全runでapp.lawnchair*のdenial/block 0件（新reflection call含む補助観測）。
+6. wmshell `PipInputConsumer`: 全runで0件（launcher到達性の前提どおり）。
+
+## 未達（別Issueへ分離。#545はopen継続）
+
+- **G3/parcel schema compat**: `SystemUiProxy` 系vendored AIDL/callback surfaceの37 schema対応。
+- **thumbnail pipeline診断**: wrapToBitmap戻り値→card描画の途絶箇所の特定（diagnostic build）。
+- `QUICKSTEP_MAX_SDK` 36→37とADR-0018 range 35..37反映: 上記2件の解消を前提に継続保留
+  （検証に先行する宣言の禁止）。
+
+## 使用コマンド列・逸脱の要点
+
+#524 README §2/§4手順の再利用（overlay差し替え、priv-app配置、run毎preflight）。
+主な逸脱: privapp allowlistはAPK宣言permissionのsuperset（debug 55/release 54。boot一回成功）。
+`adb root; adb remount` はreboot毎に再実行。HOME設定は `cmd package set-home-activity`。
+qva2のdebug APKはcompat 7修正head（`0c25041285`）専用build（`compat7b-debug-0c25041`）。
+
+## 証跡file一覧
+
+本dir内の`qa-`/`qb-`/`qva-`/`qbv-`/`qva2-`/`qvb2-`/`ma-`〜`mf-`/`a-`〜`e-`各fileと
+contrast file（`pre-guard-field-and-resource-contrast.txt`／`api36-image-framework-res-contrast.txt`／
+`gettasksnapshot-class-contrast.txt`／`wraptobitmap-contrast.txt`／
+`tasksnapshotmanager-reflection-targets.txt`／`taketasksnapshot-contrast.txt`）。
+APK実物はcommitしない（sha256は上記表。実物は検証session `/tmp/545-evidence-apk/`）。
