@@ -9,7 +9,7 @@ updated: 2026-10-07
 
 > Status: accepted（2026-10-07。PR #548 review round 3でblocking 0・追加指摘なし・Clear
 > （[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)。
-> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する）
+> head `db6642b1a88e369cc550c28fd02734b1773b1707` を確認）。受入は本PR #548のmergeで完了する。revision 2/3 addendum（PR #549/#551）の説明はChange history参照。Spec status は本ブロックが正とし、addendum（Owner decision 8/9/10）は受入済み。)
 
 **Risk tier: H**（判定理由: vendored upstream code（`systemUI/shared` のAOSP由来file）への変更であり、
 provider bind path（SystemUIからの起動経路でlauncher processの生存に直結する）を変える。
