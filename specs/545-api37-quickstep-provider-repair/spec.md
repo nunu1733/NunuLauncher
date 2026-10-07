@@ -212,7 +212,8 @@ ADR-0018 device test matrixへ反映される。API 36およびstock構成には
    (c) `SDK_INT >= 37` gateによりAPI <=36のhardwareBuffer経路（matrix (e) で正常レンダリング実績）は
    byte identical。(d) 変更は1 file 1箇所の最小bridge（Owner decision 8/10/11と同型）。
    (e) dex metadataのhiddenapiラベルは第11 decisionと同様にruntime denialと相関させず、
-   failure marker＋qva/qbv再検証での実thumbnailレンダリングをoracleとする。
+   failure marker＋ **qva2/qvb2（v5 final）での実thumbnailレンダリング** をoracleとする
+   （旧qva/qbvは第6/7破壊のdiagnostic/superseded。`8108e3a1aa`）。
 13. **qvb検証（2026-10-08、実行SHA `212097886b`）で実測された第七の破壊
    （`IActivityTaskManager.takeTaskSnapshot(int, boolean)` 削除による `NoSuchMethodError`。
    `takeTaskThumbnail` はRemoteExceptionのみcatchのためlauncher processがクラッシュ）も
@@ -528,12 +529,13 @@ class存在環境・`SDK_INT_FULL<3600001` 環境（API 36）の挙動不変が�
 | AC-6 | candidate release buildのmanifest placeholder静的確認出力（不成立時はdrop記録） |
 | AC-7 | ADR-0018 diff（実装PR内。candidate成立時のみ） |
 | AC-8 | spec（Owner decisions/Prior art）＋実装PR本文の調査記録節 |
-| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。pre-guard diagnostic run（`f5a3977281`〜`5c6d40a56d`）・post-guard matrix（`fc5169566c`。再利用分）・qa/qb diagnostic run（`71c6251203`。第五破壊diag/superseded）をv4最終matrix（qva/qvb）と混同しない別行で記載）＋packet記載 |
+| AC-9 | evidence READMEのmatrix↔SHA↔APK対応表（sha256含む。v5最終mapping= **qva2=compat 7修正head／qvb2=新candidate／(e)(f)等再利用=`2987e525bd`＋`fc5169566c`**。diagnostic別行: pre-guard `f5a3977281`〜`5c6d40a56d`／post-guard `fc5169566c`／qa-qb `71c6251203`／qva-qbv `8108e3a1aa`（第六/第七破壊diag/superseded））＋packet記載 |
 | AC-10 | matrix (a) logcat（Taskbar NoSuchFieldError / Resources$NotFoundException 0件・bind完了）＋guard/dimen diff（code review） |
 | AC-10b | v3再検証matrix (a)/(b)のruntime証跡（KeyButtonRipple NoClassDefFoundError 0件・bind完了/compatible=true。qa実績: bind成立を `qa-crash-check.txt` が実証）＋guard diff（code review） |
-| AC-10c | v4再検証matrix qva (a)/qvb (b)のruntime証跡（NoSuchMethodError 0件＋failure marker 0件＋実thumbnailレンダリング＋hiddenapi補助観測）＋reflection diff（code review） |
+| AC-10c | diagnostic qva/qbv runtime証跡（`8108e3a1aa`。getTaskSnapshot NME 0＋get reflection marker 0＋qvaでbind/overview/task switch到達の実績範囲）＋reflection diff（code review済み） |
 | AC-10d | v5再検証matrix qva2 (a)/qvb2 (b)のruntime証跡（実app screenshot thumbnailレンダリングscreenshot＋wrapToBitmap failure marker 0）＋reflection diff（code review） |
 | AC-10e | v5再検証matrix qva2 (a)/qvb2 (b)のruntime証跡（takeTaskSnapshot NoSuchMethodError 0・marker 0・launcher FATAL 0）＋reflection diff（code review） |
+| AC-10e2 | qvb2 G3 windowのlogcat（2 parcel exception＋`No matching remote found to takeover` がlauncher pidで0件。再現時はcandidate FAIL→failure signature固定→別Owner decision） |
 
 新規の永続testは追加しない（test-audit判断: クラッシュは「実機frameworkのAPI 37で旧formが
 消失すること」自体が原因であり、JVM/Robolectricでは再現不能。振る舞いの一次証拠は

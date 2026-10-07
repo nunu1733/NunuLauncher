@@ -79,7 +79,10 @@ updated: 2026-10-08
 （`registerInputConsumer()` / `unregisterInputConsumer()`）を変えない。bridgeは
 `registerInputConsumer()` 内のframework呼出し形式の切替、`TaskbarRecentAppsController`
 のflag参照1箇所のdegrade、`taskbar_phone_size` のres値literal化、`KeyButtonRipple` のflag読取り
-1箇所のdegrade（いずれも#545 provider修復の最小範囲）である。呼出側（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象
+1箇所のdegrade、`ActivityManagerWrapper.getTaskThumbnail` のTaskSnapshotManager reflection分岐
+（Owner decision 11）、`ThumbnailData.makeThumbnail` のwrapToBitmap reflection分岐
+（Owner decision 12）、`ActivityManagerWrapper.takeTaskThumbnail` のTaskSnapshotManager
+reflection分岐（Owner decision 13）（いずれも#545 provider修復の最小範囲）である。呼出側（`TouchInteractionService`）・gate（`LawnchairApp`）・G3対象
 （`SystemUiProxy`）・5箇所のdimen reader（res側で解決されるため無変更）は変更しない。
 wmshellは変更しない（spec Owner decision 6）。
 
