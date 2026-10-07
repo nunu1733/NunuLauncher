@@ -1,0 +1,9 @@
+=== qb hiddenapi auxiliary watch — API 37 release @ 40eb5dbfab ===
+date: 2026-10-08 00:47:17  source: qb-bind-logcat.txt
+NOTE: auxiliary only. The accepted hiddenapi PASS from post-guard run (commit fc5169566c, d-hiddenapi-logcat-post.txt) stands.
+
+hiddenapi lines mentioning app.lawnchair: 0
+  of which DENIAL (not warning): 0
+sample (up to 5 lines):
+(end of sample)
+RESULT: no hiddenapi DENIAL for app.lawnchair* observed.
