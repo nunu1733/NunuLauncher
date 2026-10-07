@@ -6,10 +6,10 @@ updated: 2026-10-08
 
 # Plan: API 37 Quickstep provider修復 — IWindowManager.createInputConsumer破壊へのcompat対応
 
-> Status: revision 4 accepted / **revision 5 proposed addendum（Owner decision 12＋13。review pending）**
-> （revision 4はPR #552 review round 4でblocking 0・Clear
-> （head `0b8c2ae41b4ebc9471158b5e21bccc4e4753d23d` を確認）でaccepted（#552 merge済み）。
-> revision 5は本PR #553のreview Clearをもってrevision 5 acceptedへ更新する）
+> Status: revision 4 accepted / **revision 5 accepted（Owner decision 12＋13 addendum）**
+> （revision 5はPR #553 review round 4でblocking 0・Clear
+> （head `3fcce3e7b25a508cd0d039dce760b328646208d5` を確認）でaccepted。受入は本PR #553のmergeで完了する。
+> 前提: revision 4 accepted（Owner decision 11 addendum。#552 merge済み）。）
 > （prerequisite: revision 2の受入 2026-10-07。revision 1はPR #548 review round 3でblocking 0・
 > Clear（[review](https://github.com/nunu1733/NunuLauncher/pull/548#issuecomment-6035965725)）でaccepted。
 > revision 2（Owner decision 8/9 addendum）はPR #549 review round 4でblocking 0・Clear
@@ -48,6 +48,9 @@ updated: 2026-10-08
   `DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX` を参照。fieldは
   framework-16.jarに存在するがAPI 37.0 imageのframework.jarから削除済み。provider bind後にのみ
   実行され37.0 imageで `NoSuchFieldError`。spec Owner decision 8 / AC-10）。
+- `systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java:192-203`
+  （`takeTaskThumbnail` の既存 `takeTaskSnapshot(taskId, true)` 直接 `(IZ)` 1経路。37.0 imageで
+  削除。RemoteExceptionのみcatchのためNMEがクラッシュになる。spec Owner decision 13 / AC-10e）。
 - `systemUI/shared/src/com/android/systemui/shared/recents/model/ThumbnailData.kt:48-66`
   （`makeThumbnail`。`snapshot.hardwareBuffer`（`getHardwareBuffer()`）は37.0 imageで
   deprecated・unconditional null（dexdump body実測）→黒bitmap fallback。spec Owner decision 12 /
@@ -456,6 +459,9 @@ preflight証跡化）。
   launcher FATAL 0。
   G3: overview→task切替の遷移時間帯logcatを取得し `ActivityTaskManager` BAL block有無を判定（AC-4）。
   hiddenapi補助観測へ **新TaskSnapshotManager/wrapToBitmap call由来denialの監視** を追加。
+  **parcel例外oracle（AC-10e2）**: launcher pidで `BadParcelableException: Parcel data not fully
+  consumed` / `Bundle length is not aligned by 4` と `ShellRecents: No matching remote found to
+  takeover` を0件確認（再現時はcandidate FAILとしてfailure signature固定→別Owner decision）。
 - (d) hiddenapi一次出力: root shellで可能なら `hiddenapi list` 相当（`cmd hiddenapi` /
   `hiddenapi` binaryの在否を確認し、取得できた出力をそのまま保存。取得不能な場合はその旨を記録し、
   logcat観測を一次出力とする）。**v3: image上のflags table不在（`d-hiddenapi-logcat-post.txt` /
