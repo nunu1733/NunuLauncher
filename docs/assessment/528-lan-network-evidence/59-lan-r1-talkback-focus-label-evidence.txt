@@ -1,0 +1,28 @@
+# TalkBack / uiautomator focus・label evidence (Issue #528 review round 1, API 37, head f102d72144)
+# Method: TalkBack enabled via: adb shell settings put secure enabled_accessibility_services com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService; accessibility_enabled 1
+# Service verified bound: dumpsys accessibility -> Bound services:{Service[label=TalkBack, ...]}; touchExplorationEnabled=true.
+# Evidence: full 'adb shell uiautomator dump' XML per state (accessibility node tree); excerpts below show the inline status text, request/re-request button and Open-app-settings button with bounds (focus reachability).
+# Screenshots 55/56/57/58 show the TalkBack focus rectangle on the corresponding nodes.
+
+## state 1 (55-lan-r1-talkback-state1-request-button.png): fresh LAN URL = plain request button
+text="Suggestions: not run yet for the current address." class="android.widget.TextView"
+text="Suggestions: not run yet for the current address." resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[84,1778][849,1820]"
+text="Allow local network access" (request button, android.widget.Button bounds [84,1842][685,1947])
+class="android.widget.Button" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[84,1842][685,1947]"
+text="Allow local network access" resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[147,1868][622,1921]"
+
+## state 2 (56-lan-r1-talkback-state2-rationale.png): rationale-required
+text="This app needs local network access to fetch suggestions from the local network address." resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[84,1831][996,1915]"
+text="Allow local network access" resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[147,1952][622,2005]"
+text="Suggestions: not run yet for the current address." resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[84,1778][849,1820]"
+
+## state 3 (57-lan-r1-talkback-state3-guidance.png): settings-guidance (in-session)
+text="Local network access was denied. To allow it, open the app settings and permit Nearby devices under Permissions." resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[84,1831][996,1957]"
+text="Open app settings" resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[147,1994][469,2047]"
+text="Suggestions: not run yet for the current address." resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[84,1778][849,1820]"
+
+## F1 decisive (58-lan-r1-f1-after-process-death-request-button.png): after system-initiated process death + task relaunch
+## the guidance strings are ABSENT and the plain request button returns:
+text="Allow local network access" resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[147,1868][622,1921]"
+text="Suggestions: not run yet for the current address." resource-id="" class="android.widget.TextView" package="app.lawnchair.debug" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[84,1778][849,1820]"
+Open-app-settings / denied-guidance strings in this dump: 0 (expected 0)

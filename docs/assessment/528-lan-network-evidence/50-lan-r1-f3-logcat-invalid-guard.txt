@@ -1,0 +1,7 @@
+10-07 11:21:27.524  5114  6476 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=invalid-template sdkInt=37
+10-07 11:21:27.758  5114  6476 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=invalid-template sdkInt=37
+10-07 11:21:28.128  5114  6478 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=invalid-template sdkInt=37
+10-07 11:21:28.190  5114  5681 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=invalid-template sdkInt=37
+10-07 11:21:28.339  5114  6630 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=invalid-template sdkInt=37
+10-07 11:21:28.391  5114  6478 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=invalid-template sdkInt=37
+10-07 11:21:28.673  5114  6632 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=invalid-template sdkInt=37

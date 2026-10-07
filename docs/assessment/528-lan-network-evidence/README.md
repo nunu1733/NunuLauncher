@@ -7,11 +7,13 @@
 - applicationId: `app.lawnchair.debug` (debugsuffix)
 - 確認日: 2026-10-07
 - **修正後再取得 (2026-10-07)**: cleartext検出fix `1600e0c857` (`fix(528): クリアテキスト検出をOkHttp 5.5.0のUnknownServiceExceptionへ対応`) で Item 7a を再取得した。APK `Lawnchair.16.Dev.(1600e0c).github.debug.apk`、同一AVD `issue526_api37_pixel_9a` (serial emulator-5554)。修正後の証跡は `35`〜`38`。
+- **review round 1 再取得 (2026-10-07)**: PR #543 implementation review (blocking 1-3 + medium 4-6, すべてACCEPTED) の修正 `f102d72144` (`fix(528): review round 1対応`) で F1-F4 oracle と server log 一元化・TalkBack evidence を再取得した。APK `Lawnchair.16.Dev.(f102d72).github.debug.apk`、AVD `issue526_api37_pixel_9a` (emulator-5554) + `issue142_api36` (emulator-5556)。証跡は `45`〜`63` (下記「Review round 1 再取得」)。検証クエリは `timeoutoracle` / `invalidq` / `ctfail` / `positive` / `apitwosix` 等のtest用文字列のみ (redaction確認済み)。
 - emulator matrix:
   - API 37: AVD `issue526_api37_pixel_9a` (sdk_gphone64_arm64, Android 17 / SDK 37, google_apis) — serial emulator-5554
   - API 36: AVD `issue142_api36` (sdk_gphone64_arm64, Android 16 / SDK 36, google_apis) — serial emulator-5556
-- host側: opensslで生成したテストCA (`CN=Issue528 Test CA`) と `10.0.2.2` 用サーバー証明書 (SAN IP:10.0.2.2)。python3 http.server + ssl で `https://10.0.2.2:8443/suggest` (CA署名) と `:8444` (CA外の自己署名) を提供。OpenSearch JSON `["q",["suggestion one <q>","suggestion two <q>"]]` を返す。アクセスログ: `server-access-8443.log`。
+- host側: opensslで生成したテストCA (`CN=Issue528 Test CA`) と `10.0.2.2` 用サーバー証明書 (SAN IP:10.0.2.2)。python3 http.server + ssl で `https://10.0.2.2:8443/suggest` (CA署名) と `:8444` (CA外の自己署名) を提供。OpenSearch JSON `["q",["suggestion one <q>","suggestion two <q>"]]` を返す。アクセスログ: 初回runは `server-access-8443.log` (05:44-06:17の窓のみ)。**review round 1 runでは新規に単一serverを起動し、完全なaccess logを `61-lan-r1-server-access.log` としてcommitした (10:35-11:59の単一窓。以下のserver log引用はすべてこのファイルを正本とする)**。
 - テストCAは両emulatorのSettings UI (検索 → Install a certificate → CA certificate → Downloads/ca.pem) で**ユーザーCA**としてインストールした。debug source set限定NSC (`src/debug/res/xml/network_security_config.xml` + `src/debug/AndroidManifest.xml`) の `debug-overrides` によりdebug buildのみユーザーCAを信頼する。release契約は不変 (`33-lan-release-manifest-no-debug-nsc.txt`: release merged manifestの `networkSecurityConfig` 属性数=0)。
+- **CA再導入の補足 (review round 1 run)**: 初回runのCA鍵はhost側に残っていないため、新規に `CN=Issue528 Test CA` を生成した。root file placement (`/data/misc/keychain/cacerts-added/<hash>.0`) だけではruntimeに信頼されず (SSLHandshakeException、reboot後も不変)、両AVDとも**Settings UI経由のユーザーCAインストールを行って初めて信頼された** (`63-lan-r1-api36-ca-installed.png` の "CA certificate installed" toast等)。
 
 ## 実施結果サマリ
 
@@ -42,7 +44,7 @@
 - `02-lan-item1-02-settings-lan-section-firsttime.png` — **初回未要求の表示** (`02`/`08`と同一画像を Item 8 証跡としても使用)。statically-local URL設定時にLAN section (rationale/要求button) が出るが、Settingsへの誘導は**しない**。typed outcome は `not-run`。← Scenario「初回未要求ではSettingsへ誘導せず要求buttonを出す」
 - `03-lan-item1-03-system-permission-dialog.png` — 設定画面の要求buttonから起動した**system permission dialog** (NEARBY_DEVICES group: "Allow Lawnchair (Debug) to find, connect to, and determine the relative position of nearby devices?")。
 - `04-lan-item1-04-settings-after-grant.png` — 許可後の設定UI: "Local network access is granted." (`dumpsys package`: `ACCESS_LOCAL_NETWORK: granted=true ... USER_SET`)。
-- `05-lan-item1-05-drawer-search-suggestions.png` — drawer検索 "evidence" → **ローカルサーバーの候補 "suggestion one/two evidence" が表示**。host access log (`server-access-8443.log` 06:17の行, `UA=okhttp/5.5.0`) と対応。許可状態でのfetch成功 = Outcomeの「LAN許可時に提供が継続」。guard は skip されlog出力なし。← Scenario「LAN許可で取得継続」
+- `05-lan-item1-05-drawer-search-suggestions.png` — drawer検索 "evidence" → **ローカルサーバーの候補 "suggestion one/two evidence" が表示**。host access logとの対応は、**review round 1 runで同一build系のpositive controlとして `61-lan-r1-server-access.log` 11:33:54の `GET /suggest?q=positive...` 行群 (`UA=okhttp/5.5.0`) で再取得・検証済み** (初回runのlogは初回sessionの窓のみ保管のため `server-access-8443.log` に当該行なし。同logは参考として保持)。許可状態でのfetch成功 = Outcomeの「LAN許可時に提供が継続」。guard は skip されlog出力なし。← Scenario「LAN許可で取得継続」
 - `06-lan-item2-01-settings-rationale-required-after-pmrevoke.png` — `pm revoke` 直後の設定UI: rationale text + 再要求button (**rationale-required** 観測状態)。← Scenario「拒否・取消時はsettingsの型付き案内」の観測3状態側
 - `07-lan-item2-02-drawer-search-empty.png` — 拒否状態でのdrawer検索: web候補は**即時に空** (10秒hangなし、dialog外観なし)。
 - `08-lan-item2-03-guard-log-redacted.txt` — guard log: `suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37` (連続7行)。**query "evidence" / URL / host は一切含まない**。fetchはnetwork呼び出し前に短絡 (server access logに新規行なし)。← Verification (b) logcat + log redaction契約
@@ -69,10 +71,10 @@
 
 ### 修正後再取得 (fix `1600e0c857`、API 37 / 同一AVD)
 
-- `35-lan-item7a-03-https-userCA-positive-control-fixedbuild.png` — **https positive control**: 同一build・同一user CA (`Issue528 Test CA`を`/data/misc/keychain/cacerts-added/d5f0c30b.0`として再導入) で `https://10.0.2.2:8443/suggest?q=%s` のdrawer検索 "evidence" → ローカル候補が表示 (server access log 07:49の行、`UA=okhttp/5.5.0`)。settingsのtyped statusは「Suggestions: last fetch succeeded.」(SUCCESS)。fix buildでCA経路が壊れていないことの対照証跡。
+- `35-lan-item7a-03-https-userCA-positive-control-fixedbuild.png` — **https positive control**: 同一build・同一user CA (`Issue528 Test CA`を`/data/misc/keychain/cacerts-added/d5f0c30b.0`として再導入) で `https://10.0.2.2:8443/suggest?q=%s` のdrawer検索 "evidence" → ローカル候補が表示。settingsのtyped statusは「Suggestions: last fetch succeeded.」(SUCCESS)。fix buildでCA経路が壊れていないことの対照証跡。server access logの行は初回runのlogには残っていないため、**review round 1 runで同条件のpositive controlを `61-lan-r1-server-access.log` 11:33:54行群として再取得した** (`54-lan-r1-https-positive-control.png`、`UA=okhttp/5.5.0`)。
 - `36-lan-item7a-04-settings-cleartext-blocked-after-fix.png` — **7a再取得の決定的証跡**: URLを `http://10.0.2.2:8443/suggest?q=%s` に変更してdrawer検索発火後、settings UIは **`cleartext-blocked`** ("Suggestions: blocked, cleartext (HTTP) traffic is not allowed. Use an HTTPS address.") を表示。初回runの `16-*.png` (generic-network-failureと誤分類) がfixで解消された。LAN sectionは「Local network access is granted.」のまま (guard短絡ではなくfetch failure側の分類であることも示す)。
 - `37-lan-item7a-05-cleartext-logcat-after-fix.txt` — 上記fetchのlogcat (`CustomWebSearchProvider` tagのみ)。**`java.net.UnknownServiceException`** (class名のみ。メッセージ内容・URL・queryは出ない) でredaction契約も維持。okhttp 5.5.0の予測どおりの例外型。
-- `38-lan-item7a-06-drawer-empty-cleartext.png` — 同一fetch時のdrawer検索: web候補は**即時に空** ("Search on Custom"のみ)。cleartext拒否はnetwork I/O前の短絡で、server access logに新規行なし (最終行は07:49のhttps fetch)。1行メモ: **検索flowは空候補で高速に完了し、hang・dialog・crashなし**。
+- `38-lan-item7a-06-drawer-empty-cleartext.png` — 同一fetch時のdrawer検索: web候補は**即時に空** ("Search on Custom"のみ)。cleartext拒否はnetwork I/O前の短絡。1行メモ: **検索flowは空候補で高速に完了し、hang・dialog・crashなし**。server access log上の「新規行なし」確認は初回runのlogには残っていないため、**同型のnegative windowを `61-lan-r1-server-access.log` で再現している** (11:21のINVALID template検索窓: guard短絡のため `/suggest` `/slow` 以外のpathが一切記録されていない。`50-lan-r1-f3-logcat-invalid-guard.txt` と対照)。
 
 ### Item 9再取得 (release署名build、fix `1600e0c857` / API 37 同一AVD)
 
@@ -86,10 +88,31 @@ debug buildのLeakCanary block (旧 `24`〜`26` の記録) を回避するため
 - `44-lan-item9-08-katbin-upload-error-logcat.txt` — 失敗flowのlogcat抜粋 (`UploaderService: failed to upload bug report`、FGS起動/停止)。airplane modeはcapture後に復元 (OFF確認済み)。
 - 観測の補足: (a) 通知のanti-spam guard (`notifications.size > 3`) は実働を確認 — system通知が4件ある状態でのcrashはreport fileなしでskipされた (既存仕様どおり)。(b) `am crash` は長時間起動済みprocessに対して効果がない場合があり、`am force-stop` → `am start` → `am crash` の手順で安定した (test harness側の事情でapp変更ではない)。(c) upload失敗から復帰した後も通知actionは `Upload failed` のまま残る (再uploadはnotificationからは再試行しない既存挙動)。
 
+### Review round 1 再取得 (fix `f102d72144` / API 37 emulator-5554 + API 36 emulator-5556)
+
+PR #543 implementation review round 1 (blocking 1-3 + medium 4-6、すべてACCEPTED) の修正 (`f102d72144`) をf102d72 debug buildで検証した。suggestions URLの設定はすべて設定UI (Search → App drawer → Web suggestions → Search suggestions URL dialog) から行い、server は単一process (:8443 CA署名 + :8444 rogue、`/slow` は9s sleep、access logは完了時刻で記録)。
+
+| # | review finding | 証跡 | 結果 |
+|---|---|---|---|
+| R1-1 | **F2: timeoutがtyped outcomeを迂回** (高) | `45`〜`47` | PASS。URLを `https://10.0.2.2:8443/slow?q=%s` (9s) に設定し drawer検索 `timeoutoracle` (delay 4500ms) → drawerは空候補 (`45`)。settingsは **「Suggestions: failed, the address could not be reached.」= generic-network-failure** (`46`)。logcat: `WebSuggestionProvider: Web suggestion request timed out` + `TimeoutCancellationException` / 遅延完了callの `JobCancellationException` (いずれもclass名のみでredaction契約維持) (`47`)。`/slow` の完了行は server log 11:14:15-17 に記録 (fetch開始 + 9s = timeout後の遅延完了) — **完了後も settings は generic-network-failure のまま反転しない** (SUCCESS publish が取消済みcoroutineの `publishIfActive` gateで拒否されることをE2Eで確認) |
+| R1-2 | **F3: INVALID templateがruntimeでfetchされ得る** (高) | `48`〜`50` + `61` | PASS。URLを `https://example.com/s?q=%s&x=%s` (classifier INVALID、unit testと同一例) に設定 → settingsは **invalid templateメッセージ** + `not-run` のまま (outcome未publish) で、**LAN permission sectionは出ない** (INVALID は STATICALLY_LOCAL でないため prompt も出ない) (`48`)。drawer検索 `invalidq` は即時に空 (`49`)。logcat: `suggestion fetch short-circuited: reason=invalid-template sdkInt=37` (連続、query/URL不含) (`50`)。**server access log に当該fetchの行は皆無** (11:14の `/slow` 行と11:33の `/suggest` 行の間に11:21台の行が存在しない) (`61`) |
+| R1-3 | **F4: A→blank→A で旧outcome復活** (中) | `51`〜`53` | PASS。URLを `https://10.0.2.2:8444/suggest?q=%s` (rogue自己署名) にして検索 `ctfail` → settings **「Suggestions: failed, TLS certificate check.」(tls-ct-failure)** (`51`)。URLを **blank** に保存 → status UI非表示 (`52`)。**同一の失敗URLを再入力 → 「Suggestions: not run yet for the current address.」** (旧failureは再表面化しない。template-change hook が親scopeでblankも含め常時起動) (`53`) |
+| R1-4 | **F1: `requestedThisSession` がprocessを跨ぐ** (高) | `58` + `62` | PASS。session内で request → 拒否 → "Don't allow" 2回目で USER_SET|USER_FIXED 確定 → settings-guidance 表示を確認後、processを停止し (`62` の方法注記参照: `am kill` はhome processをkillしないため root SIGKILL を使用。**icicle-restore経路は既存infraのMainThreadInitializedObjectデッドロックでANR — #528 diff外、`62` にstack記録**) → task再起動後のsettingsは **plain request button + not-run** に戻り、guidance文字列はdump内0件 (`58`、`59` 末節) |
+| R1-5 | **Finding 5: server logの正本不整合** (中) | `61` | PASS。単一server・単一窓 (10:35-11:59) の**完全なaccess logをcommit**。含まれる窓: (a) API 37 https positive control (fix build) = 11:33:54 `GET /suggest?q=positive...` 行群 (`54`)、(b) F3 negative window = 11:21台の行なし (INVALID templateでserver到達なし)、(c) API 36 LAN fetch = 11:59:06 `GET /suggest?q=apitwosix...` 行群 (`60`)、加えて F2 の `/slow` 遅延完了行群 (11:14:15-17)。query はtest用文字列のみ。旧 `server-access-8443.log` は初回session (05:44-06:17) の窓のみで、旧READMEが引用した07:18/07:49の行を含んでいなかった — 本READMEの該当引用は `61` の該当行へ修正済み |
+| R1-6 | **Finding 6: TalkBack label / focus未実施** (中) | `55`〜`59` | PASS。API 37でTalkBack有効化 (`settings put secure enabled_accessibility_services com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService` + `accessibility_enabled 1`、`dumpsys accessibility` で `Bound services:{Service[label=TalkBack...]}` と `touchExplorationEnabled=true` を確認)。3状態を取得: **state 1** fresh LAN URL = request button (`55`)、**state 2** rationale-required (`56`: rationale text + 再request button)、**state 3** settings-guidance (`57`: guidance text + "Open app settings")。focus/label evidence は各状態の `uiautomator dump` XML (accessibility node tree) から status text / button label / bounds を `59` に抽出 (focus到達性はboundsと`55`〜`58`のfocus rectangleで確認)。font scaling (`28`) は文字列変更なしのため本runの再確認対象外 (review指示どおり問題出た場合のみ再確認)。TalkBackはcapture後に無効化して復元 |
+
+その他の記録:
+
+- `59-lan-r1-talkback-focus-label-evidence.txt` — TalkBack 3状態 + F1決定の uiautomator dump 抜粋 (label + bounds)。
+- `60-lan-r1-api36-lan-suggestions.png` — API 36 (fix build) で LAN URL のdrawer検索 `apitwosix` → ローカル候補表示。server log 11:59:06行群と対応 (R1-5(c))。API 36ではLAN section・permission promptは出ない (SDK 37+ gate、`29` 再確認)。
+- `61-lan-r1-server-access.log` — **新正本server access log** (単一窓・完全commit、上述のとおり)。
+- `62-lan-r1-process-death-oracle-method-note.txt` — F1 oracleの実施方法の正確な記録 (`am kill` 不成立 → SIGKILL、icicle-restore ANRのstack、resolver再選択)。
+- `63-lan-r1-api36-ca-installed.png` — API 36 へのユーザーCAインストール (Settings UI、"CA certificate installed" toast)。API 37も同経路で再インストールした (root file placementのみでは信頼されない観察をREADME先頭に記載)。
+
 ### API 36 (回帰)
 
 - `29-lan-item13-api36-no-lan-section.png` — **SDK 36ではLAN URL (statically-local) を設定してもLAN guard sectionが出ない** (要求button・rationale・granted表示なし。typed status `not-run` のみ)。guardがSDK 37+ gateであることのUI証跡。新規permission promptは一切出ない。← Verification「API 36 emulator: 既存public fetch・katbinの回帰なし、新規permission promptなし」+ Scenario「API 36・Internet-onlyは挙動不変」
-- `30-lan-item13-api36-drawer-lan-suggestions.png` — API 36で同一LAN URLのdrawer検索 → ローカル候補が表示 (LNP不存在のためpermission不要の現行動作)。host access log 07:18の行と対応。`34-lan-item13-api36-logcat.txt`: CustomWebSearchProviderのlog行ゼロ (guard不発火)。
+- `30-lan-item13-api36-drawer-lan-suggestions.png` — API 36で同一LAN URLのdrawer検索 → ローカル候補が表示 (LNP不存在のためpermission不要の現行動作)。host access logの行は初回runのlogには残っていないため、**review round 1 runで同一条件 (API 36・LAN URL・fix build `f102d72`) のfetchを `61-lan-r1-server-access.log` 11:59:06行群として再取得した** (`60-lan-r1-api36-lan-suggestions.png`)。`34-lan-item13-api36-logcat.txt`: CustomWebSearchProviderのlog行ゼロ (guard不発火)。
 - `31-lan-item13-api36-provider-google.png` / `32-lan-item13-api36-google-suggestions.png` — 既定Google providerのpublic HTTPS取得の回帰なし。
 
 ### katbin (Item 9) — 初回run (debug build) は NOT COMPLETED、release buildで再取得済み
