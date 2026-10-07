@@ -1,0 +1,21 @@
+=== matrix (b) G3 observation — API 37 release @ 2987e525bd (candidate2-release-2987e52.apk) ===
+date: 2026-10-07 22:56:47
+procedure: Settings foreground -> KEYCODE_APP_SWITCH (shell->launcher overview) -> tap at task-card position (540,1200)
+focus after APP_SWITCH: com.android.settings/.homepage.SettingsHomepageActivity (unchanged: no overview)
+focus after tap: com.android.settings/.SubSettings (tap landed on Settings content; no task switch)
+
+--- BAL signature grep counts in mb-g3-logcat.txt:
+Background activity start (denial text): 0
+AbortClientTransaction: 0
+ActivityTaskManager BAL lines (all reasons): 4
+--- the 4 ActivityTaskManager BAL lines (all ALLOW, i.e. 0 blocks):
+  START u0 {act=android.intent.action.MAIN cat=[android.intent.category.HOME] flg=0x10000100 cmp=app.lawnchair/.LawnchairLauncher (has extras)} with LAUNCH_SINGLE_TASK from uid 0 (BAL_ALLOW_ALLOWLISTED_UID) result code=0
+  START u0 {act=android.intent.action.MAIN cat=[android.intent.category.HOME] flg=0x10000100 cmp=app.lawnchair/.LawnchairLauncher (has extras)} with LAUNCH_SINGLE_TASK from uid 0 (BAL_ALLOW_ALLOWLISTED_UID) result code=0
+  START u0 {act=android.settings.SETTINGS flg=0x10000000 xflg=0x4 cmp=com.android.settings/.homepage.SettingsHomepageActivity} with LAUNCH_MULTIPLE from uid 0 (com.android.shell) (BAL_ALLOW_ALLOWLISTED_UID) result code=0
+  START u0 {act=android.intent.action.MAIN xflg=0x4 cmp=com.android.settings/.SubSettings (has extras)} with LAUNCH_MULTIPLE from uid 1000 (com.android.settings) (sr=145181329) (BAL_ALLOW_VISIBLE_WINDOW) result code=0
+
+--- BAL block count: 0 (no BAL_DENY/blocked signature in ActivityTaskManager)
+NOTE: the shell->launcher recents transition did not occur at all (launcher provider service crash-loops on
+      NoClassDefFoundError android.companion.virtualdevice.flags.Flags at KeyButtonRipple -> NavbarButtonsViewController).
+      Therefore, as in #524 (a)/(b), '0 BAL blocks' does NOT establish the G3 oracle: a successful transition
+      is a precondition. G3 remains unconfirmed on API 37 (see AC-4).

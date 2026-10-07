@@ -1,0 +1,45 @@
+=== matrix (e) result — API 36 debug @ candidate 2987e525bd (candidate2-debug-2987e52.apk) ===
+date: 2026-10-07
+AVD: issue142_api36 (API 36 / SDK 36), emulator-5556, native density (physical 420, no override)
+
+VERDICT: PASS (provider bind + overview + task switch + geometry normalization record)
+
+1) preflight (me-preflight.txt): lookup == app.lawnchair.debug/com.android.quickstep.RecentsActivity,
+   SystemUI mRecentsComponentName same, package SYSTEM+PRIVILEGED, isConnected=true, mBound=true, backoff=0,
+   installed sha256 == candidate2-debug 5098ceb4d7af93c90684e07b1bdbe01408a92356631923fdde367a5fbc213278.
+   Note: bind required HOME role assignment; before HOME=app.lawnchair.debug, mBound=false/isConnected=false
+   (on API 36 SystemUI binds the recents provider once the launcher/HOME is active).
+
+2) overview: Settings started -> HOME -> KEYCODE_APP_SWITCH; Lawnchair overview established
+   (me-overview-api36.png: overview_panel with task_view_single "Settings" card + OverviewActionsView
+   "Screenshot" button; logcat OverviewCommandHelper.addCommand / OverviewActionsView.updateForTask
+   showSingleTaskActions=true). No launcher crash.
+
+3) task switch: uiautomator dump of the overview identified task_view_single bounds [162,360][918,2040];
+   tap on card body (540,1200) -> focus = com.android.settings/.homepage.SettingsHomepageActivity
+   (me-task-switch-api36.png). Shell->launcher overview->app transition succeeded.
+   (Deviation from procedure: the first tap at (400,414) hit the task card's icon chip and opened Lawnchair
+   PreferenceActivity ("At a Glance" page); recorded, not counted as the oracle. The oracle tap is (540,1200).)
+
+4) "disabling recents": 0 occurrences in me-logcat.txt (gate correctly recognizes the debug overlay as itself).
+
+5) crash check in me-logcat.txt (boot -> bind):
+   - NoSuchMethodError = 0; companion/virtualdevice NoClassDefFoundError = 0
+     (API 36.0 -> SDK_INT_FULL=3600000 < 3600001, so the API 37.0-only 4th break cannot fire here).
+   - 1 transient first-boot crash: SQLiteCantOpenDatabaseException on launcher-loader
+     ("/data/user/0/app.lawnchair.debug/databases ... doesn't exist") immediately after fresh install+HOME;
+     did not recur (final isConnected=true, backoff=0).
+   - pre-existing nexuslauncher crash-on-boot dialog (Application Error: com.google.android.apps.nexuslauncher),
+     same as #524 leg (e) note; outside this issue's oracle scope.
+
+6) GEOMETRY NORMALIZATION oracle (AC-5):
+   - me-apk-dimen-check.txt: candidate2 debug resources.arsc -> dimen/taskbar_phone_size = 48.000000dp
+     (literal). CONTRAST: pre-fix compat-debug-416273c.apk -> @0x01050283 (baked framework resource ID).
+   - Mis-resolution contrast (pre-existing): api36-image-framework-res-contrast.txt — on the API 36 image
+     0x01050283 resolves to notification_2025_action_list_min_height (~10dp); on API 37.0 it resolves to a
+     nameless navigation_bar_height_portrait -> Resources$NotFoundException. Literal 48dp restores the intended
+     value on both.
+   - me-geometry-native-density.png: post-fix home at native density (420, no override) — renders normally
+     (wallpaper, At a Glance widget, icons, search bar); no visual crash/degradation. The phone-profile taskbar
+     is not visually rendered in this gestural-nav configuration (neither on home nor in overview), so the
+     normalization is recorded primarily via the 48dp static check + absence of the Taskbar init crash.

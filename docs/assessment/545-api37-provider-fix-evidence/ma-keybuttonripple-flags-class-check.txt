@@ -1,0 +1,58 @@
+=== evidence: android.companion.virtualdevice.flags.Flags class availability ===
+date: 2026-10-07 22:54:10
+
+--- crash signature (emulator-5554 API 37.0, app.lawnchair.debug):
+java.lang.NoClassDefFoundError: Failed resolution of: Landroid/companion/virtualdevice/flags/Flags;
+  at com.android.systemui.shared.navigationbar.KeyButtonRipple.<init>(KeyButtonRipple.java:108)
+Caused by: java.lang.ClassNotFoundException: Didn't find class "android.companion.virtualdevice.flags.Flags" on path: DexPathList[[zip file "/product/priv-app/LawnchairDebug/LawnchairDebug.apk"],...]
+
+--- 37.0 device framework.jar classes5.dex class descriptors containing companion/virtualdevice (dexdump, build-tools 37.0.0):
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/Flags;'
+--- plain (non-prefixed) class definition 'Landroid/companion/virtualdevice/flags/Flags;' present in 37.0 classes5.dex? (grep count below, 0 = absent):
+0
+
+--- 36 device framework.jar classes5.dex class descriptors containing companion/virtualdevice (dexdump):
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda0;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda10;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda11;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda12;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda13;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda14;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda15;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda16;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda17;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda18;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda19;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda1;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda20;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda2;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda3;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda4;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda5;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda6;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda7;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda8;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags$$ExternalSyntheticLambda9;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/FeatureFlags;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/FakeFeatureFlagsImpl;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/FeatureFlagsImpl;'
+    Class descriptor  : 'Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/Flags;'
+
+--- repo compile classpath prebuilts/libs/framework-16.jar contains (compile-time source of the reference):
+       1853  01-01-2008 00:00   android/companion/virtualdevice/flags/CustomFeatureFlags.class
+        601  01-01-2008 00:00   android/companion/virtualdevice/flags/FakeFeatureFlagsImpl.class
+       1796  01-01-2008 00:00   android/companion/virtualdevice/flags/FeatureFlags.class
+       1660  01-01-2008 00:00   android/companion/virtualdevice/flags/FeatureFlagsImpl.class
+       5425  01-01-2008 00:00   android/companion/virtualdevice/flags/Flags.class
+       2041  01-01-2008 00:00   com/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/CustomFeatureFlags.class
+        789  01-01-2008 00:00   com/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/FakeFeatureFlagsImpl.class
+       1843  01-01-2008 00:00   com/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/FeatureFlags.class
+       1754  01-01-2008 00:00   com/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/FeatureFlagsImpl.class
+       5472  01-01-2008 00:00   com/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/Flags.class
+
+--- referrer source (worktree):
+  systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java:22  import android.companion.virtualdevice.flags.Flags;
+  systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java:108 if ((VERSION.SDK_INT_FULL >= 3600001) && Flags.viewconfigurationApis()) {
+--- SDK_INT_FULL on devices: emulator-5554 (API 37) ro.build.version.sdk_full=37.0 -> gate true; emulator-5556 (API 36) =36.0 -> gate false
+--- /system/etc/hiddenapi/ on 37.0 device: ls: /system/etc/hiddenapi/: No such file or directory

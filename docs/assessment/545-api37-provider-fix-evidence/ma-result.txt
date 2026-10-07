@@ -1,0 +1,52 @@
+=== matrix (a) result — API 37 debug @ 63a8a3a7d5 (compat3-debug-63a8a3a.apk) ===
+date: 2026-10-07
+AVD: issue526_api37_pixel_9a (API 37.0 / SDK 37), emulator-5554, native density (physical 420, no override)
+
+VERDICT: FAIL (bind oracle not reached) — new 4th API 37.0 break, provider bind still crash-loops.
+
+1) Procedure outcome
+- clean state -> debug overlay (verified active) -> compat3 debug priv-app + 13-perm allowlist -> boot OK (single iteration, no allowlist boot loop).
+- preflight (ma-preflight.txt): lookup == app.lawnchair.debug/com.android.quickstep.RecentsActivity, SystemUI
+  mRecentsComponentName same, package SYSTEM + PRIVILEGED, mIsEnabled=true, mBound=true.
+- bind: app.lawnchair.debug crashes at every bind -> LauncherProxyService isConnected=false,
+  mConnectionBackoffAttempts=8 (crash loop).
+
+2) Fixed signatures verified GONE at their seams (0 occurrences in ma-bind-logcat.txt):
+- NoSuchMethodError = 0                       (createInputConsumer compat fix at its seam)
+- ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX NoSuchFieldError = 0 (guard works)
+- Resources$NotFoundException = 0             (dimen literal 48dp works; Taskbar passed TaskbarActivityContext init)
+
+3) NEW blocking signature (not in spec Owner decisions 8/9):
+java.lang.NoClassDefFoundError: Failed resolution of: Landroid/companion/virtualdevice/flags/Flags;
+  at com.android.systemui.shared.navigationbar.KeyButtonRipple.<init>(KeyButtonRipple.java:108)
+  at com.android.systemui.shared.rotation.FloatingRotationButtonView.setRipple(FloatingRotationButtonView.java:60)
+  at com.android.systemui.shared.rotation.FloatingRotationButton.<init>(FloatingRotationButton.java:98)
+  at com.android.launcher3.taskbar.NavbarButtonsViewController.setupController(NavbarButtonsViewController.java:399)
+  at com.android.launcher3.taskbar.NavbarButtonsViewController.init(NavbarButtonsViewController.java:294)
+  at com.android.launcher3.taskbar.TaskbarControllers.init(TaskbarControllers.java:165)
+  ...
+  at com.android.quickstep.TouchInteractionService.onUserUnlocked(TouchInteractionService.java:889)
+Caused by: java.lang.ClassNotFoundException: Didn't find class "android.companion.virtualdevice.flags.Flags"
+on path: DexPathList[[zip file "/product/priv-app/LawnchairDebug/LawnchairDebug.apk"], nativeLibraryDirectories=[...]]
+- dexdump primary evidence (ma-keybuttonripple-flags-class-check.txt): on BOTH API 36 and API 37.0 device
+  framework.jar the class exists only as
+  Lcom/android/internal/hidden_from_bootclasspath/android/companion/virtualdevice/flags/Flags;
+  (aconfig hidden_from_bootclasspath wrapper); the plain name is not a defined class and is not resolvable
+  by app code. The referencing vendored source (KeyButtonRipple.java:108) gates it on
+  VERSION.SDK_INT_FULL >= 3600001: API 36.0 = 3600000 -> branch false (no crash; #524 leg (e) was unaffected),
+  API 37.0 = 3700000 -> branch true -> resolution attempted -> crash.
+- This is a hidden-API/aconfig class-availability break of the same family as Owner decision 8's field
+  removal, but at a different file/site (systemUI/shared KeyButtonRipple). It is NOT hiddenapi "denial"
+  enforcement (0 denial lines mentioning app.lawnchair; see d-hiddenapi-logcat-post.txt) and not wmshell.
+
+4) Overview / task-switch oracle (attempted, cannot pass):
+- settings started, HOME, KEYCODE_APP_SWITCH: no overview appeared (focus stayed Settings; ma-overview.png).
+- No task card existed; tap at card position landed on Settings content and focus became Settings.SubSettings
+  (ma-task-switch.png); no app switch occurred.
+- "disabling recents" = 0 (gate correctly open; overlay recognized as Lawnchair) and quickstep_incompatible = 0.
+
+5) wmshell watch (ma-wmshell-watch.txt): PipInputConsumer = 0, NoSuchMethodError = 0. No wmshell origin crash.
+
+6) Stop-rule note: the failure is a class-availability/hidden-API break on the provider bind path, not the
+   hiddenapi enforcement denial defined by spec Scenario 4 for registerInputConsumer. The registerInputConsumer
+   compat seam itself shows 0 NoSuchMethodError.
