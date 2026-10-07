@@ -45,8 +45,8 @@ overview起動・task切替がcrash-freeで到達）。残存gapは「thumbnail 
 |---|---|---|---|
 | pre-guard diagnostic | `416273ce2f`（reflection単体） | compat-debug-416273c `4c091d8d…` | decision 8/9の根拠。seam oracle成立（createInputConsumer NME 0・receiver生成）・Taskbar破壊発見。wm density 280 accommodation（superseded） |
 | post-guard matrix | compat 3修正head `63a8a3a7d5`（debug）／candidate `e2fe6f80df`（release/debug） | compat3 `bed40262…`／candidate2 `166beaea…`/`74adbbca…` | (e) API 36 provider PASS・(f) stock PASS・hiddenapi 0・wmshell 0・48dp pin静的確認／(a)(b)はTaskbar throttle FATALで未達（第4破壊発見） |
-| qa/qb diagnostic | `68e68a6a45`（debug）／`40eb5dbfab` candidate（release） | compat4 `489b9f1f…`／candidate3 `04d048b2…`/`6c0e0272…` | 第4修正実証（bind完了）／thumbnail黒fallback（第6破壊発見）＋takeTaskSnapshot FATAL（第7破壊発見） |
-| qva/qbv diagnostic | `bdea76ea75`（debug）／`212097886b` candidate（release） | compat5 `f9116a72…`／candidate4 `1265c7fc…`/`b701173e…` | 第5修正実証（overview・task切替到達）／thumbnail黒fallback継続（第6破壊確認）＋parcel例外oracle発見（第7破壊FATAL） |
+| qa/qb diagnostic | `68e68a6a45`（debug）／`40eb5dbfab` candidate（release） | compat4 `489b9f1f…`／candidate3 `04d048b2…`/`6c0e0272…` | 第4修正実証（bind完了）／**第5破壊発見**（overview読み込み中に `getTaskSnapshot(IZ)` NMEでlauncher死亡。task切替未達） |
+| qva/qbv diagnostic | `bdea76ea75`（debug）／`212097886b` candidate（release） | compat5 `f9116a72…`／candidate4 `1265c7fc…`/`b701173e…` | 第5修正実証（overview起動・task切替到達）＋**第6破壊発見**（thumbnail黒fallback。`getHardwareBuffer` deprecated-null）／qvbで **第7破壊発見**（`takeTaskSnapshot(IZ)` NME、launcher FATAL x3）＋parcel例外oracle初観測 |
 
 API 36/stock leg（(e)/(f)）のPASS実績: post-guard matrix（`fc5169566c`。実行SHA=candidate `2987e525bd`、
 APK `166beaea…`/`74adbbca…`。6修正はAPI 37のTaskbar/thumbnail/take経路のみで変化しないため有効）。
