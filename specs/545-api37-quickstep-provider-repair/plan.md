@@ -187,8 +187,8 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 ## rollback
 
 - 実装PR全体をrevertすればbase `e214b7b190` に戻る（単一機能commit群）。
-  compat修正3 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
-  `taskbar_phone_size` literal化）と
+  compat修正4 commits（`InputConsumerController` reflection＋`TaskbarRecentAppsController` guard＋
+  `taskbar_phone_size` literal化＋`KeyButtonRipple` guard）と
   検証candidate（`quickstepMaxSdk`）commitを分離するため、matrix (b)以降の
   不成立時はcandidate commitだけをrevertして36維持とできる（spec Owner decision 7 / AC-6）。
   reconciliationの旧candidate `e2fe6f80df` とそのrevert pairはsuperseded historyとして保持される
@@ -199,15 +199,22 @@ private InputChannel createInputConsumerCompat(IBinder token, String name, int d
 
 > 実行履歴: 以下step 1〜9のうち1〜7相当は実施済み（commit `416273ce2f`〜`2987e525bd`、
 > pre-guard diagnostic run、post-guard最終matrix `(e)/(f)` PASS・`(a)/(b)`が第四破壊でFAIL。
-> 証跡は実装branch evidence `ma-*`〜`mf-*`）。Owner decision 10に従い、残存stepは次のとおり:
-> a. `KeyButtonRipple.java` degrade guardを1 commit適用（`fix(545): ...`）→ spotlessCheck →
+> **post-guard証跡はcommit `fc5169566c` に固定**）。Owner decision 10に従い、残存stepは次のとおり:
+> a. **`2987e525bd` を明示revertしてmaxSdk 36へ戻す**（現headが既にmaxSdk 37のため
+>    「candidateの再作成」は不能。revertで36へ戻してから再積む。旧candidateとrevertのpairは
+>    superseded historyとして保持しREADMEへ記録）
+> b. `KeyButtonRipple.java` degrade guardを1 commit適用（`fix(545): ...`。
+>    **`NoClassDefFoundError` のみをcatch**。直接参照式はchecked例外を送出しないため
+>    `ClassNotFoundException` をcatchに含めるとcompile不能）→ spotlessCheck →
 >    `assembleLawnWithQuickstepGithubDebug`（compile確認）
-> b. `quickstepMaxSdk` 36→37を **candidate commitとして再作成**（guard commitより後の新SHAで
->    debug/release両build。旧candidate `2987e525bd` はsupersededとしてREADMEに記録
->    — guardで検証対象が変わるため新candidatesより後へ積み直す）
-> c. **再検証matrix (a)/(b)+G3を新candidate SHAで実施**（prefix `qa-*`/`qb-*`。Owner decision
->    10(e): (e)/(f)/hiddenapi/wmshellのPASS結果はpath不変として有効。READMEで対応づける）
-> d. 全成立ならcandidate保持＋ADR-0018 rev 9。不成立ならcandidate revert＋36維持。
+> c. **matrix (a) をこのcompat 4修正headで実施**（prefix `qa-*`。実行SHAは
+>    「compat修正適用後head」＝AC-9の(a)契約に整合）
+> d. `quickstepMaxSdk` 36→37を **candidate commitとして新規適用**→ debug/release両build →
+>    **matrix (b)+G3を新candidate SHAで実施**（prefix `qb-*`）
+> e. **(e)/(f)/hiddenapi/wmshellのPASS結果は旧candidate `2987e525bd` のartifactに固定して
+>    再利用**（path不変。READMEのmatrix↔SHA↔APK対応表はSHA別記載：
+>    (a)=compat 4修正head、(b)=新candidate、(e)/(f)=旧candidate `2987e525bd`）
+> f. 全成立ならcandidate保持＋ADR-0018 rev 9。不成立ならcandidate revert＋36維持。
 
 1. 修正前対照は実施済み（#524 (a)/(b) failure signature。本検証では対照として参照するのみで
    再実施しない）。
