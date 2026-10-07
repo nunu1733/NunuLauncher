@@ -1,0 +1,1262 @@
+--------- beginning of main
+10-07 16:12:17.578  1053  1061 I s.nexuslauncher: Background concurrent mark compact GC freed 4843KB AllocSpace bytes, 20(1896KB) LOS objects, 49% free, 7159KB/13MB, paused 283us,9.852ms total 131.246ms
+10-07 16:12:17.580  1347  1357 I PermissionControllerServiceImpl: Updating user sensitive for uid 10215
+10-07 16:12:17.581  1037  1037 E SmsApplication: com.google.android.apps.messaging lost android:read_cell_broadcasts:  (fixing)
+10-07 16:12:17.584  1228  1411 I Fitness : OnPackageChangedOperation got intent: Intent { act=android.intent.action.PACKAGE_CHANGED dat=package: flg=0x5000010 xflg=0x4 pkg=com.google.android.gms cmp=com.google.android.gms/.chimera.PersistentIntentOperationService (has extras) } [CONTEXT service_id=17 ]
+10-07 16:12:17.587  1053  1053 I OverviewComponentObserver: updateOverviewTargets: mIsHomeDisabled=false, isDefaultHomeNull=false, mIsDefaultHome=false
+10-07 16:12:17.590  1228  3450 I Fitness : FitCleanupIntentOperation received Intent android.intent.action.PACKAGE_CHANGED [CONTEXT service_id=17 ]
+10-07 16:12:17.593  1228  3450 I ProximityAuth: [RecentAppsMediator] Package added: (user=UserHandle{0}) app.lawnchair.debug
+10-07 16:12:17.596  1228  3449 W GCM     : Unexpected forwarded intent: Intent { act=android.intent.action.PACKAGE_ADDED dat=package: flg=0x4000010 pkg=com.google.android.gms cmp=com.google.android.gms/.chimera.PersistentIntentOperationService (has extras) }
+10-07 16:12:17.600  1228  3449 W NetworkScheduler: Unexpected forwarded intent: Intent { act=android.intent.action.PACKAGE_ADDED dat=package: flg=0x4000010 pkg=com.google.android.gms cmp=com.google.android.gms/.chimera.PersistentIntentOperationService (has extras) }
+--------- beginning of system
+10-07 16:12:17.602   666  1911 D OomAdjuster: Not killing cached processes
+10-07 16:12:17.603   666   666 D AppSearchAppsIndexerManagerS: userid in package receiver: 10215
+10-07 16:12:17.607  1228  3450 I .gms.persistent: AssetManager2(0xb4000072e1489078) locale list changing from [] to [en-US]
+10-07 16:12:17.647   666  1545 I system_server: AssetManager2(0xb4000072e14919f8) locale list changing from [] to [en-US]
+10-07 16:12:17.648  1751  3459 I Auth    : [SupervisedAccountIntentOperationV2] onHandleIntent: android.intent.action.PACKAGE_ADDED [CONTEXT service_id=42 ]
+10-07 16:12:17.654   666   696 I system_server: AssetManager2(0xb4000072e148bc38) locale list changing from [] to [en-US]
+10-07 16:12:17.660  1472  1472 I AiAiEcho: AppFetcherImplV2 updateApps package:[app.lawnchair.debug], userId:[0], reason:[package is added.].
+10-07 16:12:17.661   666  1698 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_SMS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.662  1472  2342 I ogle.android.as: AssetManager2(0xb4000072e149dbb8) locale list changing from [] to [en-US]
+10-07 16:12:17.662  1053  1099 I s.nexuslauncher: AssetManager2(0xb4000072e14ebdb8) locale list changing from [] to [en-US]
+10-07 16:12:17.667  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.668   666  1687 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_SMS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.669   666  1698 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_WAP_PUSH, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.669   666  1087 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = SEND_SMS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.669   666  1543 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_CELL_BROADCASTS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.678  1037  1218 D ImsResolver: maybeAddedImsService, packageName: app.lawnchair.debug
+10-07 16:12:17.678  1037  1218 V ImsResolver: searchForImsServices: package=app.lawnchair.debug, users=[UserHandle{0}]
+10-07 16:12:17.680  1037  1218 V ImsResolver: searchForImsServices: package=app.lawnchair.debug, users=[UserHandle{0}]
+10-07 16:12:17.682  1472  2116 I AiAiEcho: AppIndexer Package:[app.lawnchair.debug] UserProfile:[0] Enabled:[true].
+10-07 16:12:17.682  1228  3450 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.683  1472  2116 I AiAiEcho: AppFetcherImplV2 updateApps package:[app.lawnchair.debug], userId:[0], reason:[package is updated.].
+10-07 16:12:17.685  1228  3450 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.686  1037  1037 D SatelliteController: packageStateChanged: package:app.lawnchair.debug DefaultSmsPackageName:com.google.android.apps.messaging
+10-07 16:12:17.686  1037  1037 V SatelliteController: Neither SMS or SatelliteGateway package
+10-07 16:12:17.687  1037  1037 E SmsApplication: com.google.android.apps.messaging lost android:read_cell_broadcasts:  (fixing)
+10-07 16:12:17.687   666  1687 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 10146, code = READ_CELL_BROADCASTS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.689   666  1687 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_SMS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.689   666  1687 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_SMS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.689   666  1687 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = RECEIVE_WAP_PUSH, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.689   666  1687 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = SEND_SMS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.689   666  1687 W AppOpService: Ignored setUidMode call for runtime permission app op: uid = 1001, code = READ_CELL_BROADCASTS, mode = allow, callingUid = 1001, oldMode = allow
+10-07 16:12:17.689  1037  1037 D SatelliteAccessController: Current default SMS app:ComponentInfo{com.google.android.apps.messaging/com.google.android.apps.messaging.shared.receiver.SmsDeliverReceiver}
+10-07 16:12:17.689  1037  1037 D SatelliteController: getSelectedSatelliteSubId: subId=-1
+10-07 16:12:17.690  1037  1037 D SatelliteAccessController: supportedMsgApps:com.google.android.apps.messaging
+10-07 16:12:17.693  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Settings sectionName: S
+10-07 16:12:17.694  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Photos sectionName: P
+10-07 16:12:17.694  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Battery sectionName: B
+10-07 16:12:17.694  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Chrome sectionName: C
+10-07 16:12:17.695  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Gmail sectionName: G
+10-07 16:12:17.696  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Drive sectionName: D
+10-07 16:12:17.696  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Clock sectionName: C
+10-07 16:12:17.699  1751  3454 W Dck     : Disable DCK module - Android debug build without fullaccess [CONTEXT service_id=289 ]
+10-07 16:12:17.699  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Contacts sectionName: C
+10-07 16:12:17.700  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Calendar sectionName: C
+10-07 16:12:17.701  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Maps sectionName: M
+10-07 16:12:17.701  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: YouTube Music sectionName: Y
+10-07 16:12:17.701  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: YouTube sectionName: Y
+10-07 16:12:17.702  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Google sectionName: G
+10-07 16:12:17.702  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Android System Intelligence sectionName: A
+10-07 16:12:17.702  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair (Debug) sectionName: L
+10-07 16:12:17.702  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Digital Wellbeing sectionName: D
+10-07 16:12:17.704  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Conversations sectionName: C
+10-07 16:12:17.705  1751  3454 W Dck     : Dck module not eligible for asynchronous downloading [CONTEXT service_id=289 ]
+10-07 16:12:17.706   666  1452 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:12:17.709   666  1452 W ParceledListSlice: Element #26 is 20784 bytes.
+10-07 16:12:17.709   666  1452 W ParceledListSlice: Element #27 is 20820 bytes.
+10-07 16:12:17.709   666  1687 W ParceledListSlice: Element #28 is 20960 bytes.
+10-07 16:12:17.709   666  1687 W ParceledListSlice: Element #29 is 21048 bytes.
+10-07 16:12:17.709   666  1687 W ParceledListSlice: Element #30 is 20684 bytes.
+10-07 16:12:17.714  1751  3422 I Blockstore: [DataStoreImpl] Clearing Blockstore Data for package app.lawnchair.debug [CONTEXT service_id=258 ]
+10-07 16:12:17.715  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.723  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.729  1228  1411 I Fitness : OnPackageChangedOperation got intent: Intent { act=android.intent.action.PACKAGE_CHANGED dat=package: flg=0x5000010 xflg=0x4 pkg=com.google.android.gms cmp=com.google.android.gms/.chimera.PersistentIntentOperationService (has extras) } [CONTEXT service_id=17 ]
+10-07 16:12:17.733   666  1699 W ActivityTaskManager: callingPackage for (uid=0, pid=3464) has no WPC
+10-07 16:12:17.741   666  1699 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10215, packageName = null, attributionTag = null, token = android.os.Binder@7204ef9, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-07 16:12:17.742   666  1699 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_OVERRIDE
+10-07 16:12:17.742   666  1699 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_FULLSCREEN_OVERRIDE
+10-07 16:12:17.743  1228  1411 I Fitness : FitCleanupIntentOperation received Intent android.intent.action.PACKAGE_CHANGED [CONTEXT service_id=17 ]
+10-07 16:12:17.743   666  1699 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_RESIZEABLE_ACTIVITY_OVERRIDES
+10-07 16:12:17.744  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.745   666  1699 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_MIN_ASPECT_RATIO_OVERRIDE
+10-07 16:12:17.748  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.755   666  1699 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_ORIENTATION_OVERRIDE
+10-07 16:12:17.755   666  1452 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:12:17.765   666  1698 W ParceledListSlice: Element #26 is 20784 bytes.
+10-07 16:12:17.766   666  1698 W ParceledListSlice: Element #27 is 20820 bytes.
+10-07 16:12:17.798   666  1699 I ActivityTaskManager: START u0 {flg=0x10000000 xflg=0x4 cmp=app.lawnchair.debug/app.lawnchair.LawnchairLauncher} with LAUNCH_SINGLE_TASK from uid 0 (BAL_ALLOW_ALLOWLISTED_UID) result code=0
+10-07 16:12:17.806   666   860 D BackgroundInstallControlService: Package event received: 0
+10-07 16:12:17.806   666   841 I AppWidgetServiceImpl: Received broadcast: android.intent.action.PACKAGE_UNSTOPPED on user 0
+10-07 16:12:17.807   666   841 I AppWidgetServiceImpl: Updating package stopped masked state for uid 10215 package app.lawnchair.debug isStopped false
+10-07 16:12:17.808   666   781 I system_server: AssetManager2(0xb4000072e1492cb8) locale list changing from [] to [en-US]
+10-07 16:12:17.809  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.822   666   678 I system_server: Background concurrent mark compact GC freed 30MB AllocSpace bytes, 71(1452KB) LOS objects, 40% free, 35MB/59MB, paused 2.894ms,2.534ms total 460.953ms
+10-07 16:12:17.837  1053  1053 W SplitSelectStateCtor: Missing session instanceIds
+10-07 16:12:17.837  1053  1053 D StatsLog: LAUNCHER_SPLIT_SELECTION_EXIT_INTERRUPTED
+10-07 16:12:17.838   526   893 I BpBinder: onLastStrongRef automatically unlinking death recipients: 
+10-07 16:12:17.846   908  1013 V WindowManagerShell: Transition requested (#10): android.os.BinderProxy@5f294c TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=860 effectiveUid=10215 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=app.lawnchair.debug/app.lawnchair.LawnchairLauncher } baseActivity=ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher} topActivity=ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher} origActivity=null realActivity=ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher} numActivities=1 lastActiveTime=49333 supportsMultiWindow=true resizeMode=2 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@3e1ed95} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 128 - 0, 0) topActivityInfo=ActivityInfo{3d3beaa app.lawnchair.LawnchairLauncher} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=true isTopActivityNoDisplay=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false isActivityStackTransparent=false lastNonFullscreenBounds=Rect(276, 692 - 804, 1772) capturedLink=null capturedLinkTimestamp=0 requestedVisibleTypes=-9 topActivityRequestOpenInBrowserEducationTimestamp=0 appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false eligibleForLetterboxEducation= false isLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false eligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 topActivityAppBounds=Rect(0, 0 - 1080, 2400) isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false hasMinAspectRatioOverride=false topActivityLetterboxBounds=null cameraCompatTaskInfo=CameraCompatTaskInfo { freeformCameraCompatMode=inactive}} topActivityMainWindowFrame=null}, pipChange = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 10 }
+10-07 16:12:17.861   908  1013 D ShellSplitScreen: logExit: no-op, mLoggerSessionId is null
+10-07 16:12:17.870  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.878  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:17.886  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Settings sectionName: S
+10-07 16:12:17.887  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Photos sectionName: P
+10-07 16:12:17.887  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Battery sectionName: B
+10-07 16:12:17.888  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Chrome sectionName: C
+10-07 16:12:17.888  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Gmail sectionName: G
+10-07 16:12:17.888  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Drive sectionName: D
+10-07 16:12:17.888  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Clock sectionName: C
+10-07 16:12:17.889  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Contacts sectionName: C
+10-07 16:12:17.889  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Calendar sectionName: C
+10-07 16:12:17.889  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Maps sectionName: M
+10-07 16:12:17.890  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: YouTube Music sectionName: Y
+10-07 16:12:17.890  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: YouTube sectionName: Y
+10-07 16:12:17.890  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Google sectionName: G
+10-07 16:12:17.891  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Android System Intelligence sectionName: A
+10-07 16:12:17.891  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair (Debug) sectionName: L
+10-07 16:12:17.891  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Digital Wellbeing sectionName: D
+10-07 16:12:17.891  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Conversations sectionName: C
+10-07 16:12:17.892  1053  1099 D LauncherAppsCallbackImpl: onPackageAdded triggered for packageName=app.lawnchair.debug, user=UserHandle{0}
+10-07 16:12:17.892  1053  1099 D PackageUpdatedTask: Package updated: mOp=ADD packages=[app.lawnchair.debug], user=UserHandle{0}
+10-07 16:12:17.913  1751  2268 I Blockstore: [DataStoreImpl] Keyless data not found or its IsLastInstallationData = false. [CONTEXT service_id=258 ]
+10-07 16:12:17.918   666   691 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10215, packageName = null, attributionTag = null, token = android.os.Binder@7204ef9, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-07 16:12:17.919   666   691 W ActivityManager: Slow operation: 57ms so far, now at startProcess: done creating new process record
+10-07 16:12:17.919   666   691 W ActivityManager: Slow operation: 57ms so far, now at startProcess: stepping in to startProcess
+10-07 16:12:17.921   666  1698 W ParceledListSlice: Element #28 is 20960 bytes.
+10-07 16:12:17.921   666  1698 W ParceledListSlice: Element #29 is 21048 bytes.
+10-07 16:12:17.921   666  1698 W ParceledListSlice: Element #30 is 20684 bytes.
+10-07 16:12:17.923   666   691 W ActivityManager: Slow operation: 61ms so far, now at startProcess: done starting proc!
+10-07 16:12:17.923   666   761 D ActivityManager: freezing 3129 com.android.chrome
+10-07 16:12:17.925   908  1013 W Looper  : Slow dispatch took 120ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.os.Handler c=com.android.wm.shell.transition.Transitions$ShellTransitionImpl$$ExternalSyntheticLambda1@6bc2a9b m=0
+10-07 16:12:17.925   908  1013 W Looper  : Slow delivery took 120ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.os.Handler c=com.android.wm.shell.windowdecor.CaptionWindowDecorViewModel$1$$ExternalSyntheticLambda0@1fb8e38 m=0
+10-07 16:12:17.926   908  1013 D WindowManagerShell: setLauncherKeepClearAreaHeight: visible=false, height=527
+10-07 16:12:17.927   908  1013 W Looper  : Drained
+10-07 16:12:17.927   526   526 I BpBinder: onLastStrongRef automatically unlinking death recipients: 
+10-07 16:12:17.932   666   691 W IPCThreadState: Sending oneway calls to frozen process.
+10-07 16:12:17.958  2247  2625 I Bugle   : BroadcastReceiverAsyncWorkTracker: Acknowledging broadcast of cump@70275e9
+10-07 16:12:17.968  1505  1505 I fiis    : (REDACTED) O received %s
+10-07 16:12:17.971   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:17.971   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:17.971   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10153} in 1ms
+10-07 16:12:17.974  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.008   456   456 D Zygote  : Forked child process 3472
+10-07 16:12:18.008   666   698 W ActivityManager: Slow operation: 89ms so far, now at startProcess: returned from zygote!
+10-07 16:12:18.008   666   698 W ActivityManager: Slow operation: 89ms so far, now at startProcess: done updating battery stats
+10-07 16:12:18.009   666   698 W ActivityManager: Slow operation: 90ms so far, now at startProcess: building log message
+10-07 16:12:18.023  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.046   666   698 I ActivityManager: Start proc 3472:app.lawnchair.debug/u0a215 for top-activity {app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+10-07 16:12:18.046   666   698 W ActivityManager: Slow operation: 127ms so far, now at startProcess: starting to update pids map
+10-07 16:12:18.046   666   698 I ActivityManager: ProcessObserver broadcast disabled
+10-07 16:12:18.047   666   698 W ActivityManager: Slow operation: 128ms so far, now at startProcess: done updating pids map
+10-07 16:12:18.049  1751  2029 I gle.android.gms: AssetManager2(0xb4000072e148e4d8) locale list changing from [] to [en-US]
+10-07 16:12:18.061  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14acc58) locale list changing from [] to [en-US]
+10-07 16:12:18.063  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14ad5b8) locale list changing from [] to [en-US]
+10-07 16:12:18.068  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.cast.firstparty.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-07 16:12:18.078  1619  1619 I axea    : (REDACTED) Starting %s background task %s.
+10-07 16:12:18.110  3472  3472 I lawnchair.debug: Late-enabling -Xcheck:jni
+10-07 16:12:18.112  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14aeeb8) locale list changing from [] to [en-US]
+10-07 16:12:18.123  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14a9418) locale list changing from [] to [en-US]
+10-07 16:12:18.130  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14a13f8) locale list changing from [] to [en-US]
+10-07 16:12:18.152  1619  2111 W aefw    : Account id is not cached
+10-07 16:12:18.158  3472  3472 I lawnchair.debug: Using CollectorTypeCMC GC.
+10-07 16:12:18.159   666   696 I system_server: AssetManager2(0xb4000072e149d578) locale list changing from [] to [en-US]
+10-07 16:12:18.161   666  1698 I WifiService: getWifiEnabledState uid=10147 state=3
+10-07 16:12:18.179  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14ab678) locale list changing from [] to [en-US]
+10-07 16:12:18.187  3137  3155 I adbd    : jdwp connection from 3472
+10-07 16:12:18.188  3472  3472 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-07 16:12:18.189  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14a4f58) locale list changing from [] to [en-US]
+10-07 16:12:18.192  1619  2075 W adua    : Abort, client detached.
+10-07 16:12:18.195  1619  2323 I avxj    : Using pair HTTP connection
+10-07 16:12:18.198  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.account.workaccount.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-07 16:12:18.204  1619  2666 I acup    : [Upload] Connected
+10-07 16:12:18.204   666   696 I system_server: AssetManager2(0xb4000072e149e838) locale list changing from [] to [en-US]
+10-07 16:12:18.217  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14af818) locale list changing from [] to [en-US]
+10-07 16:12:18.225  1619  2666 I avxj    : Using pair HTTP connection
+10-07 16:12:18.231   666  1162 I WifiService: getWifiEnabledState uid=10147 state=3
+10-07 16:12:18.237   666   696 I system_server: AssetManager2(0xb4000072e14a13f8) locale list changing from [] to [en-US]
+10-07 16:12:18.243   666   860 D BackgroundInstallControlService: Package event received: 0
+10-07 16:12:18.249   666   696 I system_server: AssetManager2(0xb4000072e14b0178) locale list changing from [] to [en-US]
+10-07 16:12:18.252  1619  1619 E rya     : onError
+10-07 16:12:18.252  1619  1619 E rya     : ahif: errorCode: 65561, engine: 2
+10-07 16:12:18.252  1619  1619 E rya     : 	at avxl.a(PG:23)
+10-07 16:12:18.252  1619  1619 E rya     : 	at acul.hp(PG:13)
+10-07 16:12:18.252  1619  1619 E rya     : 	at gifa.e(PG:9)
+10-07 16:12:18.252  1619  1619 E rya     : 	at aino.d(PG:156)
+10-07 16:12:18.252  1619  1619 E rya     : 	at aino.iJ(PG:26)
+10-07 16:12:18.252  1619  1619 E rya     : 	at acum.c(PG:104)
+10-07 16:12:18.252  1619  1619 E rya     : 	at acun.run(PG:1)
+10-07 16:12:18.252  1619  1619 E rya     : 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:524)
+10-07 16:12:18.252  1619  1619 E rya     : 	at java.util.concurrent.FutureTask.run(FutureTask.java:317)
+10-07 16:12:18.252  1619  1619 E rya     : 	at ahte.run(PG:37)
+10-07 16:12:18.252  1619  1619 E rya     : 	at ahuc.run(PG:3)
+10-07 16:12:18.252  1619  1619 E rya     : 	at ahuc.run(PG:3)
+10-07 16:12:18.252  1619  1619 E rya     : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+10-07 16:12:18.252  1619  1619 E rya     : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+10-07 16:12:18.252  1619  1619 E rya     : 	at java.lang.Thread.run(Thread.java:1119)
+10-07 16:12:18.252  1619  1619 E rya     : 	at ahst.run(PG:44)
+10-07 16:12:18.252  1619  1619 E rya     : Caused by: ahih: errorCode: 65586, engine: 2
+10-07 16:12:18.252  1619  1619 E rya     : 	at acul.hp(PG:6)
+10-07 16:12:18.252  1619  1619 E rya     : 	... 14 more
+10-07 16:12:18.252  1619  1619 E rya     : Caused by: ahid: errorCode: 401, engine: 2
+10-07 16:12:18.252  1619  1619 E rya     : 	at rxx.b(PG:30)
+10-07 16:12:18.252  1619  1619 E rya     : 	at acvi.hx(PG:11)
+10-07 16:12:18.252  1619  1619 E rya     : 	at aino.d(PG:131)
+10-07 16:12:18.252  1619  1619 E rya     : 	... 12 more
+10-07 16:12:18.264  1619  2631 I acup    : [Upload] Connected
+10-07 16:12:18.270   453   520 I netd    : tetherGetStats() -> {[]} <1.57ms>
+10-07 16:12:18.273  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14a26b8) locale list changing from [] to [en-US]
+10-07 16:12:18.279  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14ab038) locale list changing from [] to [en-US]
+10-07 16:12:18.288  1619  1619 W rln     : Failed to sync device settings.
+10-07 16:12:18.295  1619  1619 I rln     : Retrying to sync device settings.
+10-07 16:12:18.296   666  1710 I WifiService: getWifiEnabledState uid=10147 state=3
+10-07 16:12:18.303  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.304  3472  3472 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+10-07 16:12:18.304  3472  3472 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.sidecar.jar
+10-07 16:12:18.304  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair (Debug) sectionName: L
+10-07 16:12:18.317  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.319  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14aa9f8) locale list changing from [] to [en-US]
+10-07 16:12:18.324  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Leaks sectionName: L
+10-07 16:12:18.325  1053  1053 D AllAppsStore: setApps: apps.length=20
+10-07 16:12:18.325  1053  1053 D AllAppsStore: notifyUpdate: notifying listeners
+10-07 16:12:18.325  1053  1053 D ActivityAllAppsContainerView: onAppsUpdated; number of apps: 20
+10-07 16:12:18.325  1053  1053 D ActivityAllAppsContainerView: rebindAdapters: force: false
+10-07 16:12:18.325  1053  1053 D ActivityAllAppsContainerView: rebindAdapters: Not needed.
+10-07 16:12:18.325  1053  1053 D StatsLog: LAUNCHER_ALLAPPS_COUNT
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: Adding apps with sections. HasPrivateApps: false
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: C with appInfoTitle: Calendar
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: D with appInfoTitle: Drive
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: F with appInfoTitle: Files
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: G with appInfoTitle: Gmail
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: L with appInfoTitle: Lawnchair (Debug)
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: M with appInfoTitle: Maps
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: P with appInfoTitle: Phone
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: S with appInfoTitle: Safety
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: T with appInfoTitle: TMoble
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: Y with appInfoTitle: YouTube
+10-07 16:12:18.327  1053  1053 D AlphabeticalAppsList: Adding FastScrollSection duplicate to scroll to the bottom.
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: Adding apps with sections. HasPrivateApps: false
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: C with appInfoTitle: Calendar
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: D with appInfoTitle: Drive
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: F with appInfoTitle: Files
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: G with appInfoTitle: Gmail
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: L with appInfoTitle: Lawnchair (Debug)
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: M with appInfoTitle: Maps
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: P with appInfoTitle: Phone
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: S with appInfoTitle: Safety
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: T with appInfoTitle: TMoble
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: Y with appInfoTitle: YouTube
+10-07 16:12:18.328  1053  1053 D AlphabeticalAppsList: Adding FastScrollSection duplicate to scroll to the bottom.
+10-07 16:12:18.328   666  1698 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:12:18.353  1619  1619 W JobInfo : Job 'com.google.android.googlequicksearchbox/com.google.android.apps.gsa.tasks.BackgroundTasksJobService#-353' has a deadline with functional constraints and an extremely short time window of 0 ms (delay=30000, deadline=30000). The functional constraints are not likely to be satisfied when the job runs.
+10-07 16:12:18.356   666  1698 W JobInfo : Job 'com.google.android.googlequicksearchbox/com.google.android.apps.gsa.tasks.BackgroundTasksJobService#-353' has a deadline with functional constraints and an extremely short time window of 0 ms (delay=30000, deadline=30000). The functional constraints are not likely to be satisfied when the job runs.
+10-07 16:12:18.358   666  1698 W JobInfo : Job 'com.google.android.googlequicksearchbox/com.google.android.apps.gsa.tasks.BackgroundTasksJobService#-353' has a deadline with functional constraints and an extremely short time window of 0 ms (delay=30000, deadline=30000). The functional constraints are not likely to be satisfied when the job runs.
+10-07 16:12:18.361  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.372  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.394   666  1698 W JobScheduler: Job didn't exist in JobStore: 31306f6 #u0a147/-353 com.google.android.googlequicksearchbox/com.google.android.apps.gsa.tasks.BackgroundTasksJobService
+10-07 16:12:18.402  1472  1866 I ogle.android.as: AssetManager2(0xb4000072e14a8158) locale list changing from [] to [en-US]
+10-07 16:12:18.425   666   809 D WifiClientModeImpl[9743:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=1 freq=2447 RxLinkSpeed=2
+10-07 16:12:18.427  1472  1866 I AiAiEcho: EchoSearch: WidgetFetcherImpl is initialized with [35] widgets [reason=package added for userId: 0]
+10-07 16:12:18.428   666   809 D WifiDataStall: tx tput in kbps: 11000
+10-07 16:12:18.429   666   809 D WifiDataStall: rx tput in kbps: 11000
+10-07 16:12:18.429   666   809 V WifiConfigManager: Updating scan detail cache freq=2447 BSSID=00:13:10:85:fe:01 RSSI=-50 for "AndroidWifi"NONE
+10-07 16:12:18.429   666   809 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:12:18.429   666   809 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:12:18.429   666   809 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:12:18.429   666   809 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:12:18.430   666   809 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:12:18.430   666   809 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:12:18.430   666   809 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:12:18.430   666   809 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:12:18.439   666   809 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 248319759 SSID: "AndroidWifi", BSSID: 00:13:10:85:fe:01, MAC: 02:15:b4:00:00:00, IP: /10.0.2.17, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: 0, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"AndroidWifi"openMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-07 16:12:18.439   666   809 D WifiScoreCard: txRate: 4 txSpeed: 1
+10-07 16:12:18.439   666   809 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 1970331912 RSSI -50 txSpeed 1
+10-07 16:12:18.443   666   809 D WifiClientModeImpl[9743:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 00:13:10:85:fe:01 rssi=-50 f=2447 sc=60 link=1 tx=3.7, 0.0, 0.0 rx=4.3 bcn=0 [on:0 tx:0 rx:0 period:3025] from screen [on:0 period:355776011] score=60
+10-07 16:12:18.463  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.544  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.640  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.648  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.726  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.proximity.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentBoundBrokerService }
+10-07 16:12:18.741   666  1162 W AppOps  : Noting op not finished: uid 10144 pkg com.google.android.gms code 113 startTime of in progress event=1791357117514
+10-07 16:12:18.765   666  1162 W AppOps  : Noting op not finished: uid 10144 pkg com.google.android.gms code 79 startTime of in progress event=1791357126392
+10-07 16:12:18.769  1228  2150 I ActivityScheduler: nextTriggerTime: 288417, in 238099ms, detectorType: 39, FULL_TYPE alarmWindowMillis: 80000
+10-07 16:12:18.789  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Settings sectionName: S
+10-07 16:12:18.789  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Photos sectionName: P
+10-07 16:12:18.790  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Battery sectionName: B
+10-07 16:12:18.790  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Chrome sectionName: C
+10-07 16:12:18.791  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Gmail sectionName: G
+10-07 16:12:18.791  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Drive sectionName: D
+10-07 16:12:18.792  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Clock sectionName: C
+10-07 16:12:18.793  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Contacts sectionName: C
+10-07 16:12:18.793  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Calendar sectionName: C
+10-07 16:12:18.794  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Maps sectionName: M
+10-07 16:12:18.794  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: YouTube Music sectionName: Y
+10-07 16:12:18.794  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: YouTube sectionName: Y
+10-07 16:12:18.794  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Google sectionName: G
+10-07 16:12:18.795  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Android System Intelligence sectionName: A
+10-07 16:12:18.796  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Digital Wellbeing sectionName: D
+10-07 16:12:18.796  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Conversations sectionName: C
+10-07 16:12:18.796  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair (Debug) sectionName: L
+10-07 16:12:18.796  1053  1099 D PackageUpdatedTask: Package updated: mOp=UPDATE packages=[app.lawnchair.debug], user=UserHandle{0}
+10-07 16:12:18.803  1037  1227 D SatelliteController: iisInCarrierRoamingNbIotNtn: satellite is disabled
+10-07 16:12:18.806  1393  1398 W .apps.wellbeing: Suspending all threads took: 7.726ms
+10-07 16:12:18.813  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.823  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.842  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1497498) locale list changing from [] to [en-US]
+10-07 16:12:18.896  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1495eb8) locale list changing from [] to [en-US]
+10-07 16:12:18.907  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.908  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair (Debug) sectionName: L
+10-07 16:12:18.910  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1497178) locale list changing from [] to [en-US]
+10-07 16:12:18.921  1053  1099 W HWUI    : Image decoding logging dropped!
+10-07 16:12:18.922  1053  1099 D AlphabeticIndexCompat: computeSectionName: cs: Leaks sectionName: L
+10-07 16:12:18.923  1053  1053 D AllAppsStore: setApps: apps.length=20
+10-07 16:12:18.923  1053  1053 D AllAppsStore: notifyUpdate: notifying listeners
+10-07 16:12:18.923  1053  1053 D ActivityAllAppsContainerView: onAppsUpdated; number of apps: 20
+10-07 16:12:18.923  1053  1053 D ActivityAllAppsContainerView: rebindAdapters: force: false
+10-07 16:12:18.923  1053  1053 D ActivityAllAppsContainerView: rebindAdapters: Not needed.
+10-07 16:12:18.923  1053  1053 D StatsLog: LAUNCHER_ALLAPPS_COUNT
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: Adding apps with sections. HasPrivateApps: false
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: C with appInfoTitle: Calendar
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: D with appInfoTitle: Drive
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: F with appInfoTitle: Files
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: G with appInfoTitle: Gmail
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: L with appInfoTitle: Lawnchair (Debug)
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: M with appInfoTitle: Maps
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: P with appInfoTitle: Phone
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: S with appInfoTitle: Safety
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: T with appInfoTitle: TMoble
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: Y with appInfoTitle: YouTube
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: Adding FastScrollSection duplicate to scroll to the bottom.
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: Adding apps with sections. HasPrivateApps: false
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: C with appInfoTitle: Calendar
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: D with appInfoTitle: Drive
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: F with appInfoTitle: Files
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: G with appInfoTitle: Gmail
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: L with appInfoTitle: Lawnchair (Debug)
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: M with appInfoTitle: Maps
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: P with appInfoTitle: Phone
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: S with appInfoTitle: Safety
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: T with appInfoTitle: TMoble
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: Y with appInfoTitle: YouTube
+10-07 16:12:18.924  1053  1053 D AlphabeticalAppsList: Adding FastScrollSection duplicate to scroll to the bottom.
+10-07 16:12:18.928  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.nearby.uwb.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiServiceNoInstantApps }
+10-07 16:12:18.971  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1492358) locale list changing from [] to [en-US]
+10-07 16:12:18.981  1053  1053 D b/387844520: getOutlineOffsetX: measured width = 173, mNormalizedIconSize = 159, last updated width = 173
+10-07 16:12:18.992  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1490d78) locale list changing from [] to [en-US]
+10-07 16:12:19.019  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149eb58) locale list changing from [] to [en-US]
+10-07 16:12:19.174  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.gmscompliance.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentBoundBrokerService }
+10-07 16:12:19.221  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149a698) locale list changing from [] to [en-US]
+10-07 16:12:19.233  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148f798) locale list changing from [] to [en-US]
+10-07 16:12:19.250  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148ee38) locale list changing from [] to [en-US]
+10-07 16:12:19.258  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148bf58) locale list changing from [] to [en-US]
+10-07 16:12:19.312  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1481698) locale list changing from [] to [en-US]
+10-07 16:12:19.317  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148db78) locale list changing from [] to [en-US]
+10-07 16:12:19.321  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148e1b8) locale list changing from [] to [en-US]
+10-07 16:12:19.328  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1489cf8) locale list changing from [] to [en-US]
+10-07 16:12:19.438  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1489cf8) locale list changing from [] to [en-US]
+10-07 16:12:19.438  2247  2600 I BugleDataModel: ExecuteActionRunnable: running action FixupMessageStatusOnStartupAction
+10-07 16:12:19.452  2247  2247 I BugleDataModel: ActionExecutorImpl: ACTION_EXECUTE_QUEUED_FixupMessageStatusOnStartupAction
+10-07 16:12:19.474  2247  2247 I BugleDataModel: ActionExecutorImpl: ACTION_EXECUTE_QUEUED_ProcessPendingMessagesAction
+10-07 16:12:19.477  2247  2247 I BugleDataModel: ActionExecutorImpl: ACTION_EXECUTE_QUEUED_SelfParticipantsRefreshAction
+10-07 16:12:19.488  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148db78) locale list changing from [] to [en-US]
+10-07 16:12:19.544  2247  2247 I BugleDataModel: ActionExecutorImpl: ACTION_EXECUTE_QUEUED_GenericWorkerQueueAction
+10-07 16:12:19.564  2247  2625 W BugleDataModel: 0 fallback attempts are cancelled or failed, with 8 and APP_RESTART
+10-07 16:12:19.566  2247  2600 I BugleDataModel: FixupMessageStatusOnStartupAction: sendFailedCnt: 0, downloadFailedCnt: 0, partsProcessingFailedCnt: 0
+10-07 16:12:19.573  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148e1b8) locale list changing from [] to [en-US]
+10-07 16:12:19.636  2247  2600 I BugleConnectivity: removeConnectivityStateListener: ConnectivityStateListener not found for subId -1.
+10-07 16:12:19.650  2247  2600 I BugleDataModel: PendingMessagesProcessor process from FixupMessageStatusOnStartupAction due to process restarts throttled  with delay 0s with queues smsMessagesToSend:0 mmsMessagesToSend:0 rcsMessagesToSend:0 rcsFTMessagesToSend:0 messagesToDownload:0
+10-07 16:12:19.651  2247  2600 I BugleDataModel: Cleared next retry time for channel: sms_send 
+10-07 16:12:19.651  2247  2600 I BugleDataModel: Cleared next retry time for channel: mms_send 
+10-07 16:12:19.652  2247  2600 I BugleDataModel: Cleared next retry time for channel: mms_download 
+10-07 16:12:19.652  2247  2600 I BugleDataModel: Cleared next retry time for channel: rcs_send 
+10-07 16:12:19.652  2247  2600 I BugleDataModel: Cleared next retry time for channel: rcs_ft_upload 
+10-07 16:12:19.653  2247  2600 I BugleDataModel: Cleared next retry time for channel: rcs_ft_download 
+10-07 16:12:19.654  2247  2600 I BugleDataModel: Cleared next retry time for channel: cloud_sync_send 
+10-07 16:12:19.658  2247  2600 I BugleDataModel: Cleared next retry time for channel: cloud_sync_attachment_download 
+10-07 16:12:19.659  2247  2600 I BugleDataModel: ExecuteActionRunnable: running action ProcessPendingMessagesAction
+10-07 16:12:19.664  2247  2600 I BugleConnectivity: removeConnectivityStateListener: ConnectivityStateListener not found for subId -1.
+10-07 16:12:19.672  2247  2600 I BugleDataModel: PendingMessagesProcessor process from ProcessPendingMessagesAction due to scheduled processing  with delay 0s with queues smsMessagesToSend:0 mmsMessagesToSend:0 rcsMessagesToSend:0 rcsFTMessagesToSend:0 messagesToDownload:0
+10-07 16:12:19.673  2247  2600 I BugleDataModel: ExecuteActionRunnable: running action SelfParticipantsRefreshAction
+10-07 16:12:19.681  2247  2600 I BugleDataModel: ActionExecutorImpl: ACTION_BACKGROUND_QUEUED_SelfParticipantsRefreshAction
+10-07 16:12:19.682  2247  2600 I BugleDataModel: ExecuteActionRunnable: running action GenericWorkerQueueAction
+10-07 16:12:19.683  2247  2600 I BugleDataModel: ActionExecutorImpl: ACTION_BACKGROUND_QUEUED_GenericWorkerQueueAction
+10-07 16:12:19.683  2247  2336 I BugleDataModel: ParticipantFullRefresh: Start participant refresh. refreshMode: SELF_ONLY
+10-07 16:12:19.692  2247  2336 I BugleDataModel: SubscriptionsTracker#refreshSelfParticipantList([1])
+10-07 16:12:19.712  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148bf58) locale list changing from [] to [en-US]
+10-07 16:12:19.720  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149a698) locale list changing from [] to [en-US]
+10-07 16:12:19.726  2247  2336 I Bugle   : getRawTelephonyPhoneNumber redacted-pii[12-chars] [CONTEXT sub_id=1 ]
+10-07 16:12:19.730  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14993d8) locale list changing from [] to [en-US]
+10-07 16:12:19.730  2247  2336 I Bugle   : SubscriptionUtils.getCanonicalForSelf: self=redacted-pii[12-chars], country=US [CONTEXT sub_id=1 ]
+10-07 16:12:19.733  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149eb58) locale list changing from [] to [en-US]
+10-07 16:12:19.737  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1490d78) locale list changing from [] to [en-US]
+10-07 16:12:19.739   666  1699 W AppOps  : Noting op not finished: uid 10144 pkg com.google.android.gms code 113 startTime of in progress event=1791357117514
+10-07 16:12:19.741  2247  2336 I Bugle   : getRawTelephonyPhoneNumber redacted-pii[12-chars] [CONTEXT sub_id=1 ]
+10-07 16:12:19.746  2247  2336 I Bugle   : getRawTelephonyPhoneNumber redacted-pii[12-chars] [CONTEXT sub_id=1 ]
+10-07 16:12:19.747  2247  2336 I Bugle   : SubscriptionUtils.getCanonicalForSelf: self=redacted-pii[12-chars], country=US [CONTEXT sub_id=1 ]
+10-07 16:12:19.760  2247  2336 I BugleSelfIdentity: Phone number for MyIdentity 223158d0-e46f-4390-9d43-c132b531db1c does not change [CONTEXT sub_id=1 icc_id="89860318640220133897" messaging_identity="redacted-pii[12-chars]" rcs_provisioning_id="redacted-pii[0-chars]" ]
+10-07 16:12:19.770  2247  2336 I Bugle   : getRawTelephonyPhoneNumber redacted-pii[12-chars] [CONTEXT sub_id=1 ]
+10-07 16:12:19.787  2247  2336 I BugleDataModel: SubscriptionsTracker bindToTrackingMap bound participants: [ParticipantId=1 subId=-1, ParticipantId=2 subId=1]
+10-07 16:12:19.788  2247  2336 I BugleDataModel: set orderedRowIdAndTokenPairs: [rowId=2 subId= 1 token=223158d0-e46f-4390-9d43-c132b531db1c, rowId=1 subId= -1 token=d78818b3-3040-4b68-a254-60a21ec663ea]
+10-07 16:12:19.797  2247  2625 I BugleDataModel: SubscriptionsTracker bindToTrackingMap bound participants: [ParticipantId=1 subId=-1, ParticipantId=2 subId=1]
+10-07 16:12:19.801  2247  2336 I Bugle   : getRawTelephonyPhoneNumber redacted-pii[12-chars] [CONTEXT sub_id=1 ]
+10-07 16:12:19.802  2247  2336 I Bugle   : SubscriptionUtils.getCanonicalForSelf: self=redacted-pii[12-chars], country=US [CONTEXT sub_id=1 ]
+10-07 16:12:19.852   453   520 I netd    : tetherGetStats() -> {[]} <9.62ms>
+10-07 16:12:19.915  2247  2336 I Bugle   : getRawTelephonyPhoneNumber redacted-pii[12-chars] [CONTEXT sub_id=1 ]
+10-07 16:12:19.918  2247  2336 I Bugle   : SubscriptionUtils.getCanonicalForSelf: self=redacted-pii[12-chars], country=US [CONTEXT sub_id=1 ]
+10-07 16:12:19.940  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148f798) locale list changing from [] to [en-US]
+10-07 16:12:19.947  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1497178) locale list changing from [] to [en-US]
+10-07 16:12:19.950  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1495b98) locale list changing from [] to [en-US]
+10-07 16:12:19.954  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1496818) locale list changing from [] to [en-US]
+10-07 16:12:19.957  2247  2336 I BugleDataModel: ParticipantFullRefresh: Number of participants refreshed: 0
+10-07 16:12:19.966  2247  2336 I BugleDataModel: ActionExecutorImpl: ACTION_RESPONSE_QUEUED_SelfParticipantsRefreshAction
+10-07 16:12:19.973  2247  2336 I BugleJobs: GenericWorkerQueueAction: Bailing early, no work found, no failed work found
+10-07 16:12:19.973  2247  2336 I BugleDataModel: ActionExecutorImpl: ACTION_RESPONSE_QUEUED_GenericWorkerQueueAction
+10-07 16:12:19.982   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:19.984   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:19.985  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1495238) locale list changing from [] to [en-US]
+10-07 16:12:19.986   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10160} in 5ms
+10-07 16:12:19.986   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:19.990  2247  2331 I Bugle   : getRawTelephonyPhoneNumber redacted-pii[12-chars] [CONTEXT sub_id=1 ]
+10-07 16:12:19.990  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1490a58) locale list changing from [] to [en-US]
+10-07 16:12:19.990   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:19.991   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={20160} in 5ms
+10-07 16:12:19.991   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:19.991   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:19.991   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10158} in 1ms
+10-07 16:12:19.992  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1485838) locale list changing from [] to [en-US]
+10-07 16:12:19.992   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:19.992   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:19.992   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={20158} in 0ms
+10-07 16:12:19.994  2247  2331 I Bugle   : SubscriptionUtils.getCanonicalForSelf: self=redacted-pii[12-chars], country=US [CONTEXT sub_id=1 ]
+10-07 16:12:19.998  2247  2331 I BugleSelfIdentity: Phone number for MyIdentity 223158d0-e46f-4390-9d43-c132b531db1c does not change [CONTEXT sub_id=1 icc_id="89860318640220133897" messaging_identity="redacted-pii[12-chars]" rcs_provisioning_id="redacted-pii[0-chars]" ]
+10-07 16:12:20.001  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14961d8) locale list changing from [] to [en-US]
+10-07 16:12:20.008  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1492998) locale list changing from [] to [en-US]
+10-07 16:12:20.017  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148d858) locale list changing from [] to [en-US]
+10-07 16:12:20.032  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1483c18) locale list changing from [] to [en-US]
+10-07 16:12:20.037  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1488718) locale list changing from [] to [en-US]
+10-07 16:12:20.038  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14851f8) locale list changing from [] to [en-US]
+10-07 16:12:20.050  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.icing.LIGHTWEIGHT_INDEX_SERVICE dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-07 16:12:20.064  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1481378) locale list changing from [] to [en-US]
+10-07 16:12:20.070  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148a978) locale list changing from [] to [en-US]
+10-07 16:12:20.080  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1483f38) locale list changing from [] to [en-US]
+10-07 16:12:20.096  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148fdd8) locale list changing from [] to [en-US]
+10-07 16:12:20.108  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1484bb8) locale list changing from [] to [en-US]
+10-07 16:12:20.115  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e147af78) locale list changing from [] to [en-US]
+10-07 16:12:20.118  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14867d8) locale list changing from [] to [en-US]
+10-07 16:12:20.122  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148f158) locale list changing from [] to [en-US]
+10-07 16:12:20.128  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1485b58) locale list changing from [] to [en-US]
+10-07 16:12:20.133  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148de98) locale list changing from [] to [en-US]
+10-07 16:12:20.159  1751  1751 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.checkin.START xflg=0x4 pkg=com.google.android.gms }
+10-07 16:12:20.170  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148cbd8) locale list changing from [] to [en-US]
+10-07 16:12:20.176  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148e7f8) locale list changing from [] to [en-US]
+10-07 16:12:20.184  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148b2d8) locale list changing from [] to [en-US]
+10-07 16:12:20.189  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14835d8) locale list changing from [] to [en-US]
+10-07 16:12:20.192  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148c598) locale list changing from [] to [en-US]
+10-07 16:12:20.196  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148a018) locale list changing from [] to [en-US]
+10-07 16:12:20.198  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148a338) locale list changing from [] to [en-US]
+10-07 16:12:20.199  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148ac98) locale list changing from [] to [en-US]
+10-07 16:12:20.204  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1490738) locale list changing from [] to [en-US]
+10-07 16:12:20.212  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1496b38) locale list changing from [] to [en-US]
+10-07 16:12:20.216  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14948d8) locale list changing from [] to [en-US]
+10-07 16:12:20.221  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14899d8) locale list changing from [] to [en-US]
+10-07 16:12:20.230  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1492cb8) locale list changing from [] to [en-US]
+10-07 16:12:20.231  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.nearby.presence.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiServiceNoInstantApps }
+10-07 16:12:20.234  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148e4d8) locale list changing from [] to [en-US]
+10-07 16:12:20.238  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1484ed8) locale list changing from [] to [en-US]
+10-07 16:12:20.274  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1488d58) locale list changing from [] to [en-US]
+10-07 16:12:20.280  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148f478) locale list changing from [] to [en-US]
+10-07 16:12:20.282  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1492678) locale list changing from [] to [en-US]
+10-07 16:12:20.287  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1495878) locale list changing from [] to [en-US]
+10-07 16:12:20.298  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1496e58) locale list changing from [] to [en-US]
+10-07 16:12:20.302  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1498118) locale list changing from [] to [en-US]
+10-07 16:12:20.305  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1494bf8) locale list changing from [] to [en-US]
+10-07 16:12:20.307  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1493938) locale list changing from [] to [en-US]
+10-07 16:12:20.309  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148b5f8) locale list changing from [] to [en-US]
+10-07 16:12:20.311  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1488a38) locale list changing from [] to [en-US]
+10-07 16:12:20.313  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14900f8) locale list changing from [] to [en-US]
+10-07 16:12:20.318  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148c278) locale list changing from [] to [en-US]
+10-07 16:12:20.324  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148bc38) locale list changing from [] to [en-US]
+10-07 16:12:20.325  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1489398) locale list changing from [] to [en-US]
+10-07 16:12:20.330  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1493c58) locale list changing from [] to [en-US]
+10-07 16:12:20.332  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148b918) locale list changing from [] to [en-US]
+10-07 16:12:20.337  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1490418) locale list changing from [] to [en-US]
+10-07 16:12:20.339  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14896b8) locale list changing from [] to [en-US]
+10-07 16:12:20.342  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e148afb8) locale list changing from [] to [en-US]
+10-07 16:12:20.344  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149cf38) locale list changing from [] to [en-US]
+10-07 16:12:20.345  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1487db8) locale list changing from [] to [en-US]
+10-07 16:12:20.351  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149b638) locale list changing from [] to [en-US]
+10-07 16:12:20.356  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149f4b8) locale list changing from [] to [en-US]
+10-07 16:12:20.359  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1499a18) locale list changing from [] to [en-US]
+10-07 16:12:20.365  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149acd8) locale list changing from [] to [en-US]
+10-07 16:12:20.368  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e1489078) locale list changing from [] to [en-US]
+10-07 16:12:20.373  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149ded8) locale list changing from [] to [en-US]
+10-07 16:12:20.377  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149bf98) locale list changing from [] to [en-US]
+10-07 16:12:20.383   890   890 D wpa_supplicant: nl80211: Drv Event 64 (NL80211_CMD_NOTIFY_CQM) received for wlan0
+10-07 16:12:20.383   890   890 D wpa_supplicant: nl80211: Beacon loss event
+10-07 16:12:20.383   890   890 D wpa_supplicant: wlan0: Event BEACON_LOSS (53) received
+10-07 16:12:20.383   890   890 I wpa_supplicant: wlan0: CTRL-EVENT-BEACON-LOSS 
+10-07 16:12:20.385   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:20.386   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:20.386   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10163} in 2ms
+10-07 16:12:20.386   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:20.386   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:20.386   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={20163} in 0ms
+10-07 16:12:20.389  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149aff8) locale list changing from [] to [en-US]
+10-07 16:12:20.415  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149faf8) locale list changing from [] to [en-US]
+10-07 16:12:20.417  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149d898) locale list changing from [] to [en-US]
+10-07 16:12:20.418  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149fe18) locale list changing from [] to [en-US]
+10-07 16:12:20.430  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149bc78) locale list changing from [] to [en-US]
+10-07 16:12:20.433  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149e838) locale list changing from [] to [en-US]
+10-07 16:12:20.441  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14996f8) locale list changing from [] to [en-US]
+10-07 16:12:20.445  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149e518) locale list changing from [] to [en-US]
+10-07 16:12:20.460  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149cc18) locale list changing from [] to [en-US]
+10-07 16:12:20.465   666  1452 I WifiService: getWifiEnabledState uid=10147 state=3
+10-07 16:12:20.467  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e149b318) locale list changing from [] to [en-US]
+10-07 16:12:20.469   666   815 D ConnectivityService: reportNetworkConnectivity(100, false) by 10147
+10-07 16:12:20.477  1000  1724 D NetworkMonitor/100: Forcing reevaluation for UID 10147. Dns signal count: 0
+10-07 16:12:20.487  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a3018) locale list changing from [] to [en-US]
+10-07 16:12:20.491  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a6e98) locale list changing from [] to [en-US]
+10-07 16:12:20.501  3472  3472 D nativeloader: Configuring clns-9 for other apk /data/app/~~4kTaKirVjUra7oHeKnrR-Q==/app.lawnchair.debug-dCkvBxfQYVPF1-DTfqoQMw==/base.apk. target_sdk_version=37, uses_libraries=, library_path=/data/app/~~4kTaKirVjUra7oHeKnrR-Q==/app.lawnchair.debug-dCkvBxfQYVPF1-DTfqoQMw==/lib/arm64:/data/app/~~4kTaKirVjUra7oHeKnrR-Q==/app.lawnchair.debug-dCkvBxfQYVPF1-DTfqoQMw==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/app.lawnchair.debug
+10-07 16:12:20.514   453  3491 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+10-07 16:12:20.514   453  3492 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+10-07 16:12:20.515   453  3489 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+10-07 16:12:20.515   453  3490 I resolv  : ResNSendHandler::run: 0 / {100 983140 100 983140 1073 1}
+10-07 16:12:20.521  3472  3472 I lawnchair.debug: AssetManager2(0xb4000072e147bbf8) locale list changing from [] to [en-US]
+10-07 16:12:20.522   453  3491 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0xb40000713adea5b0
+10-07 16:12:20.522   453  3490 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0xb40000710adf08d0
+10-07 16:12:20.522   453  3489 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0xb40000713adeabd0
+10-07 16:12:20.522   453  3492 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0xb4000070fadeb2f0
+10-07 16:12:20.525  1000  3488 D NetworkMonitor/100: PROBE_DNS connectivitycheck.gstatic.com 40ms OK 142.251.150.120,2001:4860:4826:7800::
+10-07 16:12:20.531   453  3494 I resolv  : GetAddrInfoHandler::run: {100 983140 100 983140 1073 1}
+10-07 16:12:20.532   453  3496 I resolv  : res_nmkquery: (QUERY, IN, A)
+10-07 16:12:20.532   453  3496 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0xb40000713adea5b0
+10-07 16:12:20.532   453  3496 I resolv  : doQuery: rcode=0, ancount=1, return value=63
+10-07 16:12:20.534  1000  3487 D NetworkMonitor/100: PROBE_DNS www.google.com 49ms OK 142.251.154.119,142.251.152.119,142.251.156.119,142.251.150.119,142.251.151.119,142.251.157.119,142.251.155.119,142.251.153.119,2001:4860:4829:7700::,2001:4860:482c:7700::,2001:4860:482b:7700::,2001:4860:482a:7700::,2001:4860:4827:7700::,2001:4860:4826:7700::,2001:4860:4828:7700::,2001:4860:482d:7700::
+10-07 16:12:20.534   453  3495 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+10-07 16:12:20.534   453  3495 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0xb40000713adeabd0
+10-07 16:12:20.534   453  3495 I resolv  : doQuery: rcode=0, ancount=1, return value=75
+10-07 16:12:20.535   453  3497 I resolv  : GetAddrInfoHandler::run: {100 983140 100 983140 1073 1}
+10-07 16:12:20.535   453  3498 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+10-07 16:12:20.535   453  3498 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0xb40000710adf08d0
+10-07 16:12:20.535   453  3498 I resolv  : doQuery: rcode=0, ancount=8, return value=256
+10-07 16:12:20.535   453  3499 I resolv  : res_nmkquery: (QUERY, IN, A)
+10-07 16:12:20.535   453  3499 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0xb4000070fadeb2f0
+10-07 16:12:20.535   453  3499 I resolv  : doQuery: rcode=0, ancount=8, return value=160
+10-07 16:12:20.541  3472  3472 V GraphicsEnvironment: Currently set values for:
+10-07 16:12:20.541  3472  3472 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-07 16:12:20.541  3472  3472 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-07 16:12:20.541  3472  3472 V GraphicsEnvironment: app.lawnchair.debug is not listed in per-application setting
+10-07 16:12:20.542  3472  3472 V GraphicsEnvironment: ANGLE allowlist from config: com.dreamgames.royalmatch com.dts.freefiremax com.dxx.firenow com.gramgames.mergedragons com.ludo.king com.mojang.minecraftpe com.my.defense com.nintendo.zaka com.os.airforce com.playrix.fishdomdd.gplay io.teslatech.callbreak jp.konami.prospia net.peakgames.toonblast
+10-07 16:12:20.542  3472  3472 V GraphicsEnvironment: app.lawnchair.debug is not listed in ANGLE allowlist or settings, returning default
+10-07 16:12:20.542  3472  3472 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+10-07 16:12:20.558  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.proximity.devicesyncservice.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentBoundBrokerService }
+10-07 16:12:20.566  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a10d8) locale list changing from [] to [en-US]
+10-07 16:12:20.582  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a77f8) locale list changing from [] to [en-US]
+10-07 16:12:20.585  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a13f8) locale list changing from [] to [en-US]
+10-07 16:12:20.594  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a71b8) locale list changing from [] to [en-US]
+10-07 16:12:20.605  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a6538) locale list changing from [] to [en-US]
+10-07 16:12:20.617  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a6858) locale list changing from [] to [en-US]
+10-07 16:12:20.622  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a5ef8) locale list changing from [] to [en-US]
+10-07 16:12:20.631  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a29d8) locale list changing from [] to [en-US]
+10-07 16:12:20.634  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a6b78) locale list changing from [] to [en-US]
+10-07 16:12:20.636  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a5bd8) locale list changing from [] to [en-US]
+10-07 16:12:20.637  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a0138) locale list changing from [] to [en-US]
+10-07 16:12:20.642  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a2cf8) locale list changing from [] to [en-US]
+10-07 16:12:20.645  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a42d8) locale list changing from [] to [en-US]
+10-07 16:12:20.646  3472  3472 D nativeloader: Load /data/app/~~4kTaKirVjUra7oHeKnrR-Q==/app.lawnchair.debug-dCkvBxfQYVPF1-DTfqoQMw==/base.apk!/lib/arm64-v8a/libnrb.so using class loader ns clns-9 (caller=/data/app/~~4kTaKirVjUra7oHeKnrR-Q==/app.lawnchair.debug-dCkvBxfQYVPF1-DTfqoQMw==/base.apk!classes23.dex): ok
+10-07 16:12:20.647  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a1d58) locale list changing from [] to [en-US]
+10-07 16:12:20.648  3472  3500 D native  : Found attached 0
+10-07 16:12:20.649  3472  3500 D native  : Calling class is: java.lang.Class
+10-07 16:12:20.650  3472  3501 D native  : Found attached 0
+10-07 16:12:20.650  3472  3501 D native  : Calling class is: java.lang.Class
+10-07 16:12:20.650  3472  3472 I MainProcessInitializer: Unseal success!
+10-07 16:12:20.659  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a3338) locale list changing from [] to [en-US]
+10-07 16:12:20.664  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a4c38) locale list changing from [] to [en-US]
+10-07 16:12:20.665  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a2078) locale list changing from [] to [en-US]
+10-07 16:12:20.670  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a5598) locale list changing from [] to [en-US]
+10-07 16:12:20.722  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a2398) locale list changing from [] to [en-US]
+10-07 16:12:20.729  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a45f8) locale list changing from [] to [en-US]
+10-07 16:12:20.739  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a1718) locale list changing from [] to [en-US]
+10-07 16:12:20.749  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a6218) locale list changing from [] to [en-US]
+10-07 16:12:20.757  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a3658) locale list changing from [] to [en-US]
+10-07 16:12:20.773  1393  1449 I .apps.wellbeing: AssetManager2(0xb4000072e14a3c98) locale list changing from [] to [en-US]
+10-07 16:12:20.789  1000  3488 D NetworkMonitor/100: PROBE_HTTP http://connectivitycheck.gstatic.com/generate_204 time=260ms ret=204 request={Connection=[close], User-Agent=[Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.32 Safari/537.36]} headers={null=[HTTP/1.1 204 No Content], Connection=[close], Content-Length=[0], Cross-Origin-Resource-Policy=[cross-origin], Date=[Wed, 07 Oct 2026 07:12:20 GMT], X-Android-Received-Millis=[1791357140789], X-Android-Response-Source=[NETWORK 204], X-Android-Selected-Protocol=[http/1.1], X-Android-Sent-Millis=[1791357140553]}
+10-07 16:12:20.802   666  1576 E TaskPersister: File error accessing recents directory (directory doesn't exist?).
+10-07 16:12:20.808  1000  3487 D NetworkMonitor/100: PROBE_HTTPS https://www.google.com/generate_204 time=274ms ret=204 request={Connection=[close], User-Agent=[Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.32 Safari/537.36]} headers={null=[HTTP/1.1 204 No Content], Alt-Svc=[h3=":443"; ma=2592000,h3-29=":443"; ma=2592000], Connection=[close], Content-Length=[0], Cross-Origin-Resource-Policy=[cross-origin], Date=[Wed, 07 Oct 2026 07:12:20 GMT], X-Android-Received-Millis=[1791357140806], X-Android-Response-Source=[NETWORK 204], X-Android-Selected-Protocol=[http/1.1], X-Android-Sent-Millis=[1791357140798]}
+10-07 16:12:20.812  1000  3486 D NetworkMonitor/100: isCaptivePortal: isSuccessful()=true isPortal()=false RedirectUrl=null isPartialConnectivity()=false Time=330ms
+10-07 16:12:20.814   666   815 D ConnectivityService: [100 WIFI] validation passed
+10-07 16:12:20.886  3472  3472 D StudioLeakCanary: Initializing Studio LeakCanary Bridge...
+10-07 16:12:20.886  3472  3472 D StudioLeakCanary: Switching LeakCanary Mode to: ON_HOST
+10-07 16:12:20.887  3472  3472 D StudioLeakCanary: Successfully set heap dumping to false via reflection.
+10-07 16:12:20.889  3472  3472 D StudioLeakCanary: Replaced LeakCanary default listener with Studio listener.
+10-07 16:12:20.896  1228  1228 I TrustedTime: TrustedTimeMaintenanceTaskService destroyed [CONTEXT service_id=326 ]
+10-07 16:12:20.897  3472  3510 D native  : Found attached 0
+10-07 16:12:20.897  3472  3510 D native  : Calling class is: java.lang.Class
+10-07 16:12:20.898  3472  3511 D native  : Found attached 0
+10-07 16:12:20.898  3472  3511 D native  : Calling class is: java.lang.Class
+10-07 16:12:20.898  3472  3472 I MainProcessInitializer: Unseal success!
+10-07 16:12:20.899  3472  3472 D LawnchairApp: config_recentsComponentName (ComponentInfo{com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity}) is not Lawnchair, disabling recents
+10-07 16:12:20.936  1751  1751 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.cryptauth.cryptauthservice.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+10-07 16:12:20.937  1751  1751 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.credential.manager.service.zeroparty.checkup.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsApiService }
+10-07 16:12:20.945  3472  3472 D PreferenceManager2: getRemoteDefault: dock_search_bar_provider -> no remote default
+10-07 16:12:20.951  3472  3472 D PreferenceManager2: getRemoteDefault: web_suggestion_provider -> no remote default
+10-07 16:12:20.986   666  1452 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ENABLE_FAKE_FOCUS
+10-07 16:12:20.997   666   860 D BackgroundInstallControlService: Package event received: 0
+10-07 16:12:20.999   666   860 D BackgroundInstallControlService: Package event received: 0
+10-07 16:12:21.006  3472  3517 I DisplayManager: Choreographer implicitly registered for the refresh rate.
+10-07 16:12:21.007  3472  3508 D LeakCanary: LeakCanary is currently disabled: LeakCanary.Config.dumpHeap is set to false.
+10-07 16:12:21.010  3472  3472 I lawnchair.debug: AssetManager2(0xb4000072e147a938) locale list changing from [] to [en-US]
+10-07 16:12:21.072  3472  3472 E ashmem  : Pinning is deprecated since Android Q. Please use trim or other methods.
+10-07 16:12:21.074  3472  3517 I EGL_emulation: Opening libGLESv1_CM_emulation.so
+10-07 16:12:21.074  3472  3517 I EGL_emulation: Opening libGLESv2_emulation.so
+10-07 16:12:21.084  3472  3517 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+10-07 16:12:21.084  3472  3517 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-07 16:12:21.090  3472  3472 I lawnchair.debug: AssetManager2(0xb4000072e147a618) locale list changing from [] to [en-US]
+10-07 16:12:21.095  3472  3472 I lawnchair.debug: AssetManager2(0xb4000072e1480a18) locale list changing from [] to [en-US]
+10-07 16:12:21.096  3472  3472 I lawnchair.debug: AssetManager2(0xb4000072e1484ed8) locale list changing from [] to [en-US]
+10-07 16:12:21.099  3472  3472 D DesktopModeFlags: Toggle override initialized to: OVERRIDE_UNSET
+10-07 16:12:21.100  3472  3472 I lawnchair.debug: AssetManager2(0xb4000072e1481ff8) locale list changing from [] to [en-US]
+10-07 16:12:21.107  1751  1751 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.mdd.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+10-07 16:12:21.108  3472  3472 I DisplayController: (CTOR) perDisplayBounds: {CachedDisplayInfo{size=Point(1080, 2400), cutout=DisplayCutout{insets=Rect(0, 128 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(492, 0 - 610, 128), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=1080 displayHeight=2400 physicalDisplayWidth=1080 physicalDisplayHeight=2400 density={2.625} cutoutSpec={M 507,64 a 33,33 0 1 0 66,0 33,33 0 1 0 -66,0 Z @left} rotation={0} scale={1.0} physicalPixelDisplaySizeRatio={1.0}}} sideOverrides={}}, rotation=0}=[WindowBounds{bounds=Rect(0, 0 - 1080, 2400), insets=Rect(0, 128 - 0, 63), availableSize=Point(1080, 2209), rotationHint=0}, WindowBounds{bounds=Rect(0, 0 - 2400, 1080), insets=Rect(128, 74 - 0, 63), availableSize=Point(2272, 943), rotationHint=1}, WindowBounds{bounds=Rect(0, 0 - 1080, 2400), insets=Rect(0, 128 - 0, 128), availableSize=Point(1080, 2144), rotationHint=2}, WindowBounds{bounds=Rect(0, 0 - 2400, 1080), insets=Rect(0, 74 - 128, 63), availableSize=Point(2272, 943), rotationHint=3}]}
+10-07 16:12:21.115  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.findmydevice.spot.service.locationreport.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-07 16:12:21.218  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.219  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.219  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.219  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.220  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.221  3472  3472 D DeviceProfileOverrides: Grid recompute from prefs: rows=5 columns=4 hotseat=4
+10-07 16:12:21.222  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.223  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.231  3472  3472 I lawnchair.debug: AssetManager2(0xb4000072e14803d8) locale list changing from [] to [en-US]
+--------- beginning of kernel
+10-07 16:12:21.244   221   221 I servicemanager: Caller(pid=3472,uid=10215,sid=u:r:untrusted_app:s0:c215,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+10-07 16:12:21.245   221   221 I servicemanager: Caller(pid=3472,uid=10215,sid=u:r:untrusted_app:s0:c215,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+10-07 16:12:21.246   221   221 I servicemanager: Caller(pid=3472,uid=10215,sid=u:r:untrusted_app:s0:c215,c256,c512,c768) Found mapper/ranchu in device VINTF manifest.
+10-07 16:12:21.270  3472  3472 I lawnchair.debug: AssetManager2(0xb4000072e147af78) locale list changing from [] to [en-US]
+10-07 16:12:21.274  3472  3472 D IDP     : After initGrid:gridName:null, dbFile:launcher_5_4_4.db, LauncherPrefs GRID_NAME:4_by_6, LauncherPrefs DB_FILE:
+10-07 16:12:21.288   666  1452 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:12:21.290   666  1452 I AppWidgetServiceImpl: notifyProviderInheritance() 0
+10-07 16:12:21.313   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:21.313   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:21.313   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10162} in 1ms
+10-07 16:12:21.313   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:21.313   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:21.313   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={20162} in 0ms
+10-07 16:12:21.388   666  1162 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:12:21.388   666  1162 I AppWidgetServiceImpl: notifyProviderInheritance() 0
+10-07 16:12:21.445   666   809 D WifiClientModeImpl[9743:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2447 RxLinkSpeed=2
+10-07 16:12:21.445   666   809 D WifiDataStall: tx tput in kbps: 11000
+10-07 16:12:21.445   666   809 D WifiDataStall: rx tput in kbps: 11000
+10-07 16:12:21.445   666   809 V WifiConfigManager: Updating scan detail cache freq=2447 BSSID=00:13:10:85:fe:01 RSSI=-50 for "AndroidWifi"NONE
+10-07 16:12:21.445   666   809 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:12:21.445   666   809 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:12:21.445   666   809 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:12:21.445   666   809 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:12:21.446   666   809 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:12:21.446   666   809 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:12:21.446   666   809 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:12:21.446   666   809 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:12:21.447   666   809 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 248319759 SSID: "AndroidWifi", BSSID: 00:13:10:85:fe:01, MAC: 02:15:b4:00:00:00, IP: /10.0.2.17, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 2Mbps, Tx Link speed: 2Mbps, Max Supported Tx Link speed: 11Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Frequency: 2447MHz, Net ID: 0, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"AndroidWifi"openMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-07 16:12:21.447   666   809 D WifiScoreCard: txRate: 8 txSpeed: 2
+10-07 16:12:21.447   666   809 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 1970331912 RSSI -50 txSpeed 2
+10-07 16:12:21.448   666   809 D WifiClientModeImpl[9743:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 00:13:10:85:fe:01 rssi=-50 f=2447 sc=60 link=2 tx=7.2, 0.0, 0.0 rx=7.2 bcn=0 [on:0 tx:0 rx:0 period:3005] from screen [on:0 period:355779016] score=60
+10-07 16:12:21.459   666  1162 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:12:21.461   666  1162 W ParceledListSlice: Element #4 is 20684 bytes.
+10-07 16:12:21.539  3472  3472 D RecentsDependencies: initializing
+10-07 16:12:21.539  3472  3472 D RecentsDependencies: startDefaultScope
+10-07 16:12:21.543   666  1162 W ActivityTaskManager: Permission Denial: registerTaskStackListener() from pid=3472, uid=10215 requires android.permission.MANAGE_ACTIVITY_TASKS
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: Failed to call registerTaskStackListener
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: java.lang.SecurityException: Permission Denial: registerTaskStackListener() from pid=3472, uid=10215 requires android.permission.MANAGE_ACTIVITY_TASKS
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3340)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.os.Parcel.createException(Parcel.java:3324)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.os.Parcel.readException(Parcel.java:3307)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.os.Parcel.readException(Parcel.java:3249)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.app.IActivityTaskManager$Stub$Proxy.registerTaskStackListener(IActivityTaskManager.java:3031)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.systemui.shared.system.TaskStackChangeListeners$Impl.addListener(TaskStackChangeListeners.java:173)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.systemui.shared.system.TaskStackChangeListeners.registerTaskStackListener(TaskStackChangeListeners.java:101)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.TopTaskTracker.<init>(TopTaskTracker.java:117)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.TopTaskTracker_Factory.newInstance(TopTaskTracker_Factory.java:62)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.TopTaskTracker_Factory.get(TopTaskTracker_Factory.java:50)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.TopTaskTracker_Factory.get(TopTaskTracker_Factory.java:13)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at dagger.internal.DoubleCheck.getSynchronized(DoubleCheck.java:54)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at dagger.internal.DoubleCheck.get(DoubleCheck.java:45)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.RecentsModel_Factory.get(RecentsModel_Factory.java:66)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.RecentsModel_Factory.get(RecentsModel_Factory.java:17)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at dagger.internal.DoubleCheck.getSynchronized(DoubleCheck.java:54)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at dagger.internal.DoubleCheck.get(DoubleCheck.java:45)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.launcher3.dagger.DaggerLauncherAppComponent$LauncherAppComponentImpl.getRecentsModel(DaggerLauncherAppComponent.java:1296)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.RecentsModel$$ExternalSyntheticLambda0.apply(D8$$SyntheticClass:0)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.launcher3.util.DaggerSingletonObject.get(DaggerSingletonObject.java:55)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies.startDefaultScope(RecentsDependencies.kt:66)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies.<init>(RecentsDependencies.kt:48)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies.<init>(Unknown Source:0)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies$Companion.initialize(RecentsDependencies.kt:257)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies$Companion.maybeInitialize(RecentsDependencies.kt:268)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies.maybeInitialize(Unknown Source:2)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.views.RecentsView.<init>(RecentsView.java:905)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.views.LauncherRecentsView.<init>(LauncherRecentsView.java:75)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.views.LauncherRecentsView.<init>(LauncherRecentsView.java:71)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at java.lang.reflect.Constructor.newInstance0(Native Method)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at java.lang.reflect.Constructor.newInstance(Constructor.java:343)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.createView(LayoutInflater.java:743)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:895)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:850)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflate(LayoutInflater.java:1012)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.parseInclude(LayoutInflater.java:1116)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflate(LayoutInflater.java:1008)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflate(LayoutInflater.java:1015)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.inflate(LayoutInflater.java:571)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.inflate(LayoutInflater.java:462)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at android.view.LayoutInflater.inflate(LayoutInflater.java:413)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.launcher3.statemanager.StatefulActivity.inflateRootView(StatefulActivity.java:73)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.launcher3.Launcher.setupViews(Launcher.java:1310)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.launcher3.uioverrides.QuickstepLauncher.setupViews(QuickstepLauncher.java:323)
+10-07 16:12:21.548  3472  3472 W TaskStackChangeListeners: 	at com.android.launcher3.Launcher.onCreate(Launcher.java:471)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at com.android.launcher3.uioverrides.QuickstepLauncher.onCreate(QuickstepLauncher.java:798)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at app.lawnchair.LawnchairLauncher.onCreate(LawnchairLauncher.kt:211)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.Activity.performCreate(Activity.java:9155)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.Activity.performCreate(Activity.java:9133)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1521)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:4262)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:4467)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:222)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.servertransaction.TransactionExecutor.executeNonLifecycleItem(TransactionExecutor.java:133)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.servertransaction.TransactionExecutor.executeTransactionItems(TransactionExecutor.java:103)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:80)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2823)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.os.Handler.dispatchMessage(Handler.java:110)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.os.Looper.loopOnce(Looper.java:248)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.os.Looper.loop(Looper.java:338)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.ActivityThread.main(ActivityThread.java:9067)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at java.lang.reflect.Method.invoke(Native Method)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: Caused by: android.os.RemoteException: Remote stack trace:
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at com.android.server.wm.ActivityTaskManagerService.enforceTaskPermission(ActivityTaskManagerService.java:3414)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at com.android.server.wm.ActivityTaskManagerService.registerTaskStackListener(ActivityTaskManagerService.java:3181)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.app.IActivityTaskManager$Stub.onTransact(IActivityTaskManager.java:1588)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at com.android.server.wm.ActivityTaskManagerService.onTransact(ActivityTaskManagerService.java:5804)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 	at android.os.Binder.execTransactInternal(Binder.java:1421)
+10-07 16:12:21.549  3472  3472 W TaskStackChangeListeners: 
+10-07 16:12:21.560  3472  3472 D RecentsDependencies: createRecentsViewScope 29345860
+10-07 16:12:21.602  3472  3472 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:21.608  3472  3472 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:21.612  3472  3472 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:21.619  3472  3472 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:21.623  3472  3472 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:21.625  3472  3472 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:21.651  3472  3526 D ViewPool: initPool complete
+10-07 16:12:21.666  3472  3525 D ViewPool: initPool complete
+10-07 16:12:21.710  3472  3472 W HWUI    : Image decoding logging dropped!
+10-07 16:12:21.712  3472  3472 W HWUI    : Image decoding logging dropped!
+10-07 16:12:21.714  3472  3472 W HWUI    : Image decoding logging dropped!
+10-07 16:12:21.725  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:21.726  3472  3472 E RecyclerView: Cannot scroll to position a LayoutManager set. Call setLayoutManager with a non-null argument.
+10-07 16:12:21.728  3472  3472 D ActivityAllAppsContainerView: rebindAdapters: force: true
+10-07 16:12:21.728  3472  3472 D ActivityAllAppsContainerView: replaceAppsRVContainer: showTabs: false
+10-07 16:12:21.729  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:21.729  3472  3472 E RecyclerView: Cannot scroll to position a LayoutManager set. Call setLayoutManager with a non-null argument.
+10-07 16:12:21.751   666  1162 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:12:21.752   666  1162 W ParceledListSlice: Element #4 is 20684 bytes.
+10-07 16:12:21.753   666  1162 I AppWidgetServiceImpl: startListening() 0
+10-07 16:12:21.754   666  1162 I AppWidgetServiceImpl: getAppWidgetInfo() 0
+10-07 16:12:21.754   666  1162 I AppWidgetServiceImpl: cannot find widget for appWidgetId=-1 uid=10215 packageName=app.lawnchair.debug
+10-07 16:12:21.754   666  1162 E AppWidgetServiceImpl: getAppWidgetInfo() returns null because widget is null. appWidgetId=-1 userId=0
+10-07 16:12:21.754  3472  3472 E AppWidgetManager: App widget provider info is null. PackageName=app.lawnchair.debug appWidgetId--1
+10-07 16:12:21.754   666  1162 I AppWidgetServiceImpl: allocateAppWidgetId() 0
+10-07 16:12:21.756   666  1162 I AppWidgetServiceImpl: addWidgetLocked() AppWidgetId{13:Host{HostId{user:0, app:10215, hostId:1028, pkg:app.lawnchair.debug}}:null}
+10-07 16:12:21.756   666  1162 I AppWidgetServiceImpl: Allocated widget id 13 for host HostId{user:0, app:10215, hostId:1028, pkg:app.lawnchair.debug}
+10-07 16:12:21.756   666  1698 I AppWidgetServiceImpl: bindAppWidgetId() 0
+10-07 16:12:21.761  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.clearcut.bootcount.service.START xflg=0x4 pkg=com.google.android.gms }
+10-07 16:12:21.770  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: app.lawnchair.smartspace.SmartspaceViewContainer{b3fd9cb V.E....L. ......I. 0,0-0,0 #7f0a0339 app:id/search_container_workspace}
+10-07 16:12:21.782  3472  3472 I OverviewComponentObserver: updateOverviewTargets: mIsHomeDisabled=false, isDefaultHomeNull=false, mIsDefaultHome=true
+10-07 16:12:21.783  3472  3472 D OverviewActionsView: updateActionButtonsVisibility() called: showSingleTaskActions = [true], showGroupActions = [false]
+10-07 16:12:21.785   666  1698 I AppWidgetServiceImpl: startListening() 0
+10-07 16:12:21.818  3472  3472 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:12:21.829  3472  3472 D OverviewActionsView: updateActionButtonsVisibility() called: showSingleTaskActions = [true], showGroupActions = [false]
+10-07 16:12:21.830  3472  3505 D RestoreDbTask: No restore task pending, exiting RestoreDbTask
+10-07 16:12:21.849   666   860 D BackgroundInstallControlService: Package event received: 0
+10-07 16:12:21.854  3472  3472 D b/380940677: [mStateHandlerRequest=0, mCurrentStateRequest=0, mLastActivityFlags=5, mIgnoreAutoRotateSettings=false, mHomeRotationEnabled=false, mForceAllowRotationForTesting=false, mDestroyed=false, mIsFixedLandscape=false]
+10-07 16:12:21.854   666  1698 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_IGNORE_REQUESTED_ORIENTATION
+10-07 16:12:21.854   666  1698 W OptProp : Cannot read opt property android.window.PROPERTY_COMPAT_ALLOW_IGNORING_ORIENTATION_REQUEST_WHEN_LOOP_DETECTED
+10-07 16:12:21.873   453   520 I netd    : tetherGetStats() -> {[]} <1.10ms>
+10-07 16:12:21.885  3472  3505 D ModelDbController: migrateGridIfNeeded: new DB already created, skipping migration
+10-07 16:12:21.885  3472  3505 D ModelDbController: resetLauncherDb: Migration failed: resetting launcher database
+10-07 16:12:21.906  3472  3505 E LoaderTask: Failed to migrate grid
+10-07 16:12:21.906  3472  3505 E LoaderTask: java.lang.Exception: attemptMigrateDb: Failed to migrate grid
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.ModelDbController.attemptMigrateDb(ModelDbController.java:481)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.LoaderTask.loadWorkspaceImpl(LoaderTask.java:499)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.LoaderTask.loadAllSurfacesOrdered(LoaderTask.java:283)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.LoaderTask.runInternal(LoaderTask.java:449)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.LoaderTask.runInternalOnModelExecutor(LoaderTask.java:422)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.LoaderTask.$r8$lambda$GHFVe_gtOJcTvEEZNrtB1ZKIiE8(Unknown Source:0)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.LoaderTask$$ExternalSyntheticLambda11.run(D8$$SyntheticClass:0)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.LayoutWriteCoordinator.runOrDefer(LayoutWriteCoordinator.java:495)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at com.android.launcher3.model.LoaderTask.run(LoaderTask.java:411)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at android.os.Handler.handleCallback(Handler.java:995)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at android.os.Handler.dispatchMessage(Handler.java:103)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at android.os.Looper.loopOnce(Looper.java:248)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at android.os.Looper.loop(Looper.java:338)
+10-07 16:12:21.906  3472  3505 E LoaderTask: 	at android.os.HandlerThread.run(HandlerThread.java:85)
+10-07 16:12:21.908  3472  3505 D LoaderTask: loadWorkspace: loading default favorites if necessary
+10-07 16:12:21.909  3472  3505 D ModelDbController: loading default workspace
+10-07 16:12:21.917  3472  3472 D DeviceProfileOverrides: Grid recompute from prefs: rows=5 columns=4 hotseat=4
+10-07 16:12:21.917  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.918  1619  1619 I cpnd    : (REDACTED) onBind() intent: %s
+10-07 16:12:21.918  1619  1619 I cpnd    : (REDACTED) onBind() intent: %s
+10-07 16:12:21.919  1619  1619 I cpnd    : (REDACTED) onBind() intent: %s
+10-07 16:12:21.919  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.919  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.920  3472  3472 D DeviceProfileOverrides: Grid recompute from prefs: rows=5 columns=4 hotseat=4
+10-07 16:12:21.921  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.921  3472  3472 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:12:21.925  1751  1751 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.findmydevice.spot.service.management.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsApiService }
+10-07 16:12:21.934  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.presencemanager.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-07 16:12:21.938  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.presencemanager.service.INTERNAL_IDENTITY dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-07 16:12:21.940  3472  3505 E AutoInstalls: Favorite not found: com.android.contacts/com.android.contacts.activities.TwelveKeyDialer
+10-07 16:12:21.952  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e148a978) locale list changing from [] to [en-US]
+10-07 16:12:21.958   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:21.959   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:21.959   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10097} in 1ms
+10-07 16:12:21.960   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:21.960   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:21.960   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={20097} in 2ms
+10-07 16:12:21.981  3472  3472 D IDP     : After initGrid:gridName:4_by_6, dbFile:launcher_5_4_4.db, LauncherPrefs GRID_NAME:4_by_6, LauncherPrefs DB_FILE:launcher_5_4_4.db
+10-07 16:12:21.986  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e148c8b8) locale list changing from [] to [en-US]
+10-07 16:12:21.988  3472  3472 D OverviewActionsView: updateActionButtonsVisibility() called: showSingleTaskActions = [true], showGroupActions = [false]
+10-07 16:12:21.991  3472  3472 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:12:21.991  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.time.trustedtime.singleuserapi.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentSingleUserInternalApiService }
+10-07 16:12:21.996  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.time.trustedtime.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-07 16:12:22.000  3472  3472 W LoaderTask: stopLocked: Loader stopping
+10-07 16:12:22.001  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.001  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.001  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.006  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e14851f8) locale list changing from [] to [en-US]
+10-07 16:12:22.007  3472  3472 W LoaderTask: stopLocked: Loader stopping
+10-07 16:12:22.021  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e148cef8) locale list changing from [] to [en-US]
+10-07 16:12:22.032  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e1488d58) locale list changing from [] to [en-US]
+10-07 16:12:22.053  3472  3472 D BaseActivity: Launcher flags updated: [state_started] +[state_started]
+10-07 16:12:22.053  3472  3472 I FEED    : 1
+10-07 16:12:22.053  3472  3472 I FEED    : 2
+10-07 16:12:22.055  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.059  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.059  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.064  3472  3472 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_user_active] +[state_resumed|state_user_active]
+10-07 16:12:22.108  3472  3472 W HWUI    : Unknown dataspace 0
+10-07 16:12:22.139  3472  3472 W LoaderTask: stopLocked: Loader stopping
+10-07 16:12:22.144  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.144  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.144  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.145  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.145  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.150  3472  3472 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:12:22.174  3472  3472 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_deferred_resumed|state_user_active] +[state_deferred_resumed]
+10-07 16:12:22.177   666   860 D BackgroundInstallControlService: Package event received: 0
+10-07 16:12:22.210  1619  1619 I cpnd    : (REDACTED) onBind() intent: %s
+10-07 16:12:22.210  1619  1619 I cpnd    : (REDACTED) onBind() intent: %s
+10-07 16:12:22.210  1619  1619 I cpnd    : (REDACTED) onBind() intent: %s
+10-07 16:12:22.213  3472  3472 D StatsLog: LAUNCHER_ONRESUME
+10-07 16:12:22.215  1619  1619 I cpmu    : (REDACTED) Dismissing old window %s
+10-07 16:12:22.216  1619  1619 I cpnb    : (REDACTED) onDestroy: isRecreating: %s
+10-07 16:12:22.226   666  1452 D CoreBackPreview: Window{6705368 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@38201b9, mPriority=-1, mIsAnimationCallback=false, mOverrideBehavior=0}
+10-07 16:12:22.226   666  1452 D CoreBackPreview: Window{6705368 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@8f749fe, mPriority=0, mIsAnimationCallback=true, mOverrideBehavior=0}
+10-07 16:12:22.227  3472  3472 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:12:22.236  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e1492678) locale list changing from [] to [en-US]
+10-07 16:12:22.237  1619  2623 W acut    : (REDACTED) [%s] response code: %d
+10-07 16:12:22.238   666  1452 W ActivityTaskManager: Permission Denial: registerTaskStackListener() from pid=3472, uid=10215 requires android.permission.MANAGE_ACTIVITY_TASKS
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: Failed to call registerTaskStackListener
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: java.lang.SecurityException: Permission Denial: registerTaskStackListener() from pid=3472, uid=10215 requires android.permission.MANAGE_ACTIVITY_TASKS
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3340)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.os.Parcel.createException(Parcel.java:3324)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.os.Parcel.readException(Parcel.java:3307)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.os.Parcel.readException(Parcel.java:3249)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.app.IActivityTaskManager$Stub$Proxy.registerTaskStackListener(IActivityTaskManager.java:3031)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at com.android.systemui.shared.system.TaskStackChangeListeners$Impl.addListener(TaskStackChangeListeners.java:173)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at com.android.systemui.shared.system.TaskStackChangeListeners.registerTaskStackListener(TaskStackChangeListeners.java:101)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at com.android.quickstep.views.RecentsView.onAttachedToWindow(RecentsView.java:1278)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.View.dispatchAttachedToWindow(View.java:23105)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3520)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3527)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3527)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3527)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3527)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3527)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewRootImpl.performTraversals(ViewRootImpl.java:3617)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewRootImpl.doTraversal(ViewRootImpl.java:3076)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.ViewRootImpl$TraversalRunnable.run(ViewRootImpl.java:10643)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1570)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1579)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.Choreographer.doCallbacks(Choreographer.java:1179)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.Choreographer.doFrame(Choreographer.java:1108)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.view.Choreographer$FrameDisplayEventReceiver.run(Choreographer.java:1553)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.os.Handler.handleCallback(Handler.java:995)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.os.Handler.dispatchMessage(Handler.java:103)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.os.Looper.loopOnce(Looper.java:248)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.os.Looper.loop(Looper.java:338)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at android.app.ActivityThread.main(ActivityThread.java:9067)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at java.lang.reflect.Method.invoke(Native Method)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+10-07 16:12:22.240  3472  3472 W TaskStackChangeListeners: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+10-07 16:12:22.251  3472  3472 D OverviewActionsView: updateActionButtonsVisibility() called: showSingleTaskActions = [true], showGroupActions = [false]
+10-07 16:12:22.252  3472  3472 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:12:22.257  1751  1751 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.pay.service.BIND dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsApiService }
+10-07 16:12:22.284  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.libs.gmscorelogger.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentDirectBootAwareApiService }
+10-07 16:12:22.290   526   893 W ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10215 pid=0
+10-07 16:12:22.290   526   893 D PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10215 => denied (647 us)
+10-07 16:12:22.291   526   893 W ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10215 pid=0
+10-07 16:12:22.291   526   893 D PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10215 => denied (450 us)
+10-07 16:12:22.291   526   893 W ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10215 pid=0
+10-07 16:12:22.291   526   893 D PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10215 => denied (397 us)
+10-07 16:12:22.291   526   892 W ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10215 pid=3472
+10-07 16:12:22.291   526   892 D PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10215 => denied (957 us)
+10-07 16:12:22.392  1751  1751 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.chimera.container.moduleinstall.ModuleInstallService.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsApiService }
+10-07 16:12:22.445  1619  1619 I cpmu    : (REDACTED) Dismissing old window %s
+10-07 16:12:22.450   666  1162 I AppWidgetServiceImpl: getAppWidgetInfo() 0
+10-07 16:12:22.452   666  1162 E AppWidgetServiceImpl: getAppWidgetInfo() returns null because widget.provider is null. appWidgetId=13 userId=0 widget=AppWidgetId{13:Host{HostId{user:0, app:10215, hostId:1028, pkg:app.lawnchair.debug}}:null}
+10-07 16:12:22.453  3472  3472 E AppWidgetManager: App widget provider info is null. PackageName=app.lawnchair.debug appWidgetId-13
+10-07 16:12:22.461  1619  1619 I earchbox:search: AssetManager2(0xb4000072e148bf58) locale list changing from [] to [en-US]
+10-07 16:12:22.465  1619  1619 I earchbox:search: AssetManager2(0xb4000072e1485e78) locale list changing from [] to [en-US]
+10-07 16:12:22.469  1619  1619 I earchbox:search: AssetManager2(0xb4000072e148a658) locale list changing from [] to [en-US]
+10-07 16:12:22.470  1619  1619 I earchbox:search: AssetManager2(0xb4000072e148db78) locale list changing from [] to [en-US]
+10-07 16:12:22.475  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:22.478  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:22.479  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:22.481  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:22.484  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.IcuDateTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:22.484  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:22.485  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:22.486  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:22.486  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e1490a58) locale list changing from [] to [en-US]
+10-07 16:12:22.488  3472  3472 E BcSmartspaceCard: No tap action can be set up
+10-07 16:12:22.497  1619  1619 I cpmu    : (REDACTED) Created new binder managed window %s
+10-07 16:12:22.497  1619  1619 I cpmu    : (REDACTED) WindowRefsActive: %d, TouchableWindowRefsActive: %b
+10-07 16:12:22.497  1619  1619 I cpnb    : (REDACTED) MinusoneConfigDbg windowAttached config=%s
+10-07 16:12:22.497  1619  1619 I cpnb    : (REDACTED) windowAttached start logFlowId=%s, configuration=%s, acetoneState=%s, overlayWindow=%s, fragmentHost=%s, binderManagedWindow=%s, params=%s
+10-07 16:12:22.498  1619  1822 I aggm    : (REDACTED) Assistant special experience changed to %s.
+10-07 16:12:22.502  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e1492038) locale list changing from [] to [en-US]
+10-07 16:12:22.505  1619  1619 I cpnb    : (REDACTED) onDestroy: isRecreating: %s
+10-07 16:12:22.519  3472  3477 I lawnchair.debug: Compiler allocated 5111KB to compile void android.view.ViewRootImpl.performTraversals()
+10-07 16:12:22.519  1619  1619 I cpnb    : onStart
+10-07 16:12:22.519  1619  1619 I cpnb    : onResume
+10-07 16:12:22.595  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e1497498) locale list changing from [] to [en-US]
+10-07 16:12:22.613  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e14919f8) locale list changing from [] to [en-US]
+10-07 16:12:22.641  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e1495238) locale list changing from [] to [en-US]
+10-07 16:12:22.648   666   750 D OomAdjuster: Not killing cached processes
+10-07 16:12:22.650   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:22.651   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:22.651   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10109} in 1ms
+10-07 16:12:22.651   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:22.651   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:22.651   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={20109} in 0ms
+10-07 16:12:22.652  3472  3505 E AutoInstalls: Favorite not found: com.google.android.videos/com.google.android.youtube.videos.EntryPoint
+10-07 16:12:22.652  3472  3505 E AutoInstalls: Favorite not found: com.google.android.apps.tachyon/com.google.android.apps.tachyon.MainActivity
+10-07 16:12:22.729  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e1489078) locale list changing from [] to [en-US]
+10-07 16:12:22.735  3472  3505 E AutoInstalls: Favorite not found: com.android.vending/com.android.vending.AssetBrowserActivity
+10-07 16:12:22.737  3472  3505 W DefaultLayoutParser: No preference or single system activity found for Intent { act=android.intent.action.MAIN cat=[android.intent.category.APP_MARKET] }
+10-07 16:12:22.737  3472  3505 W DefaultLayoutParser: No preference or single system activity found for Intent { act=android.intent.action.VIEW dat=market://details/... }
+10-07 16:12:22.747   666   691 W BLASTSyncEngine: Sync group 10 timeout
+10-07 16:12:22.747   666   691 I BLASTSyncEngine: Unfinished container: Task{49064af #860 type=standard I=app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+10-07 16:12:22.748   666   691 I BLASTSyncEngine:   Window{6c86978 u0 InputMethod} NO_SURFACE
+10-07 16:12:22.748   666   691 I BLASTSyncEngine:   Window{6705368 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher} DRAW_PENDING
+10-07 16:12:22.748   666   691 I BLASTSyncEngine: Unfinished container: ActivityRecord{50646153 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher t860}
+10-07 16:12:22.748   666   691 I BLASTSyncEngine:   Window{6c86978 u0 InputMethod} NO_SURFACE
+10-07 16:12:22.748   666   691 I BLASTSyncEngine:   Window{6705368 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher} DRAW_PENDING
+10-07 16:12:22.755   908  1358 V WindowManagerShell: onTransitionReady(transaction=2860448219543)
+10-07 16:12:22.755   908  1013 V WindowManagerShell: onTransitionReady (#10) android.os.BinderProxy@5f294c: {id=10 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+10-07 16:12:22.755   908  1013 V WindowManagerShell:         {m=OPEN f=SHOW_WALLPAPER leash=Surface(name=Task=860)/@0x4c0ce11 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1},
+10-07 16:12:22.755   908  1013 V WindowManagerShell:         {m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x7071b76 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1}
+10-07 16:12:22.755   908  1013 V WindowManagerShell:     ]}
+10-07 16:12:22.756   666   688 V WindowManager: Sent Transition (#10) createdAt=10-07 16:12:17.746 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=860 effectiveUid=10215 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=app.lawnchair.debug/app.lawnchair.LawnchairLauncher } baseActivity=ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher} topActivity=ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher} origActivity=null realActivity=ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher} numActivities=1 lastActiveTime=49333 supportsMultiWindow=true resizeMode=2 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{616536a Task{49064af #860 type=standard I=app.lawnchair.debug/app.lawnchair.LawnchairLauncher}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 128 - 0, 0) topActivityInfo=ActivityInfo{2e8005b app.lawnchair.LawnchairLauncher} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=true isTopActivityNoDisplay=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false isActivityStackTransparent=false lastNonFullscreenBounds=Rect(276, 692 - 804, 1772) capturedLink=null capturedLinkTimestamp=0 requestedVisibleTypes=-9 topActivityRequestOpenInBrowserEducationTimestamp=0 appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false eligibleForLetterboxEducation= false isLetterboxEducationEnabled= true isLetterboxDoubleTapEnabled= false eligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 topActivityAppBounds=Rect(0, 0 - 1080, 2400) isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false hasMinAspectRatioOverride=false topActivityLetterboxBounds=null cameraCompatTaskInfo=CameraCompatTaskInfo { freeformCameraCompatMode=inactive}} topActivityMainWindowFrame=null}, pipChange = null, remoteTransition = null, displayChange = null, flags = 0, debugId = 10 }
+10-07 16:12:22.756   666   688 V WindowManager:     startWCT=WindowContainerTransaction { changes= {} hops= [] errorCallbackToken=null taskFragmentOrganizer=null }
+10-07 16:12:22.756   666   688 V WindowManager:     info={id=10 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+10-07 16:12:22.756   666   688 V WindowManager:         {WCT{RemoteToken{616536a Task{49064af #860 type=standard I=app.lawnchair.debug/app.lawnchair.LawnchairLauncher}}} m=OPEN f=SHOW_WALLPAPER leash=Surface(name=Task=860)/@0xc63000c sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1},
+10-07 16:12:22.756   666   688 V WindowManager:         {WCT{RemoteToken{e4610f8 Task{6a5965c #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x13daf3f sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1}
+10-07 16:12:22.756   666   688 V WindowManager:     ]}
+10-07 16:12:22.838   908  1013 V WindowManagerShell: Playing animation for (#10) android.os.BinderProxy@5f294c@0
+10-07 16:12:22.839   908  1013 V ShellRecents: RecentsTransitionHandler.startAnimation: no controller found
+10-07 16:12:22.840   908  1013 V WindowManagerShell: Transition doesn't have explicit remote, search filters for match for {id=10 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{m=OPEN f=SHOW_WALLPAPER leash=Surface(name=Task=860)/@0x4c0ce11 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1},{m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x7071b76 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1}]}
+10-07 16:12:22.841   908  1013 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=undefined independent=true modes=[CLOSE,TO_BACK] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=null launchCookie=null taskFragmentToken=android.os.BinderProxy@8f755e4 windowingMode=undefined}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@fd33a4d, appThread = android.app.IApplicationThread$Stub$Proxy@d417902, debugName = overlayBackTransition }}
+10-07 16:12:22.841   908  1013 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0] notFlags=0x0 checks=[{atype=dream independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined},{atype=home independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@14b5213, appThread = android.app.IApplicationThread$Stub$Proxy@dc5ec50, debugName = LauncherToDream }}
+10-07 16:12:22.841   908  1013 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0] notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=TOP topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null windowingMode=undefined},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined},{NOT atype=undefined independent=true modes=[] flags=NONE mustBeTask=true order=ANY topActivity=null launchCookie=null customAnim=true windowingMode=undefined}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@1262e49, appThread = android.app.IApplicationThread$Stub$Proxy@4d2234e, debugName = QuickstepLaunchHome }}
+10-07 16:12:22.841   908  1013 V WindowManagerShell:  Delegate animation for (#10) to null
+10-07 16:12:22.841   908  1013 V WindowManagerShell: start default transition animation, info = {id=10 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{m=OPEN f=SHOW_WALLPAPER leash=Surface(name=Task=860)/@0x4c0ce11 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1},{m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x7071b76 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) epz=Point(1080, 2400) d=0 taskParent=-1}]}
+10-07 16:12:22.846   908  1013 V WindowManagerShell: loadAnimation: anim=android.view.animation.AnimationSet@fb1265a animAttr=0x15 type=OPEN isEntrance=false
+10-07 16:12:22.848   908  1013 V WindowManagerShell: loadAnimation: anim=android.view.animation.AnimationSet@d8af568 animAttr=0x14 type=OPEN isEntrance=true
+10-07 16:12:22.848  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e148c278) locale list changing from [] to [en-US]
+10-07 16:12:22.851   908  1013 V WindowManagerShell:  animated by com.android.wm.shell.transition.DefaultTransitionHandler@9b61fca
+10-07 16:12:22.851   908  1013 W Looper  : Slow dispatch took 96ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.os.Handler c=com.android.wm.shell.transition.Transitions$TransitionPlayerImpl$$ExternalSyntheticLambda0@1605d81 m=0
+10-07 16:12:22.861   666  1452 I AppWidgetServiceImpl: allocateAppWidgetId() 0
+10-07 16:12:22.862   666  1452 I AppWidgetServiceImpl: addWidgetLocked() AppWidgetId{14:Host{HostId{user:0, app:10215, hostId:1024, pkg:app.lawnchair.debug}}:null}
+10-07 16:12:22.862   666  1452 I AppWidgetServiceImpl: Allocated widget id 14 for host HostId{user:0, app:10215, hostId:1024, pkg:app.lawnchair.debug}
+10-07 16:12:22.862   666  1698 I AppWidgetServiceImpl: bindAppWidgetId() 0
+10-07 16:12:22.864   908  1013 V WindowManagerShell: Transition animation finished (aborted=false), notifying core (#10) android.os.BinderProxy@5f294c@0
+10-07 16:12:22.866  3472  3505 E DefaultLayoutParser: Unable to bind app widget id ComponentInfo{com.google.android.deskclock/com.android.alarmclock.AnalogAppWidgetProvider}
+10-07 16:12:22.866   666  1699 I AppWidgetServiceImpl: deleteAppWidgetId() 0
+10-07 16:12:22.866   666  1699 I AppWidgetServiceImpl: deleteAppWidgetLocked() AppWidgetId{14:Host{HostId{user:0, app:10215, hostId:1024, pkg:app.lawnchair.debug}}:null}
+10-07 16:12:22.866   666  1699 I AppWidgetServiceImpl: removeWidgetLocked() AppWidgetId{14:Host{HostId{user:0, app:10215, hostId:1024, pkg:app.lawnchair.debug}}:null}
+10-07 16:12:22.867   666  1699 I AppWidgetServiceImpl: Deleted widget id 14 for host HostId{user:0, app:10215, hostId:1024, pkg:app.lawnchair.debug}
+10-07 16:12:22.884  1053  1053 D VRI[NexusLauncherActivity]: visibilityChanged oldVisibility=true newVisibility=false
+10-07 16:12:22.892   908  1013 V WindowManagerShell: Track 0 became idle
+10-07 16:12:22.892   908  1013 V WindowManagerShell: All active transition animations finished
+10-07 16:12:22.893   666   688 V WindowManager: Finish Transition (#10): created at 10-07 16:12:17.746 collect-started=0.09ms request-sent=44.485ms started=174.174ms ready=3246.477ms sent=5005.362ms commit=110.675ms finished=5135.347ms
+10-07 16:12:22.896  1053  1053 D NexusLauncherModelDelegate: notifySmartspaceEvent: SmartspaceTargetEvent{mSmartspaceTarget=null, mSmartspaceActionId='null', mEventType=7}
+10-07 16:12:22.904  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.auth.aang.events.services.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+10-07 16:12:22.912  3472  3503 E SystemUiProxy: getRecentTasks() failed due to null mRecentTasks
+10-07 16:12:22.924  3472  3505 D LoaderTask: loadWorkspace: Packages with active install sessions: []
+10-07 16:12:22.942  3472  3505 D LoaderTask: No pinned shortcuts found for user UserHandle{0}
+10-07 16:12:22.943  3472  3505 W LoaderTask: loadWorkspaceImpl: Loader stopped, skipping item processing
+10-07 16:12:22.943  3472  3505 D LoaderTask: loadWorkspace finished
+10-07 16:12:22.944  3472  3505 W LoaderTask: LoaderTask cancelled
+10-07 16:12:22.975   453  1935 W resolv  : SSL_connect write error 0, mark 0xf0064: Try again
+10-07 16:12:22.989   453  1935 W resolv  : TLS Handshake failed
+10-07 16:12:22.990   453  1935 W resolv  : query failed
+10-07 16:12:22.990   453  1935 W resolv  : validateDnsTlsServer returned 0 for {10.0.2.3/}
+10-07 16:12:22.990   453  1935 W resolv  : Validation failed
+10-07 16:12:23.003  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.nearby.fastpair.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiServiceNoInstantApps }
+10-07 16:12:23.012  1228  1228 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.contextmanager.service.ContextManagerService.START xflg=0x4 pkg=com.google.android.gms }
+10-07 16:12:23.019  3472  3505 D ModelDbController: migrateGridIfNeeded: no grid migration needed
+10-07 16:12:23.020  3472  3505 D LoaderTask: loadWorkspace: loading default favorites if necessary
+10-07 16:12:23.021  3472  3505 D LoaderTask: loadWorkspace: Packages with active install sessions: []
+10-07 16:12:23.022  3472  3505 D LoaderTask: No pinned shortcuts found for user UserHandle{0}
+10-07 16:12:23.024  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.dialer, itemType=0, restoreFlag=0
+10-07 16:12:23.033  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.messaging, itemType=0, restoreFlag=0
+10-07 16:12:23.038  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.contacts, itemType=0, restoreFlag=0
+10-07 16:12:23.041  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.android.chrome, itemType=0, restoreFlag=0
+10-07 16:12:23.045  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.android.camera2, itemType=0, restoreFlag=0
+10-07 16:12:23.050  3472  3505 E LoaderCursor: Error loading shortcut ItemInfo(id=5 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@1a1eb4e
+10-07 16:12:23.050  3472  3505 E LoaderCursor: hotseat {
+10-07 16:12:23.050  3472  3505 E LoaderCursor:   index: 4
+10-07 16:12:23.050  3472  3505 E LoaderCursor: } targetComponent=ComponentInfo{com.android.camera2/com.android.camera.CameraLauncher} screen=4 cell(4,0) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} title= supportsMultiInstance=false nonResizeable=true) into hotseat position 4, position out of bounds: (0 to 3)
+10-07 16:12:23.050  3472  3505 E LoaderCursor: Item position overlap
+10-07 16:12:23.052  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.googlequicksearchbox, itemType=0, restoreFlag=0
+10-07 16:12:23.054  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.gm, itemType=0, restoreFlag=0
+10-07 16:12:23.054  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.maps, itemType=0, restoreFlag=0
+10-07 16:12:23.056  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.youtube, itemType=0, restoreFlag=0
+10-07 16:12:23.057  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.docs, itemType=0, restoreFlag=0
+10-07 16:12:23.059  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.youtube.music, itemType=0, restoreFlag=0
+10-07 16:12:23.062  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.photos, itemType=0, restoreFlag=0
+10-07 16:12:23.064  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.gm, itemType=0, restoreFlag=0
+10-07 16:12:23.066  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.photos, itemType=0, restoreFlag=0
+10-07 16:12:23.067   666   697 I ActivityManager: Waited long enough for: ServiceRecord{4480cfa u0 com.android.settings/.SettingsDumpService c:com.android.settings}
+10-07 16:12:23.069  3472  3505 D WorkspaceItemProcessor: valid target true, marking restored: com.android.settings, itemType=0, restoreFlag=0
+10-07 16:12:23.082  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.090  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.photos/com.google.android.apps.photos.home.HomeActivity}
+10-07 16:12:23.099  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.106  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.gm/com.google.android.gm.ConversationListActivityGmail}
+10-07 16:12:23.114  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.121  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.contacts/com.android.contacts.activities.PeopleActivity}
+10-07 16:12:23.127  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.129  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.133  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.messaging/com.google.android.apps.messaging.ui.ConversationListActivity}
+10-07 16:12:23.139  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.141  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.dialer/com.google.android.dialer.extensions.GoogleDialtactsActivity}
+10-07 16:12:23.144  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.146  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.149  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.camera2/com.android.camera.CameraLauncher}
+10-07 16:12:23.154  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.156  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.settings/com.android.settings.Settings}
+10-07 16:12:23.164  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.168  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.chrome/com.google.android.apps.chrome.Main}
+10-07 16:12:23.176  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.182  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.youtube.music/com.google.android.apps.youtube.music.activities.MusicActivity}
+10-07 16:12:23.187  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.189  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.195  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.photos/com.google.android.apps.photos.home.HomeActivity}
+10-07 16:12:23.197  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.199  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.youtube/com.google.android.youtube.app.honeycomb.Shell$HomeActivity}
+10-07 16:12:23.204  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.206  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.212  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.gm/com.google.android.gm.ConversationListActivityGmail}
+10-07 16:12:23.213  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.215  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.maps/com.google.android.maps.MapsActivity}
+10-07 16:12:23.219  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.222  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.227  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.googlequicksearchbox/com.google.android.googlequicksearchbox.SearchActivity}
+10-07 16:12:23.232  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.237  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.docs/com.google.android.apps.docs.app.NewMainProxyActivity}
+10-07 16:12:23.241  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.260  3472  3505 D LoaderTask: loadWorkspace finished
+10-07 16:12:23.261   666  1452 I AppWidgetServiceImpl: getAppWidgetIdsForHost() 0
+10-07 16:12:23.280  3472  3505 D LoaderTask: sanitizeData finished
+10-07 16:12:23.291  3472  3505 D ModelCallbacks: Starting async inflation
+10-07 16:12:23.301  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: app.lawnchair.smartspace.SmartspaceViewContainer{b3fd9cb V.E....L. ......ID 0,0-1036,316 #7f0a0339 app:id/search_container_workspace}
+10-07 16:12:23.303  3472  3472 D ModelCallbacks: startBinding: hotseat layout was vertical: false and is setting to false
+10-07 16:12:23.306  3472  3472 D Launcher.Workspace: addInScreenFromBind: hotseat inflation with x = 0 and y = 0 page = 0
+10-07 16:12:23.306  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{356f8f6 VFED..C.. ......ID 0,0-0,0 #1}
+10-07 16:12:23.307  3472  3472 D Launcher.Workspace: addInScreenFromBind: hotseat inflation with x = 1 and y = 0 page = 0
+10-07 16:12:23.307  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{2724f7 VFED..C.. ......ID 0,0-0,0 #2}
+10-07 16:12:23.308  3472  3472 D Launcher.Workspace: addInScreenFromBind: hotseat inflation with x = 2 and y = 0 page = 0
+10-07 16:12:23.308  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{bf82f64 VFED..C.. ......ID 0,0-0,0 #3}
+10-07 16:12:23.308  3472  3472 D Launcher.Workspace: addInScreenFromBind: hotseat inflation with x = 3 and y = 0 page = 0
+10-07 16:12:23.308  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{274d5cd VFED..C.. ......ID 0,0-0,0 #4}
+10-07 16:12:23.310  3472  3505 D LoaderTask: bindWorkspace finished
+10-07 16:12:23.313  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:23.314  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:23.315  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:23.316   666  1699 W Binder  : Caught a RuntimeException from the binder stub implementation.
+10-07 16:12:23.316   666  1699 W Binder  : java.lang.SecurityException: Access denied, requires: android.permission.MANAGE_ACCESSIBILITY
+10-07 16:12:23.316   666  1699 W Binder  : 	at android.os.PermissionEnforcer.enforcePermission(PermissionEnforcer.java:146)
+10-07 16:12:23.316   666  1699 W Binder  : 	at android.view.accessibility.IAccessibilityManager$Stub.unregisterSystemAction_enforcePermission(IAccessibilityManager.java:1860)
+10-07 16:12:23.316   666  1699 W Binder  : 	at com.android.server.accessibility.AccessibilityManagerService.unregisterSystemAction(AccessibilityManagerService.java:1429)
+10-07 16:12:23.316   666  1699 W Binder  : 	at android.view.accessibility.IAccessibilityManager$Stub.onTransact(IAccessibilityManager.java:690)
+10-07 16:12:23.316   666  1699 W Binder  : 	at android.os.Binder.execTransactInternal(Binder.java:1426)
+10-07 16:12:23.316   666  1699 W Binder  : 	at android.os.Binder.execTransact(Binder.java:1365)
+10-07 16:12:23.317  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:23.318  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.IcuDateTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:23.320  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:23.320  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:23.321  3472  3472 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:12:23.321  3472  3472 E BcSmartspaceCard: No tap action can be set up
+10-07 16:12:23.342  3472  3505 D LoaderTask: Sending first screen broadcast
+10-07 16:12:23.362  3472  3472 D ModelCallbacks: Calling onCompleteSignal
+10-07 16:12:23.362  3472  3472 D ViewOnDrawExecutor: markCompleted: executing tasks
+10-07 16:12:23.363  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.folder.FolderIcon{c8cff3a VFE...C.. ......I. 0,0-0,0 #6}
+10-07 16:12:23.363  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{ea887eb VFED..C.. ......ID 0,0-0,0 #e}
+10-07 16:12:23.363  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{1eda948 VFED..C.. ......ID 0,0-0,0 #f}
+10-07 16:12:23.363  3472  3472 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{17533e1 VFED..C.. ......ID 0,0-0,0 #10}
+10-07 16:12:23.383  3472  3472 D BaseDepthController: setSurface:
+10-07 16:12:23.383  3472  3472 D BaseDepthController: 	mWaitingOnSurfaceValidity: false
+10-07 16:12:23.383  3472  3472 D BaseDepthController: 	mBaseSurface: Surface(name=app.lawnchair.debug/app.lawnchair.LawnchairLauncher)/@0xc76e0f0
+10-07 16:12:23.384  3472  3472 V BaseDepthController: Applying blur: 0 to Surface(name=app.lawnchair.debug/app.lawnchair.LawnchairLauncher)/@0xc76e0f0
+10-07 16:12:23.452   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:23.453   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:23.453   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10157} in 1ms
+10-07 16:12:23.453   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:23.453   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:23.453   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={20157} in 0ms
+10-07 16:12:23.490   666  1452 W ServiceManagerCppClient: Permission failure: android.permission.ACCESS_SURFACE_FLINGER from uid=10215 pid=0
+10-07 16:12:23.490   666  1452 D PermissionCache: checking android.permission.ACCESS_SURFACE_FLINGER for uid=10215 => denied (495 us)
+10-07 16:12:23.490   666  1452 W ServiceManagerCppClient: Permission failure: android.permission.ROTATE_SURFACE_FLINGER from uid=10215 pid=0
+10-07 16:12:23.490   666  1452 D PermissionCache: checking android.permission.ROTATE_SURFACE_FLINGER for uid=10215 => denied (29 us)
+10-07 16:12:23.490   666  1452 W ServiceManagerCppClient: Permission failure: android.permission.INTERNAL_SYSTEM_WINDOW from uid=10215 pid=0
+10-07 16:12:23.490   666  1452 D PermissionCache: checking android.permission.INTERNAL_SYSTEM_WINDOW for uid=10215 => denied (6 us)
+10-07 16:12:23.525   666  1699 I AppWidgetServiceImpl: getAppWidgetInfo() 0
+10-07 16:12:23.525   666  1699 E AppWidgetServiceImpl: getAppWidgetInfo() returns null because widget.provider is null. appWidgetId=13 userId=0 widget=AppWidgetId{13:Host{HostId{user:0, app:10215, hostId:1028, pkg:app.lawnchair.debug}}:null}
+10-07 16:12:23.526  3472  3472 E AppWidgetManager: App widget provider info is null. PackageName=app.lawnchair.debug appWidgetId-13
+10-07 16:12:23.547  1053  1053 D BaseDepthController: setSurface:
+10-07 16:12:23.547  1053  1053 D BaseDepthController: 	mWaitingOnSurfaceValidity: false
+10-07 16:12:23.547  1053  1053 D BaseDepthController: 	mBaseSurface: null
+10-07 16:12:23.548  1053  1053 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:12:23.552  3472  3505 D LoaderTask: step 1 loading workspace complete
+10-07 16:12:23.554  1053  1053 D StateManager: goToState - fromState: Normal, toState: Normal, partial trace:
+10-07 16:12:23.554  1053  1053 D StateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme 43e00d9cd0eb17b3d9dd30fc1741b1c71445c4c0f7c8c9b81300265c86c5b873:4)
+10-07 16:12:23.554  1053  1053 D StateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme 43e00d9cd0eb17b3d9dd30fc1741b1c71445c4c0f7c8c9b81300265c86c5b873:1)
+10-07 16:12:23.554  1053  1053 D StateManager: 	at com.android.launcher3.statemanager.StatefulActivity.onStop(go/retraceme 43e00d9cd0eb17b3d9dd30fc1741b1c71445c4c0f7c8c9b81300265c86c5b873:34)
+10-07 16:12:23.557  1053  1053 D StatsLog: LAUNCHER_ONSTOP
+10-07 16:12:23.560   666  1698 I AppWidgetServiceImpl: setAppWidgetHidden() 0
+10-07 16:12:23.561  1053  1053 D StatsLog: LAUNCHER_GOOGLE_SEARCH_RESTORE_LIST_SIZE_AFTER_ACTIVITY_RESTART
+10-07 16:12:23.577   666  1452 D FileUtils: Rounded bytes from 2592632832 to 4000000000
+10-07 16:12:23.589   666   860 D BackgroundInstallControlService: Package event received: 0
+10-07 16:12:23.600   666   688 I ActivityTaskManager: Displayed app.lawnchair.debug/app.lawnchair.LawnchairLauncher for user 0: +5s794ms
+10-07 16:12:23.610   453   520 I netd    : tetherGetStats() -> {[]} <5.49ms>
+10-07 16:12:23.611  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Camera sectionName: C
+10-07 16:12:23.613  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Chrome sectionName: C
+10-07 16:12:23.614  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Settings sectionName: S
+10-07 16:12:23.614  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Drive sectionName: D
+10-07 16:12:23.614  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Maps sectionName: M
+10-07 16:12:23.625  3472  3472 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_deferred_resumed|state_window_focused|state_user_active] +[state_window_focused]
+10-07 16:12:23.632  1472  1479 W ogle.android.as: Suspending all threads took: 22.688ms
+10-07 16:12:23.641  1053  1074 I s.nexuslauncher: Waiting for a blocking GC ProfileSaver
+10-07 16:12:23.642  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Messages sectionName: M
+10-07 16:12:23.645  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Photos sectionName: P
+10-07 16:12:23.646  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: YT Music sectionName: Y
+10-07 16:12:23.673  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e14a3fb8) locale list changing from [] to [en-US]
+10-07 16:12:23.678   666   780 I ImeTracker: app.lawnchair.debug:35d94c55: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false
+10-07 16:12:23.698  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Calendar sectionName: C
+10-07 16:12:23.710  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Contacts sectionName: C
+10-07 16:12:23.739  3472  3472 D InsetsController: hide(ime(), fromIme=false)
+10-07 16:12:23.740  3472  3472 I ImeTracker: app.lawnchair.debug:35d94c55: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+10-07 16:12:23.741   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:23.742   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:23.742   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={10134} in 1ms
+10-07 16:12:23.742   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:12:23.743   666   815 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:12:23.743   666   815 D InetDiagMessage: Destroyed live tcp sockets for uids={20134} in 1ms
+10-07 16:12:23.756  2247  2625 I BugleDataModel: ActionExecutorImpl: ACTION_EXECUTE_QUEUED_CountryCodeDetectorAction
+10-07 16:12:23.761  2247  2331 I BugleDataModel: ExecuteActionRunnable: running action CountryCodeDetectorAction
+10-07 16:12:23.767  2247  2331 I BugleDataModel: ActionExecutorImpl: ACTION_BACKGROUND_QUEUED_CountryCodeDetectorAction
+10-07 16:12:23.786   666  1698 I ImeTracker: system_server:d6e79c3d: onRequestHide at ORIGIN_SERVER reason IME_REQUESTED_CHANGED_LISTENER fromUser false
+10-07 16:12:23.789   666   691 I ImeTracker: system_server:d6e79c3d: onCancelled at PHASE_SERVER_SHOULD_HIDE
+10-07 16:12:23.792  1053  1074 I s.nexuslauncher: WaitForGcToComplete blocked ProfileSaver on CollectorTransition for 150.176ms
+10-07 16:12:23.813  2247  2600 I Bugle   : CountryCodeDetector: updateSmsNetworkCountry from default subscription network country. detected country: us
+10-07 16:12:23.813  2247  2600 I BugleDataModel: ActionExecutorImpl: ACTION_RESPONSE_QUEUED_CountryCodeDetectorAction
+10-07 16:12:23.820  1367  1367 I GoogleInputMethodService: GoogleInputMethodService.onFinishInput():2043 
+10-07 16:12:23.840  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e14a5bd8) locale list changing from [] to [en-US]
+10-07 16:12:23.844  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Clock sectionName: C
+10-07 16:12:23.845  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Phone sectionName: P
+10-07 16:12:23.846  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Gmail sectionName: G
+10-07 16:12:23.847  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: YouTube sectionName: Y
+10-07 16:12:23.848  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair (Debug) sectionName: L
+10-07 16:12:23.848  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: TMoble sectionName: T
+10-07 16:12:23.900  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e14a1718) locale list changing from [] to [en-US]
+10-07 16:12:23.901  1367  1367 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():100 repeatCheckTimes = 0, locked = false
+10-07 16:12:23.903  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Safety sectionName: S
+10-07 16:12:23.908  3472  3505 I lawnchair.debug: AssetManager2(0xb4000072e14a6218) locale list changing from [] to [en-US]
+10-07 16:12:23.911  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Files sectionName: F
+10-07 16:12:23.912  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Google sectionName: G
+10-07 16:12:23.913  1367  1367 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():1293 onStartInput(EditorInfo{EditorInfo{packageName=app.lawnchair.debug, inputType=0, inputTypeString=NULL, enableLearning=false, autoCorrection=false, autoComplete=false, imeOptions=0, privateImeOptions=null, actionName=UNSPECIFIED, actionLabel=null, initialSelStart=-1, initialSelEnd=-1, initialCapsMode=0, label=null, fieldId=0, fieldName=null, extras=null, hintText=null, hintLocales=[]}}, false)
+10-07 16:12:23.913  3472  3505 D AlphabeticIndexCompat: computeSectionName: cs: Leaks sectionName: L
+10-07 16:12:23.921  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.safetyhub/com.google.android.apps.safetyhub.LauncherActivity}
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: EmojiCompatManager.getEmojiCompatIfLoaded():343 EmojiCompat.init() was never called.
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: java.lang.IllegalStateException: EmojiCompat is not initialized. Please call EmojiCompat.init() first
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at asx.p(PG:6)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at axb.b(PG:13)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at jnr.b(PG:2)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at jnr.c(PG:4)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at jnr.f(PG:3)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at jnx.c(PG:3)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at kif.cz(PG:47)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at lhl.run(PG:1025)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at jaf.execute(PG:12)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at nco.v(PG:13)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at lhn.m(PG:96)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at lhn.k(PG:25)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at kgn.onStartInput(PG:250)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at android.inputmethodservice.InputMethodService.doStartInput(InputMethodService.java:3521)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at android.inputmethodservice.InputMethodService$InputMethodImpl.startInput(InputMethodService.java:879)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at android.inputmethodservice.InputMethodService$InputMethodImpl.dispatchStartInput(InputMethodService.java:908)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at android.inputmethodservice.IInputMethodWrapper.executeMessage(IInputMethodWrapper.java:201)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at android.os.Handler.dispatchMessage(Handler.java:110)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at android.os.Looper.loopOnce(Looper.java:248)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at android.os.Looper.loop(Looper.java:338)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at android.app.ActivityThread.main(ActivityThread.java:9067)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at java.lang.reflect.Method.invoke(Native Method)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+10-07 16:12:23.932  1367  1367 I EmojiCompatManager: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+10-07 16:12:23.940  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.952  1367  1367 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():100 repeatCheckTimes = 1, locked = false
+10-07 16:12:23.952  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.youtube.music/com.google.android.apps.youtube.music.activities.MusicActivity}
+10-07 16:12:23.952  1367  1367 W NotificationCenter: NotificationCenter$NotificationQueue.notifyPendingNotificationsOnExecutor():877 Heavy notify work detected on UI thread: [kig->ilu, kig->ilu, kig->ilu, kig->imt, kig->ilu, kig->ilu, kig->ilu, kig->ilu, kig->ilu, kig->ilu, kig->fef, kig->jnx, kig->khc, kig->fro, kig->lux, kig->ilu, kig->khg, kig->ilu, kig->ilu, kig->ilu, kig->fcb] takes 31ms
+10-07 16:12:23.954  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.956   666  1698 W PackageConfigPersister: App-specific configuration not found for packageName: app.lawnchair.debug and userId: 0
+10-07 16:12:23.956  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.961  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.youtube/com.google.android.youtube.app.honeycomb.Shell$HomeActivity}
+10-07 16:12:23.964  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.966  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.968  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.photos/com.google.android.apps.photos.home.HomeActivity}
+10-07 16:12:23.970  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.973  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.gm/com.google.android.gm.ConversationListActivityGmail}
+10-07 16:12:23.975  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.977  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.googlequicksearchbox/com.google.android.googlequicksearchbox.SearchActivity}
+10-07 16:12:23.979  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:23.982  3472  3505 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.googlequicksearchbox/com.google.android.googlequicksearchbox.VoiceSearchActivity}
+10-07 16:12:23.985  3472  3505 W HWUI    : Image decoding logging dropped!
+10-07 16:12:24.004  1751  1751 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.audit.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.GmsBoundBrokerService }
+10-07 16:12:24.008  2247  2284 I ForwardSyncCache: reclaimMemory: Clearing caches
+10-07 16:12:24.010   232   232 I logd    : logdr: UID=0 GID=0 PID=3547 n tail=0 logMask=99 pid=0 start=0ns deadline=0ns
+10-07 16:12:24.014  2247  2284 W BugleSpam: trimming memory: closing msg model.
+10-07 16:12:24.020  2247  2284 W Bugle   : TextClassifierLibManagerImpl: Reclaiming memory at level: 40

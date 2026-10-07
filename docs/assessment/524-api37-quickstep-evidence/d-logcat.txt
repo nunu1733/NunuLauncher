@@ -1,0 +1,1009 @@
+--------- beginning of main
+10-07 16:00:58.711   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:58.711   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+--------- beginning of system
+10-07 16:00:58.767   642  1157 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:00:58.767   642  1157 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:00:58.780  3565  3565 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:am force-stop app.lawnchair'
+10-07 16:00:58.790   642  1157 I ActivityManager: Force stopping app.lawnchair appid=10234 user=0: from pid 4337
+10-07 16:00:58.791   642  1157 I ActivityManager: Killing 4008:app.lawnchair/u0a234 (adj 0): stop app.lawnchair due to from pid 4337
+10-07 16:00:58.792   642   802 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:00:58.792   642   802 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:00:58.792   642   802 D InetDiagMessage: Destroyed live tcp sockets for uids={10234} in 0ms
+10-07 16:00:58.792   642   802 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+10-07 16:00:58.793   642   802 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+10-07 16:00:58.793   642   802 D InetDiagMessage: Destroyed live tcp sockets for uids={20234} in 1ms
+10-07 16:00:58.793   642  1157 W ActivityTaskManager: Force removing ActivityRecord{205403462 u0 app.lawnchair/.LawnchairLauncher t85 f}}: app died, no saved state
+10-07 16:00:58.793   899   977 V WindowManagerShell: Transition requested (#26): android.os.BinderProxy@9e67394 TransitionRequestInfo { type = CLOSE, triggerTask = TaskInfo{userId=0 taskId=85 effectiveUid=10234 displayId=0 isRunning=false baseIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.HOME] flg=0x10000000 cmp=app.lawnchair/.LawnchairLauncher } baseActivity=null topActivity=null origActivity=null realActivity=ComponentInfo{app.lawnchair/app.lawnchair.LawnchairLauncher} realActivityIsAppLockEnabled=false numActivities=0 lastActiveTime=279206 supportsMultiWindow=true supportsMultiWindowWithoutConstraints=true resizeMode=2 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.os.BinderProxy@dcb3784} topActivityType=2 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 0 - 0, 0) topActivityInfo=null launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isInteractive=true isVisible=true isVisibleRequested=true isTopActivityNoDisplay=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false isActivityStackTransparent=true lastNonFullscreenBounds=null leafTaskBoundsFromOptions= false capturedLink=null capturedLinkTimestamp=0 requestedVisibleTypes=503 topActivityRequestOpenInBrowserEducationTimestamp=0 appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false isLeafTask= true eligibleForLetterboxEducation= false isLetterboxEducationEnabled= false isLetterboxDoubleTapEnabled= false eligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 topActivityAppBounds=Rect(0, 0 - 0, 0) isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false hasMinAspectRatioOverride=false topActivityLetterboxBounds=null topNonResizableActivityAspectRatio=-1.0} topActivityMainWindowFrame=null isAppBubble=false}, pipChange = null, remoteTransitionInfo = null, displayChanges = null, requestedLocation = null, userChange = null, windowingLayerChange = null, fullscreenRequestChange = null, flags = 0, debugId = 26 }
+10-07 16:00:58.793   899   977 W DisconnectHandler: No disconnect change found in the transition, not handling request.
+10-07 16:00:58.794   642  1157 W ActivityTaskManager: Force removing ActivityRecord{60205645 u0 app.lawnchair/.LawnchairLauncher t84 f}}: app died, no saved state
+10-07 16:00:58.794   642  1157 W TransitionChain: Combining appDied into #26(CLOSE|R|0x0) from appDied
+10-07 16:00:58.794   899   977 V ShellDesktopMode: DesktopTasksController: skipping handleRequest reason=triggerTask's display doesn't support desktop mode
+10-07 16:00:58.795   642  1157 W ActivityTaskManager: callingPackage for (uid=-1, pid=0) has no WPC
+10-07 16:00:58.795   642  1157 W ActivityStartInterceptor: Starting home with component specified, uid=0
+10-07 16:00:58.795   642  1157 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10234, packageName = null, attributionTag = null, token = android.os.Binder@565a758, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-07 16:00:58.796   642  1157 W TransitionChain: Combining startHomeAct into #26(CLOSE|R|0x0) from appDied
+10-07 16:00:58.797   493   697 I libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0xb4000078e14311b0) with descriptor: '(not cached)'
+10-07 16:00:58.798   642  1157 D CorePackageUpdate: onRecentTaskRemoved Removing task: 85
+10-07 16:00:58.798   642  1157 D CorePackageUpdate: Couldn't find a persistent state for task= 85
+10-07 16:00:58.798   642  1157 V ActivityTaskManager: TaskLaunchParamsModifier: phase=3 task=Task{383e032 #87 type=home I=app.lawnchair/.LawnchairLauncher} activity=ActivityRecord{242155581 u0 app.lawnchair/.LawnchairLauncher t-1} display-area-token-from-option=DefaultTaskDisplayArea@96904652 display-id=0 task-display-area-windowing-mode=1 suggested-display-area=DefaultTaskDisplayArea@96904652 non-freeform-task-display-area display-area=DefaultTaskDisplayArea@96904652 skip-bounds-fullscreen
+10-07 16:00:58.798   642  1157 I ActivityTaskManager: START u0 {act=android.intent.action.MAIN cat=[android.intent.category.HOME] flg=0x10000100 cmp=app.lawnchair/.LawnchairLauncher (has extras)} with LAUNCH_SINGLE_TASK from uid 0 (BAL_ALLOW_ALLOWLISTED_UID) result code=0
+10-07 16:00:58.799   642  1157 V WindowManager: Defer transition id=26 for TaskFragmentTransaction=android.os.Binder@4506339
+10-07 16:00:58.799  1067  1067 D ViewRootImpl: Skipping stats log for color mode
+10-07 16:00:58.799  1067  1067 D BaseActivity: Launcher flags updated: [state_started] +[state_started]
+10-07 16:00:58.799  1067  1067 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_user_active] +[state_resumed|state_user_active]
+10-07 16:00:58.799  1067  1067 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_user_active] +[]
+10-07 16:00:58.799  1067  1067 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_deferred_resumed|state_user_active] +[state_deferred_resumed]
+10-07 16:00:58.799  1067  1067 D StatsLog: LAUNCHER_ONRESUME
+10-07 16:00:58.799   642   727 W UsageStatsService: Unexpected activity event reported! (app.lawnchair/app.lawnchair.LawnchairLauncher event : 23 instanceId : 232014355)
+10-07 16:00:58.800   899   977 D WindowManagerShell: setLauncherKeepClearAreaHeight: visible=true, height=495
+10-07 16:00:58.800   899   977 V RecentTasksController: Notify recent tasks changed
+10-07 16:00:58.800   642  1157 I ActivityManager:   Force stopping service ServiceRecord{9284de7 u0 app.lawnchair/com.android.quickstep.TouchInteractionService c:app.lawnchair}
+10-07 16:00:58.802  1067  1155 D QuickstepModelDelegate: notifyAppTargetEvent action=1 launchLocation=workspace/0/[-1,-1]/[1,1]
+10-07 16:00:58.803  1581  1796 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+10-07 16:00:58.803  1581  1796 I AiAiEcho: EchoTargets: 
+10-07 16:00:58.803  1581  1796 I AiAiEcho: Filtered by AiAi flag check: 
+10-07 16:00:58.803  1581  1796 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+10-07 16:00:58.806   430   483 I netd    : tetherGetStats() -> {[]} <0.45ms>
+10-07 16:00:58.806  1581  1796 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+10-07 16:00:58.808   642   667 V WindowManager: Defer transition id=26 for TaskFragmentTransaction=android.os.Binder@9712df
+10-07 16:00:58.809  1581  1796 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+10-07 16:00:58.812  1067  1067 D SmartspaceInteractor: notifySmartspaceEvent: SmartspaceTargetEvent{mSmartspaceTarget=null, mSmartspaceActionId='null', mEventType=6}
+10-07 16:00:58.824   642   747 W InputDispatcher: channel 'ea448d0 app.lawnchair/app.lawnchair.LawnchairLauncher' ~ Consumer closed input channel or an error occurred.  events=0x9
+10-07 16:00:58.824   642   747 E InputDispatcher: channel 'ea448d0 app.lawnchair/app.lawnchair.LawnchairLauncher' ~ Channel is unrecoverably broken and will be disposed!
+10-07 16:00:58.824  1581  1796 I AiAiEcho: AmbientDataPredictorImpl No tracked ambient data found for ID: null; for event type: 6, skipping event processing.
+10-07 16:00:58.825   899   977 V RecentTasksController: Notify recent tasks changed
+10-07 16:00:58.825   899   977 D ShellDesktopMode: DesktopRepository(0): Removes freeform task: taskId=85
+10-07 16:00:58.825   899   977 W ShellDesktopMode: DesktopRepository(0): No display id found for task: taskId=85
+10-07 16:00:58.825   899   977 V RecentTasksController: Notify recent tasks changed
+10-07 16:00:58.827   642   747 I WindowManager: WINDOW DIED Window{ea448d0 u0 app.lawnchair/app.lawnchair.LawnchairLauncher}
+10-07 16:00:58.828  1067  1067 I Surface : Creating surface for consumer unnamed-1067-21 with slotExpansion=1 for 64 slots
+10-07 16:00:58.829   642   829 I AppWidgetServiceImpl: Received broadcast: android.intent.action.PACKAGE_UNSTOPPED on user 0
+10-07 16:00:58.829  1067  1067 I Surface : Creating surface for consumer VRI[NexusLauncherActivity]#10(BLAST Consumer)10 with slotExpansion=1 for 64 slots
+10-07 16:00:58.829   642   656 D WindowManager: setClientSurface Surface(name=VRI-com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity#188)/@0x15611d for d8d8ef9 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity
+10-07 16:00:58.829   642   829 I AppWidgetServiceImpl: Updating package stopped masked state for uid 10234 package app.lawnchair isStopped false
+10-07 16:00:58.829   642   829 I AppWidgetServiceImpl: Received broadcast: android.intent.action.PACKAGE_RESTARTED on user 0
+10-07 16:00:58.829   642   829 I AppWidgetServiceImpl: Updating package stopped masked state for uid 10234 package app.lawnchair isStopped false
+10-07 16:00:58.829   642  2160 V ActivityManager: Got obituary of 4008:app.lawnchair
+10-07 16:00:58.829   642   674 I libprocessgroup: Removed cgroup /sys/fs/cgroup/apps/uid_10234/pid_4008
+10-07 16:00:58.830   432   432 I Zygote  : Process 4008 exited due to signal 9 (Killed)
+10-07 16:00:58.830  1067  1067 D BaseDepthController: setSurface:
+10-07 16:00:58.830  1067  1067 D BaseDepthController: 	mWaitingOnSurfaceValidity: false
+10-07 16:00:58.830  1067  1067 D BaseDepthController: 	mBaseSurface: Surface(name=VRI-com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity#188)/@0xca96f3c
+10-07 16:00:58.830  1067  1067 V BaseDepthController: Applying blur: 0 to Surface(name=VRI-com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity#188)/@0xca96f3c applyImmediately: false
+10-07 16:00:58.830  1067  1067 D BaseDepthController: shouldBlurWorkspace: false targetState: Normal currentStableState: Normal mCurrentBlur: 0 mLauncher.getDepthBlurTargets(): [com.android.launcher3.Workspace{2056a29 V.ED..... .......D 0,0-1080,2424 #7f0a0486 app:id/workspace}, com.android.launcher3.Hotseat{2b6c303 V.ED..... .......D 0,1929-1080,2424 #7f0a01f6 app:id/hotseat}]
+10-07 16:00:58.830   642  2160 D SensorService: Unregistering client listener for PID 4008
+10-07 16:00:58.830   642  2160 D SensorService: Unregistering client listener for PID 4008
+10-07 16:00:58.830   642  1901 I ImeTracker: app.lawnchair:c8b77c4b: onRequestHide at ORIGIN_SERVER reason HIDE_REMOVE_CLIENT fromUser false userId 0 displayId 0
+10-07 16:00:58.831   642  1901 I ImeTracker: app.lawnchair:c8b77c4b: onCancelled at PHASE_SERVER_SHOULD_HIDE
+10-07 16:00:58.831   642   666 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10234, packageName = null, attributionTag = null, token = android.os.Binder@565a758, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-07 16:00:58.831  1426  1426 W InputChannel-JNI: Channel already disposed.
+10-07 16:00:58.832   642   666 V WindowManager: Unknown focus tokens, dropping reportFocusChanged
+10-07 16:00:58.832   642  1901 I WindowManager: WIN DEATH: Window{ea448d0 u0 app.lawnchair/app.lawnchair.LawnchairLauncher EXITING}
+10-07 16:00:58.833   642  1901 I WindowManager: WIN DEATH: Window{308e859 u0 app.lawnchair/app.lawnchair.LawnchairLauncher}
+10-07 16:00:58.838  1041  1041 D CarrierSvcBindHelper: onHandleForceStop: [app.lawnchair]
+10-07 16:00:58.839   642   982 E libbinder.IPCThreadState: Binder transaction failure. id: 178037, cmd: BR_DEAD_REPLY (29189), error: -3 (No such process)
+10-07 16:00:58.839   642   982 W ActivityManager: pid 642 system sent binder code 4 with flags 1 and got error -32
+10-07 16:00:58.839  1041  1041 D CarrierSvcBindHelper: No carrier app for: 0
+10-07 16:00:58.840   642   666 W ActivityManager: setHasOverlayUi called on unknown pid: 4008
+10-07 16:00:58.840   642  1157 W ActivityManager: pid 642 system sent binder code 1 with flags 1 and got error -32
+10-07 16:00:58.840   642  1157 D ActivityManager: Too many transaction errors, throttling transaction error callback.
+--------- beginning of kernel
+10-07 16:00:58.840   982   982 I binder_alloc: 4008: binder_alloc_buf, no vma
+10-07 16:00:58.840   982   982 I binder  : cannot allocate buffer: vma cleared, target dead or dying
+10-07 16:00:58.841   982   982 I binder  : 642:982 transaction async to 4008:0 failed 178037/29189/-3, code 4 size 284-8 line 3606
+10-07 16:00:58.841   642  1157 W ActivityManager: pid 642 system sent binder code 1 with flags 1 and got error -32
+10-07 16:00:58.841   642  1157 D ActivityManager: Too many transaction errors, throttling transaction error callback.
+10-07 16:00:58.852   432   432 D Zygote  : Forked child process 4343
+10-07 16:00:58.852   642   673 I ActivityManager: Start proc 4343:app.lawnchair/u0a234 for top-activity {app.lawnchair/app.lawnchair.LawnchairLauncher}
+10-07 16:00:58.858   642   982 W WindowManager: Cannot find window which accessibility connection is added to
+10-07 16:00:58.861  4343  4343 I libprocessgroup: Created cgroup /sys/fs/cgroup/apps/uid_10234/pid_4343
+10-07 16:00:58.864  4343  4343 I Zygote  : Process 4343 created for app.lawnchair
+10-07 16:00:58.864  4343  4343 I app.lawnchair: Using generational CollectorTypeCMC GC.
+10-07 16:00:58.867  1067  1067 D RecentTasksList: invalidateLoadedTasks - previous requestLoadId: -1
+10-07 16:00:58.867  1067  1067 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_deferred_resumed|state_user_active] -[]
+10-07 16:00:58.869  1067  1067 D BaseActivity: Launcher flags updated: [state_started|state_user_active] -[state_resumed|state_deferred_resumed]
+10-07 16:00:58.869  1067  1067 W SplitSelectStateCtor: Missing session instanceIds
+10-07 16:00:58.869  1067  1067 D StatsLog: LAUNCHER_SPLIT_SELECTION_EXIT_INTERRUPTED
+10-07 16:00:58.869  1067  1067 D RecentTasksList: invalidateLoadedTasks - previous requestLoadId: -1
+10-07 16:00:58.869  1067  1067 D RecentTasksList: invalidateLoadedTasks - previous requestLoadId: -1
+10-07 16:00:58.869  1067  1067 D RecentsView: onTaskDisplayChanged: 87, new displayId = 0
+10-07 16:00:58.869  1067  1067 D RecentsView: onTaskDisplayChanged: 87, new displayId = 0
+10-07 16:00:58.870   642  1157 V WindowManager: Continue transition id=26 for TaskFragmentTransaction=android.os.Binder@4506339
+10-07 16:00:58.870   642  1157 V WindowManager: Continue transition id=26 for TaskFragmentTransaction=android.os.Binder@9712df
+10-07 16:00:58.872  4343  4343 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+10-07 16:00:58.877  1067  1067 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+10-07 16:00:58.877  1067  1067 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+10-07 16:00:58.878  1067  1067 D SsBaseTemplateCard: Passed-in item info is null
+10-07 16:00:58.878  1067  1067 D SsBaseTemplateCard: Passed-in item info is null
+10-07 16:00:58.878  1067  1067 D SsBaseTemplateCard: Passed-in item info is null
+10-07 16:00:58.878  1067  1067 D SsBaseTemplateCard: Passed-in item info is null
+10-07 16:00:58.878  1067  1067 I SsBaseTemplateCard: Secondary card pane is null
+10-07 16:00:58.891  4343  4343 D CompatChangeReporter: Compat change id reported: 333566037; UID 10234; state: ENABLED
+10-07 16:00:58.891  4343  4343 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+10-07 16:00:58.891  4343  4343 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.sidecar.jar
+10-07 16:00:58.898  4343  4343 D nativeloader: Configuring clns-9 for other apk /data/app/~~f0iE3fA5EbjiVf94RFY3CQ==/app.lawnchair-E7ciVSrZTidzP6kXr9iTsQ==/base.apk. target_sdk_version=37, uses_libraries=, library_path=/data/app/~~f0iE3fA5EbjiVf94RFY3CQ==/app.lawnchair-E7ciVSrZTidzP6kXr9iTsQ==/lib/arm64:/data/app/~~f0iE3fA5EbjiVf94RFY3CQ==/app.lawnchair-E7ciVSrZTidzP6kXr9iTsQ==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/app.lawnchair
+10-07 16:00:58.900  4343  4343 V GraphicsEnvironment: Currently set values for:
+10-07 16:00:58.901  4343  4343 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-07 16:00:58.901  4343  4343 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-07 16:00:58.901  4343  4343 V GraphicsEnvironment: app.lawnchair is not listed in per-application setting
+10-07 16:00:58.901  4343  4343 V GraphicsEnvironment: No special selections for ANGLE, returning default driver choice
+10-07 16:00:58.902  4343  4343 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+10-07 16:00:58.903  4343  4343 D CompatChangeReporter: Compat change id reported: 407952621; UID 10234; state: ENABLED
+10-07 16:00:58.903  4343  4343 D CompatChangeReporter: Compat change id reported: 419020719; UID 10234; state: ENABLED
+10-07 16:00:58.905  4343  4343 D nativeloader: Load /data/app/~~f0iE3fA5EbjiVf94RFY3CQ==/app.lawnchair-E7ciVSrZTidzP6kXr9iTsQ==/base.apk!/lib/arm64-v8a/libnrb.so using class loader ns clns-9 (caller=/data/app/~~f0iE3fA5EbjiVf94RFY3CQ==/app.lawnchair-E7ciVSrZTidzP6kXr9iTsQ==/base.apk!classes2.dex): ok
+10-07 16:00:58.906  4343  4355 D native  : Found attached 0
+10-07 16:00:58.906  4343  4355 D native  : Calling class is: java.lang.Class
+10-07 16:00:58.906  4343  4356 D native  : Found attached 0
+10-07 16:00:58.906  4343  4356 D native  : Calling class is: java.lang.Class
+10-07 16:00:58.906  4343  4343 I MainProcessInitializer: Unseal success!
+10-07 16:00:58.907   899   977 V RecentTasksController: Notify recent tasks changed
+10-07 16:00:58.908  1067  1067 D RecentTasksList: invalidateLoadedTasks - previous requestLoadId: -1
+10-07 16:00:58.908   899   977 V RecentTasksController: generateList(getRecentTasks)
+10-07 16:00:58.908   899   977 V RecentTasksController: initializeDesksMap - allDeskIds: []
+10-07 16:00:58.908   899   977 V RecentTasksController: Task 86 is not an active desktop task
+10-07 16:00:58.908   899   977 V RecentTasksController: Added fullscreen task: 86
+10-07 16:00:58.908   899   977 V RecentTasksController: Task 84 is not an active desktop task
+10-07 16:00:58.908   899   977 V RecentTasksController: Added fullscreen task: 84
+10-07 16:00:58.908   899   977 V RecentTasksController: Task 76 is not an active desktop task
+10-07 16:00:58.908   899   977 V RecentTasksController: Added fullscreen task: 76
+10-07 16:00:58.908   899   977 V RecentTasksController: generateList - complete
+10-07 16:00:58.908  1067  1153 D PreloadThumbnailUseCase: Preloading thumbnails for task ids: [[id=76 windowingMode=0 user=0 lastActiveTime=6809] null, [id=84 windowingMode=1 user=0 lastActiveTime=241471] null, [id=86 windowingMode=1 user=0 lastActiveTime=258018] null]
+10-07 16:00:58.909   899   977 V RecentTasksController: generateList(getRecentTasks)
+10-07 16:00:58.909   899   977 V RecentTasksController: initializeDesksMap - allDeskIds: []
+10-07 16:00:58.909   899   977 V RecentTasksController: Task 86 is not an active desktop task
+10-07 16:00:58.909   899   977 V RecentTasksController: Added fullscreen task: 86
+10-07 16:00:58.909   899   977 V RecentTasksController: Task 84 is not an active desktop task
+10-07 16:00:58.909   899   977 V RecentTasksController: Added fullscreen task: 84
+10-07 16:00:58.909   899   977 V RecentTasksController: Task 76 is not an active desktop task
+10-07 16:00:58.909   899   977 V RecentTasksController: Added fullscreen task: 76
+10-07 16:00:58.909   899   977 V RecentTasksController: generateList - complete
+10-07 16:00:58.909  1067  1153 D PreloadThumbnailUseCase: Preloading thumbnails for task ids: [[id=76 windowingMode=0 user=0 lastActiveTime=6809] null, [id=84 windowingMode=1 user=0 lastActiveTime=241471] null, [id=86 windowingMode=1 user=0 lastActiveTime=258018] null]
+10-07 16:00:58.909  4343  4358 D CompatChangeReporter: Compat change id reported: 458413887; UID 10234; state: ENABLED
+10-07 16:00:58.909  4343  4343 D CompatChangeReporter: Compat change id reported: 418924588; UID 10234; state: ENABLED
+10-07 16:00:58.913  4343  4343 I HWUI    : Using FreeType backend (prop=Auto)
+10-07 16:00:58.927  4343  4363 D native  : Found attached 0
+10-07 16:00:58.927  4343  4363 D native  : Calling class is: java.lang.Class
+10-07 16:00:58.927  4343  4364 D native  : Found attached 0
+10-07 16:00:58.927  4343  4364 D native  : Calling class is: java.lang.Class
+10-07 16:00:58.927  4343  4343 I MainProcessInitializer: Unseal success!
+10-07 16:00:58.928  4343  4343 D LawnchairApp: config_recentsComponentName (ComponentInfo{com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity}) is not Lawnchair, disabling recents
+10-07 16:00:58.934  4343  4343 D PreferenceManager2: getRemoteDefault: dock_search_bar_provider -> no remote default
+10-07 16:00:58.935  4343  4343 D PreferenceManager2: getRemoteDefault: web_suggestion_provider -> no remote default
+10-07 16:00:58.938   642  1157 D CorePackageUpdate: Couldn't find a persistent state for task= 87
+10-07 16:00:58.940  4343  4369 I DisplayManager: Choreographer implicitly registered for the refresh rate.
+10-07 16:00:58.941  4343  4343 D DesktopExperienceFlags: Toggle override initialized to: false
+10-07 16:00:58.948  4343  4343 I DisplayController: (CTOR) perDisplayBounds: {CachedDisplayInfo{size=Point(1080, 2424), cutout=DisplayCutout{insets=Rect(0, 142 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(485, 0 - 595, 142), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=1080 displayHeight=2424 physicalDisplayWidth=1080 physicalDisplayHeight=2424 density={2.625} cutoutSpec={m 581.5,86.5 a 42,42 0 0 0 -84,0 42,42 0 0 0 84,0 z @left} rotation={0} scale={1.0} physicalPixelDisplaySizeRatio={1.0}}} sideOverrides={}}, rotation=0}=[WindowBounds{bounds=Rect(0, 0 - 1080, 2424), insets=Rect(0, 142 - 0, 63), availableSize=Point(1080, 2219), rotationHint=0}, WindowBounds{bounds=Rect(0, 0 - 2424, 1080), insets=Rect(142, 137 - 0, 63), availableSize=Point(2282, 880), rotationHint=1}, WindowBounds{bounds=Rect(0, 0 - 1080, 2424), insets=Rect(0, 137 - 0, 142), availableSize=Point(1080, 2145), rotationHint=2}, WindowBounds{bounds=Rect(0, 0 - 2424, 1080), insets=Rect(0, 137 - 142, 63), availableSize=Point(2282, 880), rotationHint=3}]}
+10-07 16:00:58.953  4343  4369 I GFXSTREAM: [eglDisplay.cpp(297)] Opening libGLESv1_CM_emulation.so
+10-07 16:00:58.953  4343  4369 I GFXSTREAM: [eglDisplay.cpp(297)] Opening libGLESv2_emulation.so
+10-07 16:00:58.963  4343  4369 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+10-07 16:00:58.965  4343  4369 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+10-07 16:00:58.965  4343  4369 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.966  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.967  4343  4343 D DeviceProfileOverrides: Grid recompute from prefs: rows=5 columns=4 hotseat=4
+10-07 16:00:58.967  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.967  4343  4343 D LC-DisplayController: Device has phone profile (Phone)
+10-07 16:00:58.968  4343  4343 I Surface : Creating surface for consumer unnamed-4343-0 with slotExpansion=1 for 64 slots
+10-07 16:00:58.971  4343  4369 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+10-07 16:00:58.971   288   288 I servicemanager: Caller(pid=4343,uid=10234,sid=u:r:untrusted_app:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+10-07 16:00:58.972   288   288 I servicemanager: Caller(pid=4343,uid=10234,sid=u:r:untrusted_app:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+10-07 16:00:58.972   288   288 I servicemanager: Caller(pid=4343,uid=10234,sid=u:r:untrusted_app:s0:c234,c256,c512,c768) Found mapper/ranchu in device VINTF manifest.
+10-07 16:00:58.979  4343  4343 E ConsumerBase: [ImageReader-48x48f1u2816m2-4343-0] abandonLocked: ConsumerBase is abandoned!
+10-07 16:00:58.982  4343  4343 D IDP     : After initGrid:gridName:4_by_6, dbFile:launcher_5_4_4.db, LauncherPrefs GRID_NAME:4_by_6, LauncherPrefs DB_FILE:launcher_5_4_4.db
+10-07 16:00:58.983   642   936 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:00:58.983   642  1901 I AppWidgetServiceImpl: notifyProviderInheritance() 0
+10-07 16:00:58.988   642   936 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:00:58.988   642  1901 I AppWidgetServiceImpl: notifyProviderInheritance() 0
+10-07 16:00:58.997   642   936 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:00:58.997   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:58.997   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:58.997   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:58.997   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.000  4343  4343 D RecentsDependencies: initializing
+10-07 16:00:59.000  4343  4343 D RecentsDependencies: startDefaultScope
+10-07 16:00:59.000   642  1901 W ActivityTaskManager: Permission Denial: registerTaskStackListener() from pid=4343, uid=10234 requires android.permission.MANAGE_ACTIVITY_TASKS
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: Failed to call registerTaskStackListener
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: java.lang.SecurityException: Permission Denial: registerTaskStackListener() from pid=4343, uid=10234 requires android.permission.MANAGE_ACTIVITY_TASKS
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3392)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.os.Parcel.createException(Parcel.java:3376)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.os.Parcel.readException(Parcel.java:3359)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.os.Parcel.readException(Parcel.java:3301)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.IActivityTaskManager$Stub$Proxy.registerTaskStackListener(IActivityTaskManager.java:3052)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.systemui.shared.system.TaskStackChangeListeners$Impl.addListener(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:23)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.systemui.shared.system.TaskStackChangeListeners.registerTaskStackListener(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:6)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.TopTaskTracker.<init>(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:50)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.TopTaskTracker_Factory.newInstance(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:3)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.TopTaskTracker_Factory.get(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:33)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.TopTaskTracker_Factory.get(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:38)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at yh1.get(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:14)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.RecentsModel_Factory.get(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:21)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.RecentsModel_Factory.get(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:78)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at yh1.get(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:14)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.launcher3.dagger.DaggerLauncherAppComponent$LauncherAppComponentImpl.getRecentsModel(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:3)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at k74.apply(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:122)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.launcher3.util.DaggerSingletonObject.get(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:7)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies.startDefaultScope(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:67)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies.<init>(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:11)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies.<init>(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:15)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies$Companion.initialize(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:16)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies$Companion.maybeInitialize(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:7)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.recents.di.RecentsDependencies.maybeInitialize(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:3)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.views.RecentsView.<init>(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:324)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.views.LauncherRecentsView.<init>(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:1)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.views.LauncherRecentsView.<init>(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:12)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at java.lang.reflect.Constructor.newInstance0(Native Method)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at java.lang.reflect.Constructor.newInstance(Constructor.java:343)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.createView(LayoutInflater.java:743)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:895)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:850)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflate(LayoutInflater.java:1012)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.parseInclude(LayoutInflater.java:1117)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflate(LayoutInflater.java:1008)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflate(LayoutInflater.java:1016)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.inflate(LayoutInflater.java:571)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.inflate(LayoutInflater.java:462)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.view.LayoutInflater.inflate(LayoutInflater.java:413)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.launcher3.statemanager.StatefulActivity.inflateRootView(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:6)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.launcher3.Launcher.setupViews(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:28)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.launcher3.uioverrides.QuickstepLauncher.setupViews(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:42)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.launcher3.Launcher.onCreate(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:108)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.launcher3.uioverrides.QuickstepLauncher.onCreate(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:1)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at app.lawnchair.LawnchairLauncher.onCreate(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:29)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.Activity.performCreate(Activity.java:9340)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.Activity.performCreate(Activity.java:9318)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1543)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:4559)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:4781)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:224)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.servertransaction.TransactionExecutor.executeNonLifecycleItem(TransactionExecutor.java:133)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.servertransaction.TransactionExecutor.executeTransactionItems(TransactionExecutor.java:103)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:80)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:3032)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.os.Looper.loopOnce(Looper.java:296)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.os.Looper.loop(Looper.java:397)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at java.lang.reflect.Method.invoke(Native Method)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: Caused by: android.os.RemoteException: Remote stack trace:
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.server.wm.Session$$ExternalSyntheticBUOutline1.m(R8$$SyntheticClass:0)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.server.wm.ActivityTaskManagerService.enforceTaskPermission(ActivityTaskManagerService.java:3775)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.server.wm.ActivityTaskManagerService.registerTaskStackListener(ActivityTaskManagerService.java:3516)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at android.app.IActivityTaskManager$Stub.onTransact(IActivityTaskManager.java:1604)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 	at com.android.server.wm.ActivityTaskManagerService.onTransact(ActivityTaskManagerService.java:6421)
+10-07 16:00:59.000  4343  4343 W TaskStackChangeListeners: 
+10-07 16:00:59.004  4343  4343 D RecentsDependencies: createRecentsViewScope 31491608
+10-07 16:00:59.006  4343  4343 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.007  4343  4343 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.008  4343  4343 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.008  4343  4343 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.009  4343  4343 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.009  4343  4343 E ThemeUtils: View class app.lawnchair.views.CustomButton is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.012  4343  4380 D ViewPool: initPool complete
+10-07 16:00:59.014  4343  4379 D ViewPool: initPool complete
+10-07 16:00:59.021  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.022  4343  4343 E RecyclerView: Cannot scroll to position a LayoutManager set. Call setLayoutManager with a non-null argument.
+10-07 16:00:59.022  4343  4343 D ActivityAllAppsContainerView: rebindAdapters: force: true
+10-07 16:00:59.022  4343  4343 D ActivityAllAppsContainerView: replaceAppsRVContainer: showTabs: false
+10-07 16:00:59.022  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.022  4343  4343 E RecyclerView: Cannot scroll to position a LayoutManager set. Call setLayoutManager with a non-null argument.
+10-07 16:00:59.025   642   936 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:00:59.025   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.025   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.025   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.025   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.026   642   936 E AppWidgetServiceImpl: getAppWidgetInfo() returns null because widget.provider is null. appWidgetId=8 userId=0 widget=AppWidgetId{8:Host{HostId{user:0, app:10234, hostId:1028, pkg:app.lawnchair}}:null}
+10-07 16:00:59.026  4343  4343 E AppWidgetManager: App widget provider info is null. PackageName=app.lawnchair appWidgetId-8
+10-07 16:00:59.026   642  1901 I AppWidgetServiceImpl: deleteAppWidgetId() 0
+10-07 16:00:59.026   642  1901 I AppWidgetServiceImpl: deleteAppWidgetLocked() AppWidgetId{8:Host{HostId{user:0, app:10234, hostId:1028, pkg:app.lawnchair}}:null}
+10-07 16:00:59.026   642  1901 I AppWidgetServiceImpl: removeWidgetLocked() AppWidgetId{8:Host{HostId{user:0, app:10234, hostId:1028, pkg:app.lawnchair}}:null}
+10-07 16:00:59.026   642  1901 I AppWidgetServiceImpl: Deleted widget id 8 for host HostId{user:0, app:10234, hostId:1028, pkg:app.lawnchair}
+10-07 16:00:59.026   642  1157 I AppWidgetServiceImpl: allocateAppWidgetId() 0
+10-07 16:00:59.026   642  1157 I AppWidgetServiceImpl: addWidgetLocked() AppWidgetId{10:Host{HostId{user:0, app:10234, hostId:1028, pkg:app.lawnchair}}:null}
+10-07 16:00:59.026   642  1157 I AppWidgetServiceImpl: Allocated widget id 10 for host HostId{user:0, app:10234, hostId:1028, pkg:app.lawnchair}
+10-07 16:00:59.027   642  1157 I AppWidgetServiceImpl: bindAppWidgetId() 0
+10-07 16:00:59.029  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: app.lawnchair.smartspace.SmartspaceViewContainer{554d61f V.E....L. ......I. 0,0-0,0 #7f0a030e app:id/search_container_workspace}
+10-07 16:00:59.032  4343  4343 I OverviewComponentObserver: updateOverviewTargets: mIsHomeDisabled=false, isDefaultHomeNull=false, mIsDefaultHome=true
+10-07 16:00:59.032  4343  4343 D OverviewActionsView: updateActionButtonsVisibility() called: showSingleTaskActions = [true], showGroupActions = [false]
+10-07 16:00:59.034  4343  4343 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:00:59.034  4343  4360 D RestoreDbTask: No restore task pending, exiting RestoreDbTask
+10-07 16:00:59.035  4343  4343 D OverviewActionsView: updateActionButtonsVisibility() called: showSingleTaskActions = [true], showGroupActions = [false]
+10-07 16:00:59.054  4343  4360 D ModelDbController: migrateGridIfNeeded: no grid migration needed
+10-07 16:00:59.055  4343  4360 D LoaderTask: loadWorkspace: loading default favorites if necessary
+10-07 16:00:59.055  4343  4360 D LoaderTask: loadWorkspace: Packages with active install sessions: []
+10-07 16:00:59.055   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.056  4343  4360 D LoaderTask: No pinned shortcuts found for user UserHandle{0}
+10-07 16:00:59.058  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.dialer, itemType=0, restoreFlag=0
+10-07 16:00:59.059  4343  4343 D b/380940677: [mStateHandlerRequest=0, mCurrentStateRequest=0, mLastActivityFlags=5, mIgnoreAutoRotateSettings=false, mHomeRotationEnabled=false, mForceAllowRotationForTesting=false, mDestroyed=false, mIsFixedLandscape=false]
+10-07 16:00:59.060  2216  2216 E bzvh    : Only system and debuggable apps are allowed to connect
+10-07 16:00:59.060  2216  2216 W bzvh    : Unable to bind to service
+10-07 16:00:59.062  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.messaging, itemType=0, restoreFlag=0
+10-07 16:00:59.064  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.contacts, itemType=0, restoreFlag=0
+10-07 16:00:59.066  4343  4343 W LoaderTask: stopLocked: Loader stopping
+10-07 16:00:59.066  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.android.chrome, itemType=0, restoreFlag=0
+10-07 16:00:59.069  4343  4384 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+10-07 16:00:59.072  4343  4384 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+10-07 16:00:59.072  4343  4384 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-07 16:00:59.072  4343  4343 D BaseActivity: Launcher flags updated: [state_started] +[state_started]
+10-07 16:00:59.072  4343  4343 I FEED    : 1
+10-07 16:00:59.072  4343  4343 I FEED    : 2
+10-07 16:00:59.072  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.073  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.073  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.074  4343  4343 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_user_active] +[state_resumed|state_user_active]
+10-07 16:00:59.074  4343  4360 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+10-07 16:00:59.077  4343  4343 W HWUI    : Unknown dataspace 0
+10-07 16:00:59.079   642  1157 W InputChannel-JNI: Channel already disposed.
+10-07 16:00:59.080  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.080  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.080  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.081   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.083  4343  4343 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_deferred_resumed|state_user_active] +[state_deferred_resumed]
+10-07 16:00:59.083  4343  4343 D StatsLog: LAUNCHER_ONRESUME
+10-07 16:00:59.084  2216  2216 E bzvh    : Only system and debuggable apps are allowed to connect
+10-07 16:00:59.084  2216  2216 W bzvh    : Unable to bind to service
+10-07 16:00:59.084  4343  4343 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): android.app.Activity$$ExternalSyntheticLambda0@4f04ff0
+10-07 16:00:59.085   642   936 D CoreBackPreview: Window{e9cd361 u0 app.lawnchair/app.lawnchair.LawnchairLauncher}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@96e185e, mPriority=-1, mIsAnimationCallback=false, mOverrideBehavior=0}
+10-07 16:00:59.085  4343  4343 D WindowOnBackDispatcher: setTopOnBackInvokedCallback (unwrapped): com.android.launcher3.uioverrides.QuickstepLauncher$3@633fee
+10-07 16:00:59.085   642  1157 D CoreBackPreview: Window{e9cd361 u0 app.lawnchair/app.lawnchair.LawnchairLauncher}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@601343f, mPriority=0, mIsAnimationCallback=true, mOverrideBehavior=0}
+10-07 16:00:59.085  4343  4343 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:00:59.085  4343  4360 D LoaderTask: loadWorkspace finished
+10-07 16:00:59.085  4343  4360 W LoaderTask: LoaderTask cancelled
+10-07 16:00:59.086   642  1157 W ActivityTaskManager: Permission Denial: registerTaskStackListener() from pid=4343, uid=10234 requires android.permission.MANAGE_ACTIVITY_TASKS
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: Failed to call registerTaskStackListener
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: java.lang.SecurityException: Permission Denial: registerTaskStackListener() from pid=4343, uid=10234 requires android.permission.MANAGE_ACTIVITY_TASKS
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3392)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Parcel.createException(Parcel.java:3376)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Parcel.readException(Parcel.java:3359)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Parcel.readException(Parcel.java:3301)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.app.IActivityTaskManager$Stub$Proxy.registerTaskStackListener(IActivityTaskManager.java:3052)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at com.android.systemui.shared.system.TaskStackChangeListeners$Impl.addListener(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:23)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at com.android.systemui.shared.system.TaskStackChangeListeners.registerTaskStackListener(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:6)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at com.android.quickstep.views.RecentsView.onAttachedToWindow(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:35)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.View.dispatchAttachedToWindow(View.java:23535)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3627)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3634)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3634)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3634)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3634)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewGroup.dispatchAttachedToWindow(ViewGroup.java:3634)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewRootImpl.performTraversals(ViewRootImpl.java:4017)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewRootImpl.doTraversal(ViewRootImpl.java:3351)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.ViewRootImpl$TraversalCallback.onVsync(ViewRootImpl.java:11448)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1664)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.Choreographer.doCallbacks(Choreographer.java:1252)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.Choreographer.doFrame(Choreographer.java:1209)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.view.Choreographer$FrameDisplayEventReceiver.run(Choreographer.java:1640)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Handler.handleCallback(Handler.java:1095)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Looper.loopOnce(Looper.java:296)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.os.Looper.loop(Looper.java:397)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at java.lang.reflect.Method.invoke(Native Method)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+10-07 16:00:59.086  4343  4343 W TaskStackChangeListeners: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+10-07 16:00:59.086  4343  4343 D VRI[LawnchairLauncher]: WindowInsets changed: 1080x2424 statusBars:[0,142,0,0] navigationBars:[0,0,0,63] mandatorySystemGestures:[0,174,0,84] 
+10-07 16:00:59.087  4343  4343 D OverviewActionsView: updateActionButtonsVisibility() called: showSingleTaskActions = [true], showGroupActions = [false]
+10-07 16:00:59.088  4343  4343 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:00:59.091   642   936 D WindowManager: setClientSurface Surface(name=VRI-app.lawnchair/app.lawnchair.LawnchairLauncher#190)/@0x344c1f8 for e9cd361 app.lawnchair/app.lawnchair.LawnchairLauncher
+10-07 16:00:59.092  4343  4343 I Surface : Creating surface for consumer unnamed-4343-1 with slotExpansion=1 for 64 slots
+10-07 16:00:59.093  4343  4343 I Surface : Creating surface for consumer VRI[LawnchairLauncher]#0(BLAST Consumer)0 with slotExpansion=1 for 64 slots
+10-07 16:00:59.108   642  1928 E AppWidgetServiceImpl: getAppWidgetInfo() returns null because widget.provider is null. appWidgetId=10 userId=0 widget=AppWidgetId{10:Host{HostId{user:0, app:10234, hostId:1028, pkg:app.lawnchair}}:null}
+10-07 16:00:59.109  4343  4343 E AppWidgetManager: App widget provider info is null. PackageName=app.lawnchair appWidgetId-10
+10-07 16:00:59.109   642  1928 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: app.lawnchair
+10-07 16:00:59.109   642   672 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: app.lawnchair
+10-07 16:00:59.112  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.112  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.112  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.112  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.113  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.IcuDateTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.113  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.113  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.113  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.114  4343  4343 E BcSmartspaceCard: No tap action can be set up
+10-07 16:00:59.115  4343  4360 D ModelDbController: migrateGridIfNeeded: no grid migration needed
+10-07 16:00:59.115  4343  4360 D LoaderTask: loadWorkspace: loading default favorites if necessary
+10-07 16:00:59.115  4343  4360 D LoaderTask: loadWorkspace: Packages with active install sessions: []
+10-07 16:00:59.115  4343  4360 D LoaderTask: No pinned shortcuts found for user UserHandle{0}
+10-07 16:00:59.115  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.dialer, itemType=0, restoreFlag=0
+10-07 16:00:59.116  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.messaging, itemType=0, restoreFlag=0
+10-07 16:00:59.117  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.contacts, itemType=0, restoreFlag=0
+10-07 16:00:59.117  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.android.chrome, itemType=0, restoreFlag=0
+10-07 16:00:59.117  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.googlequicksearchbox, itemType=0, restoreFlag=0
+10-07 16:00:59.118  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.gm, itemType=0, restoreFlag=0
+10-07 16:00:59.118  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.maps, itemType=0, restoreFlag=0
+10-07 16:00:59.118  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.youtube, itemType=0, restoreFlag=0
+10-07 16:00:59.119  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.docs, itemType=0, restoreFlag=0
+10-07 16:00:59.119  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.youtube.music, itemType=0, restoreFlag=0
+10-07 16:00:59.119  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.photos, itemType=0, restoreFlag=0
+10-07 16:00:59.119  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.gm, itemType=0, restoreFlag=0
+10-07 16:00:59.120  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.google.android.apps.photos, itemType=0, restoreFlag=0
+10-07 16:00:59.121  4343  4360 D WorkspaceItemProcessor: valid target true, marking restored: com.android.settings, itemType=0, restoreFlag=0
+10-07 16:00:59.125  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.photos/com.google.android.apps.photos.home.HomeActivity}
+10-07 16:00:59.127   642   667 W ActivityTaskManager: Unable to send transaction to client proc app.lawnchair: no app thread
+10-07 16:00:59.139  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.gm/com.google.android.gm.ConversationListActivityGmail}
+10-07 16:00:59.145  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.contacts/com.android.contacts.activities.PeopleActivity}
+10-07 16:00:59.148  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.messaging/com.google.android.apps.messaging.ui.ConversationListActivity}
+10-07 16:00:59.155  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.dialer/com.google.android.dialer.extensions.GoogleDialtactsActivity}
+10-07 16:00:59.159  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.settings/com.android.settings.Settings}
+10-07 16:00:59.162  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.chrome/com.google.android.apps.chrome.Main}
+10-07 16:00:59.176  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.youtube.music/com.google.android.apps.youtube.music.activities.MusicActivity}
+10-07 16:00:59.179  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.photos/com.google.android.apps.photos.home.HomeActivity}
+10-07 16:00:59.180  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.youtube/com.google.android.youtube.app.honeycomb.Shell$HomeActivity}
+10-07 16:00:59.185  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.gm/com.google.android.gm.ConversationListActivityGmail}
+10-07 16:00:59.188  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.maps/com.google.android.maps.MapsActivity}
+10-07 16:00:59.195  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.googlequicksearchbox/com.google.android.googlequicksearchbox.SearchActivity}
+10-07 16:00:59.199  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.docs/com.google.android.apps.docs.app.NewMainProxyActivity}
+10-07 16:00:59.236  4343  4360 D LoaderTask: loadWorkspace finished
+10-07 16:00:59.236   642  1157 I AppWidgetServiceImpl: getAppWidgetIdsForHost() 0
+10-07 16:00:59.245  4343  4360 D LoaderTask: sanitizeData finished
+10-07 16:00:59.246  4343  4360 D ModelCallbacks: Starting async inflation
+10-07 16:00:59.247  4343  4360 D LoaderTask: bindWorkspace finished
+10-07 16:00:59.248   642  1157 W Binder  : Caught a RuntimeException from the binder stub implementation.
+10-07 16:00:59.248   642  1157 W Binder  : java.lang.SecurityException: Access denied, requires: android.permission.MANAGE_ACCESSIBILITY
+10-07 16:00:59.248   642  1157 W Binder  : 	at android.os.PermissionEnforcer.enforcePermission(PermissionEnforcer.java:149)
+10-07 16:00:59.248   642  1157 W Binder  : 	at android.view.accessibility.IAccessibilityManager$Stub.unregisterSystemAction_enforcePermission(IAccessibilityManager.java:1953)
+10-07 16:00:59.248   642  1157 W Binder  : 	at com.android.server.accessibility.AccessibilityManagerService.unregisterSystemAction(AccessibilityManagerService.java:1760)
+10-07 16:00:59.248   642  1157 W Binder  : 	at android.view.accessibility.IAccessibilityManager$Stub.onTransact(IAccessibilityManager.java:711)
+10-07 16:00:59.248   642  1157 W Binder  : 	at android.os.Binder.execTransactInternal(Binder.java:1369)
+10-07 16:00:59.248   642  1157 W Binder  : 	at android.os.Binder.execTransact(Binder.java:1323)
+10-07 16:00:59.252  4343  4360 D LoaderTask: Sending first screen broadcast
+10-07 16:00:59.262  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: app.lawnchair.smartspace.SmartspaceViewContainer{554d61f V.E....L. ......ID 0,0-1036,318 #7f0a030e app:id/search_container_workspace}
+10-07 16:00:59.262  4343  4343 D ModelCallbacks: startBinding: hotseat layout was vertical: false and is setting to false
+10-07 16:00:59.262  4343  4343 D Launcher.Workspace: addInScreenFromBind: hotseat inflation with x = 0 and y = 0 page = 0
+10-07 16:00:59.262  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{f304aa3 VFED..C.. ......ID 0,0-0,0 #1}
+10-07 16:00:59.262  4343  4343 D Launcher.Workspace: addInScreenFromBind: hotseat inflation with x = 1 and y = 0 page = 0
+10-07 16:00:59.262  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{c8fa11e VFED..C.. ......ID 0,0-0,0 #2}
+10-07 16:00:59.262  4343  4343 D Launcher.Workspace: addInScreenFromBind: hotseat inflation with x = 2 and y = 0 page = 0
+10-07 16:00:59.262  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{772edff VFED..C.. ......ID 0,0-0,0 #3}
+10-07 16:00:59.262  4343  4343 D Launcher.Workspace: addInScreenFromBind: hotseat inflation with x = 3 and y = 0 page = 0
+10-07 16:00:59.262  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{2ad37cc VFED..C.. ......ID 0,0-0,0 #4}
+10-07 16:00:59.263  4343  4343 D ModelCallbacks: Calling onCompleteSignal
+10-07 16:00:59.263  4343  4343 D ViewOnDrawExecutor: markCompleted: executing tasks
+10-07 16:00:59.263  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.folder.FolderIcon{95c04b8 VFE...C.. ......I. 0,0-0,0 #6}
+10-07 16:00:59.263  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{1e0b5f6 VFED..C.. ......ID 0,0-0,0 #e}
+10-07 16:00:59.263  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{828b464 VFED..C.. ......ID 0,0-0,0 #f}
+10-07 16:00:59.263  4343  4343 D CellLayout: Adding view to ShortcutsAndWidgetsContainer: com.android.launcher3.views.DoubleShadowBubbleTextView{9a376cd VFED..C.. ......ID 0,0-0,0 #10}
+10-07 16:00:59.266   642  1901 E AppWidgetServiceImpl: getAppWidgetInfo() returns null because widget.provider is null. appWidgetId=10 userId=0 widget=AppWidgetId{10:Host{HostId{user:0, app:10234, hostId:1028, pkg:app.lawnchair}}:null}
+10-07 16:00:59.266  4343  4343 E AppWidgetManager: App widget provider info is null. PackageName=app.lawnchair appWidgetId-10
+10-07 16:00:59.266   642  1901 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: app.lawnchair
+10-07 16:00:59.266   642   672 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: app.lawnchair
+10-07 16:00:59.277  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.277  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.278  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.278  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.278  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.IcuDateTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.278  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.278  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.278  4343  4343 E ThemeUtils: View class app.lawnchair.smartspace.DoubleShadowTextView is an AppCompat widget that can only be used with a Theme.AppCompat theme (or descendant).
+10-07 16:00:59.278  4343  4343 E BcSmartspaceCard: No tap action can be set up
+10-07 16:00:59.283  4343  4343 D BaseDepthController: setSurface:
+10-07 16:00:59.283  4343  4343 D BaseDepthController: 	mWaitingOnSurfaceValidity: false
+10-07 16:00:59.283  4343  4343 D BaseDepthController: 	mBaseSurface: Surface(name=VRI-app.lawnchair/app.lawnchair.LawnchairLauncher#190)/@0xc831a23
+10-07 16:00:59.283  4343  4343 V BaseDepthController: Applying blur: 0 to Surface(name=VRI-app.lawnchair/app.lawnchair.LawnchairLauncher#190)/@0xc831a23
+10-07 16:00:59.306  4343  4360 D LoaderTask: step 1 loading workspace complete
+10-07 16:00:59.311   899  4340 V WindowManagerShell: onTransitionReady(transaction=2757369005612)
+10-07 16:00:59.311   899   977 V WindowManagerShell: onTransitionReady (#26) android.os.BinderProxy@9e67394: {id=26 t=CLOSE f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+10-07 16:00:59.311   899   977 V WindowManagerShell:         {m=OPEN f=SHOW_WALLPAPER|MOVE_TO_TOP|FLAG_CHANGED_INTERACTIVE leash=Surface(name=Task=87#186)/@0x908632 sb=Rect(0, 0 - 1080, 2424) eb=Rect(0, 0 - 1080, 2424) epz=Point(1080, 2424) d=0 taskParent=-1 winMode=1 userId=0},
+10-07 16:00:59.311   899   977 V WindowManagerShell:         {m=CLOSE f=SHOW_WALLPAPER|FLAG_CHANGED_INTERACTIVE leash=Surface(name=Task=85#146)/@0x3188f83 sb=Rect(0, 0 - 1080, 2424) eb=Rect(0, 0 - 1080, 2424) epz=Point(1080, 2424) d=0 taskParent=-1 winMode=1 userId=0}
+10-07 16:00:59.311   899   977 V WindowManagerShell:     ]}
+10-07 16:00:59.312   899   977 V WindowManagerShell: Playing animation for (#26) android.os.BinderProxy@9e67394@0
+10-07 16:00:59.312   899   977 D ShellSplitScreen: startAnimation: transition=26 isSplitActive=false
+10-07 16:00:59.312   899   977 V ShellRecents: RecentsTransitionHandler.startAnimation: no controller found
+10-07 16:00:59.312   899   977 V ShellDesktopMode: DesktopMixedTransitionHandler: No pending desktop transition
+10-07 16:00:59.312   899   977 V WindowManagerShell: Transition doesn't have explicit remote, search filters for match for {id=26 t=CLOSE f=0x0 trk=0 r=[0@Point(0, 0)] c=[{m=OPEN f=SHOW_WALLPAPER|MOVE_TO_TOP|FLAG_CHANGED_INTERACTIVE leash=Surface(name=Task=87#186)/@0x908632 sb=Rect(0, 0 - 1080, 2424) eb=Rect(0, 0 - 1080, 2424) epz=Point(1080, 2424) d=0 taskParent=-1 winMode=1 userId=0},{m=CLOSE f=SHOW_WALLPAPER|FLAG_CHANGED_INTERACTIVE leash=Surface(name=Task=85#146)/@0x3188f83 sb=Rect(0, 0 - 1080, 2424) eb=Rect(0, 0 - 1080, 2424) epz=Point(1080, 2424) d=0 taskParent=-1 winMode=1 userId=0}]}
+10-07 16:00:59.312   899   977 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0 notFlags=0x0 checks=[{atype=undefined independent=true modes=[CLOSE,TO_BACK] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=null launchCookie=null taskFragmentToken=android.os.BinderProxy@221c905 windowingMode=undefined isCrossDisplayMove=false}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@2804d5a, appThread = android.app.IApplicationThread$Stub$Proxy@5ce8b8b, debugName = overlayBackTransition, filter = {types=[] flags=0x0 notFlags=0x0 checks=[{atype=undefined independent=true modes=[CLOSE,TO_BACK] flags=IN_TASK_WITH_EMBEDDED_ACTIVITY mustBeTask=false order=ANY topActivity=null launchCookie=null taskFragmentToken=android.os.BinderProxy@221c905 windowingMode=undefined isCrossDisplayMove=false}]} }}
+10-07 16:00:59.312   899   977 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0 notFlags=0x0 checks=[{atype=dream independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined isCrossDisplayMove=false},{atype=home independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined isCrossDisplayMove=false}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@ff7f468, appThread = android.app.IApplicationThread$Stub$Proxy@97af081, debugName = LauncherToDream, filter = {types=[] flags=0x0 notFlags=0x0 checks=[{atype=dream independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined isCrossDisplayMove=false},{atype=home independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined isCrossDisplayMove=false}]} }}
+10-07 16:00:59.312   899   977 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0 notFlags=0x0 checks=[{atype=standard independent=false modes=[CHANGE] flags=NONE mustBeTask=true order=ANY topActivity=null launchCookie=null windowingMode=undefined isCrossDisplayMove=true}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@365e526, appThread = android.app.IApplicationThread$Stub$Proxy@f985567, debugName = QuickstepDisplayMove, filter = {types=[] flags=0x0 notFlags=0x0 checks=[{atype=standard independent=false modes=[CHANGE] flags=NONE mustBeTask=true order=ANY topActivity=null launchCookie=null windowingMode=undefined isCrossDisplayMove=true}]} }}
+10-07 16:00:59.312   899   977 V WindowManagerShell:  Checking filter Pair{{types=[] flags=0x0 notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null windowingMode=undefined isCrossDisplayMove=false},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined isCrossDisplayMove=false},{NOT atype=undefined independent=true modes=[] flags=NONE mustBeTask=true order=ANY topActivity=null launchCookie=null customAnim=true windowingMode=undefined isCrossDisplayMove=false}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@28bef14, appThread = android.app.IApplicationThread$Stub$Proxy@5e513bd, debugName = QuickstepLaunchHome, filter = {types=[] flags=0x0 notFlags=0x100 checks=[{atype=home independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=false order=ANY topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity} launchCookie=null windowingMode=undefined isCrossDisplayMove=false},{atype=standard independent=true modes=[CLOSE,TO_BACK] flags=NONE mustBeTask=false order=ANY topActivity=null launchCookie=null windowingMode=undefined isCrossDisplayMove=false},{NOT atype=undefined independent=true modes=[] flags=NONE mustBeTask=true order=ANY topActivity=null launchCookie=null customAnim=true windowingMode=undefined isCrossDisplayMove=false}]} }}
+10-07 16:00:59.312   899   977 V WindowManagerShell:  Checking filter Pair{{types=[OPEN,TO_FRONT] flags=0x0 notFlags=0x0 checks=[{atype=standard independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=true order=ANY topActivity=null launchCookie=null windowingMode=freeform isCrossDisplayMove=false}]} RemoteTransition { remoteTransition = android.window.IRemoteTransition$Stub$Proxy@fbb2db2, appThread = null, debugName = DesktopWindowLimitUnminimize, filter = {types=[OPEN,TO_FRONT] flags=0x0 notFlags=0x0 checks=[{atype=standard independent=true modes=[OPEN,TO_FRONT] flags=NONE mustBeTask=true order=ANY topActivity=null launchCookie=null windowingMode=freeform isCrossDisplayMove=false}]} }}
+10-07 16:00:59.312   899   977 V WindowManagerShell:  Delegate animation for (#26) to null
+10-07 16:00:59.312   899   977 V WindowManagerShell: start default transition animation, info = {id=26 t=CLOSE f=0x0 trk=0 r=[0@Point(0, 0)] c=[{m=OPEN f=SHOW_WALLPAPER|MOVE_TO_TOP|FLAG_CHANGED_INTERACTIVE leash=Surface(name=Task=87#186)/@0x908632 sb=Rect(0, 0 - 1080, 2424) eb=Rect(0, 0 - 1080, 2424) epz=Point(1080, 2424) d=0 taskParent=-1 winMode=1 userId=0},{m=CLOSE f=SHOW_WALLPAPER|FLAG_CHANGED_INTERACTIVE leash=Surface(name=Task=85#146)/@0x3188f83 sb=Rect(0, 0 - 1080, 2424) eb=Rect(0, 0 - 1080, 2424) epz=Point(1080, 2424) d=0 taskParent=-1 winMode=1 userId=0}]}
+10-07 16:00:59.312   899   977 V WindowManagerShell: loadAnimation: anim=android.view.animation.AnimationSet@14aa0df animAttr=0x17 type=CLOSE isEntrance=false
+10-07 16:00:59.312   899   977 V WindowManagerShell: loadAnimation: anim=android.view.animation.AnimationSet@b5c37f5 animAttr=0x16 type=CLOSE isEntrance=true
+10-07 16:00:59.315   899   977 V WindowManagerShell:  animated by com.android.wm.shell.transition.DefaultTransitionHandler@9e5c735
+10-07 16:00:59.317   642   663 I ActivityTaskManager: Displayed app.lawnchair/.LawnchairLauncher for user 0: +507ms
+10-07 16:00:59.317   642   663 V WindowManager: Sent Transition (#26) createdAt=10-07 16:00:58.793 via request=TransitionRequestInfo { type = CLOSE, triggerTask = TaskInfo{userId=0 taskId=85 effectiveUid=10234 displayId=0 isRunning=false baseIntent=Intent { act=android.intent.action.MAIN cat=[android.intent.category.HOME] flg=0x10000000 cmp=app.lawnchair/.LawnchairLauncher } baseActivity=null topActivity=null origActivity=null realActivity=ComponentInfo{app.lawnchair/app.lawnchair.LawnchairLauncher} realActivityIsAppLockEnabled=false numActivities=0 lastActiveTime=279206 supportsMultiWindow=true supportsMultiWindowWithoutConstraints=true resizeMode=2 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{df12d56 Task{4dc3307 #85 type=home I=app.lawnchair/.LawnchairLauncher}}} topActivityType=2 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=Rect(0, 0 - 0, 0) topActivityInfo=null launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isInteractive=true isVisible=true isVisibleRequested=true isTopActivityNoDisplay=false isSleeping=false locusId=null displayAreaFeatureId=1 isTopActivityTransparent=false isActivityStackTransparent=true lastNonFullscreenBounds=null leafTaskBoundsFromOptions= false capturedLink=null capturedLinkTimestamp=0 requestedVisibleTypes=503 topActivityRequestOpenInBrowserEducationTimestamp=0 appCompatTaskInfo=AppCompatTaskInfo { topActivityInSizeCompat=false isLeafTask= true eligibleForLetterboxEducation= false isLetterboxEducationEnabled= false isLetterboxDoubleTapEnabled= false eligibleForUserAspectRatioButton= false topActivityBoundsLetterboxed= false isFromLetterboxDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 topActivityAppBounds=Rect(0, 0 - 0, 0) isUserFullscreenOverrideEnabled=false isSystemFullscreenOverrideEnabled=false hasMinAspectRatioOverride=false topActivityLetterboxBounds=null topNonResizableActivityAspectRatio=-1.0} topActivityMainWindowFrame=null isAppBubble=false}, pipChange = null, remoteTransitionInfo = null, displayChanges = null, requestedLocation = null, userChange = null, windowingLayerChange = null, fullscreenRequestChange = null, flags = 0, debugId = 26 }
+10-07 16:00:59.317   642   663 V WindowManager:     startWCT=WindowContainerTransaction { changes= {} hops= [] flags= 0 errorCallbackToken=null taskFragmentOrganizer=null }
+10-07 16:00:59.317   642   663 V WindowManager:     info={id=26 t=CLOSE f=0x0 trk=0 r=[0@Point(0, 0)] c=[
+10-07 16:00:59.317   642   663 V WindowManager:         {WCT{RemoteToken{b1d57ca Task{383e032 #87 type=home I=app.lawnchair/.LawnchairLauncher}}} m=OPEN f=SHOW_WALLPAPER|MOVE_TO_TOP|FLAG_CHANGED_INTERACTIVE leash=Surface(name=Task=87#186)/@0xb2dbe1f sb=Rect(0, 0 - 1080, 2424) eb=Rect(0, 0 - 1080, 2424) epz=Point(1080, 2424) d=0 taskParent=-1 winMode=1 userId=0},
+10-07 16:00:59.317   642   663 V WindowManager:         {WCT{RemoteToken{df12d56 Task{4dc3307 #85 type=home I=app.lawnchair/.LawnchairLauncher}}} m=CLOSE f=SHOW_WALLPAPER|FLAG_CHANGED_INTERACTIVE leash=Surface(name=Task=85#146)/@0x9711dbe sb=Rect(0, 0 - 1080, 2424) eb=Rect(0, 0 - 1080, 2424) epz=Point(1080, 2424) d=0 taskParent=-1 winMode=1 userId=0}
+10-07 16:00:59.317   642   663 V WindowManager:     ]}
+10-07 16:00:59.321   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.321   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.321  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Camera sectionName: C
+10-07 16:00:59.321  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Chrome sectionName: C
+10-07 16:00:59.321  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Settings sectionName: S
+10-07 16:00:59.324  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Drive sectionName: D
+10-07 16:00:59.324  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Maps sectionName: M
+10-07 16:00:59.324  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Messages sectionName: M
+10-07 16:00:59.325  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Photos sectionName: P
+10-07 16:00:59.325  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: YT Music sectionName: Y
+10-07 16:00:59.327  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Calendar sectionName: C
+10-07 16:00:59.327  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Contacts sectionName: C
+10-07 16:00:59.334  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Clock sectionName: C
+10-07 16:00:59.334  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Phone sectionName: P
+10-07 16:00:59.335  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Gmail sectionName: G
+10-07 16:00:59.337  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: YouTube sectionName: Y
+10-07 16:00:59.337  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair sectionName: L
+10-07 16:00:59.337  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: TMoble sectionName: T
+10-07 16:00:59.337  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Gemini sectionName: G
+10-07 16:00:59.339  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Safety sectionName: S
+10-07 16:00:59.339   642   642 W AccessibilityManagerService:  wait for adding window timeout: 11
+10-07 16:00:59.339  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Files sectionName: F
+10-07 16:00:59.340  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Glasses sectionName: G
+10-07 16:00:59.340  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Google sectionName: G
+10-07 16:00:59.341  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.safetyhub/com.google.android.apps.safetyhub.LauncherActivity}
+10-07 16:00:59.342  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.youtube.music/com.google.android.apps.youtube.music.activities.MusicActivity}
+10-07 16:00:59.348  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.youtube/com.google.android.youtube.app.honeycomb.Shell$HomeActivity}
+10-07 16:00:59.357  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.photos/com.google.android.apps.photos.home.HomeActivity}
+10-07 16:00:59.359  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.gm/com.google.android.gm.ConversationListActivityGmail}
+10-07 16:00:59.362  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.bard/com.google.android.apps.bard.shellapp.BardEntryPointActivity}
+10-07 16:00:59.366  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.glasses.companion/com.google.android.glasses.companion.startup.SplashActivity}
+10-07 16:00:59.367  1183  1183 E talkback: PackageManagerUtils: Could not find package: com.google.android.aicore
+10-07 16:00:59.368  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.googlequicksearchbox/com.google.android.googlequicksearchbox.SearchActivity}
+10-07 16:00:59.369  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.deskclock/com.android.deskclock.DeskClock}
+10-07 16:00:59.375  1269  1277 D AudioTrack: stop(66): called with 31296 frames delivered
+10-07 16:00:59.375  1269  2840 I SynthesisCache: streamCachedRequest call to callback.audioAvailable failed: -1
+10-07 16:00:59.375   642  1901 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:00:59.376   642  1901 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:00:59.376   489  2555 W AudioFlinger: createTrack_l(): mismatch between requested flags (00000004) and output flags (00000002)
+10-07 16:00:59.376   489  2555 I AF::AfPlaybackCommon: AfPlaybackCommon: creating track with enforcement level 2 reason NONE shouldHarden 1
+10-07 16:00:59.398  4343  4360 I Surface : Creating surface for consumer unnamed-4343-2 with slotExpansion=1 for 64 slots
+10-07 16:00:59.399  1269  2840 I GoogleTTSServiceImpl: Synthesis request for locale eng-USA and name en-US-language
+10-07 16:00:59.399  1269  2840 I GoogleTTSServiceImpl: TTS dispatch: en-us-x-iog-locomel-embedded
+10-07 16:00:59.399  1269  2840 I LocalSynthesizer: Attempting to load synthesizer for voice: en-us-x-iog-locomel-embedded
+10-07 16:00:59.399  1269  2840 I LocalSynthesizer: Voice en-us-x-iog-locomel-embedded is already supported by loaded synthesizer en-us-x-multi.
+10-07 16:00:59.399  1269  2840 I ComposerWrapperImpl: Skipping initialization, can already run voice en-us-x-iog-locomel-embedded.
+10-07 16:00:59.400   642  1419 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:00:59.400   642  1419 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:00:59.400   642  1419 W AS.PlaybackActivityMon: No piid assigned for invalid/internal port id 67
+10-07 16:00:59.400   642   963 W AS.PlaybackActivityMon: No piid assigned for invalid/internal port id 67
+10-07 16:00:59.401  4343  4343 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_deferred_resumed|state_window_focused|state_user_active] +[state_window_focused]
+10-07 16:00:59.401   642   757 I ImeTracker: app.lawnchair:66058306: onRequestHide at ORIGIN_SERVER reason HIDE_UNSPECIFIED_WINDOW fromUser false userId 0 displayId 0
+10-07 16:00:59.405   642  1419 W InputChannel-JNI: Channel already disposed.
+10-07 16:00:59.407   642  1419 I ImeTracker: system_server:54d6135d: onRequestHide at ORIGIN_SERVER reason IME_REQUESTED_CHANGED_LISTENER fromUser false displayId 0
+10-07 16:00:59.408  1426  1426 I GoogleInputMethodService: GoogleInputMethodService.onFinishInput():2259 
+10-07 16:00:59.408   642   666 I ImeTracker: system_server:54d6135d: onCancelled at PHASE_SERVER_SHOULD_HIDE
+10-07 16:00:59.409  1426  1426 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():103 repeatCheckTimes = 0, locked = false
+10-07 16:00:59.410  1426  1426 I GoogleInputMethodService: GoogleInputMethodService.onStartInput():1446 onStartInput(EditorInfo{EditorInfo{packageName=app.lawnchair, inputType=0, inputTypeString=NULL, enableLearning=false, autoCorrection=false, autoComplete=false, imeOptions=0, privateImeOptions=null, actionName=UNSPECIFIED, actionLabel=null, initialSelStart=-1, initialSelEnd=-1, initialCapsMode=0, label=null, fieldId=0, fieldName=null, extras=null, hintText=null, hintLocales=[]}}, false)
+10-07 16:00:59.410  1426  1426 W AndroidIME: LatinIMEBase.updateInputViewCoverNavigation():327 Null input view, cannot update padding!
+10-07 16:00:59.410  1426  1426 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():103 repeatCheckTimes = 1, locked = false
+10-07 16:00:59.413   642  1419 W PackageConfigPersister: App-specific configuration not found for packageName: app.lawnchair and userId: 0
+10-07 16:00:59.414  4343  4343 D InsetsController: hide(ime())
+10-07 16:00:59.414  4343  4343 I ImeTracker: app.lawnchair:66058306: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+10-07 16:00:59.444   642   667 W ActivityTaskManager: Unable to send transaction to client proc app.lawnchair: no app thread
+10-07 16:00:59.461   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.461   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.461   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.468   642  1928 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:00:59.468   642  1928 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:00:59.470   489  3911 W AudioFlinger: createTrack_l(): mismatch between requested flags (00000004) and output flags (00000002)
+10-07 16:00:59.470   489  3911 D AudioFlinger: Client defaulted notificationFrames to 480 for frameCount 4096
+10-07 16:00:59.470   489  3911 I AF::AfPlaybackCommon: AfPlaybackCommon: creating track with enforcement level 1 reason TARGET_SDK shouldHarden 1
+10-07 16:00:59.486   642   936 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:00:59.486   642  1901 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:00:59.524   489   534 D AudioFlinger: mixer(0xb400007234f86790) throttle end: throttle time(23)
+10-07 16:00:59.548   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.548   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.548   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.578  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-1] abandonLocked: ConsumerBase is abandoned!
+10-07 16:00:59.578  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.stk/com.android.stk.StkMain}
+10-07 16:00:59.583  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.documentsui/com.android.documentsui.LauncherActivity}
+10-07 16:00:59.588  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{app.lawnchair/app.lawnchair.LawnchairLauncher}
+10-07 16:00:59.599  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.maps/com.google.android.maps.MapsActivity}
+10-07 16:00:59.602  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.contacts/com.android.contacts.activities.PeopleActivity}
+10-07 16:00:59.606  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.messaging/com.google.android.apps.messaging.ui.ConversationListActivity}
+10-07 16:00:59.607  1269  1277 D AudioTrack: stop(68): called with 6816 frames delivered
+10-07 16:00:59.607   642  1157 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:00:59.608   642  1928 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:00:59.608  1269  2840 I ComposerEventProcessor: Composer call to callback.audioAvailable failed: -1
+10-07 16:00:59.609  1269  2840 E LocalSynthesizer: synthesizeWithoutLoadingVoice() failed
+10-07 16:00:59.609  1269  2840 I GoogleTTSServiceImpl: Skipping Synthesiscallback.error() call for TextToSpeech.ERROR
+10-07 16:00:59.610  1269  2840 I GoogleTTSServiceImpl: Synthesis request for locale eng-USA and name en-US-language
+10-07 16:00:59.610  1269  2840 I GoogleTTSServiceImpl: TTS dispatch: en-us-x-iog-locomel-embedded
+10-07 16:00:59.613  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.dialer/com.google.android.dialer.extensions.GoogleDialtactsActivity}
+10-07 16:00:59.615   489  3911 W AudioFlinger: createTrack_l(): mismatch between requested flags (00000004) and output flags (00000002)
+10-07 16:00:59.615   489  3911 D AudioFlinger: Client defaulted notificationFrames to 480 for frameCount 4096
+10-07 16:00:59.615   489  3911 I AF::AfPlaybackCommon: AfPlaybackCommon: creating track with enforcement level 1 reason TARGET_SDK shouldHarden 1
+10-07 16:00:59.616  1183  1183 V A11yInputMethod: startInput(): editor=android.view.inputmethod.EditorInfo@828b464
+10-07 16:00:59.617  1183  1183 V A11yInputMethod: CALL: onStartInput
+10-07 16:00:59.619  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.calendar/com.android.calendar.AllInOneActivity}
+10-07 16:00:59.631  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.google.android.apps.docs/com.google.android.apps.docs.app.NewMainProxyActivity}
+10-07 16:00:59.633  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.camera2/com.android.camera.CameraLauncher}
+10-07 16:00:59.634   899   977 V WindowManagerShell: Transition animation finished (aborted=false), notifying core (#26) android.os.BinderProxy@9e67394@0
+10-07 16:00:59.635   642  1928 E libbinder.IPCThreadState: Binder transaction failure. id: 180357, cmd: BR_DEAD_REPLY (29189), error: -22 (Invalid argument)
+10-07 16:00:59.635   642  1928 W ActivityManager: pid 642 system sent binder code 7 with flags 1 and got error -32
+10-07 16:00:59.635   642  1928 D ActivityManager: Too many transaction errors, throttling transaction error callback.
+10-07 16:00:59.636   642  1928 W WindowManager: Exception thrown during dispatchAppVisibility Window{ea448d0 u0 app.lawnchair/app.lawnchair.LawnchairLauncher EXITING}
+10-07 16:00:59.636   642  1928 W WindowManager: android.os.DeadObjectException
+10-07 16:00:59.636   642  1928 W WindowManager: 	at android.os.BinderProxy.transactNative(Native Method)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at android.os.BinderProxy.transact(BinderProxy.java:626)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at android.view.IWindow$Stub$Proxy.dispatchAppVisibility(IWindow.java:602)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at com.android.server.wm.WindowState.sendAppVisibilityToClients(WindowState.java:3388)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at com.android.server.wm.WindowContainer.sendAppVisibilityToClients(WindowContainer.java:1245)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at com.android.server.wm.WindowToken.setClientVisible(WindowToken.java:392)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at com.android.server.wm.ActivityRecord.commitVisibility(ActivityRecord.java:5654)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at com.android.server.wm.Transition.finishTransition(Transition.java:1629)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at com.android.server.wm.TransitionController.finishTransition(TransitionController.java:1220)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at com.android.server.wm.WindowOrganizerController.finishTransition(WindowOrganizerController.java:533)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at android.window.IWindowOrganizerController$Stub.onTransact(IWindowOrganizerController.java:265)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at com.android.server.wm.WindowOrganizerController.onTransact(WindowOrganizerController.java:239)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at android.os.Binder.execTransactInternal(Binder.java:1364)
+10-07 16:00:59.636   642  1928 W WindowManager: 	at android.os.Binder.execTransact(Binder.java:1323)
+10-07 16:00:59.636   642  1928 W Process : Unable to open /proc/4008/status
+10-07 16:00:59.639  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.settings/com.android.settings.Settings}
+10-07 16:00:59.642   899   977 V WindowManagerShell: Track 0 became idle
+10-07 16:00:59.642   899   977 V WindowManagerShell: All active transition animations finished
+10-07 16:00:59.637  1928  1928 I binder  : 1928:642 cannot find target node
+10-07 16:00:59.637  1928  1928 I binder  : 642:1928 transaction async to 0:0 failed 180357/29189/-22, code 7 size 68-0 line 3430
+10-07 16:00:59.644  4343  4360 I Launcher.IconCache: Database bulk icon loading failed, using fallback bulk icon loading for: ComponentInfo{com.android.chrome/com.google.android.apps.chrome.Main}
+10-07 16:00:59.645  4343  4358 E SystemUiProxy: getRecentTasks() failed due to null mRecentTasks
+10-07 16:00:59.646   642   936 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:00:59.646   642   936 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:00:59.648   899   977 V ShellTaskOrganizer: Task vanished taskId=84
+10-07 16:00:59.648   899   977 V ShellTaskOrganizer: Fullscreen Task Vanished: #84
+10-07 16:00:59.648   899   977 V ShellDesktopMode: Task Vanished: #84 closed=true
+10-07 16:00:59.648   899   977 D ShellPackageUpdate: PackageUpdateController: Removing handlePackageUpdate for task: 84
+10-07 16:00:59.648   642   663 V WindowManager: Finish Transition (#26): created at 10-07 16:00:58.793 collect-started=0.01ms request-sent=0.053ms started=6.798ms ready=145.571ms sent=517.041ms commit=34.577ms finished=842.134ms
+10-07 16:00:59.649  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Camera sectionName: C
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Chrome sectionName: C
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Settings sectionName: S
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Drive sectionName: D
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Maps sectionName: M
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Messages sectionName: M
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Photos sectionName: P
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: YT Music sectionName: Y
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Calendar sectionName: C
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Contacts sectionName: C
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Clock sectionName: C
+10-07 16:00:59.650  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Phone sectionName: P
+10-07 16:00:59.651  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Gmail sectionName: G
+10-07 16:00:59.651  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: YouTube sectionName: Y
+10-07 16:00:59.651  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair sectionName: L
+10-07 16:00:59.651  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: TMoble sectionName: T
+10-07 16:00:59.651  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Gemini sectionName: G
+10-07 16:00:59.651  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Safety sectionName: S
+10-07 16:00:59.651  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Files sectionName: F
+10-07 16:00:59.651  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Glasses sectionName: G
+10-07 16:00:59.652   642  1928 E WindowOrganizerController: Attempting to externally change a non-organized container: Task{3982902 #84 type=standard I=app.lawnchair/.LawnchairLauncher}={handlePackageUpdate:false,} playercount=2 taskorg=android.window.ITaskOrganizer$Stub$Proxy@88ddfcd
+10-07 16:00:59.652   899   977 V RecentTasksController: Notify recent tasks changed
+10-07 16:00:59.652   899   977 D ShellDesktopMode: AppToWebRepository: Task 84 is vanishing. Removing task data from repository
+10-07 16:00:59.653  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Google sectionName: G
+10-07 16:00:59.653  4343  4360 D LoaderTask: loadAllApps finished
+10-07 16:00:59.653  4343  4360 D LoaderTask: bindAllApps finished
+10-07 16:00:59.654  4343  4343 D AllAppsStore: setApps: apps.length=21
+10-07 16:00:59.654  1067  1067 D RecentTasksList: invalidateLoadedTasks - previous requestLoadId: -1
+10-07 16:00:59.654   899   977 V AppCompat: SingleSurfaceLetterboxController: []
+10-07 16:00:59.654   899   977 V AppCompat: MultiSurfaceLetterboxController: []
+10-07 16:00:59.654   899   977 V AppCompat: LetterboxInputController: []
+10-07 16:00:59.654   899   977 V AppCompat: RoundedCornersLetterboxController: {}
+10-07 16:00:59.655  4343  4360 D LoaderTask: update AllApps icon cache finished
+10-07 16:00:59.655  4343  4360 D LoaderTask: saving all shortcuts in icon cache
+10-07 16:00:59.655  4343  4360 D LoaderTask: step 2 loading AllApps complete
+10-07 16:00:59.656  4343  4360 D LoaderTask: loadDeepShortcuts finished
+10-07 16:00:59.656  4343  4360 D LoaderTask: bindDeepShortcuts finished
+10-07 16:00:59.656  4343  4360 D LoaderTask: saving deep shortcuts in icon cache
+10-07 16:00:59.656  4343  4343 D AllAppsStore: notifyUpdate: notifying listeners
+10-07 16:00:59.656  4343  4343 D ActivityAllAppsContainerView: onAppsUpdated; number of apps: 21
+10-07 16:00:59.656  4343  4343 D ActivityAllAppsContainerView: rebindAdapters: force: false
+10-07 16:00:59.656  4343  4343 D ActivityAllAppsContainerView: rebindAdapters: Not needed.
+10-07 16:00:59.656  4343  4343 D StatsLog: LAUNCHER_ALLAPPS_COUNT
+10-07 16:00:59.659  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.659  4343  4343 D AlphabeticalAppsList: Adding apps with sections. HasPrivateApps: false
+10-07 16:00:59.659  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: C with appInfoTitle: Calendar
+10-07 16:00:59.659  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: D with appInfoTitle: Drive
+10-07 16:00:59.659  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: F with appInfoTitle: Files
+10-07 16:00:59.660  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: G with appInfoTitle: Gemini
+10-07 16:00:59.660  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: L with appInfoTitle: Lawnchair
+10-07 16:00:59.660  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: M with appInfoTitle: Maps
+10-07 16:00:59.660  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: P with appInfoTitle: Phone
+10-07 16:00:59.660  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: S with appInfoTitle: Safety
+10-07 16:00:59.660  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: T with appInfoTitle: TMoble
+10-07 16:00:59.660  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: Y with appInfoTitle: YouTube
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: Adding FastScrollSection duplicate to scroll to the bottom.
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: Adding apps with sections. HasPrivateApps: false
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: C with appInfoTitle: Calendar
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: D with appInfoTitle: Drive
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: F with appInfoTitle: Files
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: G with appInfoTitle: Gemini
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: L with appInfoTitle: Lawnchair
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: M with appInfoTitle: Maps
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: P with appInfoTitle: Phone
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: S with appInfoTitle: Safety
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: T with appInfoTitle: TMoble
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: addAppsWithSections: adding sectionName: Y with appInfoTitle: YouTube
+10-07 16:00:59.661  4343  4343 D AlphabeticalAppsList: Adding FastScrollSection duplicate to scroll to the bottom.
+10-07 16:00:59.662  4343  4343 D AlphabeticalAppsList: Clearing FastScrollerSections.
+10-07 16:00:59.663  4343  4360 D LoaderTask: step 3 loading all shortcuts complete
+10-07 16:00:59.663   642   936 I AppWidgetServiceImpl: getInstalledProvidersForProfiles() 0
+10-07 16:00:59.664   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.664   642   936 W ParceledListSlice: Element #28 is 20172 bytes.
+10-07 16:00:59.665   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.665   642   936 W ParceledListSlice: Element #29 is 20352 bytes.
+10-07 16:00:59.665   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.665   642   936 W ParceledListSlice: Element #30 is 20564 bytes.
+10-07 16:00:59.665   642   936 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.665   642   936 W ParceledListSlice: Element #31 is 20076 bytes.
+10-07 16:00:59.677  1067  1067 D BaseActivity: Launcher flags updated: [] -[state_started|state_user_active]
+10-07 16:00:59.677  1067  1067 D BaseDepthController: setSurface:
+10-07 16:00:59.677  1067  1067 D BaseDepthController: 	mWaitingOnSurfaceValidity: false
+10-07 16:00:59.677  1067  1067 D BaseDepthController: 	mBaseSurface: null
+10-07 16:00:59.677  1067  1067 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+10-07 16:00:59.677  1067  1067 D LauncherStateManager: StateManager.goToState: fromState: Normal, toState: Normal, partial trace:
+10-07 16:00:59.677  1067  1067 D LauncherStateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme dc5b05c43537c6aa1d671c685c710819682fcc95b6af33c0ce7f88e1808452b7:26)
+10-07 16:00:59.677  1067  1067 D LauncherStateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme dc5b05c43537c6aa1d671c685c710819682fcc95b6af33c0ce7f88e1808452b7:35)
+10-07 16:00:59.677  1067  1067 D LauncherStateManager: 	at com.android.launcher3.statemanager.StatefulActivity.onStop(go/retraceme dc5b05c43537c6aa1d671c685c710819682fcc95b6af33c0ce7f88e1808452b7:31)
+10-07 16:00:59.677   899   977 D WindowManagerShell: setLauncherKeepClearAreaHeight: visible=false, height=495
+10-07 16:00:59.677  1067  1067 D LauncherStateManager: StateManager.onRepeatStateSetAborted: state: Normal
+10-07 16:00:59.677  1067  1067 D KeyboardStateManager: hideKeyboard
+10-07 16:00:59.677  1067  1067 D KeyboardStateManager: isImeShown: false
+10-07 16:00:59.677  1067  1067 D StatsLog: LAUNCHER_ONSTOP
+10-07 16:00:59.679  1067  1067 D StatsLog: LAUNCHER_GOOGLE_SEARCH_RESTORE_LIST_SIZE_AFTER_ACTIVITY_RESTART
+10-07 16:00:59.679  1067  1067 D SmartspaceInteractor: notifySmartspaceEvent: SmartspaceTargetEvent{mSmartspaceTarget=null, mSmartspaceActionId='null', mEventType=7}
+10-07 16:00:59.679  1067  1067 D RecentsView: onTaskRemoved: 85, not handling task stack changes
+10-07 16:00:59.679  1067  1067 D RecentsView: onTaskRemoved: 85, not handling task stack changes
+10-07 16:00:59.679  1067  1067 D RecentsView: onTaskRemoved: 85, not handling task stack changes
+10-07 16:00:59.679  1067  1067 D RecentsView: onTaskRemoved: 85, not handling task stack changes
+10-07 16:00:59.679  1067  1067 D RecentsView: onTaskRemoved: 84, not handling task stack changes
+10-07 16:00:59.679  1067  1067 D RecentsView: onTaskRemoved: 84, not handling task stack changes
+10-07 16:00:59.679  1067  1067 D RecentsView: onTaskRemoved: 84, not handling task stack changes
+10-07 16:00:59.679  1067  1067 D RecentsView: onTaskRemoved: 84, not handling task stack changes
+10-07 16:00:59.680   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.680   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.684  1581  1796 I AiAiEcho: AmbientDataPredictorImpl No tracked ambient data found for ID: null; for event type: 7, skipping event processing.
+10-07 16:00:59.695   493   493 E BpTransactionCompletedListener: Failed to transact (-32)
+10-07 16:00:59.695  1067  1067 D SmartspaceInteractor: notifySmartspaceEvent: SmartspaceTargetEvent{mSmartspaceTarget=null, mSmartspaceActionId='null', mEventType=7}
+10-07 16:00:59.698  1581  1796 I AiAiEcho: AmbientDataPredictorImpl No tracked ambient data found for ID: null; for event type: 7, skipping event processing.
+10-07 16:00:59.748  4343  4360 I Surface : Creating surface for consumer unnamed-4343-3 with slotExpansion=1 for 64 slots
+10-07 16:00:59.754  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-2] abandonLocked: ConsumerBase is abandoned!
+10-07 16:00:59.757  4343  4360 I Surface : Creating surface for consumer unnamed-4343-4 with slotExpansion=1 for 64 slots
+10-07 16:00:59.761  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-3] abandonLocked: ConsumerBase is abandoned!
+10-07 16:00:59.765  4343  4360 I Surface : Creating surface for consumer unnamed-4343-5 with slotExpansion=1 for 64 slots
+10-07 16:00:59.781   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.781   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:00:59.784  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-4] abandonLocked: ConsumerBase is abandoned!
+10-07 16:00:59.787  4343  4360 I Surface : Creating surface for consumer unnamed-4343-6 with slotExpansion=1 for 64 slots
+10-07 16:00:59.792  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-5] abandonLocked: ConsumerBase is abandoned!
+10-07 16:00:59.796  4343  4360 I Surface : Creating surface for consumer unnamed-4343-7 with slotExpansion=1 for 64 slots
+10-07 16:00:59.801  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-6] abandonLocked: ConsumerBase is abandoned!
+10-07 16:00:59.805  4343  4360 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.806  4343  4360 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.808  4343  4360 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.809  4343  4360 W ApplicationInfo: Large ApplicationInfo parcel: size=19004 package=com.google.android.googlequicksearchbox sharedLibs=3 resDirs=2 overlayPaths=2
+10-07 16:00:59.880  4343  4360 I Surface : Creating surface for consumer unnamed-4343-8 with slotExpansion=1 for 64 slots
+10-07 16:00:59.883  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-7] abandonLocked: ConsumerBase is abandoned!
+10-07 16:00:59.992  4343  4360 D LoaderTask: load widgets finished
+10-07 16:00:59.993  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Settings sectionName: S
+10-07 16:00:59.993  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Photos sectionName: P
+10-07 16:00:59.993  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Chrome sectionName: C
+10-07 16:00:59.994  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Gmail sectionName: G
+10-07 16:00:59.994  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Gemini sectionName: G
+10-07 16:00:59.994  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Drive sectionName: D
+10-07 16:00:59.994  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Settings Services sectionName: S
+10-07 16:00:59.994  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Clock sectionName: C
+10-07 16:00:59.995  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Contacts sectionName: C
+10-07 16:00:59.995  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Calendar sectionName: C
+10-07 16:00:59.995  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Maps sectionName: M
+10-07 16:00:59.995  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: YouTube Music sectionName: Y
+10-07 16:00:59.995  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: YouTube sectionName: Y
+10-07 16:00:59.996  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Lawnchair sectionName: L
+10-07 16:00:59.996  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Google sectionName: G
+10-07 16:00:59.996  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Android System Intelligence sectionName: A
+10-07 16:00:59.996  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Digital Wellbeing sectionName: D
+10-07 16:00:59.996  4343  4360 D AlphabeticIndexCompat: computeSectionName: cs: Conversations sectionName: C
+10-07 16:00:59.997  4343  4360 D LoaderTask: bindWidgets finished
+10-07 16:00:59.997  4343  4360 D LoaderTask: saving all widgets in icon cache
+10-07 16:00:59.997  4343  4360 D LoaderTask: finish icon update
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: Failed to register launcher snapshot logging callback with StatsManager
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: java.lang.NullPointerException: Attempt to invoke interface method 'void android.os.IStatsManagerService.registerPullAtomCallback(int, long, long, int[], android.os.IPullAtomCallback)' on a null object reference
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at android.app.StatsManager.setPullAtomCallback(StatsManager.java:667)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at com.android.launcher3.model.QuickstepModelDelegate.registerSnapshotLoggingCallback(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:24)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at com.android.launcher3.model.QuickstepModelDelegate.modelLoadComplete(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:99)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at wr3.modelLoadComplete(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:1)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at com.android.launcher3.model.LoaderTask.loadAllSurfacesOrdered(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:332)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at com.android.launcher3.model.LoaderTask.runInternal(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:73)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at com.android.launcher3.model.LoaderTask.runInternalOnModelExecutor(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:13)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at com.android.launcher3.model.LoaderTask.c(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:1)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at t24.run(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:8)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at com.android.launcher3.model.LayoutWriteCoordinator.runOrDefer(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:99)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at com.android.launcher3.model.LoaderTask.run(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:37)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at android.os.Handler.handleCallback(Handler.java:1095)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at android.os.Looper.loopOnce(Looper.java:296)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at android.os.Looper.loop(Looper.java:397)
+10-07 16:00:59.997  4343  4360 E QuickstepModelDelegate: 	at android.os.HandlerThread.run(HandlerThread.java:139)
+10-07 16:00:59.999   288   288 E SELinux : avc:  denied  { find } for pid=4343 uid=10234 name=statsmanager scontext=u:r:untrusted_app:s0:c234,c256,c512,c768 tcontext=u:object_r:statsmanager_service:s0 tclass=service_manager permissive=0
+10-07 16:01:00.044  4343  4360 D QuickstepModelDelegate: notifyAppTargetEvent action=1 launchLocation=workspace/0/[-1,-1]/[1,1]
+10-07 16:01:00.045   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:01:00.045   493   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-07 16:01:00.070  4343  4360 I Surface : Creating surface for consumer unnamed-4343-9 with slotExpansion=1 for 64 slots
+10-07 16:01:00.074  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-8] abandonLocked: ConsumerBase is abandoned!
+10-07 16:01:00.225   489  3911 W AudioFlinger: createTrack_l(): mismatch between requested flags (00000004) and output flags (00000002)
+10-07 16:01:00.225   489  3911 I AF::AfPlaybackCommon: AfPlaybackCommon: creating track with enforcement level 2 reason NONE shouldHarden 1
+10-07 16:01:00.227   642  1901 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:01:00.227   642  1901 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:01:00.227   642  1157 W AS.PlaybackActivityMon: No piid assigned for invalid/internal port id 70
+10-07 16:01:00.228   642   936 W AS.PlaybackActivityMon: No piid assigned for invalid/internal port id 70
+10-07 16:01:00.254  4343  4360 I Surface : Creating surface for consumer unnamed-4343-10 with slotExpansion=1 for 64 slots
+10-07 16:01:00.257  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-9] abandonLocked: ConsumerBase is abandoned!
+10-07 16:01:00.319  4343  4360 I Surface : Creating surface for consumer unnamed-4343-11 with slotExpansion=1 for 64 slots
+10-07 16:01:00.323  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-10] abandonLocked: ConsumerBase is abandoned!
+10-07 16:01:00.445  4343  4360 I Surface : Creating surface for consumer unnamed-4343-12 with slotExpansion=1 for 64 slots
+10-07 16:01:00.447  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-11] abandonLocked: ConsumerBase is abandoned!
+10-07 16:01:00.493  4343  4360 I Surface : Creating surface for consumer unnamed-4343-13 with slotExpansion=1 for 64 slots
+10-07 16:01:00.495  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-12] abandonLocked: ConsumerBase is abandoned!
+10-07 16:01:00.640  4343  4360 I Surface : Creating surface for consumer unnamed-4343-14 with slotExpansion=1 for 64 slots
+10-07 16:01:00.642  4343  4360 E ConsumerBase: [ImageReader-171x171f1u2816m2-4343-13] abandonLocked: ConsumerBase is abandoned!
+10-07 16:01:00.826  3565  3565 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:am start -n app.lawnchair/app.lawnchair.LawnchairLauncher'
+10-07 16:01:00.835   642   936 W ActivityTaskManager: callingPackage for (uid=0, pid=4422) has no WPC
+10-07 16:01:00.835   642   936 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10234, packageName = null, attributionTag = null, token = android.os.Binder@565a758, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+10-07 16:01:00.836   642   936 V WindowManager: Aborting Transition: 27
+10-07 16:01:00.836   493   884 I libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0xb4000078e143ae70) with descriptor: '(not cached)'
+10-07 16:01:00.836   899  1110 D KeyguardService: setOccluded(false)
+10-07 16:01:00.836   899  1110 D KeyguardViewMediator: setOccluded(false)
+10-07 16:01:00.836   899   899 D KeyguardViewMediator: handleSetOccluded(false)
+10-07 16:01:00.836   899   899 D KeyguardViewMediator: KeyguardViewMediator queue processing message: SET_OCCLUDED
+10-07 16:01:00.837   642   936 V ActivityTaskManager: TaskLaunchParamsModifier: phase=3 task=Task{383e032 #87 type=home I=app.lawnchair/.LawnchairLauncher} activity=ActivityRecord{164838155 u0 app.lawnchair/.LawnchairLauncher t-1} display-from-task=0 display-id=0 task-display-area-windowing-mode=1 suggested-display-area=DefaultTaskDisplayArea@96904652 inherit-from-task=fullscreen non-freeform-task-display-area display-area=DefaultTaskDisplayArea@96904652 skip-bounds-fullscreen
+10-07 16:01:00.837   642   936 I ActivityTaskManager: START u0 {flg=0x10000000 xflg=0x4 cmp=app.lawnchair/.LawnchairLauncher} with LAUNCH_SINGLE_TASK from uid 0 (com.android.shell) (BAL_ALLOW_ALLOWLISTED_UID) result code=3
+10-07 16:01:00.837   899   977 D WindowManagerShell: onActivityRestartAttempt: topActivity=ComponentInfo{app.lawnchair/app.lawnchair.LawnchairLauncher}, wasVisible=true, displayId=0, pipDisplayLayoutState#displayId=0
+10-07 16:01:00.837  4343  4343 D BaseActivity: Launcher flags updated: [state_started|state_window_focused|state_user_active] -[state_resumed|state_deferred_resumed]
+10-07 16:01:00.837  4343  4343 W SplitSelectStateCtor: Missing session instanceIds
+10-07 16:01:00.837  4343  4343 D StatsLog: LAUNCHER_SPLIT_SELECTION_EXIT_INTERRUPTED
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: Attempting to log to ProtoLog before initializing it.
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: java.lang.IllegalStateException
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at com.android.quickstep.util.QuickstepProtoLogGroup.isProtoLogInitialized(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:9)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logOnNewIntent(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:1)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at com.android.launcher3.uioverrides.QuickstepLauncher.logOnNewIntent(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:6)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at com.android.launcher3.Launcher.onNewIntent(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:95)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at com.android.launcher3.uioverrides.QuickstepLauncher.onNewIntent(r8-map-id-2b154080a8fb0cfa4879d8ffe3411838aeca24ebab0435e290557b816f440485:5)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.Activity.onNewIntent(Activity.java:2525)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.Activity.performNewIntent(Activity.java:9367)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.Instrumentation.callActivityOnNewIntent(Instrumentation.java:1663)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.Instrumentation.internalCallActivityOnNewIntent(Instrumentation.java:1684)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.Instrumentation.callActivityOnNewIntent(Instrumentation.java:1672)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.ActivityThread.deliverNewIntents(ActivityThread.java:4826)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.ActivityThread.handleNewIntent(ActivityThread.java:4836)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.servertransaction.NewIntentItem.execute(NewIntentItem.java:69)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.servertransaction.ActivityTransactionItem.execute(ActivityTransactionItem.java:63)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.servertransaction.TransactionExecutor.executeNonLifecycleItem(TransactionExecutor.java:133)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.servertransaction.TransactionExecutor.executeTransactionItems(TransactionExecutor.java:103)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:80)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:3032)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.os.Looper.loopOnce(Looper.java:296)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.os.Looper.loop(Looper.java:397)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at java.lang.reflect.Method.invoke(Native Method)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+10-07 16:01:00.838  4343  4343 W QuickstepProtoLogGroup: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+10-07 16:01:00.838  4343  4343 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_window_focused|state_user_active] +[state_resumed]
+10-07 16:01:00.839  4343  4343 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_deferred_resumed|state_window_focused|state_user_active] +[state_deferred_resumed]
+10-07 16:01:00.839  4343  4343 D StatsLog: LAUNCHER_ONRESUME
+10-07 16:01:00.840   642   666 D OomAdjuster: Not killing cached processes
+10-07 16:01:00.861  4343  4360 D QuickstepModelDelegate: notifyAppTargetEvent action=1 launchLocation=workspace/0/[-1,-1]/[1,1]
+10-07 16:01:00.884  4343  4347 W app.lawnchair: Cleared Reference was only reachable from finalizer (only reported once)
+10-07 16:01:01.006   642   796 D WifiClientModeImpl[3138:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2447 RxLinkSpeed=2
+10-07 16:01:01.006   642   796 D WifiDataStall: tx tput in kbps: 11000
+10-07 16:01:01.006   642   796 D WifiDataStall: rx tput in kbps: 11000
+10-07 16:01:01.006   642   796 V WifiConfigManager: Updating scan detail cache freq=2447 BSSID=00:13:10:85:fe:01 RSSI=-50 for "AndroidWifi"NONE
+10-07 16:01:01.006   642   796 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:01:01.006   642   796 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:01:01.006   642   796 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:01:01.006   642   796 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:01:01.006   642   796 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:01:01.006   642   796 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:01:01.006   642   796 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:01:01.006   642   796 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:01:01.008   642   796 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+10-07 16:01:01.009   642   796 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 295228467 SSID: "AndroidWifi", BSSID: 00:13:10:85:fe:01, MAC: 02:15:b2:00:00:00, IP: /10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 2Mbps, Tx Link speed: 2Mbps, Max Supported Tx Link speed: 11Mbps, Calculated Tx : 0Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Calculated Rx : 0Mbps, Frequency: 2447MHz, Net ID: 0, Metered hint: false, score: 100, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"AndroidWifi"openMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-07 16:01:01.009   642   796 D WifiScoreCard: txRate: 1 txSpeed: 2
+10-07 16:01:01.009   642   796 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 1934263910 RSSI -50 txSpeed -1
+10-07 16:01:01.009   642   796 D WifiClientModeImpl[3138:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 00:13:10:85:fe:01 rssi=-50 f=2447 sc=100 link=2 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3006] from screen [on:0 period:355098577] score=100
+10-07 16:01:01.214  1269  2841 D AudioTrack: stop(69): called with 36594 frames delivered
+10-07 16:01:01.215   642   936 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:01:01.215   642   936 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:01:01.219  1269  2840 I GoogleTTSServiceImpl: Synthesis request for locale eng-USA and name en-US-language
+10-07 16:01:01.221  1269  2840 I GoogleTTSServiceImpl: TTS dispatch: en-us-x-iog-locomel-embedded
+10-07 16:01:01.226   489   489 W AudioFlinger: createTrack_l(): mismatch between requested flags (00000004) and output flags (00000002)
+10-07 16:01:01.226   489   489 D AudioFlinger: Client defaulted notificationFrames to 480 for frameCount 4096
+10-07 16:01:01.226   489   489 I AF::AfPlaybackCommon: AfPlaybackCommon: creating track with enforcement level 1 reason TARGET_SDK shouldHarden 1
+10-07 16:01:01.230   642  1928 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:01:01.231   642  1901 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:01:01.483   642  1901 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:01:01.483   642  1901 E AppOps  : attributionTag  not declared in manifest of com.google.android.marvin.talkback
+10-07 16:01:01.925  1269  2841 D AudioTrack: stop(71): called with 15759 frames delivered
+10-07 16:01:01.925   642  1928 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:01:01.926   642  1928 E AppOps  : attributionTag  not declared in manifest of com.google.android.tts
+10-07 16:01:01.927   642  1901 I MediaFocusControl: abandonAudioFocus() from uid/pid 10172/1183 clientId=android.media.AudioManager@6671574com.google.android.accessibility.utils.output.SpeechControllerImpl$5@e25aa9d callingPack=com.google.android.marvin.talkback
+10-07 16:01:02.041   489   529 I APM_AudioPolicyManager: getNewOutputDevices io 13 recent device override {AUDIO_DEVICE_OUT_SPEAKER, @:}
+10-07 16:01:02.333   880   880 D wpa_supplicant: nl80211: Drv Event 64 (NL80211_CMD_NOTIFY_CQM) received for wlan0
+10-07 16:01:02.333   880   880 D wpa_supplicant: nl80211: Beacon loss event
+10-07 16:01:02.333   880   880 D wpa_supplicant: wlan0: Event BEACON_LOSS (53) received
+10-07 16:01:02.333   880   880 I wpa_supplicant: wlan0: CTRL-EVENT-BEACON-LOSS 
+10-07 16:01:02.647   642  1620 E TaskPersister: File error accessing recents directory (directory doesn't exist?).
+10-07 16:01:04.012   642   796 D WifiClientModeImpl[3138:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=1 freq=2447 RxLinkSpeed=2
+10-07 16:01:04.012   642   796 D WifiClientModeImpl[3138:wlan0]: reported txKbps 12000 rxKbps 30000
+10-07 16:01:04.012   642   796 D WifiDataStall: tx tput in kbps: 11000
+10-07 16:01:04.012   642   796 D WifiDataStall: rx tput in kbps: 11000
+10-07 16:01:04.012   642   796 V WifiConfigManager: Updating scan detail cache freq=2447 BSSID=00:13:10:85:fe:01 RSSI=-50 for "AndroidWifi"NONE
+10-07 16:01:04.013   642   796 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:01:04.013   642   796 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:01:04.013   642   796 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:01:04.013   642   796 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:01:04.013   642   796 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:01:04.013   642   796 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:01:04.013   642   796 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+10-07 16:01:04.013   642   796 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 11
+10-07 16:01:04.014   642   825 I AdbWifiNetworkMonitor: Wi-Fi network available
+10-07 16:01:04.014   642   825 I AdbWifiNetworkMonitor: Received the same Wi-Fi SSID. Ignoring.
+10-07 16:01:04.014   642   796 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+10-07 16:01:04.014   642   796 D WifiScoreCard: BSSID update SIGNAL_POLL ID: 295228467 SSID: "AndroidWifi", BSSID: 00:13:10:85:fe:01, MAC: 02:15:b2:00:00:00, IP: /10.0.2.16, Security type: 0, Supplicant state: COMPLETED, Wi-Fi standard: legacy, RSSI: -50, Link speed: 1Mbps, Tx Link speed: 1Mbps, Max Supported Tx Link speed: 11Mbps, Calculated Tx : 0Mbps, Rx Link speed: 2Mbps, Max Supported Rx Link speed: 11Mbps, Calculated Rx : 0Mbps, Frequency: 2447MHz, Net ID: 0, Metered hint: false, score: 100, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"AndroidWifi"openMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>
+10-07 16:01:04.014   642   796 D WifiScoreCard: txRate: 1 txSpeed: 1
+10-07 16:01:04.014   642   796 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 1934263910 RSSI -50 txSpeed -1
+10-07 16:01:04.014   642   796 D WifiClientModeImpl[3138:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 00:13:10:85:fe:01 rssi=-50 f=2447 sc=100 link=1 tx=0.4, 0.0, 0.0 rx=0.4 bcn=0 [on:0 tx:0 rx:0 period:3005] from screen [on:0 period:355101582] score=100
+10-07 16:01:04.017   642   802 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+10-07 16:01:04.017   642   802 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+10-07 16:01:04.017   642   802 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+10-07 16:01:04.017   642   802 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+10-07 16:01:04.017   642   802 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+10-07 16:01:04.017   642   802 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+10-07 16:01:04.017   642  1928 I WifiService: getConnectionInfo uid=10218
+10-07 16:01:04.017   642  1928 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10218)
+10-07 16:01:04.017   642  1928 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10218 has app-op android:fine_location
+10-07 16:01:04.019   642  1901 I WifiService: getWifiEnabledState uid=10194 state=3
+10-07 16:01:04.019   642  1928 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10218)
+10-07 16:01:04.023  1256  2628 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+10-07 16:01:04.023  1256  2628 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+10-07 16:01:04.024  1593  2045 I BugleRcsEngine: handleMessage processing message:[NOTIFY_UPTIME_IGNORE_STATE_CHANGED] with [non-null]:RcsEngineImpl reference [CONTEXT log_prefix="RcsEngineImpl[DUAL_REG]:[fb7c2c88-ea0a]>Handler" thread_id=63 ]
+10-07 16:01:04.024  1593  1946 I BugleRcsEngine: Connected state: [1], networkType: [WIFI] [CONTEXT thread_id=57 ]
+10-07 16:01:04.029  1593  2045 I BugleRcsEngine: No RCS Configuration was found in Bugle for simID: redacted-pii:sim_id[chars:20,last3:897] [CONTEXT log_prefix="ProvisioningEngineDataRetriever" thread_id=63 ]
+10-07 16:01:04.598  1041  1175 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+10-07 16:01:04.598  1041  1175 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+10-07 16:01:04.598  1041  1175 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+10-07 16:01:04.598  1041  1175 V SatelliteController: satelliteConfigParser is not ready
+10-07 16:01:04.598  1041  1175 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+10-07 16:01:04.599  1041  1175 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+10-07 16:01:04.599  1041  1175 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+10-07 16:01:04.599  1041  1175 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+10-07 16:01:04.599  1041  1175 V SatelliteController: satelliteConfigParser is not ready
+10-07 16:01:04.599  1041  1175 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+10-07 16:01:04.599  1041  1175 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+10-07 16:01:04.599  1041  1175 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+10-07 16:01:04.599  1041  1175 V SatelliteController: satelliteConfigParser is not ready
+10-07 16:01:04.599  1041  1175 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+10-07 16:01:04.599  1041  1175 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+10-07 16:01:04.599  1041  1175 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+10-07 16:01:04.599  1041  1175 V SatelliteController: satelliteConfigParser is not ready
+10-07 16:01:04.599  1041  1175 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+10-07 16:01:04.599  1041  1175 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+10-07 16:01:04.599  1041  1175 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+10-07 16:01:04.599  1041  1175 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+10-07 16:01:04.599  1041  1175 V SatelliteController: satelliteConfigParser is not ready
+10-07 16:01:04.599  1041  1175 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+10-07 16:01:04.599  1041  1175 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+10-07 16:01:04.599  1041  1175 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+10-07 16:01:04.599  1041  1175 V SatelliteController: satelliteConfigParser is not ready
+10-07 16:01:04.599  1041  1175 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+10-07 16:01:04.909   438  3200 D android.hardware.audio@7.1-impl.ranchu: threadLoop: entering standby, frames: 4977600
+10-07 16:01:04.909   438  3200 D android.hardware.audio@7.1-impl.ranchu: ~TinyalsaSink: joining consumeThread
+10-07 16:01:04.909   438  4328 D android.hardware.audio@7.1-impl.ranchu: consumeThread: exiting
+10-07 16:01:04.909   438  3200 D android.hardware.audio@7.1-impl.ranchu: ~TinyalsaSink: stopping PCM stream
+10-07 16:01:06.857  3565  3565 I adbd    : adbd service requested 'shell,v2,TERM=dumb:export ANDROID_LOG_TAGS=''; exec logcat '-d''

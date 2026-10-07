@@ -1,0 +1,5 @@
+=== leg (a) launcher cold start logcat — expect NO 'disabling recents'
+date: 2026-10-07 15:25:29
+--- grep 'disabling recents' (expect no output)
+grep exit: 1 (1 = absent = PASS)
+--- LawnchairApp tag lines:

@@ -1,0 +1,6 @@
+=== leg (c) result — pre-change release (maxSdk 36, e8aced7dbe) + release overlay, API 37
+date: 2026-10-07 16:06:04
+1. quickstep_incompatible sheet SHOWN ('Incompatible system integration') -> c-incompatible-sheet.png
+2. 'disabling recents' ABSENT in c-logcat.txt (grep count 0) — expected: checkRecentsComponent()=true (overlay matches app.lawnchair), so the diagnostic log is not emitted; the sheet is the oracle (spec Scenario 2)
+3. overview NOT established: recents gesture and APP_SWITCH both leave focus on LawnchairLauncher home (no provider bound; mIsEnabled=false because adb-installed launcher is not a system app -> SystemUI MATCH_SYSTEM_ONLY fails)
+4. effect contrast: head release (maxSdk 37) in the same overlay configuration opens the SDK gate (compatible=true; bind-crash finding is a separate API 37 hidden API break, see b-bind-crash-signature.txt)

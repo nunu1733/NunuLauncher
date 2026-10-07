@@ -1,0 +1,18 @@
+=== leg (c) preflight — API 37, pre-change release (maxSdk 36, e8aced7dbe) adb-installed (NOT system), release overlay
+date: 2026-10-07 16:03:48
+NOTE: adb-installed launcher -> SystemUI MATCH_SYSTEM_ONLY resolve fails -> mIsEnabled=false -> no bind, no crash (documented configuration for stable sheet observation)
+--- cmd overlay lookup:
+app.lawnchair/com.android.quickstep.RecentsActivity
+--- dumpsys LauncherProxyService:
+    LauncherProxyService state:
+      isConnected=false
+      mIsEnabled=false
+      mRecentsComponentName=ComponentInfo{app.lawnchair/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE pkg=app.lawnchair }
+      mBound=false
+      mCurrentBoundedUserId=-1
+      mConnectionBackoffAttempts=0
+      mActiveNavBarRegion=null
+--- package state:
+    codePath=/data/app/~~ECX8iCKvpmWRY7NudzeaaQ==/app.lawnchair-WHs8DKtLhx480lPypNTx_Q==
+    versionName=16.Dev.(e8aced7)
