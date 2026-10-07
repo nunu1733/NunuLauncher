@@ -1,0 +1,10 @@
+=== qvb2 wmshell watch — PipInputConsumer / NoSuchMethodError in WindowManagerShell window ===
+date: 2026-10-08 03:56:11; source: qvb2-g3-logcat.txt (   51040 lines, clean-boot window through G3)
+
+PipInputConsumer: 0
+NoSuchMethodError: 0
+WM Shell fatal/exception: 0
+
+RESULT: PipInputConsumer 0; NoSuchMethodError 0 (the takeTaskSnapshot NME family is gone in this leg); shell exceptions 0.
+NOTE: shell-side transition still failed via 'No matching remote found to takeover (#12)' + launcher parcel unmarshal
+(see qvb2-parcel-oracle.txt) — recorded as non-exception (V-level) shell flow, not a shell crash.

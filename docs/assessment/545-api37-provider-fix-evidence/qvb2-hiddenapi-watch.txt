@@ -1,0 +1,22 @@
+=== qvb2 hiddenapi watch — denials/blocks mentioning app.lawnchair (esp. TaskSnapshotManager / new reflection calls) ===
+date: 2026-10-08 03:56:11; source: qvb2-g3-logcat.txt (   51040 lines, clean-boot window through G3)
+
+--- 'hiddenapi' occurrences:
+2661:10-08 03:37:56.259   432   432 I zygote64: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+3427:10-08 03:37:57.342   647   663 I SystemConfig: Reading permissions from /system/etc/sysconfig/hiddenapi-package-whitelist.xml
+3516:10-08 03:37:57.372   647   663 I SystemConfig: Reading permissions from /product/etc/sysconfig/google-hiddenapi-package-whitelist.xml
+25250:10-08 03:38:10.760  2270  2381 E droid.deskclock: hiddenapi: Accessing hidden field Ljava/util/Collections$SynchronizedCollection;->mutex:Ljava/lang/Object; (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+25251:10-08 03:38:10.760  2270  2381 E droid.deskclock: hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedSet;-><init>(Ljava/util/Set;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+25252:10-08 03:38:10.760  2270  2381 E droid.deskclock: hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedCollection;-><init>(Ljava/util/Collection;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+(count: 7)
+
+--- 'Access denied.*hidden|blocked.*hidden API|hidden API.*blocked|Accessing hidden API' style:
+0
+
+--- hiddenapi denial lines by package:
+   3 hiddenapi
+
+--- TaskSnapshotManager mentions: 0
+--- wrapToBitmap mentions: 0
+
+RESULT: hiddenapi DENIAL for app.lawnchair* = 0 (no denial/block lines for the launcher package; any denial lines above belong to other packages' own APIs).

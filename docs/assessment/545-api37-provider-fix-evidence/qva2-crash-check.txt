@@ -1,0 +1,27 @@
+=== qva2 crash-signature check — API 37 debug @ 0c25041285, WHOLE WINDOW boot(03:10:39)→task-switch(2026-10-08 03:31:22), full logcat buffer ===
+logcat file: qva2-bind-logcat.txt (   75583 lines; window includes boot, provider bind, 2x overview open, task switches)
+
+--- six crash signatures (expect all 0):
+1. createInputConsumer NoSuchMethodError: 0
+2. ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX NoSuchFieldError: 0
+3. Resources$NotFoundException: 0
+4. NoClassDefFoundError: 0
+5. getTaskSnapshot NoSuchMethodError: 0
+6. takeTaskSnapshot NoSuchMethodError: 0
+
+--- three reflection failure markers (expect all 0):
+M1. TaskSnapshotManager reflection failed: 0
+M2. TaskSnapshotManager takeTaskSnapshot reflection failed: 0
+M3. TaskSnapshot.wrapToBitmap reflection failed: 0
+
+--- any NoSuchMethodError/NoSuchFieldError at all (diagnostic): 0
+
+--- launcher FATAL whole window (AndroidRuntime, oracle = app.lawnchair* == 0):
+19578:10-08 03:11:00.136  1053  1053 E AndroidRuntime: FATAL EXCEPTION: main
+22579:10-08 03:11:03.593  1828  1828 E AndroidRuntime: FATAL EXCEPTION: main
+FATAL EXCEPTION total: 2
+FATAL with Process: app.lawnchair*: 0
+   1 10-08 03:11:00.136  1053  1053 E AndroidRuntime: Process: com.google.android.apps.nexuslauncher, PID: 1053
+   1 10-08 03:11:03.593  1828  1828 E AndroidRuntime: Process: com.google.android.apps.nexuslauncher, PID: 1828
+
+--- 'disabling recents' (expect 0): 0
