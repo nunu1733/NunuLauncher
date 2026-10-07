@@ -65,6 +65,10 @@ forkが16-dev追随を続ける限り、検証込みの対応をrebase後の新b
 - G3対象: `quickstep/src/com/android/quickstep/SystemUiProxy.kt:188-202`
   （`getRecentsPendingIntent`。creator側 `MODE_BACKGROUND_ACTIVITY_START_ALLOWED`、
   `FLAG_MUTABLE + FLAG_ALLOW_UNSAFE_IMPLICIT_INTENT`）。行番号は#527 spec G3節と一致する。
+- applicationId: `github` flavorは `app.lawnchair`（`build.gradle:309`）、`debug` buildTypeのみ
+  `applicationIdSuffix ".debug"` で `app.lawnchair.debug`（`build.gradle:267-268`）。
+  `checkRecentsComponent()` はoverlay値のpackageNameと実行中processのpackageNameの完全一致を
+  要求する（`LawnchairApp.kt:362`）ため、provider構成overlayはbuild variant別に値を変える。
 - recents providerはhome roleではなく端末system構成（`config_recentsComponentName`、RRO overlay等）
   で決まる（#520 assessment §2。AOSP `OverviewProxyService` 一次根拠）。通常構成（Pixel等）では
   `QUICKSTEP_MAX_SDK` を上げてもLawnchair側recentsは有効化されず、system側overviewが継続する。
@@ -110,7 +114,8 @@ ADR-0018 device test matrixへ反映される。
 - `build.gradle` の `quickstepMaxSdk` を36→37へ変更する（`quickstepMinSdk = "35"` は不変）。
   manifest meta-data `xyz.paphonb.quickstepswitcher.minSdk/maxSdk` は同一placeholderで自動反映される。
 - provider構成環境でのruntime検証と証跡記録（Verification matrix (a)〜(e)）。構成手段は
-  /product/overlay へのRRO overlay preinstall（QuickSwitchと同じ機構）。
+  /product/overlay へのRRO overlay preinstall（QuickSwitchと同じ機構）で、overlay値は
+  対象build variant（debug用 / release用）別に用意しrun毎にpreflight照合する。
 - G3判断: 実測証拠をPRへ記録する。legacy modeの保持が既定であり、BAL blockの証拠が出た場合のみ
   granular modeへの移行を最小modeで検討する（コード変更は証拠が出た場合に限り、上流fileへの
   最小差分とし近傍にissue番号付きcommentを残す）。証拠が出ない場合のコード変更は行わない。
@@ -135,16 +140,17 @@ ADR-0018 device test matrixへ反映される。
 
 ### Scenario: provider構成済みAPI 37でrelease buildのoverviewが成立する
 
-Given root化API 37 emulatorへRRO overlay（`config_recentsComponentName` → 本appの
-`com.android.quickstep.RecentsActivity`）をpreinstallし、Lawnchairをdefault HOMEに設定する
+Given root化API 37 emulatorへrelease用RRO overlay（`config_recentsComponentName` →
+`app.lawnchair/com.android.quickstep.RecentsActivity`）をpreinstallし、Lawnchair release buildを
+default HOMEに設定する
 When 変更後release build（maxSdk 37）でrecents gestureを発火する
 Then `isRecentsComponent=true` かつ `recentsEnabled=true` となり、overview表示・task切替が
 破綻なく成立し、`quickstep_incompatible` sheetは表示されない。
-debug build（SDK gate 0..100000 override）でも同様に成立する。
+debug build（SDK gate 0..100000 override、debug用overlay `app.lawnchair.debug/...`）でも同様に成立する。
 
 ### Scenario: 変更前相当release buildはprovider gateが閉じたまま失敗する（効果対照）
 
-Given 同一overlay環境でmaxSdk 36のrelease build（変更前相当）を用意する
+Given 同一release用overlay環境でmaxSdk 36のrelease build（変更前相当）を用意する
 When recents gestureを発火する
 Then `compatible=false` → `recentsEnabled=false` となり、`quickstep_incompatible` sheetが表示され、
 overviewが破綻するfailure signature（logcat "disabling recents" ほか）を記録する。
@@ -159,7 +165,8 @@ provider動作にも回帰がない（maxSdk 37は36を含む）。
 
 ### Scenario: G3のrecents遷移PI発火でBAL blockが出ない
 
-Given provider構成済みAPI 37環境でLawnchairがrecents providerとして動作している
+Given provider構成済みAPI 37環境（(b)のrelease用overlay＋release build maxSdk 37を主証跡とし、
+(a)のdebug構成を補助とする）でLawnchairがrecents providerとして動作している
 When recents gestureを発火しshell→launcher遷移（`SystemUiProxy.getRecentsPendingIntent` 経路）を
 発生させる
 Then 遷移が成功し、logcat `ActivityTaskManager` にBAL blockが出ない。blockの証拠が出た場合のみ
@@ -180,19 +187,32 @@ Then 検証を実施せず未確認範囲としてIssue/PRへ記録し、`QUICKS
   （AVD `issue526_api37_pixel_9a`。実在確認済み）上で、framework-resの
   `config_recentsComponentName` を本appの `RecentsActivity` へ向けるRRO overlayを
   /product/overlay へpreinstallする（QuickSwitchと同等の構成手段。実行可能性probe実施済み）。
+  overlay値は **build variant別に2種を用意**し、対象runの前に差し替える（rm＋push＋reboot）:
+  - debug用: `app.lawnchair.debug/com.android.quickstep.RecentsActivity`（probeで実証済みの値）
+  - release用: `app.lawnchair/com.android.quickstep.RecentsActivity`
+  `checkRecentsComponent()` は完全一致要求（`LawnchairApp.kt:362`）のため、overlay値と
+  実行中buildのpackageNameの不一致はprovider pathへ入れない。
+- **provider-path run毎のpreflight（証跡化必須）**: `cmd overlay lookup --user 0 android
+  android:string/config_recentsComponentName` の出力がそのrunのbuildのpackageNameと一致すること、
+  およびSystemUI側参照（`dumpsys activity service com.android.systemui/.SystemUIService` の
+  `LauncherProxyService.mRecentsComponentName`）が同一componentであることを各runの証跡へ記録する
+  （overlay差し替え忘れ・無効ケースとの取り違え防止）。
 - **matrix（provider pathの主証跡）**:
-  - (a) API 37 debug build＋overlay有効 → `isRecentsComponent=true`、overview表示・task切替・
+  - (a) API 37 debug build＋debug用overlay → `isRecentsComponent=true`、overview表示・task切替・
     破綻なし（debugは `build.gradle:267-274` でSDK gate 0..100000 override、`compatible` 常時true）。
-  - (b) API 37 release build（変更後 maxSdk 37）＋overlay有効 → `compatible=true`、overview成立。
-  - (c) API 37 release build（変更前相当 maxSdk 36）＋overlay有効 → `compatible=false` →
+  - (b) API 37 release build（変更後 maxSdk 37）＋release用overlay → `compatible=true`、
+    overview成立。
+  - (c) API 37 release build（変更前相当 maxSdk 36）＋release用overlay → `compatible=false` →
     `recentsEnabled=false` → `quickstep_incompatible` sheet（`LawnchairApp.kt:399-402`）と
     overview破綻のfailure signature記録（変更の効果対照）。
-  - (d) overlay無効（通常構成）API 36/37 → 挙動変化なし（recentsはsystem側提供のまま、sheet非表示）。
-  - (e) API 36 debug＋overlay有効 → provider動作に回帰なし（maxSdk 37は36を含む）。
+  - (d) overlay無効（通常構成。overlayをdisableまたは不一致値のまま）API 36/37 → 挙動変化なし
+    （recentsはsystem側提供のまま、sheet非表示）。
+  - (e) API 36 debug＋debug用overlay → provider動作に回帰なし（maxSdk 37は36を含む）。
 - 観測手段: 操作結果、logcat（`LawnchairApp` の "disabling recents" / `ActivityTaskManager` の
   BAL block / SystemUI `OverviewProxyService`）、screenshot/録画をPRへ添付する。
-- **G3観測**: provider構成環境でScenario 4を観測し、creator mode判断（保持またはgranular移行提案）
-  を証拠つきでPRへ記録する。
+- **G3観測**: provider構成環境のうち **(b) release構成（release用overlay＋maxSdk 37）を主証跡**、
+  (a) debug構成を補助としてScenario 4を観測し、creator mode判断（保持またはgranular移行提案）を
+  証拠つきでPRへ記録する。
 - **実機の位置づけ**: 保守者実機Pixel 9a / API 37は非rootのためprovider構成できず、
   実機owner確認は通常構成での無影響確認を担当する。provider path検証の主証跡はemulator matrixであり、
   実機でのprovider構成確認はEpic #516 Phase 3実機matrixへ引き継ぐ旨をPRへ明記する
@@ -215,3 +235,9 @@ Then 検証を実施せず未確認範囲としてIssue/PRへ記録し、`QUICKS
 ## Change history
 
 - 2026-10-07: Draft created for #524（入力: #520 assessment accepted（PR #525）、#527 spec G3委譲）。
+- 2026-10-07: Review round 1（PR #544コメント）対応 — provider構成overlayをbuild variant別
+  （debug用 `app.lawnchair.debug/...`、release用 `app.lawnchair/...`）に固定し、run毎の
+  preflight照合（`cmd overlay lookup` とSystemUI `LauncherProxyService` 参照の一致証跡）を
+  Verificationへ追加。BaselineへapplicationId事実（`build.gradle:267-268`/`:309`）と
+  `checkRecentsComponent` の完全一致要求（`LawnchairApp.kt:362`）を追記。G3観測の主証跡を
+  (b) release構成へ同期、Scenarios/Scopeを同期。
