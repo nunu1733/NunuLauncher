@@ -1,6 +1,6 @@
 ---
 issue: "#555"
-status: proposed
+status: accepted
 tier: M
 requirements: []
 updated: 2026-10-08
@@ -49,7 +49,7 @@ TaskContainer.setState直前logは出るが関数本体logは出ない。`= {` �
 
 非実行taskのoverview cardに、そのtaskの保存済みTaskSnapshot（wrapToBitmap由来のbitmap）が
 描画される。実行中task（live tile）と非実行taskのどちらのcardも、
-タップで対象taskへ復帰できる。ViewPool再利用時に前taskのstateが残存しない。
+タップで対象taskへ復帰できる。
 
 ## Scope
 
@@ -118,5 +118,8 @@ Then Launcher DB（favorites等）への書込み経路はdiffに存在しない
 - 2026-10-08: Draft created for #555（diagnostic確定後）。
 - 2026-10-08: Review round 2対応 — Behavior scenarioをtask名非依存へ一般化（実evidenceは
   非実行=Settings(153)/実行=Clock(154)）、ViewPool stale-state scenarioを#556側へ移設
-  （本specの受入面から外す）。evidence README（PR #561 commit `61cc01760b` 以降のpermalink）との
+  （本specの受入面から外す）。evidence README（PR #561 head `9f0d911eb6` のpermalink）との
   traceabilityはそちらを正本とする。
+- 2026-10-08: Review round 3対応 — Outcome末尾のViewPool再利用1文を削除（受入面は
+  Behavior scenario＋Verificationのみ。ViewPool境界は#556）。statusをacceptedへ更新
+  （owner review round 3「正本同期後の最終CI greenでClear」に対する同commitでのstatus反映）。
