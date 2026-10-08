@@ -178,6 +178,17 @@ public class TaskThumbnailViewDeprecated extends View implements ViewPool.Reusab
         ThumbnailData oldThumbnailData = mThumbnailData;
         mThumbnailData = (thumbnailData != null && thumbnailData.getThumbnail() != null)
                 ? thumbnailData : null;
+        // #555 diagnostic (temporary)
+        if (thumbnailData != null) {
+            Bitmap bm = thumbnailData.getThumbnail();
+            android.util.Log.e("Nunu555",
+                    "TTVD.setThumbnail task=" + (task != null ? task.key.id : -1)
+                            + " dataNull=" + (thumbnailData == null)
+                            + " bmp=" + (bm != null
+                                    ? bm.getConfig() + " " + bm.getWidth() + "x" + bm.getHeight()
+                                    + " hw=" + (bm.getConfig() == Bitmap.Config.HARDWARE)
+                                    : "null"));
+        }
         if (mTask != null) {
             updateSplashView(mTask.icon);
         }
@@ -206,6 +217,11 @@ public class TaskThumbnailViewDeprecated extends View implements ViewPool.Reusab
     private void refresh(boolean shouldRefreshOverlay) {
         if (mThumbnailData != null && mThumbnailData.getThumbnail() != null) {
             Bitmap bm = mThumbnailData.getThumbnail();
+            // #555 diagnostic (temporary)
+            android.util.Log.e("Nunu555",
+                    "TTVD.refresh building raster shader bmp=" + bm.getConfig()
+                            + " " + bm.getWidth() + "x" + bm.getHeight()
+                            + " hw=" + (bm.getConfig() == Bitmap.Config.HARDWARE));
             bm.prepareToDraw();
             mBitmapShader = new BitmapShader(bm, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
             mPaint.setShader(mBitmapShader);

@@ -16,6 +16,7 @@
 package com.android.quickstep
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
 import com.android.launcher3.Flags.enableCoroutineThreadingImprovements
@@ -133,6 +134,16 @@ internal constructor(
                 }
             }
             cache.put(task.key, thumbnailData)
+            // #555 diagnostic (temporary)
+            android.util.Log.e(
+                "Nunu555",
+                "TTCache.getThumbnail task=${task.key.id} taskThumb=${taskThumbnail?.thumbnail}" +
+                    " cached=${cachedThumbnail?.thumbnail} systemFetch=" +
+                    (thumbnailData.thumbnail?.let {
+                        "${it.config} ${it.width}x${it.height}" +
+                            " hw=${it.config == Bitmap.Config.HARDWARE}"
+                    } ?: "null"),
+            )
             return@withContext thumbnailData
         }
     }

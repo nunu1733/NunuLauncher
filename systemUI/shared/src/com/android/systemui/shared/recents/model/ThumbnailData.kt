@@ -77,6 +77,21 @@ data class ThumbnailData(
                 Log.e("ThumbnailData", "TaskSnapshot.wrapToBitmap reflection failed (see #545)", ex)
             }
 
+            // #555 diagnostic (temporary)
+            Log.e(
+                "Nunu555",
+                "makeThumbnail sdk=${Build.VERSION.SDK_INT} constructor=${snapshot.javaClass.name}" +
+                    " taskSize=${snapshot.taskSize}" +
+                    " lowRes=${snapshot.isLowResolution} real=${snapshot.isRealSnapshot}" +
+                    " translucent=${snapshot.isTranslucent}" +
+                    " hwBuffer=${snapshot.hardwareBuffer}" +
+                    " result=" +
+                    (thumbnail?.let {
+                        "Bitmap(cfg=${it.config} ${it.width}x${it.height}" +
+                            " hw=${it.config == Bitmap.Config.HARDWARE}" +
+                            " gen=${it.generationId})"
+                    } ?: "null (fallback to black)"),
+            )
             return thumbnail
                 ?: Bitmap.createBitmap(snapshot.taskSize.x, snapshot.taskSize.y, ARGB_8888).apply {
                     eraseColor(Color.BLACK)
