@@ -80,8 +80,10 @@ def main():
         save("overview.xml", ui)
         nodes = ET.fromstring(ui).iter("node")
         card = next((n for n in nodes if n.get("package") == args.package
-                     and "Settings" in n.get("content-desc", "")
-                     and n.get("clickable") == "true"), None)
+                     and n.get("clickable") == "true"
+                     and ("Settings" in n.get("content-desc", "")
+                          or (n.get("resource-id", "").startswith(args.package + ":id/task_view")
+                              and any(child.get("text") == "Settings" for child in n.iter("node"))))), None)
         if card is None:
             raise AssertionError("No clickable Settings task card in overview")
         bounds = list(map(int, re.findall(r"\d+", card.get("bounds", ""))))
