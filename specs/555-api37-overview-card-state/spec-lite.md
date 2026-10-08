@@ -68,24 +68,22 @@ TaskContainer.setState直前logは出るが関数本体logは出ない。`= {` �
 
 ## Behavior scenarios
 
+task名はoracle変数ではなく条件説名である。実検証で使用した組み合わせ:
+非実行task=Settings（task 153）/実行task=Clock（task 154）。
+非実行taskのsnapshot表示とtap復帰が本specの受入面であり、特定app名には依存しない。
+
 ### Scenario: 非実行taskのcardにscreenshotが表示される
 
-Given API 37 provider構成のemulatorで、Clock（非実行）とSettings（実行）がrecentsに存在する
+Given API 37 provider構成のemulatorで、非実行task（process終了済み）と実行taskがrecentsに存在する
 When KEYCODE_APP_SWITCHでoverviewを開く
-Then 非実行task（Clock）のcardにClockのTaskSnapshotが描画される
-And 実行中task（Settings）のcardも表示される
+Then 非実行taskのcardにそのTaskSnapshotが描画される
+And 実行taskのcardも表示される
 
 ### Scenario: card tapでtask復帰
 
 Given overviewが開いた状態
 When 非実行taskのcardをtapする
 Then 該当taskがforegroundに復帰する
-
-### Scenario: ViewPool再利用でstale stateが残らない
-
-Given overviewでcardを複数回開閉してTaskViewが再利用される
-When 別taskを表示する
-Then 前taskのthumbnailが誤って表示されない（本fixが新たなstaleを導入しないことの確認）
 
 ### Scenario: 書込み経路なし（zero-write）
 
@@ -118,3 +116,7 @@ Then Launcher DB（favorites等）への書込み経路はdiffに存在しない
 ## Change history
 
 - 2026-10-08: Draft created for #555（diagnostic確定後）。
+- 2026-10-08: Review round 2対応 — Behavior scenarioをtask名非依存へ一般化（実evidenceは
+  非実行=Settings(153)/実行=Clock(154)）、ViewPool stale-state scenarioを#556側へ移設
+  （本specの受入面から外す）。evidence README（PR #561 commit `61cc01760b` 以降のpermalink）との
+  traceabilityはそちらを正本とする。
