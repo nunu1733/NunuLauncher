@@ -14,8 +14,12 @@ def main():
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--serial", required=True)
     parser.add_argument("--package", default="app.lawnchair")
+    parser.add_argument("--launcher-activity", default=None,
+                        help="Launcher activity component. Defaults to <package>/.LawnchairLauncher")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
+    if args.launcher_activity is None:
+        args.launcher_activity = args.package + "/.LawnchairLauncher"
     out = pathlib.Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
     adb = [args.adb, "-s", args.serial]
@@ -71,7 +75,7 @@ def main():
         # A pause is the gesture input (swipe-and-hold), not the success oracle.
         time.sleep(0.8)
         run("shell", "input", "touchscreen", "motionevent", "UP", x, str(height * 3 // 5))
-        launcher_dump = lambda: run("shell", "dumpsys", "activity", args.package + "/.LawnchairLauncher")
+        launcher_dump = lambda: run("shell", "dumpsys", "activity", args.launcher_activity)
         state = wait_for(launcher_dump, lambda s: re.search(r"mState:\s*Overview\b", s))
         save("overview-activity.txt", state)
         save("overview.png", run("exec-out", "screencap", "-p", binary=True))
