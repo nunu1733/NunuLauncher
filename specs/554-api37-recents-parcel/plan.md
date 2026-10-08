@@ -37,7 +37,7 @@ provider emulator配置手順は#545/#524 evidence READMEを利用し、試験�
 ## Verification / constraints
 
 spec AC-1..5のruntime matrixとrepo既存commandを使用する。新CI laneなし。
-API36回帰、API37 senderの実binder/parcel dispatch、UI/task foreground復帰を証拠にする。
+API36の回帰チェックは「554 diff由来のprovider受信path回帰なし（head/accepted base同一profile対照）」（owner decision 2026-10-08、#559にoverview/task切替成立のruntime追跡を分離）。API37 senderの実binder/parcel dispatch、UI/task foreground復帰を証拠にする。
 不正payload/Nothing OS実機は未実施としてreview packetへ残す。
 upstream patch surfaceは16 anchor対象の既存baseline不整合を含め結果をreportする。
 cutover前の実装PRにはRefs #554を使い、mainline統合後の最終PRのみclosing keywordを使用する。
