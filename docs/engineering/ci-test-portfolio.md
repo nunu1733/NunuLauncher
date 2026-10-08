@@ -223,3 +223,27 @@ PR に記載し、`ci_portfolio_map.yml` と本監査表を同じ PR で更新�
 PR #97（9分02秒、lane 分割による直列待ち解消、runner 総量は増加）への計測と判断の経緯は
 git 履歴（Issue #96 実装時点の本文）を参照。API 35/36 統合・artifact reuse・path filter
 狭小化の保留判断は本監査が引き継いだ（上記の監査表の通り、統合は見送り・reuse は独立維持）。
+
+## Quickstep provider wire compatibility diagnostic（Issue #554）
+
+| 項目 | 判断 |
+|---|---|
+| Contract / credible regression | SystemUI→Launcher callbackのAPI別wire schema。API37でminimizedHomeBounds削除とHome boolean追加を読み違えるとParcel例外・overview未達になる。修正前releaseで再現済み |
+| Primary owner | `tools/diagnostics/verify_recents_provider.py`。実provider Binder＋gesture overview＋Settings task復帰。実framework/sender差分と権限が必要でJVM自己roundtripでは代替不能 |
+| Overlap / seam | 既存CIはAPI36 stock。API37 provider callbackを覆わない。test用production export、adapterなし |
+| Impact / trigger | Quickstep/provider callback。明示local invocationのみ。source変更は既存unmapped-source fallbackの全source gateを利用し、lane↔surface edgeは追加しない |
+| Classification / cost | Diagnostic。構成済みemulatorで数秒〜十数秒、priv-app/RRO配置が前提。新常設CI laneなし。exact SHA/APK/provider/windowをIssue assessmentで所有 |
+| Limits | 不正payload/Nothing OS実機は別途未確認として報告。thumbnail #555とsupport range #545をpassに混同しない |
+
+実行例（SDK adbがPATHにある環境）:
+
+```bash
+python3 tools/diagnostics/verify_recents_provider.py --serial emulator-5554 --package app.lawnchair --output /tmp/recents-provider-evidence
+```
+
+出力にはemulator UI/logを含むため、synthetic fixtureからの必要証跡だけを選びcommitする。
+
+`tools/diagnostics/RecentsParcelProbe.java` は同ownerのDiagnostic補助probe。
+debug APK内の実Stubをreflectionで取得し、実Parcel/Binder.transactで正常・欠損marker・
+descriptor違い・余剰tailを送り、例外とlistener回数を検証する。production exportなし、CI非routing。
+provider end-to-end oracleとの追加riskはトップレベルmalformed payloadのfail-closed dispatchである。

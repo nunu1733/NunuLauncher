@@ -1,0 +1,20 @@
+10-08 09:19:37.021  1825  1825 D AndroidRuntime: Shutting down VM
+10-08 09:19:37.031   490   577 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-08 09:19:37.032   490   577 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-08 09:19:37.032   490   577 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-08 09:19:37.032   490   577 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-08 09:19:37.032   490   577 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-08 09:19:37.032   490   577 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+10-08 09:19:37.032   490   577 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+--------- beginning of crash
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: FATAL EXCEPTION: main
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: Process: app.lawnchair, PID: 1825
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: java.lang.NoSuchFieldError: No field ENABLE_DESKTOP_WINDOWING_PIP of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: 	at sc5.<clinit>(r8-map-id-2ff11d461dc1cd9ac12d5cf01267932ae920c3f13a7909f6637a4300c90f308c:22)
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: 	at com.android.quickstep.views.RecentsView.finishRecentsAnimation(r8-map-id-2ff11d461dc1cd9ac12d5cf01267932ae920c3f13a7909f6637a4300c90f308c:46)
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: 	at com.android.quickstep.views.RecentsView.finishRecentsAnimation(r8-map-id-2ff11d461dc1cd9ac12d5cf01267932ae920c3f13a7909f6637a4300c90f308c:158)
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: 	at com.android.quickstep.views.RecentsView.reset(r8-map-id-2ff11d461dc1cd9ac12d5cf01267932ae920c3f13a7909f6637a4300c90f308c:64)
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: 	at com.android.quickstep.views.LauncherRecentsView.reset(r8-map-id-2ff11d461dc1cd9ac12d5cf01267932ae920c3f13a7909f6637a4300c90f308c:1)
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: 	at com.android.quickstep.views.LauncherRecentsView.onStateTransitionComplete(r8-map-id-2ff11d461dc1cd9ac12d5cf01267932ae920c3f13a7909f6637a4300c90f308c:42)
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: 	at com.android.quickstep.views.LauncherRecentsView.onStateTransitionComplete(r8-map-id-2ff11d461dc1cd9ac12d5cf01267932ae920c3f13a7909f6637a4300c90f308c:88)
+10-08 09:19:37.049  1825  1825 E AndroidRuntime: 	at com.android.launcher3.statemanager.StateManager.onStateTransitionEnd(r8-map-id-2ff11d461dc1cd9ac12d5cf01267932ae920c3f13a7909f6637a4300c90f308c:79)

@@ -1694,7 +1694,7 @@ public abstract class AbsSwipeUpHandler<
             if (Build.VERSION.SDK_INT >= 36 && Build.VERSION.SDK_INT_FULL >= 3600001) {
                 try {
                     enableDesktopWindowingPipCompat = DesktopExperienceFlags.ENABLE_DESKTOP_WINDOWING_PIP.isTrue();
-                } catch (Exception e) {
+                } catch (LinkageError | Exception e) {
                     Log.d("LC-AbsSwipeUpHandler", "Failed to get ENABLE_DESKTOP_WINDOWING_PIP flag, defaulting to false", e);
                 }
             }

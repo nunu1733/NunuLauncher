@@ -36,6 +36,11 @@ class PipFlags {
         */
         private val enableDesktopWindowingPipCompat = Build.VERSION.SDK_INT >= 36 && Build.VERSION.SDK_INT_FULL >= 3600001 && try { // Literal int because https://github.com/LawnchairLauncher/lawnchair/issues/6817
             ENABLE_DESKTOP_WINDOWING_PIP.isTrue
+        } catch (e: LinkageError) {
+            // LC-Issue: #554 — API 37.0 removes the field entirely, raising NoSuchFieldError
+            // (an Error) instead of an Exception. Keep the linkage fail-closed default.
+            Log.d("LC-PipFlags", "Failed to get ENABLE_DESKTOP_WINDOWING_PIP flag, defaulting to false", e)
+            false
         } catch (e: Exception) {
             Log.d("LC-PipFlags", "Failed to get ENABLE_DESKTOP_WINDOWING_PIP flag, defaulting to false", e)
             false
