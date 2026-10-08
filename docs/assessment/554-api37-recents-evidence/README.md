@@ -1,5 +1,10 @@
 # Issue #554 runtime検証 evidence — API 37 recents callback decoder + guard修復
 
+CI merge gate: 本tree（head `c2a8870865`）で [run 37712590248](https://github.com/nunu1733/NunuLauncher/actions/runs/37712590248) 成功
+（成功後rerunを失敗再試行し最終success。最初の2runで category-override の
+`rowsRemainReachableAtTwoHundredPercentFontScale` がCompose runtime内部の
+ArrayIndexOutOfBoundsExceptionでflake、shared-writerは1回flake。他全job success）。
+
 問題・受入条件は `specs/554-api37-recents-parcel/spec.md`（accepted @ `5c724d60c6`、docs PR #556 merge済み）。
 本dirはAC-1〜AC-5のruntime matrix証跡の限定版（全logはcommitせず、signature/transition/windowと
 synthetic emulator screenshotのみ）。実APKと全logcatは検証session `/tmp/554-evidence/` と
