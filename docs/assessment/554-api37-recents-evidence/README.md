@@ -5,7 +5,7 @@
 本evidenceの判定契約は **accepted spec `5c724d60c68cc5c17205421567ae75796196340f`（PR #556 merge済み）＋ owner decision revision `57503d88fc`（PR #560 merge済み、AC-4のAPI 36 runtime legを#559へ分離）** である。
 
 - stack内のspec/plan copyは最終headでmain正本と同一化済み（stack commit `a4a1345092` "Sync spec/plan with merged main revision"）。
-- stack内の #558相当 clarify text（commit `80b8c34fa8`）と `RecentsParcelProbe.java`（commit `9ea6271ad9`）は **#559のclarify PR pendingと同じ内容を含むが、本PRの判定契約へ採用されない**。実装は#556契約のScenario 4（切れたpayload・余剰data・descriptor不一致のfail-closed拒否）を満たす。recents尊重: 詳細明確化の#558は別PRとしてpending維持（本sessionではmergeせず）。
+- stack内の #558相当 clarify text（commit `80b8c34fa8`）と `RecentsParcelProbe.java`（commit `9ea6271ad9`）は **#558（clarify PR pending）と同じ内容を含むが、本PRの判定契約へ採用されない**。実装は#556契約のScenario 4（切れたpayload・余剰data・descriptor不一致のfail-closed拒否）を満たす。
 - runtime検証で使用したsource SHAとPR最終headを区別する: runtime = candidate `e3f0ad5e`/`8469afa`（maxSdk37一時candidate tree）＋ final source debug `6595f22`。PR final head（docs/evidence deltaのみ）と最終CIは下記の表。
 
 ## PR final head / 最終CI
@@ -54,7 +54,7 @@ APK実物はsession `/tmp/554-evidence-apk/`（e3f0ad5・8469afa）と `/tmp/554
 | AC-1/2 repeat run2 | 同上 | **PASS** — run1相同 | `head-api37-run2-result.json` |
 | **guard縮小後 re-run（review Medium対応確認）: API 37, gesture** | candidate `8469afa69b` | **PASS** — parcel 0・FATAL 0・BAL 0・task返り成立 | `head-api37-guardfix-run-result.json` |
 | AC-4（owner decision縮小後）: API 36 provider。**「554 diff由来の回帰なし」のみ** | head／base／昨PASS artifact の3対照 | **PASS（diff由来回帰なし）** — 全artifactで同型profile。overview card成立確認自体は#559へ別途 | `api36-head-85dea91-*` / `api36-base-0c25041-*` / `api36-meleg-pass-artifact-2987e52-appswitch-result.json` |
-| 不正payload probe（synthetic。実転送envelopeは別） | final head debug `6595f22eac` | **PASS 12/12 case**（runner/home × valid/欠損marker/descriptor違い/余剰tail。欠損marker→Incomplete拒否、余剰→enforceNoDataAvail拒否。いずれもlistener未呼び出し） | `parcel-probe-head-6595f22.txt`（本実行）／ `parcel-probe-pre-guard-2-first-observation.txt`（対策前の漏出対照） |
+| 不正payload probe（synthetic。実転送envelopeは別） | final head debug `6595f22eac` | **PASS 8/8 cases**（runner/home × valid/欠損marker/descriptor違い/余剰tail。欠損marker→Incomplete拒否、余剰→enforceNoDataAvail拒否。いずれもlistener未呼び出し） | `parcel-probe-head-6595f22.txt`（本実行）／ `parcel-probe-pre-guard-2-first-observation.txt`（対策前の漏出対照） |
 
 probe実行手順（恒久手順。tools/diagnostics/にfile版あり）:
 
@@ -70,7 +70,7 @@ adb shell CLASSPATH=/data/local/tmp/recents-parcel-probe.dex \
   app_process /system/bin RecentsParcelProbe /data/local/tmp/lawnchair-head-debug.apk /data/local/tmp/recents-probe-dexcache
 ```
 
-先sessionのpre-guard artifact（`parcel-probe-pre-guard-2-first-observation.txt`: runner欠損marker・home tail欠損でlistener漏れが起こるFAIL）は実行treeがfingerprint記録されていない（commit `9ea6271ad9`前後、09:16-09:19 session）ため対照示性のみに使用し、本headでの12/12 PASSを決定証跡とする。
+先sessionのpre-guard artifact（`parcel-probe-pre-guard-2-first-observation.txt`: runner欠損marker・home tail欠損でlistener漏れが起こるFAIL）は実行treeがfingerprint記録されていない（commit `9ea6271ad9`前後、09:16-09:19 session）ため対照示性のみに使用し、本headでの 8/8 cases PASSを決定証跡とする。
 
 ## 検証で確定した事実
 
@@ -94,7 +94,7 @@ adb shell CLASSPATH=/data/local/tmp/recents-parcel-probe.dex \
 ## 未確認 / 制約
 
 - Nothing OS 4実機不所持 → 既存専用decoderの保持はdiff review確認（spec記載どおり）。
-- 不正payloadの**実転送envelope（他プロセスからcross-process送信）**は未実施。synthetic probe（12/12 PASS）と実際provider oracle runを証拠とする。
+- 不正payloadの**実転送envelope（他プロセスからcross-process送信）**は未実施。synthetic probe（8/8 cases PASS）と実際provider oracle runを証拠とする。
 - API 36 overview/card不成立（Finding C）および unread12（Finding B）は#559へ別途追跡。本PRのdiff由来回帰なし確認は3 artifact対照で完了。
 - thumbnailは#555。maxSdk 37は#545契約に従う（candidateでのpassをadvertised support拡張とは扱わない）。
 - #558（clarify PR）は本sessionのowner packetではmergeしない（head branchがmainに対して未syncのためGitHub merge不可とcreate確認済み）。#556+#560が本PRの判定契約。
