@@ -1,6 +1,6 @@
 ---
 issue: "#554"
-status: proposed
+status: accepted
 requirements: []
 updated: 2026-10-08
 ---
@@ -84,3 +84,5 @@ thumbnail黒fallbackは#555の既知未達として区別する。
 ## Change history
 
 - 2026-10-08: #554の再現とAOSP/schema比較にもとづくproposed仕様。Issueのclose指示は実装・検証・pushを包含するが、cutover契約の解除を暗黙には行わない。
+
+- 2026-10-08: 別Review sessionの[Approve](https://github.com/nunu1733/NunuLauncher/pull/556)（head `d56bb6026515e696f89cd9be51a67d6b312f8b96`）を確認。利用者の#554対応指示の範囲で受入。cutover保留は維持。

@@ -1,6 +1,6 @@
 ---
 issue: "#554"
-status: proposed
+status: accepted
 updated: 2026-10-08
 ---
 
@@ -41,3 +41,5 @@ API36回帰、API37 senderの実binder/parcel dispatch、UI/task foreground復�
 不正payload/Nothing OS実機は未実施としてreview packetへ残す。
 upstream patch surfaceは16 anchor対象の既存baseline不整合を含め結果をreportする。
 cutover前の実装PRにはRefs #554を使い、mainline統合後の最終PRのみclosing keywordを使用する。
+
+- 2026-10-08: 別Review sessionの[Approve](https://github.com/nunu1733/NunuLauncher/pull/556)（head `d56bb6026515e696f89cd9be51a67d6b312f8b96`）を確認。利用者の#554対応指示の範囲で受入。cutover保留は維持。
