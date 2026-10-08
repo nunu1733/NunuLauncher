@@ -854,8 +854,7 @@ constructor(
                 "Nunu555",
                 "TaskView.updateTaskViewState type=$type tasks=" +
                     state.tasks.joinToString { t ->
-                        (t as? com.android.quickstep.recents.ui.viewmodel.TaskTileUiState
-                            .TaskData.Data)?.let { d ->
+                        (t as? TaskData.Data)?.let { d ->
                             "(${d.taskId}" +
                                 " thumb=${d.thumbnailData?.thumbnail?.let { b -> "${b.config} ${b.width}x${b.height}" }}" +
                                 " live=${d.isLiveTile} locked=${d.isLocked})"
