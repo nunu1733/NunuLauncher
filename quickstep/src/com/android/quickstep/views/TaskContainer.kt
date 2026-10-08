@@ -182,7 +182,7 @@ class TaskContainer(
         hasHeader: Boolean,
         canShowAppTimer: Boolean,
         clickCloseListener: OnClickListener?,
-    ) = {
+    ) {
             // #555 diagnostic (temporary)
             android.util.Log.e(
                 "Nunu555",
