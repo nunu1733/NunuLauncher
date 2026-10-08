@@ -1352,6 +1352,30 @@ class SystemUiProxy @Inject constructor(@ApplicationContext private val context:
             reply: Parcel?,
             flags: Int,
         ): Boolean {
+            // Issue #554: Android 17 removed minimizedHomeBounds from the wire schema.
+            // Keep the API 36 listener contract and validate the entire API 37 payload.
+            if (Build.VERSION.SDK_INT >= 37
+                    && code == IBinder.FIRST_CALL_TRANSACTION + 2) {
+                data.enforceInterface(IRecentsAnimationRunner.DESCRIPTOR)
+                val controller = IRecentsAnimationController.Stub.asInterface(
+                    data.readStrongBinder())
+                val apps = data.createTypedArray(RemoteAnimationTarget.CREATOR)
+                val wallpapers = data.createTypedArray(RemoteAnimationTarget.CREATOR)
+                val homeContentInsets = data.readTypedObject(Rect.CREATOR)
+                val extras = data.readTypedObject(Bundle.CREATOR)
+                val transitionInfo = data.readTypedObject(TransitionInfo.CREATOR)
+                data.enforceNoDataAvail()
+                onAnimationStart(
+                    controller,
+                    apps,
+                    wallpapers,
+                    homeContentInsets,
+                    null,
+                    extras,
+                    transitionInfo,
+                )
+                return true
+            }
             if (usesNothingOs4BaklavaInitialRecentsTransitionAidl()
                     && code == LC_TRANSACTION_onAnimationStartWithSurfaceTransaction) {
                 // LC-Note: What even the fuck this is (this handles a Nothing OS 4 binder transaction)
