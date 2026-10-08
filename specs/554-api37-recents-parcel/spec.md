@@ -41,7 +41,8 @@ G3（recents PendingIntent creator mode）のBAL判断を実測可能にする�
 2. API 37 Home visibility通知は3 booleanを全消費後、既存onHomeVisibilityChanged(isVisible)へ渡す。
    既存MAIN_EXECUTOR配送とInsets通知を維持する。追加2値の新意味論は実装しない。
 3. API 36は既存生成Stub、Nothing OS 4は既存専用decoderを使用する。
-4. 不正descriptor、切れたpayload、余剰dataはBinder/Parcel例外で拒否し、listenerを呼ばない。
+4. 不正descriptor、必須トップレベル引数/nullable markerが欠損したpayload、余剰dataはBinder/Parcel例外で拒否し、listenerを呼ばない。
+   ネストしたParcelableの内部decode/検証はframework CREATORへ委譲し、独自validatorは追加しない。
    enforceNoDataAvailを削除しない。例外を成功扱いで握り潰さない。
 
 ## Data / Permissions / Accessibility
@@ -69,7 +70,10 @@ IHomeTransitionListener.Stub、Bundle例外はRecentsAnimationListenerStubへ帰
 新test用production export/seam、永続PR laneは作らない。classificationはDiagnostic。
 影響surfaceはQuickstep/provider callback、既存CIでは未mapping sourceとして既存全source gateを起動。
 lower-layer source grepや生成Stubの自己roundtripは独立したwire互換証拠としない。
-不正payloadはコードreviewで全消費/descriptor検証とdispatch順を確認し、未実行と明記する。
+不正トップレベルpayloadは実production Stubをreflectionで取得するAndroid app_process診断プローブで確認する。
+正常対照、descriptor違い、余剰tail、Homeのboolean tail欠損、runnerの最後のinfo marker欠損を
+同じParcel/Binder seamで送信し、例外拒否とlistener呼出0をassertする。
+Nested Parcelableの全内部破損パターンは未確認として明記する。
 
 release実行はmaxSdk36のままだと互換gateに遮られるため、#545同様に37の一時candidateを
 独立commitでbuild/検証し、その後revertする。candidateでのpassをadvertised support拡張とは扱わない。
@@ -86,3 +90,5 @@ thumbnail黒fallbackは#555の既知未達として区別する。
 - 2026-10-08: #554の再現とAOSP/schema比較にもとづくproposed仕様。Issueのclose指示は実装・検証・pushを包含するが、cutover契約の解除を暗黙には行わない。
 
 - 2026-10-08: 別Review sessionの[Approve](https://github.com/nunu1733/NunuLauncher/pull/556)（head `d56bb6026515e696f89cd9be51a67d6b312f8b96`）を確認。利用者の#554対応指示の範囲で受入。cutover保留は維持。
+
+- 2026-10-08: 実装reviewでnative Parcelのunderflowが0扱いになることを確認。必須top-level field/markerのavailability検証と、実StubへのDiagnostic malformed-payload probeを検証計画へ追加。
