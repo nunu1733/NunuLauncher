@@ -849,6 +849,19 @@ constructor(
 
             // Updating containers
             val mapOfTasks = state.tasks.associateBy { it.taskId }
+            // #555 diagnostic (temporary)
+            android.util.Log.e(
+                "Nunu555",
+                "TaskView.updateTaskViewState type=$type tasks=" +
+                    state.tasks.joinToString { t ->
+                        (t as? com.android.quickstep.recents.ui.viewmodel.TaskTileUiState
+                            .TaskData.Data)?.let { d ->
+                            "(${d.taskId}" +
+                                " thumb=${d.thumbnailData?.thumbnail?.let { b -> "${b.config} ${b.width}x${b.height}" }}" +
+                                " live=${d.isLiveTile} locked=${d.isLocked})"
+                        } ?: "(${t.taskId} NoData)"
+                    },
+            )
             taskContainers.forEach { container ->
                 val taskId = container.task.key.id
                 val containerState = mapOfTasks[taskId]
