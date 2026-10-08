@@ -16,6 +16,8 @@ def main():
     parser.add_argument("--package", default="app.lawnchair")
     parser.add_argument("--launcher-activity", default=None,
                         help="Launcher activity component. Defaults to <package>/.LawnchairLauncher")
+    parser.add_argument("--entry", choices=("gesture", "appswitch"), default="gesture",
+                        help="How to enter overview. APP_SWITCH is more deterministic on some AVDs")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     if args.launcher_activity is None:
@@ -69,12 +71,15 @@ def main():
         wait_for(activity, lambda s: re.search(r"topResumedActivity=.*com.android.settings/", s))
         wait_for(window, lambda s: re.search(r"mCurrentFocus=.*com.android.settings/", s))
         x = str(width // 2)
-        run("shell", "input", "touchscreen", "motionevent", "DOWN", x, str(height - 12))
-        for y in (height - 60, height * 4 // 5, height * 3 // 5):
-            run("shell", "input", "touchscreen", "motionevent", "MOVE", x, str(y))
+        if args.entry == "appswitch":
+            run("shell", "input", "keyevent", "KEYCODE_APP_SWITCH")
+        else:
+            run("shell", "input", "touchscreen", "motionevent", "DOWN", x, str(height - 12))
+            for y in (height - 60, height * 4 // 5, height * 3 // 5):
+                run("shell", "input", "touchscreen", "motionevent", "MOVE", x, str(y))
         # A pause is the gesture input (swipe-and-hold), not the success oracle.
-        time.sleep(0.8)
-        run("shell", "input", "touchscreen", "motionevent", "UP", x, str(height * 3 // 5))
+            time.sleep(0.8)
+            run("shell", "input", "touchscreen", "motionevent", "UP", x, str(height * 3 // 5))
         launcher_dump = lambda: run("shell", "dumpsys", "activity", args.launcher_activity)
         state = wait_for(launcher_dump, lambda s: re.search(r"mState:\s*Overview\b", s))
         save("overview-activity.txt", state)
