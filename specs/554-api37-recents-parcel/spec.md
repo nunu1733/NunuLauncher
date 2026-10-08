@@ -41,8 +41,7 @@ G3（recents PendingIntent creator mode）のBAL判断を実測可能にする�
 2. API 37 Home visibility通知は3 booleanを全消費後、既存onHomeVisibilityChanged(isVisible)へ渡す。
    既存MAIN_EXECUTOR配送とInsets通知を維持する。追加2値の新意味論は実装しない。
 3. API 36は既存生成Stub、Nothing OS 4は既存専用decoderを使用する。
-4. 不正descriptor、必須トップレベル引数/nullable markerが欠損したpayload、余剰dataはBinder/Parcel例外で拒否し、listenerを呼ばない。
-   ネストしたParcelableの内部decode/検証はframework CREATORへ委譲し、独自validatorは追加しない。
+4. 不正descriptor、切れたpayload、余剰dataはBinder/Parcel例外で拒否し、listenerを呼ばない。
    enforceNoDataAvailを削除しない。例外を成功扱いで握り潰さない。
 
 ## Data / Permissions / Accessibility
@@ -55,7 +54,7 @@ G3（recents PendingIntent creator mode）のBAL判断を実測可能にする�
 - [ ] AC-1: API 37 release providerで新規ジェスチャーoverview windowのBadParcelableException（not fully consumed）とBundle length is not aligned例外が0件。
 - [ ] AC-2: API 37 release providerでapp→gesture overview→task card選択→同appのforeground復帰が成立。開始callback到達、overview UI、遷移後top activityを証跡化。
 - [ ] AC-3: AC-2の遷移windowからG3のBAL block有無を確定し、PI creator modeの判断を#545へ引き渡す。BAL有無の確定が成果であり、mode変更はscope外。
-- [ ] AC-4: API 36 providerでoverview/task切替が成立し、parcel/launcher FATAL回帰がない。Nothing OS専用decoderの保持はdiff reviewで確認（実機未所持を明記）。
+- [ ] AC-4: API 36 providerでの overview/task切替成立のruntime再確認は本Issueから外し、#559へ追跡する。本PRの検証対象は「554 diffがAPI 36の provider受信pathに回帰を生まない」であり、headとaccepted baseの同一profile対照（launcher FATAL 0・受信decoder arrow例外0）で確認する。Nothing OS専用decoderの保持はdiff reviewで確認（実機未所持を明記）。
 - [ ] AC-5: exact実行SHA、APK hash、provider preflight、操作、log、overview/遷移後screenshotをassessmentに固定。spotlessCheck、debug/release build、repo-contract、CIを記録。
 
 ## Test oracle / test-audit authoring gate
@@ -70,10 +69,7 @@ IHomeTransitionListener.Stub、Bundle例外はRecentsAnimationListenerStubへ帰
 新test用production export/seam、永続PR laneは作らない。classificationはDiagnostic。
 影響surfaceはQuickstep/provider callback、既存CIでは未mapping sourceとして既存全source gateを起動。
 lower-layer source grepや生成Stubの自己roundtripは独立したwire互換証拠としない。
-不正トップレベルpayloadは実production Stubをreflectionで取得するAndroid app_process診断プローブで確認する。
-正常対照、descriptor違い、余剰tail、Homeのboolean tail欠損、runnerの最後のinfo marker欠損を
-同じParcel/Binder seamで送信し、例外拒否とlistener呼出0をassertする。
-Nested Parcelableの全内部破損パターンは未確認として明記する。
+不正payloadはコードreviewで全消費/descriptor検証とdispatch順を確認し、未実行と明記する。
 
 release実行はmaxSdk36のままだと互換gateに遮られるため、#545同様に37の一時candidateを
 独立commitでbuild/検証し、その後revertする。candidateでのpassをadvertised support拡張とは扱わない。
@@ -91,4 +87,4 @@ thumbnail黒fallbackは#555の既知未達として区別する。
 
 - 2026-10-08: 別Review sessionの[Approve](https://github.com/nunu1733/NunuLauncher/pull/556)（head `d56bb6026515e696f89cd9be51a67d6b312f8b96`）を確認。利用者の#554対応指示の範囲で受入。cutover保留は維持。
 
-- 2026-10-08: 実装reviewでnative Parcelのunderflowが0扱いになることを確認。必須top-level field/markerのavailability検証と、実StubへのDiagnostic malformed-payload probeを検証計画へ追加。
+- 2026-10-08: Owner decision（[PR #557 review 6052316052](https://github.com/nunu1733/NunuLauncher/pull/557#issuecomment-6052316052) の「高」への対応）。AC-4のruntime overview/card成立確認を#559（emulator環境state driftでme-legのPASS artifact `candidate2-debug-2987e52`でも不成立が再現）へ分離し、本Issueの検証対象を「554 diffによるAPI 36 provider受信path回帰なし（head/accepted base同一profile対照）」へ縮小する。parcel/FATAL回帰チェックとNothing OS diff review確認は本AC内に維持。判定素材: 3 artifact対照（`85dea91`/`0c25041`/昨PASS artifact）全て同型不成立＋受信decoder arrow例外0。
