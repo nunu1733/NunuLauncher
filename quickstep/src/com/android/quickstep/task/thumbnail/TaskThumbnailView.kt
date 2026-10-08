@@ -121,6 +121,10 @@ class TaskThumbnailView : FrameLayout, ViewPool.Reusable {
 
     fun setState(state: TaskThumbnailUiState, taskId: Int? = null) {
         if (uiState == state) return
+        // #555 diagnostic (temporary)
+        val stateBitmap = (state as? TaskThumbnailUiState.SnapshotSplash)?.snapshot?.bitmap
+        Log.e("Nunu555", "TTV.setState task=$taskId state=${state::class.simpleName}" +
+            " bmp=${stateBitmap?.let { "${it.config} ${it.width}x${it.height}" }}" )
         logDebug("taskId: $taskId - uiState changed from: $uiState to: $state")
         uiState = state
         resetViews()
