@@ -55,6 +55,7 @@ def main():
     save("package.txt", run("shell", "dumpsys", "package", args.package))
     width, height = map(int, re.findall(r"(\d+)x(\d+)", run("shell", "wm", "size"))[-1])
     activity = lambda: run("shell", "dumpsys", "activity", "activities")
+    window = lambda: run("shell", "dumpsys", "window")
     run("shell", "input", "keyevent", "KEYCODE_HOME")
     wait_for(activity, lambda s: re.search(r"topResumedActivity=.*" + re.escape(args.package), s))
     run("logcat", "-c")
@@ -62,6 +63,7 @@ def main():
     try:
         run("shell", "am", "start", "-a", "android.settings.SETTINGS")
         wait_for(activity, lambda s: re.search(r"topResumedActivity=.*com.android.settings/", s))
+        wait_for(window, lambda s: re.search(r"mCurrentFocus=.*com.android.settings/", s))
         x = str(width // 2)
         run("shell", "input", "touchscreen", "motionevent", "DOWN", x, str(height - 12))
         for y in (height - 60, height * 4 // 5, height * 3 // 5):
@@ -104,7 +106,10 @@ def main():
         result["takeover_diagnostic_count"] = log.count("No matching remote found to takeover")
         result["bal_blocks"] = [line for line in log.splitlines()
                                 if re.search(r"Background activity (launch|start) blocked|BAL.*block", line, re.I)]
-        result["pass"] = result.get("overview_and_task_return", False) and not errors
+        launcher_fatals = re.findall(
+            r"FATAL EXCEPTION[^\n]*\n[^\n]*Process: " + re.escape(args.package) + r"(?:,|:)", log)
+        result["launcher_fatal_count"] = len(launcher_fatals)
+        result["pass"] = result.get("overview_and_task_return", False) and not errors and not launcher_fatals
         save("result.json", json.dumps(result, indent=2) + "\n")
         print(json.dumps(result, indent=2))
     return 0 if result["pass"] else 1

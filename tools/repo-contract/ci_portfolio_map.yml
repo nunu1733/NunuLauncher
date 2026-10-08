@@ -120,3 +120,5 @@ contract_tests:
 # Trigger: explicit local execution on a configured API37/API36 provider emulator.
 # Existing unmapped-source fallback continues to cover Quickstep code changes;
 # a stock API36 lane cannot prove API37 sender wire compatibility.
+# Companion Diagnostic (same owner/trigger, no CI edge):
+# tools/diagnostics/RecentsParcelProbe.java — actual Stub malformed Parcel dispatch.

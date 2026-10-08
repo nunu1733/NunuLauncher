@@ -16,6 +16,7 @@
 
 package com.android.quickstep
 
+import android.os.BadParcelableException
 import android.os.Build
 import android.os.IBinder
 import android.os.Parcel
@@ -59,6 +60,10 @@ class HomeVisibilityState {
                         if (Build.VERSION.SDK_INT >= 37
                                 && code == IBinder.FIRST_CALL_TRANSACTION) {
                             data.enforceInterface("com.android.wm.shell.shared.IHomeTransitionListener")
+                            // enforceNoDataAvail only detects surplus, not missing booleans.
+                            if (data.dataAvail() < 3 * Int.SIZE_BYTES) {
+                                throw BadParcelableException("Incomplete home visibility callback")
+                            }
                             val isVisible = data.readBoolean()
                             data.readBoolean() // keyguardGoingAwayOrWaking
                             data.readBoolean() // behindDesktop

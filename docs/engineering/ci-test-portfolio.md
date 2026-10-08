@@ -242,3 +242,8 @@ python3 tools/diagnostics/verify_recents_provider.py --serial emulator-5554 --pa
 ```
 
 出力にはemulator UI/logを含むため、synthetic fixtureからの必要証跡だけを選びcommitする。
+
+`tools/diagnostics/RecentsParcelProbe.java` は同ownerのDiagnostic補助probe。
+debug APK内の実Stubをreflectionで取得し、実Parcel/Binder.transactで正常・欠損marker・
+descriptor違い・余剰tailを送り、例外とlistener回数を検証する。production exportなし、CI非routing。
+provider end-to-end oracleとの追加riskはトップレベルmalformed payloadのfail-closed dispatchである。

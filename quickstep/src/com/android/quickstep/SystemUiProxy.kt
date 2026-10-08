@@ -26,6 +26,7 @@ import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.graphics.Point
 import android.graphics.Rect
+import android.os.BadParcelableException
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -1353,16 +1354,23 @@ class SystemUiProxy @Inject constructor(@ApplicationContext private val context:
             flags: Int,
         ): Boolean {
             // Issue #554: Android 17 removed minimizedHomeBounds from the wire schema.
-            // Keep the API 36 listener contract and validate the entire API 37 payload.
+            // Keep the API 36 listener contract and validate the API 37 top-level fields.
             if (Build.VERSION.SDK_INT >= 37
                     && code == IBinder.FIRST_CALL_TRANSACTION + 2) {
                 data.enforceInterface(IRecentsAnimationRunner.DESCRIPTOR)
+                requireCallbackField(data, "controller")
                 val controller = IRecentsAnimationController.Stub.asInterface(
                     data.readStrongBinder())
+                    ?: throw BadParcelableException("Missing recents controller")
+                requireCallbackField(data, "apps")
                 val apps = data.createTypedArray(RemoteAnimationTarget.CREATOR)
+                requireCallbackField(data, "wallpapers")
                 val wallpapers = data.createTypedArray(RemoteAnimationTarget.CREATOR)
+                requireCallbackField(data, "homeContentInsets")
                 val homeContentInsets = data.readTypedObject(Rect.CREATOR)
+                requireCallbackField(data, "extras")
                 val extras = data.readTypedObject(Bundle.CREATOR)
+                requireCallbackField(data, "transitionInfo")
                 val transitionInfo = data.readTypedObject(TransitionInfo.CREATOR)
                 data.enforceNoDataAvail()
                 onAnimationStart(
@@ -1407,6 +1415,14 @@ class SystemUiProxy @Inject constructor(@ApplicationContext private val context:
                 return true
             }
             return super.onTransact(code, data, reply, flags)
+        }
+
+        private fun requireCallbackField(data: Parcel, name: String) {
+            // Native primitive reads return zero on underflow. Every top-level nullable
+            // field still needs its presence/length marker; CREATORs own nested contents.
+            if (data.dataAvail() < Int.SIZE_BYTES) {
+                throw BadParcelableException("Incomplete recents callback field: $name")
+            }
         }
 
         override fun onAnimationStart(
