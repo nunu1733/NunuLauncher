@@ -183,6 +183,13 @@ class TaskContainer(
         canShowAppTimer: Boolean,
         clickCloseListener: OnClickListener?,
     ) = {
+            // #555 diagnostic (temporary)
+            android.util.Log.e(
+                "Nunu555",
+                "TaskContainer.setState task=${state?.taskId}" +
+                    " refactorContentView=${enableRefactorTaskContentView()}" +
+                    " thumb=${(state as? TaskData.Data)?.thumbnailData?.thumbnail?.let { "${it.config} ${it.width}x${it.height}" }}",
+            )
             if (enableRefactorTaskContentView()) {
                 (taskContentView as TaskContentView).setState(
                     TaskUiStateMapper.toTaskHeaderState(state, hasHeader, clickCloseListener),
