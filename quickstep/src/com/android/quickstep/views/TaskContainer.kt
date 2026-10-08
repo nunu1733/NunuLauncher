@@ -182,7 +182,7 @@ class TaskContainer(
         hasHeader: Boolean,
         canShowAppTimer: Boolean,
         clickCloseListener: OnClickListener?,
-    ) = {
+    ) {
             if (enableRefactorTaskContentView()) {
                 (taskContentView as TaskContentView).setState(
                     TaskUiStateMapper.toTaskHeaderState(state, hasHeader, clickCloseListener),
