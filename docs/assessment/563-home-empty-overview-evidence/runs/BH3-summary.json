@@ -1,0 +1,53 @@
+{
+ "run": "BH3",
+ "started": "2026-10-10T00:05:22.888+09:00",
+ "steps": [
+  {
+   "focus": [
+    "mCurrentFocus=Window{eaa565a u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}"
+   ],
+   "step": "boot",
+   "wall": "2026-10-10T00:05:27.891+09:00"
+  },
+  {
+   "xml": "BH3-hs-overview.xml",
+   "sha256": "6c7906c7e1c42642e8036e590cf298f0b2f6a3d31c7c40c46350c0e6eed7dd81",
+   "task_view_single": 0,
+   "overview_panel": 0,
+   "settings_nodes": 0,
+   "step": "hs-overview",
+   "wall": "2026-10-10T00:05:40.933+09:00"
+  },
+  {
+   "focus_before": [
+    "mCurrentFocus=Window{eaa565a u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}"
+   ],
+   "focus_after": [
+    "mCurrentFocus=Window{eaa565a u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}"
+   ],
+   "cards": [
+    2,
+    2,
+    2,
+    2
+   ],
+   "panels": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "xml_sha": [
+    "91468197e945dfb2",
+    "91468197e945dfb2",
+    "91468197e945dfb2",
+    "91468197e945dfb2"
+   ],
+   "png": "BH3-home-final.png",
+   "sha256": "846069e8ea8369289675b099b01edd3a7085d649aa0ede5108d254e79dd890e0",
+   "step": "home-path",
+   "wall": "2026-10-10T00:05:54.113+09:00"
+  }
+ ],
+ "finished": "2026-10-10T00:05:54.183+09:00"
+}
