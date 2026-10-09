@@ -53,7 +53,7 @@ APK実物はsession `/tmp/554-evidence-apk/`（e3f0ad5・8469afa）と `/tmp/554
 | AC-1/2/3 run1: API 37, gesture | candidate `e3f0ad5ef3` | **PASS** — `overview_and_task_return=true`、`parcel_exception_count=0`、FATAL 0、BAL 0（takeover diagnostic 1件のみ＝spec記載の補助signature） | `head-api37-run1-result.json` / screenshots / `…parcel-signatures.txt`(空) |
 | AC-1/2 repeat run2 | 同上 | **PASS** — run1相同 | `head-api37-run2-result.json` |
 | **guard縮小後 re-run（review Medium対応確認）: API 37, gesture** | candidate `8469afa69b` | **PASS** — parcel 0・FATAL 0・BAL 0・task返り成立 | `head-api37-guardfix-run-result.json` |
-| AC-4（owner decision縮小後）: API 36 provider。**「554 diff由来の回帰なし」のみ** | head／base／昨PASS artifact の3対照 | **PASS（diff由来回帰なし）** — 全artifactで同型profile。overview card成立確認自体は#559へ別途 | `api36-head-85dea91-*` / `api36-base-0c25041-*` / `api36-meleg-pass-artifact-2987e52-appswitch-result.json` |
+| AC-4（owner decision縮小後）: API 36 provider。**「554 diff由来の回帰なし」のみ** | head／base／昨PASS artifact の3対照 | **PASS（diff由来回帰なし）** — 全artifactで同型profile。overview card成立確認自体は#559へ別途 | `api36-head-85dea91-*` / `api36-base-0c25041-*` / `api36-meleg-pass-artifact-2987e52-appswitch-result.json`（2026-10-09補記: 当時のFAIL profileはwire mismatch（Finding B/C訂正参照）由来。3 artifact対照の「同型profile」観察自体は有効で、554 diff由来の回帰なしという結論は維持。判定材料は#559のassessmentとreview-proof.json。） |
 | 不正payload probe（synthetic。実転送envelopeは別） | final head debug `6595f22eac` | **PASS 8/8 cases**（runner/home × valid/欠損marker/descriptor違い/余剰tail。欠損marker→Incomplete拒否、余剰→enforceNoDataAvail拒否。いずれもlistener未呼び出し） | `parcel-probe-head-6595f22.txt`（本実行）／ `parcel-probe-pre-guard-2-first-observation.txt`（対策前の漏出対照） |
 
 probe実行手順（恒久手順。tools/diagnostics/にfile版あり）:
@@ -86,16 +86,14 @@ adb shell CLASSPATH=/data/local/tmp/recents-parcel-probe.dex \
   `a556c92904` で `catch (Throwable)` にしたが、review 6052316052「中」指摘（OOM/StackOverflow等VM系も握り潰す）
   を受けて `6595f22eac` で `Exception`＋`LinkageError` のみへ縮小。両file同方針。API 37 recents完走は
   `8469afa69b` candidateで1回再確認（guard縮小後 re-run行）。
-- **Finding B（既存baseline・554 diff由来ではない／環境要因と確定）**: API 36 providerでlauncher→shell
-  `RecentTasksController$IRecentTasksImpl.onTransact` が `unread size: 12` を1回記録。`85dea91`/`0c25041`/
-  **昨日me-leg PASS artifact（同一SHA `2987e52`）の3 artifact全部で同1回** → emulator環境state driftでソースdiff由来でない。#559へ追跡分離。
-- **Finding C（Finding Bと同じ環境要因、#559へ追跡）**: API 36 provider gestureでlauncher `mState:Overview` には到達するがoverview windowが成立せず、card UIが空のままappへ戻る（3 artifact全て同型）。`BLASTSyncEngine: ... never received commit callback` がshell観測。me-leg当日は同一ARTIFACTでPASS。
+- **Finding B**（2026-10-09 update: 初版の「emulator環境state driftと確定」は **superseded**。判定は#559のwire解析とQAに訂正）: API 36 provider（emulator-5556 / AVD `issue142_api36`）で、当時クライアントが送信した `IRecentTasks.startRecentsTransition` は **transaction 6 + nullable-WCT の6引数** で、インストール済みAPI 36 SystemUI（fingerprint `BE2A.250530.026.F3`）が期待する **transaction 6 + 5引数（WCTなし）** と不一致。shell側で `unread size: 12` が1回記録され、`enforceNoDataAvail` で遷移要求が拒否される。したがって経路依存のwire mismatchであり、ソースdiff由来でも環境drift確定でもない。両方向のnightly対照とwire参照は [#559](https://github.com/nunu1733/NunuLauncher/issues/559) が恒久。
+- **Finding C**（2026-10-09 update: Finding Bの同一wire mismatch由来、修正は#559 source branchでruntime GREEN。参照: Issue #559 / [#559 assessment](https://github.com/nunu1733/NunuLauncher/pull/564/files)・`docs/assessment/issue-559-api36-recents-repair.md`（#564でmain向けdocs PRに記載）。本branchでは554 READMEから直接参照せずリポジトリ内はmain merge後に有効）: API 36 provider gesture／appswitchでoverview card表示が空になりappへ戻る現象は、Finding Bのwire mismatchによる遷移要求拒否で説明される。shell観測 `BLASTSyncEngine: ... never received commit callback` と `No matching remote found to takeover` は当該遷移のエコー。修復確認（direct APP_SWITCH/gesture PASS）は#559のruntime evidence。HOME経由で一時的にカードが空になる別観測は [#563](https://github.com/nunu1733/NunuLauncher/issues/563)。
 
 ## 未確認 / 制約
 
 - Nothing OS 4実機不所持 → 既存専用decoderの保持はdiff review確認（spec記載どおり）。
 - 不正payloadの**実転送envelope（他プロセスからcross-process送信）**は未実施。synthetic probe（8/8 cases PASS）と実際provider oracle runを証拠とする。
-- API 36 overview/card不成立（Finding C）および unread12（Finding B）は#559へ別途追跡。本PRのdiff由来回帰なし確認は3 artifact対照で完了。
+- API 36 overview/card不成立（Finding C）および unread12（Finding B）は#559へ別途追跡（2026-10-09 update: root causeはwire mismatch確定済み、判定はmain側 [#559 assessment](https://github.com/nunu1733/NunuLauncher/pull/564) `docs/assessment/issue-559-api36-recents-repair.md`。HOME経由の一時的空カードは #563 で独立追跡）。本PRのdiff由来回帰なし確認は3 artifact対照で完了。
 - thumbnailは#555。maxSdk 37は#545契約に従う（candidateでのpassをadvertised support拡張とは扱わない）。
 - #558（clarify PR）は本sessionのowner packetではmergeしない（head branchがmainに対して未syncのためGitHub merge不可とcreate確認済み）。#556+#560が本PRの判定契約。
 - Cutover前merge/close保留（ADR-0018 Decision 3/8）。
