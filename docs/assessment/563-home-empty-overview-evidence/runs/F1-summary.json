@@ -1,0 +1,100 @@
+{
+ "run": "F1",
+ "started": "2026-10-09T23:30:34.872+09:00",
+ "steps": [
+  {
+   "focus": [],
+   "step": "origin",
+   "wall": "2026-10-09T23:30:40.762+09:00"
+  },
+  {
+   "xml": "F1-direct-overview.xml",
+   "sha256": "9607757cb6a2ad3243707f5d9fec13548aa61bb34d94d00b7e5fa23c9237214a",
+   "task_view_single": 1,
+   "task_view_any": 1,
+   "settings_nodes": 0,
+   "step": "direct-overview",
+   "wall": "2026-10-09T23:30:57.765+09:00"
+  },
+  {
+   "focus": [],
+   "step": "direct-return",
+   "wall": "2026-10-09T23:31:00.489+09:00"
+  },
+  {
+   "xml": "F1-gesture-overview.xml",
+   "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+   "task_view_single": 2,
+   "task_view_any": 2,
+   "settings_nodes": 0,
+   "step": "gesture-overview",
+   "wall": "2026-10-09T23:31:16.345+09:00"
+  },
+  {
+   "focus": [],
+   "step": "gesture-return",
+   "wall": "2026-10-09T23:31:18.763+09:00"
+  },
+  {
+   "focus_before": [],
+   "focus_after": [],
+   "checkpoints": [
+    {
+     "xml": "F1-home-c0.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F1-home-c5.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F1-home-c10.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F1-home-c30.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F1-home-c60.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F1-home-c80.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    }
+   ],
+   "final_png": "F1-home-final.png",
+   "final_png_sha256": "71728828173d1dd6f0ac92d65f8571fe614f185dad75a7a32246a815dfeda938",
+   "step": "home-path",
+   "wall": "2026-10-09T23:32:07.516+09:00"
+  },
+  {
+   "unread12": 0,
+   "badparcel": 0,
+   "fatal": 0,
+   "pending5000": 0,
+   "step": "signatures",
+   "wall": "2026-10-09T23:32:07.758+09:00"
+  }
+ ],
+ "finished": "2026-10-09T23:32:07.759+09:00"
+}

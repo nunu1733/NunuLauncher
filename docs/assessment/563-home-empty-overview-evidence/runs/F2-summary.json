@@ -1,0 +1,95 @@
+{
+ "run": "F2",
+ "started": "2026-10-09T23:51:42.845+09:00",
+ "steps": [
+  {
+   "focus": [],
+   "step": "origin",
+   "wall": "2026-10-09T23:51:47.829+09:00"
+  },
+  {
+   "xml": "F2-direct-overview.xml",
+   "sha256": "96fd69b1f5410615febbd5fdcddaa96b3671ac6b58e3fa16c22f727f80831cff",
+   "task_view_single": 0,
+   "task_view_any": 0,
+   "settings_nodes": 102,
+   "step": "direct-overview",
+   "wall": "2026-10-09T23:52:04.405+09:00"
+  },
+  {
+   "xml": "F2-gesture-overview.xml",
+   "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+   "task_view_single": 2,
+   "task_view_any": 2,
+   "settings_nodes": 0,
+   "step": "gesture-overview",
+   "wall": "2026-10-09T23:52:18.280+09:00"
+  },
+  {
+   "focus": [],
+   "step": "gesture-return",
+   "wall": "2026-10-09T23:52:21.253+09:00"
+  },
+  {
+   "focus_before": [],
+   "focus_after": [],
+   "checkpoints": [
+    {
+     "xml": "F2-home-c0.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F2-home-c5.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F2-home-c10.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F2-home-c30.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F2-home-c60.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F2-home-c80.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    }
+   ],
+   "final_png": "F2-home-final.png",
+   "final_png_sha256": "48fec23380078515ae6fc04f8bf797f9d22c51dee58d293dc0a78cd539c32333",
+   "step": "home-path",
+   "wall": "2026-10-09T23:52:53.211+09:00"
+  },
+  {
+   "unread12": 0,
+   "badparcel": 0,
+   "fatal": 0,
+   "pending5000": 0,
+   "step": "signatures",
+   "wall": "2026-10-09T23:52:53.420+09:00"
+  }
+ ],
+ "finished": "2026-10-09T23:52:53.420+09:00"
+}

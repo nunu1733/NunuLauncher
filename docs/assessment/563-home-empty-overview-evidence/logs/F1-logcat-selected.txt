@@ -1,0 +1,42 @@
+10-09 23:30:38.956 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-09 23:30:38.956 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-09 23:30:38.961 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-09 23:30:38.961 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-09 23:30:39.938 E/SystemUiProxy(18142): getRecentTasks() failed due to null mRecentTasks
+10-09 23:30:40.592 D/StateManager(18142): goToState - fromState: Normal, toState: Normal, partial trace:
+10-09 23:30:40.926 D/RecentsView(18142): reloadIfNeeded - getTasks: -1
+10-09 23:30:40.969 D/RecentsView(18142): reloadIfNeeded - getTasks: -1
+10-09 23:30:41.306 D/RecentsView(18142): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=12547] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=12548] null, type=SINGLE task=[id=848 windowingMode=0 user=0 lastActiveTime=12549] null, type=SINGLE task=[id=855 windowingMode=1 user=0 lastActiveTime=31673656] null, type=SINGLE task=[id=879 windowingMode=1 user=0 lastActiveTime=84832266] null]
+10-09 23:30:41.370 D/StateManager(18142): goToState - fromState: Normal, toState: Background, partial trace:
+10-09 23:30:41.408 D/RecentsView(18142): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=12547] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=12548] null, type=SINGLE task=[id=848 windowingMode=0 user=0 lastActiveTime=12549] null, type=SINGLE task=[id=855 windowingMode=1 user=0 lastActiveTime=31673656] null, type=SINGLE task=[id=879 windowingMode=1 user=0 lastActiveTime=84832266] null]
+10-09 23:30:42.972 E/SystemUiProxy(18142): getRecentTasks() failed due to null mRecentTasks
+10-09 23:30:42.972 D/RecentsView(18142): reloadIfNeeded - getTasks: 1
+10-09 23:30:42.973 E/SystemUiProxy(18142): getRecentTasks() failed due to null mRecentTasks
+10-09 23:30:43.943 D/RecentsView(18142): applyLoadPlan - taskGroups: []
+10-09 23:30:46.268 D/StateManager(18142): goToState - fromState: Background, toState: Overview, partial trace:
+10-09 23:30:57.102 D/StateManager(18142): goToState - fromState: Overview, toState: Normal, partial trace:
+10-09 23:30:57.405 D/StateManager(18142): goToState - fromState: Normal, toState: Normal, partial trace:
+10-09 23:30:58.549 D/RecentsView(18142): reloadIfNeeded - getTasks: -1
+10-09 23:30:58.702 D/RecentsView(18142): reloadIfNeeded - getTasks: -1
+10-09 23:30:58.816 D/RecentsView(18142): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=12547] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=12548] null, type=SINGLE task=[id=848 windowingMode=0 user=0 lastActiveTime=12549] null, type=SINGLE task=[id=855 windowingMode=1 user=0 lastActiveTime=31673656] null, type=SINGLE task=[id=879 windowingMode=1 user=0 lastActiveTime=84832266] null]
+10-09 23:30:58.895 D/StateManager(18142): goToState - fromState: Normal, toState: Background, partial trace:
+10-09 23:30:58.977 D/RecentsView(18142): reloadIfNeeded - getTasks: 5
+10-09 23:30:59.234 D/RecentsView(18142): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=12547] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=12548] null, type=SINGLE task=[id=848 windowingMode=0 user=0 lastActiveTime=12549] null, type=SINGLE task=[id=855 windowingMode=1 user=0 lastActiveTime=31673656] Security, type=SINGLE task=[id=879 windowingMode=1 user=0 lastActiveTime=84832266] Settings]
+10-09 23:31:00.166 D/RecentsView(18142): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=12547] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=12548] null, type=SINGLE task=[id=848 windowingMode=0 user=0 lastActiveTime=12549] null, type=SINGLE task=[id=855 windowingMode=1 user=0 lastActiveTime=31673656] null, type=SINGLE task=[id=879 windowingMode=1 user=0 lastActiveTime=84832266] null]
+10-09 23:31:01.363 D/StateManager(18142): goToState - fromState: Background, toState: Overview, partial trace:
+10-09 23:31:15.100 D/StateManager(18142): goToState - fromState: Overview, toState: Normal, partial trace:
+10-09 23:31:15.158 D/StateManager(18142): goToState - fromState: Normal, toState: Normal, partial trace:
+10-09 23:31:30.203 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-09 23:31:30.203 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-09 23:31:30.213 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-09 23:31:30.213 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-09 23:31:30.483 D/StateManager(18142): goToState - fromState: Normal, toState: Overview, partial trace:
+10-09 23:31:30.483 D/StateManager(18142): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-09 23:31:30.555 D/RecentsView(18142): reloadIfNeeded - getTasks: -1
+10-09 23:31:30.942 W/QuickstepProtoLogGroup(18142): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-09 23:31:30.942 W/QuickstepProtoLogGroup(18142): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-09 23:31:30.942 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-09 23:31:30.965 W/QuickstepProtoLogGroup(18142): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-09 23:31:30.965 W/QuickstepProtoLogGroup(18142): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-09 23:31:30.965 W/QuickstepProtoLogGroup(18142): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-09 23:31:31.092 D/RecentsView(18142): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=12547] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=12548] null, type=SINGLE task=[id=848 windowingMode=0 user=0 lastActiveTime=12549] null, type=SINGLE task=[id=855 windowingMode=1 user=0 lastActiveTime=31673656] null, type=SINGLE task=[id=879 windowingMode=1 user=0 lastActiveTime=84876318] null]

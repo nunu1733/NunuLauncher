@@ -1,0 +1,214 @@
+{
+ "schema": "563-investigation-proof/v1",
+ "issue": 563,
+ "readable": "Screen-level reproduction and baseline/fixed classification for the API36 HOME-origin empty overview. All runs on emulator-5556, fingerprint google/sdk_gphone64_arm64/emu64a:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys, SystemUI sha256 a895f88ae0539d9950a74e49f0471ca81237337f0b31d6eb5f4fe29e814d14f5, GLOBAL animation scales 0/0/0, gesture nav, provider overlay nunu.overlay.quickstepconfig. No AVD wipe, no pm clear, no data deletion at any point.",
+ "artifacts": {
+  "fixedApk": {
+   "path": "Lawnchair.16.Dev.(f131e8e).github.debug.apk",
+   "sha256": "d6f50206401950c2d502e60c3e6d0777fd1cbf116d823f232bc2fc062c58ef60",
+   "source": "issue-559-api36-recents-compat impl head 54ce5074961aafe0636593ab1eaaba3c4125f4e7 (tested-identical f131 tree build; same artifact as #559 proof)"
+  },
+  "baselinePeerApk": {
+   "path": "Lawnchair.16.Dev.(6595f22).github.debug.apk",
+   "sha256": "936cca0dda198e81c1d78fb7b47dce64a9dd6d69ac07d127a14c76a28c909a6c",
+   "source": "build of 6595f22eac7688299a665cb1e2310ba863a1ec78; full diff to f131 is docs/spec-only (per #559 assessment)"
+  },
+  "candidate2BaseApk": {
+   "path": "/product/priv-app/LawnchairDebug/LawnchairDebug.apk",
+   "sha256": "5098ceb4d7af93c90684e07b1bdbe01408a92356631923fdde367a5fbc213278",
+   "role": "priv-app base image; install -r updates were layered on it and removed with uninstall -k at teardown"
+  }
+ },
+ "originalObservation": {
+  "date": "2026-10-09 10:15:40-10:16:05 JST",
+  "recordedIn": "docs/assessment/559-api36-provider-evidence/review-proof.json uiScenarios[2]",
+  "eachOverviewXmlSha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+  "taskCardCounts": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "signatures": {
+   "parcel": 0,
+   "bundle_alignment": 0,
+   "fatal": 0,
+   "recents_timeout": 0
+  }
+ },
+ "reproduction": {
+  "harness": "qa563.py full cycle: force-stop launcher, Settings am start, APP_SWITCH direct (+2.5s dump), card tap if cards, gesture DOWN/MOVE/UP from Settings (+poll dump), card tap if cards, HOME key, 10s dwell, APP_SWITCH, uiautomator dumps at 0/0.5/1/3/6/8s, final screencap, logcat extract",
+  "runs": [
+   {
+    "run": "F1",
+    "apk": "fixed",
+    "directOverview": "cards=1 then tap/return",
+    "gestureOverview": "cards=2 (sha 91468197) then tap/return",
+    "homeResult": "EMPTY",
+    "homeCards": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "homeXmlSha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+    "signatures": {
+     "unread12": 0,
+     "badparcel": 0,
+     "fatal": 0,
+     "pending5000": 0
+    }
+   },
+   {
+    "run": "F2",
+    "apk": "fixed",
+    "directOverview": "dumped Settings (overview arrived at +4.3s; dump raced it), no tap",
+    "gestureOverview": "cards=2 (sha 91468197) then tap/return",
+    "homeResult": "EMPTY",
+    "homeCards": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "homeXmlSha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+    "signatures": {
+     "unread12": 0,
+     "badparcel": 0,
+     "fatal": 0,
+     "pending5000": 0
+    }
+   },
+   {
+    "run": "F5",
+    "apk": "fixed",
+    "directOverview": "not completed in window",
+    "gestureOverview": "cards=2 (sha 91468197) then tap/return",
+    "homeResult": "EMPTY",
+    "homeCards": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "homeXmlSha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+    "signatures": {
+     "unread12": 0,
+     "badparcel": 0,
+     "fatal": 0,
+     "pending5000": 0
+    }
+   },
+   {
+    "run": "F4",
+    "apk": "fixed",
+    "directOverview": "stayed Settings",
+    "gestureOverview": "stayed Settings (no completed app-origin session)",
+    "homeResult": "PASS",
+    "homeCards": [
+     2,
+     2,
+     2,
+     2,
+     2,
+     2
+    ],
+    "homeXmlSha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+    "signatures": {
+     "unread12": 0,
+     "badparcel": 0,
+     "fatal": 0,
+     "pending5000": 0
+    }
+   },
+   {
+    "run": "BFF1",
+    "apk": "baseline",
+    "directOverview": "stayed Settings (unread12 x2, 5000ms pending x2)",
+    "gestureOverview": "stayed Settings",
+    "homeResult": "MISFIRE",
+    "homeOutcome": "TaskView launchAsStaticTile - startActivityFromRecents: [855]; screen = SafetyCenter (permissioncontroller XML f748f829...)",
+    "homeXmlSha256": "f748f82999adf7e80a9b7cfc70329249ad38930b4e6676b8f2aa392d3e3701f2",
+    "signatures": {
+     "unread12": 2,
+     "badparcel": 2,
+     "fatal": 0,
+     "pending5000": 2
+    }
+   },
+   {
+    "run": "BH1",
+    "apk": "baseline",
+    "note": "first APP_SWITCH dump raced toggle delivery (home screen); home-probe second entry",
+    "homeResult": "PASS",
+    "homeCards": [
+     2,
+     2,
+     2,
+     2
+    ]
+   },
+   {
+    "run": "BH3",
+    "apk": "baseline",
+    "note": "same as BH1; second-entry PASS",
+    "homeResult": "PASS",
+    "homeCards": [
+     2,
+     2,
+     2,
+     2
+    ]
+   }
+  ],
+  "summary": "Fixed APK: completed app-origin overview session (gesture, with card-tap launch) in the same launcher process is followed by Settings->HOME->APP_SWITCH empty overview 3/3 (F1,F2,F5), byte-identical to the original 2026-10-09 morning failure XML. Without a completed app-origin session (F4) the same HOME path passes. Baseline peer under the same input sequence cannot complete app-origin entries (wire mismatch) and the HOME path misfires into launchAsStaticTile([855]) (BFF1; same family as morning candidate2 B1/B3/B5), while repeated HOME-origin usage alone passes (BH1/BH3, morning paired control PASS/PASS)."
+ },
+ "stuckStateObservations": [
+  "goToState Normal->Overview completes via LauncherActivityInterface.switchToRecentsIfVisible (logs F1/F2/F5); overview actions bar is present in the UI dump; overview_panel subtree absent from the accessibility dump.",
+  "dumpsys activity top in the stuck state shows LauncherRecentsView VISIBLE with 5 TaskView children at x=435..4383 and ClearAllButton at the focused x=162 (F2/F5 hierarchies); the focused page is the clear-all page, no task card is at the focused position.",
+  "Final screenshots are uniform background (pixel analysis: dominant color 0x44,0x4C,0x61 across card area and left area; F5-home-final.png == F1-home-final.png region stats), i.e. no card content rendered.",
+  "First stuck entry log shows RecentsView reloadIfNeeded - getTasks: -1 with no subsequent applyLoadPlan line (silent exits eliminated: all launcher threads idle in jdb dump; the only logging-free exit inside applyLoadPlan is the mPendingAnimation!=null defer).",
+  "A HOME->APP_SWITCH retry in the same stuck state delivered applyLoadPlan with 5 task groups yet the screen and accessibility dump stayed byte-identical empty (F1 recovery probe 23:40 JST), consistent with applyLoadPlan restoring the previous focused page (clear-all) instead of the task page.",
+  "Horizontal swipes (left and right) on the stuck overview do not move the pager (F5-swipe1/F5-swipe2 XMLs and post-swipe dumpsys unchanged); no user-escape observed short of launcher force-stop.",
+  "signatures all zero in every stuck observation (no unread12, no BadParcelableException, no FATAL, no 5000ms pending timeout) - wire-level errors are not the proximate cause on the fixed APK."
+ ],
+ "classification": {
+  "verdict": "product bug (fork tree); pre-existing family, not a #559-fix regression and not attributable to #555 thumbnails",
+  "reasoning": "Same input sequence, screen-level: baseline misfires (launcher-initiated launchAsStaticTile [855]) and fixed lands in an empty overview (launcher reached Overview but renders no cards). Both outcomes are launcher-side mishandling of the HOME-origin toggle after app-origin recents activity in the same process; SystemUI delivers the toggle in both. The empty-overview mechanism itself lives in code paths shared by baseline and fixed (RecentsView/overview state handling untouched by the #559 wire change); the fix only makes the app-origin overview session complete, which is the antecedent that reaches it.",
+  "bugOracle": "On the fixed APK (d6f502064...) on this provider: force-stop launcher -> am start Settings -> gesture UP to overview -> verify >=1 task_view_single in uiautomator dump -> tap (540,1200) to return -> HOME key -> 10s dwell -> APP_SWITCH -> dumps at 0/0.5/1/3/6/8s: oracle FAILS if all dumps show 0 task_view_single while dumpsys shows state Overview (expected: >=1 card within 1s). RED 3/3 (F1,F2,F5); PASS control F4 (no completed app-origin session) and BH1/BH3 on baseline."
+ },
+ "relatedFindingsNotClassifiedAs563": [
+  "Cold-start deadlock (separate fork defect, follow-up issue): LawnchairLayoutFactory.fontManager lazy init on ViewPool-init thread blocks on MainThreadInitializedObject.get while main thread waits on the same lazy lock -> launcher ANR/wedge on force-stop restarts. Observed 2026-10-09 23:45-00:16 (H1 full ANR with dropbox trace; BH2/BH4/BH6 wedges).",
+  "Transient SystemUiProxy mRecentTasks null bind race on young launcher processes: 'getRecentTasks() failed due to null mRecentTasks' -> RecentTasksList returns INVALID_RESULT -> applyLoadPlan applies an empty taskGroups list once (F1 23:30:43.943), recoverable by later loads.",
+  "SystemUI-side TIS rebind gap after launcher restart: overview toggle presses during the gap are dropped (BH5/BH6 no onOverviewToggle in window; binding restored by reinstall or waiting)."
+ ],
+ "publishedArtifactSha256": {
+  "anr/cold-start-deadlock-anr-trace.txt": "9f92619433bce4fddd2acc7ed2df5461b895970899cc7e2d0fe1e5a628e7e86b",
+  "png/F5-swipe2.png": "a52f3b497c6f97eaa7b413adf992bba4e1bca65c8bfc65cd4227231e93f360ea",
+  "png/F5-home-final.png": "5d15ed8c1c5dee612d19c69b448df14fc37779eaa1dbe0e07e63729789933638",
+  "png/F1-home-final.png": "71728828173d1dd6f0ac92d65f8571fe614f185dad75a7a32246a815dfeda938",
+  "xml/healthy-overview-fixed-F5-gesture.xml": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+  "xml/empty-overview-fixed-F5-home-c0.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+  "xml/baseline-misfire-BFF1-home-c0.xml": "f748f82999adf7e80a9b7cfc70329249ad38930b4e6676b8f2aa392d3e3701f2",
+  "logs/BH1-logcat-extract.txt": "9caba20a55250873109bb9838994ce4211ca624a5fa583296f52da82c0e1d754",
+  "logs/F5-logcat-extract.txt": "2966d9618dda126ec3da4bc41004c8910c34bab45e427267544fef497ddeac1e",
+  "logs/BFF1-logcat-extract.txt": "c4e2357a6b3d94fe33ff94a60c2d84722f24c49550dd1e07e3004b22152abf3a",
+  "logs/F2-logcat-extract.txt": "5d44b4c75a7b5222a82d7852e5f67b7677bb8abc8d95d7cb457452a89c88f0c1",
+  "logs/F1-logcat-selected.txt": "41d04bb0ed7591ccaac7f213c3a82672db76a599bd2a0c040864451c4d917a34",
+  "runs/BH1-summary.json": "84fa85128bcbfeeab2ab230161de98ad6db1e0abee21f696b9a259dcddbf8ae5",
+  "runs/F1-summary.json": "119c85aca5d81aefcb741055f744a084bc3d2edce0eddd33a9e92baf7c40e832",
+  "runs/F2-summary.json": "6e1d49b11737ae31280ca7251aea3006a386d939c8a2e510383e3ecfa84b49c9",
+  "runs/F5-summary.json": "4d59d39795f70d9511a462cfd7bfeec1dc2abe974cf943e2f804f2245523d00d",
+  "runs/BFF1-summary.json": "00c32f39ac51a5436c936b90016655f4d816acfa250ba258259e5de6fedb46f6",
+  "runs/F4-summary.json": "a148bbd04fb867cb2d485dee5bbb19f1afada853413491e2802685371a0e7628",
+  "runs/BH3-summary.json": "5e937457dccfd0b9e3545b92ecb45ec94caf533cd697b5204533ad812e212356"
+ }
+}
