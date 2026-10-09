@@ -75,11 +75,14 @@ digitalWellBeingToastのbind経路が復活する（表示条件はUsageStats se
 - `TaskContainer.bind` の式body `= {` をblock bodyへ戻す（1行の記号修正。ロジック変更なし）。
 - `TaskContainer.destroy` の式body `= {` をblock bodyへ戻す（同上）。
 - `TaskContainer.refreshOverlay` の式body `= {` をblock bodyへ戻す（同上）。
-- `TaskOverlayFactoryImpl.TaskOverlay.initOverlay` の 無条件
-  `mTaskContainer.thumbnailViewDeprecated.isRealSnapshot` 参照を、
-  base classのflag-aware `isRealSnapshot()` 呼び出しへ変更する（1行。fork側bridge修復）。
-  これは `refreshOverlay` 修復により初めて到達可能になった経路のcrash修復であり、
-  修復3関数のruntime確認と同一検証セットで完結させる。
+- `TaskOverlayFactoryImpl.TaskOverlay.initOverlay` のbridge 修復（review round 1 finding 3採用形）:
+  - 無条件の `mTaskContainer.thumbnailViewDeprecated.isRealSnapshot` 参照を
+    base classのflag-aware `isRealSnapshot()` 呼び出しへ変更する（crash修復）。
+  - 2つの `updateDisabledFlags` を `enableRefactorTaskThumbnail()` 側で限定する
+    （base `initOverlay` と同一構造。refactor pathでは `TaskView.updateTaskViewState`
+    がflagsを担当する）。
+  当該経路は `refreshOverlay` 修復で初めて到達可能になったものであり、
+  そのruntime確認と同一検証セットで完結させる。
 - API 37（emulator）での実行確認（Verification節）。
 
 ## Non-goals
@@ -136,15 +139,33 @@ Then Launcher DB（favorites等）への書込み経路はdiffに存在しない
   logcat excerptで判断し、fix tree自体は記号修正に限定する。
   caller側（`TaskView.onRecycle` / `TaskView.call-bind` / `call-destroy` /
   `TaskContainer.setOverlayEnabled`）と本体実行の以前後を同一runで対照する。
+  **oracleの範囲**:
+  - `bind()` / `destroy()`: 実call側logと本体実行の1:1照合（caller側呼び出しが
+    無条件の単純call edgeであるため成立する）。
+  - `refreshOverlay()`: 複数callerのため1:1照合はしない。
+    「pre-fix本体0件 → post-fix本体実行」+ `setOverlayEnabled enabled=true` →
+    `overlay.initOverlay()` 到達（crash 0件）を主oracleとする。
+  - digitalWellBeingToastの視覚表示とtask menu展開中の視覚位置は、
+    検証環境の制約（usage limitのshell設定経路がない、長押しharnessがcard launchに化ける）
+    により未取得。実装対象は経路の復元までであり、この2点は残差として
+    Issue/evidence READMEに明示した上で終了判断を受ける。
 - `./gradlew spotlessCheck` ＋ `assembleLawnWithQuickstepGithubDebug` 成功
-  （head `7a8ef68fdd` spotless PASS / build PASS。APK sha256はevidence README参照）。
+  （head `f93d29a619`で両PASS。debug APK sha256はevidence README「検証tree / APK sha256」節参照）。
 - 書込み経路なしの確認: diff対象pathは
   `quickstep/src/com/android/quickstep/views/TaskContainer.kt`（3行記号修正）、
-  `lawnchair/src/app/lawnchair/overview/TaskOverlayFactoryImpl.kt`（1行bridge修復）
+  `lawnchair/src/app/lawnchair/overview/TaskOverlayFactoryImpl.kt`（bridge修復2点）
   とspec/evidence文書のみ。Launcher DBやpref書込み経路は追加しない。
-- 上流のUIだけに触れるbridgeを含むため（AOSP由来quickstep fileへのbridge変更）、
-  `python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`
-  によるcandidate HEADの計測結果を **PR本文** へreportする。
+- 上流のUIだけに触れるbridgeを含むため（AOSP由来quickstep fileへのbridge変更）。
+  **upstream patch surface oracleの実行制約と代替**: 本リポジトリのstack構造
+  （#524/#545 chain）はupstream commitのdescendantでないため、
+  `measure_upstream_patch_surface.py --target HEAD --enforce-baseline` の
+  candidate HEAD直接計測はtoolの祖先制約により実行不能
+  （#561 PR本文と同一制約）。代わりに:
+  1. `measure_upstream_patch_surface.py --verify`（baseline replica）を **PASS**
+     させる（これが本検証で実際に実行したoracle）。
+  2. 本specのupstream由来diffは `TaskContainer.kt` ±3行（#532 Phase 2以降
+     既収録bridgeの行数増減なし）のみであることをdiffで確認する
+     （`TaskOverlayFactoryImpl.kt` はfork owned `app.lawnchair.overview`）。
 - digitalWellBeingToastの表示確認: toast本体は `LauncherApps` のAppUsageLimit
   （screen time limit）が存在するtaskでのみ表示される（`DigitalWellBeingToast.setLimit`）。
   検証環境（API 37 emulator）ではusage limit を設定するshell経路がなく表示を誘発できないため、
@@ -162,3 +183,12 @@ Then Launcher DB（favorites等）への書込み経路はdiffに存在しない
 - 2026-10-10: runtime leg確定 — `refreshOverlay` 修復により活性化する `initOverlay`
   経路のcrash（deprecated view無条件参照）を検出し、
   `TaskOverlayFactoryImpl` の1行bridge修復をScopeへ追加。検証節へ実測tree/APK sha256を反映。
+- 2026-10-10: Review round 1対応（PR #567 review）。
+  (1) runtime終了oracleの表現を「内部経路の実行証跡+可視oracle取得済み分+未取得の
+  残差の明示」へ統一し、終了条件との相違をIssue/PR本文へも反映。
+  (2) `refreshOverlay` の1:1主張を撤去し「pre-fix 0 → post-fix本体実行」+
+  `enabled=true`→`initOverlay` 到達を主oracleに切替。
+  (3) `initOverlay` のdisabled flagsをrefactor pathでは更新しないようbase構造へ
+  整合（flag-gating）し、actionsView oracleで再runtime leg（v3 tree）を取得。
+  (4) upstream patch-surface oracleを実行可能な代替手順（`--verify` PASS＋diff確認）
+  に置き換え、制約と根拠をVerificationへ明記。
