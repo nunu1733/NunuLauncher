@@ -2813,8 +2813,13 @@ public abstract class RecentsView<
     private void onReset() {
         unloadVisibleTaskData(TaskView.FLAG_UPDATE_ALL);
         // TEMP-DIAG-563
-        Log.d(TAG, "onReset page " + mCurrentPage + " -> 0");
+        Log.d(TAG, "onReset before: page=" + mCurrentPage + " scroll=" + getScrollX()
+                + " children=" + getChildCount()
+                + " scrollForPage0=" + getScrollForPage(0)
+                + " diff=" + mCurrentPageScrollDiff);
         setCurrentPage(0);
+        // TEMP-DIAG-563
+        Log.d(TAG, "onReset after: page=" + mCurrentPage + " scroll=" + getScrollX());
         LayoutUtils.setViewEnabled(mActionsView, true);
         if (mOrientationState.setGestureActive(false)) {
             updateOrientationHandler(/* forceRecreateDragLayerControllers = */ false);
