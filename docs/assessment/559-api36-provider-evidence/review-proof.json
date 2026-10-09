@@ -161,6 +161,22 @@
     "limits": "Early workspace TIS dumps were not running on both; raw logs show connection/initialization before recents entry. This does not disprove historical environment drift or assign the old failure to #555.",
     "followUp": "https://github.com/nunu1733/NunuLauncher/issues/563"
   },
+  "candidate2SameInstallControl": {
+    "purpose": "AC-4:same-install candidate2 HOME pass / direct FAIL contrast, from the retained independent QA session artifacts (unpublished raw dir qa-independent/artifacts/<run>/<run>-summary.json). Run on emulator-5556, installed candidate2 `/product/priv-app/LawnchairDebug/LawnchairDebug.apk` sha256 `5098ceb4d7af93c90684e07b1bdbe01408a92356631923fdde367a5fbc213278`, provider overlay `[x] nunu.overlay.quickstepconfig`, GLOBAL scales 0/0/0, no process restart between artifact swap and these runs.",
+    "directFailRuns": ["A1","A2","A3"],
+    "directFailReceipts": [
+      {"run": "A1", "summarySha256": "0e63451b5d7ae4a0eb85d14d339f059df8faea278fea9e4aac6371c752bc17b7", "putativeFacts": "Origin before key: topResumedActivity=ActivityRecord{783734 u0 com.android.settings/.homepage.SettingsHomepageActivity t879}. After KEYCODE_APP_SWITCH: 6 checkpoints at 0/0.5/1/3/6/8s stay Settings (task_card_candidates=0, settings_node_count=72, unread_mentions=2, launcher_fatal=0); applyLoadPlan ran twice (taskGroups [843,844,848,855,879]); signature: unread12=1x + recents 5000ms pending timeout=1x."},
+      {"run": "A2", "summarySha256": "f8e8deac7535bd48ec5451e229ae00b191a685f720e87066fd760bd091fc1560", "putativeFacts": "Same pattern as A1 (same checkpoint profile, 0 cards, 72 Settings nodes, unread_mentions=2, fatal=0, 5000ms timeout 1x)."},
+      {"run": "A3", "summarySha256": "9e3f3f0b14c1b651324464031bfccb58aa61fa16af1b36d1e232d9da4886627c", "putativeFacts": "Same pattern as A1/A2."}
+    ],
+    "homePassRuns": ["B2","B4"],
+    "homePassReceipts": [
+      {"run": "B2", "summarySha256": "c10fadd003d4ce0af12831e6c267b021324dc54a87b155ddc34f7f962e6305a5", "putativeFacts": "Settings→HOME→APP_SWITCH; origin recents_preflight[0]='* Recent #0: Task{7b4d9be #855 type=undefined A=1000:com.android.settings}'. Overview visible with 2 clickable task_view_single ([0,360][120,2040], [162,360][918,2040]) + sibling icon_title 'Settings' [294,417][520,462]; settings_node_count=0; unread_mentions=0; launchet_fatal=0; no card tap in this run (overview only)."},
+      {"run": "B4", "summarySha256": "8e5278d85edc368dd420e1fbf7577200dde826f913f28ffa96a5851e67045d6f", "putativeFacts": "Same preflight. Overview with the same 2 cards + icon_title 'Settings'; tap (540,1200) on card body → topResumedActivity=ActivityRecord{... u0 com.android.settings/.homepage.SettingsHomepageActivity t879} top+focus at +1s/+3s (post-tap screenshot retained locally)."}
+    ],
+    "limitation": "These are published SHA-proof pointers of a raw artifact kept in the dedicated worktree; the JSON/SHA paths are not published raw receipts. They prove the candidate2 same-install HOME pass / direct FAIL contrast under clean GLOBAL scales and identical provider environment as the fixed-artifact runs. Not counted together with the separate first-HOME empty-card observation #563.",
+    "adjudication": "AC-4 same-install HOME pass / direct FAIL restated for candidate2 (accepted spec AC-4): direction; paired HOME preservation (production-baseline/fixed) is the separate AC-3 evidence."
+  },
   "wireContract": {
     "publishedReadme": "docs/assessment/559-api36-provider-evidence/wire-contract/README.md",
     "publishedDex": "docs/assessment/559-api36-provider-evidence/wire-contract/dex-excerpts.txt",

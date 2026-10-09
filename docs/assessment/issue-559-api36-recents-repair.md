@@ -77,6 +77,16 @@ Refs #559. Issue #559 stays open; cutover waits on ADR-0018.
 - Historical same-APK HOME PASS versus direct FAIL is an entry-state contrast;
   it **does not definitively disprove historical environment drift**. Neither
   paired PASS nor clean retry erases the earlier empty-card failure.
+- AC-4 same-install candidate2 control: from the retained independent-QA raw
+  artifacts (`qa-independent/artifacts/<run>/<run>-summary.json`) the direct
+  entry FAIL on candidate2 is A1/A2/A3 (6 checkpoints stay Settings, 0 cards,
+  72 Settings nodes, unread12 1×, 5000ms pending timeout 1×, fatal 0), and the
+  clean HOME PASS is B2 (Overview with 2 `task_view_single` + icon_title
+  "Settings") / B4 (same + tap (540,1200) → Settings t879 top+focus). These
+  are SHA-proven pointer receipts now inlined in
+  `review-proof.json#candidate2SameInstallControl`; the raw JSON/SHA paths are
+  kept unpublished, and the separate first-HOME empty-card observation is not
+  mixed into this AC-4 record.
 - UI windows: 0 Parcel / 0 alignment / 0 FATAL / 0 5000ms pending on all four
   windows. Full local buffers retain ProtoLog/ClassLoader warnings; these are
   not counted as FATAL. Raw focus sample values/times and exact XML hashes are
