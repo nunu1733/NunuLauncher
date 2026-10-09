@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import androidx.annotation.Keep
 import app.lawnchair.util.RecentHelper
 import app.lawnchair.util.TaskUtilLockState
+import com.android.launcher3.Flags.enableRefactorTaskThumbnail
 import com.android.quickstep.TaskOverlayFactory
 import com.android.quickstep.views.OverviewActionsView
 import com.android.quickstep.views.TaskContainer
@@ -23,22 +24,27 @@ class TaskOverlayFactoryImpl(@Suppress("UNUSED_PARAMETER") context: Context) : T
 
         // Rebase Phase 2 adapt (#532): initOverlay now receives the raw Bitmap instead of
         // ThumbnailData and a non-null Task.
+        // Issue #562: guard disabled-flag updates with enableRefactorTaskThumbnail()
+        // (same structure as base initOverlay, where the refactor path relies on
+        // TaskView.updateTaskViewState) and use the flag-aware isRealSnapshot() —
+        // the previously dead init path crashed via thumbnailViewDeprecated.
         override fun initOverlay(
             task: Task,
             thumbnail: Bitmap?,
             matrix: Matrix,
             rotated: Boolean,
         ) {
-            actionsView.updateDisabledFlags(
-                OverviewActionsView.DISABLED_NO_THUMBNAIL,
-                thumbnail == null,
-            )
+            if (!enableRefactorTaskThumbnail()) {
+                actionsView.updateDisabledFlags(
+                    OverviewActionsView.DISABLED_NO_THUMBNAIL,
+                    thumbnail == null,
+                )
+            }
 
             if (thumbnail != null) {
-                actionsView.updateDisabledFlags(OverviewActionsView.DISABLED_ROTATED, rotated)
-                // Issue #562: the expression-body defect in TaskContainer.refreshOverlay had kept
-                // this path dead; use the flag-aware base isRealSnapshot() so the refactor
-                // task-thumbnail path does not crash via thumbnailViewDeprecated.
+                if (!enableRefactorTaskThumbnail()) {
+                    actionsView.updateDisabledFlags(OverviewActionsView.DISABLED_ROTATED, rotated)
+                }
                 val isAllowedByPolicy = isRealSnapshot()
                 actionsView.setCallbacks(OverlayUICallbacksImpl(isAllowedByPolicy, task))
             }
