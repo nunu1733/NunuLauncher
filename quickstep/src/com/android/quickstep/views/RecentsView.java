@@ -1952,6 +1952,9 @@ public abstract class RecentsView<
             return;
         }
         if (mPendingAnimation != null) {
+            // TEMP-DIAG-563: identify the deferred load plan and the stalled animation.
+            Log.d(TAG, "applyLoadPlan - DEFERRED by mPendingAnimation="
+                    + System.identityHashCode(mPendingAnimation));
             final List<GroupTask> finalTaskGroups = taskGroups;
             mPendingAnimation.addEndListener(
                     success -> applyLoadPlan(finalTaskGroups, taskListChangeId));
@@ -2179,6 +2182,10 @@ public abstract class RecentsView<
         }
 
         mAppliedTaskListChangeId = taskListChangeId;
+        // TEMP-DIAG-563
+        Log.d(TAG, "applyLoadPlan - APPLIED changeId=" + taskListChangeId
+                + " page=" + mCurrentPage + "/" + (getChildCount() - 1)
+                + " scroll=" + getScrollX());
         resetTaskVisuals();
         onTaskStackUpdated();
         updateEnabledOverlays();
@@ -2805,6 +2812,8 @@ public abstract class RecentsView<
 
     private void onReset() {
         unloadVisibleTaskData(TaskView.FLAG_UPDATE_ALL);
+        // TEMP-DIAG-563
+        Log.d(TAG, "onReset page " + mCurrentPage + " -> 0");
         setCurrentPage(0);
         LayoutUtils.setViewEnabled(mActionsView, true);
         if (mOrientationState.setGestureActive(false)) {
@@ -3722,6 +3731,9 @@ public abstract class RecentsView<
             boolean dismissingForSplitSelection,
             @Nullable RecentsDismissUtils.GridEndData gridEndData) {
         if (mPendingAnimation != null) {
+            // TEMP-DIAG-563
+            Log.d(TAG, "mPendingAnimation FORCE-END dismissCancel hash="
+                    + System.identityHashCode(mPendingAnimation));
             mPendingAnimation.createPlaybackController().dispatchOnCancel().dispatchOnEnd();
         }
 
@@ -4018,6 +4030,9 @@ public abstract class RecentsView<
                     Cuj.CUJ_LAUNCHER_OVERVIEW_TASK_DISMISS));
         }
         mPendingAnimation = anim;
+        // TEMP-DIAG-563
+        Log.d(TAG, "mPendingAnimation CREATED dismiss hash="
+                + System.identityHashCode(mPendingAnimation));
         final TaskView finalNextFocusedTaskView = nextFocusedTaskView;
         final boolean finalCloseGapBetweenClearAll = closeGapBetweenClearAll;
         final boolean finalSnapToLastTask = snapToLastTask;
@@ -4238,6 +4253,8 @@ public abstract class RecentsView<
                 }
                 updateCurrentTaskActionsVisibility();
                 onDismissAnimationEnds();
+                // TEMP-DIAG-563
+                Log.d(TAG, "mPendingAnimation CLEARED dismissEnd");
                 mPendingAnimation = null;
                 mTaskViewsDismissPrimaryTranslations.clear();
 
@@ -4432,6 +4449,9 @@ public abstract class RecentsView<
         }
 
         mPendingAnimation = anim;
+        // TEMP-DIAG-563
+        Log.d(TAG, "mPendingAnimation CREATED clearAll hash="
+                + System.identityHashCode(mPendingAnimation));
         mPendingAnimation.addEndListener(isSuccess -> {
             if (isSuccess) {
                 // Remove desktops first, since desks can be empty (so they have no recent tasks),
@@ -4448,6 +4468,8 @@ public abstract class RecentsView<
                     startHome();
                 });
             }
+            // TEMP-DIAG-563
+            Log.d(TAG, "mPendingAnimation CLEARED clearAllEnd");
             mPendingAnimation = null;
         });
         return anim;
@@ -4650,6 +4672,8 @@ public abstract class RecentsView<
 
         traceBegin(Trace.TRACE_TAG_APP, "RecentsView.setContentAlpha");
         alpha = Utilities.boundToRange(alpha, 0, 1);
+        // TEMP-DIAG-563
+        Log.d(TAG, "setContentAlpha " + mContentAlpha + " -> " + alpha);
         mContentAlpha = alpha;
 
         for (TaskView taskView : getTaskViews()) {
@@ -5760,6 +5784,9 @@ public abstract class RecentsView<
      * Clears the existing PendingAnimation.
      */
     public void clearPendingAnimation() {
+        // TEMP-DIAG-563
+        Log.d(TAG, "mPendingAnimation CLEARED clearPendingAnimation hash="
+                + System.identityHashCode(mPendingAnimation));
         mPendingAnimation = null;
     }
 
@@ -5806,6 +5833,9 @@ public abstract class RecentsView<
         anim.setInterpolator(interpolator);
 
         mPendingAnimation = new PendingAnimation(duration);
+        // TEMP-DIAG-563
+        Log.d(TAG, "mPendingAnimation CREATED taskLaunch hash="
+                + System.identityHashCode(mPendingAnimation));
         mPendingAnimation.add(anim);
         if (taskView.isRunningTask()) {
             runActionOnRemoteHandles(
@@ -5843,6 +5873,8 @@ public abstract class RecentsView<
             } else {
                 onTaskLaunchAnimationEnd(false);
             }
+            // TEMP-DIAG-563
+            Log.d(TAG, "mPendingAnimation CLEARED taskLaunchEnd success=" + isSuccess);
             mPendingAnimation = null;
         });
         return mPendingAnimation;
