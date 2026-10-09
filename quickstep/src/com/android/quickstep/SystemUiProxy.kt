@@ -235,7 +235,9 @@ class SystemUiProxy @Inject constructor(@ApplicationContext private val context:
             data.writeStrongInterface(context.iApplicationThread)
             data.writeStrongInterface(listener)
             recentTasks.asBinder().transact(
-                if (usesNothingOs4BaklavaInitialRecentsTransitionAidl()) {
+                if (usesExactApi36EmulatorRecentsTransitionAidl()) {
+                    IBinder.FIRST_CALL_TRANSACTION + 5
+                } else if (usesNothingOs4BaklavaInitialRecentsTransitionAidl()) {
                     LC_TRANSACTION_startRecentsTransition_NothingOS_4_BaklavaInitial
                 } else {
                     LC_TRANSACTION_startRecentsTransition_AOSP_BaklavaInitial
@@ -1306,7 +1308,8 @@ class SystemUiProxy @Inject constructor(@ApplicationContext private val context:
         displayId: Int,
     ): Boolean {
         executeWithErrorLog({ "Error starting recents via shell" }) {
-            if (usesAOSPBaklavaInitialRecentsTransitionAidl()) {
+            if (usesAOSPBaklavaInitialRecentsTransitionAidl()
+                    || usesExactApi36EmulatorRecentsTransitionAidl()) {
                 if (wct != null) {
                     Log.w("LC-SystemUiProxy", "Android 16 initial does not support WCT-backed recents transitions")
                     return false
@@ -1550,6 +1553,13 @@ class SystemUiProxy @Inject constructor(@ApplicationContext private val context:
         private fun usesNothingOs4BaklavaInitialRecentsTransitionAidl(): Boolean {
             return usesAOSPBaklavaInitialRecentsTransitionAidl()
                     && isNothingOs
+        }
+
+        // Issue #559: this installed provider uses transaction 6 with five args, not
+        // the modern WCT payload or Nothing's callback schema. Do not match a family.
+        private fun usesExactApi36EmulatorRecentsTransitionAidl(): Boolean {
+            return Build.VERSION.SDK_INT == 36
+                    && Build.FINGERPRINT == "google/sdk_gphone64_arm64/emu64a:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys"
         }
 
         @JvmField val INSTANCE = DaggerSingletonObject(LauncherAppComponent::getSystemUiProxy)
