@@ -29,7 +29,7 @@ ADR-0018 revision 9（advertised 35..37）へ反映した。（v5 acceptanceのc
 | `bdea76ea75` | `getTaskThumbnail` をTaskSnapshotManager経由reflectionへ | decision 11 |
 | `e77311059e` | `ThumbnailData.makeThumbnail` をwrapToBitmap reflectionへ（black fallback維持） | decision 12 |
 | `0c25041285` | `takeTaskThumbnail` をTaskSnapshotManager経由reflectionへ | decision 13 |
-| candidate群（`e2fe6f80df`→revert `6cc8e88725`、`2987e525bd`→revert `cf5fee009f`、`40eb5dbfab`→revert `e7d6b4ce11`、`212097886b`→revert `ca015d173f`、`da15f4b2e7`→revert `6dce6c26e6`） | quickstepMaxSdk 36→37の検証candidate。 **全て検証不成立でdrop/revert。確定採用なし** | decision 7 |
+| v1〜v5 candidate群（`e2fe6f80df`→revert `6cc8e88725`、`2987e525bd`→revert `cf5fee009f`、`40eb5dbfab`→revert `e7d6b4ce11`、`212097886b`→revert `ca015d173f`、`da15f4b2e7`→revert `6dce6c26e6`） | quickstepMaxSdk 36→37の検証candidate。 **全て検証不成立でdrop/revert。確定採用なし（v6 candidateは下記最終acceptanceで確定採用）** | decision 7 |
 | evidence commits（`f5a3977281`/`e70a58c1fd`/`206850b3d7`/`5c6d40a56d`/`fc5169566c`/`1777e348c9`/`65729184c8`/`71c6251203`/`8babd3bb10`/`8108e3a1aa`/`3f31768d04`/`4daa239e0f`） | 検証証跡（diagnostic含む） | 各decision |
 
 ## matrix↔実行SHA↔APK対応表（AC-9）
