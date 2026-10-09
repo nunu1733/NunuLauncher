@@ -201,6 +201,21 @@ public class LauncherRecentsView extends RecentsView<QuickstepLauncher, Launcher
         if (isOverlayEnabled) {
             mBlurUtils.setDrawLiveTileBelowRecents(true);
         }
+        // TEMP-DIAG-563
+        if (finalState.isRecentsViewVisible) {
+            StringBuilder sb = new StringBuilder("DIAG563 OverviewComplete page=")
+                    .append(getCurrentPage())
+                    .append(" scroll=").append(getScrollX())
+                    .append(" contentAlpha=").append(getContentAlpha())
+                    .append(" views=").append(getTaskViewCount());
+            for (TaskView tv : getTaskViews()) {
+                sb.append(" [id=").append(java.util.Arrays.toString(tv.getTaskIds()))
+                        .append(" a=").append(tv.getAlpha())
+                        .append(" vis=").append(tv.getVisibility())
+                        .append(" x=").append(tv.getX()).append("]");
+            }
+            android.util.Log.d("RecentsView", sb.toString());
+        }
     }
 
     @Override
