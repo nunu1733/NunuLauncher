@@ -208,6 +208,12 @@ public class LauncherRecentsView extends RecentsView<QuickstepLauncher, Launcher
         }
     }
 
+    @Override
+    public void dispatchDraw(android.graphics.Canvas canvas) {
+        android.util.Log.d("RecentsView", "DIAG563 dispatchDraw frame");
+        super.dispatchDraw(canvas);
+    }
+
     private void dumpDiag563(String phase) {
         StringBuilder sb = new StringBuilder("DIAG563 ").append(phase)
                 .append(" self: alpha=").append(getAlpha())
@@ -218,6 +224,12 @@ public class LauncherRecentsView extends RecentsView<QuickstepLauncher, Launcher
                 .append(" scroll=").append(getScrollX())
                 .append(" contentAlpha=").append(getContentAlpha())
                 .append(" liveTileDraw=").append(mEnableDrawingLiveTile)
+                .append(" animCtl=").append(mRecentsAnimationController != null)
+                .append(" handles=").append(mRemoteTargetHandles != null)
+                .append(" runningId=").append(getRunningTaskViewId())
+                .append(" focusedId=").append(mFocusedTaskViewId)
+                .append(" firstLayout=").append(mFirstLayout)
+                .append(" freezeVis=").append(mFreezeViewVisibility)
                 .append(" a11y=").append(getImportantForAccessibility())
                 .append(" attached=").append(isAttachedToWindow())
                 .append(" views=").append(getTaskViewCount());
