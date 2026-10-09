@@ -8,13 +8,15 @@
   ADR-0018 Decision 3/8によりcutoverまでmergeしない）
 - この記録は検証証跡であり、正本の判断はIssue #545 / spec / ADR-0018に従う。
 
-## 総合判定（v5 acceptance結果）
+## 総合判定（最終。v6 quick re-verification 2026-10-09）
 
-**candidate FAIL**（AC-10d thumbnail oracle／AC-10e2 parcel oracleのstop rule発火）。
-`QUICKSTEP_MAX_SDK` 36→37は実施せず **36を維持**（Owner decision 7 / AC-6どおり）。
-provider **bind pathのクラッシュ修復は成立**（7件の破壊をcompat修正で解消、bind完了・
-overview起動・task切替がcrash-freeで到達）。残存gapは「thumbnail bitmap生成」と
-「recents遷移のparcel schema」の2系統で、別Issueへ分離（#545はopen継続）。
+**v6 candidate `4ddd6ae306` PASS → 確定採用**。残存2系統gapは別Issueで解消済み:
+thumbnail描画（`TaskContainer.setState` 式body欠陥。#555 / PR #561 merge）と
+recents遷移parcel schema（#554 / PR #557）。quick re-verification（qa3/qb3）で
+**bind完了・overview（実app screenshot thumbnail）・task切替・G3遷移完走（BAL 0）・
+全signature/marker/parcel 0** を両legで確認したため、`quickstepMaxSdk` 36→37を確定採用し
+ADR-0018 revision 9（advertised 35..37）へ反映した。（v5 acceptanceのcandidate FAIL・
+36維持判断は下記のとおり記録として保持。）
 
 ## 実装commit（実装PR #550。branch `issue-545-api37-provider-fix`、base `e214b7b190`）
 
@@ -32,12 +34,19 @@ overview起動・task切替がcrash-freeで到達）。残存gapは「thumbnail 
 
 ## matrix↔実行SHA↔APK対応表（AC-9）
 
-**最終acceptance（v5。現行契約）**
+**最終acceptance（v6。現行契約）**
 
 | matrix | 実行SHA | APK（sha256） | 判定 |
 |---|---|---|---|
-| qva2 (a) API 37 debug＋debug overlay＋priv-app、native density | compat 7修正head `0c25041285` | compat7b-debug-0c25041 `04d048b2…` | **PARTIAL**: 6 signature 0・3 marker 0・FATAL 0・bind完了・overview起動・task切替成功／thumbnail AC-10d FAIL（黒fallback） |
-| qvb2 (b)+G3 API 37 release＋release overlay＋priv-app、native density | candidate `da15f4b2e7` | candidate5-release `e584e078…` | **FAIL**: bind・compatible=true・sheet非表示までPASS／AC-10e2 parcel例外再現（SystemUiProxy parcel schema skew）→G3未達 |
+| qa3 (a) API 37 debug＋debug overlay＋priv-app、native density | v6 candidate `4ddd6ae306`（#550 7 fixes＋#555修復＋#554対応統合） | candidate6-debug `7f5d28b1…` | **PASS**: 6 signature 0・3 marker 0・FATAL 0・scoped parcel 0・bind完了・**overview実thumbnail rendering（#555修復）**・task切替成功 |
+| qb3 (b)+G3 API 37 release＋release overlay＋priv-app、native density | v6 candidate `4ddd6ae306` | candidate6-release `22da1cba…`（manifest 35/37静的確認済） | **PASS**: 同oracle＋sheet非表示＋**G3遷移完走（BAL 0）**・permanent oracle pass=true（#554 PASS profileと同型） |
+
+**v5 acceptance（diagnostic/superseded。candidate不採用の記録）**
+
+| matrix | 実行SHA | APK（sha256） | 判定 |
+|---|---|---|---|
+| qva2 (a) API 37 debug＋debug overlay＋priv-app、native density | compat 7修正head `0c25041285` | compat7b-debug-0c25041 `04d048b2…` | PARTIAL: 6 signature 0・3 marker 0・FATAL 0・bind完了・overview起動・task切替成功／thumbnail AC-10d FAIL（黒fallback。root causeは#555の式body欠陥と後に確定） |
+| qvb2 (b)+G3 API 37 release＋release overlay＋priv-app、native density | candidate `da15f4b2e7` | candidate5-release `e584e078…` | FAIL: bind・compatible=true・sheet非表示までPASS／AC-10e2 parcel例外再現（SystemUiProxy parcel schema skew。→#554で解消）→G3未達 |
 
 **diagnostic run（superseded。acceptance不使用）**
 
@@ -68,13 +77,21 @@ APK `166beaea…`/`74adbbca…`。6修正はAPI 37のTaskbar/thumbnail/take経�
    oracle範囲外として記録。
 5. hiddenapi: 全runでapp.lawnchair*のdenial/block 0件（新reflection call含む補助観測）。
 6. wmshell `PipInputConsumer`: 全runで0件（launcher到達性の前提どおり）。
+7. 既知のpre-existing vendor-skew（candidate非起因。cross-run突合済み）: bind時の
+   `IPipAnimationListener` unread-16・system_server `TransitionFilter` 1MB-overrunの
+   BadParcelableException警告（binder warning level。qa3/qb3にも同型出現。magic value一致で
+   継続中の既存signature）。
 
-## 未達（別Issueへ分離。#545はopen継続）
+## 解消記録
 
-- **G3/parcel schema compat**: `SystemUiProxy` 系vendored AIDL/callback surfaceの37 schema対応。
-- **thumbnail pipeline診断**: wrapToBitmap戻り値→card描画の途絶箇所の特定（diagnostic build）。
-- `QUICKSTEP_MAX_SDK` 36→37とADR-0018 range 35..37反映: 上記2件の解消を前提に継続保留
-  （検証に先行する宣言の禁止）。
+- **thumbnail pipeline root cause**: wrapToBitmap戻り値は正常にflowしていた。途絶は
+  `TaskContainer.setState` がKotlin式body（ラムダを返すだけ）になっており
+  `TaskThumbnailView.setState` が一度も呼ばれないため（#555 / PR #561 `4a8508498b`で修復。
+  r9 runで実thumbnail scoreed oracle成立）。
+- **G3/parcel schema**: shell→launcher callbackの37 schema driftを
+  受信境界で正規化（#554 / PR #557。parcel例外0 ×3 run・BAL 0でG3確定）。
+- `QUICKSTEP_MAX_SDK` 36→37とADR-0018 range 35..37反映: v6 candidate `4ddd6ae306` で
+  **確定採用**（qa3/qb3 PASS後。ADR-0018 revision 9）。
 
 ## 使用コマンド列・逸脱の要点
 
