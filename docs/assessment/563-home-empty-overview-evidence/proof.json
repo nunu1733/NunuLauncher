@@ -44,8 +44,8 @@
    {
     "run": "F1",
     "apk": "fixed",
-    "directOverview": "cards=1 then tap/return",
-    "gestureOverview": "cards=2 (sha 91468197) then tap/return",
+    "directOverview": "cards=1 in dump then tap/return completed",
+    "gestureOverview": "cards=2 (sha 91468197) then tap/return completed",
     "homeResult": "EMPTY",
     "homeCards": [
      0,
@@ -66,8 +66,8 @@
    {
     "run": "F2",
     "apk": "fixed",
-    "directOverview": "dumped Settings (overview arrived at +4.3s; dump raced it), no tap",
-    "gestureOverview": "cards=2 (sha 91468197) then tap/return",
+    "directOverview": "dump at +2.5s caught Settings (raced); logcat: direct reached Background->Overview at +4.3s, no card tap, onRecentsAnimationFinished cleanup at +14s (overlapped the gesture step)",
+    "gestureOverview": "cards=2 (sha 91468197) then tap/return completed",
     "homeResult": "EMPTY",
     "homeCards": [
      0,
@@ -88,8 +88,8 @@
    {
     "run": "F5",
     "apk": "fixed",
-    "directOverview": "not completed in window",
-    "gestureOverview": "cards=2 (sha 91468197) then tap/return",
+    "directOverview": "cards=2 (sha 91468197) then tap/return completed",
+    "gestureOverview": "cards=2 (sha 91468197) then tap/return completed",
     "homeResult": "EMPTY",
     "homeCards": [
      0,
@@ -169,7 +169,7 @@
     ]
    }
   ],
-  "summary": "Fixed APK: completed app-origin overview session (gesture, with card-tap launch) in the same launcher process is followed by Settings->HOME->APP_SWITCH empty overview 3/3 (F1,F2,F5), byte-identical to the original 2026-10-09 morning failure XML. Without a completed app-origin session (F4) the same HOME path passes. Baseline peer under the same input sequence cannot complete app-origin entries (wire mismatch) and the HOME path misfires into launchAsStaticTile([855]) (BFF1; same family as morning candidate2 B1/B3/B5), while repeated HOME-origin usage alone passes (BH1/BH3, morning paired control PASS/PASS)."
+  "summary": "Fixed APK: every run with a completed app-origin overview session followed by the card-tap task launch (gesture in F1/F2/F5; direct also completed in F1/F5, and in F2 the direct entry reached Overview late without a tap while its animation cleanup overlapped the gesture) ends with Settings->HOME->APP_SWITCH showing an empty overview 3/3, byte-identical to the original 2026-10-09 morning failure XML. Without any completed app-origin session (F4) the same HOME path passes. The minimal component verified present in all EMPTY runs is a completed gesture overview session with card-tap launch; a direct-only antecedent (no gesture) was not run and remains an open control. Baseline peer under the same input sequence cannot complete app-origin entries (wire mismatch) and the HOME path misfires into launchAsStaticTile([855]) (BFF1; same family as morning candidate2 B1/B3/B5), while repeated HOME-origin usage alone passes (BH1/BH3, morning paired control PASS/PASS)."
  },
  "stuckStateObservations": [
   "goToState Normal->Overview completes via LauncherActivityInterface.switchToRecentsIfVisible (logs F1/F2/F5); overview actions bar is present in the UI dump; overview_panel subtree absent from the accessibility dump.",
@@ -181,8 +181,8 @@
   "signatures all zero in every stuck observation (no unread12, no BadParcelableException, no FATAL, no 5000ms pending timeout) - wire-level errors are not the proximate cause on the fixed APK."
  ],
  "classification": {
-  "verdict": "product bug (fork tree); pre-existing family, not a #559-fix regression and not attributable to #555 thumbnails",
-  "reasoning": "Same input sequence, screen-level: baseline misfires (launcher-initiated launchAsStaticTile [855]) and fixed lands in an empty overview (launcher reached Overview but renders no cards). Both outcomes are launcher-side mishandling of the HOME-origin toggle after app-origin recents activity in the same process; SystemUI delivers the toggle in both. The empty-overview mechanism itself lives in code paths shared by baseline and fixed (RecentsView/overview state handling untouched by the #559 wire change); the fix only makes the app-origin overview session complete, which is the antecedent that reaches it.",
+  "verdict": "product bug, pre-existing latent defect in the fork tree, exposed/unmasked by the #559 fix",
+  "reasoning": "Same input sequence, screen-level: baseline misfires (launcher-initiated launchAsStaticTile [855]) and fixed lands in an empty overview (launcher reached Overview but renders no cards). Both outcomes are launcher-side mishandling of the HOME-origin toggle after app-origin recents activity in the same process; SystemUI delivers the toggle in both. The candidate-latch code (RecentsView/overview state handling) is shared by baseline and fixed and is untouched by the #559 wire change, so the empty-overview mechanism itself predates the fix. The observed screen-level change (baseline misfire -> fixed empty overview) IS attributable to the #559 fix in the limited sense that the fix makes the app-origin overview session complete, which is the antecedent that reaches the latent defect; because the baseline cannot complete that antecedent, this comparison does not prove the baseline would show the same empty overview under an equivalent completed antecedent. Not harness (screen-level, launcher-initiated logged actions on both builds). Not #555.",
   "bugOracle": "On the fixed APK (d6f502064...) on this provider: force-stop launcher -> am start Settings -> gesture UP to overview -> verify >=1 task_view_single in uiautomator dump -> tap (540,1200) to return -> HOME key -> 10s dwell -> APP_SWITCH -> dumps at 0/0.5/1/3/6/8s: oracle FAILS if all dumps show 0 task_view_single while dumpsys shows state Overview (expected: >=1 card within 1s). RED 3/3 (F1,F2,F5); PASS control F4 (no completed app-origin session) and BH1/BH3 on baseline."
  },
  "relatedFindingsNotClassifiedAs563": [

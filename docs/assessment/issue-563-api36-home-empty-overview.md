@@ -25,10 +25,14 @@ Refs #563. Related: #559 (fixed APK source), #554 / #555 (explicitly not the att
 The original 2026-10-09 10:15 observation (fixed APK, after direct APP_SWITCH and gesture
 verification had passed) is reproducible and the antecedent is now identified:
 
-- **Antecedent: a completed app-origin overview session in the same launcher process**
-  (gesture entry that opens overview, followed by the card-tap task launch). The direct
-  APP_SWITCH entry completing is sufficient but not required (F2/F5 reproduced with the
-  direct entry still racing the dump).
+- **Antecedent: a completed app-origin overview session followed by the card-tap task
+  launch in the same launcher process.** All three EMPTY runs completed the gesture entry
+  with a card tap (F1/F2/F5); the direct entry also completed with a card tap in F1/F5,
+  and in F2 the direct entry reached Overview ~4.3 s after the key (the +2.5 s dump raced
+  it, so no tap) with its recents-animation cleanup overlapping the gesture step. The
+  minimal component verified present in every EMPTY run is therefore a **completed
+  gesture overview session with card-tap launch**; a direct-only antecedent (no gesture)
+  was not run and remains an open control for the fix phase.
 - Then `Settings -> HOME -> APP_SWITCH`: overview is reached
   (`LauncherActivityInterface.switchToRecentsIfVisible` -> `goToState Normal->Overview`,
   transition completes), but the screen shows no task cards: 0 `task_view_single` in all
@@ -53,19 +57,24 @@ following a failed app-origin run").
 
 ## Classification
 
-**Product bug, fork tree. Pre-existing family; not a #559-fix regression and not #555.**
+**Product bug: pre-existing latent defect in the fork tree, exposed/unmasked by the #559
+fix. Not #555.**
 
 - Not harness: the failures are screen-level and each outcome is a launcher-initiated,
   logged action (`launchAsStaticTile` on baseline; Overview state entered but unpopulated
   on fixed). Inputs are plain keyevents/taps; the oracle dumps match the settled screen.
 - Not platform: SystemUI delivers the HOME-origin toggle in both builds; the incorrect
   consumption happens inside the launcher.
-- Not a regression introduced by the #559 wire change: the empty-overview mechanism lives
-  in code shared by baseline and fixed (RecentsView/overview state handling; the wire
-  change touched only the `startRecentsTransition` serialization). The fix changes *which*
-  broken state the same input lands in — baseline misfires into a task launch, fixed lands
-  in an empty overview — because the fix makes the app-origin overview session complete,
-  which is the antecedent that reaches the empty-overview state.
+- Relationship to the #559 fix, stated precisely: the candidate-latch code
+  (RecentsView/overview state handling) is shared by baseline and fixed and is untouched
+  by the wire change, so the empty-overview **mechanism** predates the fix (latent
+  defect). The observed **screen-level change** — baseline misfires into a task launch,
+  fixed lands in an empty overview — is attributable to the fix in the limited sense that
+  the fix makes the app-origin overview session complete, which is the antecedent that
+  reaches the latent defect. Because the baseline cannot complete that antecedent, this
+  comparison does **not** prove the baseline would show the same empty overview under an
+  equivalent completed antecedent; that equivalence remains untested (see open control
+  above).
 
 ## Mechanism (observed; implementation-level latch not yet pinned)
 
@@ -149,6 +158,8 @@ published (per-file sha256 values in
 
 Production fix under #563 proceeds only with this oracle plus independent review
 (per #563 scope note): diagnostic probe on an investigation branch to pin L1
-(`mPendingAnimation` defer) vs L2 (page-focus restoration), then a tier-classified spec
-(the change sits in quickstep recents state handling; no DB write path) and minimal fix
-with runtime RED->GREEN evidence. No production change is included in this record.
+(`mPendingAnimation` defer) vs L2 (page-focus restoration), plus the two open antecedent
+controls noted above (direct-only session; an equivalent completed app-origin antecedent
+that does not depend on the #559 wire path), then a tier-classified spec (the change sits
+in quickstep recents state handling; no DB write path) and minimal fix with runtime
+RED->GREEN evidence. No production change is included in this record.
