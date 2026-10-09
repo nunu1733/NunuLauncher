@@ -76,29 +76,51 @@ fix. Not #555.**
   equivalent completed antecedent; that equivalence remains untested (see open control
   above).
 
-## Mechanism (observed; implementation-level latch not yet pinned)
+## Mechanism (2026-10-10 second session; deepened with diagnostic builds D2–D9)
 
-Observed in the stuck state (F1/F2/F5, plus the F1 in-place retry probe):
+Diagnostic builds with temporary instrumentation
+(branch `issue-563-overview-recovery-fix`, runs D2/D5/D6/D7/D8/D9 — all reproduced EMPTY)
+narrowed the mechanism substantially; the earlier L1/L2 candidates are superseded:
 
-- The view tree keeps the previous session's five TaskViews, scrolled so that the
-  **ClearAllButton occupies the focused card position** (`dumpsys activity top`: cards at
-  x=435..4383, clear-all at x=162 on the 1080 px viewport); no task card is at the focused
-  position, the visible area renders uniform background, and the `overview_panel` subtree
-  is absent from the accessibility dump while the overview actions bar is present.
-- First stuck entry: `RecentsView: reloadIfNeeded - getTasks: -1` with **no subsequent
-  `applyLoadPlan` log**. All launcher threads are idle (jdb dump), so nothing is blocked;
-  the only logging-free exit inside `applyLoadPlan` is the `mPendingAnimation != null`
-  defer branch (candidate latch L1).
-- A HOME->APP_SWITCH retry inside the stuck state *did* deliver `applyLoadPlan` with five
-  task groups, yet the screen and XML stayed byte-identical empty — consistent with
-  `applyLoadPlan` restoring the previous focused page (clear-all) instead of a task page
-  (candidate latch L2, page-focus/scroll restoration).
-- Horizontal swipes (both directions) do not move the pager; no user escape was observed
-  short of launcher force-stop.
+- **Refuted L1 (`mPendingAnimation` defer)**: the diagnostic never observed a
+  `mPendingAnimation` creation/defer/clear in the failing window. `applyLoadPlan` runs and
+  binds all five task groups on the stuck entry; nothing is deferred.
+- **Refuted "page/scroll desync"**: `getScrollForPage(0) == 3465` is *correct* — child 0 is
+  the most-recent task (879) laid at x=3627, so scroll 3465 centers it on screen. The pager
+  geometry is internally consistent.
+- **Proven: the visible-data pipeline never feeds the on-screen cards.** In the stuck entry
+  the bound task views are VISIBLE, alpha 1, correctly positioned, but the refactor
+  thumbnail pipeline (`enableRefactorTaskThumbnail()` is hardcoded `true`) never receives
+  them as visible: thumbnail state settles as `thumb=true` for the OFF-SCREEN tasks 844/843
+  and `thumb=false` for the ON-SCREEN 879/855/848. That loaded set matches the visible range
+  computed with **primary scroll 0** instead of the actual 3465 — i.e. the
+  `loadVisibleTaskData` range computation reads the wrong primary scroll in this entry path.
+  An unloaded `TaskView` renders nothing (transparent card) — matching the uniform
+  background screenshot — and the overview_panel subtree is correspondingly absent from the
+  accessibility dump while the actions bar (sibling) is present. `dispatchDraw` fires at
+  entry and then the screen is static.
+- **In-place interventions that do NOT heal** (five fix variants, all built, installed and
+  measured against the oracle — all still EMPTY): `loadVisibleTaskData(FLAG_UPDATE_ALL)`
+  re-runs at three hook points (`onStateTransitionComplete` postOnAnimation, end of
+  `applyLoadPlan` postOnAnimation, `onPageScrollsInitialized` override), `requestLayout()`
+  on entry, and `updateOrientationHandler(forceRecreate=true)` on entry.
+- **Operations that DO heal (in place, same process)**: (a) any shell-animated app-origin
+  entry (launch any app from HOME, then APP_SWITCH — cards render immediately,
+  `heal-apporigin-entry.xml`); (b) a configuration change (rotation with in-place
+  `configChanges` handling — no activity recreation — heals and keeps the subsequent toggle
+  entries healthy, `heal-config-change.xml`). Neither launcher force-stop-free gesture,
+  swipe, nor an in-place HOME→APP_SWITCH retry heals.
+- Upstream prior art: upstream `16-dev` has zero commits touching
+  `RecentsView.java` after the ADR-0018 anchor (re-verified 2026-10-10); the defect exists
+  in the vendored 16-dev code as-is.
 
-L1/L2 are code-correlated candidates, not yet object-level confirmed. A diagnostic probe
-(temporary instrumentation on an investigation branch, same pattern as #559's
-`RecentsTransitionWireProbe`) is the next step before any production change.
+The remaining unknown is which exact input of the healing paths (orientation-state refresh,
+DeviceProfile update, or `RecentsViewModel` payload) resets the pipeline. The next
+diagnostic step is instrumentation at the pipeline boundary: log the computed visible set
+and `getPrimaryScroll` inside `loadVisibleTaskData`, and the payload delivered to
+`RecentsViewModel.updateVisibleTasks`, plus a uiMode config-change heal test to separate
+orientation refresh from generic profile refresh. **Per the STOP rule, no production change
+is shipped: five candidate fixes were built and measured and none passed the oracle.**
 
 ## Bug oracle (established; gates any future production change under #563)
 
@@ -156,10 +178,14 @@ published (per-file sha256 values in
 
 ## Next step
 
-Production fix under #563 proceeds only with this oracle plus independent review
-(per #563 scope note): diagnostic probe on an investigation branch to pin L1
-(`mPendingAnimation` defer) vs L2 (page-focus restoration), plus the two open antecedent
-controls noted above (direct-only session; an equivalent completed app-origin antecedent
-that does not depend on the #559 wire path), then a tier-classified spec (the change sits
-in quickstep recents state handling; no DB write path) and minimal fix with runtime
-RED->GREEN evidence. No production change is included in this record.
+Production fix under #563 proceeds only with this oracle plus independent review. The
+first fix session (2026-10-10) built five candidate fixes against the oracle; none passed
+(see Mechanism). Before a new spec can be accepted, the pipeline-boundary diagnostic must
+identify why the no-shell-animation entry computes the visible set with primary scroll 0:
+instrument `loadVisibleTaskData` (computed set + `getPrimaryScroll`) and
+`RecentsViewModel.updateVisibleTasks` payload, and test a uiMode config change to separate
+orientation refresh from DeviceProfile refresh. The two open antecedent controls
+(direct-only session; an equivalent completed antecedent that does not depend on the #559
+wire path) remain outstanding. The diagnostic instrumentation and all five fix attempts are
+preserved on the investigation branch `issue-563-overview-recovery-fix` (not proposed for
+merge). No production change is included in this record.

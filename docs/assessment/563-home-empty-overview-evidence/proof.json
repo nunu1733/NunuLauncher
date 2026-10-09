@@ -191,10 +191,15 @@
   "SystemUI-side TIS rebind gap after launcher restart: overview toggle presses during the gap are dropped (BH5/BH6 no onOverviewToggle in window; binding restored by reinstall or waiting)."
  ],
  "publishedArtifactSha256": {
+  "proof.json": "1cd09a8e5c786066a3037eb35cbf25cfcdaab4efd7637a8a036506f599056e4f",
   "anr/cold-start-deadlock-anr-trace.txt": "9f92619433bce4fddd2acc7ed2df5461b895970899cc7e2d0fe1e5a628e7e86b",
   "png/F5-swipe2.png": "a52f3b497c6f97eaa7b413adf992bba4e1bca65c8bfc65cd4227231e93f360ea",
   "png/F5-home-final.png": "5d15ed8c1c5dee612d19c69b448df14fc37779eaa1dbe0e07e63729789933638",
   "png/F1-home-final.png": "71728828173d1dd6f0ac92d65f8571fe614f185dad75a7a32246a815dfeda938",
+  "xml/swipe-no-recovery.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+  "xml/heal-config-change.xml": "373ce6d88bb6727c9eee341ba71357de46c4ce21d173f79ab8ed1a391d36e5e7",
+  "xml/heal-apporigin-entry.xml": "373ce6d88bb6727c9eee341ba71357de46c4ce21d173f79ab8ed1a391d36e5e7",
+  "xml/teardown-check2.xml": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
   "xml/healthy-overview-fixed-F5-gesture.xml": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
   "xml/empty-overview-fixed-F5-home-c0.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
   "xml/baseline-misfire-BFF1-home-c0.xml": "f748f82999adf7e80a9b7cfc70329249ad38930b4e6676b8f2aa392d3e3701f2",
@@ -203,12 +208,63 @@
   "logs/BFF1-logcat-extract.txt": "c4e2357a6b3d94fe33ff94a60c2d84722f24c49550dd1e07e3004b22152abf3a",
   "logs/F2-logcat-extract.txt": "5d44b4c75a7b5222a82d7852e5f67b7677bb8abc8d95d7cb457452a89c88f0c1",
   "logs/F1-logcat-selected.txt": "41d04bb0ed7591ccaac7f213c3a82672db76a599bd2a0c040864451c4d917a34",
+  "runs/D9-summary.json": "7946a9ec6443cd3cfc95d92fce0b228030aebe6351302afdb1f20248cc8705fb",
   "runs/BH1-summary.json": "84fa85128bcbfeeab2ab230161de98ad6db1e0abee21f696b9a259dcddbf8ae5",
+  "runs/D8-summary.json": "eecc904dec8e32d4ab465688fdd5179b48deb036aa3eab252324950867fcb665",
   "runs/F1-summary.json": "119c85aca5d81aefcb741055f744a084bc3d2edce0eddd33a9e92baf7c40e832",
   "runs/F2-summary.json": "6e1d49b11737ae31280ca7251aea3006a386d939c8a2e510383e3ecfa84b49c9",
   "runs/F5-summary.json": "4d59d39795f70d9511a462cfd7bfeec1dc2abe974cf943e2f804f2245523d00d",
   "runs/BFF1-summary.json": "00c32f39ac51a5436c936b90016655f4d816acfa250ba258259e5de6fedb46f6",
   "runs/F4-summary.json": "a148bbd04fb867cb2d485dee5bbb19f1afada853413491e2802685371a0e7628",
   "runs/BH3-summary.json": "5e937457dccfd0b9e3545b92ecb45ec94caf533cd697b5204533ad812e212356"
+ },
+ "secondSession": {
+  "date": "2026-10-10",
+  "diagnosticRuns": [
+   {
+    "run": "D2",
+    "apk": "diag build (temp instrumentation)",
+    "result": "EMPTY 3/3 checkpoints; no mPendingAnimation activity; applyLoadPlan APPLIED with 5 groups; scroll=3465 from the first shell-animated entry onward"
+   },
+   {
+    "run": "D5",
+    "apk": "diag (view dump)",
+    "result": "EMPTY; at OverviewComplete: page=0 scroll=3465 contentAlpha=1.0, 5 views VISIBLE alpha=1 w=756, getScrollForPage(0)=3465 (child 0 = task 879 at x=3627) -> page/scroll internally consistent"
+   },
+   {
+    "run": "D7",
+    "apk": "diag (+thumbnail state)",
+    "result": "EMPTY; on-screen tasks 879/855/848 thumb=false, off-screen 844/843 thumb=true -> visible-set fed to the refactor pipeline inverted"
+   },
+   {
+    "run": "D8",
+    "apk": "diag (+recents anim state, dispatchDraw)",
+    "result": "EMPTY; stuck entry: liveTileDraw=false animCtl=false handles=false runningId=-1 focusedId=-1 a11y=AUTO; dispatchDraw fired twice at entry then static"
+   },
+   {
+    "run": "D9",
+    "apk": "diag + fix v1 (postOnAnimation reload)",
+    "result": "EMPTY; same inverted thumbnail set; fix pass did not change the outcome"
+   }
+  ],
+  "fixAttempts": [
+   "v1 loadVisibleTaskData re-run at onStateTransitionComplete (postOnAnimation) - EMPTY",
+   "v2 re-run at end of applyLoadPlan (postOnAnimation) - EMPTY",
+   "v3 onPageScrollsInitialized override re-run - EMPTY",
+   "v4 + requestLayout on entry - EMPTY",
+   "v5 updateOrientationHandler(forceRecreate=true) on entry - EMPTY"
+  ],
+  "healExperiments": [
+   {
+    "trigger": "shell-animated app-origin entry (HOME -> launch Clock -> APP_SWITCH)",
+    "result": "cards render immediately (heal-apporigin-entry.xml, 1 task_view_single)"
+   },
+   {
+    "trigger": "configuration change (user_rotation=1 -> 0, launcher handles configChanges in place, no recreation)",
+    "result": "stuck overview heals and subsequent toggle entries stay healthy (heal-config-change.xml); repeat entry after heal: 1 card (non-empty)"
+   }
+  ],
+  "flagFact": "enableRefactorTaskThumbnail() is hardcoded true (FeatureFlagsImpl) -> card content is driven by RecentsViewModel.updateVisibleTasks(visibleTaskIds) fed from the loadVisibleTaskData range computation",
+  "conclusion": "STOP rule applied: five candidate fixes measured against the oracle, none passed; production change withheld. Pipeline-boundary instrumentation (visible set + getPrimaryScroll inside loadVisibleTaskData, updateVisibleTasks payload, uiMode config-change heal test) is the required next diagnostic."
  }
 }

@@ -1,0 +1,100 @@
+{
+ "run": "D8",
+ "started": "2026-10-10T03:54:02.602+09:00",
+ "steps": [
+  {
+   "focus": [],
+   "step": "origin",
+   "wall": "2026-10-10T03:54:14.890+09:00"
+  },
+  {
+   "xml": "D8-direct-overview.xml",
+   "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+   "task_view_single": 2,
+   "task_view_any": 2,
+   "settings_nodes": 0,
+   "step": "direct-overview",
+   "wall": "2026-10-10T03:54:24.657+09:00"
+  },
+  {
+   "focus": [],
+   "step": "direct-return",
+   "wall": "2026-10-10T03:54:27.258+09:00"
+  },
+  {
+   "xml": "D8-gesture-overview.xml",
+   "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+   "task_view_single": 2,
+   "task_view_any": 2,
+   "settings_nodes": 0,
+   "step": "gesture-overview",
+   "wall": "2026-10-10T03:54:39.819+09:00"
+  },
+  {
+   "focus": [],
+   "step": "gesture-return",
+   "wall": "2026-10-10T03:54:42.123+09:00"
+  },
+  {
+   "focus_before": [],
+   "focus_after": [],
+   "checkpoints": [
+    {
+     "xml": "D8-home-c0.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "D8-home-c5.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "D8-home-c10.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "D8-home-c30.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "D8-home-c60.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "D8-home-c80.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    }
+   ],
+   "final_png": "D8-home-final.png",
+   "final_png_sha256": "1b39d38b68064fa28979e9152fa9b4079bced27521b054a31de507bf4ab7363e",
+   "step": "home-path",
+   "wall": "2026-10-10T03:55:15.852+09:00"
+  },
+  {
+   "unread12": 0,
+   "badparcel": 0,
+   "fatal": 0,
+   "pending5000": 0,
+   "step": "signatures",
+   "wall": "2026-10-10T03:55:16.130+09:00"
+  }
+ ],
+ "finished": "2026-10-10T03:55:16.131+09:00"
+}
