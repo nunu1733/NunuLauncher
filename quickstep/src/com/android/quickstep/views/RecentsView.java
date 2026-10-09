@@ -2191,6 +2191,20 @@ public abstract class RecentsView<
         traceEnd(Trace.TRACE_TAG_APP);
     }
 
+    @Override
+    protected void onPageScrollsInitialized() {
+        super.onPageScrollsInitialized();
+        // LC-Note (issue 563): on overview entries without a shell recents animation (for
+        // example the overview toggle from HOME right after a task launch), the
+        // loadVisibleTaskData pass from onTaskStackUpdated runs before the rebound children
+        // are laid out. The visible range is then computed from stale positions, the
+        // on-screen cards keep no content, and the overview stays blank with no recovery.
+        // Re-run the pass here, where the page scrolls are valid.
+        if (mOverviewStateEnabled) {
+            loadVisibleTaskData(TaskView.FLAG_UPDATE_ALL);
+        }
+    }
+
     private boolean isModal() {
         return mTaskModalness > 0;
     }

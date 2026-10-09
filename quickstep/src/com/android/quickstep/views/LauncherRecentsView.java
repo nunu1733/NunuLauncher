@@ -201,6 +201,15 @@ public class LauncherRecentsView extends RecentsView<QuickstepLauncher, Launcher
         if (isOverlayEnabled) {
             mBlurUtils.setDrawLiveTileBelowRecents(true);
         }
+        // LC-Note (issue 563): entering Overview without a shell recents animation (for
+        // example the overview toggle from HOME right after a task launch) leaves the recents
+        // orientation pipeline stale: the visible-data pass then reads the wrong primary
+        // scroll, the on-screen cards never load content, and the overview stays blank with
+        // no recovery. A configuration change heals the state in place; recreate the
+        // orientation handlers at entry to apply the same refresh.
+        if (finalState.isRecentsViewVisible) {
+            updateOrientationHandler(/* forceRecreateDragLayerControllers = */ true);
+        }
     }
 
     @Override
