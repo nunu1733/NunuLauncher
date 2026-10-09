@@ -36,7 +36,10 @@ class TaskOverlayFactoryImpl(@Suppress("UNUSED_PARAMETER") context: Context) : T
 
             if (thumbnail != null) {
                 actionsView.updateDisabledFlags(OverviewActionsView.DISABLED_ROTATED, rotated)
-                val isAllowedByPolicy = mTaskContainer.thumbnailViewDeprecated.isRealSnapshot
+                // Issue #562: the expression-body defect in TaskContainer.refreshOverlay had kept
+                // this path dead; use the flag-aware base isRealSnapshot() so the refactor
+                // task-thumbnail path does not crash via thumbnailViewDeprecated.
+                val isAllowedByPolicy = isRealSnapshot()
                 actionsView.setCallbacks(OverlayUICallbacksImpl(isAllowedByPolicy, task))
             }
         }
