@@ -66,13 +66,15 @@ APK `166beaea…`/`74adbbca…`。6修正はAPI 37のTaskbar/thumbnail/take経�
    `taskbar_phone_size` ID shift、KeyButtonRipple flags class欠損、getTaskSnapshot削除、
    getHardwareBuffer廃止、takeTaskSnapshot削除）を修正し、qva2で6 signature 0・3 marker 0・
    FATAL 0・`isConnected=true`まで到達。
-2. **thumbnail bitmap未解決**: wrapToBitmap分岐は実行される（旧deprecation log消滅・marker 0）が、
-   bitmapがcardへ到達しない（pixel-identicalな黒fallback）。root cause未診断（要diagnostic build）。
-3. **G3/parcel schema未解決**: shell→launcher recents遷移のbinder callbackで
-   `BadParcelableException unread size: 8`／`Bundle length is not aligned by 4: 6226041`
-   （`SystemUiProxy$RecentsAnimationListenerStub.onTransact`）＋`No matching remote found to
-   takeover` がqvb2で再現。vendored AIDL surface（36-era）と37.0 shellのschema drift。
-   個別bridgeの範囲を超えるため分離。
+2. **thumbnail bitmap修復（#555で解消）**: wrapToBitmap分岐は正常にflowしており、bitmapは
+   card描画経路へ届いていた。途絶は `TaskContainer.setState` のKotlin式body欠陥（ラムダを返す
+   だけでtile state更新が未実行 → `TaskThumbnailView.setState` 未呼出しで、#545 qva2の「黒
+   fallback」評価は未描画card領域の誤読）。PR #561 `4a8508498b`で修復し、r9 run／qa3・qb3で
+   **実thumbnail rendering oracle成立**。
+3. **G3/parcel schema修復（#554で解消）**: shell→launcher recents遷移のbinder callbackの
+   37 schema driftを `SystemUiProxy` `$RecentsAnimationRunnerStub` の受信境界正規化
+   （descriptor・全field消費検証後にdispatch、truncated/余剰dataはfail-closed拒否。#557）で
+   解消し、parcel例外0×3 run・G3遷移完走（BAL 0）を確定。qa3/qb3でもscoped parcel 0。
 4. **CE pre-unlock FATAL**: provider/role切替boot時に既存の二次signature（#524 leg (e)と同一）。
    oracle範囲外として記録。
 5. hiddenapi: 全runでapp.lawnchair*のdenial/block 0件（新reflection call含む補助観測）。
