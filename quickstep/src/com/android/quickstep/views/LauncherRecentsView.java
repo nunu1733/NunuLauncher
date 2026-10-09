@@ -203,19 +203,31 @@ public class LauncherRecentsView extends RecentsView<QuickstepLauncher, Launcher
         }
         // TEMP-DIAG-563
         if (finalState.isRecentsViewVisible) {
-            StringBuilder sb = new StringBuilder("DIAG563 OverviewComplete page=")
-                    .append(getCurrentPage())
-                    .append(" scroll=").append(getScrollX())
-                    .append(" contentAlpha=").append(getContentAlpha())
-                    .append(" views=").append(getTaskViewCount());
-            for (TaskView tv : getTaskViews()) {
-                sb.append(" [id=").append(java.util.Arrays.toString(tv.getTaskIds()))
-                        .append(" a=").append(tv.getAlpha())
-                        .append(" vis=").append(tv.getVisibility())
-                        .append(" x=").append(tv.getX()).append("]");
-            }
-            android.util.Log.d("RecentsView", sb.toString());
+            dumpDiag563("complete");
+            postDelayed(() -> dumpDiag563("settled+2s"), 2000);
         }
+    }
+
+    private void dumpDiag563(String phase) {
+        StringBuilder sb = new StringBuilder("DIAG563 ").append(phase)
+                .append(" self: alpha=").append(getAlpha())
+                .append(" vis=").append(getVisibility())
+                .append(" page=").append(getCurrentPage())
+                .append(" next=").append(getNextPage())
+                .append(" scroll=").append(getScrollX())
+                .append(" contentAlpha=").append(getContentAlpha())
+                .append(" attached=").append(isAttachedToWindow())
+                .append(" views=").append(getTaskViewCount());
+        for (TaskView tv : getTaskViews()) {
+            sb.append(" [id=").append(java.util.Arrays.toString(tv.getTaskIds()))
+                    .append(" a=").append(tv.getAlpha())
+                    .append(" vis=").append(tv.getVisibility())
+                    .append(" x=").append(tv.getX())
+                    .append(" w=").append(tv.getMeasuredWidth())
+                    .append(" tx=").append(tv.getTranslationX())
+                    .append("]").append(tv == getRunningTaskView() ? "*" : "");
+        }
+        android.util.Log.d("RecentsView", sb.toString());
     }
 
     @Override
