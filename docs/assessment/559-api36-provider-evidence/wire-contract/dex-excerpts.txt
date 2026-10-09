@@ -1,0 +1,133 @@
+EXACT SELECTED DEX DISASSEMBLY EXCERPTS; gaps explicitly marked [...].
+
+SERVER: APK SHA256 a895f88ae0539d9950a74e49f0471ca81237337f0b31d6eb5f4fe29e814d14f5
+DEX classes2.dex CLASS Lcom/android/wm/shell/recents/RecentTasksController$IRecentTasksImpl; SUPER Landroid/os/Binder;
+METHOD onTransact (I Landroid/os/Parcel; Landroid/os/Parcel; I)Z
+0000: const-string v0, "com.android.wm.shell.recents.IRecentTasks"
+[...]
+0014: invoke-virtual v13, v0, Landroid/os/Parcel;->enforceInterface(Ljava/lang/String;)V
+[...]
+0046: const/4 v0, 5
+0048: if-eq v12, v0, +06ah
+004c: const/4 v0, 6
+004e: if-eq v12, v0, +007h
+0052: invoke-super v11, v12, v13, v14, v15, Landroid/os/Binder;->onTransact(I Landroid/os/Parcel; Landroid/os/Parcel; I)Z
+0058: move-result v11
+005a: return v11
+005c: sget-object v12, Landroid/app/PendingIntent;->CREATOR Landroid/os/Parcelable$Creator;
+0060: invoke-virtual v13, v12, Landroid/os/Parcel;->readTypedObject(Landroid/os/Parcelable$Creator;)Ljava/lang/Object;
+0066: move-result-object v12
+0068: move-object v6, v12
+006a: check-cast v6, Landroid/app/PendingIntent;
+006e: sget-object v12, Landroid/content/Intent;->CREATOR Landroid/os/Parcelable$Creator;
+0072: invoke-virtual v13, v12, Landroid/os/Parcel;->readTypedObject(Landroid/os/Parcelable$Creator;)Ljava/lang/Object;
+0078: move-result-object v12
+007a: move-object v7, v12
+007c: check-cast v7, Landroid/content/Intent;
+0080: sget-object v12, Landroid/os/Bundle;->CREATOR Landroid/os/Parcelable$Creator;
+0084: invoke-virtual v13, v12, Landroid/os/Parcel;->readTypedObject(Landroid/os/Parcelable$Creator;)Ljava/lang/Object;
+008a: move-result-object v12
+008c: move-object v8, v12
+008e: check-cast v8, Landroid/os/Bundle;
+0092: invoke-virtual v13, Landroid/os/Parcel;->readStrongBinder()Landroid/os/IBinder;
+0098: move-result-object v12
+009a: invoke-static v12, Landroid/app/IApplicationThread$Stub;->asInterface(Landroid/os/IBinder;)Landroid/app/IApplicationThread;
+00a0: move-result-object v9
+00a2: invoke-virtual v13, Landroid/os/Parcel;->readStrongBinder()Landroid/os/IBinder;
+00a8: move-result-object v12
+00aa: if-nez v12, +004h
+00ae: move-object v10, v2
+00b0: goto +19h
+00b2: const-string v14, "com.android.wm.shell.recents.IRecentsAnimationRunner"
+00b6: invoke-interface v12, v14, Landroid/os/IBinder;->queryLocalInterface(Ljava/lang/String;)Landroid/os/IInterface;
+00bc: move-result-object v14
+00be: if-eqz v14, +00ah
+00c2: instance-of v15, v14, Lcom/android/wm/shell/recents/IRecentsAnimationRunner;
+00c6: if-eqz v15, +006h
+00ca: move-object v2, v14
+00cc: check-cast v2, Lcom/android/wm/shell/recents/IRecentsAnimationRunner;
+00d0: goto -11h
+00d2: new-instance v2, Lcom/android/wm/shell/recents/IRecentsAnimationRunner$Stub$Proxy;
+00d6: invoke-direct v2, Ljava/lang/Object;-><init>()V
+00dc: iput-object v12, v2, Lcom/android/wm/shell/recents/IRecentsAnimationRunner$Stub$Proxy;->mRemote Landroid/os/IBinder;
+00e0: goto -19h
+00e2: invoke-virtual v13, Landroid/os/Parcel;->enforceNoDataAvail()V
+00e8: iget-object v11, v11, Lcom/android/wm/shell/recents/RecentTasksController$IRecentTasksImpl;->mController Lcom/android/wm/shell/recents/RecentTasksController;
+00ec: iget-object v12, v11, Lcom/android/wm/shell/recents/RecentTasksController;->mTransitionHandler Lcom/android/wm/shell/recents/RecentsTransitionHandler;
+00f0: if-nez v12, +00ah
+00f4: const-string v11, "RecentTasksController"
+00f8: const-string v12, "Used shell-transitions startRecentsTransition without shell-transitions"
+00fc: invoke-static v11, v12, Landroid/util/Slog;->e(Ljava/lang/String; Ljava/lang/String;)I
+0102: return v1
+0104: new-instance v5, Lcom/android/wm/shell/recents/RecentTasksController$IRecentTasksImpl$$ExternalSyntheticLambda0;
+0108: invoke-direct/range v5 ... v10, Lcom/android/wm/shell/recents/RecentTasksController$IRecentTasksImpl$$ExternalSyntheticLambda0;-><init>(Landroid/app/PendingIntent; Landroid/content/Intent; Landroid/os/Bundle; Landroid/app/IApplicationThread; Lcom/android/wm/shell/recents/IRecentsAnimationRunner;)V
+010e: const-string/jumbo v12, startRecentsTransition
+0114: invoke-static v11, v12, v5, v4, Lcom/android/wm/shell/common/ExternalInterfaceBinder;->executeRemoteCallWithTaskPermission(Lcom/android/wm/shell/common/RemoteCallable; Ljava/lang/String; Ljava/util/function/Consumer; Z)V
+011a: return v1
+011c: invoke-virtual v13, Landroid/os/Parcel;->readInt()I
+0122: move-result v12
+0124: invoke-virtual v13, Landroid/os/Parcel;->enforceNoDataAvail()V
+[...]
+0140: const-string v12, "getRunningTasks"
+
+CLIENT: APK SHA256 5098ceb4d7af93c90684e07b1bdbe01408a92356631923fdde367a5fbc213278
+DEX classes21.dex CLASS Lcom/android/wm/shell/recents/IRecentTasks$Stub$Proxy; SUPER Ljava/lang/Object;
+METHOD startRecentsTransition (Landroid/app/PendingIntent; Landroid/content/Intent; Landroid/os/Bundle; Landroid/window/WindowContainerTransaction; Landroid/app/IApplicationThread; Lcom/android/wm/shell/recents/IRecentsAnimationRunner;)V
+0000: invoke-virtual v5, Lcom/android/wm/shell/recents/IRecentTasks$Stub$Proxy;->asBinder()Landroid/os/IBinder;
+0006: move-result-object v0
+0008: invoke-static v0, Landroid/os/Parcel;->obtain(Landroid/os/IBinder;)Landroid/os/Parcel;
+000e: move-result-object v0
+0010: const-string v1, "com.android.wm.shell.recents.IRecentTasks"
+0014: invoke-virtual v0, v1, Landroid/os/Parcel;->writeInterfaceToken(Ljava/lang/String;)V
+001a: const/4 v1, 0
+001c: invoke-virtual v0, v6, v1, Landroid/os/Parcel;->writeTypedObject(Landroid/os/Parcelable; I)V
+0022: invoke-virtual v0, v7, v1, Landroid/os/Parcel;->writeTypedObject(Landroid/os/Parcelable; I)V
+0028: invoke-virtual v0, v8, v1, Landroid/os/Parcel;->writeTypedObject(Landroid/os/Parcelable; I)V
+002e: invoke-virtual v0, v9, v1, Landroid/os/Parcel;->writeTypedObject(Landroid/os/Parcelable; I)V
+0034: invoke-virtual v0, v10, Landroid/os/Parcel;->writeStrongInterface(Landroid/os/IInterface;)V
+003a: invoke-virtual v0, v11, Landroid/os/Parcel;->writeStrongInterface(Landroid/os/IInterface;)V
+0040: iget-object v1, v5, Lcom/android/wm/shell/recents/IRecentTasks$Stub$Proxy;->mRemote Landroid/os/IBinder;
+0044: const/4 v2, 0
+0046: const/4 v3, 1
+0048: const/4 v4, 6
+004a: invoke-interface v1, v4, v0, v2, v3, Landroid/os/IBinder;->transact(I Landroid/os/Parcel; Landroid/os/Parcel; I)Z
+
+DEX classes15.dex CLASS Lcom/android/quickstep/SystemUiProxy; SUPER Ljava/lang/Object;
+METHOD startInitialAndroid16RecentsTransition (Lcom/android/wm/shell/recents/IRecentTasks; Landroid/app/PendingIntent; Landroid/content/Intent; Landroid/os/Bundle; Lcom/android/wm/shell/recents/IRecentsAnimationRunner;)Z
+[...]
+007a: invoke-static v2, Lcom/android/quickstep/SystemUiProxy$Companion;->access$usesNothingOs4BaklavaInitialRecentsTransitionAidl(Lcom/android/quickstep/SystemUiProxy$Companion;)Z
+0080: move-result v2
+0082: if-eqz v2, +004h
+0086: const/4 v2, 6
+0088: goto +2h
+008a: const/4 v2, 5
+008c: nop 
+008e: nop 
+0090: nop 
+0092: const/4 v3, 0
+0094: const/4 v4, 1
+0096: invoke-interface v1, v2, v0, v3, v4, Landroid/os/IBinder;->transact(I Landroid/os/Parcel; Landroid/os/Parcel; I)Z
+
+DEX classes15.dex CLASS Lcom/android/quickstep/SystemUiProxy$Companion; SUPER Ljava/lang/Object;
+METHOD usesAOSPBaklavaInitialRecentsTransitionAidl ()Z
+0000: sget v0, Landroid/os/Build$VERSION;->SDK_INT I
+0004: const/16 v1, 36
+0008: if-ne v0, v1, +00ah
+000c: invoke-static Lapp/lawnchair/util/CompatibilityKt;->isAndroidBaklavaInitial()Z
+0012: move-result v0
+0014: if-eqz v0, +004h
+0018: const/4 v0, 1
+001a: goto +2h
+001c: const/4 v0, 0
+001e: return v0
+
+DEX classes5.dex CLASS Lapp/lawnchair/util/CompatibilityKt; SUPER Ljava/lang/Object;
+METHOD checkGenericBaklavaInitial ()Z
+0000: nop 
+0002: const-string v0, "BP2A."
+0006: const-string v1, "BD1A."
+000a: filled-new-array v0, v1, [Ljava/lang/String;
+[...]
+0028: sget-object v9, Landroid/os/Build;->FINGERPRINT Ljava/lang/String;
+[...]
+0044: invoke-static v9, v10, v3, v11, v12, Lkotlin/text/StringsKt;->contains$default(Ljava/lang/CharSequence; Ljava/lang/CharSequence; Z I Ljava/lang/Object;)Z

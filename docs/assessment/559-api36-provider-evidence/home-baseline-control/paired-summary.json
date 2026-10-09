@@ -1,0 +1,85 @@
+{
+  "verdict": "same-history HOME PASS/PASS; historical empty-card classification unknown",
+  "observations": [
+    {
+      "kind": "result",
+      "wall": "2026-10-09T10:34:47+0900",
+      "monotonic_ns": 8302527513910541,
+      "label": "baseline-home1",
+      "first_cards": 2,
+      "last_cards": 2,
+      "settings_card": true,
+      "returned": true
+    },
+    {
+      "kind": "signatures",
+      "wall": "2026-10-09T10:34:47+0900",
+      "monotonic_ns": 8302527561419166,
+      "label": "baseline-home1",
+      "parcel": 0,
+      "alignment": 0,
+      "fatal": 0,
+      "timeout": 0
+    },
+    {
+      "kind": "result",
+      "wall": "2026-10-09T10:34:59+0900",
+      "monotonic_ns": 8302538895458250,
+      "label": "baseline-home2",
+      "first_cards": 2,
+      "last_cards": 2,
+      "settings_card": true,
+      "returned": true
+    },
+    {
+      "kind": "signatures",
+      "wall": "2026-10-09T10:34:59+0900",
+      "monotonic_ns": 8302538928832375,
+      "label": "baseline-home2",
+      "parcel": 0,
+      "alignment": 0,
+      "fatal": 0,
+      "timeout": 0
+    },
+    {
+      "kind": "result",
+      "wall": "2026-10-09T10:35:28+0900",
+      "monotonic_ns": 8302567961780625,
+      "label": "fixed-home1",
+      "first_cards": 2,
+      "last_cards": 2,
+      "settings_card": true,
+      "returned": true
+    },
+    {
+      "kind": "signatures",
+      "wall": "2026-10-09T10:35:28+0900",
+      "monotonic_ns": 8302568000266708,
+      "label": "fixed-home1",
+      "parcel": 0,
+      "alignment": 0,
+      "fatal": 0,
+      "timeout": 0
+    },
+    {
+      "kind": "result",
+      "wall": "2026-10-09T10:35:39+0900",
+      "monotonic_ns": 8302579770023125,
+      "label": "fixed-home2",
+      "first_cards": 2,
+      "last_cards": 2,
+      "settings_card": true,
+      "returned": true
+    },
+    {
+      "kind": "signatures",
+      "wall": "2026-10-09T10:35:39+0900",
+      "monotonic_ns": 8302579801686875,
+      "label": "fixed-home2",
+      "parcel": 0,
+      "alignment": 0,
+      "fatal": 0,
+      "timeout": 0
+    }
+  ]
+}
