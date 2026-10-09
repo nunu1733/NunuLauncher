@@ -1,0 +1,90 @@
+{
+ "run": "F4",
+ "started": "2026-10-10T00:18:00.666+09:00",
+ "steps": [
+  {
+   "focus": [],
+   "step": "origin",
+   "wall": "2026-10-10T00:18:04.510+09:00"
+  },
+  {
+   "xml": "F4-direct-overview.xml",
+   "sha256": "205738d478f31d5091baf73a27093ad934d9175b5c3db9c6dff0b687dbb183c7",
+   "task_view_single": 0,
+   "task_view_any": 0,
+   "settings_nodes": 122,
+   "step": "direct-overview",
+   "wall": "2026-10-10T00:18:16.027+09:00"
+  },
+  {
+   "xml": "F4-gesture-overview.xml",
+   "sha256": "205738d478f31d5091baf73a27093ad934d9175b5c3db9c6dff0b687dbb183c7",
+   "task_view_single": 0,
+   "task_view_any": 0,
+   "settings_nodes": 122,
+   "step": "gesture-overview",
+   "wall": "2026-10-10T00:18:23.168+09:00"
+  },
+  {
+   "focus_before": [],
+   "focus_after": [],
+   "checkpoints": [
+    {
+     "xml": "F4-home-c0.xml",
+     "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+     "task_view_single": 2,
+     "task_view_any": 2,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F4-home-c5.xml",
+     "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+     "task_view_single": 2,
+     "task_view_any": 2,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F4-home-c10.xml",
+     "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+     "task_view_single": 2,
+     "task_view_any": 2,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F4-home-c30.xml",
+     "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+     "task_view_single": 2,
+     "task_view_any": 2,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F4-home-c60.xml",
+     "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+     "task_view_single": 2,
+     "task_view_any": 2,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "F4-home-c80.xml",
+     "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+     "task_view_single": 2,
+     "task_view_any": 2,
+     "settings_nodes": 0
+    }
+   ],
+   "final_png": "F4-home-final.png",
+   "final_png_sha256": "d9b7599a953209e80175a23eca9b4beab8ce70de3d4c8f893a24074baa6a6ba4",
+   "step": "home-path",
+   "wall": "2026-10-10T00:18:55.342+09:00"
+  },
+  {
+   "unread12": 0,
+   "badparcel": 0,
+   "fatal": 0,
+   "pending5000": 0,
+   "step": "signatures",
+   "wall": "2026-10-10T00:18:55.500+09:00"
+  }
+ ],
+ "finished": "2026-10-10T00:18:55.500+09:00"
+}

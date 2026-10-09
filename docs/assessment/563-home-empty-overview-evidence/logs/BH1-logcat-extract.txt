@@ -1,0 +1,187 @@
+10-10 00:02:51.304 D/RecentsDependencies(19989): createRecentsViewScope 110456260
+10-10 00:02:51.491 V/ShellRecents(  923): RecentsTransitionHandler.startAnimation: no controller found
+10-10 00:02:52.073 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logOnNewIntent(OverviewCommandHelperProtoLogProxy.java:175)
+10-10 00:02:52.127 D/TouchInteractionService(19989): onCreate: user=0 instance=221473347
+10-10 00:02:52.146 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService.onCreate(TouchInteractionService.java:747)
+10-10 00:02:52.213 D/TouchInteractionService(19989): onUserUnlocked: userId=0 instance=221473347
+10-10 00:02:52.224 D/TaskbarManager(19989): setRecentsViewContainer displayId=0 isDefaultDisplay=true
+10-10 00:02:52.361 V/ShellRecents(  923): RecentsTransitionHandler.startAnimation: no controller found
+10-10 00:02:53.675 W/Resources(19989): 	at com.android.quickstep.TouchInteractionService.onUserUnlocked(TouchInteractionService.java:889)
+10-10 00:02:53.675 W/Resources(19989): 	at com.android.quickstep.TouchInteractionService$$ExternalSyntheticLambda10.run(D8$$SyntheticClass:0)
+10-10 00:02:53.675 W/Resources(19989): 	at com.android.quickstep.TouchInteractionService.onCreate(TouchInteractionService.java:781)
+10-10 00:02:53.936 W/LauncherProxyService(  923): Skipping connection to TouchInteractionService until previous instance is cleaned up.
+10-10 00:02:54.454 D/TaskbarManager(19989): createTaskbarUIControllerForRecentsViewContainer displayId=0 isDefaultDisplay=true
+10-10 00:02:54.635 D/TouchInteractionService(19989): disposeEventHandlers: Reason: Initializing input monitor due to: onNavigationModeChanged() instance=221473347
+10-10 00:02:54.827 D/TouchInteractionService(19989): onBind: user=0 instance=221473347
+10-10 00:02:54.829 D/TouchInteractionService(19989): onBind: user=0 instance=221473347
+10-10 00:02:56.105 D/StateManager(19989): goToState - fromState: Normal, toState: Normal, partial trace:
+10-10 00:02:56.105 D/StateManager(19989): 	at com.android.launcher3.statemanager.StateManager.moveToRestState(StateManager.java:482)
+10-10 00:02:56.105 D/StateManager(19989): 	at com.android.launcher3.statemanager.StateManager.moveToRestState(StateManager.java:473)
+10-10 00:02:56.105 D/StateManager(19989): 	at com.android.launcher3.statemanager.StatefulActivity.onStop(StatefulActivity.java:120)
+10-10 00:02:56.105 D/StateManager(19989): onRepeatStateSetAborted - state: Normal
+10-10 00:02:56.180 D/TouchInteractionService(19989): onDestroy: user=0 instance=221473347
+10-10 00:02:56.184 D/TouchInteractionService(19989): disposeEventHandlers: Reason: TouchInteractionService onDestroy() instance=221473347
+10-10 00:02:56.278 D/LeakCanary(19989): Watching instance of com.android.quickstep.TouchInteractionService (com.android.quickstep.TouchInteractionService received Service#onDestroy() callback) with key 5d6e0fd3-8893-44e1-8dda-f85d15a738b7
+10-10 00:02:56.307 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logOnNewIntent(OverviewCommandHelperProtoLogProxy.java:175)
+10-10 00:02:56.319 D/TouchInteractionService(19989): onCreate: user=0 instance=148917954
+10-10 00:02:56.329 D/TouchInteractionService(19989): onUserUnlocked: userId=0 instance=148917954
+10-10 00:02:56.337 D/TaskbarManager(19989): setRecentsViewContainer displayId=0 isDefaultDisplay=true
+10-10 00:02:56.518 W/Resources(19989): 	at com.android.quickstep.TouchInteractionService.onUserUnlocked(TouchInteractionService.java:889)
+10-10 00:02:56.518 W/Resources(19989): 	at com.android.quickstep.TouchInteractionService$$ExternalSyntheticLambda10.run(D8$$SyntheticClass:0)
+10-10 00:02:56.518 W/Resources(19989): 	at com.android.quickstep.TouchInteractionService.onCreate(TouchInteractionService.java:781)
+10-10 00:02:56.542 D/TaskbarManager(19989): createTaskbarUIControllerForRecentsViewContainer displayId=0 isDefaultDisplay=true
+10-10 00:02:56.558 D/TouchInteractionService(19989): disposeEventHandlers: Reason: Initializing input monitor due to: onNavigationModeChanged() instance=148917954
+10-10 00:02:56.589 D/TouchInteractionService(19989): onBind: user=0 instance=148917954
+10-10 00:02:56.785 D/TouchInteractionService(19989): onBind: user=0 instance=148917954
+10-10 00:02:56.859 D/TouchInteractionService(19989): disposeEventHandlers: Reason: Initializing input monitor due to: TISBinder#onInitialize() instance=148917954
+10-10 00:02:59.087 V/ShellRecents(  923): RecentsTransitionHandler.startAnimation: no controller found
+10-10 00:02:59.280 D/StateManager(19989): createAtomicAnimation - fromState: Background, toState: Normal, partial trace:
+10-10 00:02:59.280 D/StateManager(19989): 	at com.android.quickstep.util.WorkspaceRevealAnim.prepareToAnimate(WorkspaceRevealAnim.java:146)
+10-10 00:02:59.280 D/StateManager(19989): 	at com.android.quickstep.util.WorkspaceRevealAnim.<init>(WorkspaceRevealAnim.java:69)
+10-10 00:02:59.280 D/StateManager(19989): 	at com.android.launcher3.QuickstepTransitionManager.createWallpaperOpenAnimations(QuickstepTransitionManager.java:1869)
+10-10 00:03:06.686 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logOnNewIntent(OverviewCommandHelperProtoLogProxy.java:175)
+10-10 00:03:06.695 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logClearPendingCommands(OverviewCommandHelperProtoLogProxy.java:64)
+10-10 00:03:06.695 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.clearPendingCommands(OverviewCommandHelper.kt:176)
+10-10 00:03:08.495 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logCommandAdded(OverviewCommandHelperProtoLogProxy.java:43)
+10-10 00:03:08.495 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.addCommand(OverviewCommandHelper.kt:134)
+10-10 00:03:08.495 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.addCommand$default(OverviewCommandHelper.kt:116)
+10-10 00:03:08.495 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.addCommand(Unknown Source:11)
+10-10 00:03:08.495 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-10 00:03:08.495 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService$TISBinder$$ExternalSyntheticLambda45.accept(D8$$SyntheticClass:0)
+10-10 00:03:08.495 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService$TISBinder.executeForTouchInteractionService(TouchInteractionService.java:510)
+10-10 00:03:08.495 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-10 00:03:08.497 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logCommandExecuted(OverviewCommandHelperProtoLogProxy.java:48)
+10-10 00:03:08.497 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.addCommand(OverviewCommandHelper.kt:137)
+10-10 00:03:08.497 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.addCommand$default(OverviewCommandHelper.kt:116)
+10-10 00:03:08.497 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.addCommand(Unknown Source:11)
+10-10 00:03:08.497 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-10 00:03:08.497 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService$TISBinder$$ExternalSyntheticLambda45.accept(D8$$SyntheticClass:0)
+10-10 00:03:08.497 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService$TISBinder.executeForTouchInteractionService(TouchInteractionService.java:510)
+10-10 00:03:08.497 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-10 00:03:08.507 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logExecutingCommand(OverviewCommandHelperProtoLogProxy.java:75)
+10-10 00:03:08.507 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:194)
+10-10 00:03:08.507 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.507 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logExecutingCommand(OverviewCommandHelperProtoLogProxy.java:80)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommand(OverviewCommandHelper.kt:212)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended(OverviewCommandHelper.kt:238)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended(OverviewCommandHelper.kt:75)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invokeSuspend(OverviewCommandHelper.kt:198)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:8)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:4)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1.invokeSuspend(OverviewCommandHelper.kt:197)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:196)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.518 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.550 D/StateManager(19989): goToState - fromState: Normal, toState: Overview, partial trace:
+10-10 00:03:08.550 D/StateManager(19989): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-10 00:03:08.550 D/StateManager(19989): 	at com.android.quickstep.OverviewCommandHelper.executeWhenRecentsIsNotVisible(OverviewCommandHelper.kt:439)
+10-10 00:03:08.550 D/StateManager(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommand(OverviewCommandHelper.kt:216)
+10-10 00:03:08.553 D/StateManager(19989): onStateTransitionStart - state: Overview
+10-10 00:03:08.557 D/RecentsView(19989): updateTaskStackListenerState: true
+10-10 00:03:08.560 D/RecentsView(19989): reloadIfNeeded - getTasks: -1
+10-10 00:03:08.592 D/StateManager(19989): onStateTransitionEnd - state: Overview
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logSwitchingToOverviewStateEnd(OverviewCommandHelperProtoLogProxy.java:116)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$executeWhenRecentsIsNotVisible$animatorListener$1.onAnimationEnd(OverviewCommandHelper.kt:433)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeWhenRecentsIsNotVisible(OverviewCommandHelper.kt:439)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommand(OverviewCommandHelper.kt:216)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended(OverviewCommandHelper.kt:238)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended(OverviewCommandHelper.kt:75)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invokeSuspend(OverviewCommandHelper.kt:198)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:8)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:4)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1.invokeSuspend(OverviewCommandHelper.kt:197)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:196)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.597 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logExecutedCommandWithResult(OverviewCommandHelperProtoLogProxy.java:88)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended$lambda$0$processResult(OverviewCommandHelper.kt:227)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended$lambda$0$processResult(OverviewCommandHelper.kt:75)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$executeCommandSuspended$2$result$1.invoke(OverviewCommandHelper.kt:238)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$executeCommandSuspended$2$result$1.invoke(OverviewCommandHelper.kt:238)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$executeWhenRecentsIsNotVisible$animatorListener$1.onAnimationEnd(OverviewCommandHelper.kt:436)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeWhenRecentsIsNotVisible(OverviewCommandHelper.kt:439)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommand(OverviewCommandHelper.kt:216)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended(OverviewCommandHelper.kt:238)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended(OverviewCommandHelper.kt:75)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invokeSuspend(OverviewCommandHelper.kt:198)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:8)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:4)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1.invokeSuspend(OverviewCommandHelper.kt:197)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:196)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logSwitchingToOverviewStateWaiting(OverviewCommandHelperProtoLogProxy.java:122)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeWhenRecentsIsNotVisible(OverviewCommandHelper.kt:440)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommand(OverviewCommandHelper.kt:216)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended(OverviewCommandHelper.kt:238)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended(OverviewCommandHelper.kt:75)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invokeSuspend(OverviewCommandHelper.kt:198)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:8)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:4)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1.invokeSuspend(OverviewCommandHelper.kt:197)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:196)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logExecutedCommandWithResult(OverviewCommandHelperProtoLogProxy.java:88)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended$lambda$0$processResult(OverviewCommandHelper.kt:227)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended$lambda$0$processResult(OverviewCommandHelper.kt:75)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended(OverviewCommandHelper.kt:239)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended(OverviewCommandHelper.kt:75)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invokeSuspend(OverviewCommandHelper.kt:198)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:8)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:4)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1.invokeSuspend(OverviewCommandHelper.kt:197)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:196)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.602 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logWaitingForCommandCallback(OverviewCommandHelperProtoLogProxy.java:95)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended$lambda$0$processResult(OverviewCommandHelper.kt:234)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended$lambda$0$processResult(OverviewCommandHelper.kt:75)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.executeCommandSuspended(OverviewCommandHelper.kt:239)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$executeCommandSuspended(OverviewCommandHelper.kt:75)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invokeSuspend(OverviewCommandHelper.kt:198)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:8)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:4)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1.invokeSuspend(OverviewCommandHelper.kt:197)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:196)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logCommandFinishedSuccessfully(OverviewCommandHelperProtoLogProxy.java:164)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.onCommandFinished(OverviewCommandHelper.kt:583)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$onCommandFinished(OverviewCommandHelper.kt:75)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invokeSuspend(OverviewCommandHelper.kt:200)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:8)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:4)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1.invokeSuspend(OverviewCommandHelper.kt:197)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:196)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.launcher3.util.OverviewCommandHelperProtoLogProxy.logNoPendingCommands(OverviewCommandHelperProtoLogProxy.java:70)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:189)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.onCommandFinished(OverviewCommandHelper.kt:585)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$onCommandFinished(OverviewCommandHelper.kt:75)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invokeSuspend(OverviewCommandHelper.kt:200)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:8)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1$1.invoke(Unknown Source:4)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$processNextCommand$1.invokeSuspend(OverviewCommandHelper.kt:197)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.processNextCommand(OverviewCommandHelper.kt:196)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper.access$processNextCommand(OverviewCommandHelper.kt:75)
+10-10 00:03:08.603 W/QuickstepProtoLogGroup(19989): 	at com.android.quickstep.OverviewCommandHelper$addCommand$1.invokeSuspend(OverviewCommandHelper.kt:138)
+10-10 00:03:08.813 D/RecentsView(19989): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=12547] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=12548] null, type=SINGLE task=[id=848 windowingMode=0 user=0 lastActiveTime=12549] null, type=SINGLE task=[id=855 windowingMode=1 user=0 lastActiveTime=31673656] null, type=SINGLE task=[id=879 windowingMode=1 user=0 lastActiveTime=86772056] null]
+10-10 00:03:08.818 D/TaskView(19989): onBind app.lawnchair.LawnchairLauncher@6956dc4 com.android.quickstep.LauncherActivityInterface@d69796c
+10-10 00:03:08.818 D/TaskViewModel(19989): bind: [879]
+10-10 00:03:08.853 D/TaskView(19989): onBind app.lawnchair.LawnchairLauncher@6956dc4 com.android.quickstep.LauncherActivityInterface@d69796c
+10-10 00:03:08.853 D/TaskViewModel(19989): bind: [855]
+10-10 00:03:08.855 D/TaskView(19989): onBind app.lawnchair.LawnchairLauncher@6956dc4 com.android.quickstep.LauncherActivityInterface@d69796c
+10-10 00:03:08.856 D/TaskViewModel(19989): bind: [848]
+10-10 00:03:08.868 D/TaskView(19989): onBind app.lawnchair.LawnchairLauncher@6956dc4 com.android.quickstep.LauncherActivityInterface@d69796c
+10-10 00:03:08.868 D/TaskViewModel(19989): bind: [844]
+10-10 00:03:08.871 D/TaskView(19989): onBind app.lawnchair.LawnchairLauncher@6956dc4 com.android.quickstep.LauncherActivityInterface@d69796c
+10-10 00:03:08.871 D/TaskViewModel(19989): bind: [843]
