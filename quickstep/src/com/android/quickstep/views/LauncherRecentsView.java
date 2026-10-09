@@ -217,6 +217,8 @@ public class LauncherRecentsView extends RecentsView<QuickstepLauncher, Launcher
                 .append(" next=").append(getNextPage())
                 .append(" scroll=").append(getScrollX())
                 .append(" contentAlpha=").append(getContentAlpha())
+                .append(" liveTileDraw=").append(mEnableDrawingLiveTile)
+                .append(" a11y=").append(getImportantForAccessibility())
                 .append(" attached=").append(isAttachedToWindow())
                 .append(" views=").append(getTaskViewCount());
         for (TaskView tv : getTaskViews()) {
@@ -227,6 +229,8 @@ public class LauncherRecentsView extends RecentsView<QuickstepLauncher, Launcher
                     .append(" x=").append(tv.getX())
                     .append(" w=").append(tv.getMeasuredWidth())
                     .append(" tx=").append(tv.getTranslationX())
+                    .append(" thumb=").append(tv.getTaskContainers().isEmpty() ? "n/a"
+                            : tv.getTaskContainers().get(0).getTask().thumbnail != null)
                     .append("]").append(tv == getRunningTaskView() ? "*" : "");
         }
         android.util.Log.d("RecentsView", sb.toString());
