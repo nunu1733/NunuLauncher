@@ -1,0 +1,12 @@
+=== qa3 hiddenapi auxiliary watch — window: bind (qa3-bind-logcat.txt) + overview/task-switch (qa3-overview-logcat.txt) ===
+date: 2026-10-09 20:07:19 JST
+
+--- 'hiddenapi' lines total ---
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/docs/assessment/545-api37-provider-fix-evidence/qa3-overview-logcat.txt:0
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/docs/assessment/545-api37-provider-fix-evidence/qa3-bind-logcat.txt:0
+
+--- hiddenapi denial lines mentioning app.lawnchair ---
+count: 0
+
+--- 'Access denied' / 'denied' lines for lawnchair u0_a ---
+count: 0
