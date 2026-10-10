@@ -1,9 +1,9 @@
 ---
 issue: "#562"
-status: draft
+status: accepted
 tier: M
 requirements: []
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 # TaskContainerのbind/destroy/refreshOverlayが実行される（ViewPool再利用・overlay・toast経路）
@@ -192,3 +192,8 @@ Then Launcher DB（favorites等）への書込み経路はdiffに存在しない
   整合（flag-gating）し、actionsView oracleで再runtime leg（v3 tree）を取得。
   (4) upstream patch-surface oracleを実行可能な代替手順（`--verify` PASS＋diff確認）
   に置き換え、制約と根拠をVerificationへ明記。
+- 2026-10-10: Review round 2で **Clear（blockingなし）**（owner review、
+  [comment](https://github.com/nunu1733/NunuLauncher/pull/567#issuecomment-6094750431)）。
+  ownerが未取得2視覚oracle（digitalWellBeingToast視覚表示 / task menu展開中の
+  視覚位置）の残差受理と本specのaccepted化を記録（agent実行の指示あり）。
+  本specをacceptedとする。
