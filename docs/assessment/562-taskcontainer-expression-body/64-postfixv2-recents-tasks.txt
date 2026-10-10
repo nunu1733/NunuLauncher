@@ -1,0 +1,5 @@
+    baseIntent=Intent { flg=0x10000000 cmp=com.google.android.youtube/.HomeActivity }
+    baseIntent=Intent { flg=0x10000000 cmp=com.google.android.deskclock/com.android.deskclock.DeskClock }
+    baseIntent=Intent { flg=0x10000000 cmp=com.android.settings/.Settings }
+    baseIntent=Intent { act=android.settings.SECURITY_SETTINGS flg=0x10000000 cmp=com.android.settings/.Settings$SecurityDashboardActivity }
+    baseIntent=Intent { act=android.search.action.GLOBAL_SEARCH flg=0x10008000 pkg=com.google.android.googlequicksearchbox cmp=com.google.android.googlequicksearchbox/.GoogleAppGlobalSearchImplicitGatewayInternal }
