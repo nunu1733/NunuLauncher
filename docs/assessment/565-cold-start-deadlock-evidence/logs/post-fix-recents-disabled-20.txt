@@ -1,0 +1,21 @@
+trial1 OK
+trial2 OK
+trial3 OK
+trial4 OK
+trial5 OK
+trial6 OK
+trial7 OK
+trial8 OK
+trial9 OK
+trial10 OK
+trial11 OK
+trial12 OK
+trial13 OK
+trial14 OK
+trial15 OK
+trial16 OK
+trial17 OK
+trial18 OK
+trial19 OK
+trial20 OK
+POST2DONE

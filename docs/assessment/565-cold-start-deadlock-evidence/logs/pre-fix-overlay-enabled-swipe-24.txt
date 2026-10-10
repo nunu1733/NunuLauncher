@@ -1,0 +1,25 @@
+trial1 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial2 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial3 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial4 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial5 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial6 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial7 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial8 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial9 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial10 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial11 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial12 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial13 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial14 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial15 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial16 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial17 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial18 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial19 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial20 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial21 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial22 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial23 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+trial24 OK app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+NATURAL-BASE-SWIPE-DONE bad=0/24

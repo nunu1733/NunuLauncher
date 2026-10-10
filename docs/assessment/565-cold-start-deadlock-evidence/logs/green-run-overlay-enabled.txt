@@ -1,0 +1,4 @@
+# gradle connected GREEN on issue108_api36_pixel_tablet (emulator-5558, API 36) WITH /product/overlay/nunu-overlay-quickstepconfig.apk enabled (Lawnchair owns quickstep recents; ViewPool-init confirmed live on this config) and production fix 28b5800a88 installed:
+# cmd: ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.startup.ColdStartFontLazyInversionInstrumentationTest
+BUILD SUCCESSFUL in 28s
+All 4 tests PASS: a0FontManagerProviderIsConstructibleOnMain a1ColdConcurrentFontAccessNeverBlocksASecondCallerOnAMonitor bWarmBackgroundCallsCompleteUnaidedAfterInit cFactoryConstructorContractStaysOnMainThread
