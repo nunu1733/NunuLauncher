@@ -54,10 +54,12 @@ Input `xml/FF1` dumps (0 nodes) and the FF1 stuck screenshot analyzed with stdli
 distinct colors: 659   top: (56,57,63) 64%, (30,31,37) 13%, (68,76,97) 11%
 ```
 
-vs the pre-fix uniform stuck screen (`png/FD5-RED-*` from the earlier session, same method:
-distinct 1..3, 99-100% single scrim color). The uniform→content transition appeared exactly
-when the TaskContainer block-body repairs landed; a11y stayed at 0 until the re-pivot fix
-(NaN pivot → NaN boundsInScreen), then recovered to 2 nodes (FG8/FG9/FG10).
+vs the pre-fix uniform stuck screen — same era, same method:
+`png/FD5-RED-era-stuck-uniform.png` (card band y1000..1400: 1..3 distinct colors, 99-100%
+single scrim color; working first entry for contrast: `png/FD5-RED-era-first-entry-working.png`).
+The uniform→content transition was observed exactly when the TaskContainer block-body
+repairs landed (FE4 uniform → FF1 content); a11y stayed at 0 until the re-pivot fix
+(NaN pivot → NaN boundsInScreen), then recovered to 2 nodes (FG9/FG10/FG11).
 
 ## Fix set (this PR)
 
@@ -77,18 +79,22 @@ APP_SWITCH`, the uiautomator dump at each checkpoint 0/0.5/1/3/6/8s must contain
 `>= 1` `task_view_single` node (`grep -o | wc -l` node counting; the XML is single-line so
 `grep -c` would count lines). RED = all checkpoints 0 while overview is the settled state.
 
-| run | build | gesture entry | 0s | 0.5s | 1s | 3s | 6s | 8s | verdict |
+The driver is **fail-closed** (review round 2): a run is EXCLUDED unless the gesture-entry
+dump is the launcher overview (`overview_panel` present and `task_view_single >= 1`) and the
+card tap completed the previous session (logcat `fromState: Overview, toState: Normal`).
+
+| run | build | antecedent proven | 0s | 0.5s | 1s | 3s | 6s | 8s | verdict |
 |---|---|---|---|---|---|---|---|---|---|
-| BB1 | clean stack `54ce507496` (probe build) | 1 (grep -c) | 0 | 0 | 0 | 0 | 0 | 0 (node counts: `xml/BB1-RED-node-counts.txt`) | **RED** |
-| FG7 | full fix @HEAD | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **excluded** — TIS rebind gap dropped the toggle (`xml/FG7-events-excluded-TISdrop.log`: "Skipping connection to TouchInteractionService", zero `goToState` in logcat); antecedent never ran |
-| FG8 | full fix @HEAD | 0 (session completed as live tile) | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
-| FG9 | full fix @HEAD | 2 | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
-| FG10 | full fix @HEAD | 2 | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
+| BB1 | clean stack `54ce507496` (probe build) | gesture dump showed the overview (grep -c era) | 0 | 0 | 0 | 0 | 0 | 0 (node counts: `xml/BB1-RED-node-counts.txt`) | **RED** |
+| FG7 | full fix @HEAD | no — toggle dropped by the TIS rebind gap (`xml/FG7-events-excluded-TISdrop.log`, zero `goToState`) | 0 | 0 | 0 | 0 | 0 | 0 | **excluded** |
+| FG8 | full fix @HEAD | no — gesture-entry dump was the Settings screen, not the launcher overview; no post-tap `Overview->Normal` (`xml/FG8-events-excluded-antecedentNotEstablished.log`) | 2 | 2 | 2 | 2 | 2 | 2 | **excluded** (review round 2) |
+| FG9 | full fix @HEAD | yes — launcher overview (2 nodes) + `Overview->Normal` + `Normal->Overview` in `logs/FG9-antecedent-extract.txt` | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
+| FG10 | full fix @HEAD | yes — same triple proof, `logs/FG10-antecedent-extract.txt` | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
+| FG11 | full fix @HEAD, fail-closed driver | yes — driver-verified gesture dump (2 nodes, overview_panel) and post-tap `Overview->Normal=1`, `logs/FG11-antecedent-extract.txt` | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
 | FC2 | control: clean HOME history, direct APP_SWITCH (no antecedent) | n/a | 2 (single dump at 2s) | | | | | | PASS |
 
-GREEN 3/3 (FG8/FG9/FG10) with full per-checkpoint dumps, events and screenshots under
-`xml/` and `png/`; the original 2026-10-11 morning RED baseline is BA1/BB1/BB3 (BB1
-retained here with node counts). Card tap after the re-entry returned to the task (FC2).
+GREEN 3/3 (FG9/FG10/FG11) with full per-checkpoint dumps, events and screenshots under
+`xml/` and `png/`. Card tap after the re-entry returned to the task (FC2).
 
 Unit regression: `com.android.launcher3.PagedViewScreenCenterTest` — with the guard removed,
 `nan pivot resolves to the view center` / `nan pivot with scale resolves to the view center`
@@ -107,12 +113,12 @@ expression-body failure mode is protected structurally (`: Unit` annotations mak
 - `logs/FE4-flip-and-states-extract.txt` — INVISIBLE→VISIBLE flip + dispatchDraw at the
   stuck entry, states delivered (`[1008:true] central=true`), pixels still uniform →
   TaskContainer no-op proof.
-- `logs/FF1-states-extract.txt` — TaskView bind sequence of the FF1 build (probe-free; role
-  described above).
+- `logs/FF1-states-extract.txt` — TaskViewModel bind sequence and applyLoadPlan lines of the
+  FF1 build (probe-free build: the per-state DIAG lines exist only in FE4's log).
 - `xml/FG{8,9,10}-*` — full oracle dumps (gesture entry + 6 checkpoints) and events logs.
 - `png/FG{8,9,10}-stuck-8s.png`, `png/FC2-direct-entry.png` — post-fix screens.
 - `xml/BB1-RED-node-counts.txt` — RED baseline node counts from the stored BB1 dumps.
-- `oracle-driver.sh` — the exact standard driver used for FG7–FG10.
+- `oracle-driver.sh` — the fail-closed driver v2 (used for FG11; FG9/FG10 ran the same sequence before the fail-closed guards were added and were re-verified against the guards manually — gesture dump launcher-overview + post-tap `Overview->Normal` — see their antecedent extracts).
 - `manifest-sha256.txt` — per-file hashes of all other files (the manifest excludes itself;
   verify with `shasum -a 256 -c manifest-sha256.txt` from this directory).
 

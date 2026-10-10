@@ -30,10 +30,16 @@ bug work itemであるため編集負担ベンチマーク課題（B1〜B7）は
 
 - 手順: force-stop → Settings起動 → gesture UP → card tap → HOME → 10s dwell →
   APP_SWITCH → 0/0.5/1/3/6/8s 各時点でuiautomator dump。
+- **fail-closed（run妥当性）**: gesture直後のdumpがlauncher overviewであること
+  （`overview_panel` 存在 + `task_view_single` node 1以上）と、card tapが前sessionを
+  完了したこと（logcat `fromState: Overview, toState: Normal`）を確認できないrunは
+  判定から除外する（driverが自動検証する）。
 - 判定: **各時点すべてのdumpで `task_view_single` nodeが1以上**（node countingは
   `grep -o | wc -l`。XMLが1行のため `grep -c` は行数を数え、node数にならない）。
   RED = settled stateがOverviewのまま全時点0。
 - 修正前: RED（BB1。node counts は evidence `xml/BB1-RED-node-counts.txt`）。
+  除外runは理由を実行可能証跡で記録する（FG7: TIS rebind gap・toggle未到達、
+  FG8: gesture dumpがSettings画面=antecedent未成立）。
 - 目標: **GREEN 3/3**（antecedentが成立した有効runのみ数える。TIS rebind gap等で
   toggleがlauncherに届かなかったrunは除外し、除外理由を実行可能証跡
   （logcatの `goToState` 件数）で記録する）。
@@ -124,10 +130,12 @@ Then 従来どおり1枚以上のカードが表示される（書込み経路�
   'com.android.launcher3.PagedViewScreenCenterTest'` — guardなしでRED
   （expected 4005 but was 0）、修正後GREEN 4/4。organizer-unit-tests gateに
   routing済み（ci.yml filter明示追加）。
-- bug oracle: driver `oracle-driver.sh`（evidence正本）でGREEN 3/3
-  （FG8/FG9/FG10、全時点 `task_view_single=2`）。RED baseline BB1
-  （全時点0、node counts添付）。除外run（FG7: TIS rebind gapでtoggle未到達）
-  は logcat `goToState` 件数0で理由を実証。
+- bug oracle: fail-closed driver `oracle-driver.sh`（evidence正本）。GREEN 3/3
+  （FG9/FG10/FG11、全時点 `task_view_single=2`、antecedent証跡は各runの
+  antecedent-extract）。RED baseline BB1（全時点0、node counts添付）。
+  除外run 2件（FG7: TIS rebind gap・logcat `goToState` 0件、FG8: gesture dumpが
+  Settings画面でantecedent未成立・post-tap `Overview->Normal` なし）はevents log
+  とlogcatで理由を実証。
 - 書込み経路なし: diffは `src/com/android/launcher3/PagedView.java`、
   `quickstep/src/com/android/quickstep/views/RecentsView.java`、
   `quickstep/src/com/android/quickstep/views/TaskContainer.kt`（cherry-pick +
@@ -157,6 +165,9 @@ Then 従来どおり1枚以上のカードが表示される（書込み経路�
 
 - 2026-10-11: Draft created for #563 (bisection: BB4/FD8/FE4/FF1、oracle
   RED→GREEN: BB1 vs FG4/FG5/FG6)。
-- 2026-10-11: Review round 1対応 — oracle基準をnode counting・全時点判定・
-  除外runの実証条件へ厳密化（GREEN 3/3はFG8/FG9/FG10で取り直し）、実機owner
-  確認を必須と明記、`: Unit` 再発防止をScopeへ追加。
+- 2026-10-11: Review round 1対応 — oracle基準をnode counting・全時点判定へ厳密化、
+  実機owner確認を必須と明記、`: Unit` 再発防止をScopeへ追加。
+- 2026-10-11: Review round 2対応 — driverをfail-closed化（gesture dumpのlauncher
+  overview確認 + post-tap `Overview->Normal` 確認）、FG8をantecedent未成立で除外し
+  FG11をfail-closed driverで追加取得、GREEN 3/3をFG9/FG10/FG11へ更新。FF1抽出の
+  実内容との一致、uniform baseline screenshotのevidence追加。
