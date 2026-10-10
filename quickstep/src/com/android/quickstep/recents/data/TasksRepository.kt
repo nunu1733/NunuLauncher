@@ -103,6 +103,12 @@ class TasksRepository(
         val requestsNeeded = allVisibleTaskIds.intersect(tasks.value.keys)
 
         val taskRequestIds = taskRequests.keys
+        // TEMP-DIAG-563e
+        Log.d(
+            TAG,
+            "DIAG563e updateTaskRequests needs=$requestsNeeded " +
+                "current=${taskRequestIds.sorted()} taskKeys=${tasks.value.keys.sorted()}"
+        )
         val requestsNoLongerNeeded = taskRequestIds.subtract(requestsNeeded)
         val newlyRequestedTasks = requestsNeeded.subtract(taskRequestIds)
         if (requestsNoLongerNeeded.isNotEmpty() || newlyRequestedTasks.isNotEmpty()) {
@@ -213,6 +219,11 @@ class TasksRepository(
     }
 
     private fun updateThumbnail(taskId: Int, thumbnail: ThumbnailData?) {
+        // TEMP-DIAG-563e
+        Log.d(
+            TAG,
+            "DIAG563e updateThumbnail id=$taskId bitmap=" + (thumbnail?.thumbnail != null)
+        )
         tasks.update { currentTasks ->
             currentTasks[taskId]?.thumbnail = thumbnail
             MapForStateFlow(currentTasks)

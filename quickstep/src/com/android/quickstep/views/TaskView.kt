@@ -845,6 +845,17 @@ constructor(
         }
 
     private fun updateTaskViewState(state: TaskTileUiState) {
+            // TEMP-DIAG-563e
+            android.util.Log.d(
+                "TaskView",
+                "DIAG563e state tasks=" +
+                    state.tasks.map {
+                        it.taskId.toString() + ":" +
+                            ((it as? TaskData.Data)?.thumbnailData?.thumbnail != null)
+                    } +
+                    " central=" + state.isCentralTask +
+                    " containers=" + taskContainers.map { it.task.key.id }
+            )
             sysUiStatusNavFlags = state.sysUiStatusNavFlags
 
             // Updating containers

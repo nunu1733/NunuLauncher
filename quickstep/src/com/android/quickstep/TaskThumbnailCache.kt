@@ -98,6 +98,10 @@ internal constructor(
         if (
             taskThumbnail?.thumbnail != null && (!taskThumbnail.reducedResolution || lowResolution)
         ) {
+            android.util.Log.d(
+                "TaskThumbnailCache",
+                "DIAG563e getThumbnail id=" + task.key.id + " path=task-fast lowRes=" + lowResolution
+            )
             return taskThumbnail
         }
 
@@ -107,9 +111,20 @@ internal constructor(
             cachedThumbnail?.thumbnail != null &&
                 (!cachedThumbnail.reducedResolution || lowResolution)
         ) {
+            android.util.Log.d(
+                "TaskThumbnailCache",
+                "DIAG563e getThumbnail id=" + task.key.id +
+                    " path=cache-fast lowRes=" + lowResolution
+            )
             return cachedThumbnail
         }
 
+        android.util.Log.d(
+            "TaskThumbnailCache",
+            "DIAG563e getThumbnail id=" + task.key.id + " path=fetch lowRes=" + lowResolution +
+                " taskThumbNull=" + (taskThumbnail == null) +
+                " cacheThumbNull=" + (cachedThumbnail == null)
+        )
         return withContext(dispatcherProvider.ioBackground) {
             // Get thumbnail from system
             var thumbnailData =

@@ -1688,6 +1688,8 @@ public abstract class RecentsView<
     }
 
     public void setOverviewStateEnabled(boolean enabled) {
+        // TEMP-DIAG-563e
+        Log.d(TAG, "DIAG563e setOverviewStateEnabled " + enabled);
         mOverviewStateEnabled = enabled;
         updateTaskStackListenerState();
         mOrientationState.setRotationWatcherEnabled(enabled);
@@ -2164,9 +2166,23 @@ public abstract class RecentsView<
             targetPage = indexOfChild(
                     mUtils.getExpectedCurrentTask(newRunningTaskView, newFocusedTaskView));
         }
+        // TEMP-DIAG-563e
+        Log.d(TAG, "DIAG563e applyLoadPlan pageRestore prevCur=" + previousCurrentPage
+                + " nextPage=" + mNextPage + " prevFocused=" + previousFocusedPage
+                + " targetPage=" + targetPage + " curPage=" + mCurrentPage
+                + " scroll=" + getPagedOrientationHandler().getPrimaryScroll(this)
+                + " scrollInit=" + isPageScrollsInitialized());
         if (targetPage != -1 && mCurrentPage != targetPage) {
             int finalTargetPage = targetPage;
-            runOnPageScrollsInitialized(() -> setCurrentPage(finalTargetPage));
+            runOnPageScrollsInitialized(() -> {
+                // TEMP-DIAG-563e
+                Log.d(TAG, "DIAG563e deferred setCurrentPage " + finalTargetPage
+                        + " from scroll=" + getPagedOrientationHandler().getPrimaryScroll(this));
+                setCurrentPage(finalTargetPage);
+                Log.d(TAG, "DIAG563e after deferred setCurrentPage scroll="
+                        + getPagedOrientationHandler().getPrimaryScroll(this)
+                        + " curPage=" + mCurrentPage);
+            });
         }
 
         traceBegin(Trace.TRACE_TAG_APP, "RecentsView.applyLoadPlan.cleanupStates");
@@ -2631,6 +2647,22 @@ public abstract class RecentsView<
         } else {
             int centerPageIndex = getPageNearestToCenterOfScreen();
             int numChildren = getChildCount();
+            // TEMP-DIAG-563e: pager geometry at visible-set computation time
+            int firstChildLeft = getChildCount() > 0 ? getChildAt(0).getLeft() : -1;
+            int lastChildLeft = getChildCount() > 0
+                    ? getChildAt(getChildCount() - 1).getLeft() : -1;
+            Log.d(TAG, "DIAG563e loadVisibleTaskData scroll="
+                    + getPagedOrientationHandler().getPrimaryScroll(this)
+                    + " centerPage=" + centerPageIndex + " children=" + numChildren
+                    + " taskViews=" + getTaskViewCount() + " curPage=" + mCurrentPage
+                    + " nextPage=" + mNextPage + " rtl=" + mIsRtl
+                    + " firstLeft=" + firstChildLeft + " lastLeft=" + lastChildLeft
+                    + " scrollForPage0=" + (numChildren > 0 ? getScrollForPage(0) : -1)
+                    + " minScroll=" + mMinScroll + " maxScroll=" + mMaxScroll
+                    + " scaleX=" + getScaleX() + " scaleY=" + getScaleY()
+                    + " pivotX=" + getPivotX() + " pivotY=" + getPivotY()
+                    + " screenCenter=" + getScreenCenter(
+                            getPagedOrientationHandler().getPrimaryScroll(this)));
             lowerIndex = Math.max(0, centerPageIndex - 2);
             upperIndex = Math.min(centerPageIndex + 2, numChildren - 1);
             visibleStart = visibleEnd = 0;
@@ -2696,6 +2728,9 @@ public abstract class RecentsView<
             }
         });
         if (enableRefactorTaskThumbnail()) {
+            // TEMP-DIAG-563e
+            Log.d(TAG, "DIAG563e setVisibleTasks ids=" + visibleTaskIds
+                    + " range=[" + lowerIndex + "," + upperIndex + "]");
             mRecentsViewModel.updateVisibleTasks(visibleTaskIds);
         }
     }
