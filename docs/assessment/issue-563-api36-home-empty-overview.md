@@ -129,6 +129,67 @@ spec draft with the cumulative v3+v5 snapshot is `issue-563-overview-fix@6f7c7fc
 v1 and v4 implementation snapshots were amended away and are not durably preserved. The
 selected run artifacts are published in this evidence directory.
 
+## Evening-session continuation (2026-10-10; instrumentation D/V-runs and fixes v6–v8)
+
+Pipeline-boundary instrumentation was applied on the investigation branch
+(`issue-563-overview-fix`, DIAG563b/DIAG563c/DIAG563d logs) and four further fix
+candidates were built, installed and measured against the oracle:
+
+- **v6** — `TaskThumbnailCache`: skip caching empty snapshots and unconditionally call
+  `takeTaskThumbnail` when the fetched snapshot is empty. Oracle still EMPTY.
+- **v7** — `RecentsView.loadVisibleTaskData`: clamp the centered page into the real task
+  page range when `getPageNearestToCenterOfScreen()` resolves to the trailing ClearAll
+  child (instrumentation confirmed it does in the stuck entry). Oracle still EMPTY.
+- **v7b** — additionally widen the computed range to always include the running task's
+  page. Oracle still EMPTY.
+- **v8** — combined clamp + widen + empty-snapshot-skip. Oracle still EMPTY.
+
+Directly established facts from the instrumentation (proof.json `thirdSession`):
+
+1. Repository state: every overview exit clears the three recent tasks' thumbnails
+   (`removeTasks` sets thumbnail=null); the next entry re-issues
+   `updateTaskRequests needs=[879,1005,855]` with the correct visible set, and
+   `getAllTaskData` refreshes.
+2. `TaskThumbnailCache` suspend fetch ran once early in the launcher's life
+   (`id=879 lowRes=true -> bitmap=false`; `1005/855 -> bitmap=true`) and **never runs
+   again on subsequent entries** even though `requestTaskData` fires — the fetch lane goes
+   dead after the request identity was previously requested-and-cancelled.
+3. `TaskViewModel.bind` fires correctly with `[879]` in the stuck entry, but the tile state
+   flow does not re-emit a thumbnail-bearing state after the earlier
+   bind([])->bind([879]) cycle.
+
+Consequently the remaining defect sits between `TasksRepository` (request/cancel identity
+handling, `tasks` flow emission) and `TaskViewModel` (debounced tile state flow) — a fix
+must restore the emission chain after request cancellation, which is beyond the minimal
+fix scope of this investigation session. **Per the STOP rule no production change is
+shipped: nine candidate fixes (five earlier + four here) were built and measured against
+the oracle; none passed.**
+
+Fix attempt matrix (all RED, i.e. oracle still EMPTY; per-attempt durable snapshots mostly
+absent because the working tree was amended between attempts — non-durable candidates are
+not claimed as commits):
+
+| fix | durable status | content |
+|---|---|---|
+| v6 | no durable snapshot (amended away); code shape reflected in later attempts | `TaskThumbnailCache`: skip caching empty snapshots + unconditional `takeTaskThumbnail` on empty |
+| v7 | no durable per-attempt snapshot; code shape preserved in `issue-563-v8-final@e9909b7672` (clamp log `centerPage 5 -> 4` retained) | clamp centered page into the real task range when `getPageNearestToCenterOfScreen()` resolves to the ClearAll child |
+| v7b | no durable per-attempt snapshot; code shape preserved in `issue-563-v8-final@e9909b7672` | widen the computed range to always include the running task's page |
+| v8 | tested as a working-tree state; NOT durably preserved (the pushed snapshot `issue-563-v8-final@e9909b767242386d4d6ae0621874ebdee69ddef7` does not contain the v6 cache-skip/empty-fallback content) | combined clamp + widen + empty-snapshot skip |
+
+Published evidence for this session: instrumented logcat extract
+[diag563d-extract.txt](./563-home-empty-overview-evidence/diag563d-extract.txt)
+(clamp firing, repository request sets across the cycle, the single suspend fetch and
+its dead lane), probe summaries `DB3/DB5/DB6/DB8/DD1/DD2-summary.json` and probe XMLs
+under `563-home-empty-overview-evidence/runs|xml/`, and the per-artifact sha256 manifest
+in `proof.json.thirdSession` / `publishedArtifactSha256`. The pushed investigation branch
+for this session is `issue-563-v8-final@e9909b767242386d4d6ae0621874ebdee69ddef7` — it
+contains the v7/v7b clamp+widen implementation and the instrumentations only; the v6
+`TaskThumbnailCache` cache-skip/empty-fallback diff and the v8-tested combined state were
+amended in the working tree and are not durably preserved. The two branches attributed to
+the earlier session (`issue-563-overview-fix@6f7c7fcd30`,
+`issue-563-overview-recovery-fix@d4a1cd50aa`) remain the previous-session provenance
+only.
+
 ## Bug oracle (established; gates any future production change under #563)
 
 On the fixed APK (`d6f502064…`) on this provider: force-stop launcher -> launch Settings ->
@@ -186,12 +247,16 @@ published (per-file sha256 values in
 ## Next step
 
 Production fix under #563 proceeds only with this oracle plus independent review. The
-first fix session (2026-10-10) built five candidate fixes against the oracle; none passed
-(see Mechanism). Before a new spec can be accepted, the pipeline-boundary diagnostic must
-identify why the no-shell-animation entry computes the visible set with primary scroll 0:
-instrument `loadVisibleTaskData` (computed set + `getPrimaryScroll`) and
-`RecentsViewModel.updateVisibleTasks` payload, and test a uiMode config change to separate
-orientation refresh from DeviceProfile refresh. The two open antecedent controls
-(direct-only session; an equivalent completed antecedent that does not depend on the #559
-wire path) remain outstanding. Attempt provenance is recorded above in Mechanism.
-No production change is included in this record.
+primary-scroll-0 diagnostic listed in an earlier revision of this section has been
+executed (DIAG563b/c/d): the visible range computation and the repository request set are
+re-issued correctly on re-entry; the recorded failure point is now the
+**`TasksRepository` request/cancel identity handling → `tasks` flow emission →
+`TaskViewModel` bind/state re-emission** chain (the suspend thumbnail fetch runs once per
+process and never again after a task identity was requested-and-cancelled, and the tile
+state flow does not re-emit a thumbnail-bearing state after bind([])→bind([879])). The
+next diagnostic must bisect that chain: instrument `TasksRepository.updateTaskRequests`
+state transitions and `TaskViewModel` state emissions with runtime veto reason (debounce
+vs `distinctUntilChanged` vs flow identity) across successive entries. The two open
+antecedent controls (direct-only session; an equivalent completed antecedent that does
+not depend on the #559 wire path) remain outstanding. Attempt provenance is recorded
+above in Mechanism. No production change is included in this record.

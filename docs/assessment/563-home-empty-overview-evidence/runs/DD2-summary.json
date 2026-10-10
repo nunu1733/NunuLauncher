@@ -1,0 +1,100 @@
+{
+ "run": "DD2",
+ "started": "2026-10-10T19:03:44.136+09:00",
+ "steps": [
+  {
+   "focus": [],
+   "step": "origin",
+   "wall": "2026-10-10T19:03:57.956+09:00"
+  },
+  {
+   "xml": "DD2-direct-overview.xml",
+   "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+   "task_view_single": 2,
+   "task_view_any": 2,
+   "settings_nodes": 0,
+   "step": "direct-overview",
+   "wall": "2026-10-10T19:04:07.821+09:00"
+  },
+  {
+   "focus": [],
+   "step": "direct-return",
+   "wall": "2026-10-10T19:04:10.666+09:00"
+  },
+  {
+   "xml": "DD2-gesture-overview.xml",
+   "sha256": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
+   "task_view_single": 2,
+   "task_view_any": 2,
+   "settings_nodes": 0,
+   "step": "gesture-overview",
+   "wall": "2026-10-10T19:04:20.618+09:00"
+  },
+  {
+   "focus": [],
+   "step": "gesture-return",
+   "wall": "2026-10-10T19:04:22.840+09:00"
+  },
+  {
+   "focus_before": [],
+   "focus_after": [],
+   "checkpoints": [
+    {
+     "xml": "DD2-home-c0.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "DD2-home-c5.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "DD2-home-c10.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "DD2-home-c30.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "DD2-home-c60.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    },
+    {
+     "xml": "DD2-home-c80.xml",
+     "sha256": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+     "task_view_single": 0,
+     "task_view_any": 0,
+     "settings_nodes": 0
+    }
+   ],
+   "final_png": "DD2-home-final.png",
+   "final_png_sha256": "49f6e1ad50a787b1c1a7f75b3129ee84d1ccf01bb2ad9891f0b37fd99b949d67",
+   "step": "home-path",
+   "wall": "2026-10-10T19:04:54.961+09:00"
+  },
+  {
+   "unread12": 0,
+   "badparcel": 0,
+   "fatal": 0,
+   "pending5000": 0,
+   "step": "signatures",
+   "wall": "2026-10-10T19:04:55.114+09:00"
+  }
+ ],
+ "finished": "2026-10-10T19:04:55.114+09:00"
+}

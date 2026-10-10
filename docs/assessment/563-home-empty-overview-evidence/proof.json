@@ -191,6 +191,7 @@
   "SystemUI-side TIS rebind gap after launcher restart: overview toggle presses during the gap are dropped (BH5/BH6 no onOverviewToggle in window; binding restored by reinstall or waiting)."
  ],
  "publishedArtifactSha256": {
+  "diag563d-extract.txt": "926224c49f2db92b98627d355faf059f2740026bca0d7c0168e60973e0ce1289",
   "anr/cold-start-deadlock-anr-trace.txt": "9f92619433bce4fddd2acc7ed2df5461b895970899cc7e2d0fe1e5a628e7e86b",
   "png/F5-swipe2.png": "a52f3b497c6f97eaa7b413adf992bba4e1bca65c8bfc65cd4227231e93f360ea",
   "png/F5-home-final.png": "5d15ed8c1c5dee612d19c69b448df14fc37779eaa1dbe0e07e63729789933638",
@@ -201,7 +202,10 @@
   "xml/teardown-check2.xml": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
   "xml/healthy-overview-fixed-F5-gesture.xml": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
   "xml/empty-overview-fixed-F5-home-c0.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+  "xml/probe4.xml": "c01df890fdb01da9c88cf36592bafe9021405967254e926daaf383dedc813b63",
+  "xml/probe1.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
   "xml/baseline-misfire-BFF1-home-c0.xml": "f748f82999adf7e80a9b7cfc70329249ad38930b4e6676b8f2aa392d3e3701f2",
+  "xml/probe2.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
   "logs/BH1-logcat-extract.txt": "9caba20a55250873109bb9838994ce4211ca624a5fa583296f52da82c0e1d754",
   "logs/F5-logcat-extract.txt": "2966d9618dda126ec3da4bc41004c8910c34bab45e427267544fef497ddeac1e",
   "logs/BFF1-logcat-extract.txt": "c4e2357a6b3d94fe33ff94a60c2d84722f24c49550dd1e07e3004b22152abf3a",
@@ -211,11 +215,17 @@
   "runs/BH1-summary.json": "84fa85128bcbfeeab2ab230161de98ad6db1e0abee21f696b9a259dcddbf8ae5",
   "runs/D8-summary.json": "eecc904dec8e32d4ab465688fdd5179b48deb036aa3eab252324950867fcb665",
   "runs/F1-summary.json": "119c85aca5d81aefcb741055f744a084bc3d2edce0eddd33a9e92baf7c40e832",
+  "runs/DB6-summary.json": "cafa7c3a16f0059aedf27446774ec7027b3d6fe5a5b9289936065663a3db5270",
+  "runs/DD2-summary.json": "e8628e9dbde7438760c800dead03440b9b992a89f756c3b84185c0290523b88d",
+  "runs/DB5-summary.json": "cf0f77810f37c0eccb97629f64cac1e0c5902ff50cf7d56449d155dbcf1fd56c",
   "runs/F2-summary.json": "6e1d49b11737ae31280ca7251aea3006a386d939c8a2e510383e3ecfa84b49c9",
   "runs/F5-summary.json": "4d59d39795f70d9511a462cfd7bfeec1dc2abe974cf943e2f804f2245523d00d",
   "runs/BFF1-summary.json": "00c32f39ac51a5436c936b90016655f4d816acfa250ba258259e5de6fedb46f6",
+  "runs/DD1-summary.json": "016526dabb64e754e9bc847b7f16e320c9e9812544fd1f2b46c77582504a22d9",
   "runs/F4-summary.json": "a148bbd04fb867cb2d485dee5bbb19f1afada853413491e2802685371a0e7628",
-  "runs/BH3-summary.json": "5e937457dccfd0b9e3545b92ecb45ec94caf533cd697b5204533ad812e212356"
+  "runs/DB3-summary.json": "ec590cdc9bd7b12f387693077bae8f8b45eba98a4933d4a950c7f78dc5226335",
+  "runs/BH3-summary.json": "5e937457dccfd0b9e3545b92ecb45ec94caf533cd697b5204533ad812e212356",
+  "runs/DB8-summary.json": "0eeb7e8e1c152cc0233d7f271d710229b9b25a80d0a6a7274354e696f0f73081"
  },
  "secondSession": {
   "date": "2026-10-10",
@@ -268,5 +278,55 @@
   "flagFact": "enableRefactorTaskThumbnail() is hardcoded true (FeatureFlagsImpl) -> card content is driven by RecentsViewModel.updateVisibleTasks(visibleTaskIds) fed from the loadVisibleTaskData range computation",
   "conclusion": "STOP rule applied: five candidate fixes measured against the oracle, none passed; production change withheld. Pipeline-boundary instrumentation (visible set + getPrimaryScroll inside loadVisibleTaskData, updateVisibleTasks payload, uiMode config-change heal test) is the required next diagnostic.",
   "measurementNote": "Card counts in this session's shell echoes used grep -c (line count); the XML files here are single-line, so authoritative counts are the resource-id occurrence counts stated above (2 per healed overview)."
+ },
+ "thirdSession": {
+  "date": "2026-10-10 (evening)",
+  "scope": "Pipeline-boundary instrumentation (DIAG563b/c/d) plus fix attempts v6-v8 on investigation branch issue-563-overview-fix",
+  "diagnosticFacts": [
+   "Direct and gesture entries themselves remained healthy in this session; reproduction focused on the post-session HOME toggle entry.",
+   "Instrumented loadVisibleTaskData passes (DIAG563b) showed the non-grid branch computing lowerIndex/upperIndex from getPageNearestToCenterOfScreen(); in the stuck entry that resolves to the ClearAll child (5 of 6 children) via DIAG563c/DIAG563d clamp logs.",
+   "Repository state dump (removeTasks log): overview exit always clears thumbnails for the three recent tasks (hadThumb=true -> thumbnail=null); subsequent re-entry requests them again (updateTaskRequests needs=[879,1005,855]).",
+   "TaskThumbnailCache suspend fetch ran once early (id=879 lowRes=true -> bitmap=false; id=1005/855 lowRes=true -> bitmap=true), and did not run again on re-entry even though requestTaskData fired (dead lane confirmed via absence of subsequent suspendget logs).",
+   "TaskViewModel.bind fires with [879] in both healthy and stuck entries; the card content pipeline depends on the TaskViewModel state flow emission, which does not rebuild after the ViewModel was bound to [] and re-bound to [879] without the state flow re-emitting with thumbnail data."
+  ],
+  "fixAttemptsThisSession": [
+   "v6: skip caching empty snapshots + unconditional takeTaskThumbnail fallback on empty (TaskThumbnailCache) - oracle still EMPTY",
+   "v7: clamp centerPageIndex to real task range in loadVisibleTaskData non-grid branch - oracle still EMPTY",
+   "v7b: widen range to always include running taskId (updated range lowerIndex/upperIndex) - oracle still EMPTY",
+   "v8: combined clamp + widen + empty-snapshot-skip - oracle still EMPTY"
+  ],
+  "rootCauseStatement": "The evening session establishes with direct evidence: after the initial low-res fetch for the most recent task returns bitmap=false and is later cleared (removeTasks sets thumbnail=null on overview exit), the TaskViewModel for that task does not re-emit a state containing thumbnail data on the next entry, even though requestTaskData fires and getAllTaskData refreshes. The current-session candidates (clamp/widen the visible range, skip-empty cache writes, unconditional takeTaskThumbnail) did not restore emission. The remaining defect lives between the repository (tasks flow) and TaskViewModel rebind ordering (collectLatest launched in onAttachedToWindow),and any fix must re-establish the emission chain. Per the STOP rule no production change is shipped.",
+  "healChecks": [
+   "Foregrounding Clock (launchAsStaticTile withscrollView) and starting new HOME entries restored the card in teardown check; the misfire path was exercised manually 25+ times across 7 sessions.",
+   "Native launcher misfire/blank state cleared after cmd package uninstall -k app.lawnchair.debug (candidate2 base restored, HOME→APP_SWITCH healthy through teardown-final.xml)."
+  ],
+  "fixMatrix": [
+   {
+    "fix": "v6",
+    "durableSnapshot": "none (amended away); code shape reflected in later attempts",
+    "content": "TaskThumbnailCache: skip caching empty snapshots + unconditional takeTaskThumbnail on empty",
+    "oracle": "RED (still EMPTY)"
+   },
+   {
+    "fix": "v7",
+    "durableSnapshot": "no durable per-attempt snapshot; code shape preserved in issue-563-v8-final@e9909b7672 (clamp log 'centerPage 5 -> 4')",
+    "content": "RecentsView.loadVisibleTaskData: clamp centered page into the real task range when getPageNearestToCenterOfScreen resolves to the ClearAll child",
+    "oracle": "RED (still EMPTY; visPerDisplay then = {0=[855,844,843]} — off-screen shoulder only)"
+   },
+   {
+    "fix": "v7b",
+    "durableSnapshot": "no durable per-attempt snapshot; code shape preserved in issue-563-v8-final@e9909b7672",
+    "content": "widen computed range to always include the running task's page",
+    "oracle": "RED (still EMPTY)"
+   },
+   {
+    "fix": "v8",
+    "durableSnapshot": "issue-563-v8-final@e9909b767242386d4d6ae0621874ebdee69ddef7 (pushed; contains v7/v7b clamp+widen and the instrumentation; v6's cache-skip/empty-fallback content is NOT in this snapshot — v6/v8 intermediates were amended away)",
+    "content": "combined clamp + widen + empty-snapshot skip as tested",
+    "oracle": "RED (still EMPTY)"
+   }
+  ],
+  "durableSnapshot": "issue-563-v8-final@e9909b767242386d4d6ae0621874ebdee69ddef7 (pushed to origin). This snapshot preserves the v7/v7b clamp+widen implementation and DIAG563b/c/d instrumentation. v6's TaskThumbnailCache cache-skip/empty-fallback diff and the v8-tested combined state were amended in the working tree and are NOT durably preserved as commits; the v6 intermediate SHA (936ff735d3) and per-attempt v7/v7b refs are therefore non-durable and are not claimed as such.",
+  "evidenceNote": "Previous-session provenance: issue-563-overview-fix@6f7c7fcd30 and issue-563-overview-recovery-fix@d4a1cd50aa hold the earlier session's snapshots only — they do NOT contain this evening-session's v6–v8 work. Decisive DIAG563d extract published as diag563d-extract.txt. Probe summaries DB3/DB5/DB6/DB8/DD1/DD2 and probe XMLs published under runs/ and xml/. All artifact hashes are in publishedArtifactSha256."
  }
 }
