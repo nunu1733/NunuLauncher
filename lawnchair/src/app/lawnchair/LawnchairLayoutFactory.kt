@@ -15,7 +15,6 @@ class LawnchairLayoutFactory(context: Context) :
     LayoutInflater.Factory2,
     SafeCloseable {
 
-    private val fontManager by lazy { FontManager.INSTANCE.get(context) }
     private val constructorMap = mapOf<String, (Context, AttributeSet) -> View>(
         "Button" to ::Button,
         "TextView" to ::TextView,
@@ -31,7 +30,13 @@ class LawnchairLayoutFactory(context: Context) :
     ): View? {
         val view = constructorMap[name]?.let { it(context, attrs) }
         if (view is TextView) {
-            runCatching { fontManager.overrideFont(view, attrs) }
+            // Issue #565: resolve the font manager per call; do NOT re-introduce a `by lazy`
+            // here. MainThreadInitializedObject.get() parks a non-main caller on a main-thread
+            // future, and a lazy monitor held across that wait deadlocks the main-thread
+            // inflator of the same factory instance (ViewPool cloneInContext shares it) —
+            // cold-start ANR. The MTIO mValue is the single memoization.
+            // Oracle: docs/assessment/563-home-empty-overview-evidence/anr/cold-start-deadlock-anr-trace.txt
+            runCatching { FontManager.INSTANCE.get(context).overrideFont(view, attrs) }
         }
         return view
     }
