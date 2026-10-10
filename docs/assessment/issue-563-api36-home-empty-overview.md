@@ -193,6 +193,5 @@ instrument `loadVisibleTaskData` (computed set + `getPrimaryScroll`) and
 `RecentsViewModel.updateVisibleTasks` payload, and test a uiMode config change to separate
 orientation refresh from DeviceProfile refresh. The two open antecedent controls
 (direct-only session; an equivalent completed antecedent that does not depend on the #559
-wire path) remain outstanding. The diagnostic instrumentation and all five fix attempts are
-preserved on the investigation branch `issue-563-overview-recovery-fix` (not proposed for
-merge). No production change is included in this record.
+wire path) remain outstanding. Attempt provenance is recorded above in Mechanism.
+No production change is included in this record.
