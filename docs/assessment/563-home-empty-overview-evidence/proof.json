@@ -268,5 +268,27 @@
   "flagFact": "enableRefactorTaskThumbnail() is hardcoded true (FeatureFlagsImpl) -> card content is driven by RecentsViewModel.updateVisibleTasks(visibleTaskIds) fed from the loadVisibleTaskData range computation",
   "conclusion": "STOP rule applied: five candidate fixes measured against the oracle, none passed; production change withheld. Pipeline-boundary instrumentation (visible set + getPrimaryScroll inside loadVisibleTaskData, updateVisibleTasks payload, uiMode config-change heal test) is the required next diagnostic.",
   "measurementNote": "Card counts in this session's shell echoes used grep -c (line count); the XML files here are single-line, so authoritative counts are the resource-id occurrence counts stated above (2 per healed overview)."
+ },
+ "thirdSession": {
+  "date": "2026-10-10 (evening)",
+  "scope": "Pipeline-boundary instrumentation (DIAG563b/c/d) plus fix attempts v6-v8 on investigation branch issue-563-overview-fix",
+  "diagnosticFacts": [
+   "Direct and gesture entries themselves remained healthy in this session; reproduction focused on the post-session HOME toggle entry.",
+   "Instrumented loadVisibleTaskData passes (DIAG563b) showed the non-grid branch computing lowerIndex/upperIndex from getPageNearestToCenterOfScreen(); in the stuck entry that resolves to the ClearAll child (5 of 6 children) via DIAG563c/DIAG563d clamp logs.",
+   "Repository state dump (removeTasks log): overview exit always clears thumbnails for the three recent tasks (hadThumb=true -> thumbnail=null); subsequent re-entry requests them again (updateTaskRequests needs=[879,1005,855]).",
+   "TaskThumbnailCache suspend fetch ran once early (id=879 lowRes=true -> bitmap=false; id=1005/855 lowRes=true -> bitmap=true), and did not run again on re-entry even though requestTaskData fired (dead lane confirmed via absence of subsequent suspendget logs).",
+   "TaskViewModel.bind fires with [879] in both healthy and stuck entries; the card content pipeline depends on the TaskViewModel state flow emission, which does not rebuild after the ViewModel was bound to [] and re-bound to [879] without the state flow re-emitting with thumbnail data."
+  ],
+  "fixAttemptsThisSession": [
+   "v6: skip caching empty snapshots + unconditional takeTaskThumbnail fallback on empty (TaskThumbnailCache) - oracle still EMPTY",
+   "v7: clamp centerPageIndex to real task range in loadVisibleTaskData non-grid branch - oracle still EMPTY",
+   "v7b: widen range to always include running taskId (updated range lowerIndex/upperIndex) - oracle still EMPTY",
+   "v8: combined clamp + widen + empty-snapshot-skip - oracle still EMPTY"
+  ],
+  "rootCauseStatement": "The evening session establishes with direct evidence: after the initial low-res fetch for the most recent task returns bitmap=false and is later cleared (removeTasks sets thumbnail=null on overview exit), the TaskViewModel for that task does not re-emit a state containing thumbnail data on the next entry, even though requestTaskData fires and getAllTaskData refreshes. The current-session candidates (clamp/widen the visible range, skip-empty cache writes, unconditional takeTaskThumbnail) did not restore emission. The remaining defect lives between the repository (tasks flow) and TaskViewModel rebind ordering (collectLatest launched in onAttachedToWindow),and any fix must re-establish the emission chain. Per the STOP rule no production change is shipped.",
+  "healChecks": [
+   "Foregrounding Clock (launchAsStaticTile withscrollView) and starting new HOME entries restored the card in teardown check; the misfire path was exercised manually 25+ times across 7 sessions.",
+   "Native launcher misfire/blank state cleared after cmd package uninstall -k app.lawnchair.debug (candidate2 base restored, HOME→APP_SWITCH healthy through teardown-final.xml)."
+  ]
  }
 }

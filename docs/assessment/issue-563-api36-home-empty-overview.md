@@ -129,6 +129,45 @@ spec draft with the cumulative v3+v5 snapshot is `issue-563-overview-fix@6f7c7fc
 v1 and v4 implementation snapshots were amended away and are not durably preserved. The
 selected run artifacts are published in this evidence directory.
 
+## Second-session continuation (2026-10-10 evening; instrumentation D- and V-runs)
+
+Pipeline-boundary instrumentation was applied on the investigation branch
+(`issue-563-overview-fix`, DIAG563b/DIAG563c/DIAG563d logs) and four further fix
+candidates were built, installed and measured against the oracle:
+
+- **v6** — `TaskThumbnailCache`: skip caching empty snapshots and unconditionally call
+  `takeTaskThumbnail` when the fetched snapshot is empty. Oracle still EMPTY.
+- **v7** — `RecentsView.loadVisibleTaskData`: clamp the centered page into the real task
+  page range when `getPageNearestToCenterOfScreen()` resolves to the trailing ClearAll
+  child (instrumentation confirmed it does in the stuck entry). Oracle still EMPTY.
+- **v7b** — additionally widen the computed range to always include the running task's
+  page. Oracle still EMPTY.
+- **v8** — combined clamp + widen + empty-snapshot-skip. Oracle still EMPTY.
+
+Directly established facts from the instrumentation (proof.json `thirdSession`):
+
+1. Repository state: every overview exit clears the three recent tasks' thumbnails
+   (`removeTasks` sets thumbnail=null); the next entry re-issues
+   `updateTaskRequests needs=[879,1005,855]` with the correct visible set, and
+   `getAllTaskData` refreshes.
+2. `TaskThumbnailCache` suspend fetch ran once early in the launcher's life
+   (`id=879 lowRes=true -> bitmap=false`; `1005/855 -> bitmap=true`) and **never runs
+   again on subsequent entries** even though `requestTaskData` fires — the fetch lane goes
+   dead after the request identity was previously requested-and-cancelled.
+3. `TaskViewModel.bind` fires correctly with `[879]` in the stuck entry, but the tile state
+   flow does not re-emit a thumbnail-bearing state after the earlier
+   bind([])->bind([879]) cycle.
+
+Consequently the remaining defect sits between `TasksRepository` (request/cancel identity
+handling, `tasks` flow emission) and `TaskViewModel` (debounced tile state flow) — a fix
+must restore the emission chain after request cancellation, which is beyond the minimal
+fix scope of this investigation session. **Per the STOP rule no production change is
+shipped: nine candidate fixes (five earlier + four here) were built and measured against
+the oracle; none passed.** Investigation branches: `issue-563-overview-fix` (cumulative
+fix+instrumentation state) and `issue-563-overview-recovery-fix` (per-attempt history).
+Selected run artifacts (DD/DD-state probe summaries and proof.json `thirdSession`) are
+published in this evidence directory.
+
 ## Bug oracle (established; gates any future production change under #563)
 
 On the fixed APK (`d6f502064…`) on this provider: force-stop launcher -> launch Settings ->
