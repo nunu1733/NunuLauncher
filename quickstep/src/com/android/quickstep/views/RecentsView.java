@@ -2123,6 +2123,12 @@ public abstract class RecentsView<
 
         traceBegin(Trace.TRACE_TAG_APP, "RecentsView.applyLoadPlan.layouts");
         updateTaskSize();
+        // LC-Note (issue 563): a panel bounds change (e.g. the window inset change while the
+        // previous overview session exits) resets the render pivot to unset/NaN, and the
+        // HOME-toggle re-entry does not go through updateSizeAndPadding, so nothing re-set it.
+        // A NaN pivot poisons page-center math (visible-task set) and the accessibility
+        // boundsInScreen of the whole panel subtree. Re-derive the pivot on every rebind.
+        updatePivots();
         mUtils.updateChildTaskOrientations();
         traceEnd(Trace.TRACE_TAG_APP);
 

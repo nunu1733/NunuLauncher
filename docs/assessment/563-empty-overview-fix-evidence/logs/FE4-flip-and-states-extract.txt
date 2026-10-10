@@ -1,0 +1,68 @@
+10-11 02:19:47.860 D/RecentsView( 3577): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=19600] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=19601] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=19602] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=19603] null, type=SINGLE task=[id=1008 windowingMode=1 user=0 lastActiveTime=60363] null]
+10-11 02:19:47.873 D/RecentsView( 3577): DIAG563e applyLoadPlan pageRestore prevCur=0 nextPage=-1 prevFocused=-1 targetPage=0 curPage=0 scroll=0 scrollInit=false
+10-11 02:19:47.905 D/RecentsView( 3577): DIAG563e setContentAlpha+1.0 vis=4 freeze=true wasVis=false
+10-11 02:19:47.929 D/TaskView( 3577): DIAG563e state tasks=[1008:false] central=true containers=[1008]
+10-11 02:19:47.930 D/TaskView( 3577): DIAG563e state tasks=[1005:false] central=false containers=[1005]
+10-11 02:19:47.930 D/TaskView( 3577): DIAG563e state tasks=[855:false] central=false containers=[855]
+10-11 02:19:47.931 D/TaskView( 3577): DIAG563e state tasks=[844:false] central=false containers=[844]
+10-11 02:19:47.932 D/TaskView( 3577): DIAG563e state tasks=[843:false] central=false containers=[843]
+10-11 02:19:47.934 D/RecentsView( 3577): DIAG563e setContentAlpha+1.0 vis=4 freeze=false wasVis=false
+10-11 02:19:48.024 D/RecentsView( 3577): DIAG563e dispatchDraw vis=0 alpha=1.0 clip=Rect(3465, 0 - 4545, 2400) width=1080
+10-11 02:19:48.086 D/RecentsView( 3577): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=19600] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=19601] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=19602] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=19603] null, type=SINGLE task=[id=1008 windowingMode=1 user=0 lastActiveTime=60363] Settings]
+10-11 02:19:48.107 D/RecentsView( 3577): DIAG563e applyLoadPlan pageRestore prevCur=0 nextPage=0 prevFocused=-1 targetPage=0 curPage=0 scroll=3465 scrollInit=true
+10-11 02:19:48.129 D/TaskView( 3577): DIAG563e state tasks=[1008:false] central=true containers=[1008]
+10-11 02:19:48.130 D/TaskView( 3577): DIAG563e state tasks=[1008:false] central=true containers=[1008]
+10-11 02:19:48.276 D/TaskView( 3577): DIAG563e state tasks=[1005:true] central=false containers=[1005]
+10-11 02:19:48.277 D/TaskView( 3577): DIAG563e state tasks=[1005:true] central=false containers=[1005]
+10-11 02:19:48.279 D/TaskView( 3577): DIAG563e state tasks=[855:true] central=false containers=[855]
+10-11 02:19:48.280 D/TaskView( 3577): DIAG563e state tasks=[1008:false] central=true containers=[1008]
+10-11 02:19:48.281 D/TaskView( 3577): DIAG563e state tasks=[844:false] central=false containers=[844]
+10-11 02:19:48.281 D/TaskView( 3577): DIAG563e state tasks=[843:false] central=false containers=[843]
+10-11 02:19:48.348 D/TaskView( 3577): DIAG563e state tasks=[1008:true] central=true containers=[1008]
+10-11 02:19:48.353 D/TaskView( 3577): DIAG563e state tasks=[1008:true] central=true containers=[1008]
+10-11 02:19:48.354 D/TaskView( 3577): DIAG563e state tasks=[855:true] central=false containers=[855]
+10-11 02:19:48.477 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.478 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.954 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.954 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.954 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.954 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.954 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.954 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.954 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:48.954 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:49.983 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:49.983 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:50.000 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:50.033 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:50.117 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:50.117 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:50.150 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:50.150 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:50.350 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:50.350 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:52.982 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:52.983 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:53.000 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:53.033 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:53.116 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:53.134 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:53.149 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:53.149 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:53.350 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:53.350 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:19:55.137 D/TaskView( 3577): DIAG563e state tasks=[1008:true] central=true containers=[1008]
+10-11 02:20:08.998 D/RecentsView( 3577): DIAG563e setContentAlpha+1.0 vis=4 freeze=true wasVis=false
+10-11 02:20:09.008 D/RecentsView( 3577): DIAG563e dispatchDraw vis=0 alpha=1.0 clip=Rect(3465, 0 - 4545, 2400) width=1080
+10-11 02:20:09.020 D/RecentsView( 3577): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=19600] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=19601] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=19602] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=19603] null, type=SINGLE task=[id=1008 windowingMode=1 user=0 lastActiveTime=77518] null]
+10-11 02:20:09.046 D/RecentsView( 3577): DIAG563e applyLoadPlan pageRestore prevCur=0 nextPage=-1 prevFocused=-1 targetPage=0 curPage=0 scroll=3465 scrollInit=true
+10-11 02:20:09.061 D/TaskView( 3577): DIAG563e state tasks=[1005:true] central=false containers=[1005]
+10-11 02:20:09.084 D/TaskView( 3577): DIAG563e state tasks=[844:false] central=false containers=[844]
+10-11 02:20:09.084 D/TaskView( 3577): DIAG563e state tasks=[843:false] central=false containers=[843]
+10-11 02:20:09.085 D/TaskView( 3577): DIAG563e state tasks=[1008:false] central=true containers=[1008]
+10-11 02:20:09.086 D/TaskView( 3577): DIAG563e state tasks=[1008:true] central=true containers=[1008]
+10-11 02:20:09.189 D/TaskView( 3577): DIAG563e state tasks=[855:false] central=false containers=[855]
+10-11 02:20:09.241 D/TaskView( 3577): DIAG563e state tasks=[855:true] central=false containers=[855]
+10-11 02:20:09.566 D/RecentsView( 3577): DIAG563e probe+0.5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:20:11.067 D/RecentsView( 3577): DIAG563e probe+2s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
+10-11 02:20:14.067 D/RecentsView( 3577): DIAG563e probe+5s vis=0 alpha=1.0 contentAlpha=1.0 attached=true shown=true winToken=158577762 display=0
