@@ -123,8 +123,11 @@ and `getPrimaryScroll` inside `loadVisibleTaskData`, and the payload delivered t
 `RecentsViewModel.updateVisibleTasks`, plus a uiMode config-change heal test to separate
 orientation refresh from generic profile refresh. **Per the STOP rule, no production change
 is shipped: five candidate fixes were built and measured and none passed the oracle.**
-The instrumentation, the five fix attempts and all run artifacts are preserved on the
-pushed investigation branch `issue-563-overview-recovery-fix`.
+Provenance of the attempts (implementation snapshots, not proposed for merge): the
+instrumentation plus fix v2 snapshot is `issue-563-overview-recovery-fix@d4a1cd50aa`; the
+spec draft with the cumulative v3+v5 snapshot is `issue-563-overview-fix@6f7c7fcd30`; the
+v1 and v4 implementation snapshots were amended away and are not durably preserved. The
+selected run artifacts are published in this evidence directory.
 
 ## Bug oracle (established; gates any future production change under #563)
 
