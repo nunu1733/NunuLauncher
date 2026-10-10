@@ -165,24 +165,30 @@ fix scope of this investigation session. **Per the STOP rule no production chang
 shipped: nine candidate fixes (five earlier + four here) were built and measured against
 the oracle; none passed.**
 
-Fix attempt matrix (exact SHAs; all RED, i.e. oracle still EMPTY):
+Fix attempt matrix (all RED, i.e. oracle still EMPTY; per-attempt durable snapshots mostly
+absent because the working tree was amended between attempts — non-durable candidates are
+not claimed as commits):
 
-| fix | durable SHA | content |
+| fix | durable status | content |
 |---|---|---|
-| v6 | `936ff735d3` | `TaskThumbnailCache`: skip caching empty snapshots + unconditional `takeTaskThumbnail` on empty |
-| v7 | amended inside `e9909b7672`; clamp log preserved (`centerPage 5 -> 4`) | clamp centered page into the real task range when `getPageNearestToCenterOfScreen()` resolves to the ClearAll child |
-| v7b | included in `e9909b7672` (cumulative) | widen the computed range to always include the running task's page |
-| v8 | `issue-563-v8-final@e9909b7672` (pushed) | combined clamp + widen + empty-snapshot skip |
+| v6 | no durable snapshot (amended away); code shape reflected in later attempts | `TaskThumbnailCache`: skip caching empty snapshots + unconditional `takeTaskThumbnail` on empty |
+| v7 | no durable per-attempt snapshot; code shape preserved in `issue-563-v8-final@e9909b7672` (clamp log `centerPage 5 -> 4` retained) | clamp centered page into the real task range when `getPageNearestToCenterOfScreen()` resolves to the ClearAll child |
+| v7b | no durable per-attempt snapshot; code shape preserved in `issue-563-v8-final@e9909b7672` | widen the computed range to always include the running task's page |
+| v8 | tested as a working-tree state; NOT durably preserved (the pushed snapshot `issue-563-v8-final@e9909b7672242386d4d6ae0621874ebdee69ddef7` does not contain the v6 cache-skip/empty-fallback content) | combined clamp + widen + empty-snapshot skip |
 
 Published evidence for this session: instrumented logcat extract
 [diag563d-extract.txt](./563-home-empty-overview-evidence/diag563d-extract.txt)
 (clamp firing, repository request sets across the cycle, the single suspend fetch and
 its dead lane), probe summaries `DB3/DB5/DB6/DB8/DD1/DD2-summary.json` and probe XMLs
 under `563-home-empty-overview-evidence/runs|xml/`, and the per-artifact sha256 manifest
-in `proof.json.thirdSession` / `publishedArtifactSha256`. Durable cumulative
-implementation snapshot: `issue-563-v8-final@e9909b7672` (pushed to origin; earlier
-per-attempt amendments were overwritten in place except the v6 SHA above, so their
-intermediate SHAs are not durably preserved).
+in `proof.json.thirdSession` / `publishedArtifactSha256`. The pushed investigation branch
+for this session is `issue-563-v8-final@e9909b767242386d4d6ae0621874ebdee69ddef7` — it
+contains the v7/v7b clamp+widen implementation and the instrumentations only; the v6
+`TaskThumbnailCache` cache-skip/empty-fallback diff and the v8-tested combined state were
+amended in the working tree and are not durably preserved. The two branches attributed to
+the earlier session (`issue-563-overview-fix@6f7c7fcd30`,
+`issue-563-overview-recovery-fix@d4a1cd50aa`) remain the previous-session provenance
+only.
 
 ## Bug oracle (established; gates any future production change under #563)
 

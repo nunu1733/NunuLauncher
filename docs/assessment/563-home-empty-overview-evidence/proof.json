@@ -303,30 +303,30 @@
   "fixMatrix": [
    {
     "fix": "v6",
-    "sha": "936ff735d36a79ea34bc7602b07085eb312d6592",
+    "durableSnapshot": "none (amended away); code shape reflected in later attempts",
     "content": "TaskThumbnailCache: skip caching empty snapshots + unconditional takeTaskThumbnail on empty",
     "oracle": "RED (still EMPTY)"
    },
    {
     "fix": "v7",
-    "sha": "30e188073d / bf27d59046 lineage (amended)",
-    "content": "RecentsView.loadVisibleTaskData: clamp centered page into the real task range when getPageNearestToCenterOfScreen resolves to the ClearAll child (clamp log: centerPage 5 -> 4)",
-    "oracle": "RED (still EMPTY; visPerDisplay then = {0=[855,844,843]}, off-screen shoulder only)"
+    "durableSnapshot": "no durable per-attempt snapshot; code shape preserved in issue-563-v8-final@e9909b7672 (clamp log 'centerPage 5 -> 4')",
+    "content": "RecentsView.loadVisibleTaskData: clamp centered page into the real task range when getPageNearestToCenterOfScreen resolves to the ClearAll child",
+    "oracle": "RED (still EMPTY; visPerDisplay then = {0=[855,844,843]} — off-screen shoulder only)"
    },
    {
     "fix": "v7b",
-    "sha": "included in e9909b7672 cumulative",
+    "durableSnapshot": "no durable per-attempt snapshot; code shape preserved in issue-563-v8-final@e9909b7672",
     "content": "widen computed range to always include the running task's page",
     "oracle": "RED (still EMPTY)"
    },
    {
     "fix": "v8",
-    "sha": "issue-563-v8-final@e9909b7672d7c6927ef01d01b18675d35d6bd9cb (pushed; cumulative v6+v7+v7b+implementation temps)",
-    "content": "combined clamp + widen + empty-snapshot skip",
+    "durableSnapshot": "issue-563-v8-final@e9909b767242386d4d6ae0621874ebdee69ddef7 (pushed; contains v7/v7b clamp+widen and the instrumentation; v6's cache-skip/empty-fallback content is NOT in this snapshot — v6/v8 intermediates were amended away)",
+    "content": "combined clamp + widen + empty-snapshot skip as tested",
     "oracle": "RED (still EMPTY)"
    }
   ],
-  "durableSnapshot": "issue-563-v8-final@e9909b7672 (pushed to origin) preserves the cumulative v6/v7/v7b/v8 implementation plus the instrumentation. The per-attempt amendments before this branch were overwritten in place; per-attempt durable SHAs: v6 = 936ff735d3; v7/v7b/v8 exist only inside e9909b7672 except where noted.",
-  "evidenceNote": "Decisive DIAG563d extract published as diag563d-extract.txt (clamp firing + repository request sets + the single suspend fetch and its dead lane). Probe summaries DB3/DB5/DB6/DB8/DD1/DD2 and probe XMLs published under runs/ and xml/. All artifact hashes are in publishedArtifactSha256."
+  "durableSnapshot": "issue-563-v8-final@e9909b767242386d4d6ae0621874ebdee69ddef7 (pushed to origin). This snapshot preserves the v7/v7b clamp+widen implementation and DIAG563b/c/d instrumentation. v6's TaskThumbnailCache cache-skip/empty-fallback diff and the v8-tested combined state were amended in the working tree and are NOT durably preserved as commits; the v6 intermediate SHA (936ff735d3) and per-attempt v7/v7b refs are therefore non-durable and are not claimed as such.",
+  "evidenceNote": "Previous-session provenance: issue-563-overview-fix@6f7c7fcd30 and issue-563-overview-recovery-fix@d4a1cd50aa hold the earlier session's snapshots only — they do NOT contain this evening-session's v6–v8 work. Decisive DIAG563d extract published as diag563d-extract.txt. Probe summaries DB3/DB5/DB6/DB8/DD1/DD2 and probe XMLs published under runs/ and xml/. All artifact hashes are in publishedArtifactSha256."
  }
 }
