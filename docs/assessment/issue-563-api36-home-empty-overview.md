@@ -88,15 +88,17 @@ narrowed the mechanism substantially; the earlier L1/L2 candidates are supersede
 - **Refuted "page/scroll desync"**: `getScrollForPage(0) == 3465` is *correct* — child 0 is
   the most-recent task (879) laid at x=3627, so scroll 3465 centers it on screen. The pager
   geometry is internally consistent.
-- **Proven: the visible-data pipeline never feeds the on-screen cards.** In the stuck entry
-  the bound task views are VISIBLE, alpha 1, correctly positioned, but the refactor
-  thumbnail pipeline (`enableRefactorTaskThumbnail()` is hardcoded `true`) never receives
-  them as visible: thumbnail state settles as `thumb=true` for the OFF-SCREEN tasks 844/843
-  and `thumb=false` for the ON-SCREEN 879/855/848. That loaded set matches the visible range
-  computed with **primary scroll 0** instead of the actual 3465 — i.e. the
-  `loadVisibleTaskData` range computation reads the wrong primary scroll in this entry path.
-  An unloaded `TaskView` renders nothing (transparent card) — matching the uniform
-  background screenshot — and the overview_panel subtree is correspondingly absent from the
+- **Observed (strong inference, not yet directly instrumented): the visible-data pipeline
+  never feeds the on-screen cards.** In the stuck entry the bound task views are VISIBLE,
+  alpha 1, correctly positioned, but thumbnail state settles as `thumb=true` for the
+  OFF-SCREEN tasks 844/843 and `thumb=false` for the ON-SCREEN 879/855/848. That loaded set
+  matches the visible range computed with **primary scroll 0** instead of the actual 3465
+  (`enableRefactorTaskThumbnail()` is hardcoded `true`, so this range drives
+  `RecentsViewModel.updateVisibleTasks` — the card content pipeline). The primary-scroll-0
+  reading is an inference from the loaded-set inversion; directly logging the computed set
+  and `getPrimaryScroll` inside `loadVisibleTaskData` remains the outstanding next step. An
+  unloaded `TaskView` renders nothing (transparent card) — matching the uniform background
+  screenshot — and the overview_panel subtree is correspondingly absent from the
   accessibility dump while the actions bar (sibling) is present. `dispatchDraw` fires at
   entry and then the screen is static.
 - **In-place interventions that do NOT heal** (five fix variants, all built, installed and
@@ -121,6 +123,8 @@ and `getPrimaryScroll` inside `loadVisibleTaskData`, and the payload delivered t
 `RecentsViewModel.updateVisibleTasks`, plus a uiMode config-change heal test to separate
 orientation refresh from generic profile refresh. **Per the STOP rule, no production change
 is shipped: five candidate fixes were built and measured and none passed the oracle.**
+The instrumentation, the five fix attempts and all run artifacts are preserved on the
+pushed investigation branch `issue-563-overview-recovery-fix`.
 
 ## Bug oracle (established; gates any future production change under #563)
 

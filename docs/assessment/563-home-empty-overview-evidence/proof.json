@@ -1,7 +1,7 @@
 {
  "schema": "563-investigation-proof/v1",
  "issue": 563,
- "readable": "Screen-level reproduction and baseline/fixed classification for the API36 HOME-origin empty overview. All runs on emulator-5556, fingerprint google/sdk_gphone64_arm64/emu64a:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys, SystemUI sha256 a895f88ae0539d9950a74e49f0471ca81237337f0b31d6eb5f4fe29e814d14f5, GLOBAL animation scales 0/0/0, gesture nav, provider overlay nunu.overlay.quickstepconfig. No AVD wipe, no pm clear, no data deletion at any point.",
+ "readable": "Screen-level reproduction and baseline/fixed classification for the API36 HOME-origin empty overview. All runs on emulator-5556, fingerprint google/sdk_gphone64_arm64/emu64a:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys, SystemUI sha256 a895f88ae0539d9950a74e49f0471ca81237337f0b31d6eb5f4fe29e814d14f5, GLOBAL animation scales 0/0/0, gesture nav, provider overlay nunu.overlay.quickstepconfig. No AVD wipe, no pm clear, no data deletion at any point. Per-artifact sha256 manifest excludes this file itself (self-reference); verify proof.json by its hosting commit.",
  "artifacts": {
   "fixedApk": {
    "path": "Lawnchair.16.Dev.(f131e8e).github.debug.apk",
@@ -191,7 +191,6 @@
   "SystemUI-side TIS rebind gap after launcher restart: overview toggle presses during the gap are dropped (BH5/BH6 no onOverviewToggle in window; binding restored by reinstall or waiting)."
  ],
  "publishedArtifactSha256": {
-  "proof.json": "1cd09a8e5c786066a3037eb35cbf25cfcdaab4efd7637a8a036506f599056e4f",
   "anr/cold-start-deadlock-anr-trace.txt": "9f92619433bce4fddd2acc7ed2df5461b895970899cc7e2d0fe1e5a628e7e86b",
   "png/F5-swipe2.png": "a52f3b497c6f97eaa7b413adf992bba4e1bca65c8bfc65cd4227231e93f360ea",
   "png/F5-home-final.png": "5d15ed8c1c5dee612d19c69b448df14fc37779eaa1dbe0e07e63729789933638",
@@ -257,14 +256,17 @@
   "healExperiments": [
    {
     "trigger": "shell-animated app-origin entry (HOME -> launch Clock -> APP_SWITCH)",
-    "result": "cards render immediately (heal-apporigin-entry.xml, 1 task_view_single)"
+    "result": "cards render immediately (heal-apporigin-entry.xml, 2 task_view_single nodes)",
+    "cardNodeCount": 2
    },
    {
     "trigger": "configuration change (user_rotation=1 -> 0, launcher handles configChanges in place, no recreation)",
-    "result": "stuck overview heals and subsequent toggle entries stay healthy (heal-config-change.xml); repeat entry after heal: 1 card (non-empty)"
+    "result": "stuck overview heals and subsequent toggle entries stay healthy (heal-config-change.xml, 2 task_view_single nodes; repeat entry after heal also 2 nodes, non-empty)",
+    "cardNodeCount": 2
    }
   ],
   "flagFact": "enableRefactorTaskThumbnail() is hardcoded true (FeatureFlagsImpl) -> card content is driven by RecentsViewModel.updateVisibleTasks(visibleTaskIds) fed from the loadVisibleTaskData range computation",
-  "conclusion": "STOP rule applied: five candidate fixes measured against the oracle, none passed; production change withheld. Pipeline-boundary instrumentation (visible set + getPrimaryScroll inside loadVisibleTaskData, updateVisibleTasks payload, uiMode config-change heal test) is the required next diagnostic."
+  "conclusion": "STOP rule applied: five candidate fixes measured against the oracle, none passed; production change withheld. Pipeline-boundary instrumentation (visible set + getPrimaryScroll inside loadVisibleTaskData, updateVisibleTasks payload, uiMode config-change heal test) is the required next diagnostic.",
+  "measurementNote": "Card counts in this session's shell echoes used grep -c (line count); the XML files here are single-line, so authoritative counts are the resource-id occurrence counts stated above (2 per healed overview)."
  }
 }
