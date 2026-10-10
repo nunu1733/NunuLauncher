@@ -123,9 +123,9 @@ Then 従来どおり1枚以上のカードが表示される（書込み経路�
 
 - **実機owner確認（必須・emulatorは代替ではなく補助）**: Scenario 1/5を
   ownerが実機で確認（screenshot/recording、device/build/head SHA添付）して
-  merge判断する。emulator証跡（FG8/FG9/FG10 oracle GREEN 3/3、FC2 control、
-  per-checkpoint dump + events + log extract + screenshot）は補助証跡として
-  evidence directoryに恒久化済み。
+  merge判断する。emulator証跡（FG9/FG10/FG11/FG12 oracle GREEN、FC2 control、
+  per-checkpoint dump + events + antecedent transition line + screenshot）は
+  補助証跡としてevidence directoryに恒久化済み。
 - unit test: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests
   'com.android.launcher3.PagedViewScreenCenterTest'` — guardなしでRED
   （expected 4005 but was 0）、修正後GREEN 4/4。organizer-unit-tests gateに

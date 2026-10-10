@@ -38,7 +38,9 @@ fi
 A logcat -c
 log "== card tap (540,1200)"
 A input tap 540 1200; sleep 4
-TAP_DONE=$(A logcat -d 2>/dev/null | grep -c "fromState: Overview, toState: Normal")
+# Capture the actual transition lines BEFORE any later logcat -c wipes them.
+A logcat -d 2>/dev/null | grep "fromState: Overview, toState: Normal" > "$DIR/antecedent-preclear.log"
+TAP_DONE=$(wc -l < "$DIR/antecedent-preclear.log" | tr -d ' ')
 log "card-tap Overview->Normal transitions=$TAP_DONE"
 if [ "$TAP_DONE" -lt 1 ]; then
   log "EXCLUDED: card tap did not complete the overview session (no Overview->Normal)"

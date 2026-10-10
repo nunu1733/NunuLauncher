@@ -90,11 +90,14 @@ card tap completed the previous session (logcat `fromState: Overview, toState: N
 | FG8 | full fix @HEAD | no — gesture-entry dump was the Settings screen, not the launcher overview; no post-tap `Overview->Normal` (`xml/FG8-events-excluded-antecedentNotEstablished.log`) | 2 | 2 | 2 | 2 | 2 | 2 | **excluded** (review round 2) |
 | FG9 | full fix @HEAD | yes — launcher overview (2 nodes) + `Overview->Normal` + `Normal->Overview` in `logs/FG9-antecedent-extract.txt` | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
 | FG10 | full fix @HEAD | yes — same triple proof, `logs/FG10-antecedent-extract.txt` | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
-| FG11 | full fix @HEAD, fail-closed driver | yes — driver-verified gesture dump (2 nodes, overview_panel) and post-tap `Overview->Normal=1`, `logs/FG11-antecedent-extract.txt` | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
+| FG11 | full fix @HEAD, fail-closed driver | yes — `xml/FG11-events.log` records the driver guard outputs (gesture dump 2 nodes + overview_panel, `card-tap Overview->Normal transitions=1`); final-log extract in `logs/FG11-antecedent-extract.txt` | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
+| FG12 | full fix @HEAD, fail-closed driver v2 (captures the raw transition line pre-clear) | yes — `xml/FG12-antecedent-preclear.log` holds the actual `goToState - fromState: Overview, toState: Normal` line; gesture dump 2 nodes; checkpoints all 2 | 2 | 2 | 2 | 2 | 2 | 2 | **GREEN** |
 | FC2 | control: clean HOME history, direct APP_SWITCH (no antecedent) | n/a | 2 (single dump at 2s) | | | | | | PASS |
 
-GREEN 3/3 (FG9/FG10/FG11) with full per-checkpoint dumps, events and screenshots under
-`xml/` and `png/`. Card tap after the re-entry returned to the task (FC2).
+GREEN 3/3 (FG9/FG10/FG11; FG12 adds a fourth fully fail-closed-proven run whose
+antecedent transition line survives in `xml/FG12-antecedent-preclear.log`) with full
+per-checkpoint dumps, events and screenshots under `xml/` and `png/`. Card tap after the
+re-entry returned to the task (FC2).
 
 Unit regression: `com.android.launcher3.PagedViewScreenCenterTest` — with the guard removed,
 `nan pivot resolves to the view center` / `nan pivot with scale resolves to the view center`
@@ -115,10 +118,11 @@ expression-body failure mode is protected structurally (`: Unit` annotations mak
   TaskContainer no-op proof.
 - `logs/FF1-states-extract.txt` — TaskViewModel bind sequence and applyLoadPlan lines of the
   FF1 build (probe-free build: the per-state DIAG lines exist only in FE4's log).
-- `xml/FG{8,9,10}-*` — full oracle dumps (gesture entry + 6 checkpoints) and events logs.
-- `png/FG{8,9,10}-stuck-8s.png`, `png/FC2-direct-entry.png` — post-fix screens.
+- `xml/FG{9,10,11,12}-*` — full oracle dumps (gesture entry + 6 checkpoints), events logs
+  and, for FG12, the pre-clear antecedent transition line (driver v2).
+- `png/FG{9,10,11,12}-stuck-8s.png`, `png/FC2-direct-entry.png` — post-fix screens.
 - `xml/BB1-RED-node-counts.txt` — RED baseline node counts from the stored BB1 dumps.
-- `oracle-driver.sh` — the fail-closed driver v2 (used for FG11; FG9/FG10 ran the same sequence before the fail-closed guards were added and were re-verified against the guards manually — gesture dump launcher-overview + post-tap `Overview->Normal` — see their antecedent extracts).
+- `oracle-driver.sh` — the fail-closed driver v2. FG12 ran it as-is (the antecedent transition line is captured before the pre-APP_SWITCH `logcat -c`). FG11 ran v1 (guard outputs recorded in its events log; the raw transition line was not retained). FG9/FG10 ran the same sequence before the guards existed and were re-verified against the guards manually (see their antecedent extracts).
 - `manifest-sha256.txt` — per-file hashes of all other files (the manifest excludes itself;
   verify with `shasum -a 256 -c manifest-sha256.txt` from this directory).
 
