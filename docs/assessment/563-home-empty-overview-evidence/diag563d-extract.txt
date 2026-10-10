@@ -1,0 +1,29 @@
+# Instrumented logcat extract (DIAG563d / TaskThumbnailCache suspend fetch), 2026-10-10 evening.
+
+# Launcher process 24039 = v7 fix build (clamp centerPage only).
+# Launcher process 24769 = v8 build (clamp + widen + empty-snapshot skip + temp fetch logs).
+# Sequence in both sessions: Settings -> APP_SWITCH (direct) -> card tap -> HOME -> 10s dwell -> APP_SWITCH.
+
+# Cycle with clamp (pid 24039, 20:17-20:18 JST):
+10-10 20:17:56.963 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[] visPerDisplay={0=[]}
+10-10 20:17:56.991 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[] visPerDisplay={0=[]}
+10-10 20:17:57.203 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[879, 1005, 855] visPerDisplay={0=[879, 1005, 855]}
+10-10 20:17:57.217 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[879, 1005, 855] visPerDisplay={0=[879, 1005, 855]}
+10-10 20:17:59.575 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[879, 1005, 855] visPerDisplay={0=[879, 1005, 855]}
+10-10 20:17:59.578 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[879, 1005, 855] visPerDisplay={0=[879, 1005, 855]}
+10-10 20:18:04.418 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[] visPerDisplay={}
+10-10 20:18:16.270 24039 24039 D RecentsView: DIAG563d clamp centerPage 5 -> 4
+10-10 20:18:16.271 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[855, 844, 843] visPerDisplay={0=[855, 844, 843]}
+10-10 20:18:16.274 24039 24039 D TasksRepository: DIAG563d updateTaskRequests needs=[855, 844, 843] visPerDisplay={0=[855, 844, 843]}
+
+# Cycle with clamp+widen+empty-skip+fetch logs (pid 24769, 20:35 JST). The single
+# suspend fetch happens at the first (direct) entry; the HOME toggle entry re-issues
+# the correct request set but no further suspend fetch ever occurs:
+10-10 20:35:38.960 24769 24799 D TaskThumbnailCache: suspendget id=879 lowRes=true
+10-10 20:35:39.716 24769 24799 D TaskThumbnailCache: suspendgot id=879 bitmap=false
+10-10 20:35:41.154 24769 24799 D TaskThumbnailCache: suspendget id=1005 lowRes=true
+10-10 20:35:41.462 24769 24799 D TaskThumbnailCache: suspendgot id=1005 bitmap=true
+10-10 20:35:42.555 24769 24799 D TaskThumbnailCache: suspendget id=855 lowRes=true
+10-10 20:35:42.783 24769 24799 D TaskThumbnailCache: suspendgot id=855 bitmap=true
+10-10 20:35:48.829 24769 24799 D TaskThumbnailCache: suspendget id=855 lowRes=false
+10-10 20:35:49.125 24769 24799 D TaskThumbnailCache: suspendgot id=855 bitmap=true

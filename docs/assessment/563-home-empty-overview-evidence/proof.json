@@ -191,6 +191,7 @@
   "SystemUI-side TIS rebind gap after launcher restart: overview toggle presses during the gap are dropped (BH5/BH6 no onOverviewToggle in window; binding restored by reinstall or waiting)."
  ],
  "publishedArtifactSha256": {
+  "diag563d-extract.txt": "926224c49f2db92b98627d355faf059f2740026bca0d7c0168e60973e0ce1289",
   "anr/cold-start-deadlock-anr-trace.txt": "9f92619433bce4fddd2acc7ed2df5461b895970899cc7e2d0fe1e5a628e7e86b",
   "png/F5-swipe2.png": "a52f3b497c6f97eaa7b413adf992bba4e1bca65c8bfc65cd4227231e93f360ea",
   "png/F5-home-final.png": "5d15ed8c1c5dee612d19c69b448df14fc37779eaa1dbe0e07e63729789933638",
@@ -201,7 +202,10 @@
   "xml/teardown-check2.xml": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
   "xml/healthy-overview-fixed-F5-gesture.xml": "91468197e945dfb2bb3f7fbd71f8892fb8def27d9ed42744e0a97a8747d1caea",
   "xml/empty-overview-fixed-F5-home-c0.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
+  "xml/probe4.xml": "c01df890fdb01da9c88cf36592bafe9021405967254e926daaf383dedc813b63",
+  "xml/probe1.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
   "xml/baseline-misfire-BFF1-home-c0.xml": "f748f82999adf7e80a9b7cfc70329249ad38930b4e6676b8f2aa392d3e3701f2",
+  "xml/probe2.xml": "6285a51a433fb900f5609676fa0e4316b426c1bb61a62251c4cbed0c92b9fb17",
   "logs/BH1-logcat-extract.txt": "9caba20a55250873109bb9838994ce4211ca624a5fa583296f52da82c0e1d754",
   "logs/F5-logcat-extract.txt": "2966d9618dda126ec3da4bc41004c8910c34bab45e427267544fef497ddeac1e",
   "logs/BFF1-logcat-extract.txt": "c4e2357a6b3d94fe33ff94a60c2d84722f24c49550dd1e07e3004b22152abf3a",
@@ -211,11 +215,17 @@
   "runs/BH1-summary.json": "84fa85128bcbfeeab2ab230161de98ad6db1e0abee21f696b9a259dcddbf8ae5",
   "runs/D8-summary.json": "eecc904dec8e32d4ab465688fdd5179b48deb036aa3eab252324950867fcb665",
   "runs/F1-summary.json": "119c85aca5d81aefcb741055f744a084bc3d2edce0eddd33a9e92baf7c40e832",
+  "runs/DB6-summary.json": "cafa7c3a16f0059aedf27446774ec7027b3d6fe5a5b9289936065663a3db5270",
+  "runs/DD2-summary.json": "e8628e9dbde7438760c800dead03440b9b992a89f756c3b84185c0290523b88d",
+  "runs/DB5-summary.json": "cf0f77810f37c0eccb97629f64cac1e0c5902ff50cf7d56449d155dbcf1fd56c",
   "runs/F2-summary.json": "6e1d49b11737ae31280ca7251aea3006a386d939c8a2e510383e3ecfa84b49c9",
   "runs/F5-summary.json": "4d59d39795f70d9511a462cfd7bfeec1dc2abe974cf943e2f804f2245523d00d",
   "runs/BFF1-summary.json": "00c32f39ac51a5436c936b90016655f4d816acfa250ba258259e5de6fedb46f6",
+  "runs/DD1-summary.json": "016526dabb64e754e9bc847b7f16e320c9e9812544fd1f2b46c77582504a22d9",
   "runs/F4-summary.json": "a148bbd04fb867cb2d485dee5bbb19f1afada853413491e2802685371a0e7628",
-  "runs/BH3-summary.json": "5e937457dccfd0b9e3545b92ecb45ec94caf533cd697b5204533ad812e212356"
+  "runs/DB3-summary.json": "ec590cdc9bd7b12f387693077bae8f8b45eba98a4933d4a950c7f78dc5226335",
+  "runs/BH3-summary.json": "5e937457dccfd0b9e3545b92ecb45ec94caf533cd697b5204533ad812e212356",
+  "runs/DB8-summary.json": "0eeb7e8e1c152cc0233d7f271d710229b9b25a80d0a6a7274354e696f0f73081"
  },
  "secondSession": {
   "date": "2026-10-10",
@@ -289,6 +299,34 @@
   "healChecks": [
    "Foregrounding Clock (launchAsStaticTile withscrollView) and starting new HOME entries restored the card in teardown check; the misfire path was exercised manually 25+ times across 7 sessions.",
    "Native launcher misfire/blank state cleared after cmd package uninstall -k app.lawnchair.debug (candidate2 base restored, HOME→APP_SWITCH healthy through teardown-final.xml)."
-  ]
+  ],
+  "fixMatrix": [
+   {
+    "fix": "v6",
+    "sha": "936ff735d36a79ea34bc7602b07085eb312d6592",
+    "content": "TaskThumbnailCache: skip caching empty snapshots + unconditional takeTaskThumbnail on empty",
+    "oracle": "RED (still EMPTY)"
+   },
+   {
+    "fix": "v7",
+    "sha": "30e188073d / bf27d59046 lineage (amended)",
+    "content": "RecentsView.loadVisibleTaskData: clamp centered page into the real task range when getPageNearestToCenterOfScreen resolves to the ClearAll child (clamp log: centerPage 5 -> 4)",
+    "oracle": "RED (still EMPTY; visPerDisplay then = {0=[855,844,843]}, off-screen shoulder only)"
+   },
+   {
+    "fix": "v7b",
+    "sha": "included in e9909b7672 cumulative",
+    "content": "widen computed range to always include the running task's page",
+    "oracle": "RED (still EMPTY)"
+   },
+   {
+    "fix": "v8",
+    "sha": "issue-563-v8-final@e9909b7672d7c6927ef01d01b18675d35d6bd9cb (pushed; cumulative v6+v7+v7b+implementation temps)",
+    "content": "combined clamp + widen + empty-snapshot skip",
+    "oracle": "RED (still EMPTY)"
+   }
+  ],
+  "durableSnapshot": "issue-563-v8-final@e9909b7672 (pushed to origin) preserves the cumulative v6/v7/v7b/v8 implementation plus the instrumentation. The per-attempt amendments before this branch were overwritten in place; per-attempt durable SHAs: v6 = 936ff735d3; v7/v7b/v8 exist only inside e9909b7672 except where noted.",
+  "evidenceNote": "Decisive DIAG563d extract published as diag563d-extract.txt (clamp firing + repository request sets + the single suspend fetch and its dead lane). Probe summaries DB3/DB5/DB6/DB8/DD1/DD2 and probe XMLs published under runs/ and xml/. All artifact hashes are in publishedArtifactSha256."
  }
 }
