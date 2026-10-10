@@ -20,6 +20,7 @@ import static android.view.Display.DEFAULT_DISPLAY;
 import static android.view.WindowManager.INPUT_CONSUMER_RECENTS_ANIMATION;
 
 import android.os.Binder;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.RemoteException;
@@ -32,6 +33,8 @@ import android.view.InputEvent;
 import android.view.WindowManagerGlobal;
 
 import java.io.PrintWriter;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 
 /**
  * Manages the input consumer that allows the SystemUI to directly receive input.
@@ -40,6 +43,10 @@ import java.io.PrintWriter;
 public class InputConsumerController {
 
     private static final String TAG = InputConsumerController.class.getSimpleName();
+
+    // API 37 (Build.VERSION_CODES.CINNAMON_BUN) is absent from the framework-16.jar compile
+    // classpath, so the gate uses the literal (see #545).
+    private static final int API_37 = 37;
 
     /**
      * Listener interface for callers to subscribe to input events.
@@ -137,18 +144,53 @@ public class InputConsumerController {
      */
     public void registerInputConsumer() {
         if (mInputEventReceiver == null) {
-            final InputChannel inputChannel = new InputChannel();
+            InputChannel inputChannel = null;
             try {
                 mWindowManager.destroyInputConsumer(mToken, DEFAULT_DISPLAY);
-                mWindowManager.createInputConsumer(mToken, mName, DEFAULT_DISPLAY, inputChannel);
+                if (Build.VERSION.SDK_INT >= API_37) {
+                    // #545: Android 17 (API 37) replaced IWindowManager.createInputConsumer in
+                    // place — the compiled out-param form (IBinder, String, int, InputChannel)
+                    // -> void was removed in favor of (IBinder, String, int) -> InputChannel.
+                    // The compile classpath (framework-16.jar) only carries the API 36 form, so
+                    // the API 37 form is invoked reflectively. A lookup failure degrades to an
+                    // unregistered consumer instead of crashing the provider bind path.
+                    inputChannel = createInputConsumerCompat(mToken, mName, DEFAULT_DISPLAY);
+                } else {
+                    inputChannel = new InputChannel();
+                    mWindowManager.createInputConsumer(mToken, mName, DEFAULT_DISPLAY, inputChannel);
+                }
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to create input consumer", e);
+            }
+            if (inputChannel == null) {
+                Log.e(TAG, "Input consumer not registered (see #545)");
+                return;
             }
             mInputEventReceiver = new InputEventReceiver(inputChannel, Looper.myLooper(),
                     Choreographer.getInstance());
             if (mRegistrationListener != null) {
                 mRegistrationListener.onRegistrationChanged(true /* isRegistered */);
             }
+        }
+    }
+
+    /**
+     * Invokes the Android 17 (API 37) return-InputChannel form of
+     * IWindowManager.createInputConsumer reflectively (see #545). Returns null when the lookup
+     * or invocation fails, so the caller can degrade to an unregistered consumer without
+     * crashing.
+     */
+    private InputChannel createInputConsumerCompat(IBinder token, String name, int displayId) {
+        try {
+            Class<?> iWindowManagerClass = Class.forName("android.view.IWindowManager");
+            Method createInputConsumerMethod = iWindowManagerClass.getMethod(
+                    "createInputConsumer", IBinder.class, String.class, int.class);
+            return (InputChannel) createInputConsumerMethod.invoke(
+                    mWindowManager, token, name, displayId);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "Failed to invoke createInputConsumer (API 37 form, see #545)", e);
+            return null;
         }
     }
 

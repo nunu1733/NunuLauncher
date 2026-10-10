@@ -1,0 +1,38 @@
+=== matrix (a) crash check — API 37 debug @ 63a8a3a7d5 (post-fix 3-commit APK compat3-debug-63a8a3a) ===
+source: ma-bind-logcat.txt (boot -> oracle attempts), 2026-10-07 22:53:57
+--- grep counts (expected 0 for the three fixed signatures on a passing run):
+NoSuchMethodError: 0
+NoSuchFieldError (ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX): 0
+NoSuchFieldError (any): 0
+Resources$NotFoundException: 0
+FATAL EXCEPTION in app.lawnchair.debug: 2
+  of which NoClassDefFoundError companion/virtualdevice/flags/Flags: 2
+"disabling recents": 0
+quickstep_incompatible: 0
+--- crash signature (first occurrence):
+10-07 22:50:40.443  1201  1201 E AndroidRuntime: Process: app.lawnchair.debug, PID: 1201
+10-07 22:50:40.443  1201  1201 E AndroidRuntime: java.lang.NoClassDefFoundError: Failed resolution of: Landroid/companion/virtualdevice/flags/Flags;
+10-07 22:50:40.443  1201  1201 E AndroidRuntime: 	at com.android.systemui.shared.navigationbar.KeyButtonRipple.<init>(KeyButtonRipple.java:108)
+10-07 22:50:40.443  1201  1201 E AndroidRuntime: 	at com.android.systemui.shared.rotation.FloatingRotationButtonView.setRipple(FloatingRotationButtonView.java:60)
+10-07 22:50:40.443  1201  1201 E AndroidRuntime: 	at com.android.systemui.shared.rotation.FloatingRotationButton.<init>(FloatingRotationButton.java:98)
+10-07 22:50:40.443  1201  1201 E AndroidRuntime: 	at com.android.launcher3.taskbar.NavbarButtonsViewController.setupController(NavbarButtonsViewController.java:399)
+10-07 22:50:40.443  1201  1201 E AndroidRuntime: 	at com.android.launcher3.taskbar.NavbarButtonsViewController.init(NavbarButtonsViewController.java:294)
+--
+10-07 22:50:49.211  3014  3014 E AndroidRuntime: Process: app.lawnchair.debug, PID: 3014
+10-07 22:50:49.211  3014  3014 E AndroidRuntime: java.lang.NoClassDefFoundError: Failed resolution of: Landroid/companion/virtualdevice/flags/Flags;
+10-07 22:50:49.211  3014  3014 E AndroidRuntime: 	at com.android.systemui.shared.navigationbar.KeyButtonRipple.<init>(KeyButtonRipple.java:108)
+10-07 22:50:49.211  3014  3014 E AndroidRuntime: 	at com.android.systemui.shared.rotation.FloatingRotationButtonView.setRipple(FloatingRotationButtonView.java:60)
+--- LauncherProxyService lines:
+10-07 22:50:05.163   642   642 I FaceDownDetector: mIsEnabled=true
+--- crash-loop final registered backoff:
+    LauncherProxyService state:
+      isConnected=false
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair.debug }
+      mBound=true
+      mCurrentBoundedUserId=-1
+      mConnectionBackoffAttempts=8
+      mActiveNavBarRegion=null
+      mNavBarMode=2
+      mIsPrevServiceCleanedUp=false

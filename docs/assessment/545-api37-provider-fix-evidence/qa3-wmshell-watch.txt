@@ -1,0 +1,21 @@
+=== qa3 wmshell auxiliary watch — window: bind + overview/task-switch ===
+date: 2026-10-09 20:07:30 JST
+
+  PipInputConsumer : bind=0 overview=0
+  NoSuchMethodError : bind=0 overview=0
+  ShellRecents : bind=1 overview=2
+  No matching remote found to takeover : bind=0 overview=0
+  WindowManagerShell.*NPE : bind=0 overview=0
+  IllegalStateException : bind=2 overview=14
+  DeadObjectException : bind=2 overview=0
+
+--- IllegalStateException detail (if any) ---
+2026-10-09 19:59:45.754  3811  3811 W QuickstepProtoLogGroup: java.lang.IllegalStateException
+2026-10-09 19:59:45.894  3811  3811 W QuickstepProtoLogGroup: java.lang.IllegalStateException
+2026-10-09 20:05:32.159  3811  3811 W QuickstepProtoLogGroup: java.lang.IllegalStateException
+2026-10-09 20:05:32.164  3811  3811 W QuickstepProtoLogGroup: java.lang.IllegalStateException
+2026-10-09 20:05:34.352  3811  4087 W QuickstepProtoLogGroup: java.lang.IllegalStateException
+
+--- wm.shell TransitionFilter/PiP vendor-skew warnings (known pre-existing, see qa3-crash-check.txt) ---
+0
+10

@@ -1,0 +1,10 @@
+=== matrix (a/d) hiddenapi observation — API 37 debug @ compat commit ===
+window: a-bind-logcat.txt (registerInputConsumer execution window included)
+
+--- all hiddenapi-related lines in window (with surrounding context for launcher-relevant ones):
+2606:10-07 20:21:36.037 I/zygote64(  434): Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+3423:10-07 20:21:37.071 I/SystemConfig(  648): Reading permissions from /system/etc/sysconfig/hiddenapi-package-whitelist.xml
+3512:10-07 20:21:37.093 I/SystemConfig(  648): Reading permissions from /product/etc/sysconfig/google-hiddenapi-package-whitelist.xml
+29050:10-07 20:21:50.482 E/droid.deskclock( 2757): hiddenapi: Accessing hidden field Ljava/util/Collections$SynchronizedCollection;->mutex:Ljava/lang/Object; (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+29051:10-07 20:21:50.482 E/droid.deskclock( 2757): hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedSet;-><init>(Ljava/util/Set;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+29052:10-07 20:21:50.483 E/droid.deskclock( 2757): hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedCollection;-><init>(Ljava/util/Collection;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied

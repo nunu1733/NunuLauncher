@@ -66,7 +66,17 @@ class TaskbarRecentAppsController(
 
     val enableRecentTasksThrottle =
         if (Utilities.ATLEAST_BAKLAVA_1) {
-            DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX.isTrue
+            // #545: ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX exists in the framework-16.jar
+            // compile classpath but was removed from the API 37.0 device framework (see
+            // docs/assessment/545-api37-provider-fix-evidence/pre-guard-field-and-resource-contrast.txt);
+            // degrade to disabled instead of crashing the provider bind path
+            // (NoSuchFieldError in TaskbarActivityContext init). Absent-flag behavior
+            // equals throttle-off.
+            try {
+                DesktopExperienceFlags.ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX.isTrue
+            } catch (e: NoSuchFieldError) {
+                false
+            }
         } else {
             false
         }

@@ -1,0 +1,7 @@
+=== matrix (b) wmshell watch — API 37 release @ 2987e525bd ===
+source: mb-bind-logcat.txt + mb-g3-logcat.txt, 2026-10-07 22:56:47
+PipInputConsumer occurrences (bind log): 0
+PipInputConsumer occurrences (g3 log): 0
+NoSuchMethodError occurrences (both): 0
+0
+--- lines if any:

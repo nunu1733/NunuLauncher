@@ -1,0 +1,59 @@
+=== qa3 crash/oracle check — window: logcat -c → force-stop launcher+systemui → rebind → dump ===
+date: 2026-10-09 20:00:37 JST
+logcat file: qa3-bind-logcat.txt (    2928 lines)
+
+--- Oracle 1: six crash signatures ---
+  createInputConsumer : 0
+  ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX : 0
+  Resources\$NotFoundException : 0
+  NoClassDefFoundError : 0
+  getTaskSnapshot : 0
+  takeTaskSnapshot : 0
+  NoSuchMethodError (any): 0
+
+--- Oracle 2: three reflection failure markers ---
+  'TaskSnapshotManager reflection failed': 0
+  'TaskSnapshotManager takeTaskSnapshot reflection failed': 0
+  'TaskSnapshot.wrapToBitmap reflection failed': 0
+
+--- Oracle 3: AndroidRuntime FATAL for app.lawnchair* ---
+  count: 0
+  any FATAL EXCEPTION lines: 0
+
+--- Oracle 4: parcel exceptions ---
+  BadParcelableException: 4
+  'Bundle length is not aligned': 0
+  'No matching remote found to takeover': 0
+
+--- Oracle 5: bind state ---
+  'disabling recents': 0
+  checkRecentsComponent: 0
+2026-10-09 19:59:38.985   917   917 W LauncherProxyService: Binding died of 'ComponentInfo{app.lawnchair.debug/com.android.quickstep.TouchInteractionService}', try reconnecting
+2026-10-09 19:59:41.086  1462  1462 D BoundBrokerSvc: onBind: Intent { act=com.google.android.gms.wallet.service.BIND xflg=0x4 pkg=com.google.android.gms }
+2026-10-09 19:59:45.887  3811  3811 D TouchInteractionService: onCreate: user=0 instance=98994284
+2026-10-09 19:59:45.894  3811  3811 W QuickstepProtoLogGroup: 	at com.android.quickstep.TouchInteractionService.onCreate(TouchInteractionService.java:747)
+2026-10-09 19:59:45.952  3811  3811 D TouchInteractionService: onUserUnlocked: userId=0 instance=98994284
+
+--- Oracle 4 refinement: scoped parcel oracle (AC-10e2 operative set, per #557/#554 fix scope) ---
+  'Parcel data not fully consumed, unread size: 8' (recents-path break signature pre-#554): 0
+  'Bundle length is not aligned': 0
+  'No matching remote found to takeover': 0
+  'ShellRecents' any line: 1
+
+  RAW 'BadParcelableException' hits: 4 — classification:
+    2x launcher-pid 'unread size: 16' at com.android.wm.shell.common.pip.IPipAnimationListener$Stub.onTransact — vendored wm.shell PiP interface skew vs API 37; PRE-EXISTING in all prior runs (qa-bind-logcat.txt, qva2-bind-logcat.txt, qb-bind-logcat.txt contain identical 'unread size: 16' hits)
+    2x system_server 'Allocation of size 6881377 is above allowed limit of 1MB' at TransitionFilter<init> via RemoteTransition read (Transitions$IShellTransitionsImpl.onTransact) — vendored RemoteTransition/TransitionFilter write-skew; PRE-EXISTING with IDENTICAL magic value 6881377 in qa/qva2 runs (qb run: 6357068)
+  Both signatures are binder-warning level (caught by Binder runtime, no process death, no FATAL, no recents-path impact).
+  Cross-run comparison proves these are not candidate6 (4ddd6ae) regressions.
+
+  Oracle 4 scoped verdict: PASS (0/0/0). Raw grep 4 = known pre-existing environmental vendor-skew.
+
+--- launcher process survival ---
+2026-10-09 19:59:38.982   917   917 W LauncherProxyService: Service disconnected
+2026-10-09 19:59:45.887  3811  3811 D TouchInteractionService: onCreate: user=0 instance=98994284
+2026-10-09 19:59:45.952  3811  3811 D TouchInteractionService: onUserUnlocked: userId=0 instance=98994284
+2026-10-09 19:59:46.506   917   917 D LauncherProxyService: Launcher proxy service connected
+2026-10-09 19:59:46.520   917   917 D LauncherProxyService: LauncherProxyService connected, initializing launcher proxy
+2026-10-09 19:59:47.523  3811  3811 D TISBindHelper: TIS service connected
+2026-10-09 19:59:47.523  3811  3811 D TISBindHelper: TIS service connected
+2026-10-09 19:59:47.523  3811  3811 D TISBindHelper: TIS service connected

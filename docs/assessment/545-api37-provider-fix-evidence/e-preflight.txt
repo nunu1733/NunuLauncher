@@ -1,0 +1,25 @@
+=== matrix (e) preflight — API 36 debug @ candidate commit e2fe6f80dfc446667cc55697da9b83b439d355ed ===
+date: 2026-10-07 20:53:01
+config: AVD issue142_api36 (API 36, google_apis), candidate-debug-e2fe6f8.apk as /product/priv-app/LawnchairDebug/LawnchairDebug.apk, debug overlay nunu.overlay.quickstepconfig
+
+--- wm density:
+Physical density: 420
+--- cmd overlay lookup:
+app.lawnchair.debug/com.android.quickstep.RecentsActivity
+--- dumpsys LauncherProxyService:
+    LauncherProxyService state:
+      isConnected=true
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair.debug }
+      mBound=true
+      mCurrentBoundedUserId=0
+      mConnectionBackoffAttempts=0
+      mInputFocusTransferStarted=false
+      mInputFocusTransferStartY=0.0
+      mInputFocusTransferStartMillis=0
+      mActiveNavBarRegion=null
+--- package install state:
+    codePath=/product/priv-app/LawnchairDebug
+    versionName=16.Dev.(e2fe6f8)
+    pkgFlags=[ SYSTEM DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]

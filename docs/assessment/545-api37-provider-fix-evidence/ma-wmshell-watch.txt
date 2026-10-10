@@ -1,0 +1,6 @@
+=== matrix (a) wmshell watch — API 37 debug @ 63a8a3a7d5 ===
+source: ma-bind-logcat.txt (boot -> oracle attempts), 2026-10-07 22:54:28
+PipInputConsumer occurrences: 0
+NoSuchMethodError occurrences: 0
+wmshell-origin exception lines: 45
+--- lines if any:

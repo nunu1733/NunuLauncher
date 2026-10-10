@@ -1,0 +1,21 @@
+=== qb (b) crash-signature check — API 37 release @ 40eb5dbfab (candidate3-release-40eb5db.apk) ===
+date: 2026-10-08 00:46:58  source: qb-bind-logcat.txt (full logcat, boot 00:42:56 through 00:46:38, includes G3 window)
+
+--- FOUR repaired signatures (all must be 0):
+sig1 NoSuchMethodError.*createInputConsumer                              : 0
+sig2 NoSuchFieldError.*ENABLE_TASKBAR_RECENTS_TASKS_THROTTLE_BUGFIX      : 0
+sig3 Resources\$NotFoundException (taskbar_phone_size / any)             : 0
+sig4 NoClassDefFoundError (companion.virtualdevice.flags / any)          : 0
+
+--- provider bind:
+TouchInteractionService bound: 4 start(s)
+  10-08 00:43:00.533 I/ActivityManager(  643): Start proc 1153:app.lawnchair/u0a233 for bound-service {app.lawnchair/com.android.quickstep.TouchInteractionService}
+preflight (qb-preflight.txt): isConnected=true mIsEnabled=true mBound=true mConnectionBackoffAttempts=0
+"disabling recents" count: 0
+
+--- SAME NEW FIFTH BREAK as qa leg (not among the four target signatures):
+NoSuchMethodError getTaskSnapshot FATAL lines: 4
+crash events of app.lawnchair (Process: lines after FATAL): 0
+  00:44:04 PID1848 x3 (TaskThumbnailIconCache background fill), 00:45:41 PID3624 x1 (RecentsView coroutine during G3 overview transition)
+
+--- stock launcher noise (NOT NunuLauncher): nexuslauncher FATALs: 2

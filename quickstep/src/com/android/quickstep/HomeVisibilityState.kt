@@ -16,6 +16,10 @@
 
 package com.android.quickstep
 
+import android.os.BadParcelableException
+import android.os.Build
+import android.os.IBinder
+import android.os.Parcel
 import android.os.RemoteException
 import android.util.Log
 import android.view.InsetsState
@@ -45,6 +49,31 @@ class HomeVisibilityState {
         try {
             transitions?.setHomeTransitionListener(
                 object : Stub() {
+                    override fun onTransact(
+                        code: Int,
+                        data: Parcel,
+                        reply: Parcel?,
+                        flags: Int,
+                    ): Boolean {
+                        // Issue #554: Android 17 adds keyguard/desktop flags after visibility.
+                        // Consume them without changing the existing visibility semantics.
+                        if (Build.VERSION.SDK_INT >= 37
+                                && code == IBinder.FIRST_CALL_TRANSACTION) {
+                            data.enforceInterface("com.android.wm.shell.shared.IHomeTransitionListener")
+                            // enforceNoDataAvail only detects surplus, not missing booleans.
+                            if (data.dataAvail() < 3 * Int.SIZE_BYTES) {
+                                throw BadParcelableException("Incomplete home visibility callback")
+                            }
+                            val isVisible = data.readBoolean()
+                            data.readBoolean() // keyguardGoingAwayOrWaking
+                            data.readBoolean() // behindDesktop
+                            data.enforceNoDataAvail()
+                            onHomeVisibilityChanged(isVisible)
+                            return true
+                        }
+                        return super.onTransact(code, data, reply, flags)
+                    }
+
                     override fun onHomeVisibilityChanged(isVisible: Boolean) {
                         Utilities.postAsyncCallback(Executors.MAIN_EXECUTOR.handler) {
                             isHomeVisible = isVisible

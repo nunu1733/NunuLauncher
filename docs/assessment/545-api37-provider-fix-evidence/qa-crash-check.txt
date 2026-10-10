@@ -1,0 +1,30 @@
+=== qa (a) crash-signature check — API 37 debug @ 68e68a6a45 (compat4-debug-68e68a6.apk) ===
+date: 2026-10-08 00:41:54  source: qa-bind-logcat.txt (full logcat, boot 00:31:23 through 00:41:39, includes overview retry)
+
+--- FOUR repaired signatures (all must be 0):
+sig1 NoSuchMethodError.*createInputConsumer                              : 0
+sig2 NoSuchFieldError.*ENABLE_TASKBAR_RECENTS_TASKS_THROTTLE_BUGFIX      : 0
+sig3 Resources\$NotFoundException (taskbar_phone_size / any)             : 0
+sig4 NoClassDefFoundError (companion.virtualdevice.flags / any)          : 0
+
+--- provider bind:
+TouchInteractionService bound at boot: 3 start(s)
+  10-08 00:31:28.165 I/ActivityManager(  644): Start proc 1217:app.lawnchair.debug/u0a232 for bound-service {app.lawnchair.debug/com.android.quickstep.TouchInteractionService}
+preflight (qa-preflight.txt): isConnected=true mIsEnabled=true mBound=true mConnectionBackoffAttempts=0
+"disabling recents" count: 0
+
+--- NEW FIFTH BREAK (not among the four target signatures) — blocks overview/task-switch oracle:
+NoSuchMethodError getTaskSnapshot FATAL lines: 11
+signature:
+  java.lang.NoSuchMethodError: No interface method getTaskSnapshot(IZ)Landroid/window/TaskSnapshot; in class Landroid/app/IActivityTaskManager;
+    at com.android.systemui.shared.system.ActivityManagerWrapper.getTaskThumbnail(ActivityManagerWrapper.java:140)
+  path A: TaskThumbnailCache.getThumbnailInBackground$lambda$0 (TaskThumbnailIconCache-1/2/3 threads)
+  path B: TaskThumbnailCache$getThumbnail$2.invokeSuspend (LauncherBgLight, CoroutineName(RecentsView))
+crash events of app.lawnchair.debug (Process: lines after FATAL): 11
+  00:33:20 PID1217 x3, 00:36:52 PID3712 x3, 00:36:56 PID4020 x1 (crash dialog shown), 00:40:59 PID4311 x3 + 00:41:0x x1 (overview retry, crash dialog again)
+crash dialog shown: 2 time(s)
+process deaths: 3
+
+--- unrelated image noise (stock launcher, NOT NunuLauncher):
+com.google.android.apps.nexuslauncher FATALs: 2
+  (SecurityException INTERNAL_SYSTEM_WINDOW at USER_UNLOCKED / getRoleHoldersAsUser at startup — stock image noise, both during boot)

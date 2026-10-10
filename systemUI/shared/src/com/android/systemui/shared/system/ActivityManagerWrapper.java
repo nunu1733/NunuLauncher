@@ -50,6 +50,7 @@ import com.android.internal.app.IVoiceInteractionManagerService;
 import com.android.systemui.shared.recents.model.Task;
 import com.android.systemui.shared.recents.model.ThumbnailData;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 
 public class ActivityManagerWrapper {
@@ -137,9 +138,30 @@ public class ActivityManagerWrapper {
     public @NonNull ThumbnailData getTaskThumbnail(int taskId, boolean isLowResolution) {
         TaskSnapshot snapshot = null;
         try {
-            snapshot = getService().getTaskSnapshot(taskId, isLowResolution);
+            if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                // #545: Android 17 (API 37) removed IActivityTaskManager.getTaskSnapshot(int,
+                // boolean) (device exposes (II)/(IJI); dexdump contrast in
+                // docs/assessment/545-api37-provider-fix-evidence/gettasksnapshot-class-contrast.txt).
+                // Upstream android17-release routes this through
+                // android.window.TaskSnapshotManager, which framework-16.jar does not carry —
+                // invoke it reflectively. The int mapping mirrors upstream
+                // TaskSnapshotManager.convertRetrieveFlag (RESOLUTION_LOW=2 / RESOLUTION_HIGH=1,
+                // device bytecode confirmed in tasksnapshotmanager-reflection-targets.txt).
+                // Any failure is logged and degrades to the empty ThumbnailData path below
+                // instead of crashing the overview thumbnail path.
+                Object tsm = Class.forName("android.window.TaskSnapshotManager")
+                        .getMethod("getInstance").invoke(null);
+                snapshot = (TaskSnapshot) tsm.getClass()
+                        .getMethod("getTaskSnapshot", int.class, int.class)
+                        .invoke(tsm, taskId, isLowResolution ? 2 : 1);
+            } else {
+                snapshot = getService().getTaskSnapshot(taskId, isLowResolution);
+            }
         } catch (RemoteException e) {
             Log.w(TAG, "Failed to retrieve task snapshot", e);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "TaskSnapshotManager reflection failed (see #545)", e);
         }
         if (snapshot != null) {
             return ThumbnailData.fromSnapshot(snapshot);
@@ -157,9 +179,26 @@ public class ActivityManagerWrapper {
     public ThumbnailData takeTaskThumbnail(int taskId) {
         TaskSnapshot snapshot = null;
         try {
-            snapshot = getService().takeTaskSnapshot(taskId, /* updateCache= */ true);
+            if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                // #545: Android 17 (API 37) removed IActivityTaskManager.takeTaskSnapshot(int,
+                // boolean) (device exposes only (IZZZ); dexdump contrast in
+                // docs/assessment/545-api37-provider-fix-evidence/taketasksnapshot-contrast.txt).
+                // Upstream android17-release routes this through TaskSnapshotManager —
+                // invoke it reflectively (same target class as getTaskThumbnail's #545 branch).
+                // Failure degrades to the empty ThumbnailData path below instead of crashing.
+                Object tsm = Class.forName("android.window.TaskSnapshotManager")
+                        .getMethod("getInstance").invoke(null);
+                snapshot = (TaskSnapshot) tsm.getClass()
+                        .getMethod("takeTaskSnapshot", int.class, boolean.class)
+                        .invoke(tsm, taskId, true);
+            } else {
+                snapshot = getService().takeTaskSnapshot(taskId, /* updateCache= */ true);
+            }
         } catch (RemoteException e) {
             Log.w(TAG, "Failed to take task snapshot", e);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "TaskSnapshotManager takeTaskSnapshot reflection failed (see #545)", e);
         }
         if (snapshot != null) {
             return ThumbnailData.fromSnapshot(snapshot);

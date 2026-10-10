@@ -1,0 +1,60 @@
+=== API 36 image framework-res primary output — settles the 0x01050283 question (addendum round 2 finding 1) ===
+recorded: 2026-10-07
+
+image fingerprint (emulator-5556):
+  ro.boot.qemu.avd_name = issue142_api36
+  ro.build.version.sdk = 36
+  ro.build.version.incremental = 13894323
+source: /system/framework/framework-res.apk pulled from this image; aapt2 dump resources (build-tools 37.0.0)
+
+--- [1] the baked ID 0x01050283 on the real API 36 image ---
+  resource 0x01050283 dimen/notification_2025_action_list_min_height
+    () 10.000000dp
+  (aapt2 dump resources of the pulled framework-res.apk; exact primary value line above)
+
+=> On the API 36 image, the APK-baked ID 0x01050283 silently resolves to
+   notification_2025_action_list_min_height (10dp), NOT navigation_bar_frame_height.
+   taskbar_phone_size therefore read 10dp during leg (e) (silent mis-resolution; the
+   leg (e) oracles — bind/overview/task switch — passed and did not exercise geometry).
+
+--- [2] navigation_bar_frame_height / navigation_bar_height on the same image ---
+  resource 0x01050262 dimen/navigation_bar_frame_height
+    () @dimen/navigation_bar_height
+  resource 0x01050266 dimen/navigation_bar_height
+    () 48.000000dp
+    (sw900dp) 56.000000dp
+
+--- [3] corrected cross-level table for the baked 0x01050283 (compile = SDK 37.2) ---
+  SDK 37.2 (compile table):  navigation_bar_frame_height -> @navigation_bar_height -> 48dp  (correct)
+  API 37.0 image:            navigation_bar_height_portrait (no default config) -> Resources$NotFoundException (crash; SYMPTOM 1)
+  API 36 image (this file):  notification_2025_action_list_min_height (~10dp) -> silent mis-resolution
+
+=> literal 48dp for taskbar_phone_size is: a crash fix on 37.0, and an INTENDED geometry
+   normalization on 36 (10dp -> 48dp; restores the value navigation_bar_frame_height actually
+   dereferences to on every level). NOT a behavior-preserving change on 36 — spec/plan updated
+   to claim it as an intended repair with a matrix (e) geometry/display oracle.
+
+--- [3'] static resource table check for API 35 (minSdk 35) — SDK platforms;android-35 android.jar ---
+  resource 0x01050283 dimen/notification_right_icon_headerless_margin
+    () 20.000000dp            <- baked 0x01050283 silently mis-resolves on API 35 tables too
+  resource 0x01050236 dimen/navigation_bar_frame_height
+    () @dimen/navigation_bar_height
+  resource 0x0105023a dimen/navigation_bar_height
+    () 48.000000dp
+    (sw900dp) 56.000000dp
+  (static table check only; no API 35 runtime matrix is added. quickstepMinSdk=35: on API 35
+   the same class of silent mis-resolution applies to the current APK — literal 48dp restores
+   the intended value there as well.)
+
+--- [4] corrections to earlier evidence files ---
+
+--- [4] corrections to earlier evidence files ---
+  - pre-guard-field-and-resource-contrast.txt §2 "API 36 image ... 36.1 table still has
+    navigation_bar_frame_height at 0x01050283" was an INFERENCE from leg (e) success and is
+    WRONG; superseded by this primary output. (Section [2] of that file remains valid for
+    37.2/37.0; its API 36 paragraph is void.)
+  - a-resource-skew-analysis.txt ("android-36.1 platform: 0x01050283 =
+    notification_2025_action_list_min_height, 10dp -> silently mis-resolves on the API 36
+    image") was CORRECT.
+  - [3'] added 2026-10-07 (addendum round 3 finding 2): API 35 static table row; the exact
+    10dp value line for [1]; API 35 mis-resolution note.

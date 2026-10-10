@@ -1,0 +1,17 @@
+=== matrix (f) result — API 36 stock configuration + candidate2 release @ 2987e525bd (candidate2-release-2987e52.apk, sha256 c198865852edebe207536a868ac91397af59c5f058c11b3a0e2c636cff67ea2d) ===
+date: 2026-10-07
+AVD: issue142_api36 (API 36/SDK 36), emulator-5556, native density (physical 420, no override)
+
+VERDICT: PASS (no behavior change in API 36 stock configuration)
+
+1) preflight (mf-preflight-api36.txt): overlay/priv-app/allowlist removed; lookup =
+   com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity (stock restored);
+   SystemUI mRecentsComponentName same; no lawnchair packages installed; HOME = nexuslauncher.
+2) candidate2-release installed with `adb install -r -d` (non-system), then HOME role set to app.lawnchair.
+3) observation (mf-logcat-api36.txt):
+   - "disabling recents" diagnostic log PRESENT (1 occurrence, 23:06:24.223, same message as API 37 leg).
+   - quickstep_incompatible sheet NOT shown (mf-home-no-sheet-api36.png = Lawnchair home with the fork's
+     first-run "Organize your Home screen?" dialog).
+   - no FATAL EXCEPTION in app.lawnchair (0); no nexuslauncher crashes (0).
+   - parity check: APP_SWITCH -> system overview (focus = com.google.android.apps.nexuslauncher/
+     com.android.quickstep.RecentsActivity); Lawnchair overview did not open.

@@ -1,0 +1,12 @@
+=== qvb wmshell watch — PipInputConsumer / NoSuchMethodError in WindowManagerShell ===
+date: 2026-10-08 02:22:26; sources: qvb-bind-logcat.txt + qvb-g3-logcat.txt
+
+PipInputConsumer (bind+G3): 0
+NoSuchMethodError (bind window, all): 2
+  -> detail: 2x takeTaskSnapshot(IZ) NoSuchMethodError (launcher FATAL, TaskThumbnailIconCache-1) — 7th break, NOT the
+     fixed getTaskSnapshot route and NOT one of the five tracked signatures; getTaskSnapshot NoSuchMethodError = 0.
+NoSuchMethodError (G3 window): 1
+  -> detail: 1x takeTaskSnapshot(IZ) NoSuchMethodError (3rd launcher FATAL, during 2nd APP_SWITCH overview load).
+
+WindowManagerShell transition notes (G3): START_RECENTS_TRANSITION started; 'No matching remote found to takeover (#15)';
+no PipInputConsumer errors.

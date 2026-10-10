@@ -1,0 +1,21 @@
+=== matrix (a)/leg (d) hiddenapi logcat observation — API 37 debug @ 63a8a3a7d5 ===
+source: ma-bind-logcat.txt (boot -> oracle attempts), 2026-10-07 22:54:28
+1) 'Accessing hidden' lines: 3
+2) 'hidden.*denied' lines: 3
+3) 'blocked' lines: 55
+4) 'hiddenapi' lines: 7
+5) any of the above mentioning app.lawnchair: 0
+--- samples (max 15):
+10-07 22:50:01.612   430   430 I zygote64: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+10-07 22:50:03.523   642   658 I SystemConfig: Reading permissions from /system/etc/sysconfig/hiddenapi-package-whitelist.xml
+10-07 22:50:03.565   642   658 I SystemConfig: Reading permissions from /product/etc/sysconfig/google-hiddenapi-package-whitelist.xml
+10-07 22:50:39.168  2736  2767 E droid.deskclock: hiddenapi: Accessing hidden field Ljava/util/Collections$SynchronizedCollection;->mutex:Ljava/lang/Object; (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+10-07 22:50:39.169  2736  2767 E droid.deskclock: hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedSet;-><init>(Ljava/util/Set;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+10-07 22:50:39.169  2736  2767 E droid.deskclock: hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedCollection;-><init>(Ljava/util/Collection;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+10-07 22:51:44.646  1463  1463 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:ls /system/framework/ | grep -iE "aconfig|framework" ; echo "--- hiddenapi dir:"; ls /system/etc/hiddenapi/ 2>&1; echo "--- sdk_int_full:"; getprop ro.build.version.sdk_full; getprop ro.build.version.sdk'
+
+--- obtainable flags-table check:
+ls /system/etc/hiddenapi/ -> ls: /system/etc/hiddenapi/: No such file or directory
+ls /system/etc/ | grep -i hidden -> none
+NOTE: no /system/etc/hiddenapi directory and no flags table on this image; primary evidence for the
+      KeyButtonRipple class availability is the dexdump check in ma-keybuttonripple-flags-class-check.txt.

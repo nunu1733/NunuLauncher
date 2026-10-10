@@ -1,0 +1,89 @@
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/TopTaskTracker.java:36: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+import static com.android.wm.shell.shared.desktopmode.DesktopModeStatus.canEnterDesktopMode;
+                                                     ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/TopTaskTracker.java:37: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+import static com.android.wm.shell.shared.desktopmode.DesktopModeStatus.enableMultipleDesktops;
+                                                     ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/RemoteTargetGluer.java:19: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+import static com.android.wm.shell.shared.desktopmode.DesktopModeStatus.enableMultipleDesktops;
+                                                     ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/launcher3/taskbar/TaskbarManagerImpl.java:43: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+import static com.android.wm.shell.shared.desktopmode.DesktopModeStatus.enableMultipleDesktops;
+                                                     ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/launcher3/QuickstepTransitionManager.java:1644: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        return DesktopModeStatus.canEnterDesktopMode(mLauncher.getApplicationContext())
+               ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/TaskViewUtils.java:509: 警告: [dep-ann] 推奨されない項目は@Deprecatedで注釈が付けられていません
+    public static void composeRecentsSplitLaunchAnimatorLegacy(
+                       ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/views/RecentsView.java:946: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+            isMultipleDesktopFrontendEnabledOnDisplay = DesktopModeStatus.isMultipleDesktopFrontendEnabledOnDisplay(mContext,
+                                                        ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/views/RecentsView.java:974: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        int desktopViewPoolInitialSize = DesktopModeStatus.canEnterDesktopMode(mContext) ? 1 : 0;
+                                         ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/views/RecentsView.java:5945: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.enableMultipleDesktops(getContext())) {
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/views/RecentsView.java:6951: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (!DesktopModeStatus.canEnterDesktopMode(mContext)) {
+             ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/views/RecentsView.java:6972: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (!DesktopModeStatus.canEnterDesktopMode(mContext)) {
+             ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/AbsSwipeUpHandler.java:978: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.enableMultipleDesktops(mContext)) {
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/AbsSwipeUpHandler.java:1333: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.canEnterDesktopMode(mContext)
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/AbsSwipeUpHandler.java:1509: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.canEnterDesktopMode(mContext)
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/AbsSwipeUpHandler.java:1565: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+                if (targetTaskView != null && DesktopModeStatus.canEnterDesktopMode(mContext)
+                                              ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/AbsSwipeUpHandler.java:2441: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.canEnterDesktopMode(mContext)
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/launcher3/uioverrides/QuickstepLauncher.java:333: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.canEnterDesktopMode(this) && LawnchairApp.isRecentsEnabled()) {
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/launcher3/uioverrides/QuickstepLauncher.java:355: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.canEnterDesktopModeOrShowAppHandle(this)) {
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/util/AppPairsController.java:453: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+                        if (DesktopModeStatus.canEnterDesktopMode(context) && (isFreeformTask(
+                            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/launcher3/taskbar/TaskbarPopupController.java:216: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+                && DesktopModeStatus.canEnterDesktopMode(mContext)
+                   ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/RecentTasksList.java:426: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+                if (DesktopModeStatus.canEnterDesktopMode(mContext)) {
+                    ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/TaskShortcutFactory.java:423: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+                    && !DesktopModeStatus.canEnterDesktopMode(container.asContext());
+                        ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/launcher3/uioverrides/touchcontrollers/NoButtonQuickSwitchTouchController.java:190: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.canEnterDesktopMode(mLauncher)
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/RecentsActivity.java:155: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (DesktopModeStatus.canEnterDesktopMode(this)) {
+            ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/util/SystemWindowManagerProxy.java:99: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (!DesktopModeStatus.canEnterDesktopMode(displayInfoContext)) {
+             ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/util/SystemWindowManagerProxy.java:102: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (!DesktopModeStatus.enterDesktopByDefaultOnFreeformDisplay(displayInfoContext)) {
+             ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/util/SystemWindowManagerProxy.java:111: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (!DesktopModeStatus.canEnterDesktopMode(displayInfoContext)) {
+             ^
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/quickstep/src/com/android/quickstep/util/SystemWindowManagerProxy.java:115: 警告: [removal] com.android.wm.shell.shared.desktopmodeのDesktopModeStatusは推奨されておらず、削除用にマークされています
+        if (!DesktopModeStatus.enterDesktopByDefaultOnFreeformDisplay(displayInfoContext)) {
+             ^
+ノート: 一部の入力ファイルは推奨されないAPIを使用またはオーバーライドしています。
+ノート: 詳細は、-Xlint:deprecationオプションを指定して再コンパイルしてください。
+ノート: 入力ファイルの操作のうち、未チェックまたは安全ではないものがあります。
+ノート: 詳細は、-Xlint:uncheckedオプションを指定して再コンパイルしてください。
+警告28個

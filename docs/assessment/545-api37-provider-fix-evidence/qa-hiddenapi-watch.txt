@@ -1,0 +1,9 @@
+=== qa (a) hiddenapi auxiliary watch — API 37 debug @ 68e68a6a45 ===
+date: 2026-10-08 00:42:16  source: qa-bind-logcat.txt
+NOTE: auxiliary only. The accepted hiddenapi PASS from post-guard run (commit fc5169566c, d-hiddenapi-logcat-post.txt) stands; this is the natural re-observation.
+
+hiddenapi DENIAL lines targeting app.lawnchair*: 0
+  of which DENIAL (not warning): 0
+accessed-hidden-API entries for app.lawnchair (sample):
+(end of sample)
+RESULT: no hiddenapi DENIAL for app.lawnchair* observed.

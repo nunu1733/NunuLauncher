@@ -1,0 +1,19 @@
+10-08 20:20:45.018  1660  3866 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=2318)
+10-08 20:20:45.516  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(154 thumb=null live=false locked=false)
+10-08 20:20:45.516  1660  1660 E Nunu555 : TaskContainer.setState task=154 refactorContentView=false thumb=null
+10-08 20:20:45.516  1660  1660 E Nunu555 : TTV.setState task=154 state=Uninitialized bmp=null
+10-08 20:20:45.617  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(72 thumb=null live=false locked=false)
+10-08 20:20:45.617  1660  1660 E Nunu555 : TaskContainer.setState task=72 refactorContentView=false thumb=null
+10-08 20:20:45.617  1660  1660 E Nunu555 : TTV.setState task=72 state=BackgroundOnly bmp=null
+10-08 20:20:45.667  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:20:45.669  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:20:45.669  1660  1660 E Nunu555 : TTV.setState task=null state=Uninitialized bmp=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TTV.setState task=null state=Uninitialized bmp=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TTV.setState task=null state=Uninitialized bmp=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TTV.setState task=null state=Uninitialized bmp=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:20:45.670  1660  1660 E Nunu555 : TTV.setState task=null state=Uninitialized bmp=null

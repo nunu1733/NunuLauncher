@@ -1,0 +1,40 @@
+=== qva (a) crash-check — API 37 debug @ bdea76ea75, boot->bind->overview->task-switch window ===
+date: 2026-10-08 02:07:36; logcat lines:    22927 (window: --------- beginning -> 10-08 02:07:33.140)
+
+--- five failure signatures + reflection failure marker ---
+sig1 NoSuchMethodError.*createInputConsumer: 0
+sig2 NoSuchFieldError.*ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX: 0
+sig3 Resources$NotFoundException: 0
+sig4 NoClassDefFoundError: 0
+sig5 NoSuchMethodError.*getTaskSnapshot: 0
+marker 'TaskSnapshotManager reflection failed': 0
+
+--- launcher crashes / recents disable ---
+AndroidRuntime FATAL for app.lawnchair.debug: 0
+'disabling recents': 0
+NoSuchMethodError (any, whole window): 0
+
+--- bind state (dumpsys at 01:55) ---
+
+--- overview/task-switch behavior ---
+KEYCODE_APP_SWITCH -> Lawnchair overview opened (focus=app.lawnchair.debug/app.lawnchair.LawnchairLauncher)
+task card tap (540,1200) -> focus switched to com.android.settings/com.android.settings.homepage.SettingsHomepageActivity (task 117)
+
+--- thumbnail rendering: NOT RENDERED (blank) ---
+qva-overview.png: centered Settings task card draws no app screenshot (card interior RGB(79,81,92) == scrim RGB(78,79,89)); left home-task sliver shows live-tile content only.
+Primary cause (device framework.jar classes4.dex, dexdump -d, 2026-10-08):
+  android.window.TaskSnapshot.getHardwareBuffer():()Landroid/hardware/HardwareBuffer;
+    const-string "TaskSnapshot"; const-string "getHardwareBuffer is deprecated!"; Log.e; const/4 v0 0; return-object v0  <-- unconditional null
+  logcat 'E TaskSnapshot: getHardwareBuffer is deprecated!' x4 from launcher pid 2069 during thumbnail load (01:55:46-48):
+5049:10-08 01:55:46.375  2069  3775 E TaskSnapshot: getHardwareBuffer is deprecated!
+5053:10-08 01:55:46.401  2069  3775 E TaskSnapshot: getHardwareBuffer is deprecated!
+5057:10-08 01:55:46.420  2069  3775 E TaskSnapshot: getHardwareBuffer is deprecated!
+5629:10-08 01:55:48.056  2069  2660 E TaskSnapshot: getHardwareBuffer is deprecated!
+  i.e. reflection route itself returned a TaskSnapshot (marker=0, no NoSuchMethodError), but pixel extraction is unobtainable on API 37.0.
+--- bind state (dumpsys at 02:07) ---
+    LauncherProxyService state:
+      isConnected=true
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair.debug }
+      mBound=true

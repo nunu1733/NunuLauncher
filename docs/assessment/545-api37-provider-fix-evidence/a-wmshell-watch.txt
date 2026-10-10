@@ -1,0 +1,14 @@
+=== matrix (a) wmshell watch — PipInputConsumer / wmshell-origin NoSuchMethodError ===
+logcat window: a-bind-logcat.txt (boot @20:21 through 20:42)
+
+--- 'PipInputConsumer' hits (expect 0):
+0
+
+--- wmshell (WMShell / ShellMainThread) origin exceptions:
+(empty = none)
+
+--- NoSuchMethodError anywhere (excluding this session's own adbd command echo):
+10-07 20:22:48.967 I/adbd    (  499): adbd service requested 'shell,v2,TERM=dumb,raw:logcat -d -b crash | grep -cE 'NoSuchMethodError|NotFoundException''
+  ^ only line = adbd echo of the session's grep command (see a-bind-crash-check.txt note). 0 real hits.
+
+VERDICT: no wmshell-origin NoSuchMethodError observed; no PipInputConsumer crash signature. Matrix continues.

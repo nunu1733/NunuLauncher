@@ -1,0 +1,12 @@
+=== qb3 hiddenapi auxiliary watch — windows: bind (qb3-bind-logcat.txt) + G3 (qb3-g3-logcat.txt) + permanent oracle (qb3-oracle-logcat.txt) ===
+date: 2026-10-09 20:17:50 JST
+
+--- 'hiddenapi' lines total per file ---
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/docs/assessment/545-api37-provider-fix-evidence/qb3-bind-logcat.txt:0
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/docs/assessment/545-api37-provider-fix-evidence/qb3-g3-logcat.txt:0
+/Users/nunu/Documents/work2/NunuLauncher/worktree-545-impl/docs/assessment/545-api37-provider-fix-evidence/qb3-oracle-logcat.txt:1
+
+--- hiddenapi / 'Access denied' lines mentioning app.lawnchair* ---
+count: 0
+
+VERDICT: hiddenapi auxiliary PASS — 0 denials for app.lawnchair*.
