@@ -111,9 +111,13 @@ internal constructor(
         }
 
         return withContext(dispatcherProvider.ioBackground) {
+            // TEMP-DIAG-563: log the suspend entry and outcome
+            android.util.Log.d("TaskThumbnailCache", "suspendget id=" + task.key.id + " lowRes=" + lowResolution)
             // Get thumbnail from system
             var thumbnailData =
                 ActivityManagerWrapper.getInstance().getTaskThumbnail(task.key.id, lowResolution)
+            android.util.Log.d("TaskThumbnailCache", "suspendgot id=" + task.key.id
+                    + " bitmap=" + (thumbnailData?.thumbnail != null))
             if (thumbnailData.thumbnail == null && !enableCoroutineThreadingImprovements()) {
                 thumbnailData = ActivityManagerWrapper.getInstance().takeTaskThumbnail(task.key.id)
             }

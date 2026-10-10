@@ -103,6 +103,9 @@ class TasksRepository(
         val requestsNeeded = allVisibleTaskIds.intersect(tasks.value.keys)
 
         val taskRequestIds = taskRequests.keys
+        // TEMP-DIAG-563
+        android.util.Log.d(TAG, "DIAG563d updateTaskRequests needs=" + requestsNeeded
+                + " visPerDisplay=" + visibleTaskIdsPerDisplay)
         val requestsNoLongerNeeded = taskRequestIds.subtract(requestsNeeded)
         val newlyRequestedTasks = requestsNeeded.subtract(taskRequestIds)
         if (requestsNoLongerNeeded.isNotEmpty() || newlyRequestedTasks.isNotEmpty()) {

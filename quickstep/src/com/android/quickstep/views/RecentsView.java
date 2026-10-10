@@ -2630,9 +2630,34 @@ public abstract class RecentsView<
             visibleEnd = screenStart + pageOrientedSize + extraWidth;
         } else {
             int centerPageIndex = getPageNearestToCenterOfScreen();
+            // LC-Note (issue 563): the non-grid page list ends with the ClearAllButton as a
+            // trailing pseudo-page. On overview entries without a shell recents animation
+            // (for example the overview toggle from HOME right after a task launch) the
+            // pager still reports the pre-rebind geometry and getPageNearestToCenterOfScreen
+            // resolves to the clear-all child, so the computed visible range covers only the
+            // tasks away from the screen center. The on-screen cards then keep no loaded
+            // data and the overview stays a blank screen with no recovery (the launcher
+            // force-stop is the only escape). Clamp the centered page back into the real
+            // task page range so the visible set always tracks what the user can see.
+            if (centerPageIndex >= getChildCount() - 1) {
+                Log.d(TAG, "DIAG563d clamp centerPage " + centerPageIndex + " -> "
+                        + Math.max(0, getTaskViewCount() - 1));
+                centerPageIndex = Math.max(0, getTaskViewCount() - 1);
+            }
             int numChildren = getChildCount();
-            lowerIndex = Math.max(0, centerPageIndex - 2);
-            upperIndex = Math.min(centerPageIndex + 2, numChildren - 1);
+            int lowerIndexCandidate = Math.max(0, centerPageIndex - 2);
+            int upperIndexCandidate = Math.min(centerPageIndex + 2, numChildren - 1);
+            // LC-Note (issue 563): if the running task's page is outside the computed range
+            // (possible when the centered page resolved to the trailing pseudo-page), widen
+            // the range so the on-screen most-recent card stays covered.
+            int runningIndex = getRunningTaskIndex();
+            if (runningIndex != -1 && (runningIndex < lowerIndexCandidate || runningIndex > upperIndexCandidate)) {
+                lowerIndexCandidate = 0;
+                upperIndexCandidate = numChildren - 1;
+                Log.d(TAG, "DIAG563d widen range for runningIndex=" + runningIndex);
+            }
+            lowerIndex = lowerIndexCandidate;
+            upperIndex = upperIndexCandidate;
             visibleStart = visibleEnd = 0;
         }
 
