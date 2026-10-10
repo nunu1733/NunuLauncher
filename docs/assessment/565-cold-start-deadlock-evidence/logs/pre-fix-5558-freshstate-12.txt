@@ -1,0 +1,13 @@
+trial 1: ok (focus='mCurrentFocus=Window{4f98f4c u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 2: ok (focus='mCurrentFocus=Window{10ea0a5 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 3: ok (focus='mCurrentFocus=Window{8ed76ff u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 4: ok (focus='mCurrentFocus=Window{f467e19 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 5: ok (focus='mCurrentFocus=Window{9e8c090 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 6: ok (focus='mCurrentFocus=Window{6d4bd9b u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 7: ok (focus='mCurrentFocus=Window{ab98f0a u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 8: ok (focus='mCurrentFocus=Window{c38cff1 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 9: ok (focus='mCurrentFocus=Window{cb0c588 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 10: ok (focus='mCurrentFocus=Window{fac6b8 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 11: ok (focus='mCurrentFocus=Window{3e93fea u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+trial 12: ok (focus='mCurrentFocus=Window{effe2bc u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}' probe=visible dropbox:0->0)
+SUMMARY ok=12 wedge=0 anr=0 of 12

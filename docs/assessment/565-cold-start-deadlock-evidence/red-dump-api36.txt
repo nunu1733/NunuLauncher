@@ -1,0 +1,17 @@
+# Issue #565 deterministic RED capture on API 36 emulator (real device surface).
+# Device: issue108_api36_pixel_tablet AVD (emulator-5558, API 36), 2026-10-10 JST.
+# Subject: production implementation at base origin/main 0c737bd45c (lazy kept, UNFIXED);
+#   test class app.lawnchair.startup.ColdStartFontLazyInversionInstrumentationTest.
+# Signature equivalence with oracle docs/assessment/563-home-empty-overview-evidence/anr/
+#   cold-start-deadlock-anr-trace.txt: holder parks at MainThreadInitializedObject.get
+#   from inside SynchronizedLazyImpl.getValue (locked); contended caller waits to lock the
+#   same monitor at getValue (Blocked). Here caller-1 = ViewPool-init role, caller-2 =
+#   main inflator role (its block is what wedged Launcher.onCreate in the ANR trace).
+# GREEN after fix: same class 4/4 PASS, BUILD SUCCESSFUL (gradle connected run).
+
+java.lang.AssertionError: REGRESSION #565: second factory caller is BLOCKED on a monitor held across the main-thread init wait.
+	caller-1 (WAITING):
+Tests on issue108_api36_pixel_tablet(AVD) - 16 failed: There was 1 failure(s).
+Finished 4 tests on issue108_api36_pixel_tablet(AVD) - 16
+> Task :connectedLawnWithQuickstepGithubDebugAndroidTest
+> Task :connectedLawnWithQuickstepGithubDebugAndroidTest FAILED
