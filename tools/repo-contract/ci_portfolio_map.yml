@@ -38,6 +38,11 @@
 #   surface_jvm               - planner/rules/diagnostics/locks + JVM test tree;
 #                               owned by the organizer-unit-tests permanent gate
 lanes:
+# Issue #563: PagedViewScreenCenterTest (launcher3 core JVM test) is explicitly
+# listed in the organizer-unit-tests --tests filter; that gate owns surface_jvm
+# ("planner/rules/diagnostics/locks + JVM test tree") and runs on every PR.
+# No lane or edge changes.
+
   organizer-instrumentation-shared-writer-tests:
     surfaces:
       - surface_layout_write
