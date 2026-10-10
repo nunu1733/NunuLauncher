@@ -19,18 +19,25 @@ HIGH_RISK_PATH_PREFIXES / HIGH_RISK_PATH_FILES のいずれにも該当しない
 API 36 provider環境で、同一launcher process内でapp-origin overview sessionを
 card tapで完了させた後の `HOME → dwell → APP_SWITCH` 再entryで、overview状態に
 遷移するにもかかわらずカードが1枚も表示されず、swipeでも回復しない
-（bug oracle RED 3/3。前2 sessionのfix候補9案はすべて不発）。
+（bug oracle RED。前2 sessionのfix候補9案はすべて不発）。
 
 ## Benchmark
 
 bug work itemであるため編集負担ベンチマーク課題（B1〜B7）は対象外。
-代わりに本Issueで確立済みのbug oracle（assessment記載の再現手順:
-force-stop → Settings起動 → gesture UP → card tap → HOME → 10s dwell →
-APP_SWITCH → 0/0.5/1/3/6/8s dump）を目標値とする。
+代わりに本Issueで確立済みのbug oracleを目標値とする（driver と全証跡は
+[docs/assessment/563-empty-overview-fix-evidence/](../../docs/assessment/563-empty-overview-fix-evidence/)
+の `oracle-driver.sh` が正本）:
 
-- 修正前: RED 3/3（全dumpで `task_view_single=0`）
-- 目標: GREEN 3/3（全時点のdumpで `task_view_single>=1`）
-- 対照: antecedentなしの直接APP_SWITCH entry は引き続きPASS（回帰なし）
+- 手順: force-stop → Settings起動 → gesture UP → card tap → HOME → 10s dwell →
+  APP_SWITCH → 0/0.5/1/3/6/8s 各時点でuiautomator dump。
+- 判定: **各時点すべてのdumpで `task_view_single` nodeが1以上**（node countingは
+  `grep -o | wc -l`。XMLが1行のため `grep -c` は行数を数え、node数にならない）。
+  RED = settled stateがOverviewのまま全時点0。
+- 修正前: RED（BB1。node counts は evidence `xml/BB1-RED-node-counts.txt`）。
+- 目標: **GREEN 3/3**（antecedentが成立した有効runのみ数える。TIS rebind gap等で
+  toggleがlauncherに届かなかったrunは除外し、除外理由を実行可能証跡
+  （logcatの `goToState` 件数）で記録する）。
+- 対照: antecedentなしの直接APP_SWITCH entryは引き続き1以上（回帰なし）。
 
 ## Prior art
 
@@ -59,6 +66,9 @@ HOME→dwell→APP_SWITCH再entryでも、表示中ページのタスクに正�
 - 559 stackに未適用だったmainの `TaskContainer` 式body修復4 commit
   （`4a8508498b`, `a37af58430`, `7a8ef68fdd`, `f93d29a619`）をcherry-pick
   （これらなしにはtile stateがviewへ全く適用されず本bugの検証ができない）。
+- `TaskContainer` の副作用のみメソッド（`bind`/`destroy`/`refreshOverlay`/
+  `setState`）に明示的 `: Unit` を付け、`fun x() = { ... }` の再発を
+  compile error化する。
 
 ## Non-goals
 
@@ -73,8 +83,8 @@ HOME→dwell→APP_SWITCH再entryでも、表示中ページのタスクに正�
 
 Given app-origin overview sessionをcard tapで完了したlauncher process
 When `HOME → 10s dwell → APP_SWITCH` でoverviewに再entryする
-Then 2秒以内のuiautomator dumpに `task_view_single >= 1` が含まれ、
-screenshotにtask cardの内容が描画されている
+Then 0/0.5/1/3/6/8s 各時点のuiautomator dumpに `task_view_single` nodeが
+1以上含まれ、screenshotにtask cardの内容が描画されている
 
 ### Scenario: 可視setが表示ページに追従する
 
@@ -90,6 +100,12 @@ When `computeScreenCenter` が計算する
 Then screenCenterは0ではなく `scroll + size/2` を基準にした値を返す
 （unit test `PagedViewScreenCenterTest` が所有）
 
+### Scenario: 式body欠陥の構造的再発防止
+
+Given `TaskContainer` の副作用のみメソッド
+When `fun setState(...) = { ... }` のようなlambda返しを再導入しようとする
+Then compile errorになる（明示的 `: Unit` により）
+
 ### Scenario: 通常経路の回帰なし（zero-write確認）
 
 Given antecedentなしのclean HOME history
@@ -99,27 +115,48 @@ Then 従来どおり1枚以上のカードが表示される（書込み経路�
 
 ## Verification
 
-- 実機owner確認: 本PRのmerge判断時にownerが実機（またはemulator補助証跡）
-  で上記Scenario 1/4を確認する。emulator証跡（FG4/FG5/FG6 oracle GREEN、
-  FC1 control PASS、screenshot）はevidence directoryに添付。
+- **実機owner確認（必須・emulatorは代替ではなく補助）**: Scenario 1/5を
+  ownerが実機で確認（screenshot/recording、device/build/head SHA添付）して
+  merge判断する。emulator証跡（FG8/FG9/FG10 oracle GREEN 3/3、FC2 control、
+  per-checkpoint dump + events + log extract + screenshot）は補助証跡として
+  evidence directoryに恒久化済み。
 - unit test: `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests
   'com.android.launcher3.PagedViewScreenCenterTest'` — guardなしでRED
-  （expected 4005 but was 0）、修正後GREEN 4/4。
+  （expected 4005 but was 0）、修正後GREEN 4/4。organizer-unit-tests gateに
+  routing済み（ci.yml filter明示追加）。
+- bug oracle: driver `oracle-driver.sh`（evidence正本）でGREEN 3/3
+  （FG8/FG9/FG10、全時点 `task_view_single=2`）。RED baseline BB1
+  （全時点0、node counts添付）。除外run（FG7: TIS rebind gapでtoggle未到達）
+  は logcat `goToState` 件数0で理由を実証。
 - 書込み経路なし: diffは `src/com/android/launcher3/PagedView.java`、
   `quickstep/src/com/android/quickstep/views/RecentsView.java`、
-  `tests/unit/...`、およびcherry-pickされた
-  `quickstep/.../TaskContainer.kt`, `TaskOverlayFactoryImpl` のみ。
+  `quickstep/src/com/android/quickstep/views/TaskContainer.kt`（cherry-pick +
+  `: Unit`）、cherry-pickされた `TaskOverlayFactoryImpl`、`tests/unit/...`。
 - 上流UI bridge計測: stack branchのためcandidate HEAD直接計測は不可
   （upstream ancestor制約、#561と同条件）。`--verify` はbaseline PASS、
-  本PR差分は行数ベースでPagedView+17/RecentsView+6のみ（新規計上なし）。
+  本PR固有差分は PagedView+17行 / RecentsView+6行 / TaskContainer `: Unit` 4行。
 
 ## Accessibility and localization
 
 - pivot NaNは`boundsInScreen`をNaN化しoverview subtree全体をaccessibility
   treeから落としていた。本修正でpanel subtreeが復帰する（oracleの
-  `task_view_single` 復帰が実測）。文言・フォントスケーリングへの影響なし。
+  `task_view_single` node復帰が実測）。文言・フォントスケーリングへの影響なし。
+
+## Test audit record
+
+- Protected contract: unset (NaN) pivot時のscreen-center算術（=可視set計算と
+  a11y boundsの前提）。
+- Canonical owner: `tests/unit/com/android/launcher3/PagedViewScreenCenterTest`
+  （最低層・決定的境界）。**TaskContainer式bodyのfailure modeはunit ownerの
+  対象外** — 構造的防止（`: Unit` compile error）で保護する。
+- CI routing: organizer-unit-tests gateへfilter明示追加（Permanent）。
+  新laneなし。`validate_ci_portfolio.py` PASS。
+- Emulator oracleはIssue証拠（CI laneではない）。
 
 ## Change history
 
 - 2026-10-11: Draft created for #563 (bisection: BB4/FD8/FE4/FF1、oracle
-  RED→GREEN: BA1/BB1/BB3 vs FG4/FG5/FG6)。
+  RED→GREEN: BB1 vs FG4/FG5/FG6)。
+- 2026-10-11: Review round 1対応 — oracle基準をnode counting・全時点判定・
+  除外runの実証条件へ厳密化（GREEN 3/3はFG8/FG9/FG10で取り直し）、実機owner
+  確認を必須と明記、`: Unit` 再発防止をScopeへ追加。

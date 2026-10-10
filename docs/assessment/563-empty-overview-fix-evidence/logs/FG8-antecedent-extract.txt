@@ -1,0 +1,22 @@
+10-11 02:58:26.953 W/QuickstepProtoLogGroup( 5080): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-11 02:58:26.953 W/QuickstepProtoLogGroup( 5080): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-11 02:58:26.954 W/QuickstepProtoLogGroup( 5080): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-11 02:58:26.954 W/QuickstepProtoLogGroup( 5080): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-11 02:58:26.977 D/StateManager( 5080): goToState - fromState: Normal, toState: Overview, partial trace:
+10-11 02:58:26.977 D/StateManager( 5080): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-11 02:58:26.979 D/StateManager( 5080): onStateTransitionStart - state: Overview
+10-11 02:58:27.014 D/StateManager( 5080): onStateTransitionEnd - state: Overview
+10-11 02:58:27.024 W/QuickstepProtoLogGroup( 5080): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-11 02:58:27.024 W/QuickstepProtoLogGroup( 5080): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-11 02:58:27.024 W/QuickstepProtoLogGroup( 5080): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-11 02:58:27.028 W/QuickstepProtoLogGroup( 5080): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-11 02:58:27.028 W/QuickstepProtoLogGroup( 5080): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-11 02:58:27.028 W/QuickstepProtoLogGroup( 5080): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-11 02:58:27.083 D/RecentsView( 5080): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=18802] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=18803] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=18804] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=18805] null, type=SINGLE task=[id=1031 windowingMode=1 user=0 lastActiveTime=1614449] null]
+10-11 02:58:27.121 D/TasksRepository( 5080): updateTaskRequests to: [844, 843], removed: [], added: [844, 843]
+10-11 02:58:27.121 I/TasksRepository( 5080): requestTaskData: 844
+10-11 02:58:27.122 I/TasksRepository( 5080): requestTaskData: 843
+10-11 02:58:27.137 D/TasksRepository( 5080): updateTaskRequests to: [1031, 1005, 855], removed: [843, 844], added: [1031, 1005, 855]
+10-11 02:58:27.138 I/TasksRepository( 5080): requestTaskData: 1031
+10-11 02:58:27.138 I/TasksRepository( 5080): requestTaskData: 1005
+10-11 02:58:27.138 I/TasksRepository( 5080): requestTaskData: 855

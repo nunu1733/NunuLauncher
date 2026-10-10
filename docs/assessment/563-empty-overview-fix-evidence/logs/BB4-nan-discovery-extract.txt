@@ -1,5 +1,4 @@
 10-11 01:21:38.433 D/RecentsView(27830): DIAG563e applyLoadPlan pageRestore prevCur=0 nextPage=-1 prevFocused=-1 targetPage=0 curPage=0 scroll=0 scrollInit=false
-10-11 01:21:38.522 D/RecentsView(27830): DIAG563e setOverviewStateEnabled true
 10-11 01:21:38.629 D/RecentsView(27830): DIAG563e loadVisibleTaskData scroll=3465 centerPage=0 children=6 taskViews=5 curPage=0 nextPage=-1 rtl=true firstLeft=3627 lastLeft=162 scrollForPage0=3465 minScroll=273 maxScroll=3465 scaleX=1.4285715 scaleY=1.4285715 pivotX=540.0 pivotY=1200.0 screenCenter=4005
 10-11 01:21:38.631 D/RecentsView(27830): DIAG563e setVisibleTasks ids=[879, 1005, 855] range=[0,2]
 10-11 01:21:38.631 D/TasksRepository(27830): updateTaskRequests to: [879, 1005, 855], removed: [], added: [879, 1005, 855]
@@ -10,22 +9,8 @@
 10-11 01:21:38.634 D/RecentsView(27830): DIAG563e setVisibleTasks ids=[879, 1005, 855] range=[0,2]
 10-11 01:21:38.635 D/RecentsView(27830): DIAG563e loadVisibleTaskData scroll=3465 centerPage=0 children=6 taskViews=5 curPage=0 nextPage=-1 rtl=true firstLeft=3627 lastLeft=162 scrollForPage0=3465 minScroll=273 maxScroll=3465 scaleX=1.4285715 scaleY=1.4285715 pivotX=540.0 pivotY=1200.0 screenCenter=4005
 10-11 01:21:38.635 D/RecentsView(27830): DIAG563e setVisibleTasks ids=[879, 1005, 855] range=[0,2]
-10-11 01:21:38.722 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
-10-11 01:21:38.722 W/QuickstepProtoLogGroup(27830): 	at com.android.launcher3.dragndrop.DragLayer.dispatchDraw(DragLayer.java:489)
-10-11 01:21:38.722 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
-10-11 01:21:38.722 W/QuickstepProtoLogGroup(27830): 	at com.android.launcher3.LauncherRootView.dispatchDraw(LauncherRootView.java:195)
-10-11 01:21:38.722 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
-10-11 01:21:38.722 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
-10-11 01:21:38.722 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
 10-11 01:21:38.723 D/RecentsView(27830): DIAG563e loadVisibleTaskData scroll=3465 centerPage=0 children=6 taskViews=5 curPage=0 nextPage=0 rtl=true firstLeft=3627 lastLeft=162 scrollForPage0=3465 minScroll=273 maxScroll=3465 scaleX=0.6638909 scaleY=0.6638909 pivotX=540.0 pivotY=1200.0 screenCenter=4005
 10-11 01:21:38.723 D/RecentsView(27830): DIAG563e setVisibleTasks ids=[879, 1005, 855] range=[0,2]
-10-11 01:21:38.726 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
-10-11 01:21:38.726 W/QuickstepProtoLogGroup(27830): 	at com.android.launcher3.dragndrop.DragLayer.dispatchDraw(DragLayer.java:489)
-10-11 01:21:38.726 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
-10-11 01:21:38.726 W/QuickstepProtoLogGroup(27830): 	at com.android.launcher3.LauncherRootView.dispatchDraw(LauncherRootView.java:195)
-10-11 01:21:38.726 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
-10-11 01:21:38.726 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
-10-11 01:21:38.726 W/QuickstepProtoLogGroup(27830): 	at android.view.ViewGroup.dispatchDraw(ViewGroup.java:4326)
 10-11 01:21:38.727 D/RecentsView(27830): DIAG563e loadVisibleTaskData scroll=3465 centerPage=0 children=6 taskViews=5 curPage=0 nextPage=-1 rtl=true firstLeft=3627 lastLeft=162 scrollForPage0=3465 minScroll=273 maxScroll=3465 scaleX=0.6638909 scaleY=0.6638909 pivotX=540.0 pivotY=1200.0 screenCenter=4005
 10-11 01:21:38.727 D/RecentsView(27830): DIAG563e setVisibleTasks ids=[879, 1005, 855] range=[0,2]
 10-11 01:21:38.764 D/TaskView(27830): DIAG563e state tasks=[879:false] central=true containers=[879]
@@ -44,17 +29,13 @@
 10-11 01:21:38.984 D/TaskView(27830): DIAG563e state tasks=[879:false] central=true containers=[879]
 10-11 01:21:38.984 D/TaskView(27830): DIAG563e state tasks=[844:false] central=false containers=[844]
 10-11 01:21:38.985 D/TaskView(27830): DIAG563e state tasks=[843:false] central=false containers=[843]
-10-11 01:21:39.054 D/RecentsView(27830): DIAG563e setOverviewStateEnabled true
 10-11 01:21:39.076 D/RecentsView(27830): DIAG563e loadVisibleTaskData scroll=3465 centerPage=0 children=6 taskViews=5 curPage=0 nextPage=-1 rtl=true firstLeft=3627 lastLeft=162 scrollForPage0=3465 minScroll=0 maxScroll=3465 scaleX=1.0 scaleY=1.0 pivotX=540.0 pivotY=1200.0 screenCenter=4005
 10-11 01:21:39.077 D/RecentsView(27830): DIAG563e setVisibleTasks ids=[879, 1005, 855] range=[0,2]
 10-11 01:21:39.077 D/RecentsView(27830): DIAG563e loadVisibleTaskData scroll=3465 centerPage=0 children=6 taskViews=5 curPage=0 nextPage=-1 rtl=true firstLeft=3627 lastLeft=162 scrollForPage0=3465 minScroll=0 maxScroll=3465 scaleX=1.0 scaleY=1.0 pivotX=540.0 pivotY=1200.0 screenCenter=4005
 10-11 01:21:39.077 D/RecentsView(27830): DIAG563e setVisibleTasks ids=[879, 1005, 855] range=[0,2]
 10-11 01:21:39.234 D/TaskView(27830): DIAG563e state tasks=[879:false] central=true containers=[879]
 10-11 01:21:39.776 D/TaskView(27830): DIAG563e state tasks=[879:true] central=true containers=[879]
-10-11 01:21:46.259 D/RecentsView(27830): DIAG563e setOverviewStateEnabled false
 10-11 01:21:46.353 D/TasksRepository(27830): updateTaskRequests to: [], removed: [855, 1005, 879], added: []
-10-11 01:21:46.353 I/TasksRepository(27830): removeTasks: [855, 1005, 879]
-10-11 01:21:59.965 D/RecentsView(27830): DIAG563e setOverviewStateEnabled true
 10-11 01:22:00.157 D/RecentsView(27830): DIAG563e applyLoadPlan pageRestore prevCur=0 nextPage=-1 prevFocused=-1 targetPage=0 curPage=0 scroll=3465 scrollInit=true
 10-11 01:22:00.159 D/RecentsView(27830): DIAG563e loadVisibleTaskData scroll=3465 centerPage=5 children=6 taskViews=5 curPage=0 nextPage=-1 rtl=true firstLeft=3627 lastLeft=162 scrollForPage0=3465 minScroll=0 maxScroll=3465 scaleX=1.0 scaleY=1.0 pivotX=NaN pivotY=NaN screenCenter=0
 10-11 01:22:00.159 D/RecentsView(27830): DIAG563e setVisibleTasks ids=[844, 843] range=[3,5]
