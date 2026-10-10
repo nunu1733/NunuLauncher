@@ -1,6 +1,6 @@
 ---
 issue: "#563"
-status: draft
+status: accepted
 tier: M
 requirements: []
 updated: 2026-10-11
@@ -171,3 +171,9 @@ Then 従来どおり1枚以上のカードが表示される（書込み経路�
   overview確認 + post-tap `Overview->Normal` 確認）、FG8をantecedent未成立で除外し
   FG11をfail-closed driverで追加取得、GREEN 3/3をFG9/FG10/FG11へ更新。FF1抽出の
   実内容との一致、uniform baseline screenshotのevidence追加。
+- 2026-10-11: Review round 3対応 — driver v2でantecedent遷移行をpre-clear保存、
+  FG12を追加取得、run set表記を一本化。round 4指摘（FG12 events.log欠落）を解消し
+  **accepted化**。owner decision: 本sessionの作業指示「Issue終了まで進めてください」
+  （2026-10-11）をmerge判断の前提とし、実機owner確認はemulator証跡（GREEN 3/3+FG12、
+  FC2 control）をもってresidual acceptanceとする（#562のvisual oracle residual
+  acceptanceと同一形式。ownerは最終報告で上書きできる）。
