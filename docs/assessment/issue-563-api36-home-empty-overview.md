@@ -174,7 +174,7 @@ not claimed as commits):
 | v6 | no durable snapshot (amended away); code shape reflected in later attempts | `TaskThumbnailCache`: skip caching empty snapshots + unconditional `takeTaskThumbnail` on empty |
 | v7 | no durable per-attempt snapshot; code shape preserved in `issue-563-v8-final@e9909b7672` (clamp log `centerPage 5 -> 4` retained) | clamp centered page into the real task range when `getPageNearestToCenterOfScreen()` resolves to the ClearAll child |
 | v7b | no durable per-attempt snapshot; code shape preserved in `issue-563-v8-final@e9909b7672` | widen the computed range to always include the running task's page |
-| v8 | tested as a working-tree state; NOT durably preserved (the pushed snapshot `issue-563-v8-final@e9909b7672242386d4d6ae0621874ebdee69ddef7` does not contain the v6 cache-skip/empty-fallback content) | combined clamp + widen + empty-snapshot skip |
+| v8 | tested as a working-tree state; NOT durably preserved (the pushed snapshot `issue-563-v8-final@e9909b767242386d4d6ae0621874ebdee69ddef7` does not contain the v6 cache-skip/empty-fallback content) | combined clamp + widen + empty-snapshot skip |
 
 Published evidence for this session: instrumented logcat extract
 [diag563d-extract.txt](./563-home-empty-overview-evidence/diag563d-extract.txt)
