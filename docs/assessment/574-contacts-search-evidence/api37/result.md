@@ -76,3 +76,8 @@ Verdict: **PASS**
   by mistake; backed out immediately, no web suggestion was used as evidence.
 - The route JSON extra needed fully-qualified type discriminator to reach the
   People screen directly; fallback to Root settings was used once (harmless).
+
+## Byte identity cross-reference (PR #575 review `6109082627`, docs-only)
+
+- Tested APK sha256 `260bccdab43a7fd8ea10b5e1a56333caac4d0fc33bf28575e6c5a4da42ff55da`; basis `33b4c061` + uncommitted provider 10-line diff (final prod blob `ebfdc1d38277fd36795790d8c54fcf5b4b095475`). No clean-tree SHA claimed for the APK.
+- Test blob `0c86cab4e70679f4d64a179feacf95d22811f88e`; historical first-RED bytes unproven with no invented hash; acceptance RED/GREEN VERIFIED by exact-blob rerun (RED `12:48:33` prod `cf953262...`, GREEN `12:51:07` prod `ebfdc1d3...`) per `../byte-identity.md`, `../red-result.md`, `../green-result.md`.
