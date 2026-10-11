@@ -296,8 +296,8 @@ cutover; the PR permalink is authoritative until then).
    and the "TasksRepository/TaskViewModel emission veto" from the previous session are
    wrong — fetches (`suspendgot bitmap=true`), repository requests and tile-state emissions
    all run normally in the stuck entry; the earlier probes could not observe the data-source
-   fast paths (silent) or the render/accessibility layer at all. No production defect
-   exists downstream of the visible-set computation.
+   fast paths (silent) or the render/accessibility layer at all. No production defect was
+   found in the previously suspected fetch / repository-request / state-emission lanes.
 
 **Fix (PR #571)**: `RecentsView.applyLoadPlan` re-derives the pivot (`updatePivots()`) on
 every rebind; `PagedView.computeScreenCenter` (extracted pure function) resolves an unset
@@ -322,7 +322,8 @@ required; FF1 artifact description and FD5 uniform-baseline evidence sync) → r
 (driver v2 saves the raw antecedent transition line pre-clear; FG12 added; run-set sync
 across spec/README/PR body) → round 4 (FG12 events.log + manifest sync) → round 5 (spec
 Verification aligned with the recorded owner decision) → round 6 (no blocking findings;
-review complete, merge cleared after confirming CI green on the final head). Owner decision (2026-10-11, session directive
+review complete; COMMENTED — the merge clearance was conditional on the owner confirming
+CI green on the final head, which the owner then did). Owner decision (2026-10-11, session directive
 "Issue終了まで進めてください"): the device-owner confirmation normally required for tier M
 is accepted in residual-acceptance form from the emulator evidence (GREEN 3/3 + FG12 +
 FC2), same form as #562's visual-oracle residual acceptance; the owner may override at
