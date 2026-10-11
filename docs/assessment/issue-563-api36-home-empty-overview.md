@@ -1,6 +1,6 @@
 # Issue #563 API36 HOME-origin empty overview: antecedent and classification
 
-Status: investigation record (classification established; production fix pending its own spec/review).
+Status: fixed (Issue close pending this docs sync; PR #571 merged on the #559 stack; classification and mechanism history retained below; the Fix session section at the end supersedes the earlier mechanism conclusions).
 Refs #563. Related: #559 (fixed APK source), #554 / #555 (explicitly not the attributed cause).
 
 ## Identity
@@ -260,3 +260,76 @@ vs `distinctUntilChanged` vs flow identity) across successive entries. The two o
 antecedent controls (direct-only session; an equivalent completed antecedent that does
 not depend on the #559 wire path) remain outstanding. Attempt provenance is recorded
 above in Mechanism. No production change is included in this record.
+
+## Fix session (2026-10-11; production fix merged — this record superseded in part)
+
+The fourth session ran the bisection the previous "Next step" prescribed and **fixed the
+bug**: PR #571 (stack branch `issue-563-empty-overview-fix`, base
+`issue-559-api36-recents-compat` @ `63d15f00dc`, merge commit `33b4c061c55d`, spec
+`specs/563-empty-overview-fix/spec-lite.md` accepted, ChatGPT review rounds 1–6, CI
+`final-status` success at head `7a30761390`). Durable evidence:
+`docs/assessment/563-empty-overview-fix-evidence/` on the PR branch (moved with the
+cutover; the PR permalink is authoritative until then).
+
+**Root cause (two stacked defects; previous mechanism conclusions retired — supersedes the Mechanism section above):**
+
+1. **Unset render pivot (NaN)** — a panel bounds change while the previous overview session
+   exits resets the framework pivot to unset/NaN, and the HOME-toggle re-entry path never
+   re-derives it (`updatePivots()` runs only from `updateSizeAndPadding`, not
+   `applyLoadPlan`). Directly instrumented (branch `issue-563-bisect`, run BB4): stuck
+   entry `pivotX=NaN pivotY=NaN screenCenter=0` vs first entry `pivot=(540,1200)
+   screenCenter=4005` with identical scroll/children. Consequences:
+   `PagedView.getScreenCenter` collapses to `Math.round(NaN)=0` so
+   `getPageNearestToCenterOfScreen()` resolves the trailing ClearAll pseudo-page and
+   `loadVisibleTaskData` requests the wrong visible set (`[844,843]` instead of the
+   on-screen `[879,1005,855]`); and the NaN transformation matrix poisons
+   `boundsInScreen` of the whole panel subtree, dropping overview from the accessibility
+   tree (the oracle's observable). Upstream 16-dev shares the same latent defect
+   (re-verified 2026-10-11).
+2. **`TaskContainer` expression-body lambdas on the 559 stack** (`setState`, `bind`,
+   `destroy`, `refreshOverlay` returned lambdas without executing) — already fixed on main
+   by #555 (PR #561) and #562 (PR #567) but absent from the stack that #559/#563 ran on.
+   This is why all nine earlier fix candidates could not pass: even a correct visible set
+   never reached the views. Ported into PR #571 as cherry-picks, plus explicit `: Unit`
+   return types so a reintroduced `= { ... }` is a compile error.
+3. **Retired conclusions (negative finding, not a defect)**: the "suspend fetch dead lane"
+   and the "TasksRepository/TaskViewModel emission veto" from the previous session are
+   wrong — fetches (`suspendgot bitmap=true`), repository requests and tile-state emissions
+   all run normally in the stuck entry; the earlier probes could not observe the data-source
+   fast paths (silent) or the render/accessibility layer at all. No production defect was
+   found in the previously suspected fetch / repository-request / state-emission lanes.
+
+**Fix (PR #571)**: `RecentsView.applyLoadPlan` re-derives the pivot (`updatePivots()`) on
+every rebind; `PagedView.computeScreenCenter` (extracted pure function) resolves an unset
+pivot to the view center — matching the framework's effective rendering pivot — instead of
+propagating NaN; TaskContainer block bodies ported. Regression owner:
+`tests/unit/com/android/launcher3/PagedViewScreenCenterTest` (RED without the guard:
+expected 4005 but was 0; routed into the organizer-unit-tests gate).
+
+**Oracle outcome**: fail-closed driver (gesture-entry must be the launcher overview with
+≥1 node; card tap must complete the session — logcat `Overview->Normal` — before the
+stuck-entry leg; violations recorded as EXCLUDED with evidence). RED baseline BB1
+(all checkpoints 0 nodes); GREEN 3/3 = FG9/FG10/FG11 (2 nodes at every checkpoint
+0/0.5/1/3/6/8s) plus FG12 (driver v2, antecedent transition line captured pre-clear);
+direct-entry control FC2 PASS. Excluded runs: FG7 (TIS rebind gap, zero `goToState`),
+FG8 (gesture dump was the Settings screen — antecedent not established; caught by review
+round 2).
+
+**Review trail (ChatGPT, rounds 1–6)**: round 1 (5 findings: oracle provenance, FF1
+durable-evidence mismatch, tier-M device-confirmation wording, manifest self-entry,
+`: Unit` hardening) → round 2 (FG8 demoted to excluded; driver made fail-closed; FG11
+required; FF1 artifact description and FD5 uniform-baseline evidence sync) → round 3
+(driver v2 saves the raw antecedent transition line pre-clear; FG12 added; run-set sync
+across spec/README/PR body) → round 4 (FG12 events.log + manifest sync) → round 5 (spec
+Verification aligned with the recorded owner decision) → round 6 (no blocking findings;
+review complete; COMMENTED — the merge clearance was conditional on the owner confirming
+CI green on the final head, which the owner then did). Owner decision (2026-10-11, session directive
+"Issue終了まで進めてください"): the device-owner confirmation normally required for tier M
+is accepted in residual-acceptance form from the emulator evidence (GREEN 3/3 + FG12 +
+FC2), same form as #562's visual-oracle residual acceptance; the owner may override at
+final report. Issue #563 termination condition "product bugの場合は最小修正と回帰証拠" is
+met; the Issue closes after this docs PR merges.
+
+Remaining open items intentionally out of scope: upstream (16-dev) fix report for the
+unset-pivot defect (post-cutover); #565-family cold-start deadlock and the SystemUI TIS
+rebind gap remain environment-level defects recorded earlier in this document.
