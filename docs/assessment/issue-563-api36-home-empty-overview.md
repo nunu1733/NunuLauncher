@@ -1,6 +1,6 @@
 # Issue #563 API36 HOME-origin empty overview: antecedent and classification
 
-Status: fixed (PR #571 merged on the #559 stack; classification and mechanism history retained below; the Fix session section at the end supersedes the earlier mechanism conclusions).
+Status: fixed (Issue close pending this docs sync; PR #571 merged on the #559 stack; classification and mechanism history retained below; the Fix session section at the end supersedes the earlier mechanism conclusions).
 Refs #563. Related: #559 (fixed APK source), #554 / #555 (explicitly not the attributed cause).
 
 ## Identity
@@ -271,7 +271,7 @@ bug**: PR #571 (stack branch `issue-563-empty-overview-fix`, base
 `docs/assessment/563-empty-overview-fix-evidence/` on the PR branch (moved with the
 cutover; the PR permalink is authoritative until then).
 
-**Root cause (three stacked defects; supersedes the Mechanism section above):**
+**Root cause (two stacked defects; previous mechanism conclusions retired — supersedes the Mechanism section above):**
 
 1. **Unset render pivot (NaN)** — a panel bounds change while the previous overview session
    exits resets the framework pivot to unset/NaN, and the HOME-toggle re-entry path never
@@ -292,11 +292,12 @@ cutover; the PR permalink is authoritative until then).
    This is why all nine earlier fix candidates could not pass: even a correct visible set
    never reached the views. Ported into PR #571 as cherry-picks, plus explicit `: Unit`
    return types so a reintroduced `= { ... }` is a compile error.
-3. **Retired conclusions**: the "suspend fetch dead lane" and the
-   "TasksRepository/TaskViewModel emission veto" from the previous session are wrong —
-   fetches (`suspendgot bitmap=true`), repository requests and tile-state emissions all run
-   normally in the stuck entry; the earlier probes could not observe the data-source fast
-   paths (silent) or the render/accessibility layer at all.
+3. **Retired conclusions (negative finding, not a defect)**: the "suspend fetch dead lane"
+   and the "TasksRepository/TaskViewModel emission veto" from the previous session are
+   wrong — fetches (`suspendgot bitmap=true`), repository requests and tile-state emissions
+   all run normally in the stuck entry; the earlier probes could not observe the data-source
+   fast paths (silent) or the render/accessibility layer at all. No production defect
+   exists downstream of the visible-set computation.
 
 **Fix (PR #571)**: `RecentsView.applyLoadPlan` re-derives the pivot (`updatePivots()`) on
 every rebind; `PagedView.computeScreenCenter` (extracted pure function) resolves an unset
@@ -314,18 +315,19 @@ direct-entry control FC2 PASS. Excluded runs: FG7 (TIS rebind gap, zero `goToSta
 FG8 (gesture dump was the Settings screen — antecedent not established; caught by review
 round 2).
 
-**Review trail (ChatGPT, rounds 1–6)**: round 1 (5 findings: oracle provenance, FF1/FE4
-attribution, tier-M device-confirmation wording, manifest self-entry, `: Unit`
-hardening) → round 2 (FG8 demoted to excluded; driver made fail-closed; FG11 added) →
-round 3 (driver v2 saves the raw antecedent transition line pre-clear; FG12 added;
-run-set sync across spec/README/PR body) → round 4 (FG12 events.log + manifest sync) →
-round 5 (spec Verification aligned with the recorded owner decision) → round 6
-(no blocking findings; merge approved). Owner decision (2026-10-11, session directive
+**Review trail (ChatGPT, rounds 1–6)**: round 1 (5 findings: oracle provenance, FF1
+durable-evidence mismatch, tier-M device-confirmation wording, manifest self-entry,
+`: Unit` hardening) → round 2 (FG8 demoted to excluded; driver made fail-closed; FG11
+required; FF1 artifact description and FD5 uniform-baseline evidence sync) → round 3
+(driver v2 saves the raw antecedent transition line pre-clear; FG12 added; run-set sync
+across spec/README/PR body) → round 4 (FG12 events.log + manifest sync) → round 5 (spec
+Verification aligned with the recorded owner decision) → round 6 (no blocking findings;
+review complete, merge cleared after confirming CI green on the final head). Owner decision (2026-10-11, session directive
 "Issue終了まで進めてください"): the device-owner confirmation normally required for tier M
 is accepted in residual-acceptance form from the emulator evidence (GREEN 3/3 + FG12 +
 FC2), same form as #562's visual-oracle residual acceptance; the owner may override at
 final report. Issue #563 termination condition "product bugの場合は最小修正と回帰証拠" is
-met; the Issue is closed with this session.
+met; the Issue closes after this docs PR merges.
 
 Remaining open items intentionally out of scope: upstream (16-dev) fix report for the
 unset-pivot defect (post-cutover); #565-family cold-start deadlock and the SystemUI TIS
