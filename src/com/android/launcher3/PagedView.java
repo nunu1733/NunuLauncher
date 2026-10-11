@@ -51,6 +51,7 @@ import android.widget.OverScroller;
 import android.widget.ScrollView;
 
 import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 
 import app.lawnchair.preferences2.PreferenceManager2;
 import com.android.launcher3.compat.AccessibilityManagerCompat;
@@ -1770,8 +1771,22 @@ public abstract class PagedView<T extends View & PageIndicator> extends ViewGrou
         float primaryScale = mOrientationHandler.getPrimaryScale(this);
         float primaryPivot =  mOrientationHandler.getPrimaryValue(getPivotX(), getPivotY());
         int pageOrientationSize = mOrientationHandler.getMeasuredSize(this);
-        return Math.round(primaryScroll + (pageOrientationSize / 2f - primaryPivot) / primaryScale
-                + primaryPivot);
+        return computeScreenCenter(primaryScroll, pageOrientationSize, primaryScale, primaryPivot);
+    }
+
+    /**
+     * LC-Note (issue 563): a pivot reset by a view bounds change reads as NaN until a caller sets
+     * it again (e.g. RecentsView.updatePivots), and the framework renders an unset pivot as the
+     * view's center. Resolve NaN to that center here; otherwise the NaN arithmetic makes
+     * Math.round return 0 and page-center consumers (visible-task loading, wallpaper offset)
+     * resolve to a wrong page.
+     */
+    @VisibleForTesting
+    public static int computeScreenCenter(
+            int primaryScroll, int pageOrientationSize, float primaryScale, float primaryPivot) {
+        float effectivePivot = Float.isNaN(primaryPivot) ? pageOrientationSize / 2f : primaryPivot;
+        return Math.round(primaryScroll + (pageOrientationSize / 2f - effectivePivot) / primaryScale
+                + effectivePivot);
     }
 
     protected void snapToDestination() {

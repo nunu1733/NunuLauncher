@@ -1,0 +1,12 @@
+== setup: force-stop launcher, fresh Settings
+Starting: Intent { cmp=com.android.settings/.homepage.SettingsHomepageActivity }
+== gesture UP to overview
+gesture-entry task_view_single=2
+== HOME + 10s dwell + APP_SWITCH
+dump@0s task_view_single=2
+dump@0.5s task_view_single=2
+dump@1s task_view_single=2
+dump@3s task_view_single=2
+dump@6s task_view_single=2
+dump@8s task_view_single=2
+== done FG9

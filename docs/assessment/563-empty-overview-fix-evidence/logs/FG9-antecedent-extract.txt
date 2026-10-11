@@ -1,0 +1,24 @@
+10-11 02:59:14.112 D/StateManager( 5401): goToState - fromState: Overview, toState: Normal, partial trace:
+10-11 02:59:14.113 D/StateManager( 5401): onStateTransitionStart - state: Normal
+10-11 02:59:14.141 D/StateManager( 5401): onStateTransitionEnd - state: Normal
+10-11 02:59:14.154 D/StateManager( 5401): goToState - fromState: Normal, toState: Normal, partial trace:
+10-11 02:59:14.169 D/TasksRepository( 5401): updateTaskRequests to: [], removed: [855, 1033, 1005], added: []
+10-11 02:59:28.189 W/QuickstepProtoLogGroup( 5401): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-11 02:59:28.189 W/QuickstepProtoLogGroup( 5401): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-11 02:59:28.189 W/QuickstepProtoLogGroup( 5401): 	at com.android.quickstep.TouchInteractionService$TISBinder.lambda$onOverviewToggle$4(TouchInteractionService.java:255)
+10-11 02:59:28.189 W/QuickstepProtoLogGroup( 5401): 	at com.android.quickstep.TouchInteractionService$TISBinder.onOverviewToggle(TouchInteractionService.java:240)
+10-11 02:59:28.216 D/StateManager( 5401): goToState - fromState: Normal, toState: Overview, partial trace:
+10-11 02:59:28.216 D/StateManager( 5401): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-11 02:59:28.219 D/StateManager( 5401): onStateTransitionStart - state: Overview
+10-11 02:59:28.249 D/StateManager( 5401): onStateTransitionEnd - state: Overview
+10-11 02:59:28.253 W/QuickstepProtoLogGroup( 5401): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-11 02:59:28.253 W/QuickstepProtoLogGroup( 5401): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-11 02:59:28.253 W/QuickstepProtoLogGroup( 5401): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-11 02:59:28.265 W/QuickstepProtoLogGroup( 5401): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-11 02:59:28.265 W/QuickstepProtoLogGroup( 5401): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-11 02:59:28.265 W/QuickstepProtoLogGroup( 5401): 	at com.android.quickstep.LauncherActivityInterface.switchToRecentsIfVisible(LauncherActivityInterface.java:233)
+10-11 02:59:28.295 D/RecentsView( 5401): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=18802] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=18803] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=18804] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=18805] null, type=SINGLE task=[id=1033 windowingMode=1 user=0 lastActiveTime=1675582] null]
+10-11 02:59:28.351 D/TasksRepository( 5401): updateTaskRequests to: [1033, 1005, 855], removed: [], added: [1033, 1005, 855]
+10-11 02:59:28.351 I/TasksRepository( 5401): requestTaskData: 1033
+10-11 02:59:28.351 I/TasksRepository( 5401): requestTaskData: 1005
+10-11 02:59:28.351 I/TasksRepository( 5401): requestTaskData: 855
