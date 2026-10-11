@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="3" failures="0" errors="0" skipped="0" time="0.000" timestamp="2026-10-11T12:51:07" hostname="localhost">
+  <testsuite name="app.lawnchair.search.ContactsSearchProviderDataProjectionTest" tests="3" failures="0" errors="0" skipped="0" time="0.001" timestamp="2026-10-11T12:51:07" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554" />
+    </properties>
+    <testcase name="granted_searchEmitsContact_whenAccountColumnsAllowedLikeApi36" classname="app.lawnchair.search.ContactsSearchProviderDataProjectionTest" time="0.001" />
+    <testcase name="granted_searchEmitsContact_whenAccountColumnsRejectedLikeApi37" classname="app.lawnchair.search.ContactsSearchProviderDataProjectionTest" time="0.000" />
+    <testcase name="denied_shortCircuitsWithoutAnyProviderQuery" classname="app.lawnchair.search.ContactsSearchProviderDataProjectionTest" time="0.000" />
+  </testsuite>
+</testsuites>
