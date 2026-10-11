@@ -68,10 +68,10 @@ Phase 2 = CLOSED ではない（#532はcutoverまでOPEN保持）。上表は「
 |---|---|---|---|
 | R-1 | direct-edit write contract / writer admission / transaction / rollback（ADR-0013・#118・#299/376） | shared-writer lane（`DirectEditModelWriterTest` `DirectEditUndoModelWriterTest` `LayoutWriteCoordinatorTest` `ModelWriterTransactionReentryTest` `EditSurfaceApply/Undo…` 等、ci.yml当該job class list）green @ `37502010177`(#538 head)、`37564923987`(#543 head)、`38076177185`(#563/#571 head)、G5 `37347294575`。replayによる契約移植は replay-log §3/§5 | **PASS** |
 | R-2 | new-app destination policy（#446/#497、ADR-0015） | 同lane `InstallDestinationModelWriterTest` `InstallDestinationQueueTest` `AppDestinationNoticeTest` green（R-1と同一run群）。destination picker/settingsの**emulator** UI確認は #526 Verification（PreferenceActivity配下）として [526 evidence @bc0171f253](https://github.com/nunu1733/NunuLauncher/tree/bc0171f25374fadf2d6296a0df4c29022416f12f/docs/assessment/526-target37-ui-evidence) に包含（※ #526はemulator matrixが主証跡、実機legは§8 O1） | **PASS** |
-| R-3 | item edit / multi-select / stale handling / Undo（#448/#449/#450） | traced部分: R-1 lane（Undo/stale class）+ #526 追加oracle instrumentation 10 test・JVM 21 test green @ `37502010177`（PR #538 記録）。untraced部分: **multi-selectの操作・stale反映の専用scenario/run artifactが本matrixで未特定**（manual-organization-ui・production-input lane greenは組織run側のUIでありmulti-select契約の対応として紐付けていない） | **PENDING(trace)**（traced部分のみ実質PASS。multi-selectのartifact紐付けまで合格と数えない） |
+| R-3 | item edit / multi-select / stale handling / Undo（#448/#449/#450） | rev3でtrace確定（明細 §13-A）: multi-select 4 action計画=`EditSurfaceSessionPlannerTest`（JVM、organizer-unit-tests permanent gate）、セッション1 transaction適用・stale零書込み・rollback=`EditSurfaceApplyInstrumentationTest`（shared-writer lane、ci.yml明示class list）、stale gate fail-closedとselection×recreate=#526 `EditSurfaceTarget37ContractInstrumentationTest`（@`bc0171f253`、run `37502010177`）、Undo逆操作=`EditSurfaceUndoInstrumentationTest`/`DirectEditUndoModelWriterTest`。green runは§5の `37347294575`/`37502010177`/`37493739107`/`37564923987`/`38035713365`/`38076177185`。untraced残存: **選択数ラベル表示（spec 449「複数選択と選択数の表示」）をassertするoracle**（専用UI tap journey scenarioも不在。旧baseline `450-edit-undo-ac1-screenshots` は#448単一itemで充当不可） | **PENDING(trace)**（縮小済: 残=選択数ラベルのみ。multi-select操作・stale反映・Undoの主体は§13-Aでtrace確定） |
 | R-4 | Organizer planner/application/recovery、preview、lock、category override | G2（§3）+ restore-capture / reservation-recovery / onboarding-proposal / method-choice lanes green @ `37502010177`、`37564923987`、`38076177185`。reservation-recovery は `37505731629`(#541 head)・`38035713365`(#550 head) で環境失敗→§6再実行 **attempt2 両run final-status pass（2026-10-11）** | **PASS(rem)** |
 | R-5 | backup/restore/downgrade、schema migration（#522契約・schema33維持） | G4 T1〜T8 green（replay-log §6/§7。成功sanitize/profile/widget remap・real ZIP restore・prefs/cache・Nova変換）。T9 15fork→16→R→16 は **Phase 4 cutover直前の必須実行として所有分離**（#522完了コメント「API36/37実証とPhase4 cutover decisionは未完・後続Phase所有」）。契約正本は [issue-522 assessment](./issue-522-rebase-data-compatibility.md) と [specs/516-16-rebase-phase2/plan.md](../../specs/516-16-rebase-phase2/plan.md) | **PASS**（Phase 3範囲）＋ Phase 4 引継 T9 |
-| R-6a | drag/drop、folder、widget、hotseat、app launch、notification dots、search | traced部分: app launch/widget tap→configure→result/search入口（QSB）/通知action・tapは #527 [bal-evidence](https://github.com/nunu1733/NunuLauncher/tree/54a75042305c74ddc0cb118ce6313e2c1746ccca/docs/assessment/527-bal-granular-evidence)、custom suggestions検索は #528 [lan-evidence](https://github.com/nunu1733/NunuLauncher/tree/57d4338bb5be5114481b98bef5a90f757b1d1f23/docs/assessment/528-lan-network-evidence)、編集surface表示は #526 [ui-evidence](https://github.com/nunu1733/NunuLauncher/tree/bc0171f25374fadf2d6296a0df4c29022416f12f/docs/assessment/526-target37-ui-evidence)（API 36/37 emulator実測）。untraced部分: **drag/drop・folder開閉・hotseat操作・notification dots（badging）** — これらの専用scenario・run artifactを本matrixは特定していない（G4/G5はorganizer/DB契約側のemulator実行であり、launcher全体UI matrixの代替として紐付けない） | **PENDING(trace)** |
+| R-6a | drag/drop、folder、widget、hotseat、app launch、notification dots、search | traced部分: app launch/widget tap→configure→result/search入口（QSB）/通知action・tapは #527 [bal-evidence](https://github.com/nunu1733/NunuLauncher/tree/54a75042305c74ddc0cb118ce6313e2c1746ccca/docs/assessment/527-bal-granular-evidence)、custom suggestions検索は #528 [lan-evidence](https://github.com/nunu1733/NunuLauncher/tree/57d4338bb5be5114481b98bef5a90f757b1d1f23/docs/assessment/528-lan-network-evidence)、編集surface表示は #526 [ui-evidence](https://github.com/nunu1733/NunuLauncher/tree/bc0171f25374fadf2d6296a0df4c29022416f12f/docs/assessment/526-target37-ui-evidence)（API 36/37 emulator実測）。rev3追加紐付け（§13-B）: folder作成・追加・Undo writer契約（`DirectEditModelWriterTest`/`DirectEditUndoModelWriterTest`）、hotseat restore admission（`HotseatRestoreAdmissionTest`）・hotseat undo slot（`HomeEditUndoPlannerTest`）・dock/hotseat保持（`EditingBurdenBenchmarkFixtureSeedingInstrumentationTest`）は§5 run群でgreen、widget picker drag手順（527 `api37-07-widget-drop-attempt.png`）とworkspace drag（526 tablet scenario3のsetup操作）は限定的記録。untraced残存（UNCOV 4項目、§13-B）: **workspace drag/drop専用scenario・folder開閉UI・hotseat操作UI・notification dots表示** — これらはemulator上でのscenario/test追加でcoverage追加が可能な残課題であり（本PRでtest追加はしない）、§8 O4/R-8の実機gateとは独立要件で相互代替しない。upstream test tree（`tests/tapl`/`multivalentTests`）とG4/G5（organizer/DB契約側）をUI matrixの代替として紐付けない | **PENDING(trace)**（縮小済: UNCOV 4項目のみ） |
 | R-6b | recents/gesture | API 36 provider環境: [#559恒久assessment](./issue-559-api36-recents-repair.md)（direct APP_SWITCH+gesture 両verified、baseline/fixed対照、parcel/FATAL 0）+ [#563 assessment](./issue-563-api36-home-empty-overview.md)（bug oracle GREEN 3/3 FG9-11、FG12、control FC2、[evidence proof.json](./563-home-empty-overview-evidence/proof.json)）。API 37 provider matrix: v6 `4ddd6ae306` qa3/qb3 全oracle PASS（[545-evidence @33270ede1b](https://github.com/nunu1733/NunuLauncher/tree/33270ede1b56ca08fbd2f8c2f2092ab7e0295946/docs/assessment/545-api37-provider-fix-evidence)）。実機 leg → R-8 | **PASS**（emulator leg） |
 | R-7 | API 36 CI（新baseline上のhead別merge gate） | §5 表 — 列挙headすべてでfinal-status pass（2件の初回赤は§6 attempt 2 で解消。triage限定は§6末尾のとおり） | **PASS(rem)** |
 | R-8 | 保守者実機API 37での代表操作・crash/ANR・recents/gesture結果をrepo evidenceへ（ADR-0018 Decision 7、Epic exit criteria） | 実機matrix対象項目は§8に列挙。**Pixel 9a 未接続（C7のadb実測）**。emulatorで代替はしない（waiver主張禁止） | **BLOCKED(owner-only)** |
@@ -126,6 +126,10 @@ remediation実行（2026-10-11、本session）: `gh run rerun 37505731629 --fail
 | O4 | Epic exit criteria 代表日常操作 | Pixel 9a API 37（通常構成=非root。provider構成は非root実機不可のため主証跡は済root emulator matrix）で launch/drag/folder/widget/hotseat/search/recents gesture/通知dots の代表操作を通し、**crash/ANR・recents/gesture結果をrepository evidenceへ**（#524/#545の「通常構成の無影響確認」担当範囲） | docs/assessment 実機記録（新規 or #545 dir追記） |
 | O5 | 実機provider構成 | ADR-0018 D7「実機でのprovider構成確認はPhase 3実機matrixのowner手順」— 非root Pixel 9aでは構成不可のため、root化可能実機が用意できる場合のみ実施。できない場合は #524 close記録（emulator主証跡＋実機通常構成）で確定済みのowner境界を再確認・記録 | ADR-0018 change history（変更不要の確認記録） |
 
+**証跡identity固定（review指摘のdoc条件）**: O1〜O5の実機証跡を追記する際は、各O項目ごとに **実行source SHA・APK SHA-256・OS build・device fingerprint** を記録し、証跡とbuildの対応を固定する。O1〜O3は各slice branchのbuild identityを読めるが、**O4は対象sliceが相互未統合（§1）のため、どのbuild（統合candidate head）で代表操作を実施するかは未決定であり、owner decisionとして実施時に固定する**（単一統合headはPhase 4 cutover契約が所有）。
+
+**owner action（必須・未了）**: O1〜O5のすべてがPixel 9a（API 37）のUSB接続を前提操作とする。本trace時点で接続なし（C7）。ownerによる接続完了までO項目は実行できない。§13-BのUNCOV 4項目へのemulator coverage追加は別作業であり、この実機gateを代替しない（実機gateもemulator coverageの欠落を埋めない）。
+
 **禁止事項の再確認**: 「closeまで実施」という指示はO1〜O5の実測を創出しない。実機接続なしでのPASS/WAIVER主張は禁止（AGENTS.md 高リスク安全規約・quality-strategy証拠原則）。
 
 ## 9. provider/recents系と保持契約の状態整理（close済み=契約保持、と混同しないための表）
@@ -146,7 +150,7 @@ remediation実行（2026-10-11、本session）: `gh run rerun 37505731629 --fail
 
 ## 10. #521 assessment V1〜V8 の処置対応（Phase 3入力）
 
-#521 assessment §5（[issue-521-target-sdk-37-behavior-changes.md](./issue-521-target-sdk-37-behavior-changes.md)）のV1〜V8・27項目は、Phase 3入力のうち「upstream取込み / fork固有残存 / 追加変更不要」の**分類まで**が確認範囲。本matrixは **V番号↔scenario↔実測artifact（run ID/ファイル）の個別紐付け表を作成していない**ため、処置判定は **PENDING(trace)**（「全項目分散実装済み・emulator leg残欠無し」は本fileで裏付け不能として撤回）。既知の対応物（参考リンク、V→行の正式写像は未実施）: BAL経路=#527 evidence、LAN/ECH/CT観測=#528 evidence、編集surface insets/back=#526 evidence、quickstep/recents=#545/#559/#563 evidence、targetSdk 37 manifest=静的確認（#545 close記録）。
+#521 assessment §5（[issue-521-target-sdk-37-behavior-changes.md](./issue-521-target-sdk-37-behavior-changes.md)）のV1〜V8と§3 T01〜T27の27項目について、rev3で **V↔T↔child AC証跡の写像表を §13-C に作成した**。処置判定は残項目を明示したうえで **PENDING（未完）を維持**し、「全項目対応済み」の主張はしない。traced確定分（T01/T02/T05/T13/T14/T17/T18/T24=実測確定、T03/T09/T10/T12=限定付き、(c)静的11項目=追加変更不要の分類維持）と **残PENDING（未完）**（V3 Arabic/Thai等の行高実測・外部物理keyboard/CJKV IME変換、V6 contacts許可時検索のruntime確認（T20）、V8 packaged/dependency native artifact確認（T19）・static final変更禁止/native DCL consumerのmerged dependency再scan（T11）、T08 merged manifest画像機能確認）は §13-C に列挙。
 
 判断分離として記録済みで未決扱いしない項目（根拠: #516コメント 2026-10-07・#527/#528 close記録）: ECH opt-in（spec 528 Non-goal。新規DNS経路追加に相当するため要時起票）、自己再起動PI creator側最小opt-in（#527 close記録。failure signature保存済み、後続判断入力）。
 
@@ -158,16 +162,67 @@ remediation実行（2026-10-11、本session）: `gh run rerun 37505731629 --fail
 4. unset render pivot欠陥は上流16-devにも潜在（#571記録）→ cutover後fork patch再適用判断（`computeScreenCenter` NaN guard・`applyLoadPlan` re-pivot）。`PagedViewScreenCenterTest` はそのまま生存。
 5. T9（15fork→16→R→16・APK入替cold-process独立読取）cutover直前実行。baseline切替正本（upstream-strategy/building guide/patch-surface再採択/toolchain）更新。
 6. 実機O1〜O5の結果をEpic exit criteria「API 37実機の代表日常操作…repository evidence」行へ反映（close前に本matrix §8表をstate更新）。
+7. **Phase 4はcutover（baseline切替・統合・正本更新）を所有するが、Phase 3残項目を引き継ぐのではない**。R-3選択数ラベル・R-6a UNCOV 4項目・§10 V残はPhase 3側で（emulator coverage追加 or owner実機）閉じる。#554のOPEN保持も、rebase stack上のruntime契約検証とcutover/mainline統合までcloseを保留する明示契約であり、実装不足のPhase 4送りではない（§9表）。
 
 ## 12. 本日のnet変更と次手（Worker記録 — github-workflow Execution contract準拠）
 
 - 変更file: **本docs 1 fileのみ**（`docs/assessment/issue-516-phase3-closure-matrix.md`、branch `issue-516-phase3-closure-matrix` @ base `8fe67e7650`、production/test/CI指定一切なし → 階層L）。
 - GitHub実行副作用: **CI run rerun 2件**（§6。code/PR/Issue/comment変更なし。push・commit・close・mergeなし——publicationはmain orchestration）。
-- Review packet: base `8fe67e7650`。head・PR linkは **mainのcommit/push後に確定するもので、本docs自身にSHAを持たない**。diff 1 file・§0コマンド一覧・未確認範囲=（a）§8実機全項目（b）PENDING(trace)行（§4 R-3 multi-select、§4 R-6a untraced部分、§10 V写像）（c）rerun race排除の限定（§6）。
-- 次手（順守順序）: **mainによる commit/push → PR作成（`Refs #516`）→ ChatGPT review**（reviewが先、PR後ではない）。
-- Epic close主張: **しない**（Phase 4未完）。Phase 3 completionの現在の真実の状態は、**（i）R-8実機matrix（owner-only、Pixel 9a未接続をC7で実測）と、（ii）PENDING(trace)行のartifact紐付け（§4 R-3/R-6a、§10）の両方で阻塞**。「ハードウェア接続さえ残る」というready宣言は行わない。PASS確定行は §4 R-1・R-2・R-4・R-5・R-6b・R-7（いずれも§6のtriage限定と§5 head対応表の範囲内でのみ確定）。
+- Review packet: base `8fe67e7650`。head SHAは本docs自身に持たずPR #573のhead記録に従う。diff 1 file（§13 trace明細追加・R-3/R-6a縮小・§10 V写像・§8 identity/owner action・§11境界注記）・未確認範囲=（a）§8実機全項目（owner接続待ち。各O項目に実行source SHA/APK SHA-256/OS build・device fingerprintを固定記載する条件付き）（b）PENDING残: R-3選択数ラベル、R-6a UNCOV 4項目（§13-B）、§10 V残（§13-C: Arabic/Thai・外部keyboard/CJKV・contacts runtime・native artifact/DCL再scan・T08）（c）rerun race排除の限定（§6）。
+- 次手（順守順序）: **rev3 commit/push → PR #573 head更新 → ChatGPT再review依頼（main orchestration、新head）** → 残阻塞の処理（UNCOV/V残=emulator coverage追加 or owner判断、O1〜O5=owner接続後の実機実施）。
+- owner action（必須・未了）: **Pixel 9a（API 37）のUSB接続**（§8）。未接続のままO項目は実行不可。
+- Epic close主張: **しない**（Phase 4未完）。Phase 3 completionの現在の真実の状態は、**（i）R-8実機matrix（owner-only、Pixel 9a未接続＝接続待ち）と、（ii）PENDING残（§13-A/B/Cへ縮小済み）の両方で阻塞**。「ハードウェア接続さえ残る」というready宣言は行わない。PASS確定行は §4 R-1・R-2・R-4・R-5・R-6b・R-7（§6のtriage限定と§5 head対応表の範囲内）。R-3主体とR-6aのfolder/hotseat契約は§13でtrace確定済みだが、判定ラベルは残存明記のとおり。
+
+## 13. PENDING(trace)紐付け明細（rev3 trace収集。実行・test追加なし、既存証跡の照合のみ）
+
+判定語: **T**（scenario/test名とrun/SHA/artifactまで確定）/ **T(p)**（充当可能だが限定付き・incidental・旧baseline）/ **UNCOV**（既存のscenario/test/artifactなし）。run URLは `https://github.com/nunu1733/NunuLauncher/actions/runs/<run ID>` 形式。§5 run群 = `37347294575`（`6c4a88a9eb`）/ `37502010177`（`bc0171f253`）/ `37493739107`（`de913083da`）/ `37564923987`（`57d4338bb5`）/ `38035713365`（`33270ede1b`）/ `38076177185`（`7a30761390`）。全runの `conclusion=success` とhead SHA一致はrev3でAPI再確認済み。
+
+### 13-A. R-3 multi-select / stale / Undo
+
+| 要件 | scenario/test（assertion） | 所在・run | 判定 |
+|---|---|---|---|
+| multi-select 4 action（spec 449: ページ移動/フォルダ入れ/新規フォルダ/外す。視覚順・all-or-nothing・選択可否） | `tests/unit/app/lawnchair/homeedit/EditSurfaceSessionPlannerTest.kt` — `move to page plans every item deterministically in visual order`、`move to page is all or nothing on missing space`、`add to folder appends in visual order after existing members`、`new folder sits at the first selected item cell with ranks in visual order`、`remove plans a removal change for every selected item`、`touched items cannot be acted on again`、`locked items cannot join an action`、`profile mixing rejects the folder action as a whole`、`confirm gate blocks an empty session`、`a folder row itself is not a selection target` | `organizer-unit-tests` permanent gate（ci.yml `--tests 'app.lawnchair.homeedit.*'`）→ §5 run群 | T |
+| セッション→1 transaction適用（無題フォルダINSERT+子UPDATE+物理DELETE） | `tests/organizer-instrumentation/app/lawnchair/homeedit/EditSurfaceApplyInstrumentationTest.kt` — `sessionAppliesAsOneTransactionWithPhysicalDeleteAndUntitledFolder` | shared-writer lane（ci.yml 明示class list）→ §5 run群 | T |
+| stale反映 fail-closed（零書込み） | `EditSurfaceApplyInstrumentationTest.staleRevisionIsRejectedWithZeroWrites` / `DirectEditModelWriterTest.deferredMoveRejectsStaleTargetWithoutWrite` / `DirectEditUndoModelWriterTest.restorePlacementRejectsStaleWithoutWrite` / `EditSurfaceUndoInstrumentationTest.writeAfterConfirmMakesTheUndoStaleWithZeroWrite`・`undoWithAMismatchedRevisionIsRejectedAsStale` | shared-writer lane → §5 run群 | T |
+| stale gate×世界移動（spec 526 oracle 3b）＋selection×recreate | `EditSurfaceTarget37ContractInstrumentationTest`（526 branch @`bc0171f253`）— `zeroWriteTerminalReleaseThenWorldMoveFailsClosedThroughTheStaleGate`、`recreateAfterSelectionOnlyShowsTheDiscardNoticeWithPoliteLiveRegion` 他recreate 3 case | run `37502010177`（526固有）。API 37 emulator 10/10はPR #538本文記録（local head `5d7775720f`） | T |
+| rollback / Undo逆操作 | `EditSurfaceApplyInstrumentationTest.injectedWriteFailureRollsBackToTheExactPreState` / `DirectEditUndoModelWriterTest.undoCreateFolderRestoresChildAndDeletesFolderInOneTransaction`・`undoCreateFolderRollsBackBothWritesWhenTheDeleteFails`・`folderUndoAbandonedMidTransactionLeavesThePreStateAfterReopen` | shared-writer lane → §5 run群 | T |
+| 選択数ラベル表示（spec 449 Scenario: 複数選択と選択数の表示） | count表示をassertするoracleなし（`EditSurfaceA11yDescriptionTest` はselected-state semanticsのみ）。専用UI tap journey scenarioなし。旧baseline `450-edit-undo-ac1-screenshots` は#448単一itemで充当不可 | — | UNCOV |
+
+### 13-B. R-6a drag/drop・folder・hotseat・notification dots
+
+| 要件 | scenario/test（assertion） | 所在・run | 判定 |
+|---|---|---|---|
+| widget picker drag手順 | 527 `api37-07-widget-drop-attempt.png`（README S2）→ bind同意08→配置09 | 527 evidence @`54a75042305c`、API 37 emulator | T(p) |
+| workspace icon drag | 526 Scenario 3 tablet行「dragでworkspaceにアイテムを追加して実施」→ `api37-tablet-scenario3-notice-landscape.png` | 526 evidence @`bc0171f253`、API 37 tablet emulator | T(p) incidental |
+| workspace drag/drop専用scenario | なし。`OrganizerHubDragGuardInstrumentationTest` はorganizer hubのdrag-guardで別surface。upstream `tests/tapl`/`multivalentTests` はCI unroutedでrun証跡にならない | — | UNCOV |
+| folder 作成・追加・Undo（writer契約） | `DirectEditModelWriterTest.existingFolderAddUpdatesDbAndModelState`・`createFolderSuccessUpdatesDbCollectionsAndContents`・`createFolderFailureLeavesModelAndDbAtOldPlacement` / `DirectEditUndoModelWriterTest.undoCreateFolder*`・`folderUndoAbandonedMidTransactionLeavesThePreStateAfterReopen` | shared-writer lane → §5 run群 | T |
+| folder UI（作成/入れる）截图 | `docs/assessment/450-edit-undo-ac1-screenshots/450-edit-undo-direct-create-folder-*`・`…-add-to-folder-*` | **旧baseline**。Phase 3（新baseline）証跡に充当不可 | T(p) |
+| folder開閉UI | なし（upstream folder test unrouted） | — | UNCOV |
+| hotseat restore admission | `com.android.launcher3.hybridhotseat.HotseatRestoreAdmissionTest` — `createBackupUsesAtomicAdmissionAndCreatesBackupTable`、`restoreExistingBackupExecutesAndDropsBackupTable`、`deferredRestoreLetsExactCorrelatedReloadCompleteBeforeOrganizerRelease`、reservation blocking系 | shared-writer lane → §5 run群 | T |
+| hotseat undo slot（spec 450） | `HomeEditUndoPlannerTest` — `hotseat undo restores when the recorded slot is within the current capacity and free`、`hotseat undo rejects with zero write when the current hotseat shrank below the recorded slot` | organizer-unit-tests → §5 run群 | T |
+| dock/hotseat保持（#441 fixture seeding） | `EditingBurdenBenchmarkFixtureSeedingInstrumentationTest.fixtureSeedsIdenticallyFromSameInputAndPreservesDockAndReservations`、`seedingPreservesPreExistingHotseatFolderDescendants` | manual-organization-ui lane → §5 run群 | T |
+| hotseat操作UI（起動・drag投入） | なし（`EditSurfaceProjectionTest` のdock投影はJVMのみ） | — | UNCOV |
+| notification dots（badging） | なし。527の通知evidence（`api37-15-notification-tap-view.png`、通知action→`UploaderService`）は通知tap/actionでありdotsではない。#521 T16の(c)はSMS consumer不在の静的判定でdots動作の証拠ではない | — | UNCOV |
+
+UNCOV 4項目（workspace drag/drop専用・folder開閉UI・hotseat操作UI・notification dots表示）は、**emulator上でのscenario/test追加によりcoverageを追加できる残課題**であり（本PRでtest追加はしない）、§8 O4/R-8の実機gateとは独立した要件で相互代替しない。UNCOV項目を527通知evidence・`OrganizerHubDragGuardInstrumentationTest`・T16 (c)で充当しない。
+
+### 13-C. §10 #521 V1〜V8 ↔ T01〜T27 写像（child AC証跡へ。完全性主張なし）
+
+| V | 紐付け（child AC evidence） | 残（PENDING・未完） |
+|---|---|---|
+| V1 / #526 | 526 emulator matrix（PR #538本文）＋ `EditSurfaceTarget37ContractInstrumentationTest` 10 test @run `37502010177` | 外部keyboard操作・notification dots（13-B UNCOV） |
+| V2 / #526 | tablet sw800dp回転/resize（`api37-tablet-scenario1-insets-landscape.png`、`api37-phone-backup-route-resize-720.png`）＋recreate破棄3 oracle | （O1のPixel 9a phone幅限界は§8注記どおり） |
+| V3 / #526 | fontScale 1.3/2.0・ja/en・TalkBack・IME可視 | **Arabic/Thai等の行高実測**（accepted spec 526 Verificationがja/en範囲。#521 T03要件との差）・**外部物理keyboard/CJKV IME変換** |
+| V4 / #527 | 527 S1〜S5 ＋ `api37-restart-pi-block-signature.txt` ＋ `api37-strictmode-policy-inherit-verify.txt` | smartspace tap・share chooser未実測（README宣言→O2） |
+| V5 / #528 | LAN 3状態・typed failure・katbin・redaction・API 36比較（evidence 02〜32） | katbin実機再確認（→O3）。CT固有failureのemulator再現不可はREADME記録どおり |
+| V6 / rebase統合 | widget/Smartspace: 545-evidence qa3/qb3 @`33270ede1b` ＋ 527 widget chain ＋ restore-capture（replay-log §6.5） | **contacts許可時検索のruntime確認（T20）**・large RemoteViews上限超過case |
+| V7 / #516・#522 | replay-log G4 T1〜T8 §6.5全green @`e8aced7dbe` ＋ G2 unit ＋ db-migration/restore-capture/reservation-recovery lanes（§5 run群） | T9はPhase 4所有（変更なし） |
+| V8 / Phase2 build | G1/G5 `37347294575` ＋ Espresso 3.7.0（C7）＋ `LooperIdleLock` public IdleHandler（C8）＋ API 37 local 10/10（PR #538本文） | **packaged/dependency native artifact確認（T19）**・**static final変更禁止/native DCL consumerのmerged dependency再scan（T11）**・merged manifest画像機能（T08） |
+
+T行bucket: **T（実測確定）** T01, T02, T05, T13, T14, T17, T18, T24 / **T(p)** T03, T09, T10, T12 / **(c)静的のみ（追加変更不要の分類維持。Phase 3新証跡なし）** T04, T06, T07, T15, T16, T21, T22, T23, T25, T26, T27 / **PENDING（未完）** T08（merged manifest画像機能）, T11（static final/DCL再scan）, T19（native artifact）, T20（contacts runtime）。
 
 ## Change history
 
 - 2026-10-11: Draft（#516 Phase 3 close-readiness照合。C1〜C7実測、rerun 2件実行・attempt 2両green）。
 - 2026-10-11（rev2・公開前tighten）: 過剰な完全性主張を訂正——R-6a/R-3をPENDING(trace)へ格下げ、§10「残欠無し」撤回、§1統合スコープ解釈のqualify、§6「class 5確定」をtriage分類へ軟化（race排除不可を明記、#565はPhase 4契約統合のみ）、§9 #550状態を解消済みへ更新、O1のtablet項目をPixel 9a非代表として分離、§12のhead自己参照削除と次手順序（commit/push→PR→review）修正、旧CONDITIONALラベル削除、日本語表記統一。
+- 2026-10-11（rev3・trace紐付け）: §13にR-3/R-6a/§10のtrace明細（test名・SHA・run ID）を追加。R-3はPENDING範囲を選択数ラベルへ、R-6aはUNCOV 4項目へ縮小（emulator coverage追加可能性と実機gateの独立性を明記、他surface証跡の充当禁止を固定）。§10にV1〜V8↔T01〜T27写像と残PENDING（Arabic/Thai・外部keyboard/CJKV・contacts runtime・native artifact・static final/DCL再scan・T08）を明示。§8に証跡identity固定（実行source SHA/APK SHA-256/OS build・device fingerprint）とO4 build未決定・owner action接続を追記。§11にPhase 4境界（残項目の非引継ぎ・#554契約）を固定。test/CI/production変更なし。
