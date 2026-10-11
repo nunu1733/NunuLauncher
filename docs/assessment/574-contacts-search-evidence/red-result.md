@@ -23,3 +23,9 @@ java.lang.AssertionError: API 37 Data view rejects account_type/account_name pro
 - `denied_shortCircuitsWithoutAnyProviderQuery`: PASS (zero provider queries).
 
 The test invokes the public `ContactsSearchProvider.search` seam with a behavioral ContentProvider fixture. It neither queries real contacts nor changes contact permissions. The existing preferences flag is restored after each test.
+
+## Byte identity (PR #575 review `6109082627`, docs-only)
+
+- RED prod source: BASE `33b4c061` blob `cf953262db52c6272acb52cc27a5d0c3dde142b8` (unmodified pre-fix tree). VERIFIED.
+- Historical first run (`2026-10-11T11:34:27`, emulator-5554, 3 tests / 1 failure at line 92): ran on the uncommitted new file; exact uncommitted bytes were not reconstructed, so that run stays historical with no invented hash and no PASS-review binding claimed.
+- Acceptance RED is the exact-blob rerun `2026-10-11T12:48:33` ([red-rerun.xml](./red-rerun.xml), emulator-5554, 3 tests / 1 failure at line 92 `expected:<1> but was:<0>`): prod `cf953262db52c6272acb52cc27a5d0c3dde142b8` and test `0c86cab4e70679f4d64a179feacf95d22811f88e` both hash-verified before the run, `git diff --exit-code` clean after. Full packet: `byte-identity.md`.
