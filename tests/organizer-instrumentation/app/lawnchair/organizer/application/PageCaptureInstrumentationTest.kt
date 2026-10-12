@@ -138,8 +138,8 @@ class PageCaptureInstrumentationTest {
 
     @Test
     fun qsbOnSynthesizesFirstScreenForRowlessFirstPage() {
-        setQsbEnabled(true)
         deleteAllFavorites()
+        setQsbEnabled(true)
         insertOnDesktop(screen = 1, rowId = 1)
 
         val snapshot = writer.captureCurrent(CaptureId("page-cap-on-synthetic-first"))
