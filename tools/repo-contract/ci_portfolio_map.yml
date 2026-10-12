@@ -46,6 +46,8 @@ lanes:
       - surface_production_input
       - surface_layout_write
   organizer-instrumentation-manual-organization-ui-tests:
+    # Issue #577: benchmark seeder lock encoding/capture assertion stays in
+    # the existing class and surface; no new lane, class filter, or edge.
     surfaces:
       - surface_organizer_ui
   organizer-instrumentation-reservation-recovery-tests:
