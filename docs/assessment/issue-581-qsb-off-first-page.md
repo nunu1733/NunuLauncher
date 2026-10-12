@@ -1,6 +1,6 @@
 # Issue #581 implementation handoff packet
 
-> Status: source implementation and safety follow-up committed; source and Android-test APK assemblies passed. Fixed-source runtime instrumentation and independent review remain pending.
+> Status: source/test implementation and independent audit complete at `94d0c088df979b4d0aa32158701aa8ab62c530b4`; publication checks and merge pending.
 
 ## Issue and accepted contract
 
@@ -79,3 +79,13 @@ An earlier combined `spotlessCheck assemble...` invocation stopped at Gradle tas
 ## CI follow-up — preference callback thread
 
 Source CI38259014998 on `ec1f913a6e903236b7f711f33a239bd1fe327c1e` failed its reservation/recovery lane:91 tests, six PageCapture failures, no skips. Preserved XML traces show `Activity.recreate` through `ReloadHelper.restart` and the real Smartspace onSet callback called from the instrumentation thread (including teardown). This is a deterministic test-harness thread defect; no CI rerun is counted as a repair. Main now executes every real Smartspace preference write on the Android main thread via the existing `runOnMainSync` seam, retaining clear-before-ON setup and original preference/row restoration. Production capture code is unchanged. Fixed test compilation, runtime GREEN and new exact-head CI/review/audit remain pending. The prior source reviews apply to their pinned heads and do not approve this new test change.
+
+## Qualified source/runtime evidence and review
+
+Exact source head `94d0c088df979b4d0aa32158701aa8ab62c530b4` passed [CI38262792114 attempt1](https://github.com/nunu1733/NunuLauncher/actions/runs/38262792114/attempts/1), including source jobs and final-status. The independent audit session then requested only reservation/recovery reexecution; [attempt2](https://github.com/nunu1733/NunuLauncher/actions/runs/38262792114/attempts/2) and final-status passed on the same head. Both actual91-test suites completed successfully. Successful XML is not uploaded; exact final skip totals are not claimed beyond periodic counts. The separate [audit record](./pr-582-qsb-off-first-page.md) documents the full diff, accepted criteria, class-filter/method-count inference and independent execution.
+
+The16 production port is clean commit `ae69715379314f24338304ca5a0b2b4f9e9f7c43`, APK SHA `9ff6c8483ff74b00ed50ee295d994a001439fa69f22315f0b39af6436b049bd4` (production assembly5m27s). Ported existing six-case test source differs only for the16 `bindCompleteModel` callback signature; source SHA `78983ab9e14b5331f0262d16c9966cebc414a509b2b0783faf0d481e366f09bb`, test APK `f70fb5499ee4be81415b7839bb2d9bc13c2b8433cfd5449d3211ec00ae62f8e4` (actual test compilation, assembly3m36s). The test port is a tracked working-tree modification and no clean-head test APK claim is made. Actual API37 class execution on the warmed Launcher passed6/6 in34.573s, with each raw `-r` method completion status0. Root retained all500 fixture layout rows/IDs/geometry/profiles/locks and restored the original QSB preference. Normal Loader activity-label/intent-package refresh changed synthetic metadata; full13-column equality after this reload is expressly not claimed. Canonical500 SAF verification and final emulator teardown remain under #516. No physical DB manipulation occurred.
+
+Independent Spec review approved the full seven-file diff at ec1f after the setup-order repair; Standards approved at6759 after packet corrections. A fresh Luna focused review approved the94d main-thread follow-up against6759. The separate audit independently inspected the complete current94d diff and found no blocker. These pinned reviews do not represent approval of a substantive later source/test change. Later changes here are only docs evidence; final publication CI/high-risk check and operator review of that delta remain required before merge.
+
+The four remaining bullets above describing runtime/CI/review collection are historical worker handoff tasks; qualified results in this section supersede their pending status. The distinct #155 QSB-AC-06/QSB-AC-07 and Phase4 boundaries remain unchanged.
