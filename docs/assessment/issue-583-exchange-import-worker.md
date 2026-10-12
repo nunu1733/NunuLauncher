@@ -12,4 +12,10 @@ Test audit: existing `ExchangeFlowStateHolderTest` is the primary deterministic 
 
 Implementation plan: perform both settle ownership reads on worker before main pure projection. Keep attempt-token checks on main after suspension, durable save re-verification under run-lock→gate, and fresh worker connection check. Guard remains unchanged. Migration N/A (none). Rollback is source revert; no durable format change. Validation: intended test RED, focused holder/confinement GREEN, Spotless, affected CI, independent audit/review, then actual16 port SAF import/cold pending/no-layout-write proof.
 
-Validation results: pending.
+Validation results so far:
+- RED at `dd9b907bdde89b3d4fd1a2cb4a56a8bfb49ba30a`: exact existing method `runInImportShowsTheScopedSummaryAndAttachesOnCta`, one test / one failure / no skip,0.529s. Its explicit no-crash assertion observed `IllegalStateException: organizer run state machine must not run on the publication thread`. Build13m54s; log/XML retained privately. This reproduces the intended thread guard, rather than a timeout.
+- Entire affected holder source at main base and16 validation `ae69715379314f24338304ca5a0b2b4f9e9f7c43` is byte-identical (211,023 bytes, SHA-256 `86a6ea5ce8002353495c8a2ae48beeaa37af0c4eac5be659230b8c5a7ba9c4cc`).
+- Repository contract validator passed before repair.
+- GREEN / affected CI / independent audit and reviews / actual16 repaired SAF import and cold recovery pending.
+
+Risk tier H: same accepted Spec417/418 plan constraints apply to this maintenance of run ownership and durable proposal fencing; use `risk: layout-data` to require the independent evidence gate. No new plan, product decision, layout writer or schema is introduced.

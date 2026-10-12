@@ -1477,7 +1477,14 @@ class ExchangeFlowStateHolder(
         beginImportAttempt { attempt ->
             scope.launch(Dispatchers.IO) {
                 val outcome = controller.importReply(replyText)
-                withContext(uiDispatcher) { settleImport(attempt, outcome, replyText) }
+                val validated = ((outcome as? ExchangeImportOutcome.Pipeline)?.result as? ExchangeImportResult.Validated)?.validated
+                // Issue #583 / spec418: ownership takes the run lock and must
+                // stay on this worker. Main receives only the verdict; the
+                // save transaction and continuation re-verify authority.
+                val ownedByLiveScope = validated != null && attempt.owningRunId?.let {
+                    run.isLiveScopeOwner(it, validated.session.exportId)
+                } == true
+                withContext(uiDispatcher) { settleImport(attempt, outcome, replyText, ownedByLiveScope) }
             }
         }
     }
@@ -1502,7 +1509,7 @@ class ExchangeFlowStateHolder(
      * (legacy IDLE, another run's session) surfaces the 作り直し guidance
      * instead of the import path; nothing is saved.
      */
-    private fun settleImport(attempt: ImportAttempt, outcome: ExchangeImportOutcome, replyText: String) {
+    private fun settleImport(attempt: ImportAttempt, outcome: ExchangeImportOutcome, replyText: String, ownedByLiveScope: Boolean) {
         if (activeAttempt?.token != attempt.token) return
         val pipeline = (outcome as? ExchangeImportOutcome.Pipeline)?.result
         if (pipeline is ExchangeImportResult.Validated) {
@@ -1531,7 +1538,7 @@ class ExchangeFlowStateHolder(
             }
             if (hostMode == ExchangeHostMode.METHOD_CHOICE) {
                 val owningRunId = attempt.owningRunId
-                val ownedByThisScope = owningRunId != null && run.isLiveScopeOwner(owningRunId, pipeline.validated.session.exportId)
+                val ownedByThisScope = owningRunId != null && ownedByLiveScope
                 if (!ownedByThisScope) {
                     activeAttempt = null
                     screen = ExchangeScreen.RecreateRequestGuidance
@@ -1653,7 +1660,13 @@ class ExchangeFlowStateHolder(
                     attemptFencedDurableSave(attempt, record)
                 }
             }
-            withContext(uiDispatcher) { settlePendingIntentSave(attempt, outcome) }
+            // Issue #583: keep the post-save ownership read off publication
+            // main too. The gate is already released; main projects this
+            // observation only after checking the attempt is still current.
+            val ownedByLiveScope = outcome is DurableSaveOutcome.Written && outcome.saved &&
+                attempt.entryKind == ExchangeImportEntryKind.RUN_IN &&
+                attempt.owningRunId?.let { run.isLiveScopeOwner(it, record.exportId) } == true
+            withContext(uiDispatcher) { settlePendingIntentSave(attempt, outcome, ownedByLiveScope) }
         }
     }
 
@@ -1715,7 +1728,7 @@ class ExchangeFlowStateHolder(
      * UI settleは純粋投影; all durable mutations happened inside the gate
      * hold in [launchDurablePendingIntentSave]).
      */
-    private fun settlePendingIntentSave(attempt: ImportAttempt, outcome: DurableSaveOutcome) {
+    private fun settlePendingIntentSave(attempt: ImportAttempt, outcome: DurableSaveOutcome, ownedByLiveScope: Boolean) {
         when (outcome) {
             DurableSaveOutcome.FencedBeforeWrite -> {
                 // The attempt was already invalidated and that path cleared
@@ -1775,7 +1788,10 @@ class ExchangeFlowStateHolder(
             val validated = pendingValidated
             val owningRunId = attempt.owningRunId
             val ownerlessRunIn = attempt.entryKind == ExchangeImportEntryKind.RUN_IN &&
-                (owningRunId == null || validated == null || !run.isLiveScopeOwner(owningRunId, validated.session.exportId))
+                (
+                    owningRunId == null || validated == null || !ownedByLiveScope ||
+                        (run.state as? ManualOrganizationRun.State.ScopeConfirmed)?.runId != owningRunId
+                    )
             if (ownerlessRunIn) {
                 pendingValidated = null
                 activeAttempt = null
