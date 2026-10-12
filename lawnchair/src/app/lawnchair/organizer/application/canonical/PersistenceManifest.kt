@@ -11,6 +11,10 @@ import app.lawnchair.organizer.planning.KindCode
 import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.ProfileId
 
+// Favorites.ITEM_TYPE_FOLDER in schema 33; keep the platform code inside this persistence boundary.
+private const val SCHEMA_33_FOLDER_ITEM_TYPE = 2
+private const val UNSET_FOLDER_CHILD_CELL = -1
+
 /**
  * Internal lossless persistence manifest. Captures every schema-33 row/resource
  * field required to materialize the canonical apply state and to recover the
@@ -40,6 +44,18 @@ data class PersistenceManifest(
         require(rows.distinctBy { it.rowId }.size == rows.size) {
             "PersistentRow rowId must be duplicate-free"
         }
+        val rowById = rows.associateBy { it.rowId }
+        rows.filter { it.cellX == UNSET_FOLDER_CHILD_CELL && it.cellY == UNSET_FOLDER_CHILD_CELL }
+            .forEach { child ->
+                val parent = rowById[child.containerCode.value.toLong()]
+                require(
+                    parent != null && parent.rowId != child.rowId &&
+                        parent.itemType.value == SCHEMA_33_FOLDER_ITEM_TYPE &&
+                        parent.profileId == child.profileId,
+                ) {
+                    "Unset folder-child cells require an existing same-profile folder parent"
+                }
+            }
         require(modifiedAtMillis >= 0L) { "modifiedAtMillis must be non-negative" }
     }
 }
@@ -77,8 +93,18 @@ data class PersistentRow(
         require(rowId >= 0L) { "rowId must be non-negative" }
         require(rank >= 0) { "rank must be non-negative" }
         require(modified >= 0L) { "modified must be non-negative" }
-        if (cellX != null) require(cellX >= 0) { "cellX must be non-negative when present" }
-        if (cellY != null) require(cellY >= 0) { "cellY must be non-negative when present" }
+        val isUnsetFolderChildCell = containerCode.value >= 0 &&
+            cellX == UNSET_FOLDER_CHILD_CELL && cellY == UNSET_FOLDER_CHILD_CELL
+        if (cellX != null) {
+            require(cellX >= 0 || isUnsetFolderChildCell) {
+                "cellX must be non-negative except for a paired folder-child sentinel"
+            }
+        }
+        if (cellY != null) {
+            require(cellY >= 0 || isUnsetFolderChildCell) {
+                "cellY must be non-negative except for a paired folder-child sentinel"
+            }
+        }
         if (spanX != null) require(spanX > 0) { "spanX must be positive when present" }
         if (spanY != null) require(spanY > 0) { "spanY must be positive when present" }
     }
