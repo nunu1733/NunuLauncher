@@ -64,10 +64,10 @@ class PageCaptureInstrumentationTest {
         try {
             // Restore rows while the permissive QSB-off loader rule is active,
             // then restore the original setting and reload the original layout.
-            if (::preferences.isInitialized) preferences.enableSmartspace.setBlocking(false)
+            if (::preferences.isInitialized) setSmartspacePreference(false)
             originalSnapshot?.let(::restoreFavorites)
         } finally {
-            originalSmartspaceEnabled?.let { preferences.enableSmartspace.setBlocking(it) }
+            originalSmartspaceEnabled?.let(::setSmartspacePreference)
             if (originalSnapshot != null) forceReloadAndWait()
         }
     }
@@ -173,8 +173,15 @@ class PageCaptureInstrumentationTest {
         })
     }
 
+    private fun setSmartspacePreference(enabled: Boolean) {
+        // The real preference callback recreates the active Launcher activity.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            preferences.enableSmartspace.setBlocking(enabled)
+        }
+    }
+
     private fun setQsbEnabled(enabled: Boolean) {
-        preferences.enableSmartspace.setBlocking(enabled)
+        setSmartspacePreference(enabled)
         assertEquals(
             "The real preference seam must control Launcher first-screen QSB",
             enabled,

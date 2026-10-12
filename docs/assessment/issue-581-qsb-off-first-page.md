@@ -75,3 +75,7 @@ An earlier combined `spotlessCheck assemble...` invocation stopped at Gradle tas
 - `docs/engineering/ci-test-portfolio.md`
 - `tools/repo-contract/ci_portfolio_map.yml`
 - `docs/assessment/issue-581-qsb-off-first-page.md`
+
+## CI follow-up — preference callback thread
+
+Source CI38259014998 on `ec1f913a6e903236b7f711f33a239bd1fe327c1e` failed its reservation/recovery lane:91 tests, six PageCapture failures, no skips. Preserved XML traces show `Activity.recreate` through `ReloadHelper.restart` and the real Smartspace onSet callback called from the instrumentation thread (including teardown). This is a deterministic test-harness thread defect; no CI rerun is counted as a repair. Main now executes every real Smartspace preference write on the Android main thread via the existing `runOnMainSync` seam, retaining clear-before-ON setup and original preference/row restoration. Production capture code is unchanged. Fixed test compilation, runtime GREEN and new exact-head CI/review/audit remain pending. The prior source reviews apply to their pinned heads and do not approve this new test change.
