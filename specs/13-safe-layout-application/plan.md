@@ -571,3 +571,67 @@ network use, UI, trigger, or planner change. Any such need is a stop condition.
   standards reviews passed; unit/build/contract gates, API 36.1 instrumentation,
   and four-phase process-death recovery smoke passed.
 - 2026-08-11: Stage A `proposed` plan. Closed shared writer serialization, correlated reload, recovery DB format/lifecycle, schema-33 non-wiping migration, portable downgrade, 33->32->33 unknown-state behavior, grid normalization, grid-migration `UNKNOWN` marking, row-accounted apply/recovery, complete failure injection, AC/SA evidence mapping, vertical implementation sequence, exact commands, and rollback. No accepted public result, DESIGN seam, or ADR is changed; no destructive fallback is required; no stop condition is triggered.
+
+## Issue #579 — retain the folder-child unset-cell sentinel
+
+### Scope and owning seam
+
+This appendix refines the accepted raw-row representability contract from Spec
+13 and Spec 269. It owns no product choice, public interface, Launcher writer,
+Favorites schema, recovery format, or migration. `PersistentRow` remains the
+platform-free row-value boundary; `PersistenceManifest` owns the complete-row
+reference proof required for the exception.
+
+### Static algorithm
+
+1. `PersistentRow` continues to accept a present cell coordinate when it is
+   non-negative, and continues to accept SQL `NULL`. It additionally accepts
+   `cellX=-1` together with `cellY=-1` only when `containerCode >= 0`. Every
+   mixed pair and every other negative value remains invalid.
+2. `PersistenceManifest` indexes its already-unique row IDs. For each paired
+   `-1` cell, it resolves `containerCode` to a present parent row and requires
+   the schema-33 folder `ITEM_TYPE` value (`2`) and the same `profileId`. A
+   self-reference, orphan, app-pair, other non-folder, or cross-profile parent
+   is rejected.
+   The schema value is kept private to this internal persistence boundary so
+   Launcher platform constants do not enter planning/domain interfaces.
+3. The persisted `cellX`/`cellY` and internal `rawCell` retain the signed
+   `-1` values. No normalization occurs. Canonical `FolderChild` remains only
+   parent/rank, while canonical desktop geometry still requires non-negative
+   cells and positive spans.
+
+### Regression ownership and routing
+
+`RecoveryRecordCodecTest` is the lowest deterministic owner for manifest
+admission and exact recovery-codec round trips. It covers the sentinel beside
+nullable and non-negative cells and rejects desktop/hotseat use, invalid
+parents, mixed values, and `-2`. The existing
+`RealAdapterRowMatrixInstrumentationTest.folderWidgetProfileAndLockRoundTripExactly`
+adds a synthetic paired-sentinel child next to its existing NULL-cell child;
+production SQLite capture, materialization back to SQLite, and recapture must
+retain both raw values exactly. This is the distinct real-SQLite adapter risk
+that the pure codec test cannot observe.
+
+The unit test stays in the existing `organizer-unit-tests` Permanent gate. The
+instrumentation class is already explicitly invoked by
+`organizer-instrumentation-reservation-recovery-tests`, Conditional on
+`surface_layout_write`. The impact map edge and class filter remain unchanged;
+the CI portfolio records this additional existing-owner contract. No new test
+class, production seam, class filter, or CI lane is introduced.
+
+### Format, rollback, and privacy
+
+The recovery format version, encoded field order, checksum envelope, schema,
+and recovery migration remain unchanged. A checkpoint created with paired
+negative folder-child cells has the same wire shape as other rows, but a
+pre-fix reader still rejects those cell values before materialization. The
+format-version guard does not distinguish this value-level extension. Therefore
+do not claim that a pre-fix binary, including release 45, can read a checkpoint
+containing the new sentinel. Rollback R must use the latest `main` build that
+contains this reader correction if it needs to open such a checkpoint; no
+fallback writes or record rewrites are permitted.
+
+Tests use synthetic row IDs, profile IDs, intents, and folders only. No device
+database, app inventory, title, raw user row, or device identifier is copied to
+repository evidence. ADR-0003's private recovery database and backup exclusion
+remain unchanged.
