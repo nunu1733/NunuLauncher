@@ -22,6 +22,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -201,6 +202,132 @@ class RecoveryRecordCodecTest {
         assertEquals(1, decoded.resources.size)
         assertEquals(PersistentResourceKind.WORKSPACE_SCREEN, decoded.resources[0].kind)
         assertArrayEquals(byteArrayOf(0, 1, 2), decoded.resources[0].payload)
+    }
+
+    @Test
+    fun folderChildUnsetCellSentinelRoundTripsWithNullAndNonnegativeCells() {
+        val row = sampleManifest().rows.single()
+        val folder = row.copy(
+            rowId = 1L,
+            itemId = ItemId("folder"),
+            containerCode = ContainerCode(-100),
+            cellX = 0,
+            cellY = 0,
+            rawCell = GridCell(0, 0),
+            itemType = KindCode(2),
+        )
+        val sentinelChild = row.copy(
+            rowId = 2L,
+            itemId = ItemId("sentinel-child"),
+            containerCode = ContainerCode(1),
+            screenId = null,
+            cellX = -1,
+            cellY = -1,
+            spanX = 1,
+            spanY = 1,
+            itemType = KindCode(0),
+            appWidgetId = null,
+            appWidgetProvider = null,
+            rawCell = GridCell(-1, -1),
+            rawSpan = GridSpan(1, 1),
+        )
+        val nullCellChild = row.copy(
+            rowId = 3L,
+            itemId = ItemId("null-cell-child"),
+            containerCode = ContainerCode(1),
+            screenId = null,
+            cellX = null,
+            cellY = null,
+            spanX = null,
+            spanY = null,
+            itemType = KindCode(0),
+            appWidgetId = null,
+            appWidgetProvider = null,
+            rawCell = null,
+            rawSpan = null,
+        )
+        val positionedChild = row.copy(
+            rowId = 4L,
+            itemId = ItemId("positioned-child"),
+            containerCode = ContainerCode(1),
+            screenId = null,
+            cellX = 2,
+            cellY = 3,
+            spanX = 1,
+            spanY = 1,
+            itemType = KindCode(0),
+            appWidgetId = null,
+            appWidgetProvider = null,
+            rawCell = GridCell(2, 3),
+            rawSpan = GridSpan(1, 1),
+        )
+        val manifest = PersistenceManifest(
+            formatVersion = 1,
+            schemaVersion = 33,
+            rowCount = 4,
+            rows = listOf(folder, sentinelChild, nullCellChild, positionedChild),
+            resources = emptyList(),
+            modifiedAtMillis = 4L,
+        )
+
+        val decoded = RecoveryRecordCodec.decodeManifest(RecoveryRecordCodec.encodeManifest(manifest))
+
+        assertEquals(listOf(0 to 0, -1 to -1, null to null, 2 to 3), decoded.rows.map { it.cellX to it.cellY })
+        assertEquals(GridCell(-1, -1), decoded.rows[1].rawCell)
+        assertEquals(GridSpan(1, 1), decoded.rows[1].rawSpan)
+        assertEquals(listOf(1L, 1L, 1L), decoded.rows.drop(1).map { it.containerCode.value.toLong() })
+    }
+
+    @Test
+    fun folderChildUnsetCellSentinelRejectsInvalidContainersAndParents() {
+        val row = sampleManifest().rows.single()
+        val folder = row.copy(
+            rowId = 1L,
+            itemId = ItemId("folder"),
+            containerCode = ContainerCode(-100),
+            itemType = KindCode(2),
+        )
+        val child = row.copy(
+            rowId = 2L,
+            itemId = ItemId("child"),
+            containerCode = ContainerCode(1),
+            cellX = -1,
+            cellY = -1,
+            rawCell = GridCell(-1, -1),
+            itemType = KindCode(0),
+        )
+        fun assertManifestRejected(rows: List<PersistentRow>) {
+            assertThrows(IllegalArgumentException::class.java) {
+                PersistenceManifest(
+                    formatVersion = 1,
+                    schemaVersion = 33,
+                    rowCount = rows.size,
+                    rows = rows,
+                    resources = emptyList(),
+                    modifiedAtMillis = 2L,
+                )
+            }
+        }
+
+        assertThrows(IllegalArgumentException::class.java) { child.copy(containerCode = ContainerCode(-100)) }
+        assertThrows(IllegalArgumentException::class.java) { child.copy(containerCode = ContainerCode(-101)) }
+        assertThrows(IllegalArgumentException::class.java) { child.copy(cellX = -1, cellY = 0) }
+        assertThrows(IllegalArgumentException::class.java) { child.copy(cellX = -1, cellY = null) }
+        assertThrows(IllegalArgumentException::class.java) { child.copy(cellX = -2, cellY = -2) }
+        assertManifestRejected(listOf(child))
+        assertManifestRejected(listOf(folder.copy(itemType = KindCode(0)), child))
+        assertManifestRejected(listOf(folder.copy(itemType = KindCode(10)), child))
+        assertManifestRejected(listOf(folder.copy(profileId = ProfileId("work")), child))
+        assertManifestRejected(
+            listOf(
+                folder.copy(
+                    containerCode = ContainerCode(1),
+                    cellX = -1,
+                    cellY = -1,
+                    rawCell = GridCell(-1, -1),
+                ),
+            ),
+        )
     }
 
     @Test(expected = IllegalArgumentException::class)

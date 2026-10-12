@@ -83,6 +83,9 @@ lanes:
     surfaces:
       - surface_organizer_ui
   organizer-instrumentation-reservation-recovery-tests:
+    # Issue #579: the paired folder-child unset-cell sentinel capture/recovery
+    # oracle extends RealAdapterRowMatrixInstrumentationTest, already present
+    # in this lane's explicit class filter. No class, lane, or edge is added.
     surfaces:
       - surface_layout_write
   organizer-instrumentation-category-override-tests:
