@@ -1481,11 +1481,43 @@ class ExchangeFlowStateHolder(
                 // Issue #583 / spec418: ownership takes the run lock and must
                 // stay on this worker. Main receives only the verdict; the
                 // save transaction and continuation re-verify authority.
-                val ownedByLiveScope = validated != null && attempt.owningRunId?.let {
-                    run.isLiveScopeOwner(it, validated.session.exportId)
-                } == true
-                withContext(uiDispatcher) { settleImport(attempt, outcome, replyText, ownedByLiveScope) }
+                projectWithCurrentScopeOwnership(attempt, validated?.session?.exportId) { ownedByLiveScope ->
+                    settleImport(attempt, outcome, replyText, ownedByLiveScope)
+                }
             }
+        }
+    }
+
+    /**
+     * Issue #583: the run lock stays on this worker. A binding transaction or
+     * cancellation between the read and main dispatch invalidates the read;
+     * retry only the observation/projection, never validation or durable save.
+     * Main checks currency immediately before projecting, as the former
+     * fresh query did, without blocking the run's publication hop.
+     */
+    private suspend fun projectWithCurrentScopeOwnership(
+        attempt: ImportAttempt,
+        exportId: String?,
+        project: (Boolean) -> Unit,
+    ) {
+        val owningRunId = attempt.owningRunId
+        while (true) {
+            val observation = if (owningRunId != null && exportId != null) {
+                run.observeLiveScopeOwner(owningRunId, exportId)
+            } else {
+                null
+            }
+            val projected = withContext(uiDispatcher) {
+                if (observation != null && activeAttempt?.token != attempt.token) {
+                    true
+                } else if (observation != null && !run.isCurrentScopeOwnership(observation)) {
+                    false
+                } else {
+                    project(observation?.ownedByLiveScope == true)
+                    true
+                }
+            }
+            if (projected) return
         }
     }
 
@@ -1663,10 +1695,11 @@ class ExchangeFlowStateHolder(
             // Issue #583: keep the post-save ownership read off publication
             // main too. The gate is already released; main projects this
             // observation only after checking the attempt is still current.
-            val ownedByLiveScope = outcome is DurableSaveOutcome.Written && outcome.saved &&
-                attempt.entryKind == ExchangeImportEntryKind.RUN_IN &&
-                attempt.owningRunId?.let { run.isLiveScopeOwner(it, record.exportId) } == true
-            withContext(uiDispatcher) { settlePendingIntentSave(attempt, outcome, ownedByLiveScope) }
+            val needsOwnership = outcome is DurableSaveOutcome.Written && outcome.saved &&
+                attempt.entryKind == ExchangeImportEntryKind.RUN_IN
+            projectWithCurrentScopeOwnership(attempt, record.exportId.takeIf { needsOwnership }) { ownedByLiveScope ->
+                settlePendingIntentSave(attempt, outcome, ownedByLiveScope)
+            }
         }
     }
 

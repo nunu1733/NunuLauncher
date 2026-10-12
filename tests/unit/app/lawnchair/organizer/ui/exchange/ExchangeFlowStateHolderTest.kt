@@ -1677,6 +1677,68 @@ class ExchangeFlowStateHolderTest {
         } finally {
             fixture.scope.cancel()
         }
+        assertQueuedImportOwnerChange(discardFails = false)
+        assertQueuedImportOwnerChange(discardFails = true)
+    }
+
+    /** Issue #583: park after the worker read but before its UI projection. */
+    private fun assertQueuedImportOwnerChange(discardFails: Boolean) {
+        val publication = DedicatedThreadPublication("queued-import-publication")
+        val pending = FakePendingIntentStore()
+        val queued = java.util.concurrent.atomic.AtomicReference<Runnable?>()
+        val parked = CountDownLatch(1)
+        val armed = java.util.concurrent.atomic.AtomicBoolean(true)
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (pending.completedSaves > 0 && armed.compareAndSet(true, false)) {
+                    queued.set(block)
+                    parked.countDown()
+                } else {
+                    Dispatchers.IO.dispatch(context) { publication.run { block.run() } }
+                }
+            }
+        }
+        val fixture = newFixture(scopedStructural = true, pendingStore = pending, publicationThread = publication, uiDispatcher = dispatcher)
+        try {
+            confirmScopedCandidate(fixture)
+            publication.run { fixture.holder.openMethodChoiceFlow() }
+            val session = generateBoundScopedSession(fixture)
+            val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+            publication.run {
+                fixture.holder.openImport()
+                fixture.holder.import(scopedReplyFor(session))
+            }
+            assertTrue("saved-import UI projection was not queued", parked.await(5, TimeUnit.SECONDS))
+            assertEquals(session.exportId, pending.record!!.exportId)
+            fixture.store.failInvalidateIf = discardFails
+            val discarded = fixture.run.discardScopeBoundRequest { exportId ->
+                when (fixture.controller.invalidateSessionIf(exportId)) {
+                    ExportInvalidationResult.Committed -> ManualOrganizationRun.StoreInvalidationOutcome.Committed
+                    ExportInvalidationResult.NoMatch -> ManualOrganizationRun.StoreInvalidationOutcome.NoMatch
+                    ExportInvalidationResult.WriteFailed -> ManualOrganizationRun.StoreInvalidationOutcome.WriteFailed
+                }
+            }
+            assertEquals(
+                if (discardFails) ManualOrganizationRun.ScopeDiscardOutcome.WriteFailed else ManualOrganizationRun.ScopeDiscardOutcome.Discarded,
+                discarded,
+            )
+            assertEquals("the run id alone cannot detect binding loss", runId, (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId)
+            publication.run { queued.getAndSet(null)!!.run() }
+            if (discardFails) {
+                awaitImportSuccess(fixture.holder)
+                assertEquals(session.exportId, pending.record!!.exportId)
+                assertTrue(fixture.run.isLiveScopeOwner(runId, session.exportId))
+            } else {
+                awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed || fixture.holder.screen is ExchangeScreen.ImportSuccess }
+                assertEquals("a discarded binding must never adopt direct success", ExchangeScreen.Closed, fixture.holder.screen)
+                assertNull(pending.record)
+            }
+            assertEquals("re-observation must not repeat the durable save", 1, pending.saveCalls)
+            assertEquals(emptyList<Throwable>(), fixture.unhandled)
+        } finally {
+            queued.getAndSet(null)?.let { publication.run { it.run() } }
+            fixture.scope.cancel()
+        }
     }
 
     @Test
