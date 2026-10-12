@@ -1,6 +1,6 @@
 # Issue #581 implementation handoff packet
 
-> Status: source implementation and safety follow-up committed; the source APK and Android-test APK assemblies are in progress. Runtime fixed-source instrumentation execution and independent review remain pending.
+> Status: source implementation and safety follow-up committed; source and Android-test APK assemblies passed. Fixed-source runtime instrumentation and independent review remain pending.
 
 ## Issue and accepted contract
 
@@ -10,7 +10,7 @@
 - Accepted page-authority/recovery decision: [ADR-0008](../../docs/adr/0008-qsb-reservation-context-and-recovery-compatibility.md), accepted in the #155 implementation record and unchanged in its first-page authority at `8f649e1e4c49602d606be69100c897995737a68b`.
 - Base: `origin/main` at `840603371c498fa6162192facf9a2aa73dadc242`.
 - Production implementation commit: `1838f4d278d363c6212bbfddd9de05e6465e61d2` (`fix: retain row-backed first page in QSB-off capture`).
-- Test safety follow-up: `bcb8ccceaa` (`test: clear favorites before enabling QSB control`); source/test head at packet update is recorded in git history.
+- Test safety follow-up: `bcb8ccceaaf0905008b065ae49d7b560f0b184d4` (`test: clear favorites before enabling QSB control`).
 - Risk: layout-data, because the changed path is the production canonical layout capture adapter. This worker packet is not the independent PR audit required by the high-risk gate.
 
 ## Bug oracle and change
@@ -24,7 +24,7 @@ The #155 spec and plan now say explicitly that QSB OFF suppresses only synthesis
 ## Test-audit record
 
 - **Protected contract:** #155 QSB-AC-01 and ADR-0008 canonical page authority; with QSB OFF, capture must retain every row-backed screen, including screen 0, preserve numeric row order, and synthesize the logical first page only for an empty screen set.
-- **Credible regression:** with the pre-fix implementation and rows on screens `[0,1]`, the existing capture call returns `[1]`; the updated test requires literal `[0,1]`. This is a source-level oracle only until runtime RED is executed.
+- **Credible regression:** with the pre-fix implementation and rows on screens `[0,1]`, `dbDesktopPageIds(false)` returns `[1]`; `captureCurrent()` then throws the `RowManifestCodec` omitted-page invariant. The updated test requires literal `[0,1]`. The separate API 37 runtime RED below confirms the public capture failure on byte-identical adapter source.
 - **Canonical owner:** existing `PageCaptureInstrumentationTest` exercises `LauncherLayoutAdapter.captureCurrent()` over the real model DB. Calling the private normalization helper directly would bypass the SQLite/capture boundary that owns the bug.
 - **Distinct layer risk:** the test uses Android's real Smartspace preference seam and SQLite-backed capture. It complements the #155 planner/reload tests without claiming Loader deletion or manual-run evidence.
 - **Overlap and routing:** the existing `PageCaptureInstrumentationTest` class is already in the explicit `organizer-instrumentation-reservation-recovery-tests` filter for `surface_layout_write`. No class, lane, job filter, or routing edge was added. The portfolio and map record this existing-class extension.
@@ -39,7 +39,7 @@ A P1 review finding identified that the QSB-ON control originally enabled the pr
 
 ### Supplemental API 37 baseline RED evidence
 
-The parent ran the existing `PageCaptureInstrumentationTest.modelOnlyEmptyPagesExcludedFromCapture` on the separate #516 API 37 validation source `41d8753d7a23eac495856f31d57774a7b8e5d07a`, app APK `83884d094e05a9f1efcf96c5868e72f82a2361b022093eaf431479151dcd5abc`, and instrumentation APK `7f0da3b6e8a73679d037e19a6ce2c02047cb9ffe1787811a96543329010e5967`. The native Smartspace control settled OFF. The one test failed in 2.76 s with `IllegalArgumentException: Model page inventory omits a page referenced by favorites` at `RowManifestCodec.capture(RowManifestCodec.kt:75)`; raw output is `/tmp/516-closure-runs/581-page-off-red.txt`. This is supplemental RED evidence for that 16-validation source slice only, not a run on this issue's main/15 source, and does not prove the fixed source GREEN. It also makes no claim about #155 QSB-AC-06 Loader deletion.
+The parent ran the existing `PageCaptureInstrumentationTest.modelOnlyEmptyPagesExcludedFromCapture` on the separate #516 API 37 validation source `41d8753d7a23eac495856f31d57774a7b8e5d07a`, app APK `83884d094e05a9f1efcf96c5868e72f82a2361b022093eaf431479151dcd5abc`, and instrumentation APK `7f0da3b6e8a73679d037e19a6ce2c02047cb9ffe1787811a96543329010e5967`. The native Smartspace control settled OFF. The one test failed in 2.76 s with `IllegalArgumentException: Model page inventory omits a page referenced by favorites` at `RowManifestCodec.capture(RowManifestCodec.kt:75)`; raw output is `/tmp/516-closure-runs/581-page-off-red.txt`. The parent confirmed exact adapter-blob parity: main/15 base `840603371c498fa6162192facf9a2aa73dadc242` and this API 37 baseline both use blob `a09f1a6e424fb021aa21463e7d45c73aed6fb725` (SHA-256 `768208b595f8b099da31628f26af4a93df27e8ab8132c6059bb1353d57a8ee0e`); fixed main/15 source `1838f4d278d363c6212bbfddd9de05e6465e61d2` and the API 37 port both use blob `871261171dc2a031198e827cdb0da8872de29d67` (SHA-256 `6dda2c661466363930c53152bfa15ef0c057a9db481cddddf84d21fc5f1acb7b`). Thus the RED is supplemental evidence against the same adapter implementation, but is still not a main/15 device run. Main/15 fixed-source instrumentation GREEN awaits exact-head CI; API 37 fixed-source GREEN awaits the parent’s port run. This evidence makes no claim about #155 QSB-AC-06 Loader deletion.
 
 This capture test does **not** satisfy the separate #155 QSB-AC-06 red proof for Loader deletion and A7 mismatch, nor the #155 QSB-AC-07 device end-to-end requirement.
 
@@ -52,13 +52,15 @@ This capture test does **not** satisfy the separate #155 QSB-AC-06 red proof for
 | `python3 tools/repo-contract/validate_repo_contract.py` | PASS before implementation commit (`repository contract OK`) |
 | `./gradlew spotlessApply --no-watch-fs --no-configuration-cache --max-workers=2` | PASS; applied formatting to the changed test |
 | `./gradlew spotlessCheck --no-watch-fs --no-configuration-cache --max-workers=2` | PASS (`/tmp/nunulauncher-581-spotless-check.log`) |
-| `./gradlew assembleLawnWithQuickstepGithubDebug assembleLawnWithQuickstepGithubDebugAndroidTest --no-watch-fs --no-configuration-cache --max-workers=2 --console=plain` | IN PROGRESS at `:compileLawnWithQuickstepGithubDebugKotlin` while this packet revision was prepared; log `/tmp/nunulauncher-581-assemble.log` |
+| `./gradlew assembleLawnWithQuickstepGithubDebug assembleLawnWithQuickstepGithubDebugAndroidTest --no-watch-fs --no-configuration-cache --max-workers=2 --console=plain` | PASS, exit 0; `BUILD SUCCESSFUL in 18m 41s`, 488 actionable tasks (214 executed, 258 from cache, 16 up-to-date); log `/tmp/nunulauncher-581-assemble.log` |
 
-An earlier combined `spotlessCheck assemble...` invocation stopped at Gradle task graph validation because `:spotlessJava` consumes `:compatLib:compileDebugAidl` output without an explicit task dependency; running Spotless and APK assembly separately avoids that unrelated graph validation conflict. This worker has not executed instrumentation, used an emulator/device, installed an APK, or run GitHub Actions. The parent owns fixed-source instrumentation execution and should run the updated test on the existing class filter when runtime is available. Do not claim GREEN from source compilation or from the supplemental RED run.
+Gradle validation used JDK 21.0.12 with Android SDK Platform 36.1 and Build Tools 36.1.0.
+
+An earlier combined `spotlessCheck assemble...` invocation stopped at Gradle task graph validation because `:spotlessJava` consumes `:compatLib:compileDebugAidl` output without an explicit task dependency; running Spotless and APK assembly separately avoids that unrelated graph validation conflict. This worker has not executed instrumentation, used an emulator/device, installed an APK, or run GitHub Actions. The parent owns exact-head CI and fixed-source runtime evidence. Do not claim GREEN from source compilation or from the supplemental RED run.
 
 ## Remaining evidence and known compatibility boundary
 
-- Run actual baseline-source RED and fixed-source GREEN for `PageCaptureInstrumentationTest`; record exact head/commands and runtime results.
+- Obtain fixed-source GREEN for `PageCaptureInstrumentationTest` on the main/15 exact PR head and the separate API 37 port; record exact head/commands and runtime results.
 - Run the required formatting, source, build, connected-test, exact-head CI `final-status`, and separate high-risk audit on the final PR head.
 - Complete an independent full-diff Standards/Spec review. No review approval is claimed here.
 - Verify Smartspace ON/OFF page capture on-device and restore the prior preference/layout receipts under #516; this issue does not authorize physical DB manipulation.
