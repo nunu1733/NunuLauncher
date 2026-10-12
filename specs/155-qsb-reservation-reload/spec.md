@@ -12,7 +12,7 @@ requirements:
   - NFR-011
 risk:
   - layout-data
-updated: 2026-09-08
+updated: 2026-10-12
 ---
 
 # QSB予約領域を考慮した全体整理と相関再読込の整合
@@ -35,7 +35,7 @@ updated: 2026-09-08
 
 | 対象 | 必須の振る舞い |
 |---|---|
-| canonical page authority | `BgDataModel.collectWorkspaceScreens()` と同じ規則を使う。desktop row の screen 集合を基礎とし、**QSB が有効、または集合が空**なら `Workspace.FIRST_SCREEN_ID` をちょうど一度含める。QSB が無効かつ desktop row がある場合は first page を合成しない。[4] |
+| canonical page authority | `BgDataModel.collectWorkspaceScreens()` と同じ規則を使う。desktop row の screen 集合を基礎とし、**QSB が有効、または集合が空**なら `Workspace.FIRST_SCREEN_ID` をちょうど一度含める。QSB が無効かつ desktop row がある場合は first page を合成しない。[4] この条件は既存 row-backed screen を除去する規則ではなく、QSB 無効かつ screen `0` row を含む集合は `[0, 1, ...]` のようにその row-backed page を保持する。 |
 | 予約領域の導出 | page authority、feature condition、columns、`numSearchContainerColumns` を同一 capture attempt で一回だけ snapshot する。QSB 無効時は region を空集合にする。page identity は `Workspace.FIRST_SCREEN_ID` から変換する。 |
 | planner 入力 | reservation は `CapturedItem`、`TargetSet`、分類 signal、または DB row へ偽装せず、canonical かつ duplicate-free な workspace occupancy constraint として入力へ含める。rowless logical first page は正常な planner input である。 |
 | planner | reserved rectangle を初期 occupancy として mark し、movable item・既存 folder unit・new folder のいずれも overlap させない。new page は reservation の対象外である。planner は Android/DB/I/O を読まない。 |
@@ -81,7 +81,7 @@ updated: 2026-09-08
 
 **Given** row-derived canonical page inventory が空でなく、QSB feature condition が false である。
 **When** composer が `FullOrganization` input を構成する。
-**Then** row-derived page inventory に first page を追加せず、reserved region は空集合である。
+**Then** row-derived page inventory に rowless first page を合成せず、予約領域は空集合である。既存 desktop row が `Workspace.FIRST_SCREEN_ID` を参照している場合はその page を保持し、同じ capture 内の他 page と数値順に並べる。
 **And**既存 planner fixture と同じ page authority/rule で value-equivalent input/result を得る。
 
 ### Scenario: reservationが既存rowと衝突する、または不正である
@@ -181,3 +181,4 @@ Launcher schema、rule/taxonomy version、permission、backup format の migrati
 
 - 2026-08-27: Drafted for Issue #155 from the issue evidence, current `main` at `7ba2194ce7`, and the accepted planner/application contracts.
 - 2026-08-27: Addressed review comment `#issuecomment-5432708854`: replaced the literal first-page assumption with Launcher page authority; defined rowless page normalization and one-shot capture; added v2 recovery-format compatibility, fail-closed legacy handling, and upgrade/downgrade evidence requirements.
+- 2026-10-12: Clarified Issue #581's existing-row case: QSB-off suppresses only logical first-page synthesis; it never removes a row-backed screen `0` from the canonical page inventory.

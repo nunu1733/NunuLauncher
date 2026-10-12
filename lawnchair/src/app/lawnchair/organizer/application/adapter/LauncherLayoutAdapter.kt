@@ -144,11 +144,12 @@ internal class LauncherLayoutAdapter(
             }
         }.toMutableList()
         val firstScreen = PageId(FIRST_SCREEN_ID.toString())
-        // SQL preserves Launcher DB's numeric screen ordering. First screen is
-        // platform-authoritative and must lead whenever it is logical but rowless.
+        // SQL preserves numeric ordering for row-backed pages. Add Launcher’s
+        // first screen only when QSB requires it or the row set is empty; if
+        // screen 0 already has a row, keep that page in the inventory.
         return buildList {
             if (qsbEnabled || pages.isEmpty()) add(firstScreen)
-            addAll(pages.filterNot { it == firstScreen })
+            addAll(pages)
         }.distinct()
     }
 
