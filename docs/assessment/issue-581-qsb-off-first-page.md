@@ -1,6 +1,6 @@
 # Issue #581 implementation handoff packet
 
-> Status: implementation commit prepared; runtime regression execution and independent review pending.
+> Status: source implementation and safety follow-up committed; the source APK and Android-test APK assemblies are in progress. Runtime fixed-source instrumentation execution and independent review remain pending.
 
 ## Issue and accepted contract
 
@@ -9,7 +9,8 @@
 - Accepted spec/plan revision: `be942c3a4a13030856bb3ec99866b5e21efe9d13`.
 - Accepted page-authority/recovery decision: [ADR-0008](../../docs/adr/0008-qsb-reservation-context-and-recovery-compatibility.md), accepted in the #155 implementation record and unchanged in its first-page authority at `8f649e1e4c49602d606be69100c897995737a68b`.
 - Base: `origin/main` at `840603371c498fa6162192facf9a2aa73dadc242`.
-- Implementation commit / source head: `1838f4d278d363c6212bbfddd9de05e6465e61d2` (`fix: retain row-backed first page in QSB-off capture`).
+- Production implementation commit: `1838f4d278d363c6212bbfddd9de05e6465e61d2` (`fix: retain row-backed first page in QSB-off capture`).
+- Test safety follow-up: `bcb8ccceaa` (`test: clear favorites before enabling QSB control`); source/test head at packet update is recorded in git history.
 - Risk: layout-data, because the changed path is the production canonical layout capture adapter. This worker packet is not the independent PR audit required by the high-risk gate.
 
 ## Bug oracle and change
@@ -32,6 +33,14 @@ The #155 spec and plan now say explicitly that QSB OFF suppresses only synthesis
 
 The updated existing class covers QSB OFF rows `[0,1]`, QSB OFF with only row-backed page `[0]`, QSB OFF with no desktop rows (logical first-page fallback), QSB ON with a nonzero row (first-page synthesis), and QSB OFF nonzero-page numeric ordering. Test cleanup sets QSB OFF before restoring the saved `favorites` rows, restores the original preference in `finally`, and waits for model reload.
 
+### Follow-up safety review
+
+A P1 review finding identified that the QSB-ON control originally enabled the preference before clearing the saved test-device favorites. Because this preference can restart/reload the Launcher model, original rows could have been observed under the test's enabled-QSB state. In `bcb8ccceaa`, the test was corrected to clear `favorites` first, then enable QSB and seed only its nonzero-page fixture. Cleanup still disables QSB before restoring the saved rows, restores the original preference, and waits for model reload. This source-level ordering fix is recorded here; it is not runtime evidence.
+
+### Supplemental API 37 baseline RED evidence
+
+The parent ran the existing `PageCaptureInstrumentationTest.modelOnlyEmptyPagesExcludedFromCapture` on the separate #516 API 37 validation source `41d8753d7a23eac495856f31d57774a7b8e5d07a`, app APK `83884d094e05a9f1efcf96c5868e72f82a2361b022093eaf431479151dcd5abc`, and instrumentation APK `7f0da3b6e8a73679d037e19a6ce2c02047cb9ffe1787811a96543329010e5967`. The native Smartspace control settled OFF. The one test failed in 2.76 s with `IllegalArgumentException: Model page inventory omits a page referenced by favorites` at `RowManifestCodec.capture(RowManifestCodec.kt:75)`; raw output is `/tmp/516-closure-runs/581-page-off-red.txt`. This is supplemental RED evidence for that 16-validation source slice only, not a run on this issue's main/15 source, and does not prove the fixed source GREEN. It also makes no claim about #155 QSB-AC-06 Loader deletion.
+
 This capture test does **not** satisfy the separate #155 QSB-AC-06 red proof for Loader deletion and A7 mismatch, nor the #155 QSB-AC-07 device end-to-end requirement.
 
 ## Executed validation
@@ -41,8 +50,11 @@ This capture test does **not** satisfy the separate #155 QSB-AC-06 red proof for
 | `git diff --check` | PASS before implementation commit |
 | `python3 tools/repo-contract/validate_ci_portfolio.py` | PASS before implementation commit (`CI portfolio validation OK`) |
 | `python3 tools/repo-contract/validate_repo_contract.py` | PASS before implementation commit (`repository contract OK`) |
+| `./gradlew spotlessApply --no-watch-fs --no-configuration-cache --max-workers=2` | PASS; applied formatting to the changed test |
+| `./gradlew spotlessCheck --no-watch-fs --no-configuration-cache --max-workers=2` | PASS (`/tmp/nunulauncher-581-spotless-check.log`) |
+| `./gradlew assembleLawnWithQuickstepGithubDebug assembleLawnWithQuickstepGithubDebugAndroidTest --no-watch-fs --no-configuration-cache --max-workers=2 --console=plain` | IN PROGRESS at `:compileLawnWithQuickstepGithubDebugKotlin` while this packet revision was prepared; log `/tmp/nunulauncher-581-assemble.log` |
 
-No Gradle compilation, instrumentation execution, emulator/device run, APK installation, GitHub Actions run, or independent review was performed by this worker. Do not claim runtime RED or GREEN from the assertion analysis above. The parent owns test execution and should run the new test against baseline adapter source first, then the fixed source, on the existing class filter when runtime is available.
+An earlier combined `spotlessCheck assemble...` invocation stopped at Gradle task graph validation because `:spotlessJava` consumes `:compatLib:compileDebugAidl` output without an explicit task dependency; running Spotless and APK assembly separately avoids that unrelated graph validation conflict. This worker has not executed instrumentation, used an emulator/device, installed an APK, or run GitHub Actions. The parent owns fixed-source instrumentation execution and should run the updated test on the existing class filter when runtime is available. Do not claim GREEN from source compilation or from the supplemental RED run.
 
 ## Remaining evidence and known compatibility boundary
 
