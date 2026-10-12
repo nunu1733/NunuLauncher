@@ -18,11 +18,15 @@ handoff records that containing commit as the branch's exact review head.
 - **Accepted plan 13:** `specs/13-safe-layout-application/plan.md` at
   `ba299cf06c7dfffda198ff440c0800c5a9ffb63e`.
 - **Accepted Spec 269:** `specs/269-folder-workspace-representability/spec.md`
-  at `e42d2f73cb2340c1f4d4737ccc8afab83a75273`.
+  at `e42d2f73cb2340c1f4d4737ccc8afab83a75273d`.
 - **Accepted plan 269:** `specs/269-folder-workspace-representability/plan.md`
   at `2b7a2702c464538a52731bc52e4141b6f3802784`.
-- **Bug oracle:** Issue body at the link above, retrieved at the timestamp above;
-  the issue pins the observed source to `f2592577f9675a5153ffa5819651e1001b5c518e`.
+- **Authorization / bug oracle:** The accepted Spec 13 lossless capture/recovery
+  contract and Spec 269 parent/rank-only folder-child contract are the primary
+  bug authorization under the workflow accepted-spec route. The Issue body is
+  supplementary observed-failure evidence, not an independently accepted Issue-only
+  oracle; it has no owner-acceptance link. Retrieved at the timestamp above,
+  it pins the observed source to `f2592577f9675a5153ffa5819651e1001b5c518e`.
   The rejected `cellX/cellY=-1/-1` is the ordinary Launcher folder-child row.
 - **Base SHA:** `7985a45a6e0d14977bd0f0c155882de65756254c` (`origin/main`, verified).
 - **Implementation head SHA:**

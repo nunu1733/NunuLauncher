@@ -296,8 +296,9 @@ this Issue.
 - `PersistenceManifest` records the raw `CELLX`/`CELLY` and `SPANX`/`SPANY`
   values, including the paired folder-child sentinel. The recovery record wire
   format and manifest schema remain unchanged; a pre-fix reader still rejects
-  the sentinel value. The change affects neither values written by the targeted
-  workspace transition nor the manifest schema.
+  the sentinel value. Issue #579’s sentinel correction changes neither the values
+  written by the workspace transition nor the manifest schema. Issue #269’s
+  existing transition still normalizes workspace spans to `1×1` as required below.
 - No `favorites` schema version, recovery format version, backup allowlist, or
   migration is added.
 - Every existing `WorkspaceItemInfo` moved into the desktop through
