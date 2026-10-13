@@ -16,8 +16,8 @@
 | `issue-528-lan-network` | `57d4338bb5` | #543 | #528 LAN permission/ECH/CT |
 | `issue-524-api37-quickstep` | `e214b7b190` | #546 | #524 runtime検証とADR rev8（559 stackのancestor） |
 | `issue-545-api37-provider-fix` | `33270ede1b` | #550 | #545 provider修復・#554 parcel（#557）・#562（#567）・ADR rev9/maxSdk 37 |
-| `issue-559-api36-recents-compat` | `33b4c061c5` | #571 | #559修復＋#563 fix＋#555/#562 cherry-pick |
-| `issue-574-contacts-data-projection` | `000c26903b` | #575 | #574 contacts検索修復（559 stack向け） |
+| `issue-559-api36-recents-compat` | `5a9e3ea502` | #571＋#575 | #559修復＋#563 fix＋#555/#562 cherry-pick＋#574 contacts修復（#575を2026-10-13にmerge済み。統合branchの直接の基点） |
+| `issue-574-contacts-data-projection` | `000c26903b` | #575 | #574 contacts検索修復（**merge済み**。559 head `5a9e3ea502` は本merge commit） |
 
 merge-base（559 stack, main）= `b011d84ca9`（旧upstream分岐点。通常三方merge不可の根拠。ADR Decision 3 rev10）。
 
@@ -25,7 +25,7 @@ merge-base（559 stack, main）= `b011d84ca9`（旧upstream分岐点。通常三
 
 branch: `issue-516-phase4-cutover`（worktree `/Users/nunu/Documents/work2/NunuLauncher-phase4-cutover`）。
 
-1. **PR #575をGitHub上で `issue-559-api36-recents-compat` へmerge**（checks pass・MERGEABLE確認済み。main不変）。merge後の559 headを統合基点とする。
+1. **PR #575は実行済み**: 2026-10-13に `issue-559-api36-recents-compat` へmerge（checks pass・final-status passを確認済み。main不変）。559 headは `5a9e3ea5024062467866c2b928953586bd928f6b`。統合branchはこのheadから作成し、作成時に `issue-532-phase2-restart`・`issue-574-contacts-data-projection` を含むancestryを確認する。
 2. 統合branchを559新headから作成し、次の順でmerge（各merge前にdry-runでconflict集合を再確認し、結果を実行記録へ残す）:
    1. `issue-545-api37-provider-fix` — 既知conflict: `quickstep/src/com/android/quickstep/views/TaskContainer.kt`（#562が両側に存在するため。559側cherry-pickと545側PR #567 mergeの同一契約内容を `: Unit` 式body明示の形へ手動統合）。
    2. `issue-526-target37-ui` — dry-run conflict 0件。
@@ -76,11 +76,18 @@ mainのreplay基点は `38262fb74d`（Phase 2 plan対象revision）。これ以�
 
 ## 4. cutover merge機構（ADR Decision 3 rev10の実行手順）
 
-1. 統合headでgates（§5）全green後、`git merge -s ours main`（main=当時のmain head。R候補）を統合branch上で実行。merge commit message: `Cutover: Lawnchair 16 baseline switch (Epic #516 Phase 4)` + 対照表要旨。
-2. 機械検証: (i) `git diff <統合head> <merge commit>` が空、(ii) `git diff --name-status main..<merge commit>` のD entryがすべて説明済み、(iii) 保持stack各branchがmerge commitのancestorであること（`git merge-base --is-ancestor`）。
-3. tag: main到達直前に、cutover直前main headへ `pre-lawnchair16-<YYYYMMDD>` を付与（ADR Decision 5。merge commit自身をtag化しない）。
-4. PR: 統合branch → main（`Closes #516` はEpic終了条件がすべて満たされる最終PRのみ。本cutover PRはexit criteria残照合のため `Refs #516` とし、Epic closeは正本同期・処遇記録完了後の判断）。
-5. merge方式: GitHub merge commit（PRのmergeでmainへ単一mergeとして到達。fast-forward不可の場合もmerge commitで統一）。
+実行順（循環なし。G5'/G6'/G7'（予備）はM作成後・main merge前に実行する）:
+
+1. 統合headで事前gates（G1'/G2'/G3'/G4'）を全greenにする。
+2. `origin/main` の厳密なSHAを R として確認し、Rにtag `pre-lawnchair16-<YYYYMMDD>` を付与する。
+3. 統合branch上で `git merge -s ours <R>` を実行し、merge commit Mを作成する（M^1=統合head、M^2=R、Mのtree=統合headのtree）。machine検証: `git diff <統合head> M` が空、`M^2 == R == tag`。
+4. M（以後に追加commitをしない。PR head=M）をpushし、cutover PR（base=main）を作成する。
+5. **main merge前**にG5'（PR head=Mの `pull_request` CI final-status）・G6'（独立audit・audit文書）・G7'予備証明（`git revert -m 2 M --no-commit` dry-runのtree hashがRのtree hashと一致。検証後abort）を通す。
+6. merge直前に `origin/main == R == tag == M^2 == O^1（予定）` を再確認する。**mainが進んでいた場合は手順2へ戻り、M・tag・PRを作り直して最終headでCI/audit/revert証明を再実行する**（P28以降にmain への追加mergeが必要になった場合は対照表へ追記してから再実行する）。
+7. GitHub merge commit（O）でmainへmergeする。O^1=merge時点main head、O^2=M。machine検証: `git diff M O` が空、`O^1 == R == tag`。
+8. merge後の最終証明: `git revert -m 1 O --no-commit` dry-runのtree hashがR（tag）のtree hashと一致することを確認し記録（検証後abort。mainへpushしない）。
+
+PR本文は `Refs #516`（Epic終了条件の全てが満たされる最終PRのみが `Closes #516` を付けられるため、cutover PRは正本同期・処遇記録完了後のEpic close判断までclose構文を使わない）。
 
 ## 5. gates
 
@@ -90,9 +97,9 @@ mainのreplay基点は `38262fb74d`（Phase 2 plan対象revision）。これ以�
 | G2' unit | organizer unit test gate（quality-strategyのcommand。`--tests 'app.lawnchair.organizer.*'`） |
 | G3' ownership inventory | `measure_upstream_patch_surface.py` をupstream `43a21b43d7`・target 統合headで実行し、candidate baseline（bridge groupsの新path写像・pin再記録）で全counted pathが分類済みであることを確認。**正式採択（JSON/md更新）はcutover PRに含める**（AC-6） |
 | G4' T9 | §6のprotocol（AC-3）。emulator leg必須・実機legはAC-4 |
-| G5' CI | cutover PR headの `pull_request` CI final-status success |
-| G6' 独立audit | 別sessionによるaudit ＋ `docs/assessment/pr-<PR>-<slug>.md` ＋ high-risk-gate workflow PASS（label: `risk: layout-data`, `risk: migration`） |
-| G7' rollback証明 | AC-5（revert dry-run tree hash一致 ＋ T9 rollback leg） |
+| G5' CI | cutover PR head（M）の `pull_request` CI final-status success（main merge前に実行） |
+| G6' 独立audit | 別sessionによるaudit ＋ `docs/assessment/pr-<PR>-<slug>.md` ＋ high-risk-gate workflow PASS（label: `risk: layout-data`, `risk: migration`）。main merge前に実行 |
+| G7' rollback証明 | AC-5。**予備証明（main merge前）**: `git revert -m 2 M --no-commit` dry-run tree hash == R（tag）のtree hash。**最終証明（merge後）**: `git revert -m 1 O --no-commit` dry-run tree hash == Rのtree hash。T9 rollback leg |
 
 ## 6. T9 protocol（emulator leg）
 
@@ -131,7 +138,7 @@ cold読取（read0〜3共通）: `am force-stop app.lawnchair.debug` → `run-as
 
 | 対象 | 処遇 |
 |---|---|
-| PR #575 | cutover前に559 stackへmerge（§2.1）。PRはMERGEDで完結 |
+| PR #575 | **実行済み（2026-10-13）**: 559 stackへmerge。PRはMERGEDで完結 |
 | PR #535/#538/#541/#543/#546/#550 | cutover後、branchがmainのancestorであることをancestry証拠としてclose（superseded by cutover PR。review・検証記録の正本としてPRは残る） |
 | PR #558 | #554のclose判断と同時に処遇決定（判定契約非採用の記録があるため、close with commentを基本とする） |
 | #532/#545/#554/#574 | cutover到達をもってclose（#554はclose条件が実質達成済みのため、cutover comment付きでclose） |
@@ -139,14 +146,20 @@ cold読取（read0〜3共通）: `am force-stop app.lawnchair.debug` → `run-as
 
 ## 9. rollback手順（AC-5の実行詳細）
 
-1. **事前証明**: cutover merge後（main到達後）、scratch branchで `git revert -m 1 --no-commit <merge>` → `git write-tree` のhashが `pre-lawnchair16-<date>`^{tree} と一致を確認 → abort。結果をassessmentへ記録。
-2. **実運用手順**: mainで `git revert -m 1 <cutover merge>` をPRとして実行（protected mainへのforce-resetは行わない）。または tag `pre-lawnchair16-<date>` からrelease再発行（ADR Decision 5）。
-3. **data面**: T9 rollback legが16書込みdataの15での可読性を証明。16運用中の新規書込みが加わった場合はT9範囲外となるため、rollback時のdataはT9証跡の条件下にあることを手順書へ明記。
+rollback対象は **main上のcutover merge O** に一意に固定する（ADR Decision 3/5 revision 10）。
+
+1. **予備証明（main merge前）**: 統合branch上のMに対し `git revert -m 2 M --no-commit` → 結果tree hashがtag `pre-lawnchair16-<date>`^{tree} と一致を確認 → abort。M^2=Rであるため、このrevertは「16 treeからR treeへ戻す差分」の逆適用と同値になる。
+2. **最終証明（main merge後）**: scratch branchで `git revert -m 1 O --no-commit` → `git write-tree` のhashがtag `pre-lawnchair16-<date>`^{tree} と一致を確認 → abort。結果をassessmentへ記録。
+3. **実運用手順**: mainで `git revert -m 1 O` をPRとして実行（protected mainへのforce-resetは行わない）。または tag `pre-lawnchair16-<date>` からrelease再発行（ADR Decision 5）。
+4. **data面**: T9 rollback legが16書込みdataの15での可読性を証明。16運用中の新規書込みが加わった場合はT9範囲外となるため、rollback時のdataはT9証跡の条件下にあることを手順書へ明記。
 
 ## 10. 実行記録
 
 実行時に追記する（merge順dry-run結果・unit適用対照表・gates結果・T9証跡・cutover SHA・tag SHA）。
 
+- 2026-10-13: review round 1対応と並行して機械的統合作業を開始済み（PR #575 merge、統合branch `issue-516-phase4-cutover` で545/526/527/528のmergeとunit portを実行中。結果は最終対照表へ記録する）。本PRのmerge後にP28として統合branchへportする。
+
 ## Change history
 
 - 2026-10-13: revision 1 proposed。ADR-0018 revision 10と同時に起草。
+- 2026-10-13: revision 2 proposed（review round 1対応）。rollback対象をmain上のcutover merge Oへ一意固定し `revert -m 1 O`（予備証明は `revert -m 2 M`）へ修正、gate実行順を循環なしの固定順（tag→M作成→PR→G5'/G6'/G7'予備→main再確認→merge→最終証明）へ変更、PR #575 merge済みの実状態へ§1/§2.1/§8を同期。

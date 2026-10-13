@@ -26,8 +26,8 @@ ADR-0018 Decision 3/5/6/7がPhase 4に予約した「保持stackとmain修正を
 ### AC-1 統合完全性（cutover head）
 
 - plan §3対照表の全unitが統合headに適用済みであること（各unitの適用commit SHA・適用方式を対照表へ記録）。
-- cutover mergeはADR Decision 3 revision 10の機構（`-s ours`）とし、**merge commitのtreeが統合headのtreeと完全一致**すること（`git diff <統合head> <merge commit>` が空）。
-- cutover後に `git diff --name-status <pre-lawnchair16-tag>..<cutover merge>` の削除エントリ（D）がすべて意図的dropとして説明済みであること。意図しないmain専用pathの消失を残さない。
+- cutoverはADR Decision 3 revision 10の機構（統合branch上の `-s ours` merge commit MをPR headとし、main上のPR merge commit Oをcutover mergeとする）で行う。**Oのtreeがgateを通過した統合head（M）のtreeと完全一致**すること（`git diff` が空）。merge時点で `O^1 == R == tag pre-lawnchair16-<date> == M^2` であること（mainが進んでいた場合はM・tag・PRを作り直し、CI/audit/revert証明を最終headで再実行）。
+- cutover後に `git diff --name-status <pre-lawnchair16-tag>..<cutover merge O>` の削除エントリ（D）がすべて意図的dropとして説明済みであること。意図しないmain専用pathの消失を残さない。
 
 ### AC-2 CI
 
@@ -50,9 +50,12 @@ ADR-0018 Decision 3/5/6/7がPhase 4に予約した「保持stackとmain修正を
 
 ### AC-5 rollback証明
 
-1. cutover mergeに対する `git revert -m 1 --no-commit` dry-runの結果treeがtag `pre-lawnchair16-<date>` のtreeと**hash一致**することを記録（検証後abortし、mainへはpushしない）。
-2. T9 rollback leg（AC-3.3）。
-3. 上記の手順（revert手順・release再発行path）をassessmentへ記録。
+**rollback対象はmain上のcutover merge Oに一意に固定する**（ADR Decision 3/5 revision 10）。
+
+1. merge前の予備証明: 統合branch上の `-s ours` merge commit Mに対する `git revert -m 2 M --no-commit` dry-runの結果treeがtag `pre-lawnchair16-<date>`（R）のtreeと**hash一致**することを記録（検証後abort）。
+2. merge後の最終証明: main上のOに対する `git revert -m 1 O --no-commit` dry-runの結果treeがRのtreeと**hash一致**することを記録（検証後abortし、mainへはpushしない）。
+3. T9 rollback leg（AC-3.3）。
+4. 上記の手順（revert手順・release再発行path）をassessmentへ記録。実運用のrollbackはmain上で `git revert -m 1 O` をPRとして実行する（protected mainへのforce-resetは行わない）。
 
 ### AC-6 正本同期（cutover PRまたはその前提docs PRで更新）
 
