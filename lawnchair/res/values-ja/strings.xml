@@ -111,6 +111,7 @@
     <string name="home_screen_organize">ホームを整理</string>
     <string name="edit_surface_title">編集画面</string>
     <string name="edit_surface_snapshot_notice">この画面を開いた時点のレイアウトを表示しています。他で行った変更は反映されません。</string>
+    <string name="edit_surface_discard_notice">前回の未確定の編集内容は破棄されました</string>
     <string name="edit_surface_selection_count">%1$d件を選択中</string>
     <string name="edit_surface_action_move_to_page">ページへ移動\u2026</string>
     <string name="edit_surface_action_add_to_folder">フォルダへ入れる\u2026</string>
