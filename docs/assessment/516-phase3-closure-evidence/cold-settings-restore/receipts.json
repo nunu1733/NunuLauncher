@@ -71,5 +71,7 @@
     "setup prompt after native restart was not acted on; no organization Apply",
     "DB/archive/APK/rawlogs remain private",
     "post-Restore PNG/XML pair excluded: setup prompt visible in PNG but absent from XML; matching final cold pair retained"
-  ]
+  ],
+  "maintenance_source_fix_commit": "f34c3b90702618aabba36d58cf47cc2d2cbaf7a1",
+  "maintenance_source_identity_scope": "maintenance_source is the audited production-tree/CI head; source fix introduced by maintenance_source_fix_commit and next commit is packet-only"
 }
