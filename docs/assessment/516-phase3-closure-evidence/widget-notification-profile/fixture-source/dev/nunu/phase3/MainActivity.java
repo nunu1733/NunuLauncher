@@ -1,0 +1,6 @@
+package dev.nunu.phase3;
+import android.app.*; import android.os.*; import android.content.*; import android.widget.*;
+public class MainActivity extends Activity {
+ public void onCreate(Bundle b){super.onCreate(b);String action=getIntent().getStringExtra("action");if(action!=null){perform(action);finish();return;}LinearLayout l=new LinearLayout(this);l.setOrientation(1);for(String a:new String[]{"post","cancel","update","oversize","large"}){Button x=new Button(this);x.setText(a);x.setOnClickListener(v->perform(a));l.addView(x);}setContentView(l);}
+ void perform(String action){if(action.equals("update")||action.equals("oversize")||action.equals("large")){Widget.publish(this,action.equals("oversize"),action.equals("large"));return;}NotificationManager n=getSystemService(NotificationManager.class);n.createNotificationChannel(new NotificationChannel("phase3", "Phase3 synthetic",NotificationManager.IMPORTANCE_DEFAULT));if(action.equals("cancel")){n.cancel(516);android.util.Log.i("Phase3Fixture","SYNTHETIC_NOTIFICATION_CANCELLED");}else{n.notify(516,new Notification.Builder(this,"phase3").setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("Phase3 synthetic notification").setContentText("Fixture only; no personal content").build());android.util.Log.i("Phase3Fixture","SYNTHETIC_NOTIFICATION_POSTED");}}
+}

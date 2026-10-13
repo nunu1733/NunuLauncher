@@ -1,0 +1,79 @@
+{
+  "status": "selected hashes for the CJKV and #579 TalkBack follow-up only",
+  "date": "2026-10-12",
+  "scope": "This index covers only the selected private artifacts for this follow-up. It does not amend or claim coverage by private-evidence-inventory.json.",
+  "files": [
+    {
+      "artifact": "cjk_zh_composition",
+      "sha256": "cb2a459bf9c6cdd219d739a4b68a93204728e2e0ed7f83efd2ba0f8929afbf0f",
+      "role": "CJKV synthetic-field composition capture",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "cjk_zh_commit",
+      "sha256": "759d38a0a22d2d7c88db084f2605e99266d30be96ab633e954acfa21f235517d",
+      "role": "CJKV synthetic-field committed-text capture",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "cjk_ko_composition",
+      "sha256": "457984db2df533b5dfbc057bdc98cbc4c21246758b6c30d18268655890538670",
+      "role": "CJKV synthetic-field composition capture",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "cjk_ko_commit",
+      "sha256": "a78548e07fefc20ae29536c215854498d9f286c83bb8396a2b20f2f45af6e2da",
+      "role": "CJKV synthetic-field committed-text capture",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "cjk_vi_composition",
+      "sha256": "78df5893339d1e3591e74b5740d5487bdd8c286bc05543486b7044a5d6b132bc",
+      "role": "CJKV synthetic-field conversion capture",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "cjk_synthetic_field_hierarchy",
+      "sha256": "8bc24e7aedbf7cbb752961bcd86e90801103f57e876a52114f9be4eccb2dacf4",
+      "role": "CJKV synthetic-field hierarchy; raw XML withheld",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "talkback_preconfirm_hierarchy",
+      "sha256": "bfc9863b5ee4ab4a351c610a7d41a6f48eec23a1bdbc055505f761afd49b9f79",
+      "role": "pre-confirmation selection hierarchy; raw XML withheld",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "talkback_preconfirm_screen",
+      "sha256": "0d5388d4184245ce5b5ccc75c6bb4011c88c0678c34c8f530726553953b7e51b",
+      "role": "pre-confirmation UI screen; raw image withheld",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "talkback_postanswer_screen",
+      "sha256": "3608a2a21ce2e17f9560eb1c9e176b9a1314c7d02e284d885416614596ca9057",
+      "role": "later post-answer UI screen; raw image withheld",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "talkback_postanswer_hierarchy",
+      "sha256": "e699988f6af3852e67caf3ca8a4d3066453fc6f68bb644264053606b85cbf755",
+      "role": "later post-answer hierarchy; raw XML withheld",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "talkback_settings_baseline",
+      "sha256": "b8769eadf7bb476b0e698000ade123e368266d2758c275f29fb3c0c625158867",
+      "role": "private settings baseline used for teardown comparison",
+      "publication": "raw private bytes excluded; retain private original"
+    },
+    {
+      "artifact": "talkback_owner_receipt_source",
+      "sha256": "3cd06eece1161005d7edbde6cfe347ef859b46e8b953fe77e84614cf1464ebb4",
+      "role": "sanitized text receipt copied to physical-discard-notice-receipt.json",
+      "publication": "raw private bytes excluded; retain private original"
+    }
+  ]
+}
