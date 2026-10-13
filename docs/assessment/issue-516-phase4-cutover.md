@@ -1,6 +1,6 @@
 # Issue #516 Phase 4 — baseline切替cutover実行記録
 
-> Status: in progress（rev4順で実行中。cutover merge後にO/tag/rollback最終証明をmain上の後続docs PRで追記して完了）
+> Status: completed（2026-10-13。cutover merge O=`de4565323711facf17935cc56925b766e1d88037` 完了・G7'最終証明PASS。本closure snapshotはPR #591でmainへ到達）
 > 対応: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) Phase 4 / [ADR-0018 revision 10](../adr/0018-lawnchair-16-rebase.md) / [spec](../../specs/516-16-rebase-phase4/spec.md) / [plan](../../specs/516-16-rebase-phase4/plan.md)
 > 実行日: 2026-10-13
 
@@ -45,26 +45,31 @@ replay基点 `38262fb74d` 以降のmain first-parent unitを時系列順に適�
 
 | gate | 結果 | 証跡 |
 |---|---|---|
-| G1' build/format | **PASS**（S₃=e7798ecf1f で `assembleLawnWithQuickstepGithubDebug` + `spotlessCheck` + organizer unit gateを一括実行、BUILD SUCCESSFUL 5m9s。S₂=88218ebbca・S₁=ac2b985860 でも同gate PASS） | CIが正本 |
+| G1' build/format | **PASS**（S₃で `assembleLawnWithQuickstepGithubDebug` + `spotlessCheck` + organizer unit gateを一括実行、BUILD SUCCESSFUL 5m9s。S₂=88218ebbca・S₁=ac2b985860 でも同gate PASS。注記: §5に記録のとおり統合branchはrebaseで書き直されたため、初回試行系列のS系SHA（20f7b9f33d/8fea123177/e7798ecf1f等）はM3 ancestryに存在せず、同一内容がdurable tree（S3final 5bbee5ae04）として確認できる。tree証明の正本はM3のCI（§5）） | CIが正本 |
 | G2' unit | **PASS 2000 tests / 0 failures / 0 skipped**（S₃。CI organizer-unit-tests filterと同一のfilter指定） | test-results XML集計 |
 | G3' ownership | **PASS**。upstream ancestor `43a21b43d7` で再測定: counted **354 files / +32307 / −8923**（S₂でもcounted面不変・excluded面のみrev4 docs増分でexpected_measurement更新・`--verify` PASS）。正式採用を同一PRで実施 | [516-phase4-patch-surface-readoption.md](516-phase4-patch-surface-readoption.md)・[upstream-patch-surface-baseline.json](upstream-patch-surface-baseline.json) |
 | G4' T9 | **PASS（emulator leg。rev4やり直し実行、S₂最終treeのAPK `16.Dev.(88218eb)` を使用）**。15→16→15→16同一data roundtrip、favorites全stage IDENTICAL・schema33不変・prefs key完全保持・FATAL 0 | [516-phase4-t9-evidence/](516-phase4-t9-evidence/) |
-| G5' CI | Sのpull_request CI final-status（cutover PR）＝ 本PRのchecks | PR checks |
-| G6' audit | 別session audit + `docs/assessment/pr-<PR>-<slug>.md`（Head SHA=S） | audit doc（docs-only commit E） |
-| G7' rollback | 予備: `git revert -m 2 M` dry-run tree hash == R_candidate tree hash（merge前）。最終: `git revert -m 1 O` == 同（merge後追記） | §5へ追記 |
+| G5' CI | **M3**のpull_request CI final-status success（[run 38422689296](https://github.com/nunu1733/NunuLauncher/actions/runs/38422689296)。attempt 2 — 初回category-override失敗はrunner SDK download破損のinfra flake）＋**E**のCI final-status success（[run 38434153278](https://github.com/nunu1733/NunuLauncher/actions/runs/38434153278)）。初回試行（M run 38404418328）はrebase規模diffがrunner env上限を超過してfail → CI両fix（gating fallback・validator local diff）で解消 | 上記2 runs |
+| G6' audit | 別session auditを**M3に対して**実施（判定「受入可・条件付き」）→ [pr-590-16-baseline-cutover.md](pr-590-16-baseline-cutover.md)（Head SHA=M3・CI run=M3成功run）をaudit文書のみのcommit Eへ収録。ChatGPT review 2 rounds — round 2 **approve相当** [comment](https://github.com/nunu1733/NunuLauncher/pull/590#issuecomment-6151352071) | audit doc（E commit f5b05a65a2/b24632fdf3） |
+| G7' rollback | **両方PASS**: 予備 `git revert -m 2 M3` dry-run tree `c008f282caf5413c55b924f595d97922653d6f71` == R tree ✓、最終 `git revert -m 1 O` dry-run tree `c008f282caf5413c55b924f595d97922653d6f71` == R tree ✓（検証後abort） | §5実行結果 |
 
 ## 4. T9サマリ
 
-[516-phase4-t9-evidence/README.md](516-phase4-t9-evidence/README.md) 参照。R_candidate = `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`。実機leg（Pixel 9a / API 37）はowner decision待ち（ADR Decision 5 rev10の代替経路）。
+[516-phase4-t9-evidence/README.md](516-phase4-t9-evidence/README.md) 参照。R_candidate = `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`。実機leg（Pixel 9a / API 37）は**owner decision（2026-10-13）によりemulator leg証跡で代替・確定**: 判断依頼は[Epic #516 comment 6151634067](https://github.com/nunu1733/NunuLauncher/issues/516#issuecomment-6151634067)、決定記録は[ADR-0018 Phase 4 execution outcome](../adr/0018-lawnchair-16-rebase.md)（理由と受容リスク明記）。spec AC-4の後者経路を満たす。
 
 ## 5. cutover実行記録（merge時に追記）
 
-- R_candidate: `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`（tag `pre-lawnchair16-20261013` 付与済み・push済み）
+- R_candidate: `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`（tag `pre-lawnchair16-20261013` 付与・push済み）
+- **cutover実行結果（2026-10-13 merge完了）**:
+  - S3final: `5bbee5ae042ef8f05ee29e0fac9842e8c52e2031`（rebase後の最終統合tree。§2/§3のS系SHAでrebaseにより書き換わったものは本treeに同一内容が存在する）
+  - M3（`-s ours` merge commit）: `106b4f7f60c28e3022b9b4b6a37ba23c2eb845e5`（M^1=S3final、M^2=R、tree==S3final）
+  - E（audit文書のみ・最終PR head）: `b24632fdf37e619a3a37c1fa0b44afd639c457d9`（M3..E差分 = `docs/assessment/pr-590-16-baseline-cutover.md` 1file）
+  - **O（cutover merge・rollback対象）**: `de4565323711facf17935cc56925b766e1d88037`（PR #590のmerge commit。**O^1 == R == tag == M3^2**、O^2 == E、O tree == E tree）
+  - G5' CI: M3 run [38422689296](https://github.com/nunu1733/NunuLauncher/actions/runs/38422689296) final-status success（attempt 2。初回category-override失敗はrunner SDK download破損のinfra flake）・E run [38434153278](https://github.com/nunu1733/NunuLauncher/actions/runs/38434153278) final-status success
+  - G6' audit: [pr-590-16-baseline-cutover.md](pr-590-16-baseline-cutover.md)（Head SHA=M3。ChatGPT review 2 rounds — round 2 **approve相当・blockingなし** [comment](https://github.com/nunu1733/NunuLauncher/pull/590#issuecomment-6151352071)）
+  - G7' rollback証明: **予備証明** `git revert -m 2 M3` dry-run tree `c008f282caf5413c55b924f595d97922653d6f71` == R tree ✓。**最終証明** `git revert -m 1 O` dry-run tree `c008f282caf5413c55b924f595d97922653d6f71` == R tree ✓（両検証とも検証後abort、mainへpushせず）
+- 保持PR/Issue処遇（plan §8実行結果）: PR #538/#541/#543/#546/#550 close（branchがmainのancestorであることを機械確認・superseded by #590）、#554/#558/#575 close、#532/#574/#559/#545 close（#545/#559は既存closeに到達記録コメント）。#576/#586はOPEN維持（tracked limitations。Epic完了に影響しない根拠とclosure provenanceは[Epic #516 Phase 4完了コメント](https://github.com/nunu1733/NunuLauncher/issues/516#issuecomment-6151634067)へ記録済み）
 - **rev4やり直し記録（PR #590 review round 1対応）**: 初回 S=8fea123177 → E=dec3ee4929 → M=11b5453447 のCI run 38404418328/38404418234がCI側のrebase規模制限でfail。S₂から順序を「M CI→audit(M)→E(auditのみ)」へ改訂（plan rev4・ADR rev10補訂）し、CI両fixを投入してやり直す。旧E/Mは統合branchから撤去（force-push）。
-- S / E / M / O / tag SHA: （追記）
-- 予備証明 `git revert -m 2 M` dry-run: （追記）
-- 最終証明 `git revert -m 1 O` dry-run: （追記）
-- 保持PR処遇（plan §8）: （追記）
 
 ## 6. 正本同期（AC-6）
 
