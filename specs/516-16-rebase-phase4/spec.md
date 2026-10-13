@@ -4,7 +4,7 @@ status: proposed
 
 # Spec: Lawnchair 16 rebase Phase 4 — baseline切替cutover・T9・正本同期（Epic #516）
 
-> Status: proposed（本PRのreviewでaccept判定後にacceptedへ遷移。受入は本PRのmergeで完了）
+> Status: accepted（ChatGPT review 3 rounds — round 3 blockingなし [comment](https://github.com/nunu1733/NunuLauncher/pull/589#issuecomment-6144963163)。受入は本PRのmergeで完了）
 > Risk tier: H（baseline切替・Launcher DB互換・rollback契約を含む。高リスクPR独立エビデンス要件の対象）
 > 対応: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) Phase 4 / [ADR-0018 revision 10](../../docs/adr/0018-lawnchair-16-rebase.md)
 > 前提: Phase 2（[#532](https://github.com/nunu1733/NunuLauncher/issues/532) / PR #535）・Phase 3（[matrix §15](../../docs/assessment/issue-516-phase3-closure-matrix.md)）完了済み。Phase 3残項目・tracked limitations（#576/#586）は本specの対象外。

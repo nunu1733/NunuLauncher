@@ -4,7 +4,7 @@ status: accepted
 
 # Lawnchair 16 rebase — 採用baseline・移行方式・rollback（ADR-0018）
 
-> Status: Accepted revision 10 proposed（2026-10-13。revision 9まではstack側で確定済みの内容であり、本revision 10はPhase 4 cutoverの実行契約（統合集合・merge機構・T9・rollback証明の受入条件）を追加する。revision 9: #545のprovider修復検証成立を受けDecision 7のadvertised rangeを35..37へ更新、受入は実装PR #550のreviewで確定。revision 6はPR #534 reviewでaccept・merge済み。revision 7はPhase 2実装PR reviewで確定。revision 8は#524のruntime検証結果をDecision 7へ反映）。revision 5までのaccepted正本はmain `b759506e28f8922a2f4a02a7fbb83360b710b750`。本revisionの受入は、このrevisionを含むPhase 4 spec/plan PRのreviewで確定する。
+> Status: Accepted revision 10（2026-10-13。PR #589 review 3 roundsでaccept判定、round 3 blockingなし。revision 9まではstack側で確定済みの内容であり、本revision 10はPhase 4 cutoverの実行契約（統合集合・merge機構・T9・rollback証明の受入条件）を追加する。revision 9: #545のprovider修復検証成立を受けDecision 7のadvertised rangeを35..37へ更新、受入は実装PR #550のreviewで確定。revision 6はPR #534 reviewでaccept・merge済み。revision 7はPhase 2実装PR reviewで確定。revision 8は#524のruntime検証結果をDecision 7へ反映）。revision 5までのaccepted正本はmain `b759506e28f8922a2f4a02a7fbb83360b710b750`。受入は本PR #589のmergeで完了する。
 > Date: 2026-10-04
 > 対応: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) / Phase 0 [#519](https://github.com/nunu1733/NunuLauncher/issues/519)
 > 出典: [#442 最終結論C](https://github.com/nunu1733/NunuLauncher/issues/442#issuecomment-5863040551)（2026-09-28）、[upstream-strategy.md](../engineering/upstream-strategy.md) Upgrade policy 5比較軸、Phase 0計測 [issue-516 assessment](../assessment/issue-516-16-rebase-phase0-research.md)

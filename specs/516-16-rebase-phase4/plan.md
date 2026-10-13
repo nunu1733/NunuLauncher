@@ -1,6 +1,6 @@
 # Plan: Lawnchair 16 rebase Phase 4 — cutover実行（Epic #516）
 
-> Status: proposed（specと同じPRのreviewでaccept判定後にacceptedへ遷移）
+> Status: accepted（ChatGPT review 3 rounds — round 3 blockingなし。受入は本PRのmergeで完了）
 > Risk tier: H（[spec.md](./spec.md)参照）
 > 対象revision: main `85b86610b4731f5f06a116d1bc017385576bf967`（本PR merge後のmain headをplan実行開始時のR候補として扱う）
 > 方針の正本: [ADR-0018 revision 10](../../docs/adr/0018-lawnchair-16-rebase.md)。本planは実行手順（統合順・port対照表・gates・T9手順・正本同期）を固定する。
