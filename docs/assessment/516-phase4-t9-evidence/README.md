@@ -2,7 +2,7 @@
 
 > Status: accepted（emulator leg。実機legはowner decision待ち。ADR-0018 Decision 5 / spec AC-3/AC-4）
 > 実行日: 2026-10-13（rev4でのやり直し実行。初回実行はPR #590 review round 1でS head確定前の記録として取替え）
-> 対応: [specs/516-16-rebase-phase4/spec.md](../../specs/516-16-rebase-phase4/spec.md) AC-3、[plan §6](../../specs/516-16-rebase-phase4/plan.md)
+> 対応: [specs/516-16-rebase-phase4/spec.md](../../../specs/516-16-rebase-phase4/spec.md) AC-3、[plan §6](../../../specs/516-16-rebase-phase4/plan.md)
 
 ## 環境とAPK identity
 
