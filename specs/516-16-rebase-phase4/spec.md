@@ -26,7 +26,7 @@ ADR-0018 Decision 3/5/6/7がPhase 4に予約した「保持stackとmain修正を
 ### AC-1 統合完全性（cutover head）
 
 - plan §3対照表の全unitが統合headに適用済みであること（各unitの適用commit SHA・適用方式を対照表へ記録）。
-- cutoverはADR Decision 3 revision 10の機構（統合branch上の `-s ours` merge commit MをPR headとし、main上のPR merge commit Oをcutover mergeとする）で行う。**Oのtreeがgateを通過した統合head（M）のtreeと完全一致**すること（`git diff` が空）。merge時点で `O^1 == R == tag pre-lawnchair16-<date> == M^2` であること（mainが進んでいた場合はM・tag・PRを作り直し、CI/audit/revert証明を最終headで再実行）。
+- cutoverはADR Decision 3 revision 10の機構で行う: 統合source head Sでcutover PRを作成し、SのCIと独立audit（AC-7）を経て、audit記録をdocs-only commit Eとして同一PRへ追加した後、**R（SHA固定したcutover時点の `main` head。tag `pre-lawnchair16-<date>`）を第2 parentとする `-s ours` merge commit M（M^1=E、M^2=R）を最終PR head**とし、main上のPR merge commit Oをcutover mergeとする。**S→Mの差分がdocs-only（audit文書・merge構造のみ）であること**、**OのtreeがMのtreeと完全一致**すること（`git diff` が空）、merge時点で `O^1 == R == tag == M^2` であること。mainが固定後に進んだ場合は、追加unitを対照表へ追記しG1'〜G4'（T9のR依存legを含む）から再実行してM・tag・PRを作り直す。
 - cutover後に `git diff --name-status <pre-lawnchair16-tag>..<cutover merge O>` の削除エントリ（D）がすべて意図的dropとして説明済みであること。意図しないmain専用pathの消失を残さない。
 
 ### AC-2 CI
@@ -35,7 +35,7 @@ ADR-0018 Decision 3/5/6/7がPhase 4に予約した「保持stackとmain修正を
 
 ### AC-3 T9 emulator leg（API 36）
 
-次を同一emulator dataで実施し、全段階でcrash/ANRなし・data保持を確認:
+次を同一emulator dataで実施し、全段階でcrash/ANRなし・data保持を確認。**15 APKは事前にSHA固定したR_candidateからbuildしたものであること**（T9証跡にR_candidate SHAを記録）:
 
 1. 15 APK（rollback点Rのbuild）で代表dataセットを作成（folder作成・hotseat移動・設定変更を含む日常操作）。独立cold読取 read0 を取得。
 2. 16 APK（cutover head build）を `adb install -r` で入替（data消去なし）。cold起動し正常動作を確認。独立cold読取 read1 を取得。**read0→read1比較でschema/favorites行/preferences/recoveryに非説明な差分がないこと**。
@@ -52,7 +52,7 @@ ADR-0018 Decision 3/5/6/7がPhase 4に予約した「保持stackとmain修正を
 
 **rollback対象はmain上のcutover merge Oに一意に固定する**（ADR Decision 3/5 revision 10）。
 
-1. merge前の予備証明: 統合branch上の `-s ours` merge commit Mに対する `git revert -m 2 M --no-commit` dry-runの結果treeがtag `pre-lawnchair16-<date>`（R）のtreeと**hash一致**することを記録（検証後abort）。
+1. merge前の予備証明: 統合branch上の `-s ours` merge commit Mに対する `git revert -m 2 M --no-commit` dry-runの結果treeがR_candidate（tag `pre-lawnchair16-<date>`）のtreeと**hash一致**することを記録（検証後abort）。
 2. merge後の最終証明: main上のOに対する `git revert -m 1 O --no-commit` dry-runの結果treeがRのtreeと**hash一致**することを記録（検証後abortし、mainへはpushしない）。
 3. T9 rollback leg（AC-3.3）。
 4. 上記の手順（revert手順・release再発行path）をassessmentへ記録。実運用のrollbackはmain上で `git revert -m 1 O` をPRとして実行する（protected mainへのforce-resetは行わない）。
@@ -68,7 +68,7 @@ ADR-0018 Decision 3/5/6/7がPhase 4に予約した「保持stackとmain修正を
 
 ### AC-7 独立audit
 
-- 高リスクPR要件（AGENTS.md「高リスクPRの独立エビデンス」）どおり、cutover PRに `risk: layout-data` / `risk: migration` labelを付け、検証対象headのCI `final-status` successと別session audit記録を揃えてからmergeする。
+- 高リスクPR要件（AGENTS.md「高リスクPRの独立エビデンス」）どおり、cutover PRに `risk: layout-data` / `risk: migration` labelを付け、**統合source head Sに対する別session audit**の記録を `docs/assessment/pr-<cutover PR番号>-<slug>.md` として同一PRのdocs-only commit（E）へ含める（記録: Head SHA=S・参照契約・実行test表面・Sの成功CI run link）。最終head Mまでの差分がdocs-onlyであることを条件に、Sのauditで要件を満たす（docs以外の変更がS→Mで入った場合はauditをやり直す）。high-risk-gate workflowのPASSをMでも確認する。
 
 ### AC-8 保持PR・子Issue処遇の記録
 
