@@ -1,0 +1,18 @@
+"main" prio=5 tid=1 Blocked
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x72368f68 self=0xb400007af3e02010
+  | sysTid=1223 nice=-10 cgrp=top-app sched=0/0 handle=0x7d0bd17048
+  | state=S schedstat=( 6217762751 18797759893 2180 ) utm=439 stm=182 core=3 HZ=100
+  | stack=0x7fe88b5000-0x7fe88b7000 stackSize=8188KB
+  | held mutexes=
+  at kotlin.SynchronizedLazyImpl.getValue(LazyJVM.kt:81)
+  - waiting to lock <0x058532a1> (a kotlin.SynchronizedLazyImpl) held by thread 34
+  at app.lawnchair.LawnchairLayoutFactory.getFontManager(LawnchairLayoutFactory.kt:18)
+  at app.lawnchair.LawnchairLayoutFactory.onCreateView(LawnchairLayoutFactory.kt:34)
+  at android.view.LayoutInflater.tryCreateView(LayoutInflater.java:950)
+  at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:886)
+  at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:850)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1012)
+  at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1016)
+  at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+  at android.view.LayoutInflater.parseInclude(LayoutInflater.java:1148)

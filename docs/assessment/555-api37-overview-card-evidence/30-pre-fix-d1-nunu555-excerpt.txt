@@ -1,0 +1,13 @@
+10-08 16:42:11.920  1159  2054 E Nunu555 : TTCache.getThumbnail task=60 taskThumb=null cached=null systemFetch=null
+10-08 16:42:11.931  1159  2054 E Nunu555 : TTCache.getThumbnail task=135 taskThumb=null cached=null systemFetch=null
+10-08 16:42:11.968  1159  2054 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=1608)
+10-08 16:42:11.968  1159  2054 E Nunu555 : TTCache.getThumbnail task=76 taskThumb=null cached=null systemFetch=HARDWARE 864x1939 hw=true
+10-08 16:42:11.968  1159  3733 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=1612)
+10-08 16:42:11.989  1159  3733 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=1626)
+10-08 16:42:12.006  1159  3733 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=1656)
+10-08 16:42:12.074  1159  3733 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=1678)
+10-08 16:42:12.090  1159  3733 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=1682)
+10-08 16:42:12.090  1159  3733 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=1686)
+10-08 16:42:12.093  1159  2054 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=1690)
+10-08 16:42:12.093  1159  2054 E Nunu555 : TTCache.getThumbnail task=72 taskThumb=null cached=null systemFetch=HARDWARE 864x1939 hw=true
+10-08 16:42:16.489  1159  3733 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=2960)

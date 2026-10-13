@@ -1,0 +1,37 @@
+=== qb3 result — (b)+G3 oracle — API 37 release @ candidate6 4ddd6ae306 ===
+date: 2026-10-09 20:18:21 JST  emulator-5554, native density 420 (no override)
+
+Configuration: candidate6-release-4ddd6ae.apk (sha256 22da1cba…) priv-app at /product/priv-app/LawnchairRelease/
++ 54-perm superset allowlist; release overlay nunu.overlay.quickstepconfig ->
+app.lawnchair/com.android.quickstep.RecentsActivity; HOME=app.lawnchair/.LawnchairLauncher.
+
+Sequence and observations:
+  preflight (qb3-preflight.txt): lookup=release component; SystemUI mRecentsComponentName same; SYSTEM flags;
+    isConnected=true mIsEnabled=true mBound=true — bind oracle PASS (rebind window qb3-bind-logcat.txt:
+    'LauncherProxyService connected', 6 signature 0 / 3 marker 0 / FATAL 0 / 'disabling recents' 0).
+  compatible=true: home shows NO quickstep_incompatible sheet (qb3-home-no-sheet.png).
+  G3: Settings foreground -> KEYCODE_APP_SWITCH -> overview with REAL Settings screenshot thumbnail
+    (qb3-overview.png) -> tap card body (542,1206) -> transition COMPLETED:
+    mCurrentFocus=Window{3f73399 u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}
+    topResumedActivity=ActivityRecord{247295766 u0 com.android.settings/.homepage.SettingsHomepageActivity t160}
+    (qb3-task-switch.png = full-screen Settings, crash-free). Launcher pid constant throughout.
+  Permanent oracle re-run (tools/diagnostics/verify_recents_provider.py --entry appswitch, qb3-oracle-*):
+{
+  "overview_and_task_return": true,
+  "parcel_exception_count": 0,
+  "takeover_diagnostic_count": 1,
+  "bal_blocks": [],
+  "launcher_fatal_count": 0,
+  "pass": true
+}
+    -> identical profile to all 3 #554 PASS runs (parcel 0 / takeover-diagnostic 1 / BAL 0 / FATAL 0 / pass=true).
+    qb3-oracle-overview.png independently confirms real-thumbnail card render; qb3-oracle-after.png = Settings return.
+
+BAL: 0 blocks on the completed shell->launcher->app transition (g3-bal-check-qb3.txt; only BAL mention is
+  BAL_ALLOW_ALLOWLISTED_UID for the harness am start).
+Parcel oracle: PASS per operative set (qb3-parcel-oracle.txt): unread-8=0 / Bundle-misaligned=0;
+  takeover-miss=1 = spec auxiliary diagnostic (PASS profile). Bind-window raw hits (TransitionFilter 1MB +
+  PiP unread-16) are pre-existing vendor skew, identical magic values in all prior runs incl. PASS.
+hiddenapi / wmshell auxiliary: PASS (qb3-hiddenapi-watch.txt, qb3-wmshell-watch.txt).
+
+VERDICT qb3 (b)+G3: PASS

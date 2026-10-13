@@ -1,0 +1,23 @@
+=== qa3 result — overview / task-switch oracle — API 37 debug @ candidate6 4ddd6ae306 ===
+date: 2026-10-09 20:06:59 JST  emulator-5554, native density 420 (no override)
+
+Sequence:
+  1. am start -a android.settings.SETTINGS -> SettingsHomepageActivity foreground (20:04)
+     NOTE: first Settings launch was interrupted by a transient 'Application Not Responding: com.android.systemui'
+     dialog (SystemUI restart fallout from the bind-window force-stop ~5min earlier); dialog cleared itself,
+     first-run 'Organize your Home screen?' debug dialog dismissed via LATER, retry clean.
+  2. KEYCODE_HOME -> LawnchairLauncher home OK
+  3. KEYCODE_APP_SWITCH -> overview rendered (qa3-overview.png):
+     - Settings task card shows REAL app screenshot (Settings homepage content: search bar, Google / Network &
+       internet / Connected devices / Apps rows) — NOT blank, NOT scrim.
+     - second (leftmost) partial card is the launcher-home snapshot; both cards have real content.
+     - focus during overview: mCurrentFocus=Window{2609956 u0 app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+     - provider path log: TouchInteractionService$TISBinder.onOverviewToggle -> OverviewCommandHelper.addCommand
+       (qa3-overview-logcat.txt; 0 crash signatures in overview window)
+  4. tap Settings task card body (542,1206) -> focus switched:
+     mCurrentFocus=Window{40aa2b4 u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}
+     topResumedActivity=ActivityRecord{228592020 u0 com.android.settings/.homepage.SettingsHomepageActivity t157}
+     full-screen Settings visible in qa3-task-switch.png — crash-free.
+
+VERDICT qa3 overview/task-switch: PASS — overview opens via provider path, task cards render REAL screenshots
+(#555 TaskContainer.setState repair renders), task switch to Settings succeeds.

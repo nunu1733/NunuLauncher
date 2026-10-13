@@ -1,0 +1,54 @@
+10-09 23:56:40.532  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.649  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:40.652  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:40.652  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.653  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.654  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.655  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.655  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.659  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:40.661  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:40.665  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:40.665  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:40.666  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:40.667  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:40.667  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:40.668  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:40.669  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:40.670  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:40.671  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.672  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.673  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.679  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:40.679  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:41.046  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=true pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.047  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.048  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.052  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.054  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.055  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.056  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.088  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:41.090  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:41.093  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:41.094  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:41.094  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:41.101  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:41.102  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:41.104  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:41.105  4396  4396 E Nunu562 : TaskView.onRecycle
+10-09 23:56:41.106  4396  4396 E Nunu562 : TaskView.call-destroy taskContainers
+10-09 23:56:41.107  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:41.109  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:41.110  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:41.142  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:41.147  4396  4396 E Nunu562 : TaskView.call-bind container
+10-09 23:56:41.480  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[0.8751934, 0.0, 0.0][0.0, 0.8751934, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.483  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.489  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.813  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:41.815  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:42.006  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[0.8751934, 0.0, 0.0][0.0, 0.8751934, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:42.010  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:42.010  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=false pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
+10-09 23:56:42.013  4396  4396 E Nunu562 : TaskContainer.setOverlayEnabled enabled=true pos=ThumbnailPosition(matrix=Matrix{[1.0, 0.0, 0.0][0.0, 1.0, 0.0][0.0, 0.0, 1.0]}, isRotated=false)
