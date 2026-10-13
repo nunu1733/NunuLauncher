@@ -80,6 +80,13 @@ class LawnchairBackup(
                 wallpaperManager.setBitmap(BitmapFactory.decodeStream(it))
             }
         }
+        // Issue #587: exported settings can be the first surface of a fresh process.
+        // Initialize the existing process module on main before holding a restore lease.
+        val module = withContext(Dispatchers.Main.immediate) {
+            val app = context.applicationContext as LawnchairApp
+            LauncherAppState.getInstance(app)
+            app.layoutApplicationModule
+        }
         // Issue #58: one BACKUP_RESTORE lease spans quiesce, helper close, raw directory
         // replacement, file/prefs writes, fresh ModelDbController + reentrant performRestore,
         // and the correlated reload.
@@ -94,7 +101,6 @@ class LawnchairBackup(
                 // before quiesce and before the databases wipe, so the poison state is
                 // never regenerated (a partially deleted snapshot directory can remain —
                 // the recovery DB survives, so the state stays Existing and self-heals).
-                val module = (context.applicationContext as LawnchairApp).layoutApplicationModule
                 runRestoreCriticalSection(
                     suspendRecoveryOperations = module::runWithRecoveryOperationsSuspendedForRestore,
                     clearInspectionSnapshot = { RecoveryStartupArtifacts.clearInspectionSnapshot(context) },
