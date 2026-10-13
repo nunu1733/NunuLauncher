@@ -1,0 +1,22 @@
+{
+  "surface": "synthetic Phase3 Fixture icon in the emulator All Apps list",
+  "captures": {
+    "baseline": "native-dot-baseline.png",
+    "posted": "native-dot-posted.png",
+    "cancelled": "native-dot-cancelled.png"
+  },
+  "posted_semantic_notification_count": 1,
+  "pixel_comparison": {
+    "method": "exact pixel comparison of the same dot ROI",
+    "posted_vs_baseline_changed_pixels": 1646,
+    "posted_difference_bbox_xyxy_px_as_reported": [
+      706,
+      1593,
+      751,
+      1639
+    ],
+    "cancelled_vs_baseline_changed_pixels": 0,
+    "result_source": "PNGCompare.java exact-ROI comparison"
+  },
+  "scope_limit": "No notification shade, content payload, or physical-device notification is included."
+}

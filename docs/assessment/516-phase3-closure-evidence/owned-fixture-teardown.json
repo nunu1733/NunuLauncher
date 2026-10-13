@@ -1,0 +1,26 @@
+{
+  "status": "owned validation emulators stopped; evidence data retained privately",
+  "date": "2026-10-13",
+  "old_fixture": {
+    "ownership_verified": true,
+    "home_restored_to_recorded_baseline": true,
+    "stop_succeeded": true,
+    "stop_utc": "2026-10-13T05:08:28.070298+00:00",
+    "private_stop_receipt_sha256": "11573aa92fc81267ea286362ff3d75894b66025a17e96971e7eaf99767bbf28d",
+    "listener_baseline_verified_at_prior_cleanup_checkpoint": true,
+    "final_listener_reread_after_later_home_changes_available": false
+  },
+  "fresh_fixture": {
+    "ownership_verified": true,
+    "home_baseline_unchanged": true,
+    "installed_candidate_apk_sha256": "10580cd2ffeb273ccaa6dbc27eafe619dffb6a41d41f49315ecd84efa937c97c",
+    "stop_succeeded": true,
+    "stop_utc": "2026-10-13T05:49:08.089847+00:00",
+    "private_stop_receipt_sha256": "87b60cbca1d63a028c68e5528409468ff85e6efc14a8ddccc51882186c9cb22d"
+  },
+  "protected_devices_modified": false,
+  "physical_pixel_state": "retained prior independently checked current state and owner acceptance; no new mutation",
+  "notification_contents_read": false,
+  "private_avd_data_preserved": true,
+  "full_historical_settings_restoration_claimed": false
+}

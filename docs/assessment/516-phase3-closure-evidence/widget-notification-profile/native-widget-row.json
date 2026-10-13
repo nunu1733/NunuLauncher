@@ -1,0 +1,18 @@
+{
+  "source": "widget-final.db favorites table; selected-field SQLite query opened read-only",
+  "database_binary_included": false,
+  "row": {
+    "_id": 93,
+    "appWidgetProvider": "dev.nunu.phase3/dev.nunu.phase3.Widget",
+    "appWidgetId": 18,
+    "container": -100,
+    "screen": 1,
+    "cellX": 0,
+    "cellY": 3,
+    "spanX": 2,
+    "spanY": 1,
+    "itemType": 4,
+    "profileId": 0,
+    "appWidgetSource": -105
+  }
+}

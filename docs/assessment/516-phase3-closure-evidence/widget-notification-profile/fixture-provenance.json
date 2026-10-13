@@ -1,0 +1,21 @@
+{
+  "kind": "synthetic Android test fixture; APK bytes excluded",
+  "package": "dev.nunu.phase3",
+  "application_label": "Phase3 Fixture",
+  "target_sdk": 37,
+  "widget_receiver": "dev.nunu.phase3/dev.nunu.phase3.Widget",
+  "widget_update_action": "android.appwidget.action.APPWIDGET_UPDATE",
+  "manifest_sha256": "505e88c4bcc1d8dcc888fad9676e331ecdca2b463474d6145f2c499d1b0c9621",
+  "apk_artifacts": [
+    {
+      "artifact": "original_fixture",
+      "source_filename": "fixture-original.apk",
+      "sha256": "e165d582805928299f2cfb2204c9aee70b49cde1b9f06c0713863ace0b116a58"
+    },
+    {
+      "artifact": "extended_widget_fixture",
+      "source_filename": "fixture-large.apk",
+      "sha256": "0d0fa5006becc1dd4d24004a14a1cf9c79c06b22ec57880d717f10c476249e52"
+    }
+  ]
+}

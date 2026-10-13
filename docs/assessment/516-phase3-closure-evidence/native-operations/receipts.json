@@ -1,0 +1,223 @@
+{
+  "status": "runtime evidence complete; source PR588 audit/publication checks passed and merged; overall closure decision owned by matrix15/PR573",
+  "capture_date": "2026-10-13",
+  "production": {
+    "source_commit": "75492ec6407b4c36645186c519bdd93583008f5d",
+    "apk_sha256": "a02cf76f0557c76cf751d852effb4d724384db33c0225c9ad11cba10fe7bd74e",
+    "package": "app.lawnchair.debug",
+    "device_fingerprint": "google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys",
+    "device_serial_published": false
+  },
+  "source_archive": {
+    "archive_sha256": "fdc507b7b7c8c16b443cc4ce0abd24848306617d1fcd0c8e87dd7388fb443dac",
+    "schema_version": 33,
+    "quick_check": "ok",
+    "favorites_count": 43,
+    "item_type_counts": {
+      "app": 41,
+      "folder": 1,
+      "widget": 1
+    },
+    "semantic_projection_sha256": "965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff",
+    "preferences_bytes": 317,
+    "preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2",
+    "binary_included": false
+  },
+  "launcher_initialized_restore": {
+    "route": "native Launcher UI and system document picker after LauncherAppState initialization",
+    "outcome": "success",
+    "checkpoints": [
+      "053-restored43-after-native-init",
+      "055-restored43-native-loaded"
+    ],
+    "favorites_count": 43,
+    "db_raw_sha256": "ca789bb97caa0481404b7a2cf11134d3b719af74b4c4ca269706b7dab9d92d85",
+    "semantic_projection_sha256": "965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff",
+    "preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2"
+  },
+  "direct_preference_activity_route": {
+    "outcome": "failed before database write with lateinit error",
+    "classification": "supported #587 bug; candidate cold Restore/restart GREEN; independent source audit/checks passed; PR588 mergeda9ec830a"
+  },
+  "folder_open_back": {
+    "checkpoints": [
+      "055-restored43-native-loaded",
+      "057-folder-open-no-write",
+      "059-folder-back-no-write"
+    ],
+    "db_raw_sha256_identical": "ca789bb97caa0481404b7a2cf11134d3b719af74b4c4ca269706b7dab9d92d85",
+    "semantic_projection_sha256": "965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff",
+    "preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2",
+    "database_write_observed": false
+  },
+  "bounded_native_drag": {
+    "before_checkpoint": "062-before-native-drag",
+    "after_checkpoint": "064-after-native-drag",
+    "favorites_before": 43,
+    "favorites_after": 43,
+    "item_identity_preserved": true,
+    "moved_synthetic_items": 1,
+    "moved_item_changed_columns": [
+      "cellY",
+      "modified"
+    ],
+    "cellY": {
+      "before": 0,
+      "after": 2
+    },
+    "other_rows_changed": 0,
+    "db_raw_sha256_before": "ca789bb97caa0481404b7a2cf11134d3b719af74b4c4ca269706b7dab9d92d85",
+    "db_raw_sha256_after": "d3ccabb048a74a73e4d8051ecb2e1b3110f0732347b1ab2b301afe8f0abe6be6",
+    "semantic_projection_sha256_after": "2ac07322208b5f3a24691d87067eef4ead7cb4d7fe63a471f2e5782ac93d2211",
+    "preferences_unchanged": true
+  },
+  "final_archive_restore": {
+    "checkpoints": [
+      "071-final43-restored",
+      "074-final43-cold-check"
+    ],
+    "favorites_count": 43,
+    "quick_check": "ok",
+    "semantic_projection_matches_archive": true,
+    "semantic_projection_sha256": "965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff",
+    "db_raw_sha256": "9641410176d1e99f293c740488a5f63305fd6ed375208094fdeff166ebc4fda8",
+    "preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2",
+    "changed_metadata_columns_vs_prior_restore": [
+      "modified",
+      "appWidgetId"
+    ],
+    "widget_id_remap": {
+      "before": 34,
+      "after": 36
+    },
+    "cold_checkpoint_matches_final_restore": true,
+    "paired_pid_receipt_available": false,
+    "raw_or_full_column_equality_claimed": false
+  },
+  "package_refresh_probe": {
+    "package": "dev.nunu.phase3.installprobe",
+    "apk_sha256": "d96b9cac7590ed9a4e5b4057b5aa0d1daeac40b108e4f16d5595e8bfe26e0ae1",
+    "apk_included": false,
+    "source_files": [
+      {
+        "file": "probe-AndroidManifest.xml",
+        "sha256": "ea5862308591d26409b479a3e4b8d69c92437952bb111090ff4690ee78dcbf33"
+      },
+      {
+        "file": "probe-MainActivity.java",
+        "sha256": "ecc5a1d4554cfd86c5a9da6be6ae6563a358cd6bfb1f04eb9006a6e4bd4dbef5"
+      }
+    ],
+    "manifest": {
+      "label": "Phase3 install probe",
+      "exported_main_launcher_activity_count": 1,
+      "permissions": 0,
+      "network_declarations": 0,
+      "widget_declarations": 0
+    },
+    "install_exit_code": 0,
+    "drawer_after_install_capture": "091-probe-visible-in-drawer",
+    "launch_observation": "tap opened the probe MainActivity and Back returned to the drawer; candidate 097 image/XML pair withheld because they disagree",
+    "uninstall_exit_code": 0,
+    "package_manager_path_empty_after_uninstall": true,
+    "drawer_after_uninstall_capture": "113-probe-removed-from-drawer",
+    "reopen_method": "native Ctrl+A keyboard shortcut",
+    "failed_adb_swipes_counted_as_gesture_pass": false,
+    "stable_state_checkpoints": [
+      "076-final43-before-probe",
+      "085-after-probe-install",
+      "088-probe-installed-no-layout-write",
+      "098-probe-launched-no-layout-write",
+      "101-probe-removed-final43",
+      "119-final43-after-probe"
+    ],
+    "db_raw_sha256": "9641410176d1e99f293c740488a5f63305fd6ed375208094fdeff166ebc4fda8",
+    "semantic_projection_sha256": "965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff",
+    "preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2"
+  },
+  "listener_cleanup": {
+    "enabled_listener_state_exactly_matches_baseline": true,
+    "notification_contents_read": false,
+    "scope": "literal baseline verified at cleanup checkpoint; no final listener reread after subsequent HOME role changes"
+  },
+  "curated_capture_pairs": [
+    {
+      "png": "051-restore-preview-after-native-init.png",
+      "png_sha256": "dd1ddb08380446aba926b3ef4def0439fed90527dac828c0571dbd50d9ab81af",
+      "xml": "051-restore-preview-after-native-init.xml",
+      "xml_sha256": "57bc57b5e22503838da5f20a5ec2fa2f4711ae6697232f88af0f810ec5a0a589"
+    },
+    {
+      "png": "056-folder-open.png",
+      "png_sha256": "85739db4b945984f152b2f9d2f02fc73469fdca32c4ee85586781af6e0b276a3",
+      "xml": "056-folder-open.xml",
+      "xml_sha256": "6166ae63712485451b386b2c331eb7aee66827b1646af67078f35ba2b032287f"
+    },
+    {
+      "png": "058-folder-back.png",
+      "png_sha256": "862edec7c74be68b366f1720479fa9dea26abf33cb74f03b500a7da063fbb771",
+      "xml": "058-folder-back.xml",
+      "xml_sha256": "3a022c55bea251097aa4699d52345c6f0b40f8539ff7ed78969ae9a1d4665b5a"
+    },
+    {
+      "png": "061-drag-start.png",
+      "png_sha256": "e45d4a3bec14e9384dcb8bdd9d57cf6c23fd27cfcdf7ba4f751b034bd81d59e6",
+      "xml": "061-drag-start.xml",
+      "xml_sha256": "25cf4722671edf62fc0f607c2940a7bea2e0080c681026dc9f6b76d5019fa662"
+    },
+    {
+      "png": "063-drag-result.png",
+      "png_sha256": "a3b9e8b214a42f19aa8ec72ab0fb85a849d9982c9e83de30bbc8bc0d01542e7e",
+      "xml": "063-drag-result.xml",
+      "xml_sha256": "357e2627c18d48064d86b8e692ab3e28f594a4e9154211ab8cc00fc8723b4429"
+    },
+    {
+      "png": "091-probe-visible-in-drawer.png",
+      "png_sha256": "e8f2c5bfd16ac7187cf1ffcf9764746ea299542828ec958685f8c937184c50a9",
+      "xml": "091-probe-visible-in-drawer.xml",
+      "xml_sha256": "f3aa2115d0a32d41c7da3a526f9bb4403b65116ee6752086cd109015cac1132f"
+    },
+    {
+      "png": "113-probe-removed-from-drawer.png",
+      "png_sha256": "9c1fbd0cdeb1084de9605e76dcf577829eaf9334b4a86568b24649f63dc56c85",
+      "xml": "113-probe-removed-from-drawer.xml",
+      "xml_sha256": "92054216f2eb0e30a689d4c1edd83a9c6d76de2db0ffe3682c10356cf6df8b3b"
+    }
+  ],
+  "excluded": {
+    "capture_pairs": {
+      "069-final43-preview": "PNG depicts Settings while XML describes restore-preview content",
+      "097-probe-native-launched": "PNG depicts app drawer while XML reports only probe label",
+      "072-restored-home": "PNG includes transient BAL blocked toast absent from XML; not a settled matching pair"
+    },
+    "capture_classes": [
+      "null-root transitions",
+      "failed ADB swipe attempts"
+    ],
+    "private_material": [
+      "database and archive binaries",
+      "APK binary",
+      "raw capture JSON",
+      "ADB data paths",
+      "row dumps",
+      "serials",
+      "credentials",
+      "unrelated private data"
+    ]
+  },
+  "ci": {
+    "historical_run_38321690999": "failed",
+    "source_run_38324607913": "success including independently rerun method-choice job",
+    "publication_run_38347440730": "success",
+    "publication_gate_38347440751": "success",
+    "pr584_merge": "c3898c74f32144cd1bc229e1a153ed08a3aeb253",
+    "issue_586_jit_timeout_cause": "unknown"
+  },
+  "remaining": {
+    "owned_avd_teardown": "completed stop/release with historical restoration limits",
+    "ordinary_restore_entry_route_classification": "supported bug corrected; runtime/source checks complete; PR588 mergeda9ec830a",
+    "epic_phase4_cutover_complete": false,
+    "independent_audit_complete": false,
+    "phase3_complete_claimed_by_this_packet": false
+  }
+}

@@ -1,0 +1,33 @@
+# Owned-emulator widget, notification-dot, and work-profile evidence
+
+Status: curated API 37 owned-emulator observations; owned emulator stop/release is complete with [restoration limits](./owned-fixture-teardown.md). No physical-device result is claimed. Date: 2026-10-12.
+
+## Provenance and fixture
+
+The launcher UI captures in this packet are fixed to production source SHA `06bce6e5c9fa6c3afed6b1fb0abdd545fd61d595` and app APK SHA-256 `754d9564217a4f0e1dc0b04d5af8788d47d43813036b85480332cb102d96473e`. They predate the later app build with APK SHA-256 `83884d094e05a9f1efcf96c5868e72f82a2361b022093eaf431479151dcd5abc`; no evidence from that later build is attributed here.
+
+The fixture manifest identifies synthetic package `dev.nunu.phase3`, label `Phase3 Fixture`, and widget receiver `dev.nunu.phase3.Widget` for `APPWIDGET_UPDATE`. [Fixture provenance](widget-notification-profile/fixture-provenance.json) records the manifest digest and hashes for the original fixture (`e165d582805928299f2cfb2204c9aee70b49cde1b9f06c0713863ace0b116a58`) and extended widget fixture (`0d0fa5006becc1dd4d24004a14a1cf9c79c06b22ec57880d717f10c476249e52`). APK bytes are not included. The reviewed, exact-byte [synthetic source reproduction](widget-notification-profile/fixture-source/dev/nunu/phase3/MainActivity.java) contains only hand-written Java/XML fixture sources and resources; [source provenance](widget-notification-profile/fixture-source-provenance.json) records their individual hashes and the excluded generated/build artifacts.
+
+## Native widget
+
+The Android widget-creation preview ([widget-create-preview.png](widget-notification-profile/widget-create-preview.png)) displayed `Phase3 update 1791808351903`. After placement, [widget-normal-updated.png](widget-notification-profile/widget-normal-updated.png) showed `Phase3 update 1791808382354`. The [post-rejection capture](widget-notification-profile/widget-after-oversize-rejection.png) retained the prior normal-update value. Filtered [provider markers](widget-notification-profile/widget-provider-markers.txt) include three `NORMAL_WIDGET_UPDATE ids=1` events and the oversized-request rejection. The rejected request attempted 36,000,000 bytes against the framework-reported maximum of 15,707,520 bytes; it was rejected and is not counted as an accepted large widget.
+
+Only [widget-large-stable.png](widget-notification-profile/widget-large-stable.png) is treated as the accepted stable large-widget capture; its paired hierarchy reports `Phase3 large 1791808719218`. Its fixture source allocated an 1800×1800 `ARGB_8888` bitmap (12,960,000 nominal bytes, 4 bytes per pixel). The separate 3000×3000 request (36,000,000 bytes) was rejected against the framework-reported 15,707,520-byte maximum and remains excluded from accepted-large evidence. The transient wrong-label capture `19-widget-large-accepted` is excluded. A selected-column, read-only SQLite query found the actual native row for `dev.nunu.phase3/dev.nunu.phase3.Widget`; [native-widget-row.json](widget-notification-profile/native-widget-row.json) exports only that row's widget/container/placement metadata. The database binary is not copied.
+
+## Native notification dot
+
+The All Apps list showed the synthetic Phase3 Fixture at [baseline](widget-notification-profile/native-dot-baseline.png), with its dot after posting ([posted](widget-notification-profile/native-dot-posted.png)), and without the dot after cancellation ([cancelled](widget-notification-profile/native-dot-cancelled.png)). The posted hierarchy reports one notification. The exact-ROI pixel comparison summary records 1,646 changed pixels with reported bounds `[706,1593][751,1639]` for the posted state, then zero differences from baseline after cancellation; see [native-dot-comparison.json](widget-notification-profile/native-dot-comparison.json), which records the exact-ROI `PNGCompare.java` result. A read-only copy of that helper is included as [PNGCompare-source.txt](widget-notification-profile/PNGCompare-source.txt); it accepts two image paths and compares pixels in its fixed ROI without modifying either image.
+
+This is a native launcher badge observation on the owned emulator only. No notification shade, personal notification payload, or physical notification is included.
+
+## Managed work profile
+
+The UI capture showed the Work tab selected ([work-tab-selected.png](widget-notification-profile/work-tab-selected.png)), Android's paused-work state ([work-profile-paused.png](widget-notification-profile/work-profile-paused.png)), and the unpaused Work tab ([work-profile-unpaused.png](widget-notification-profile/work-profile-unpaused.png)). The paired [quiet-mode user flags](widget-notification-profile/users-quiet.txt) and [unpaused user flags](widget-notification-profile/users-unpaused.txt) show the managed profile entering quiet mode and later running/visible without the quiet-mode flag. This supports the observed UI transition for the synthetic managed profile; it does not claim delivery of a work notification or use of personal/work content.
+
+The [owned fixture teardown](./owned-fixture-teardown.md) records stop/release and known-baseline restoration limits; these captures alone are not teardown proof. `SHA256SUMS.txt` records direct SHA-256 hashes for every curated file. No APK, database binary, unrelated raw log, or physical-device artifact is included.
+
+## Separate profile composition / fail-closed runtime
+
+These later executions use fixed16 production source `ae69715379314f24338304ca5a0b2b4f9e9f7c43`, APK `9ff6c8483ff74b00ed50ee295d994a001439fa69f22315f0b39af6436b049bd4`, test APK `f70fb5499ee4be81415b7839bb2d9bc13c2b8433cfd5449d3211ec00ae62f8e4` (same existing ProductionOrganizationInput class plus the explicitly recorded PageCapture test port). They are not attributed to the earlier754d widget/dot screenshots.
+
+`productionComposerComposesEvidenceForEveryAvailableProfileWithoutPrivilegedCrossUserAccess` passed1/1 in3.907s; the marker records canonical profile0/10, two inserted rows, systemPackage=true and Ready. `androidEvidenceFailsClosedForRealProfileMissingThePackageInsteadOfFallingBackAcrossProfiles` passed1/1 in1.178s. Both `-r` runner receipts include actual method completion status0, with no assumption/skip status; thus the older ambiguous dot/I summary is not used as the negative no-skip proof. The positive requires inserted items AVAILABLE and per-item system classification signals; the negative requires Unreadable for a real other-profile missing package. These are app-UID authorized LauncherApps/UserCache seams, not root cross-user queries. Root ADB only set up/read the owned fixture.

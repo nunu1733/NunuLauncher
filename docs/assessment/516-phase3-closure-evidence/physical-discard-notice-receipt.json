@@ -1,0 +1,18 @@
+{
+  "observed_utc": "2026-10-12T09:13:34.154826+00:00",
+  "source_sha": "41d8753d7a23eac495856f31d57774a7b8e5d07a",
+  "source_port_from": "05c194843596efa5b9e46b519c3ee7e3197edb37",
+  "app_apk_sha256": "83884d094e05a9f1efcf96c5868e72f82a2361b022093eaf431479151dcd5abc",
+  "owner_answer": "一度だけ聞こえた",
+  "audible_oracle": "owner-observed; no independent audio recording",
+  "post_answer_notice_nodes": 0,
+  "post_answer_selection_zero": true,
+  "post_answer_capture_limit": "After owner confirmation the notice was absent; this capture does not independently prove the audible notice or its once-only delivery.",
+  "favorites_baseline": "read-only exact-row snapshot from preceding restored-APK check in this session",
+  "favorites_rows_before": 43,
+  "favorites_rows_after": 43,
+  "all_favorites_columns_unchanged": true,
+  "no_apply": true,
+  "baseline_settings_restored": true,
+  "original_debug_apk_restored_sha256": "260bccdab43a7fd8ea10b5e1a56333caac4d0fc33bf28575e6c5a4da42ff55da"
+}

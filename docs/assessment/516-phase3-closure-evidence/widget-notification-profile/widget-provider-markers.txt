@@ -1,0 +1,4 @@
+10-12 21:32:31.741 Phase3Fixture: NORMAL_WIDGET_UPDATE ids=1
+10-12 21:32:31.905 Phase3Fixture: NORMAL_WIDGET_UPDATE ids=1
+10-12 21:33:02.371 Phase3Fixture: NORMAL_WIDGET_UPDATE ids=1
+10-12 21:34:06.858 Phase3Fixture: PROVIDER_REJECTED oversized=true RemoteViews for widget update exceeds maximum bitmap memory usage (used: 36000000, max: 15707520)

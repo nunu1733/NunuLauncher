@@ -1,0 +1,2 @@
+import javax.imageio.ImageIO;import java.io.File;
+class PNGCompare {public static void main(String[] a)throws Exception{var x=ImageIO.read(new File(a[0]));var y=ImageIO.read(new File(a[1]));int n=0,minX=x.getWidth(),minY=x.getHeight(),maxX=-1,maxY=-1;for(int j=1548;j<1760;j++)for(int i=540;i<805;i++)if(x.getRGB(i,j)!=y.getRGB(i,j)){n++;minX=Math.min(i,minX);maxX=Math.max(i,maxX);minY=Math.min(j,minY);maxY=Math.max(j,maxY);}System.out.println("fixtureIconChangedPixels="+n+" bbox="+minX+","+minY+","+maxX+","+maxY);}}

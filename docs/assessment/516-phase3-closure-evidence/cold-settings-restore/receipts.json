@@ -1,0 +1,77 @@
+{
+  "status": "actual cold exported settings Restore and subsequent native cold restart GREEN",
+  "maintenance_source": "059f498ec22a298ecdade53d585e4c9d529c74e9",
+  "validation_source": "62cd636607ba3662c8f9460b28d7f749143a5a66",
+  "validation_apk_sha256": "10580cd2ffeb273ccaa6dbc27eafe619dffb6a41d41f49315ecd84efa937c97c",
+  "fixture_companion_apk_sha256": "f70fb5499ee4be81415b7839bb2d9bc13c2b8433cfd5449d3211ec00ae62f8e4",
+  "archive_sha256": "fdc507b7b7c8c16b443cc4ce0abd24848306617d1fcd0c8e87dd7388fb443dac",
+  "precondition": {
+    "process_absent_before_settings": true,
+    "native_launcher_not_started_before_restore": true,
+    "fixture_components": 35,
+    "fixture_app_rows": 37,
+    "fixture_instrumentation_invoked": false
+  },
+  "before": {
+    "favorites_count": 5,
+    "db_sha256": "379ce0a8ef3306de41a022b7a7d72660bdb20a05641009c3b807306a5bc2cf47",
+    "preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2"
+  },
+  "after": {
+    "sha256": "5036fa8c95e96a79b86bb4bffb94e76d6c2d9ceaef5a8c9c1624bdd569eae63b",
+    "favorites_count": 43,
+    "quick_check": "ok",
+    "semantic_projection_sha256": "965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff"
+  },
+  "preferences_after": {
+    "bytes": 317,
+    "sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2"
+  },
+  "restore_presses": 1,
+  "post_restore_null_root_snapshot_failures": 2,
+  "cold_restart": {
+    "force_stopped_and_pid_absent_before_start": true,
+    "launch_state": "COLD",
+    "launch_time_ms": 10515,
+    "new_process_pid": 7479,
+    "post_restart_database": {
+      "sha256": "5036fa8c95e96a79b86bb4bffb94e76d6c2d9ceaef5a8c9c1624bdd569eae63b",
+      "quick_check": "ok",
+      "favorites_count": 43,
+      "semantic_projection_sha256": "965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff"
+    },
+    "post_restart_preferences": {
+      "bytes": 317,
+      "sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2"
+    },
+    "raw_database_and_preferences_unchanged": true
+  },
+  "capture_pairs": [
+    {
+      "stem": "attempt3-settings-first",
+      "png_sha256": "0469bda33b1bda64a6b9e5bc23fd97506b2565dd3520a5c2f866b1f4c4b950f2",
+      "xml_sha256": "4f706d229b58ba5ea2949aca8e12db56ca85a1045e24bb52a94b487fdc3cdbbb"
+    },
+    {
+      "stem": "attempt3-preview-bottom",
+      "png_sha256": "e59cfba0bb82a4fec85857d9872df7aaee83262ac4e2db79f42c15be44eedafd",
+      "xml_sha256": "c6fc01a0e1e9c6d0ee88ebbe07d985d4c35c4963c9bd533aceeadaa407a354f5"
+    },
+    {
+      "stem": "attempt3-native-cold-after-restore",
+      "png_sha256": "09e9987da1fe12eb60f22aee2a2a3c769e882ee36fe988b2ecbaf8c97d0b0060",
+      "xml_sha256": "b85d7b56101a7d7782722d3dd4bcd06f8d1a2a042912f0e609627a5338c89724"
+    }
+  ],
+  "limits": [
+    "API37 owned emulator, not physical Pixel or Phase4 cutover",
+    "semantic archive projection and preferences equality; raw/full-column equality across restore not claimed",
+    "first invocation interrupted by earlier boot SystemUI ANR; not GREEN",
+    "second invocation missing fixture package yielded five sanitized rows; not43-layoutGREEN",
+    "setup prompt after native restart was not acted on; no organization Apply",
+    "DB/archive/APK/rawlogs remain private",
+    "post-Restore PNG/XML pair excluded: setup prompt visible in PNG but absent from XML; matching final cold pair retained"
+  ],
+  "maintenance_source_fix_commit": "f34c3b90702618aabba36d58cf47cc2d2cbaf7a1",
+  "maintenance_source_identity_scope": "maintenance_source is the audited production-tree/CI head; source fix introduced by maintenance_source_fix_commit and next commit is packet-only"
+}
