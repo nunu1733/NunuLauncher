@@ -2,7 +2,7 @@
 
 > Status: Accepted (research output of [Issue #16](https://github.com/nunu1733/NunuLauncher/issues/16))
 > Updated: 2026-08-15
-> Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
+> Baseline: Lawnchair 16-dev commit 43a21b43d7cc7850ab54e14b1a57dc9646685f35（Epic #516 Phase 4 cutover、2026-10-13）
 > Requirements: FR-015, NFR-008, NFR-011
 > Related specs: [spec 10](../../specs/10-pure-organization-planning/spec.md) (planning diagnostics),
 > [spec 13](../../specs/13-safe-layout-application/spec.md) (apply/recovery results),

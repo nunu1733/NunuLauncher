@@ -59,7 +59,16 @@ replay基点 `38262fb74d` 以降のmain first-parent unitを時系列順に適�
 
 ## 5. cutover実行記録（merge時に追記）
 
-- R_candidate: `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`（tag `pre-lawnchair16-20261013` 付与済み・push済み）
+- R_candidate: `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`（tag `pre-lawnchair16-20261013` 付与・push済み）
+- **cutover実行結果（2026-10-13 merge完了）**:
+  - S3final: `5bbee5ae042ef8f05ee29e0fac9842e8c52e2031`（rebase後の最終統合tree。§2/§3のS系SHAでrebaseにより書き換わったものは本treeに同一内容が存在する）
+  - M3（`-s ours` merge commit）: `106b4f7f60c28e3022b9b4b6a37ba23c2eb845e5`（M^1=S3final、M^2=R、tree==S3final）
+  - E（audit文書のみ・最終PR head）: `b24632fdf37e619a3a37c1fa0b44afd639c457d9`（M3..E差分 = `docs/assessment/pr-590-16-baseline-cutover.md` 1file）
+  - **O（cutover merge・rollback対象）**: `de4565323711facf17935cc56925b766e1d88037`（PR #590のmerge commit。**O^1 == R == tag == M3^2**、O^2 == E、O tree == E tree）
+  - G5' CI: M3 run [38422689296](https://github.com/nunu1733/NunuLauncher/actions/runs/38422689296) final-status success（attempt 2。初回category-override失敗はrunner SDK download破損のinfra flake）・E run [38434153278](https://github.com/nunu1733/NunuLauncher/actions/runs/38434153278) final-status success
+  - G6' audit: [pr-590-16-baseline-cutover.md](pr-590-16-baseline-cutover.md)（Head SHA=M3。ChatGPT review 2 rounds — round 2 **approve相当・blockingなし** [comment](https://github.com/nunu1733/NunuLauncher/pull/590#issuecomment-6151352071)）
+  - G7' rollback証明: **予備証明** `git revert -m 2 M3` dry-run tree `c008f282caf5413c55b924f595d97922653d6f71` == R tree ✓。**最終証明** `git revert -m 1 O` dry-run tree `c008f282caf5413c55b924f595d97922653d6f71` == R tree ✓（両検証とも検証後abort、mainへpushせず）
+- 保持PR/Issue処遇（plan §8実行結果）: PR #538/#541/#543/#546/#550 close（branchがmainのancestorであることを機械確認・superseded by #590）、#554/#558/#575 close、#532/#574/#559/#545 close（#545/#559は既存closeに到達記録コメント）。#576/#586はOPEN維持（tracked limitations・Epic完了に影響しないことをEpic commentで明記）
 - **rev4やり直し記録（PR #590 review round 1対応）**: 初回 S=8fea123177 → E=dec3ee4929 → M=11b5453447 のCI run 38404418328/38404418234がCI側のrebase規模制限でfail。S₂から順序を「M CI→audit(M)→E(auditのみ)」へ改訂（plan rev4・ADR rev10補訂）し、CI両fixを投入してやり直す。旧E/Mは統合branchから撤去（force-push）。
 - S / E / M / O / tag SHA: （追記）
 - 予備証明 `git revert -m 2 M` dry-run: （追記）

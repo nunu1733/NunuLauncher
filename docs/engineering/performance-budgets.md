@@ -2,7 +2,7 @@
 
 > Status: Accepted (research output of [Issue #15](https://github.com/nunu1733/NunuLauncher/issues/15))
 > Updated: 2026-08-15
-> Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
+> Baseline: Lawnchair 16-dev commit 43a21b43d7cc7850ab54e14b1a57dc9646685f35（Epic #516 Phase 4 cutover、2026-10-13）
 > Requirements: NFR-006
 > Research evidence (対象commit・確認日・統計計算script・実行結果): [PR #68](https://github.com/nunu1733/NunuLauncher/pull/68)
 > Related: [android-emulator-smoke-baseline](../assessment/android-emulator-smoke-baseline.md) (reference emulator profile),
