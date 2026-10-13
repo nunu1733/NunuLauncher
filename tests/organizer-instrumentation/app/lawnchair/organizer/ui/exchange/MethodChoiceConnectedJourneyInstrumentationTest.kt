@@ -65,6 +65,9 @@ import app.lawnchair.organizer.planning.TargetSet
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.ui.ManualOrganizationApplication
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.HandlerRunPublicationThread
+import app.lawnchair.organizer.ui.DirectRunPublicationThread
+import app.lawnchair.organizer.ui.RunPublicationThread
 import java.io.File
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -73,6 +76,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -405,6 +411,8 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
      */
     private fun newFixture(
         driveToConfirmedScope: Boolean,
+        publicationThread: RunPublicationThread = DirectRunPublicationThread(),
+        uiDispatcher: CoroutineDispatcher = Dispatchers.Main,
         prepareGate: Pair<CountDownLatch, CountDownLatch>? = null,
         prepareParkIndex: Int = 0,
         gateTransaction: ManualOrganizationRun.ExchangeGateTransaction? = null,
@@ -415,6 +423,7 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
             JourneyApplication(),
             app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run in the method-choice journeys") },
             exchangeGateTransaction = gateTransaction ?: ManualOrganizationRun.gateHeldExchangeGateTransaction(gate),
+            publicationThread = publicationThread,
         )
         val store = FakeStore()
         val pendingStore = FakePendingStore()
@@ -445,6 +454,7 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
             controllerFactory = { controller },
             run = run,
             scope = CoroutineScope(Dispatchers.Main),
+            uiDispatcher = uiDispatcher,
             pendingImportStore = pendingStore,
             exchangeMutationGate = gate,
         )
@@ -774,7 +784,7 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
         // attaches the validated intent at the frozen scope — the composed
         // phase consumes the confirmed scope (the fixture's composition is
         // NotReady → the typed InputUnavailable state; zero layout writes).
-        val fixture = newFixture(driveToConfirmedScope = true)
+        val fixture = newFixture(driveToConfirmedScope = true, publicationThread = HandlerRunPublicationThread())
         val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
         composeRule.runOnUiThread { fixture.holder.openMethodChoiceFlow() }
         generateScopedOnUi(fixture)
@@ -801,6 +811,56 @@ class MethodChoiceConnectedJourneyInstrumentationTest {
             deleteCallsAtImport,
             fixture.pendingStore.deleteCalls,
         )
+        assertQueuedImportDiscardFencesSuccess()
+    }
+
+
+    /** Same live-owner journey, with real main publication and a queued success. */
+    private fun assertQueuedImportDiscardFencesSuccess() {
+        val fixtureRef = java.util.concurrent.atomic.AtomicReference<HolderFixture?>()
+        val queued = java.util.concurrent.atomic.AtomicReference<Runnable?>()
+        val parked = CountDownLatch(1)
+        val armed = AtomicBoolean(true)
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (fixtureRef.get()?.pendingStore?.record != null && armed.compareAndSet(true, false)) {
+                    queued.set(block)
+                    parked.countDown()
+                } else {
+                    Dispatchers.Main.dispatch(context, block)
+                }
+            }
+        }
+        val fixture = newFixture(driveToConfirmedScope = true, publicationThread = HandlerRunPublicationThread(), uiDispatcher = dispatcher)
+        fixtureRef.set(fixture)
+        try {
+            composeRule.runOnUiThread { fixture.holder.openMethodChoiceFlow() }
+            generateScopedOnUi(fixture)
+            awaitScreenIs(fixture.holder) { it is ExchangeScreen.Disclosing }
+            val session = fixture.store.session!!
+            val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+            composeRule.runOnUiThread {
+                fixture.holder.openImport()
+                fixture.holder.import(scopedReplyFor(session))
+            }
+            assertTrue("saved-import UI settle never queued", parked.await(15, TimeUnit.SECONDS))
+            assertEquals(session.exportId, fixture.pendingStore.record!!.exportId)
+            val discarded = fixture.run.discardScopeBoundRequest { exportId ->
+                when (fixture.controller.invalidateSessionIf(exportId)) {
+                    ExportInvalidationResult.Committed -> ManualOrganizationRun.StoreInvalidationOutcome.Committed
+                    ExportInvalidationResult.NoMatch -> ManualOrganizationRun.StoreInvalidationOutcome.NoMatch
+                    ExportInvalidationResult.WriteFailed -> ManualOrganizationRun.StoreInvalidationOutcome.WriteFailed
+                }
+            }
+            assertEquals(ManualOrganizationRun.ScopeDiscardOutcome.Discarded, discarded)
+            assertEquals(runId, (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId)
+            Dispatchers.Main.dispatch(EmptyCoroutineContext, queued.getAndSet(null)!!)
+            awaitScreenIs(fixture.holder) { it is ExchangeScreen.Closed }
+            assertNull("discarded proposal cannot revive as direct success", fixture.pendingStore.record)
+            assertFalse(fixture.run.isLiveScopeOwner(runId, session.exportId))
+        } finally {
+            queued.getAndSet(null)?.let { Dispatchers.Main.dispatch(EmptyCoroutineContext, it) }
+        }
     }
 
     @Test

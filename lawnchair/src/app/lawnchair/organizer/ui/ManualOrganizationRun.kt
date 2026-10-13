@@ -68,6 +68,7 @@ import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -812,6 +813,10 @@ class ManualOrganizationRun internal constructor(
     val preparationPhase: StateFlow<PreparationPhase> = stateBus.preparationPhase
 
     private val lock = Any()
+
+    // Issue #583: invalidated before authority mutations, so a worker's
+    // lock-held observation can be fenced on publication main without a lock.
+    private val scopeOwnershipRevision = AtomicLong()
     private var activeOperation: Operation? = null
     private var pending: PendingPlan? = null
     private var appliedPoint: RecoveryPointId? = null
@@ -824,6 +829,7 @@ class ManualOrganizationRun internal constructor(
     // section keeps its own lock held so section atomicity and publication
     // instants are unchanged (spec 418; spec 375 gate-held amendment).
     private fun publishState(next: State) {
+        scopeOwnershipRevision.incrementAndGet()
         publicationThread.run { stateBus.publishState(next) }
     }
 
@@ -941,6 +947,7 @@ class ManualOrganizationRun internal constructor(
             var created: Operation? = null
             val complete = {
                 val operation = Operation(application.newRunId(), trigger, lease, intent)
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = operation
                 pending = null
                 pendingRecovery = null
@@ -1508,6 +1515,7 @@ class ManualOrganizationRun internal constructor(
         if (operation.generationEpoch != epoch) {
             return@synchronized GenerationCommitOutcome.Rejected(GenerationCommitRejection.STALE_EPOCH)
         }
+        scopeOwnershipRevision.incrementAndGet()
         val persisted = exchangeGateTransaction.withinGate(
             durableMutation = { exchangeGateTransaction.commit() },
             onGateHeld = { outcome ->
@@ -1544,6 +1552,7 @@ class ManualOrganizationRun internal constructor(
         if (operation == null || state !is State.ScopeConfirmed || bound != expectedExportId) {
             return@synchronized ExportCleanupOutcome.Superseded
         }
+        scopeOwnershipRevision.incrementAndGet()
         val outcome = exchangeGateTransaction.withinGate(
             durableMutation = { exchangeGateTransaction.commit() },
             onGateHeld = { result ->
@@ -1597,6 +1606,7 @@ class ManualOrganizationRun internal constructor(
             // cut off by the epoch invalidation above — no store call needed.
             return@synchronized ScopeDiscardOutcome.Discarded
         }
+        scopeOwnershipRevision.incrementAndGet()
         val outcome = exchangeGateTransaction.withinGate(
             durableMutation = { exchangeGateTransaction.commit(bound) },
             onGateHeld = { result ->
@@ -1674,6 +1684,27 @@ class ManualOrganizationRun internal constructor(
             isLiveScopeOwnerLocked(runId, expectedExportId)
         }
     }
+
+    /** A worker observation; only a still-current observation may drive UI adoption. */
+    class ScopeOwnershipObservation internal constructor(
+        val ownedByLiveScope: Boolean,
+        internal val revision: Long,
+    )
+
+    /**
+     * Issue #583: authoritative worker read paired with its invalidation
+     * revision. The UI must re-observe on a worker if the revision changed;
+     * an in-flight/failed discard is not mistaken for an ownerless run.
+     */
+    fun observeLiveScopeOwner(runId: RunId, expectedExportId: String): ScopeOwnershipObservation {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            ScopeOwnershipObservation(isLiveScopeOwnerLocked(runId, expectedExportId), scopeOwnershipRevision.get())
+        }
+    }
+
+    /** Lock-free UI fence, not authority to persist or attach an intent. */
+    fun isCurrentScopeOwnership(observation: ScopeOwnershipObservation): Boolean = observation.revision == scopeOwnershipRevision.get()
 
     /** The [isLiveScopeOwner] verdict; callers hold [lock]. */
     private fun isLiveScopeOwnerLocked(runId: RunId, expectedExportId: String): Boolean {
@@ -2232,8 +2263,10 @@ class ManualOrganizationRun internal constructor(
             ) {
                 return
             }
+            scopeOwnershipRevision.incrementAndGet()
             candidate.cancelled.set(true)
             pending = null
+            scopeOwnershipRevision.incrementAndGet()
             activeOperation = null
             publishState(State.Cancelled)
             updateOperationActiveLocked()
@@ -2314,6 +2347,7 @@ class ManualOrganizationRun internal constructor(
             val result = application.apply(plan, pendingPlan.runId)
             synchronized(lock) {
                 if (!isActiveLocked(operation)) return
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = null
                 updateOperationActiveLocked()
                 val nextState = when (result) {
@@ -2596,7 +2630,9 @@ class ManualOrganizationRun internal constructor(
             if (operation == null) {
                 return@synchronized DismissalOutcome.NoActiveOperation to null
             }
+            scopeOwnershipRevision.incrementAndGet()
             operation.cancelled.set(true)
+            scopeOwnershipRevision.incrementAndGet()
             activeOperation = null
             pending = null
             pendingRecovery = null
@@ -2676,6 +2712,7 @@ class ManualOrganizationRun internal constructor(
                 false
             } else {
                 pending = null
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = null
                 publishState(State.Stale(origin))
                 updateOperationActiveLocked()
@@ -2705,6 +2742,7 @@ class ManualOrganizationRun internal constructor(
             ) {
                 false
             } else {
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = null
                 pending = null
                 publishState(nextState)
@@ -2720,6 +2758,7 @@ class ManualOrganizationRun internal constructor(
             if (!isActiveLocked(operation)) {
                 false
             } else {
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = null
                 pending = null
                 publishState(State.Cancelled)

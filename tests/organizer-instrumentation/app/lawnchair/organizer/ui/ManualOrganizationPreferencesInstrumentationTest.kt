@@ -2413,6 +2413,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
                 plannerRelease.await(60, java.util.concurrent.TimeUnit.SECONDS)
                 planningResult()
             },
+            publicationThread = HandlerRunPublicationThread(),
         )
         composeRule.setContent {
             LawnchairTheme {

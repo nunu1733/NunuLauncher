@@ -121,6 +121,7 @@ class UsageAccessJitInstrumentationTest {
             application = application,
             planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
             usageAccessGate = UsageAccessJitGateProvider.get(context()),
+            publicationThread = HandlerRunPublicationThread(),
         )
     }
 
