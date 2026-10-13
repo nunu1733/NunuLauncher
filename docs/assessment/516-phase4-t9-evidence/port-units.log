@@ -1,0 +1,30 @@
+1ec1522aad P03 specs526r1 APPLIED 8bbcbaaaa8
+6ce7c86222 P04 specs526r2 APPLIED f7394ef4f1
+05f23ec748 P05 specs527 APPLIED 0843829546
+ba403917a1 P06 specs528 APPLIED a28dc77ff3
+8b56ba5029 P07 specs524 APPLIED e03fb304e9
+db7ff0c03a P08 specs524add APPLIED fc41c3f213
+b8ef650249 P09 specs545 APPLIED 458edb483e
+0f0e2f7644 P10 specs545a1 APPLIED 79275ebcad
+3b940cfe0d P11 specs545a2 APPLIED dbb7235ef0
+9374adbe71 P12 specs545a3 APPLIED e99fd55750
+ac02195c3d P13 specs545a4 APPLIED 3a9832ed1c
+9cdb98828c P14 specs554 CONFLICT
+a3aaf3925a P15 specs554rev CONFLICT
+P14 9cdb98828c SKIPPED-identical-via-545 (specs/554 both files byte-identical to 545 branch)
+P15 a3aaf3925a SKIPPED-identical-via-545 (specs/554 final content already on 545 branch, verified HEAD==main)
+P17 bed45139da APPLIED 79961f2537
+P18 2c60e1b101 APPLIED 6941ac5fc7
+P19 0c737bd45c APPLIED dbfdd372e7
+P20 COMMITTED cd797a7f42
+8fe67e7650:P21-563docs APPLIED bf904b0456
+P22-577test 7985a45a6e APPLIED b6fbe53a38
+P23-579fix 840603371c APPLIED f0986508a6
+P24-581fix 0ef86713b9 APPLIED 0eb09c07c4
+P25-583fix c3898c74f3 APPLIED d34daa7928
+P26-587fix a9ec830a81 APPLIED ca52b67628
+P27-573-phase3closure 85b86610b4 APPLIED 9bf53363ad
+P28 APPLIED (ADR=main rev10) 20f7b9f33dd31501cb7a589b8d941b2da5be816c
+P01 b759506e28 SKIPPED-16-side-newer (specs/516-16-rebase-phase2 plan/spec == main, identity verified)
+P02 15ae5bf917 SKIPPED-16-side-synced (S0 sync: ADR/plan rev2/model assessment == main, identity verified)
+P16 6d3cd6c59f APPLIED e86f2ce0ff (issue-559 assessment mainline port)

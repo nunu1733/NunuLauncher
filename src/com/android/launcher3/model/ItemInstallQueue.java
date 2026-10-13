@@ -18,11 +18,13 @@ package com.android.launcher3.model;
 
 import static android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID;
 
+import static com.android.launcher3.LauncherSettings.Favorites.DESKTOP_ICON_FLAG;
 import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPLICATION;
 import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APPWIDGET;
 import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_DEEP_SHORTCUT;
 import static com.android.launcher3.model.data.AppInfo.makeLaunchIntent;
 import static com.android.launcher3.model.data.ItemInfoWithIcon.FLAG_ARCHIVED;
+import static com.android.launcher3.util.Executors.MAIN_EXECUTOR;
 import static com.android.launcher3.util.Executors.MODEL_EXECUTOR;
 
 import android.appwidget.AppWidgetManager;
@@ -38,39 +40,49 @@ import android.util.Log;
 import android.util.Pair;
 
 import androidx.annotation.Nullable;
+import androidx.annotation.UiThread;
 import androidx.annotation.WorkerThread;
 
+import com.android.launcher3.AbstractFloatingView;
 import com.android.launcher3.Flags;
 import com.android.launcher3.InvariantDeviceProfile;
 import com.android.launcher3.Launcher;
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherSettings.Favorites;
+import com.android.launcher3.Utilities;
+import com.android.launcher3.dagger.ApplicationContext;
+import com.android.launcher3.dagger.LauncherAppSingleton;
+import com.android.launcher3.dagger.LauncherBaseAppComponent;
 import com.android.launcher3.logging.FileLog;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.LauncherAppWidgetInfo;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
-import com.android.launcher3.pm.UserCache;
 import com.android.launcher3.shortcuts.ShortcutKey;
 import com.android.launcher3.shortcuts.ShortcutRequest;
-import com.android.launcher3.util.MainThreadInitializedObject;
+import com.android.launcher3.util.DaggerSingletonObject;
 import com.android.launcher3.util.PersistedItemArray;
+import com.android.launcher3.pm.UserCache;
 import com.android.launcher3.util.Preconditions;
-import com.android.launcher3.util.SafeCloseable;
 import com.android.launcher3.widget.LauncherAppWidgetProviderInfo;
 
-import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlSerializer;
-
-import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlSerializer;
+
+import java.io.IOException;
+
+import javax.inject.Inject;
+import javax.inject.Provider;
+
 /**
  * Class to maintain a queue of pending items to be added to the workspace.
  */
-public class ItemInstallQueue implements SafeCloseable {
+@LauncherAppSingleton
+public class ItemInstallQueue {
 
     private static final String LOG = "ItemInstallQueue";
 
@@ -83,15 +95,15 @@ public class ItemInstallQueue implements SafeCloseable {
     // The set of shortcuts that are pending install
     private static final String APPS_PENDING_INSTALL = "apps_to_install";
 
-    // Issue #497: queue XML attribute carrying the destination-policy
-    // snapshot captured at enqueue time (ADR-0015 Decision 10).
-    private static final String ATTR_DESTINATION_POLICY = "destination_policy";
-
     public static final int NEW_SHORTCUT_BOUNCE_DURATION = 450;
     public static final int NEW_SHORTCUT_STAGGER_DELAY = 85;
 
-    public static MainThreadInitializedObject<ItemInstallQueue> INSTANCE =
-            new MainThreadInitializedObject<>(ItemInstallQueue::new);
+    public static DaggerSingletonObject<ItemInstallQueue> INSTANCE =
+            new DaggerSingletonObject<>(LauncherBaseAppComponent::getItemInstallQueue);
+
+    // Issue #497: queue XML attribute carrying the destination-policy
+    // snapshot captured at enqueue time (ADR-0015 Decision 10).
+    private static final String ATTR_DESTINATION_POLICY = "destination_policy";
 
     private final PersistedItemArray<PendingInstallShortcutInfo> mStorage =
             new PersistedItemArray<>(APPS_PENDING_INSTALL,
@@ -113,6 +125,7 @@ public class ItemInstallQueue implements SafeCloseable {
                         }
                     });
     private final Context mContext;
+    private final Provider<WorkspaceItemSpaceFinder> mSpaceFinderProvider;
 
     // Determines whether to defer installing shortcuts immediately until
     // processAllPendingInstalls() is called.
@@ -121,12 +134,12 @@ public class ItemInstallQueue implements SafeCloseable {
     // Only accessed on worker thread
     private List<PendingInstallShortcutInfo> mItems;
 
-    private ItemInstallQueue(Context context) {
+    @Inject
+    public ItemInstallQueue(@ApplicationContext Context context,
+            Provider<WorkspaceItemSpaceFinder> spaceFinderProvider) {
         mContext = context;
+        mSpaceFinderProvider = spaceFinderProvider;
     }
-
-    @Override
-    public void close() {}
 
     @WorkerThread
     private void ensureQueueLoaded() {
@@ -147,7 +160,7 @@ public class ItemInstallQueue implements SafeCloseable {
 
     @WorkerThread
     private void flushQueueInBackground() {
-        Launcher launcher = Launcher.ACTIVITY_TRACKER.getCreatedActivity();
+        Launcher launcher = Launcher.ACTIVITY_TRACKER.getCreatedContext();
         if (launcher == null) {
             // Launcher not loaded
             return;
@@ -161,45 +174,28 @@ public class ItemInstallQueue implements SafeCloseable {
                 .map(info -> attachDestinationRoute(mContext, info.getItemInfo(mContext),
                         info.mDestinationSnapshot, info.user, info.intent, info.itemType))
                 .collect(Collectors.toList());
-
         // Add the items and clear queue
         if (!installQueue.isEmpty()) {
-            // add log
-            launcher.getModel().addAndBindAddedWorkspaceItems(installQueue);
+            MAIN_EXECUTOR.execute(() -> commitInstallQueue(launcher, installQueue));
         }
         mItems.clear();
         mStorage.getFile(mContext).delete();
     }
 
-    /**
-     * Issue #497: attaches the flush-time destination route read from the
-     * persisted snapshot (read-only decode; the current policy is never
-     * re-read at flush, ADR-0015 Decision 10). Only application entries from
-     * the automatic-add path are policy candidates: the manual-placement
-     * overloads queue deep shortcuts and widgets, which keep the stock path
-     * even if a snapshot attribute were present (spec AC-6). A missing
-     * snapshot on an application entry is the old-format case and still
-     * routes, so the validator can apply the typed SNAPSHOT_INVALID fallback.
-     * Package-visible static so the instrumentation harness can drive it
-     * directly: the real flush needs a launcher activity, which the harness
-     * does not have.
-     */
-    @WorkerThread
-    static Pair<ItemInfo, Object> attachDestinationRoute(Context context,
-            Pair<ItemInfo, Object> pair, @Nullable String snapshot, UserHandle user,
-            Intent intent, int itemType) {
-        if (pair == null || itemType != Favorites.ITEM_TYPE_APPLICATION) {
-            return pair;
+    @UiThread
+    private void commitInstallQueue(Launcher launcher, List<Pair<ItemInfo, Object>> itemList) {
+        // If there's an undo snackbar, force it to complete to ensure empty screens are
+        // removed before trying to add new items.
+        launcher.getModelWriter().commitDelete();
+        AbstractFloatingView snackbar = AbstractFloatingView.getOpenView(
+                launcher,
+                AbstractFloatingView.TYPE_SNACKBAR
+        );
+        if (snackbar != null) {
+            snackbar.close(true);
         }
-        DirectEditContract.DestinationResolver resolver =
-                DirectEditContract.getDestinationResolver();
-        if (resolver == null) {
-            return pair;
-        }
-        DirectEditContract.DestinationRoute route = resolver.route(snapshot,
-                UserCache.getInstance(context).getSerialNumberForUser(user),
-                getIntentPackage(intent));
-        return route != null && route.usePolicyWrite ? Pair.create(pair.first, route) : pair;
+        launcher.getModel().enqueueModelUpdateTask(
+                new AddWorkspaceItemsTask(itemList, mSpaceFinderProvider.get()));
     }
 
     /**
@@ -262,22 +258,18 @@ public class ItemInstallQueue implements SafeCloseable {
     }
 
     private void queuePendingShortcutInfo(PendingInstallShortcutInfo info) {
-        final Exception stackTrace = new Exception();
 
         // Queue the item up for adding if launcher has not loaded properly yet
         MODEL_EXECUTOR.post(() -> {
             Pair<ItemInfo, Object> itemInfo = info.getItemInfo(mContext);
             if (itemInfo == null) {
                 FileLog.d(LOG,
-                        "Adding PendingInstallShortcutInfo with no attached info to queue.",
-                        stackTrace);
+                        "Adding PendingInstallShortcutInfo with no attached info to queue.");
             } else {
                 FileLog.d(LOG,
-                        "Adding PendingInstallShortcutInfo to queue. Attached info: "
-                                + itemInfo.first,
-                        stackTrace);
+                        "Adding PendingInstallShortcutInfo to queue."
+                                + " Attached info: " + itemInfo.first);
             }
-
             addToQueue(info);
         });
         flushInstallQueue();
@@ -383,7 +375,7 @@ public class ItemInstallQueue implements SafeCloseable {
                         lai = laiList.get(0);
                         si.intent = makeLaunchIntent(lai);
                         try {
-                            if (Flags.enableSupportForArchiving()
+                            if (Utilities.ATLEAST_V && Flags.enableSupportForArchiving()
                                     && lai.getActivityInfo().isArchived) {
                                 si.runtimeStatusFlags |= FLAG_ARCHIVED;
                             }
@@ -392,7 +384,8 @@ public class ItemInstallQueue implements SafeCloseable {
                         }
                     }
                     LauncherAppState.getInstance(context).getIconCache()
-                            .getTitleAndIcon(si, () -> lai, usePackageIcon, false);
+                            .getTitleAndIcon(si, () -> lai,
+                                    DESKTOP_ICON_FLAG.withUsePackageIcon(usePackageIcon));
                     return Pair.create(si, null);
                 }
                 case ITEM_TYPE_DEEP_SHORTCUT: {
@@ -450,6 +443,37 @@ public class ItemInstallQueue implements SafeCloseable {
     private static String getIntentPackage(Intent intent) {
         return intent.getComponent() == null
                 ? intent.getPackage() : intent.getComponent().getPackageName();
+    }
+
+    /**
+     * Issue #497: attaches the flush-time destination route read from the
+     * persisted snapshot (read-only decode; the current policy is never
+     * re-read at flush, ADR-0015 Decision 10). Only application entries from
+     * the automatic-add path are policy candidates: the manual-placement
+     * overloads queue deep shortcuts and widgets, which keep the stock path
+     * even if a snapshot attribute were present (spec AC-6). A missing
+     * snapshot on an application entry is the old-format case and still
+     * routes, so the validator can apply the typed SNAPSHOT_INVALID fallback.
+     * Package-visible static so the instrumentation harness can drive it
+     * directly: the real flush needs a launcher activity, which the harness
+     * does not have.
+     */
+    @WorkerThread
+    static Pair<ItemInfo, Object> attachDestinationRoute(Context context,
+            Pair<ItemInfo, Object> pair, @Nullable String snapshot, UserHandle user,
+            Intent intent, int itemType) {
+        if (pair == null || itemType != Favorites.ITEM_TYPE_APPLICATION) {
+            return pair;
+        }
+        DirectEditContract.DestinationResolver resolver =
+                DirectEditContract.getDestinationResolver();
+        if (resolver == null) {
+            return pair;
+        }
+        DirectEditContract.DestinationRoute route = resolver.route(snapshot,
+                UserCache.getInstance(context).getSerialNumberForUser(user),
+                getIntentPackage(intent));
+        return route != null && route.usePolicyWrite ? Pair.create(pair.first, route) : pair;
     }
 
     private PendingInstallShortcutInfo decode(int itemType, UserHandle user, Intent intent) {

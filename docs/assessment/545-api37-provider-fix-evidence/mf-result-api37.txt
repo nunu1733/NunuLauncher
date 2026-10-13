@@ -1,0 +1,21 @@
+=== matrix (f) result — API 37 stock configuration + candidate2 release APK (adb install, non-system) ===
+date: 2026-10-07
+AVD: issue526_api37_pixel_9a (API 37.0/SDK 37), emulator-5554, native density (physical 420, no override)
+
+VERDICT: PASS (no behavior change in stock configuration)
+
+1) preflight (mf-preflight-api37.txt): overlay/priv-app/allowlist removed; lookup =
+   com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity (stock restored);
+   SystemUI mRecentsComponentName same; no lawnchair packages installed; HOME = nexuslauncher.
+2) candidate2-release installed with `adb install -r -d` (non-system; sha256 c1988658...), then
+   HOME role set to app.lawnchair.
+3) observation (mf-logcat-api37.txt):
+   - "disabling recents" diagnostic log PRESENT (1 occurrence, 23:03:51.567):
+     "config_recentsComponentName (ComponentInfo{com.google.android.apps.nexuslauncher/...}) is not
+     Lawnchair, disabling recents" — spec Scenario 3 behavior.
+   - quickstep_incompatible sheet: NOT shown (mf-home-no-sheet-api37.png = Lawnchair home with the
+     fork's first-run "Organize your Home screen?" dialog; no incompatible-system-integration sheet).
+   - no FATAL EXCEPTION in app.lawnchair (0); no nexuslauncher crashes (0).
+   - APP_SWITCH -> system overview opened: focus = com.google.android.apps.nexuslauncher/
+     com.android.quickstep.RecentsActivity (mf-overview-system-api37.png shows the system overview with
+     the Settings task card). Lawnchair overview did NOT open — stock recents behavior preserved.

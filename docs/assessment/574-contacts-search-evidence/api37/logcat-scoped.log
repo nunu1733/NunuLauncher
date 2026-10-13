@@ -1,0 +1,4 @@
+# Filtered empty: no evidence-bearing lines in original scope. Original: 106 lines, PID 27711 app.lawnchair.debug pre-window (mostly startup noise 20:48:19-20:52:51).
+# Filter: app.lawnchair.debug|ContactsSearch|Invalid column on original; retained NONE (no QuickContact ACTION_VIEW, no ContactSearch, no Invalid column).
+# No ContactSearch exceptions in inspected window. Known filter limitation: PID-scope/pref-enable capture cannot prove query PASS; UI photos are primary contract.
+# This filtered-empty log is NOT proof for the whole app. Raw original archived private outside git; see redaction-provenance.md. Test query names: only ZZ574_QA allowed; none appear here.

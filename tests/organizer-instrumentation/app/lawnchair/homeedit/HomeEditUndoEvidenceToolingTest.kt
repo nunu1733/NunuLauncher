@@ -620,7 +620,7 @@ class HomeEditUndoEvidenceToolingTest {
         val bgDataModel = bgField.get(model) as com.android.launcher3.model.BgDataModel
         val deadline = System.currentTimeMillis() + 30_000L
         while (System.currentTimeMillis() < deadline) {
-            if (model.isModelLoaded && bgDataModel.lastLoadId == model.lastLoadId) {
+            if (model.isModelLoaded() && bgDataModel.lastLoadId == model.lastLoadId) {
                 return
             }
             Thread.sleep(100)
@@ -637,7 +637,7 @@ class HomeEditUndoEvidenceToolingTest {
         val bgDataModel = bgField.get(model) as com.android.launcher3.model.BgDataModel
         val deadline = System.currentTimeMillis() + cappedMillis
         while (System.currentTimeMillis() < deadline) {
-            if (model.isModelLoaded && bgDataModel.lastLoadId == model.lastLoadId) {
+            if (model.isModelLoaded() && bgDataModel.lastLoadId == model.lastLoadId) {
                 return
             }
             Thread.sleep(100)

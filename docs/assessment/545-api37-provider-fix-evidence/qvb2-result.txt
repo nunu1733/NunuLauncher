@@ -1,0 +1,51 @@
+=== qvb2 (b) + G3 result — API 37 release @ candidate da15f4b2e7 + release overlay + priv-app, NATIVE density 420 ===
+date: 2026-10-08 03:56:48; emulator-5554 (AVD issue526_api37_pixel_9a, API 37.0 SDK 37)
+APK: candidate5-release-da15f4b.apk sha256 e584e078df3a8a6f1734c7e3aeac91fbd7a4d93485aa4078afd5ab3e225ec7ba
+(installed sha256 match + versionName 16.Dev.(da15f4b) + manifest 35/37 + SYSTEM: qvb2-preflight.txt)
+
+VERDICT: FAIL — parcel exception oracle (AC-10e2) REPRODUCED in the G3 window -> candidate FAIL per stop rule.
+
+- Bind oracles: PASS. isConnected=true, mIsEnabled=true, mBound=true, backoff=0; six failure signatures = 0;
+  three reflection failure markers = 0; 'disabling recents' = 0 (qvb2-crash-check.txt, clean-boot window).
+- compatible=true / sheet: PASS. No quickstep_incompatible sheet on home — 'Incompatible system integration'/incompatible/
+  quickstep_incompatible string counts all 0 in UI dump; qvb2-home-no-sheet.png.
+- Launcher FATAL: 0 in the oracle (clean-boot, post-recovery) window. FLAG (off the seven-fix oracle but user-visible):
+  1x app.lawnchair FATAL at EVERY boot pre-unlock — 'Unable to create application LawnchairApp: SharedPreferences in
+  credential encrypted storage are not available until after user 0 is unlocked' (03:38:00 pid 1196 this boot; 03:35:41
+  on the switchover boot). Documented #524 leg (e) secondary signature; launcher restarts and recovers; DETERMINISTIC
+  in this configuration (release priv-app started pre-unlock). Flagged for owner decision — not one of the seven
+  provider-path breaks.
+- G3 / overview (release): FAILED — AC-10e2 parcel oracle reproduced. APP_SWITCH -> onOverviewToggle (03:44:45.050) ->
+  shell transition #12 (FIRST_CUSTOM+21) with PI hop (backgroundActivityAllowed=3) -> launcher-side unmarshal failures
+  (BadParcelableException 'unread size: 8' @03:44:45.102; IllegalStateException 'Bundle length is not aligned by 4:
+  6226041' @03:44:45.105 in SystemUiProxy$RecentsAnimationListenerStub.onTransact) + 'No matching remote found to
+  takeover (#12)' @03:44:45.104 -> shell fallback animation only; overview NEVER renders; Settings stayed foreground
+  (qvb2-overview.png, qvb2-task-switch.png). Magic value 6226041 IDENTICAL to previous run @2120978 — same parcel-schema
+  break, fixes 6+7 did not touch it.
+- Task-card tap: NOT EXECUTABLE (no launcher overview rendered). G3 shell->launcher->app transition: NOT achieved.
+- BAL: 0 blocks (g3-bal-check-qvb2.txt). Only START in window = harness am start (BAL_ALLOW_ALLOWLISTED_UID result 0);
+  transition blocker is the parcel break + takeover miss, NOT a BAL denial.
+- Thumbnail rendering (b): NOT EVALUABLE — overview never renders in (b). For the candidate's thumbnail behavior see qva2:
+  cards render with scrim interiors (AC-10d FAIL there).
+- Delta vs previous run @2120978: takeTaskSnapshot NoSuchMethodError FATALs (3x) are GONE — the 7th fix holds crash-wise
+  (0 NoSuchMethodError in whole window; launcher survived G3). The parcel/takeover break is UNCHANGED and remains the
+  release-leg blocker.
+- hiddenapi auxiliary: PASS. 0 denials for app.lawnchair* (qvb2-hiddenapi-watch.txt; 3 droid.deskclock desugar denials
+  off-oracle).
+- wmshell auxiliary: PASS. PipInputConsumer 0, NoSuchMethodError 0, shell exceptions 0 (qvb2-wmshell-watch.txt).
+- density: native 420, no override (qvb2-preflight.txt).
+
+Evidence: qvb2-preflight.txt, qvb2-bind-logcat.txt (clean-boot window), qvb2-crash-check.txt, qvb2-home-no-sheet.png,
+qvb2-overview.png, qvb2-task-switch.png, qvb2-g3-logcat.txt, g3-bal-check-qvb2.txt, qvb2-parcel-oracle.txt,
+qvb2-hiddenapi-watch.txt, qvb2-wmshell-watch.txt
+
+Deviations from the runbook:
+1. privapp allowlist xml REGENERATED from candidate5 APK (54 deduped android.* perms, superset) — booted first try.
+2. /product writes needed 'adb root; adb remount' re-run after each reboot.
+3. HOME set via 'cmd package set-home-activity app.lawnchair/app.lawnchair.LawnchairLauncher'.
+4. Oracle bind window = the clean boot following the switchover boot (prior-run protocol). The switchover boot's own
+   pre-unlock CE-storage FATAL is recorded in the superseded first dump; the CLEAN boot STILL produces the same
+   pre-unlock FATAL (deterministic) — classified off-oracle per documented secondary signature and flagged above.
+5. Stop rule hit (parcel oracle): task-card tap not attempted after overview failed to render; evidence captured, run
+   stopped, reported. hiddenapi/wmshell aux greps were still collected from the already-captured G3 logcat (no further
+   device orchestration).

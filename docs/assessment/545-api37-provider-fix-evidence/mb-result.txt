@@ -1,0 +1,43 @@
+=== matrix (b) result — API 37 release @ candidate 2987e525bd (candidate2-release-2987e52.apk) ===
+date: 2026-10-07
+AVD: issue526_api37_pixel_9a (API 37.0 / SDK 37), emulator-5554, native density (physical 420, no override)
+
+VERDICT: FAIL (bind/oracle not reached) — same 4th break as matrix (a), now on the maxSdk-37 release candidate.
+
+1) Procedure outcome
+- debug priv-app removed; release priv-app (sha256 c1988658... verified on device) + 13-perm allowlist placed;
+  overlay swapped to app.lawnchair/com.android.quickstep.RecentsActivity; HOME=app.lawnchair; boot OK.
+- preflight (mb-preflight.txt): lookup == app.lawnchair/com.android.quickstep.RecentsActivity, SystemUI
+  mRecentsComponentName same, package SYSTEM + PRIVILEGED, versionName 16.Dev.(2987e52),
+  manifest meta quickstepswitcher.minSdk=35 / maxSdk=37; mIsEnabled=true, mBound=true.
+- bind: crash-loop -> LauncherProxyService isConnected=false, mConnectionBackoffAttempts=6.
+
+2) Fixed signatures verified GONE (0 in mb-bind-logcat.txt):
+- NoSuchMethodError = 0; ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX NoSuchFieldError = 0;
+  Resources$NotFoundException = 0.
+
+3) Blocking signature (same as (a), release build, r8-obfuscated stack):
+- NoClassDefFoundError: Failed resolution of: Landroid/companion/virtualdevice/flags/Flags;
+  at com.android.systemui.shared.navigationbar.KeyButtonRipple.<init> -> FloatingRotationButton ->
+  NavbarButtonsViewController.setupController -> TaskbarControllers.init -> TaskbarManagerImpl.onUserUnlocked
+  -> TouchInteractionService.onUserUnlocked:889.
+- Secondary first-boot crash (known, #524 (a) 補足): pre-unlock
+  "SharedPreferences in credential encrypted storage are not available until after user (id 0) is unlocked".
+- "disabling recents" = 0; quickstep_incompatible = 0.
+
+4) Sheet oracle (AC-2 partial): quickstep_incompatible sheet NOT shown on home
+- mb-home-no-sheet.png shows Lawnchair home screen (first-run "Organize your Home screen?" dialog from this
+  fork's onboarding, unrelated) with no incompatible-system-integration sheet.
+- Note: because the provider service crash-loops, the gate-open/no-sheet observation is recorded but AC-2's
+  provider oracle (overview/task switch) is not met.
+
+5) G3 (AC-4): transition did not occur -> oracle NOT established.
+- Settings -> APP_SWITCH: focus stayed com.android.settings/.homepage.SettingsHomepageActivity (no overview).
+- Tap attempt: focus became com.android.settings/.SubSettings (landed on Settings content); no task switch.
+- mb-g3-logcat.txt ActivityTaskManager BAL lines = 4, all ALLOW (BAL_ALLOW_ALLOWLISTED_UID x3 for
+  HOME/SETTINGS starts from uid 0, BAL_ALLOW_VISIBLE_WINDOW for Settings SubSettings); BAL blocks = 0,
+  AbortClientTransaction = 0, "Background activity start" = 0.
+- As in #524 (a)/(b): 0 blocks does not corroborate G3 because the transition must succeed first. Creator mode
+  decision therefore remains unconfirmed on API 37.
+
+6) wmshell watch (mb-wmshell-watch.txt): PipInputConsumer = 0 (bind + g3 logs), NoSuchMethodError = 0.

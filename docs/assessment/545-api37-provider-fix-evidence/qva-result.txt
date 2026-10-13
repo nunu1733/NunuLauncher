@@ -1,0 +1,26 @@
+=== qva (a) result — API 37 debug @ bdea76ea75 + debug overlay + priv-app, NATIVE density 420 ===
+date: 2026-10-08; emulator-5554 (AVD issue526_api37_pixel_9a, API 37.0 SDK 37)
+APK: compat5-debug-bdea76e.apk sha256 f9116a72ff2b476e226e7a404593d10566901c96e861090ea771a2cd3232a01a (installed sha256 match: qva-preflight.txt)
+
+VERDICT: PARTIAL
+- AC-10c crash oracles: PASS. Five failure signatures = 0, reflection failure marker = 0, launcher FATAL = 0,
+  'disabling recents' = 0 (qva-crash-check.txt). Bind completes: isConnected=true, mBound=true, backoff 0 (qva-preflight.txt).
+- Overview: OPENS without crash (previous qa run crashed exactly at this load with NoSuchMethodError getTaskSnapshot(IZ) — now 0).
+- Task switch: PASS. Tap on Settings task card -> focus com.android.settings/.SettingsHomepageActivity (qva-task-switch.png).
+- Thumbnail correctness oracle: FAIL. Overview renders but the centered task card shows NO real app screenshot
+  (transparent card, interior == scrim color). Root cause is a SIXTH framework break, primary output in
+  qva-tasksnapshot-gethardwarebuffer-dexdump.txt: android.window.TaskSnapshot.getHardwareBuffer() is stubbed on API 37.0
+  to Log.e(deprecated) + return null. The reflection route itself works (TaskSnapshot object returned; marker=0),
+  but pixel data is unobtainable -> ThumbnailData fallback -> blank card. Permanent, not transient (re-dwell + reopen, same).
+- hiddenapi auxiliary: PASS. 0 denial/block lines for app.lawnchair* (qva-hiddenapi-watch.txt).
+- wmshell auxiliary: PASS. PipInputConsumer 0, NoSuchMethodError 0 (qva-wmshell-watch.txt).
+- density: native 420, 'wm density reset' done, no override (qva-preflight.txt).
+
+Evidence: qva-preflight.txt, qva-bind-logcat.txt, qva-crash-check.txt, qva-overview.png, qva-task-switch.png,
+qva-hiddenapi-watch.txt, qva-wmshell-watch.txt, qva-tasksnapshot-gethardwarebuffer-dexdump.txt
+
+Deviations from the runbook:
+1. privapp allowlist xml uses all 55 deduped android.* permissions declared by the APK (superset) instead of the
+   previously-used 13-perm minimal list (exact prior list not recorded anywhere); booted first try, no iteration needed.
+2. /product/overlay push needed 'adb root; adb remount' re-run after each reboot (remount does not persist).
+3. HOME role set via 'cmd role add-role-holder android.app.role.HOME app.lawnchair.debug' before the capture reboot.

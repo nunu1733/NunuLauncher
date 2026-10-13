@@ -1,0 +1,8 @@
+=== qb wmshell auxiliary watch — API 37 release @ 40eb5dbfab ===
+date: 2026-10-08 00:47:17  source: qb-bind-logcat.txt
+NOTE: auxiliary only. The accepted wmshell PASS from post-guard run (commit fc5169566c, ma/mb-wmshell-watch.txt) stands.
+
+PipInputConsumer mentions: 0
+NoSuchMethodError in shell/systemui context (WindowManagerShell|SystemUI): 0
+shell-side crash (Process: com.android.wm.shell|com.android.systemui): 0
+RESULT: no wmshell-origin crash observed during qb run.

@@ -1,0 +1,13 @@
+10-07 11:14:17.184  5114  5684 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:17.184  5114  5682 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:17.254  5114  5157 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:17.316  5114  5683 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:18.288  5114  5690 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:18.292  5114  5694 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:18.339  5114  5155 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:18.344  5114  5156 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:18.344  5114  5705 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:19.487  5114  5707 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:19.487  5114  5681 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.JobCancellationException
+10-07 11:14:19.489  5114  5709 E CustomWebSearchProvider: Error during suggestion retrieval: kotlinx.coroutines.TimeoutCancellationException
+10-07 11:14:19.489  5114  5709 W WebSuggestionProvider: Web suggestion request timed out

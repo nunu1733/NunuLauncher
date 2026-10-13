@@ -76,8 +76,9 @@ public final class TestProtocol {
         }
     }
 
-    public static final String TEST_INFO_REQUEST_FIELD = "request";
     public static final String TEST_INFO_RESPONSE_FIELD = "response";
+    public static final String TEST_INFO_PARAM_INDEX = "index";
+    public static final String TEST_INFO_PARAM_CELL_SPAN = "cell-span";
 
     public static final String REQUEST_HOME_TO_OVERVIEW_SWIPE_HEIGHT =
             "home-to-overview-swipe-height";
@@ -124,6 +125,8 @@ public final class TestProtocol {
             "is-predictive-back-swipe-enabled";
     public static final String REQUEST_ENABLE_TASKBAR_NAVBAR_UNIFICATION =
             "enable-taskbar-navbar-unification";
+    public static final String REQUEST_TASKBAR_SHOWN_ON_HOME =
+            "taskbar-shown-on-home";
     public static final String REQUEST_NUM_ALL_APPS_COLUMNS = "num-all-apps-columns";
     public static final String REQUEST_IS_TWO_PANELS = "is-two-panel";
     public static final String REQUEST_CELL_LAYOUT_BOARDER_HEIGHT = "cell-layout-boarder-height";
@@ -148,16 +151,18 @@ public final class TestProtocol {
 
     public static final String REQUEST_HOTSEAT_CELL_CENTER = "hotseat-cell-center";
 
-    public static final String REQUEST_GET_FOCUSED_TASK_HEIGHT_FOR_TABLET =
-            "get-focused-task-height-for-tablet";
-    public static final String REQUEST_GET_GRID_TASK_SIZE_RECT_FOR_TABLET =
-            "get-grid-task-size-rect-for-tablet";
+    public static final String REQUEST_GET_OVERVIEW_TASK_SIZE = "get-overivew-task-size";
+    public static final String REQUEST_GET_OVERVIEW_GRID_TASK_SIZE = "get-overivew-grid-task-size";
     public static final String REQUEST_GET_OVERVIEW_PAGE_SPACING = "get-overview-page-spacing";
+
+    public static final String REQUEST_GET_BUBBLE_BAR_DROP_TARGET_SIZE =
+            "request-get-bubble-bar-drop-target-size";
     public static final String REQUEST_GET_OVERVIEW_CURRENT_PAGE_INDEX =
             "get-overview-current-page-index";
+    public static final String REQUEST_GET_OVERVIEW_FIRST_TASKVIEW_INDEX =
+            "get-overview-first-taskview-index";
     public static final String REQUEST_GET_SPLIT_SELECTION_ACTIVE = "get-split-selection-active";
     public static final String REQUEST_ENABLE_ROTATION = "enable_rotation";
-    public static final String REQUEST_ENABLE_SUGGESTION = "enable-suggestion";
     public static final String REQUEST_MODEL_QUEUE_CLEARED = "model-queue-cleared";
 
     public static boolean sDebugTracing = false;
@@ -169,20 +174,25 @@ public final class TestProtocol {
     public static final String REQUEST_MOCK_SENSOR_ROTATION = "mock-sensor-rotation";
 
     public static final String PERMANENT_DIAG_TAG = "TaplTarget";
-    public static final String ICON_MISSING = "b/282963545";
-    public static final String UIOBJECT_STALE_ELEMENT = "b/319501259";
-    public static final String TEST_DRAG_APP_ICON_TO_MULTIPLE_WORKSPACES_FAILURE = "b/326908466";
-    public static final String WIDGET_CONFIG_NULL_EXTRA_INTENT = "b/324419890";
-    public static final String OVERVIEW_SELECT_TOOLTIP_MISALIGNED = "b/332485341";
-
     public static final String REQUEST_FLAG_ENABLE_GRID_ONLY_OVERVIEW = "enable-grid-only-overview";
-    public static final String REQUEST_FLAG_ENABLE_APP_PAIRS = "enable-app-pairs";
+    public static final String REQUEST_IS_RECENTS_WINDOW_ENABLED = "recents-window-enabled";
 
     public static final String REQUEST_UNSTASH_BUBBLE_BAR_IF_STASHED =
             "unstash-bubble-bar-if-stashed";
 
     public static final String REQUEST_INJECT_FAKE_TRACKPAD = "inject-fake-trackpad";
     public static final String REQUEST_EJECT_FAKE_TRACKPAD = "eject-fake-trackpad";
+
+    public static final String REQUEST_TASKBAR_PRIMARY_DISPLAY_ID = "taskbar-primary-display-id";
+
+    public static final String REQUEST_DISMISS_MAGNETIC_DETACH_THRESHOLD =
+            "dismiss-magnetic-detach-threshold";
+
+    public static final String REQUEST_TASKBAR_ACTION_CORNER_PADDING =
+            "taskbar-action-corner-padding";
+
+    public static final String REQUEST_TASKBAR_UNSTASHED_INPUT_AREA =
+            "taskbar-unstashed-input-area";
 
     /** Logs {@link Log#d(String, String)} if {@link #sDebugTracing} is true. */
     public static void testLogD(String tag, String message) {

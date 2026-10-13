@@ -31,8 +31,16 @@ import android.view.ViewTreeObserver
 import android.window.SplashScreen
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.HasDefaultViewModelProviderFactory
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelLazy
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.LawnchairApp.Companion.showQuickstepWarningIfNecessary
 import app.lawnchair.compat.LawnchairQuickstepCompat
@@ -60,12 +68,14 @@ import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.BaseActivity
 import com.android.launcher3.BubbleTextView
 import com.android.launcher3.GestureNavContract
+import com.android.launcher3.Launcher
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherState
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.popup.SystemShortcut
+import com.android.launcher3.reloadIcons
 import com.android.launcher3.shortcuts.DeepShortcutView
 import com.android.launcher3.statemanager.StateManager
 import com.android.launcher3.statemanager.StateManager.StateHandler
@@ -97,10 +107,26 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
-class LawnchairLauncher : QuickstepLauncher() {
+/**
+ * Issue #532 D5 (fork contract port): the anchor 16-dev BaseActivity extends the
+ * framework android.app.Activity, so this launcher is not an
+ * androidx.activity.ComponentActivity. The fork contract "androidx viewModels() /
+ * by viewModels works from a launcher context" is re-expressed on the anchor
+ * structure instead: the launcher keeps an androidx ViewModelStore (cleared on
+ * destroy) and a default ViewModelProvider factory, exposed through
+ * ViewModelStoreOwner + HasDefaultViewModelProviderFactory. The androidx
+ * LifecycleOwner contract is already provided by the anchor (ActivityContext extends
+ * SavedStateRegistryOwner extends LifecycleOwner, backed by BaseActivity's
+ * LifecycleRegistry).
+ */
+class LawnchairLauncher :
+    QuickstepLauncher(),
+    ViewModelStoreOwner,
+    HasDefaultViewModelProviderFactory {
     private val defaultOverlay by unsafeLazy { OverlayCallbackImpl(this) }
     private val prefs by unsafeLazy { PreferenceManager.getInstance(this) }
     private val preferenceManager2 by unsafeLazy { PreferenceManager2.getInstance(this) }
+    private val androidxViewModelStoreDelegate: Lazy<ViewModelStore> = unsafeLazy { ViewModelStore() }
     private val launcherOriginLaunchRecorder by unsafeLazy {
         app.lawnchair.organizer.integration.LauncherOriginLaunchRecorder(
             store = app.lawnchair.organizer.integration.LauncherOriginLaunchCounterStore.from(applicationContext),
@@ -108,7 +134,7 @@ class LawnchairLauncher : QuickstepLauncher() {
             clockEpochDay = { java.time.LocalDate.now().toEpochDay() },
         )
     }
-    private val insetsController by unsafeLazy { WindowInsetsControllerCompat(launcher.window, rootView) }
+    private val insetsController by unsafeLazy { WindowInsetsControllerCompat(launcher.window!!, rootView) }
     private val themeProvider by unsafeLazy { ThemeProvider.INSTANCE.get(this) }
     private val noStatusBarStateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {
@@ -174,13 +200,12 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        sCurrentInstance = this
         if (!Utilities.ATLEAST_Q) {
-            enableEdgeToEdge(
-                navigationBarStyle = SystemBarStyle.auto(
-                    Color.TRANSPARENT,
-                    Color.TRANSPARENT,
-                ),
-            )
+            // Rebase Phase 2 adapt: anchor's BaseActivity extends android.app.Activity,
+            // so androidx enableEdgeToEdge is unavailable; set edge-to-edge decor flags
+            // directly instead.
+            WindowCompat.setDecorFitsSystemWindows(window!!, false)
         }
         layoutInflater.factory2 = LawnchairLayoutFactory(this)
         super.onCreate(savedInstanceState)
@@ -253,7 +278,7 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
         val isWorkspaceDarkText = Themes.getAttrBoolean(this, R.attr.isWorkspaceDarkText)
         preferenceManager2.darkStatusBar.onEach(launchIn = lifecycleScope) { darkStatusBar ->
-            systemUiController.updateUiState(UI_STATE_BASE_WINDOW, isWorkspaceDarkText || darkStatusBar)
+            systemUiController?.updateUiState(UI_STATE_BASE_WINDOW, isWorkspaceDarkText || darkStatusBar)
         }
         preferenceManager2.backPressGestureHandler.onEach(launchIn = lifecycleScope) { handler ->
             hasBackGesture = handler !is GestureHandlerConfig.NoOp
@@ -284,32 +309,38 @@ class LawnchairLauncher : QuickstepLauncher() {
         out.add(SearchBarStateHandler(this))
     }
 
-    override fun getSupportedShortcuts(): Stream<SystemShortcut.Factory<*>> = Stream.concat(
-        super.getSupportedShortcuts(),
-        Stream.concat(
-            Stream.of(LawnchairShortcut.UNINSTALL, LawnchairShortcut.CUSTOMIZE),
-            Stream.concat(
-                if (LawnchairApp.isRecentsEnabled) Stream.of(LawnchairShortcut.PAUSE_APPS) else Stream.empty(),
-                Stream.concat(
-                    // Issue #38: placement lock authoring for shortcut-capable rows.
-                    Stream.of(OrganizerLockShortcut.PLACEMENT_LOCK),
-                    // Issue #448: per-item edit actions (move to page / add to
-                    // folder / remove from home) via the homeedit module.
-                    Stream.of(
-                        EditActionsShortcuts.MOVE_TO_PAGE,
-                        EditActionsShortcuts.ADD_TO_FOLDER,
-                        EditActionsShortcuts.REMOVE_FROM_HOME,
-                    ),
-                ),
-            ),
-        ),
-    )
+    override fun getSupportedShortcuts(container: Int): Stream<SystemShortcut.Factory<*>> {
+        val base: Stream<SystemShortcut.Factory<*>> = super.getSupportedShortcuts(container)
+        val lawnchair: Stream<SystemShortcut.Factory<*>> =
+            Stream.of(
+                SystemShortcut.Factory<LawnchairLauncher> { activity, itemInfo, view ->
+                    LawnchairShortcut.UNINSTALL.getShortcut(activity, itemInfo, view)
+                },
+                SystemShortcut.Factory<LawnchairLauncher> { activity, itemInfo, view ->
+                    LawnchairShortcut.CUSTOMIZE.getShortcut(activity, itemInfo, view)
+                },
+            )
+        val recents: Stream<SystemShortcut.Factory<*>> =
+            if (LawnchairApp.isRecentsEnabled) Stream.of<SystemShortcut.Factory<*>>(LawnchairShortcut.PAUSE_APPS) else Stream.empty<SystemShortcut.Factory<*>>()
+        // Issue #38: placement lock authoring for shortcut-capable rows.
+        val organizer: Stream<SystemShortcut.Factory<*>> =
+            Stream.of(OrganizerLockShortcut.PLACEMENT_LOCK)
+        // Issue #448: per-item edit actions (move to page / add to folder /
+        // remove from home) via the homeedit module.
+        val edit: Stream<SystemShortcut.Factory<*>> = Stream.of(
+            EditActionsShortcuts.MOVE_TO_PAGE,
+            EditActionsShortcuts.ADD_TO_FOLDER,
+            EditActionsShortcuts.REMOVE_FROM_HOME,
+        )
+        return Stream.concat(
+            base,
+            Stream.concat(lawnchair, Stream.concat(recents, Stream.concat(organizer, edit))),
+        )
+    }
 
-    override fun updateTheme() {
+    private fun updateTheme() {
         if (themeProvider.colorScheme != colorScheme) {
             recreate()
-        } else {
-            super.updateTheme()
         }
     }
 
@@ -328,21 +359,19 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
     }
 
-    override fun bindItems(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
+    // Rebase Phase 2 adapt (Issue #532 S2b): anchor's Launcher binds added items
+    // via bindInflatedItems(List<Pair<ItemInfo, View>>, anim) with the
+    // Launcher-owned ItemInflater; the fork's former `bindItems` override point
+    // no longer exists.
+    fun bindItemsAdapted(items: List<ItemInfo>, forceAnimateIcons: Boolean) {
         val inflatedItems = items.map { i ->
-            Pair.create(
-                i,
-                itemInflater?.inflateItem(
-                    i,
-                    modelWriter,
-                ),
-            )
+            Pair.create<ItemInfo, View>(i, getItemInflater().inflateItem(i))
         }.toList()
         bindInflatedItems(inflatedItems, if (forceAnimateIcons) AnimatorSet() else null)
     }
 
     override fun handleGestureContract(intent: Intent?) {
-        if (!LawnchairApp.isRecentsEnabled && prefs.enableGnc.get()) {
+        if (!LawnchairApp.isRecentsEnabled && prefs.enableGnc.get() && intent != null) {
             val gnc = GestureNavContract.fromIntent(intent)
             if (gnc != null) {
                 AbstractFloatingView.closeOpenViews(
@@ -407,15 +436,15 @@ class LawnchairLauncher : QuickstepLauncher() {
         return popup
     }
 
-    override fun createAppWidgetHolder(): LauncherWidgetHolder {
-        val factory = LauncherWidgetHolder.HolderFactory.newFactory(this) as LawnchairWidgetHolder.LawnchairHolderFactory
-        return factory.newInstance(
-            this,
-        ) { appWidgetId: Int ->
-            workspace.removeWidget(
-                appWidgetId,
-            )
+    // Rebase Phase 2 adapt: the anchor creates the holder through
+    // LauncherWidgetHolder.newInstance (DI WidgetHolderFactory); no
+    // createAppWidgetHolder override point remains.
+    fun createAppWidgetHolder(): LauncherWidgetHolder {
+        val holder = LauncherWidgetHolder.newInstance(this)
+        holder.setAppWidgetRemovedCallback { appWidgetId ->
+            workspace.removeWidget(appWidgetId)
         }
+        return holder
     }
 
     override fun makeDefaultActivityOptions(splashScreenStyle: Int): ActivityOptionsWrapper {
@@ -506,10 +535,25 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
 
     override fun onDestroy() {
+        if (sCurrentInstance === this) {
+            sCurrentInstance = null
+        }
         super.onDestroy()
+        // Issue #532 D5: release the androidx ViewModelStore with the activity so
+        // retained ViewModels do not survive the launcher instance.
+        if (androidxViewModelStoreDelegate.isInitialized()) {
+            androidxViewModelStoreDelegate.value.clear()
+        }
         // Only actually closes if required, safe to call if not enabled
         SmartspacerClient.close()
     }
+
+    // Issue #532 D5 (fork contract port): see the class doc comment.
+    override val viewModelStore: ViewModelStore
+        get() = androidxViewModelStoreDelegate.value
+
+    override val defaultViewModelProviderFactory: ViewModelProvider.Factory
+        get() = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
 
     /**
      * Issue #203: the launcher-origin launch observation point. The override
@@ -578,7 +622,13 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         var sRestartFlags = 0
 
-        val instance get() = LauncherAppState.getInstanceNoCreate()?.launcher as? LawnchairLauncher
+        // Rebase Phase 2 adapt (#532): the anchor LauncherAppState no longer exposes the
+        // launcher; track the active instance through the activity lifecycle instead.
+        @Volatile
+        private var sCurrentInstance: LawnchairLauncher? = null
+
+        val instance: LawnchairLauncher?
+            get() = sCurrentInstance
     }
 }
 
@@ -589,4 +639,25 @@ val Context.launcherNullable: LawnchairLauncher? get() = try {
     launcher
 } catch (_: IllegalArgumentException) {
     null
+}
+
+/**
+ * Issue #532 D5 (fork contract port): the fork call sites use
+ * `by (context as ViewModelStoreOwner).viewModels()` — the pre-rebase fork relied on
+ * androidx.activity.viewModels, whose receiver is androidx.activity.ComponentActivity
+ * and which the anchor structure (BaseActivity extends framework Activity) cannot
+ * provide. Re-expresses that contract on the anchor's ViewModelStoreOwner support:
+ * the owner supplies the androidx ViewModelStore and the default ViewModelProvider
+ * factory (HasDefaultViewModelProviderFactory), exactly as ComponentActivity does.
+ */
+inline fun <reified VM : ViewModel> ViewModelStoreOwner.viewModels(): Lazy<VM> {
+    check(this is HasDefaultViewModelProviderFactory) {
+        "viewModels() requires a HasDefaultViewModelProviderFactory owner; " +
+            "LawnchairLauncher provides it for launcher contexts"
+    }
+    return ViewModelLazy(
+        VM::class,
+        { viewModelStore },
+        { defaultViewModelProviderFactory },
+    )
 }

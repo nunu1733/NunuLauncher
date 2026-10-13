@@ -25,8 +25,8 @@ import android.graphics.Region
 import android.graphics.drawable.AdaptiveIconDrawable
 import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.Utilities
+import com.android.launcher3.graphics.ThemeManager
 import com.android.launcher3.icons.GraphicsUtils
-import com.android.launcher3.icons.IconProvider
 import com.android.launcher3.util.MainThreadInitializedObject
 import com.android.launcher3.util.SafeCloseable
 import com.patrykmichalik.opto.core.firstBlocking
@@ -49,7 +49,9 @@ class IconShapeManager(private val context: Context) : SafeCloseable {
             override fun toString() = "system"
 
             override fun getHashString(): String {
-                val resId = IconProvider.CONFIG_ICON_MASK_RES_ID
+                // Rebase Phase 2 adapt (#532): CONFIG_ICON_MASK_RES_ID moved from the old
+                // IconProvider to the anchor ThemeManager companion.
+                val resId = ThemeManager.CONFIG_ICON_MASK_RES_ID
                 if (resId == 0) {
                     return "system-path"
                 }

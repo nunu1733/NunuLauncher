@@ -1,0 +1,44 @@
+=== qa (a) preflight — API 37 debug @ 68e68a6a45 (compat4-debug-68e68a6.apk, sha256 489b9f1f9bdede76b9959ac27b81b037fb1a75613f94ccf674651e9936933f5a) ===
+date: 2026-10-08 00:33:45
+AVD: issue526_api37_pixel_9a (API 37.0, SDK 37), serial emulator-5554
+google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys
+config: /product/priv-app/LawnchairDebug/LawnchairDebug.apk + /product/etc/permissions/privapp-permissions-app.lawnchair.debug.xml (13 perms); overlay nunu.overlay.quickstepconfig -> app.lawnchair.debug/com.android.quickstep.RecentsActivity; HOME=app.lawnchair.debug
+
+--- wm density (NATIVE, no override):
+Physical density: 420
+
+--- cmd overlay lookup --user 0 android android:string/config_recentsComponentName:
+app.lawnchair.debug/com.android.quickstep.RecentsActivity
+
+--- SystemUI mRecentsComponentName:
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+
+--- package install state:
+    codePath=/product/priv-app/LawnchairDebug
+    versionName=16.Dev.(0468d52)
+    pkgFlags=[ SYSTEM DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE BACKUP_IN_FOREGROUND PARTIALLY_DIRECT_BOOT_AWARE PRIVILEGED PRODUCT PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+
+--- default launcher:
+  name=app.lawnchair.LawnchairLauncher
+    name=app.lawnchair.LawnchairApp
+
+--- LauncherProxyService state:
+    LauncherProxyService state:
+      isConnected=true
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair.debug }
+      mBound=true
+      mCurrentBoundedUserId=0
+      mConnectionBackoffAttempts=0
+      mActiveNavBarRegion=null
+      mNavBarMode=2
+      mIsPrevServiceCleanedUp=false
+    SysUiState state:
+
+--- sha256 of installed priv-app:
+489b9f1f9bdede76b9959ac27b81b037fb1a75613f94ccf674651e9936933f5a  /product/priv-app/LawnchairDebug/LawnchairDebug.apk
+
+--- overlay lookup recents component == SystemUI mRecentsComponentName == debug component: OK
+--- density override: NONE (only Physical density: 420 printed)

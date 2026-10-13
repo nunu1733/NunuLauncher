@@ -263,7 +263,7 @@ class TwoPanelOrientationCaptureInstrumentationTest {
             launcher.model.forceReload()
             val model = launcher.model
             val deadline = System.currentTimeMillis() + 5_000L
-            while (!model.isModelLoaded && System.currentTimeMillis() < deadline) {
+            while (!model.isModelLoaded() && System.currentTimeMillis() < deadline) {
                 Thread.sleep(50)
             }
         } finally {
@@ -637,7 +637,7 @@ class TwoPanelOrientationCaptureInstrumentationTest {
         module: LayoutApplicationModule<RecoveryStore>,
         store: RecoveryStore,
     ): String? {
-        if (!launcher.model.isModelLoaded) {
+        if (!launcher.model.isModelLoaded()) {
             return "launcher model not loaded (isModelLoaded=false)"
         }
         if (module.readinessGate.state != ReadinessGate.State.READY) {
@@ -680,7 +680,7 @@ class TwoPanelOrientationCaptureInstrumentationTest {
 
     /**
      * Issue #292: waits until the launcher model has completed a loader task.
-     * [isModelLoaded][com.android.launcher3.LauncherModel.isModelLoaded] flips
+     * [isModelLoaded][com.android.launcher3.LauncherModel.isModelLoaded()] flips
      * only after a loader task commits, and every loader task consumes the
      * pending default-workspace load, so returning means no further load can
      * delete or renumber favorites rows. Callers may pin row identities after
@@ -688,14 +688,14 @@ class TwoPanelOrientationCaptureInstrumentationTest {
      */
     private fun awaitLauncherModelLoaded() {
         val deadline = System.currentTimeMillis() + 20_000L
-        while (!launcher.model.isModelLoaded && System.currentTimeMillis() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.currentTimeMillis() < deadline) {
             Thread.sleep(100)
         }
         assertTrue(
             "Launcher model did not complete its first load within timeout; " +
                 "row identities cannot be pinned safely against the pending " +
                 "default-workspace load",
-            launcher.model.isModelLoaded,
+            launcher.model.isModelLoaded(),
         )
     }
 

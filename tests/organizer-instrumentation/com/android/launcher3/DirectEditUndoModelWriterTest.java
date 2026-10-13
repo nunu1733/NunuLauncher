@@ -21,7 +21,6 @@ import android.os.Process;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.SmallTest;
-import androidx.test.platform.app.InstrumentationRegistry;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.celllayout.CellPosMapper;
 import com.android.launcher3.model.BgDataModel;
@@ -32,7 +31,6 @@ import com.android.launcher3.model.ModelWriter;
 import com.android.launcher3.model.data.FolderInfo;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
-import com.android.launcher3.util.PackageManagerHelper;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,22 +51,6 @@ public class DirectEditUndoModelWriterTest {
     private BgDataModel mBgDataModel;
     private ModelWriter mWriter;
 
-    /** Routes ModelWriter to the isolated test DB instead of the real one. */
-    static class TestLauncherModel extends LauncherModel {
-        private final ModelDbController mTestController;
-
-        TestLauncherModel(Context context, LauncherAppState app, ModelDbController controller) {
-            super(context, app, app.getIconCache(), new AppFilter(context),
-                    new PackageManagerHelper(context), false);
-            mTestController = controller;
-        }
-
-        @Override
-        public ModelDbController getModelDbController() {
-            return mTestController;
-        }
-    }
-
     private static class TestController extends ModelDbController {
         private final Context mContext;
         volatile boolean failOnDelete;
@@ -84,11 +66,11 @@ public class DirectEditUndoModelWriterTest {
         }
 
         @Override
-        public int delete(String table, String selection, String[] selectionArgs) {
+        public int delete(String selection, String[] selectionArgs) {
             if (failOnDelete) {
                 throw new IllegalStateException("injected delete failure");
             }
-            return super.delete(table, selection, selectionArgs);
+            return super.delete(selection, selectionArgs);
         }
     }
 
@@ -98,13 +80,11 @@ public class DirectEditUndoModelWriterTest {
         mContext.deleteDatabase(TEST_DB);
         mController = new TestController(mContext);
         mController.getDb();
-        mBgDataModel = new BgDataModel();
-        // LauncherAppState asserts UI thread and registers process callbacks;
-        // build it once on the main thread like a real launch would.
-        final AtomicReference<LauncherAppState> appRef = new AtomicReference<>();
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(
-                () -> appRef.set(LauncherAppState.getInstance(mContext)));
-        TestLauncherModel model = new TestLauncherModel(mContext, appRef.get(), mController);
+        mBgDataModel = ModelWriterTestSupport.createBgDataModel(mContext);
+        // Issue #532 rebase: the anchor LauncherModel is final and injects its
+        // DB controller, so the model is built with the isolated TestController.
+        LauncherModel model = ModelWriterTestSupport.createIsolatedModel(
+                mContext, mController, mBgDataModel);
         mWriter = new ModelWriter(mContext, model, mBgDataModel, /* verifyChanges= */ false,
                 CellPosMapper.DEFAULT, /* owner= */ null);
     }
@@ -295,7 +275,7 @@ public class DirectEditUndoModelWriterTest {
         // Live model unchanged: the folder is still a collection holding the item.
         synchronized (mBgDataModel) {
             FolderInfo folder =
-                    mBgDataModel.collections.get(folderId) instanceof FolderInfo f ? f : null;
+                    mBgDataModel.itemsIdMap.get(folderId) instanceof FolderInfo f ? f : null;
             assertNotNull("folder must remain in the model after rollback", folder);
             assertTrue(folder.getContents().stream().anyMatch(i -> i.id == 501));
         }
@@ -387,9 +367,9 @@ public class DirectEditUndoModelWriterTest {
             restore.put(Favorites.SCREEN, 0);
             restore.put(Favorites.CELLX, 3);
             restore.put(Favorites.RANK, 2);
-            mController.update(Favorites.TABLE_NAME, restore,
+            mController.update(restore,
                     Favorites._ID + "=501", null);
-            mController.delete(Favorites.TABLE_NAME,
+            mController.delete(
                     Favorites._ID + "=" + folderId, null);
             // no commit — abandoned like a process death
         }
@@ -463,7 +443,7 @@ public class DirectEditUndoModelWriterTest {
         // reads it before the next reload).
         synchronized (mBgDataModel) {
             FolderInfo folder =
-                    mBgDataModel.collections.get(folderId) instanceof FolderInfo f ? f : null;
+                    mBgDataModel.itemsIdMap.get(folderId) instanceof FolderInfo f ? f : null;
             assertNotNull("created folder must be in the live model", folder);
             assertTrue(folder.hasOption(DirectEditContract.OPTIONS_DIRECT_EDIT_CREATED_FOLDER));
         }
@@ -583,10 +563,9 @@ public class DirectEditUndoModelWriterTest {
         item.spanY = 1;
         item.rank = rank;
         item.user = Process.myUserHandle();
-        mBgDataModel.itemsIdMap.put(item.id, item);
-        if (container == Favorites.CONTAINER_DESKTOP || container == Favorites.CONTAINER_HOTSEAT) {
-            mBgDataModel.workspaceItems.add(item);
-        }
+        // Issue #532 rebase: the anchor model carries every item in itemsIdMap;
+        // the fork-side workspaceItems index is gone.
+        mBgDataModel.addItem(mContext, item, null);
         insertRow(id, container, screenId, cellX, cellY, rank);
         return item;
     }

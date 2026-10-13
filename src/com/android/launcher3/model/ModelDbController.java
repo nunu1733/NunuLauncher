@@ -16,28 +16,16 @@
 package com.android.launcher3.model;
 
 import static android.provider.BaseColumns._ID;
-import static android.util.Base64.NO_PADDING;
-import static android.util.Base64.NO_WRAP;
 
-import static com.android.launcher3.DefaultLayoutParser.RES_PARTNER_DEFAULT_LAYOUT;
 import static com.android.launcher3.LauncherSettings.Favorites.CONTAINER;
 import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE;
 import static com.android.launcher3.LauncherSettings.Favorites.ITEM_TYPE_APP_PAIR;
 import static com.android.launcher3.LauncherSettings.Favorites.TABLE_NAME;
 import static com.android.launcher3.LauncherSettings.Favorites.addTableToDb;
-import static com.android.launcher3.LauncherSettings.Settings.LAYOUT_DIGEST_KEY;
-import static com.android.launcher3.LauncherSettings.Settings.LAYOUT_DIGEST_LABEL;
-import static com.android.launcher3.LauncherSettings.Settings.LAYOUT_DIGEST_TAG;
 import static com.android.launcher3.provider.LauncherDbUtils.tableExists;
 
-import android.app.blob.BlobHandle;
-import android.app.blob.BlobStoreManager;
-import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
-import android.content.pm.PackageManager;
-import android.content.pm.ProviderInfo;
-import android.content.res.Resources;
 import android.database.Cursor;
 import android.database.DatabaseErrorHandler;
 import android.database.SQLException;
@@ -46,22 +34,16 @@ import android.database.sqlite.SQLiteDatabaseCorruptException;
 import android.database.sqlite.SQLiteException;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.UserHandle;
-import android.os.UserManager;
-import android.provider.Settings;
 import android.text.TextUtils;
-import android.util.Base64;
 import android.util.Log;
-import android.util.Xml;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.WorkerThread;
 
 import com.android.launcher3.AutoInstallsLayout;
-import com.android.launcher3.AutoInstallsLayout.SourceResources;
 import com.android.launcher3.ConstantItem;
 import com.android.launcher3.DefaultLayoutParser;
 import com.android.launcher3.EncryptionType;
@@ -72,66 +54,182 @@ import com.android.launcher3.LauncherPrefs;
 import com.android.launcher3.LauncherSettings;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.Utilities;
-import com.android.launcher3.graphics.LauncherPreviewRenderer;
 import com.android.launcher3.backuprestore.LauncherRestoreEventLogger;
 import com.android.launcher3.backuprestore.LauncherRestoreEventLogger.RestoreError;
+import com.android.launcher3.dagger.ApplicationContext;
+import com.android.launcher3.dagger.LauncherAppSingleton;
 import com.android.launcher3.logging.FileLog;
 import com.android.launcher3.pm.UserCache;
+import com.android.launcher3.preview.PreviewContext;
 import com.android.launcher3.provider.LauncherDbUtils;
 import com.android.launcher3.provider.LauncherDbUtils.SQLiteTransaction;
 import com.android.launcher3.provider.RestoreDbTask;
-import com.android.launcher3.util.IOUtils;
 import com.android.launcher3.util.IntArray;
-import com.android.launcher3.util.MainThreadInitializedObject.SandboxContext;
-import com.android.launcher3.util.Partner;
+import com.android.launcher3.util.SandboxContext;
 import com.android.launcher3.widget.LauncherWidgetHolder;
-
-import org.xmlpull.v1.XmlPullParser;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
+import java.util.function.Consumer;
+
+import javax.inject.Inject;
 
 import app.lawnchair.LawnchairApp;
 import app.lawnchair.LawnchairAppKt;
 
 /**
- * Utility class which maintains an instance of Launcher database and provides
- * utility methods
+ * Utility class which maintains an instance of Launcher database and provides utility methods
  * around it.
  */
+@LauncherAppSingleton
 public class ModelDbController {
-    private static final String TAG = "LauncherProvider";
+    private static final String TAG = "ModelDbController";
 
     private static final String EMPTY_DATABASE_CREATED = "EMPTY_DATABASE_CREATED";
     public static final String EXTRA_DB_NAME = "db_name";
+    public static final String DATA_TYPE_DB_FILE = "database_file";
 
     protected DatabaseHelper mOpenHelper;
 
     private final Context mContext;
+    private InvariantDeviceProfile mIdp;
+    private LauncherPrefs mPrefs;
+    private UserCache mUserCache;
+    private LayoutParserFactory mLayoutParserFactory;
+    // Issue #532 S3a (rebase of Issue #59/#461 grid-migration contracts): scripted
+    // runtime seam for T3 oracle coverage; production always uses DIRECT.
     private final GridMigrationRuntime mGridMigrationRuntime;
 
+    @Inject
+    public ModelDbController(
+            @ApplicationContext Context context,
+            InvariantDeviceProfile idp,
+            LauncherPrefs prefs,
+            UserCache userCache,
+            LayoutParserFactory layoutParserFactory) {
+        this(context, idp, prefs, userCache, layoutParserFactory, GridMigrationRuntime.DIRECT);
+    }
+
+    // Issue #532 S3a: test-visible runtime injection (GridMigrationSuccessTest /
+    // GridMigrationFailureTest Controller subclasses pass super(context, runtime)).
+    ModelDbController(
+            Context context,
+            InvariantDeviceProfile idp,
+            LauncherPrefs prefs,
+            UserCache userCache,
+            LayoutParserFactory layoutParserFactory,
+            GridMigrationRuntime gridMigrationRuntime) {
+        mContext = context;
+        mIdp = idp;
+        mPrefs = prefs;
+        mUserCache = userCache;
+        mLayoutParserFactory = layoutParserFactory;
+        mGridMigrationRuntime = gridMigrationRuntime;
+    }
+
+    // Lawnchair: ModelDbController
     public ModelDbController(Context context) {
         this(context, GridMigrationRuntime.DIRECT);
     }
 
     ModelDbController(Context context, GridMigrationRuntime gridMigrationRuntime) {
         mContext = context;
+        mIdp = InvariantDeviceProfile.INSTANCE.get(context);
+        mPrefs = LauncherPrefs.get(context);
+        mUserCache = UserCache.INSTANCE.get(context);
+        mLayoutParserFactory = new LayoutParserFactory(context);
         mGridMigrationRuntime = gridMigrationRuntime;
     }
 
     private synchronized void createDbIfNotExists() {
         if (mOpenHelper == null) {
+            // Initialize the restore task before opening the DB
+            Consumer<ModelDbController> restoreTask = RestoreDbTask.createRestoreTask(mContext);
+            // Issue #532 D2 (S3a port completion): route the active-helper construction
+            // through the fork's one-arg createDatabaseHelper seam (Issue #120 SR-06/AC-4
+            // matrix; also GridMigrationSuccessTest.Controller) so overridden controllers
+            // stay in the loop. The default implementation below binds the live IDP
+            // dbFile like the fork (see the D3 note on the one-arg overload).
             mOpenHelper = createDatabaseHelper(false /* forMigration */);
-            RestoreDbTask.restoreIfNeeded(mContext, this);
+            restoreTask.accept(this);
         }
     }
 
+    /**
+     * Whether the active helper was created by the DEFAULT one-arg seam (the
+     * live-IDP binding). Overrides of the seam (the grid-migration test doubles
+     * bind fixture databases deliberately) must keep their binding — the §6.10
+     * rebind only governs the real production binding.
+     */
+    private boolean mActiveHelperTracksLiveIdpFile;
+
+    /**
+     * Issue #532 G5 (§6.10, D3 residual completion, fork file-lifecycle contract
+     * Issues #58/#120/#168): the active helper's dbFile binding must follow the live
+     * IDP dbFile — the single authority shared with LawnchairApp's renameRestoredDb /
+     * migrateDbName / cleanUpDatabases (all IDP-driven). D3 bound the helper at
+     * construction only, so an authority switch made after construction (the
+     * restore-family applyGridInfo seam) left the helper holding the abandoned file;
+     * cleanUpDatabases then deleted it under the open connection and every later
+     * write failed with SQLITE_READONLY_DBMOVED. Rebinding here — at the loader's
+     * grid-reconciliation entry, which is deferred behind writer/restore leases —
+     * reopens on the file the authority now names before cleanUpDatabases can run.
+     */
+    private void rebindActiveHelperToLiveIdpFile() {
+        if (mOpenHelper == null || mContext instanceof SandboxContext
+                || !mActiveHelperTracksLiveIdpFile) {
+            // Sandbox helpers are context-owned (same convention as the migration
+            // path's target-helper selection); helpers bound through an overridden
+            // one-arg seam (grid-migration test doubles) deliberately hold a
+            // fixture binding and must keep it. No file authority to follow.
+            return;
+        }
+        String liveDbName = mIdp.dbFile;
+        if (TextUtils.equals(mOpenHelper.getDatabaseName(), liveDbName)) {
+            return;
+        }
+        FileLog.d(TAG, "Rebinding the active helper to the live IDP dbFile: "
+                + mOpenHelper.getDatabaseName() + " -> " + liveDbName);
+        mOpenHelper.close();
+        mOpenHelper = null;
+        createDbIfNotExists();
+    }
+
+    // Issue #532 D2/D3 (S3a port completion): the fork's one-arg construction seam.
+    // The default derives the db file by purpose and delegates to the two-arg
+    // implementation.
     protected DatabaseHelper createDatabaseHelper(boolean forMigration) {
+        if (forMigration) {
+            return createDatabaseHelper(true, getMigrationTargetDatabaseName(mIdp));
+        }
+        // Issue #532 D3 (fork file-lifecycle contract, Issues #58/#120/#168): the
+        // active helper binds the live IDP dbFile — the single authority shared with
+        // the fork's restore file operations (LawnchairApp.renameRestoredDb /
+        // migrateDbName / cleanUpDatabases, all IDP-driven). The anchor's
+        // DB_FILE-pref-first derivation splits the binding when a restore or the
+        // grid-pref seam rewrites DB_FILE: cleanUpDatabases then deletes the helper's
+        // open file (SQLITE_READONLY_DBMOVED at the next createEmptyDB). The fork
+        // never read DB_FILE for the active binding (write-only metadata).
+        DatabaseHelper helper = createDatabaseHelper(false, mIdp.dbFile);
+        mActiveHelperTracksLiveIdpFile = true;
+        return helper;
+    }
+
+    // Issue #532 S3a: fork (Issue #59) test hooks for migration-target indirection.
+    protected String getMigrationTargetDatabaseName(InvariantDeviceProfile idp) {
+        return new DeviceGridState(idp).getDbFile();
+    }
+
+    protected DeviceGridState getMigrationDestinationState(InvariantDeviceProfile idp) {
+        return new DeviceGridState(idp);
+    }
+
+    protected DatabaseHelper createDatabaseHelper(boolean forMigration, String dbFile) {
         boolean isSandbox = mContext instanceof SandboxContext;
         String dbName = isSandbox ? null : InvariantDeviceProfile.INSTANCE.get(mContext).dbFile;
 
@@ -142,55 +240,28 @@ public class ModelDbController {
                 app.migrateDbName(dbName);
             }
         } catch (Throwable t) {
-            // ignore
+            // LC-Ignored
         }
 
         // Set the flag for empty DB
-        Runnable onEmptyDbCreateCallback = forMigration ? () -> {
-        }
-                : () -> LauncherPrefs.get(mContext).putSync(getEmptyDbCreatedKey(dbName).to(true));
+        Runnable onEmptyDbCreateCallback = forMigration ? () -> { }
+                : () -> mPrefs.putSync(getEmptyDbCreatedKey(dbFile).to(true));
 
-        DatabaseHelper databaseHelper = new DatabaseHelper(mContext, dbName,
+        DatabaseHelper databaseHelper = new DatabaseHelper(mContext, dbFile,
                 this::getSerialNumberForUser, onEmptyDbCreateCallback);
         return initializeDatabaseHelper(databaseHelper);
-    }
-
-    private DatabaseHelper initializeDatabaseHelper(DatabaseHelper databaseHelper) {
-        // Table creation sometimes fails silently, which leads to a crash loop.
-        // This way, we will try to create a table every time after crash, so the device
-        // would eventually be able to recover.
-        if (!tableExists(databaseHelper.getReadableDatabase(), Favorites.TABLE_NAME)) {
-            Log.e(TAG, "Tables are missing after onCreate has been called. Trying to recreate");
-            // This operation is a no-op if the table already exists.
-            addTableToDb(databaseHelper.getWritableDatabase(),
-                    getSerialNumberForUser(Process.myUserHandle()),
-                    true /* optional */);
-        }
-        databaseHelper.mHotseatRestoreTableExists = tableExists(
-                databaseHelper.getReadableDatabase(), Favorites.HYBRID_HOTSEAT_BACKUP_TABLE);
-
-        databaseHelper.initIds();
-        return databaseHelper;
-    }
-
-    protected String getMigrationTargetDatabaseName(InvariantDeviceProfile idp) {
-        return idp.dbFile;
-    }
-
-    protected DeviceGridState getMigrationDestinationState(InvariantDeviceProfile idp) {
-        return new DeviceGridState(idp);
     }
 
     /**
      * Refer {@link SQLiteDatabase#query}
      */
     @WorkerThread
-    public Cursor query(String table, String[] projection, String selection,
+    public Cursor query(String[] projection, String selection,
             String[] selectionArgs, String sortOrder) {
         createDbIfNotExists();
         SQLiteDatabase db = mOpenHelper.getWritableDatabase();
         Cursor result = db.query(
-                table, projection, selection, selectionArgs, null, null, sortOrder);
+                TABLE_NAME, projection, selection, selectionArgs, null, null, sortOrder);
 
         final Bundle extra = new Bundle();
         extra.putString(EXTRA_DB_NAME, mOpenHelper.getDatabaseName());
@@ -202,12 +273,15 @@ public class ModelDbController {
      * Refer {@link SQLiteDatabase#insert(String, String, ContentValues)}
      */
     @WorkerThread
-    public int insert(String table, ContentValues initialValues) {
+    public int insert(ContentValues initialValues) {
         createDbIfNotExists();
+        // Issue #532 S2b (rebase of Issue #14 contract): favorites-table CRUD is
+        // mutation-admitted through the coordinator; the lease wraps only the DB
+        // operation and never blocks MODEL_EXECUTOR.
         try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
             SQLiteDatabase db = mOpenHelper.getWritableDatabase();
             addModifiedTime(initialValues);
-            int rowId = mOpenHelper.dbInsertAndCheck(db, table, initialValues);
+            int rowId = mOpenHelper.dbInsertAndCheck(db, TABLE_NAME, initialValues);
             if (rowId >= 0) {
                 onAddOrDeleteOp(db);
             }
@@ -219,11 +293,11 @@ public class ModelDbController {
      * Refer {@link SQLiteDatabase#delete(String, String, String[])}
      */
     @WorkerThread
-    public int delete(String table, String selection, String[] selectionArgs) {
+    public int delete(String selection, String[] selectionArgs) {
         createDbIfNotExists();
         try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
             SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-            int count = db.delete(table, selection, selectionArgs);
+            int count = db.delete(TABLE_NAME, selection, selectionArgs);
             if (count > 0) {
                 onAddOrDeleteOp(db);
             }
@@ -235,14 +309,12 @@ public class ModelDbController {
      * Refer {@link SQLiteDatabase#update(String, ContentValues, String, String[])}
      */
     @WorkerThread
-    public int update(String table, ContentValues values,
-            String selection, String[] selectionArgs) {
+    public int update(ContentValues values, String selection, String[] selectionArgs) {
         createDbIfNotExists();
-
         try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
             addModifiedTime(values);
             SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-            return db.update(table, values, selection, selectionArgs);
+            return db.update(TABLE_NAME, values, selection, selectionArgs);
         }
     }
 
@@ -279,22 +351,17 @@ public class ModelDbController {
     @WorkerThread
     public void createEmptyDB() {
         createDbIfNotExists();
-        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
-            mOpenHelper.createEmptyDB(mOpenHelper.getWritableDatabase());
-            LauncherPrefs.get(mContext).putSync(getEmptyDbCreatedKey().to(true));
-        }
+        mOpenHelper.createEmptyDB(mOpenHelper.getWritableDatabase());
+        mPrefs.putSync(getEmptyDbCreatedKey().to(true));
     }
 
     /**
-     * Removes any widget which are present in the framework, but not in out
-     * internal DB
+     * Removes any widget which are present in the framework, but not in out internal DB
      */
     @WorkerThread
     public void removeGhostWidgets() {
         createDbIfNotExists();
-        try (LayoutWriteCoordinator.Lease ignored = acquireMutationLease()) {
-            mOpenHelper.removeGhostWidgets(mOpenHelper.getWritableDatabase());
-        }
+        mOpenHelper.removeGhostWidgets(mOpenHelper.getWritableDatabase());
     }
 
     /**
@@ -303,12 +370,14 @@ public class ModelDbController {
     @WorkerThread
     public SQLiteTransaction newTransaction() {
         createDbIfNotExists();
-        // Issue #14: hold the coordinator lease through the transaction close/endTransaction.
+        // Issue #532 S2b (rebase of Issue #14): hold the coordinator lease through
+        // the transaction close/endTransaction.
         return new SQLiteTransaction(mOpenHelper.getWritableDatabase(),
                 getCoordinatorLease());
     }
 
-    // Issue #14: organizer re-entry requires the exact outer capability token.
+    // Issue #532 S2b (rebase of Issue #14): organizer re-entry requires the exact
+    // outer capability token.
     public SQLiteTransaction newTransaction(long organizerToken) {
         createDbIfNotExists();
         LayoutWriteCoordinator.Lease lease = LayoutWriteCoordinator.getInstance()
@@ -319,29 +388,32 @@ public class ModelDbController {
         return new SQLiteTransaction(mOpenHelper.getWritableDatabase(), lease);
     }
 
-    // Issue #14: acquire the coordinator lease for organizer transactions;
-    // the lease is held only through close() — it does not block MODEL_EXECUTOR.
+    // Issue #532 S2b (rebase of Issue #14): acquire the coordinator lease for
+    // organizer transactions; the lease is held only through close() — it does not
+    // block MODEL_EXECUTOR.
     @Nullable
     private LayoutWriteCoordinator.Lease getCoordinatorLease() {
         LayoutWriteCoordinator coordinator = LayoutWriteCoordinator.getInstance();
-        // Issue #14: the exact correlated loader holds a scoped organizer capability. Its
-        // cleanup mutations must not block MODEL_EXECUTOR behind the outer organizer lease.
+        // The exact correlated loader holds a scoped organizer capability. Its
+        // cleanup mutations must not block MODEL_EXECUTOR behind the outer
+        // organizer lease.
         LayoutWriteCoordinator.Lease organizerLease = coordinator.tryAcquireOrganizerCapability(
                 currentOrganizerToken());
         if (organizerLease != null) {
             return organizerLease;
         }
-        // Issue #58: DB mutations issued by a restore (e.g. RestoreDbTask widget-id remap
-        // through ContentWriter) run on the thread that already holds a restore-family
-        // lease; they reenter it instead of blocking on MODEL_WRITER (self-deadlock).
+        // Issue #58: DB mutations issued by a restore (e.g. RestoreDbTask widget-id
+        // remap through ContentWriter) run on the thread that already holds a
+        // restore-family lease; they reenter it instead of blocking on MODEL_WRITER
+        // (self-deadlock).
         LayoutWriteCoordinator.Lease restoreLease = coordinator.tryReenterRestoreFamily();
         if (restoreLease != null) {
             return restoreLease;
         }
         // Issue #113: mutations issued inside an open baseline transaction run on the
         // thread that already owns its MODEL_WRITER lease (e.g. folder bind:
-        // UpdateItemsRunnable update within newTransaction); they reenter it instead of
-        // blocking on their own lease (deterministic self-deadlock / cold-start ANR).
+        // UpdateItemsRunnable update within newTransaction); they reenter it instead
+        // of blocking on their own lease (self-deadlock / cold-start ANR).
         LayoutWriteCoordinator.Lease writerLease = coordinator.tryReenterModelWriter();
         if (writerLease != null) {
             return writerLease;
@@ -351,14 +423,23 @@ public class ModelDbController {
 
     private long currentOrganizerToken() {
         // A nonmatching value intentionally falls through to ordinary serialization.
-        // The coordinator validates the thread-scoped capability before returning a lease.
+        // The coordinator validates the thread-scoped capability before returning a
+        // lease.
         return LayoutWriteCoordinator.getInstance().getActiveOrganizerToken();
     }
 
-    // Issue #14: central gate for auto-transaction insert/update/delete calls.
+    // Central gate for auto-transaction insert/update/delete calls.
     @NonNull
     private LayoutWriteCoordinator.Lease acquireMutationLease() {
         return getCoordinatorLease();
+    }
+
+    // Issue #532 S2b: reinitialize the max-ID cache from committed rows after
+    // organizer transaction classification.
+    @WorkerThread
+    public void refreshMaxItemIdFromCommittedRows() {
+        createDbIfNotExists();
+        mOpenHelper.refreshMaxItemIdFromCommittedRows();
     }
 
     /**
@@ -371,18 +452,78 @@ public class ModelDbController {
                 mOpenHelper.getReadableDatabase(), Favorites.HYBRID_HOTSEAT_BACKUP_TABLE);
     }
 
-    public void tryMigrateDB(@Nullable LauncherRestoreEventLogger restoreEventLogger) {
+    /**
+     * Resets the launcher DB if we should reset it.
+     */
+    public void resetLauncherDb(@Nullable LauncherRestoreEventLogger restoreEventLogger) {
+        if (restoreEventLogger != null) {
+            sendMetricsForFailedMigration(restoreEventLogger, getDb());
+        }
+        FileLog.d(TAG, "resetLauncherDb: Migration failed: resetting launcher database");
+        createEmptyDB();
+        mPrefs.putSync(getEmptyDbCreatedKey(mOpenHelper.getDatabaseName()).to(true));
 
-        if (!migrateGridIfNeeded()) {
-            if (restoreEventLogger != null) {
-                sendMetricsForFailedMigration(restoreEventLogger, getDb());
-            }
-            FileLog.d(TAG, "Migration failed: retaining launcher database");
+        // Write the grid state to avoid another migration
+        new DeviceGridState(mIdp).writeToPrefs(mContext);
+    }
+
+    /**
+     * Issue #532 S3a: anchor entry retained for the {@code gridMigrationRefactor} flag
+     * path (LoaderTask). Re-expressed on the fork (Issue #59) journal/reconciliation
+     * machine so both entries share the same durable contracts; {@code attemptMigrateDb}
+     * additionally surfaces the reset-launcher-DB fallback for restore metrics.
+     */
+    public void attemptMigrateDb(LauncherRestoreEventLogger restoreEventLogger,
+            ModelDelegate modelDelegate) throws Exception {
+        createDbIfNotExists();
+        if (!migrateGridIfNeeded(modelDelegate)) {
+            resetLauncherDb(restoreEventLogger);
+            throw new Exception("attemptMigrateDb: Failed to migrate grid");
         }
     }
 
-    private boolean migrateGridIfNeeded() {
+    /**
+     * Issue #532 S3a port fix (Issue #59 contract, pre-S1 fork controller): the fork's
+     * public migration entry retains the launcher database on a recoverable migration
+     * failure — the source DB authority (rows, locks, grid preferences) survives and the
+     * journal/reconciliation machine owns recovery. The anchor's reset-to-empty fallback
+     * belongs only to {@link #attemptMigrateDb} (the {@code gridMigrationRefactor} flag
+     * path); porting it here wiped the retained source, recorded
+     * {@code EMPTY_DATABASE_CREATED} for the live DB and rewrote grid preferences, so
+     * T3 failure-injection oracles observed an early "new DB already created" bail on
+     * the next admission instead of the durable journal contracts.
+     */
+    public void tryMigrateDB(@Nullable LauncherRestoreEventLogger restoreEventLogger,
+            ModelDelegate modelDelegate) {
+        if (!migrateGridIfNeeded(modelDelegate)) {
+            if (restoreEventLogger != null) {
+                sendMetricsForFailedMigration(restoreEventLogger, getDb());
+            }
+            FileLog.d(TAG, "tryMigrateDB: Migration failed: retaining launcher database");
+        }
+    }
+
+    /**
+     * Issue #532 S3a (rebase of Issue #59): fork's journal-based grid migration. A
+     * durable journal in the target DB records backup digest and both grid states so a
+     * process restart at any phase reconciles to a single authoritative layout on the
+     * next entry. All operations run under one GRID_MIGRATION coordinator lease and
+     * one target transaction; commit-close, digest verification and source detach are
+     * runtime operations so the T3 oracle can inject failures before/after each.
+     * @return true if migration was success or ignored, false if migration failed
+     * and the DB should be reset.
+     */
+    private boolean migrateGridIfNeeded(ModelDelegate modelDelegate) {
         createDbIfNotExists();
+        // Issue #532 G5 (§6.10, D3 residual completion): keep the active binding on
+        // the live IDP dbFile before any migration decision. D3 bound the helper to
+        // the live IDP dbFile at construction only; an external authority switch
+        // (the restore-family applyGridInfo seam) then left the old helper holding a
+        // file the IDP no longer names, and the same load's cleanUpDatabases deleted
+        // that file while it was still open (observed on the CI AVD: the converter
+        // restored to launcher_6_5_5.db while the process helper held
+        // launcher_5_4_4.db — the next write failed with SQLITE_READONLY_DBMOVED).
+        rebindActiveHelperToLiveIdpFile();
         DatabaseHelper activeHelper = mOpenHelper;
         Reconciliation activeReconciliation;
         try {
@@ -398,21 +539,20 @@ public class ModelDbController {
         if (activeReconciliation == Reconciliation.FAILED) {
             return false;
         }
-        if (LauncherPrefs.get(mContext).get(getEmptyDbCreatedKey())) {
-            // If we have already create a new DB, ignore migration
-            Log.d(TAG, "migrateGridIfNeeded: new DB already created, skipping migration");
+        if (mPrefs.get(getEmptyDbCreatedKey())) {
+            // If we have already created a new DB, ignore migration
+            FileLog.d(TAG, "migrateGridIfNeeded: new DB already created, skipping migration");
             return false;
         }
-        InvariantDeviceProfile idp = LauncherAppState.getIDP(mContext);
-        DeviceGridState destinationState = getMigrationDestinationState(idp);
+        DeviceGridState destinationState = getMigrationDestinationState(mIdp);
         DeviceGridState sourceState = new DeviceGridState(mContext);
         if (destinationState.isCompatible(sourceState)) {
-            Log.d(TAG, "migrateGridIfNeeded: no grid migration needed");
+            FileLog.d(TAG, "migrateGridIfNeeded: no grid migration needed");
             return true;
         }
-        String targetDbName = getMigrationTargetDatabaseName(idp);
+        String targetDbName = getMigrationTargetDatabaseName(mIdp);
         if (TextUtils.equals(targetDbName, mOpenHelper.getDatabaseName())) {
-            Log.e(TAG, "migrateGridIfNeeded: target db is same as current: " + targetDbName);
+            FileLog.e(TAG, "migrateGridIfNeeded: target db is same as current: " + targetDbName);
             return false;
         }
         DatabaseHelper sourceHelper = mOpenHelper;
@@ -463,8 +603,9 @@ public class ModelDbController {
                 SQLiteTransaction transaction = null;
                 RuntimeException initialFailure = null;
                 try {
-                    targetDatabase.execSQL("ATTACH DATABASE ? AS from_db",
-                            new Object[] { sourceDatabase.getPath() });
+                    mGridMigrationRuntime.execute(GridMigrationOperation.SOURCE_ATTACH,
+                            () -> targetDatabase.execSQL("ATTACH DATABASE ? AS from_db",
+                                    new Object[] { sourceDatabase.getPath() }));
                     attached = true;
                     transaction = new SQLiteTransaction(targetDatabase);
                     SQLiteTransaction initialTransaction = transaction;
@@ -476,7 +617,8 @@ public class ModelDbController {
                                     sourceHelper.getDatabaseName(), sourceState, destinationState));
                     GridSizeMigrationUtil.migrateGridInTransaction(
                             mContext, sourceState, destinationState, targetHelper, targetDatabase,
-                            mGridMigrationRuntime.enableGridMigrationFix(), mGridMigrationRuntime);
+                            mGridMigrationRuntime.enableGridMigrationFix(), mGridMigrationRuntime,
+                            modelDelegate);
                     mGridMigrationRuntime.execute(GridMigrationOperation.JOURNAL_WRITE,
                             () -> GridMigrationJournal.setPhase(targetDatabase,
                                     GridMigrationJournal.Phase.MIGRATED_PENDING_FINALIZATION));
@@ -780,6 +922,24 @@ public class ModelDbController {
         return reopened;
     }
 
+    private DatabaseHelper initializeDatabaseHelper(DatabaseHelper databaseHelper) {
+        // Table creation sometimes fails silently, which leads to a crash loop.
+        // This way, we will try to create a table every time after crash, so the device
+        // would eventually be able to recover.
+        if (!tableExists(databaseHelper.getReadableDatabase(), Favorites.TABLE_NAME)) {
+            Log.e(TAG, "Tables are missing after onCreate has been called. Trying to recreate");
+            // This operation is a no-op if the table already exists.
+            addTableToDb(databaseHelper.getWritableDatabase(),
+                    getSerialNumberForUser(Process.myUserHandle()),
+                    true /* optional */);
+        }
+        databaseHelper.mHotseatRestoreTableExists = tableExists(
+                databaseHelper.getReadableDatabase(), Favorites.HYBRID_HOTSEAT_BACKUP_TABLE);
+
+        databaseHelper.initIds();
+        return databaseHelper;
+    }
+
     private DatabaseHelper openJournalSource(String sourceDatabaseName) {
         DatabaseHelper sourceHelper = new DatabaseHelper(mContext, sourceDatabaseName,
                 this::getSerialNumberForUser, () -> { });
@@ -915,12 +1075,17 @@ public class ModelDbController {
 
     private boolean writeGridPreferences(DeviceGridState state) {
         boolean committed = mGridMigrationRuntime.writeGridPreferences(state,
-                () -> LauncherPrefs.get(mContext).putSync(
-                        LauncherPrefs.WORKSPACE_SIZE.to(
-                                state.getColumns() + "," + state.getRows()),
-                        LauncherPrefs.HOTSEAT_COUNT.to(state.getNumHotseat()),
-                        LauncherPrefs.DEVICE_TYPE.to(state.getDeviceType()),
-                        LauncherPrefs.DB_FILE.to(state.getDbFile())));
+                () -> {
+                    // Rebase Phase 2 adapt (S2/S3): the anchor LauncherPrefs.putSync()
+                    // returns Unit, so the BooleanSupplier reports success explicitly.
+                    mPrefs.putSync(
+                            LauncherPrefs.WORKSPACE_SIZE.to(
+                                    state.getColumns() + "," + state.getRows()),
+                            LauncherPrefs.HOTSEAT_COUNT.to(state.getNumHotseat()),
+                            LauncherPrefs.DEVICE_TYPE.to(state.getDeviceType()),
+                            LauncherPrefs.DB_FILE.to(state.getDbFile()));
+                    return true;
+                });
         boolean matchesReadback = sameGridState(state, new DeviceGridState(mContext));
         return committed && matchesReadback;
     }
@@ -992,7 +1157,8 @@ public class ModelDbController {
         }
         GridMigrationJournal.verifyBackup(targetDatabase, journal);
         try (Cursor cursor = targetDatabase.rawQuery(
-                "SELECT COUNT(*), COALESCE(SUM(CASE WHEN organizerLockState = 0 THEN 0 ELSE 1 END), 0)"
+                "SELECT COUNT(*), COALESCE(SUM(CASE WHEN " + Favorites.ORGANIZER_LOCK_STATE
+                        + " = 0 THEN 0 ELSE 1 END), 0)"
                         + " FROM " + Favorites.TABLE_NAME,
                 null)) {
             if (!cursor.moveToFirst() || cursor.getInt(1) != 0) {
@@ -1020,22 +1186,22 @@ public class ModelDbController {
     }
 
     /**
-     * In case of migration failure, report metrics for the count of each itemType
-     * in the DB.
-     * 
+     * In case of migration failure, report metrics for the count of each itemType in the DB.
      * @param restoreEventLogger logger used to report Launcher restore metrics
      */
     private void sendMetricsForFailedMigration(LauncherRestoreEventLogger restoreEventLogger,
             SQLiteDatabase db) {
         try (Cursor cursor = db.rawQuery(
                 "SELECT itemType, COUNT(*) AS count FROM favorites GROUP BY itemType",
-                null)) {
+                null
+        )) {
             if (cursor.moveToFirst()) {
                 do {
                     restoreEventLogger.logFavoritesItemsRestoreFailed(
                             cursor.getInt(cursor.getColumnIndexOrThrow(ITEM_TYPE)),
                             cursor.getInt(cursor.getColumnIndexOrThrow("count")),
-                            RestoreError.GRID_MIGRATION_FAILURE);
+                            RestoreError.GRID_MIGRATION_FAILURE
+                    );
                 } while (cursor.moveToNext());
             }
         } catch (Exception e) {
@@ -1051,12 +1217,12 @@ public class ModelDbController {
         return mOpenHelper.getWritableDatabase();
     }
 
-    // Issue #58: restore-scoped seam for runtime raw-file restores. Closes the active
-    // helper (dropping its cached DB references and file handles) so the DB files can be
-    // replaced as raw bytes; a fresh helper is constructed lazily on the next access
-    // (createDbIfNotExists), mirroring the publishFreshSource close/reopen pattern.
-    // Callers must hold a restore-family coordinator lease across close, replacement
-    // and reopen.
+    // Issue #58 (S3a rebase): restore-scoped seam for runtime raw-file restores. Closes
+    // the active helper (dropping its cached DB references and file handles) so the DB
+    // files can be replaced as raw bytes; a fresh helper is constructed lazily on the
+    // next access (createDbIfNotExists), mirroring the publishFreshSource close/reopen
+    // pattern. Callers must hold a restore-family coordinator lease across close,
+    // replacement and reopen.
     public void closeActiveHelperForRestore() {
         DatabaseHelper helper;
         synchronized (this) {
@@ -1068,31 +1234,25 @@ public class ModelDbController {
         }
     }
 
-    // Issue #14: refresh allocator state only after the organizer classifies the transaction.
-    public void refreshMaxItemIdFromCommittedRows() {
-        createDbIfNotExists();
-        mOpenHelper.refreshMaxItemIdFromCommittedRows();
-    }
-
     private void onAddOrDeleteOp(SQLiteDatabase db) {
         mOpenHelper.onAddOrDeleteOp(db);
     }
 
     /**
      * Deletes any empty folder from the DB.
-     * 
      * @return Ids of deleted folders.
      */
     @WorkerThread
+    @Nullable
     public IntArray deleteEmptyFolders() {
         createDbIfNotExists();
 
         SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        try (SQLiteTransaction t = new SQLiteTransaction(db, acquireMutationLease())) {
+        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
             // Select folders whose id do not match any container value.
             String selection = LauncherSettings.Favorites.ITEM_TYPE + " = "
                     + LauncherSettings.Favorites.ITEM_TYPE_FOLDER + " AND "
-                    + LauncherSettings.Favorites._ID + " NOT IN (SELECT "
+                    + LauncherSettings.Favorites._ID +  " NOT IN (SELECT "
                     + LauncherSettings.Favorites.CONTAINER + " FROM "
                     + Favorites.TABLE_NAME + ")";
 
@@ -1106,28 +1266,28 @@ public class ModelDbController {
             return folderIds;
         } catch (SQLException ex) {
             Log.e(TAG, ex.getMessage(), ex);
-            return new IntArray();
+            return null;
         }
     }
 
     /**
      * Deletes any app pair that doesn't contain 2 member apps from the DB.
-     * 
      * @return Ids of deleted app pairs.
      */
     @WorkerThread
+    @Nullable
     public IntArray deleteBadAppPairs() {
         createDbIfNotExists();
 
         SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        try (SQLiteTransaction t = new SQLiteTransaction(db, acquireMutationLease())) {
-            // Select all entries with ITEM_TYPE = ITEM_TYPE_APP_PAIR whose id does not
-            // appear
+        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
+            // Select all entries with ITEM_TYPE = ITEM_TYPE_APP_PAIR whose id does not appear
             // exactly twice in the CONTAINER column.
-            String selection = ITEM_TYPE + " = " + ITEM_TYPE_APP_PAIR
-                    + " AND " + _ID + " NOT IN"
-                    + " (SELECT " + CONTAINER + " FROM " + TABLE_NAME
-                    + " GROUP BY " + CONTAINER + " HAVING COUNT(*) = 2)";
+            String selection =
+                    ITEM_TYPE + " = " + ITEM_TYPE_APP_PAIR
+                            + " AND " + _ID +  " NOT IN"
+                            + " (SELECT " + CONTAINER + " FROM " + TABLE_NAME
+                            + " GROUP BY " + CONTAINER + " HAVING COUNT(*) = 2)";
 
             IntArray appPairIds = LauncherDbUtils.queryIntArray(false, db, TABLE_NAME,
                     _ID, selection, null, null);
@@ -1139,25 +1299,26 @@ public class ModelDbController {
             return appPairIds;
         } catch (SQLException ex) {
             Log.e(TAG, ex.getMessage(), ex);
-            return new IntArray();
+            return null;
         }
     }
 
     /**
      * Deletes any app with a container id that doesn't exist.
-     * 
      * @return Ids of deleted apps.
      */
     @WorkerThread
+    @Nullable
     public IntArray deleteUnparentedApps() {
         createDbIfNotExists();
 
         SQLiteDatabase db = mOpenHelper.getWritableDatabase();
-        try (SQLiteTransaction t = new SQLiteTransaction(db, acquireMutationLease())) {
+        try (SQLiteTransaction t = new SQLiteTransaction(db)) {
             // Select all entries whose container id does not appear in the database.
-            String selection = CONTAINER + " >= 0"
-                    + " AND " + CONTAINER + " NOT IN"
-                    + " (SELECT " + _ID + " FROM " + TABLE_NAME + ")";
+            String selection =
+                    CONTAINER + " >= 0"
+                            + " AND " + CONTAINER + " NOT IN"
+                            + " (SELECT " + _ID + " FROM " + TABLE_NAME + ")";
 
             IntArray appIds = LauncherDbUtils.queryIntArray(false, db, TABLE_NAME,
                     _ID, selection, null, null);
@@ -1169,7 +1330,7 @@ public class ModelDbController {
             return appIds;
         } catch (SQLException ex) {
             Log.e(TAG, ex.getMessage(), ex);
-            return new IntArray();
+            return null;
         }
     }
 
@@ -1178,51 +1339,38 @@ public class ModelDbController {
     }
 
     private void clearFlagEmptyDbCreated() {
-        LauncherPrefs.get(mContext).removeSync(getEmptyDbCreatedKey());
+        mPrefs.removeSync(getEmptyDbCreatedKey());
     }
 
     /**
      * Loads the default workspace based on the following priority scheme:
-     * 1) From the app restrictions
-     * 2) From a package provided by play store
-     * 3) From a partner configuration APK, already in the system image
-     * 4) The default configuration for the particular device
+     *   1) From the app restrictions
+     *   2) From a package provided by play store
+     *   3) From a partner configuration APK, already in the system image
+     *   4) The default configuration for the particular device
      */
     @WorkerThread
     public synchronized void loadDefaultFavoritesIfNecessary() {
         createDbIfNotExists();
 
-        if (!(mContext instanceof LauncherPreviewRenderer.PreviewContext)) {
+        if (!(mContext instanceof PreviewContext)) {
             LawnchairAppKt.getLawnchairApp(mContext).cleanUpDatabases();
         }
 
-        if (LauncherPrefs.get(mContext).get(getEmptyDbCreatedKey())) {
+        if (mPrefs.get(getEmptyDbCreatedKey())) {
             Log.d(TAG, "loading default workspace");
 
             LauncherWidgetHolder widgetHolder = mOpenHelper.newLauncherWidgetHolder();
             try {
-                AutoInstallsLayout loader = createWorkspaceLoaderFromAppRestriction(widgetHolder);
-                if (loader == null) {
-                    loader = AutoInstallsLayout.get(mContext, widgetHolder, mOpenHelper);
-                }
-                if (loader == null) {
-                    final Partner partner = Partner.get(mContext.getPackageManager());
-                    if (partner != null) {
-                        int workspaceResId = partner.getXmlResId(RES_PARTNER_DEFAULT_LAYOUT);
-                        if (workspaceResId != 0) {
-                            loader = new DefaultLayoutParser(mContext, widgetHolder,
-                                    mOpenHelper, partner.getResources(), workspaceResId);
-                        }
-                    }
-                }
+                AutoInstallsLayout loader =
+                        mLayoutParserFactory.createExternalLayoutParser(widgetHolder, mOpenHelper);
 
                 final boolean usingExternallyProvidedLayout = loader != null;
                 if (loader == null) {
                     loader = getDefaultLayoutParser(widgetHolder);
                 }
 
-                // There might be some partially restored DB items, due to buggy restore logic
-                // in
+                // There might be some partially restored DB items, due to buggy restore logic in
                 // previous versions of launcher.
                 mOpenHelper.createEmptyDB(mOpenHelper.getWritableDatabase());
                 // Populate favorites table with initial favorites
@@ -1240,64 +1388,6 @@ public class ModelDbController {
         }
     }
 
-    /**
-     * Creates workspace loader from an XML resource listed in the app restrictions.
-     *
-     * @return the loader if the restrictions are set and the resource exists; null
-     *         otherwise.
-     */
-    private AutoInstallsLayout createWorkspaceLoaderFromAppRestriction(
-            LauncherWidgetHolder widgetHolder) {
-        ContentResolver cr = mContext.getContentResolver();
-        String blobHandlerDigest = Settings.Secure.getString(cr, LAYOUT_DIGEST_KEY);
-        if (!TextUtils.isEmpty(blobHandlerDigest)) {
-            BlobStoreManager blobManager = mContext.getSystemService(BlobStoreManager.class);
-            try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(
-                    blobManager.openBlob(BlobHandle.createWithSha256(
-                            Base64.decode(blobHandlerDigest, NO_WRAP | NO_PADDING),
-                            LAYOUT_DIGEST_LABEL, 0, LAYOUT_DIGEST_TAG)))) {
-                return getAutoInstallsLayoutFromIS(in, widgetHolder, new SourceResources() {
-                });
-            } catch (Exception e) {
-                Log.e(TAG, "Error getting layout from blob handle", e);
-                return null;
-            }
-        }
-
-        String authority = Settings.Secure.getString(cr, "launcher3.layout.provider");
-        if (TextUtils.isEmpty(authority)) {
-            return null;
-        }
-
-        PackageManager pm = mContext.getPackageManager();
-        ProviderInfo pi = pm.resolveContentProvider(authority, 0);
-        if (pi == null) {
-            Log.e(TAG, "No provider found for authority " + authority);
-            return null;
-        }
-        Uri uri = getLayoutUri(authority, mContext);
-        try (InputStream in = cr.openInputStream(uri)) {
-            Log.d(TAG, "Loading layout from " + authority);
-
-            Resources res = pm.getResourcesForApplication(pi.applicationInfo);
-            return getAutoInstallsLayoutFromIS(in, widgetHolder, SourceResources.wrap(res));
-        } catch (Exception e) {
-            Log.e(TAG, "Error getting layout stream from: " + authority, e);
-            return null;
-        }
-    }
-
-    private AutoInstallsLayout getAutoInstallsLayoutFromIS(InputStream in,
-            LauncherWidgetHolder widgetHolder, SourceResources res) throws Exception {
-        // Read the full xml so that we fail early in case of any IO error.
-        String layout = new String(IOUtils.toByteArray(in));
-        XmlPullParser parser = Xml.newPullParser();
-        parser.setInput(new StringReader(layout));
-
-        return new AutoInstallsLayout(mContext, widgetHolder, mOpenHelper, res,
-                () -> parser, AutoInstallsLayout.TAG_WORKSPACE);
-    }
-
     public static Uri getLayoutUri(String authority, Context ctx) {
         InvariantDeviceProfile grid = LauncherAppState.getIDP(ctx);
         return new Uri.Builder().scheme("content").authority(authority).path("launcher_layout")
@@ -1309,14 +1399,8 @@ public class ModelDbController {
     }
 
     private DefaultLayoutParser getDefaultLayoutParser(LauncherWidgetHolder widgetHolder) {
-        InvariantDeviceProfile idp = LauncherAppState.getIDP(mContext);
-        int defaultLayout = idp.demoModeLayoutId != 0
-                && mContext.getSystemService(UserManager.class).isDemoUser()
-                        ? idp.demoModeLayoutId
-                        : idp.defaultLayoutId;
-
         return new DefaultLayoutParser(mContext, widgetHolder,
-                mOpenHelper, mContext.getResources(), defaultLayout);
+                mOpenHelper, mContext.getResources(), mIdp.defaultLayoutId);
     }
 
     private ConstantItem<Boolean> getEmptyDbCreatedKey() {
@@ -1325,20 +1409,13 @@ public class ModelDbController {
 
     /**
      * Re-composite given key in respect to database. If the current db is
-     * {@link LauncherFiles#LAUNCHER_DB}, return the key as-is. Otherwise append the
-     * db name to
-     * given key. e.g. consider key="EMPTY_DATABASE_CREATED", dbName="minimal.db",
-     * the returning
+     * {@link LauncherFiles#LAUNCHER_DB}, return the key as-is. Otherwise append the db name to
+     * given key. e.g. consider key="EMPTY_DATABASE_CREATED", dbName="minimal.db", the returning
      * string will be "EMPTY_DATABASE_CREATED@minimal.db".
      */
     private ConstantItem<Boolean> getEmptyDbCreatedKey(String dbName) {
-        if (mContext instanceof SandboxContext) {
-            return LauncherPrefs.nonRestorableItem(EMPTY_DATABASE_CREATED,
-                    false /* default value */, EncryptionType.ENCRYPTED);
-        }
         String key = TextUtils.equals(dbName, LauncherFiles.LAUNCHER_DB)
-                ? EMPTY_DATABASE_CREATED
-                : EMPTY_DATABASE_CREATED + "@" + dbName;
+                ? EMPTY_DATABASE_CREATED : EMPTY_DATABASE_CREATED + "@" + dbName;
         return LauncherPrefs.backedUpItem(key, false /* default value */, EncryptionType.ENCRYPTED);
     }
 
@@ -1346,6 +1423,6 @@ public class ModelDbController {
      * Returns the serial number for the provided user
      */
     public long getSerialNumberForUser(UserHandle user) {
-        return UserCache.INSTANCE.get(mContext).getSerialNumberForUser(user);
+        return mUserCache.getSerialNumberForUser(user);
     }
 }

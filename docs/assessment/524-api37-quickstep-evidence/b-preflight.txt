@@ -1,0 +1,23 @@
+=== leg (b) preflight — API 37, head release 96746bc161 as /product/priv-app/LawnchairRelease, release overlay
+date: 2026-10-07 16:02:07
+--- cmd overlay list:
+[x] nunu.overlay.quickstepconfig
+--- cmd overlay lookup:
+app.lawnchair/com.android.quickstep.RecentsActivity
+--- dumpsys LauncherProxyService:
+    LauncherProxyService state:
+      isConnected=false
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair }
+      mBound=true
+      mCurrentBoundedUserId=0
+      mConnectionBackoffAttempts=4
+      mActiveNavBarRegion=null
+      mNavBarMode=2
+      mIsPrevServiceCleanedUp=false
+    SysUiState state:
+      mSysUiStateFlags=268566528
+--- package state:
+    codePath=/product/priv-app/LawnchairRelease.apk
+    pkgFlags=[ SYSTEM HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]

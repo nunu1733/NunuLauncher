@@ -27,7 +27,10 @@ fun categorizeAppsWithSystemAndGoogle(
         // Check if it's a Google app first (Google apps can also be system apps)
         when {
             packageName.startsWith("com.google.") -> googleApps.add(app)
-            intent != null && PackageManagerHelper.isSystemApp(context, intent) -> systemApps.add(app)
+
+            // Rebase Phase 2 adapt (#532): PackageManagerHelper.isSystemApp was removed.
+            intent != null && context.isSystemApp(intent) -> systemApps.add(app)
+
             else -> otherApps.add(app)
         }
     }

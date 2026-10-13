@@ -1,0 +1,33 @@
+=== qa3 preflight — API 37 debug @ candidate6 4ddd6ae306 (emulator-5554 / AVD issue526_api37_pixel_9a) ===
+date: 2026-10-09 19:58:18 JST
+
+--- ro.build.version.sdk / release ---
+37
+17
+
+--- wm density (native, no override) ---
+Physical density: 420
+
+--- overlay lookup (config_recentsComponentName) ---
+app.lawnchair.debug/com.android.quickstep.RecentsActivity
+
+--- overlay state ---
+[x] nunu.overlay.quickstepconfig
+
+--- launcher package ---
+package:app.lawnchair.debug
+    flags=0x0
+    flags=0x0
+    flags=0x0
+    flags=0x0
+    flags=[ SYSTEM DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]
+
+--- SystemUI mRecentsComponentName ---
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+
+--- SystemUI LauncherProxyService bind state ---
+      mIsEnabled=true
+      mBound=true
+      mIsEnabled=true
+        mLastReportedMergedConfiguration={mGlobalConfig={1.0 310mcc260mnc [en_US] ldltr sw411dp w411dp h923dp 420dpi nrml long compactNeeded port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2424) mAppBounds=Rect(0, 0 - 1080, 2424) mMaxBounds=Rect(0, 0 - 1080, 2424) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.36 fontWeightAdjustment=0} mOverrideConfig={1.0 310mcc260mnc [en_US] ldltr sw411dp w411dp h923dp 420dpi nrml long compactNeeded port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2424) mAppBounds=Rect(0, 0 - 1080, 2424) mMaxBounds=Rect(0, 0 - 1080, 2424) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.36 fontWeightAdjustment=0}}
+        mLastConfigurationFromResources={1.0 310mcc260mnc [en_US] ldltr sw411dp w411dp h923dp 420dpi nrml long compactNeeded port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2424) mAppBounds=Rect(0, 0 - 1080, 2424) mMaxBounds=Rect(0, 0 - 1080, 2424) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.8 fontWeightAdjustment=0}

@@ -1,0 +1,44 @@
+=== qva2 (a) result — API 37 debug @ compat 7-commit head 0c25041285 + debug overlay + priv-app, NATIVE density 420 ===
+date: 2026-10-08 03:33:17; emulator-5554 (AVD issue526_api37_pixel_9a, API 37.0 SDK 37)
+APK: compat7b-debug-0c25041.apk sha256 04d048b23b8f5b42fa37e67147279c4a7faf9a4a36d1a633ff7aa28181d3c2fc
+(installed sha256 match + versionName 16.Dev.(0c25041) + meta 0/100000 + SYSTEM DEBUGGABLE: qva2-preflight.txt)
+
+VERDICT: PARTIAL — crash oracles ALL PASS, bind PASS, task switch PASS; thumbnail oracle FAIL (AC-10d candidate FAIL per stop rule: thumbnails still blank with reflection markers 0)
+
+- Six crash signatures: ALL 0 in whole window boot(03:10:39)→task-switch incl. takeTaskSnapshot NME (the 7th fix holds crash-wise): qva2-crash-check.txt
+- Three reflection failure markers: ALL 0 (TaskSnapshotManager / takeTaskSnapshot / wrapToBitmap). Note: 'TaskSnapshotManager' and
+  'wrapToBitmap' appear 0 times in logcat at all — the new paths emit no success logging either; silence is not proof of execution.
+- Launcher FATAL (app.lawnchair*): 0. Off-oracle: 2x com.google.android.apps.nexuslauncher FATAL at HOME-switchover boot (03:11:00/03, known secondary signature from prior runs, not app.lawnchair).
+- 'disabling recents': 0. Bind: isConnected=true mIsEnabled=true mBound=true backoff=0 (qva2-preflight.txt).
+- Overview: OPENS and is interactive. Task switch: PASS — tap on task card foregrounds app;
+  final qva2-task-switch.png = com.android.settings/.homepage.SettingsHomepageActivity t122 topResumedActivity.
+  (First tap at the left-edge partial card foregrounded com.google.android.deskclock t76 — the older task occupying that
+   scroll position at that moment; the retap after DeskClock became most-recent selected Settings. Card tap→launch itself works.)
+
+- Thumbnail correctness oracle (AC-10d): FAIL — task cards show NO real app screenshot; interiors == scrim.
+  Pixel evidence (decoded PNG, independent zlib decoder):
+    qva2-overview.png LEFT partial card [0,363][120,2060]: interior x10-110 = 60% scrim (78,79,88), lower half y900-2050 =
+    92% scrim + 5% green focus border, distinct8=2 (pure scrim, zero content); top y375-870 = wallpaper-through gradient.
+    CENTER card [162,363][918,2060]: 75% scrim (78,79,88) — renders invisible.
+  IDENTICAL to previous run @bdea76e (fixes 1-5 only) with the same regions: scrim% 63/92/79 both runs, same top colors —
+  fixes 6+7 (wrapToBitmap reflection in ThumbnailData.makeThumbnail, takeTaskSnapshot via TaskSnapshotManager reflection)
+  changed NOTHING in rendered output. Previous-run 6th-break analysis (TaskSnapshot.getHardwareBuffer() stubbed null on
+  API 37.0, qva-tasksnapshot-gethardwarebuffer-dexdump.txt) remains the operative failure mode: the snapshot object is
+  obtained without crash (no NME, no marker), but pixel data still never reaches the card.
+- hiddenapi auxiliary: PASS. 0 denials for app.lawnchair* incl. the new reflection calls (qva2-hiddenapi-watch.txt;
+  3 droid.deskclock desugar denials are off-oracle, different package).
+- wmshell auxiliary: PASS. PipInputConsumer 0, NoSuchMethodError 0 (qva2-wmshell-watch.txt).
+- density: native 420, 'wm density reset' at leg start, no override (qva2-preflight.txt).
+
+Evidence: qva2-preflight.txt, qva2-bind-logcat.txt (whole window), qva2-crash-check.txt, qva2-overview.png,
+qva2-task-switch.png, qva2-hiddenapi-watch.txt, qva2-wmshell-watch.txt
+
+Deviations from the runbook:
+1. privapp allowlist xml REGENERATED from compat7b APK (55 deduped android.* perms, same method as prior run; compat7b
+   declares the same 55 as compat5) — booted first try, no iteration.
+2. /product writes needed 'adb root; adb remount' re-run after each reboot (remount does not persist across reboots).
+3. HOME set via 'cmd package set-home-activity app.lawnchair.debug/app.lawnchair.LawnchairLauncher'.
+4. Task-switch capture required two taps (DeskClock then Settings) due to scroll-position/card-order; both transitions
+   crash-free; final focus = Settings as runbook specifies.
+5. qva2-bind-logcat.txt was re-dumped at leg end to cover the WHOLE window (boot→task-switch) and the crash oracle was
+   re-run over it (initial bind-window dump is superseded by this file).

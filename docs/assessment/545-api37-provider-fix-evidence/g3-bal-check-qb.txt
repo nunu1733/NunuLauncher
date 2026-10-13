@@ -1,0 +1,27 @@
+=== G3 BAL check — qb leg — API 37 release @ 40eb5dbfab ===
+date: 2026-10-08 00:46:58  source: qb-g3-logcat.txt (window: 00:45:36 G3 start through 00:46:38)
+
+G3 sequence executed:
+  1. am start SETTINGS          -> SettingsHomepageActivity resumed (t115)
+  2. KEYCODE_APP_SWITCH         -> TouchInteractionService.onOverviewToggle received (00:45:41.661)
+                                   RecentsView.onGestureAnimationStart (Settings task id=115)
+                                   ShellRecents: startRecentsTransition (00:45:41.684)
+                                   RecentsTransitionHandler.startRealRecentsTransition displayId=0
+  3. 00:45:41.749 launcher process died: NoSuchMethodError getTaskSnapshot (TaskThumbnailCache$getThumbnail$2, LauncherBgLight)
+                                   -> overview transition aborted; Settings stayed foreground
+  4. task-card tap: NOT EXECUTABLE (no task card ever rendered; launcher dead)
+
+BAL signature grep over the G3 window (00:45:36 onward):
+  'Background activity start'                         : 0
+  'BAL'                                               : 1
+  'blocked' (ActivityTaskManager/BAL context)         : 0
+  'AbortClientTransaction'                            : 0
+  'BackgroundActivityStart' (any case variant)        : 0
+  'ActivityTaskManager.*Deny'                         : 0
+
+RESULT: 0 BAL blocks observed on the transitions that occurred (shell->launcher overview start reached RecentsTransitionHandler).
+The launcher->app leg (task-card tap via getRecentsPendingIntent) could NOT be exercised because the
+launcher process crashed mid-transition on the NEW fifth break (getTaskSnapshot NoSuchMethodError) —
+same failure mode as the qa leg. G3 'transition success with 0 BAL blocks' is therefore NOT fully established:
+the observed portion (overview toggle -> recents transition start) is BAL-block-free, but the final
+app-bring-up leg is blocked by the crash, not by BAL.

@@ -1,0 +1,30 @@
+=== matrix (b) preflight — API 37 release @ candidate commit e2fe6f80dfc446667cc55697da9b83b439d355ed ===
+date: 2026-10-07 20:45:45
+config: AVD issue526_api37_pixel_9a (API 37.0), candidate-release-e2fe6f8.apk as /product/priv-app/LawnchairRelease/LawnchairRelease.apk, release overlay nunu.overlay.quickstepconfig (value app.lawnchair/com.android.quickstep.RecentsActivity), wm density 280 override (see a-resource-skew-analysis.txt)
+
+--- wm density:
+Physical density: 420
+Override density: 280
+--- cmd overlay lookup:
+app.lawnchair/com.android.quickstep.RecentsActivity
+--- dumpsys LauncherProxyService:
+    LauncherProxyService state:
+      isConnected=false
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair }
+      mBound=true
+      mCurrentBoundedUserId=0
+      mConnectionBackoffAttempts=6
+      mActiveNavBarRegion=null
+      mNavBarMode=2
+      mIsPrevServiceCleanedUp=false
+    SysUiState state:
+--- package install state:
+    codePath=/product/priv-app/LawnchairRelease
+    versionName=16.Dev.(e2fe6f8)
+    pkgFlags=[ SYSTEM HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]
+--- HOME role holder:
+        name=android.app.role.HOME
+        fallback_enabled=true
+        holders=com.google.android.apps.nexuslauncher

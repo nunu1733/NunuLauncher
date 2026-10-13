@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -46,7 +46,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -85,6 +87,9 @@ fun EditSurfaceScreen(
     confirmGate: EditSurfaceSessionPlanner.ConfirmGate,
     icons: Map<Int, ImageBitmap?>,
     reasonText: String?,
+    // Issue #526: 再作成時の破棄案内（前回の未確定セッションが破棄された旨）。
+    // error色のreasonTextとは流用しない。表示はliveRegion=Politeで一度だけ通知。
+    discardNotice: Boolean,
     busy: Boolean,
     duplicateGroups: List<EditSurfaceDuplicateGroup>,
     duplicatesOpen: Boolean,
@@ -98,6 +103,10 @@ fun EditSurfaceScreen(
     onCancel: () -> Unit,
     onPickPage: (Int) -> Unit,
     onPickFolder: (Int) -> Unit,
+    // Issue #526: picker dialogを開く操作（ActionBarの「ページ移動 / フォルダ追加」
+    // chipのtap）。破棄案内の消去をactivity側の単一入口へ一元化するためのwrapper。
+    // dialogの開閉状態自体はこの画面のlocal stateのまま。
+    onDialogOpening: () -> Unit,
     onOpenDuplicates: () -> Unit,
     onDismissDuplicates: () -> Unit,
     onToggleDuplicateMember: (Int) -> Unit,
@@ -125,51 +134,82 @@ fun EditSurfaceScreen(
                 Text(stringResource(R.string.edit_surface_cancel))
             }
         }
-        Text(
-            text = stringResource(R.string.edit_surface_snapshot_notice),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-        Text(
-            text = stringResource(R.string.edit_surface_selection_count, selection.size),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        if (duplicateGroups.isNotEmpty()) {
-            TextButton(
-                onClick = onOpenDuplicates,
-                enabled = !busy,
-                modifier = Modifier.padding(horizontal = 8.dp),
-            ) {
-                Text(stringResource(R.string.edit_surface_duplicate_summary, duplicateGroups.size))
-            }
-        }
-        reasonText?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        DiagramGrid(
-            diagram = diagram,
-            selection = selection,
-            icons = icons,
+        // Issue #526: 上段（タイトル/Reset/Cancel）と下段ActionBarは固定し、
+        // その間（案内・図）だけをスクロール可能にする。スマホ横向きのような
+        // 低いviewportでは固定要素とinsetだけで高さが埋まるため、図を含む中段を
+        // weightedなスクロール領域にして「図が上段とActionBarの間に表示される」
+        // 契約（spec Scenario 1）とCTAの完全表示（Scenario 1/A11y）を両立させる。
+        Column(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
-            onToggleSelection = onToggleSelection,
-        )
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                text = stringResource(R.string.edit_surface_snapshot_notice),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Text(
+                text = stringResource(R.string.edit_surface_selection_count, selection.size),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+            if (discardNotice) {
+                // Issue #526: 再作成で未確定セッションを破棄した旨の案内。error色は
+                // 使わず標準色で、TalkBackへはliveRegion=Politeで一度だけ通知する
+                // （再compositionでの繰り返し通知はしない。次のユーザー操作で消える）。
+                Text(
+                    text = stringResource(R.string.edit_surface_discard_notice),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            if (duplicateGroups.isNotEmpty()) {
+                TextButton(
+                    onClick = onOpenDuplicates,
+                    enabled = !busy,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) {
+                    Text(stringResource(R.string.edit_surface_duplicate_summary, duplicateGroups.size))
+                }
+            }
+            reasonText?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            DiagramGrid(
+                diagram = diagram,
+                selection = selection,
+                icons = icons,
+                onToggleSelection = onToggleSelection,
+            )
+        }
         ActionBar(
             hasSelection = selection.isNotEmpty(),
             sessionChangeCount = sessionChangeCount,
             confirmGate = confirmGate,
             busy = busy,
-            onMoveToPage = { dialog = EditSurfaceDialog.MoveToPage },
-            onAddToFolder = { dialog = EditSurfaceDialog.AddToFolder },
+            // Issue #526: dialogを開くだけのtapも「次のユーザー操作」。開く操作を
+            // activity経由のwrapperへ流して破棄案内の消去を一元化する
+            // （dialogの開閉状態はこの画面のlocal stateのまま）。
+            onMoveToPage = {
+                onDialogOpening()
+                dialog = EditSurfaceDialog.MoveToPage
+            },
+            onAddToFolder = {
+                onDialogOpening()
+                dialog = EditSurfaceDialog.AddToFolder
+            },
             onCreateFolder = onCreateFolder,
             onRemove = onRemove,
             onConfirm = onConfirm,
@@ -437,30 +477,26 @@ private fun ActionBar(
     onConfirm: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
+        // Issue #526: アクションchipはFlowRowで流し込む。幅が広い横向きでは1行に
+        // 収まり、ActionBarの高さを圧縮しない（低いviewportでの確定ラベルの
+        // クリップを防ぐ）。chipラベルはmaxLines=1にしない（fontScale拡大での
+        // 文字列切断を避ける。収まらない分はFlowRowが次の行へ回す）。
+        FlowRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             OutlinedButton(onClick = onMoveToPage, enabled = hasSelection && !busy) {
-                Text(stringResource(R.string.edit_surface_action_move_to_page), maxLines = 1)
+                Text(stringResource(R.string.edit_surface_action_move_to_page))
             }
             OutlinedButton(onClick = onAddToFolder, enabled = hasSelection && !busy) {
-                Text(stringResource(R.string.edit_surface_action_add_to_folder), maxLines = 1)
+                Text(stringResource(R.string.edit_surface_action_add_to_folder))
             }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
             OutlinedButton(onClick = onCreateFolder, enabled = hasSelection && !busy) {
-                Text(stringResource(R.string.edit_surface_action_create_folder), maxLines = 1)
+                Text(stringResource(R.string.edit_surface_action_create_folder))
             }
             OutlinedButton(onClick = onRemove, enabled = hasSelection && !busy) {
-                Text(stringResource(R.string.edit_surface_action_remove), maxLines = 1)
+                Text(stringResource(R.string.edit_surface_action_remove))
             }
         }
         Button(
@@ -502,37 +538,33 @@ private fun DiagramGrid(
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
     val cellSize = ((screenWidth - 32.dp) / diagram.columnCount).coerceAtLeast(28.dp)
-    LazyColumn(modifier = modifier.padding(horizontal = 16.dp)) {
+    // Issue #526: 図は中段のスクロール領域（verticalScroll）の中でcontent高さで
+    // 描く。LazyColumn（無限高さを要求する）はスクロール親と同居できないため、
+    // ページ数分の子を持つ通常Columnにする（構成要素はヘッダ+ページ面+dockのみで
+    // 小規模。iconは解決済みbitmapの描画のみ）。
+    Column(modifier = modifier.padding(horizontal = 16.dp)) {
         diagram.pages.forEachIndexed { pageIndex, screenId ->
-            item(key = "page-header-$screenId") {
-                Text(
-                    text = stringResource(R.string.homeedit_page_label, pageIndex + 1),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-                )
-            }
-            item(key = "page-$screenId") {
-                PageGrid(
-                    diagram = diagram,
-                    screenId = screenId,
-                    selection = selection,
-                    icons = icons,
-                    cellSize = cellSize,
-                    onToggleSelection = onToggleSelection,
-                )
-            }
-        }
-        item(key = "dock-header") {
             Text(
-                text = stringResource(R.string.edit_surface_a11y_dock),
+                text = stringResource(R.string.homeedit_page_label, pageIndex + 1),
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
             )
+            PageGrid(
+                diagram = diagram,
+                screenId = screenId,
+                selection = selection,
+                icons = icons,
+                cellSize = cellSize,
+                onToggleSelection = onToggleSelection,
+            )
         }
-        item(key = "dock") {
-            DockRow(diagram = diagram, icons = icons, cellSize = cellSize)
-        }
-        item(key = "bottom-space") { Spacer(modifier = Modifier.height(8.dp)) }
+        Text(
+            text = stringResource(R.string.edit_surface_a11y_dock),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+        )
+        DockRow(diagram = diagram, icons = icons, cellSize = cellSize)
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 

@@ -361,10 +361,10 @@ class Issue265GateFailedRouteInstrumentationTest {
 
     private fun awaitModelLoaded() {
         val deadline = System.currentTimeMillis() + 15_000L
-        while (!launcher.model.isModelLoaded && System.currentTimeMillis() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.currentTimeMillis() < deadline) {
             Thread.sleep(50)
         }
-        check(launcher.model.isModelLoaded) { "Launcher model did not reload" }
+        check(launcher.model.isModelLoaded()) { "Launcher model did not reload" }
     }
 
     private fun seedLayoutWithFolder() {

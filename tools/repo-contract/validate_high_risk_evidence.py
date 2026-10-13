@@ -585,7 +585,32 @@ def fetch_labels(repo: str, pr_number: int) -> List[str]:
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
-def fetch_changed_files(repo: str, pr_number: int) -> List[str]:
+def fetch_changed_files(
+    repo: str,
+    pr_number: int,
+    base_sha: Optional[str] = None,
+    head_sha: Optional[str] = None,
+) -> List[str]:
+    """Changed paths for the PR.
+
+    Prefers a local three-dot diff (merge-base(base, head)..head). The
+    ``gh pr diff`` fallback caps at 300 files on the server side, which
+    fails closed for rebase-scale PRs, so it is only used when the local
+    SHAs are unavailable (e.g. manual runs against a shallow checkout).
+    """
+    if base_sha and head_sha:
+        merge_base = _run_git(["merge-base", base_sha, head_sha])
+        if merge_base.returncode != 0:
+            raise RuntimeError(
+                "git merge-base failed for "
+                f"{base_sha}..{head_sha}: {merge_base.stderr.strip()}"
+            )
+        diff = _run_git(
+            ["diff", "--name-only", merge_base.stdout.strip(), head_sha]
+        )
+        if diff.returncode != 0:
+            raise RuntimeError(f"git diff failed: {diff.stderr.strip()}")
+        return [line.strip() for line in diff.stdout.splitlines() if line.strip()]
     proc = subprocess.run(
         ["gh", "pr", "diff", str(pr_number), "--repo", repo, "--name-only"],
         capture_output=True,
@@ -632,9 +657,15 @@ def _remediation(pr_number: int) -> str:
     )
 
 
-def run_gate(repo: str, pr_number: int, head_sha: str, root: Path) -> int:
+def run_gate(
+    repo: str,
+    pr_number: int,
+    head_sha: str,
+    root: Path,
+    base_sha: Optional[str] = None,
+) -> int:
     labels = fetch_labels(repo, pr_number)
-    changed_files = fetch_changed_files(repo, pr_number)
+    changed_files = fetch_changed_files(repo, pr_number, base_sha, head_sha)
 
     high_risk, reasons = classify_pr(labels, changed_files)
     if not high_risk:
@@ -707,6 +738,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--pr-number", required=True, type=int)
     parser.add_argument("--head-sha", required=True, help="current PR head commit")
     parser.add_argument(
+        "--base-sha",
+        default=None,
+        help="PR base commit; enables the local three-dot diff instead of "
+        "the 300-file-capped gh pr diff",
+    )
+    parser.add_argument(
         "--root",
         type=Path,
         default=None,
@@ -725,7 +762,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     root = root.resolve()
 
     try:
-        return run_gate(args.repo, args.pr_number, args.head_sha, root)
+        return run_gate(
+            args.repo, args.pr_number, args.head_sha, root, args.base_sha
+        )
     except RuntimeError as exc:
         print(f"FAIL: gate could not evaluate the PR (fail closed): {exc}")
         return 1

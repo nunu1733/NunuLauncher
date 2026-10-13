@@ -1,0 +1,14 @@
+=== matrix (f) preflight — API 36 stock (overlay/priv-app removed), emulator-5556 ===
+date: 2026-10-07 23:06:09
+--- wm density:
+Physical density: 420
+--- cmd overlay lookup --user 0 android android:string/config_recentsComponentName:
+com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity
+--- SystemUI mRecentsComponentName:
+      mRecentsComponentName=ComponentInfo{com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity}
+--- pm list packages lawnchair (expect empty):
+(end)
+--- default launcher:
+Launcher: ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+Success
+--- installed candidate2-release APK sha256 (adb install, non-system): c198865852edebe207536a868ac91397af59c5f058c11b3a0e2c636cff67ea2d  /data/app/~~Wr6kZv2ynG3hmkrKMJ6x0w==/app.lawnchair-2FuythMW_Gs2pzL9URj9Rg==/base.apk

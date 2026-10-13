@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase;
 
 import androidx.annotation.Nullable;
 
+import com.android.launcher3.GridType;
 import com.android.launcher3.provider.LauncherDbUtils;
 
 import java.io.File;
@@ -156,12 +157,16 @@ final class GridMigrationJournal {
     }
 
     private static DeviceGridState readState(Cursor cursor, String prefix) {
+        // Rebase Phase 2 adapt (S2/S3): the anchor DeviceGridState carries an extra
+        // gridType dimension the fork's journal schema does not persist; journal
+        // round-trips use GRID_TYPE_ANY so the restored state stays grid-type agnostic.
         return new DeviceGridState(
                 cursor.getInt(cursor.getColumnIndexOrThrow(prefix + "_columns")),
                 cursor.getInt(cursor.getColumnIndexOrThrow(prefix + "_rows")),
                 cursor.getInt(cursor.getColumnIndexOrThrow(prefix + "_hotseat")),
                 cursor.getInt(cursor.getColumnIndexOrThrow(prefix + "_device_type")),
-                cursor.getString(cursor.getColumnIndexOrThrow(prefix + "_database")));
+                cursor.getString(cursor.getColumnIndexOrThrow(prefix + "_database")),
+                GridType.GRID_TYPE_ANY);
     }
 
     private static int readDigestVersion(Cursor cursor) {

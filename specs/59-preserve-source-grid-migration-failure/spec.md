@@ -238,3 +238,7 @@ behavior.
   aggregation with readback, versioned canonical digest validation, unknown
   preference restoration, finalized-target validation, and atomic recovery
   metadata deletion.
+
+## Revision（2026-10-04、#532 Phase 2 rebase）
+
+anchor `LauncherPrefs.putSync` seam（Unit返却）ではpreference editorの「集約Boolean結果」が表現できないため、ADR-0018 Decision 9（revision 7）により本契約を次のように読み替える: 全editorのcommitをsynchronousに行い、**commit後のreadbackが要求grid stateと一致すること**を検証する（Boolean集約は検証手段としてreadbackに置換）。readback一致の要求自体は本specの既存契約どおり維持する。経緯は [#532 replay-log §6.3/§6.7](../516-16-rebase-phase2/replay-log.md)。

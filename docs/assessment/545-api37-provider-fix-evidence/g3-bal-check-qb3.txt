@@ -1,0 +1,24 @@
+=== G3 BAL check — qb3 leg — API 37 release @ candidate6 4ddd6ae306 ===
+date: 2026-10-09 20:12:42 JST  source: qb3-g3-logcat.txt (    2633 lines; window: logcat -c at G3 start 20:11:2x through tap + dump 20:12:0x)
+
+G3 sequence executed:
+  1. am start SETTINGS          -> SettingsHomepageActivity foreground (t160)
+  2. KEYCODE_APP_SWITCH         -> shell->launcher overview; focus became app.lawnchair/.LawnchairLauncher
+                                   qb3-overview.png: task card renders REAL Settings screenshot
+  3. tap task card body (542,1206) -> shell->launcher->app transition COMPLETED:
+     mCurrentFocus=Window{3f73399 u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}
+     topResumedActivity=ActivityRecord{247295766 u0 com.android.settings/.homepage.SettingsHomepageActivity t160}
+     qb3-task-switch.png: full-screen Settings, crash-free
+
+BAL signature grep over the whole G3 window:
+  'Background activity start'                  : 0
+  'BAL'                                        : 1
+  'blocked' (any)                              : 0
+  'AbortClientTransaction'                     : 0
+  'BackgroundActivityStart' (any case)         : 0
+  'ActivityTaskManager.*Deny'                  : 0
+
+RESULT: BAL blocks = 0 on a COMPLETED shell->launcher->app transition (both legs exercised, launcher alive throughout).
+
+Cross-check: permanent oracle run (qb3-oracle-result.json, same device/leg) records bal_blocks: [] —
+0 BAL blocks on its independently executed overview + task-return transition.

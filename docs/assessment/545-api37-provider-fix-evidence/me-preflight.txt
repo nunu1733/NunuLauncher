@@ -1,0 +1,39 @@
+=== matrix (e) preflight — API 36 debug @ candidate 2987e525bd (candidate2-debug-2987e52.apk, sha256 5098ceb4d7af93c90684e07b1bdbe01408a92356631923fdde367a5fbc213278) ===
+date: 2026-10-07 22:58:06
+AVD: issue142_api36 (API 36, SDK 36), serial emulator-5556
+config: /product/priv-app/LawnchairDebug/LawnchairDebug.apk + /product/etc/permissions/privapp-permissions-app.lawnchair.debug.xml (13 perms); overlay nunu.overlay.quickstepconfig -> app.lawnchair.debug/com.android.quickstep.RecentsActivity; HOME=app.lawnchair.debug
+
+--- wm density:
+Physical density: 420
+--- ro.build.version.sdk / sdk_full:
+36
+36.0
+--- cmd overlay lookup --user 0 android android:string/config_recentsComponentName:
+app.lawnchair.debug/com.android.quickstep.RecentsActivity
+--- SystemUI mRecentsComponentName:
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+--- package install state:
+    codePath=/product/priv-app/LawnchairDebug
+    versionName=16.Dev.(2987e52)
+    pkgFlags=[ SYSTEM DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE BACKUP_IN_FOREGROUND PARTIALLY_DIRECT_BOOT_AWARE PRIVILEGED PRODUCT PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+--- default launcher:
+Launcher: ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher}
+Success
+--- LauncherProxyService state:
+    LauncherProxyService state:
+      isConnected=true
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mQuickStepIntent=Intent { act=android.intent.action.QUICKSTEP_SERVICE xflg=0x4 pkg=app.lawnchair.debug }
+      mBound=true
+      mCurrentBoundedUserId=0
+      mConnectionBackoffAttempts=0
+      mInputFocusTransferStarted=false
+      mInputFocusTransferStartY=0.0
+      mInputFocusTransferStartMillis=0
+      mActiveNavBarRegion=null
+      mNavBarMode=2
+      mIsPrevServiceCleanedUp=false
+--- sha256 of installed priv-app:
+5098ceb4d7af93c90684e07b1bdbe01408a92356631923fdde367a5fbc213278  /product/priv-app/LawnchairDebug/LawnchairDebug.apk

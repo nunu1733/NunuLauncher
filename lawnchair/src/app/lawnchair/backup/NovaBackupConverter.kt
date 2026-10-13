@@ -12,6 +12,7 @@ import android.util.Log
 import app.lawnchair.DeviceProfileOverrides
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
+import com.android.launcher3.GridType
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
@@ -203,22 +204,15 @@ class NovaBackupConverter(
                             hotseatCount,
                             InvariantDeviceProfile.TYPE_PHONE,
                             gridInfo.dbFile,
+                            GridType.GRID_TYPE_NON_ONE_GRID,
                         )
-                        gridState.writeToPrefs(context)
-                        writeGridToLawnchairPrefs(info, smartspaceEnabled)
-                        // Issue #168: make one restore authoritative. The persisted grid
-                        // state is committed; apply the same converted values to the live
-                        // IDP synchronously (main thread, under this lease) so performRestore
-                        // and the correlated reload bind the DB the sanitizer wrote, instead
-                        // of depending on pref-change listener timing.
-                        applyConvertedGrid(gridInfo)
-                        // Issue #168 review follow-up: the lawnchair grid prefs are
-                        // persisted via batchEdit (apply, async disk). This synchronous
-                        // commit() on the same SharedPreferences file is the durability
-                        // barrier — when it returns, the grid values survive the
-                        // restore's self-restart even if the pending apply has not
-                        // flushed yet.
                         gridState.writeToPrefs(context, true)
+                        gridState.writeToPrefs(context)
+                        // Issue #168: keep the live IDP dbFile binding authoritative and
+                        // synchronous (main thread, under this lease) so performRestore
+                        // and the correlated reload bind the DB the sanitizer wrote,
+                        // instead of depending on pref-change listener timing.
+                        applyConvertedGrid(gridInfo)
                     } else {
                         writeGridToLawnchairPrefs(info, smartspaceEnabled)
                     }
@@ -241,7 +235,14 @@ class NovaBackupConverter(
                     // restore-correlated generation completes and the
                     // workspace is capture-valid before the restore reports
                     // completion in every case.
-                    val app = LauncherAppState.INSTANCE.getNoCreate()
+                    // Rebase Phase 2 adapt: anchor's AppState is a Dagger singleton
+                    // without a nullable getNoCreate; resolving via getInstance creates
+                    // the (empty-callbacks) app state, which the barrier path supports.
+                    val app = try {
+                        LauncherAppState.getInstance(context)
+                    } catch (t: Throwable) {
+                        null
+                    }
                     reloadBarrier = if (app != null) {
                         RestoreReloadBarrier(app, RESTORE_RELOAD_COMPLETION_TIMEOUT_MS).also { it.dispatch() }
                     } else {
@@ -284,7 +285,7 @@ class NovaBackupConverter(
             val outcome: AtomicReference<String> = AtomicReference(""),
         )
 
-        private val model = app.getModel()
+        private val model = app.model
         private var currentAttempt = Attempt()
         private var currentRequestId = 0L
 
@@ -402,6 +403,10 @@ class NovaBackupConverter(
     // the last grid-state mutation before the staged DB is bound.
     private suspend fun applyConvertedGrid(gridInfo: DeviceProfileOverrides.DBGridInfo) {
         withContext(Dispatchers.Main) {
+            // Issue #532 E2 (fork Issue #168 bridge re-ported): bind the converted grid
+            // through the exact DBGridInfo binding — dbFile, rows, columns and hotseat
+            // all come from the converter's grid info, even when no enabled preset
+            // declares that grid.
             InvariantDeviceProfile.INSTANCE.get(context).applyGridInfo(context, gridInfo)
         }
     }

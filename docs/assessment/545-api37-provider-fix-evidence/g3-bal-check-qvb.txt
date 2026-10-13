@@ -1,0 +1,35 @@
+=== G3 BAL check — qvb leg — API 37 release @ 212097886b ===
+date: 2026-10-08 02:22:10  source: qvb-g3-logcat.txt (    9707 lines, window 02:16:5x-02:21:2x)
+
+G3 sequence executed:
+  1. am start SETTINGS      -> SettingsHomepageActivity resumed (task 120)
+  2. KEYCODE_APP_SWITCH #1  -> TouchInteractionService.onOverviewToggle received (02:17:36.09x)
+     ShellRecents: startRecentsTransition + startRealRecentsTransition (02:17:36.114)
+     WindowManagerShell: Directly starting START_RECENTS_TRANSITION(FIRST_CUSTOM+21) with PI hop:
+       pendingIntent options: android.pendingIntent.backgroundActivityAllowed=3 (02:17:36.115)
+     launcher-side binder unmarshal failures at the same moment (pid 3924):
+       BadParcelableException: Parcel data not fully consumed, unread size: 8
+       IllegalStateException: Bundle length is not aligned by 4: 6226041
+     ShellRecents: No matching remote found to takeover (#15) (02:17:36.134)
+     -> overview never rendered; recents PI produced NO activity START; Settings stayed foreground
+  3. task-card tap: NOT EXECUTABLE (no task card ever rendered)
+  4. KEYCODE_APP_SWITCH #2 (02:20:58) -> onOverviewToggle received; launcher initiated app launch:
+     ActivityTaskManager: START u0 {flg=0x10100000 cmp=com.google.android.deskclock/.DeskClock} with LAUNCH_SINGLE_TASK
+       from uid 0 (com.android.shell) (realCallingUid=10233=app.lawnchair) (BAL_ALLOW_ALLOWLISTED_UID) result code=0
+     -> launcher->app background launch via PI path was ALLOWED (no block)
+     -> immediately after, 3rd FATAL: NoSuchMethodError takeTaskSnapshot(IZ) (TaskThumbnailIconCache-1, 02:20:58.517)
+     -> launcher died; DeskClock stayed foreground (qv b-task-switch.png shows this end state)
+
+BAL signature grep over the G3 window:
+  'Background activity start'                         : 0
+  'BAL' (token)                                       : 0
+  'blocked' (ActivityTaskManager/BAL context)         : 0
+  'AbortClientTransaction'                            : 0
+  'BackgroundActivityStart' (any case variant)        : 0
+  'ActivityTaskManager.*Deny'                         : 0
+
+G3 conclusion: BAL block = 0. The only background activity start that occurred (launcher->DeskClock via PI,
+realCallingUid=app.lawnchair) was BAL-ALLOWED (ALLOWLISTED_UID). However the shell->launcher overview transition
+NEVER completed (launcher-side parcel-schema unmarshal failures; remote takeover not found), so 'transitions succeed
+end-to-end with 0 BAL blocks' is NOT met for qvb. Blocking cause is the 7th break (takeTaskSnapshot NoSuchMethodError
+FATAL) plus launcher-side parcel unmarshal breaks — not a BAL denial.

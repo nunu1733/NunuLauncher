@@ -43,6 +43,7 @@ import androidx.annotation.Nullable;
 import com.android.launcher3.CheckLongPressHelper;
 import com.android.launcher3.Flags;
 import com.android.launcher3.R;
+import com.android.launcher3.Utilities;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.util.Themes;
 import com.android.launcher3.views.ActivityContext;
@@ -70,6 +71,8 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
 
     private static final String TRACE_METHOD_NAME = "appwidget load-widget ";
 
+    private static final Integer NO_LAYOUT_ID = Integer.valueOf(0);
+
     private final CheckLongPressHelper mLongPressHelper;
     protected final ActivityContext mActivityContext;
 
@@ -79,7 +82,8 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
     private Runnable mAutoAdvanceRunnable;
 
     private long mDeferUpdatesUntilMillis = 0;
-    RemoteViews mLastRemoteViews;
+    private RemoteViews mLastRemoteViews;
+    private boolean mReapplyOnResumeUpdates = false;
 
     private boolean mTrackingWidgetUpdate = false;
 
@@ -104,9 +108,25 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
 
     @Override
     public void setColorResources(@Nullable SparseIntArray colors) {
-        if (colors == null) {
+        if (colors == null || colors.size() == 0) {
             resetColorResources();
+            return;
+        }
+
+        // LC-Note: Fix widget idmap theming issue
+        if (Utilities.ATLEAST_U) {
+            // LC-Note: Yes, this exists, don't get fool by your language processor.
+            // Since Android 13 Initial
+            RemoteViews.ColorResources colorResources = RemoteViews.ColorResources.create(getContext(), colors);
+            if (colorResources == null) {
+                resetColorResources();
+                return;
+            }
+            // LC-Note: Yes, this super also exists.
+            // Since Android 14 Initial
+            super.setColorResources(colorResources);
         } else {
+            // LC-Note: Fall back for Android 12 impl
             super.setColorResources(colors);
         }
     }
@@ -123,7 +143,7 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
     @Override
     public void setAppWidget(int appWidgetId, AppWidgetProviderInfo info) {
         super.setAppWidget(appWidgetId, info);
-        if (!mTrackingWidgetUpdate) {
+        if (!mTrackingWidgetUpdate && appWidgetId != -1) {
             mTrackingWidgetUpdate = true;
             Log.i(TAG, "App widget created with id: " + appWidgetId);
             if (ATLEAST_Q) {
@@ -142,16 +162,28 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
             }
             mTrackingWidgetUpdate = false;
         }
-        if (isDeferringUpdates()) {
-            mLastRemoteViews = remoteViews;
+        mLastRemoteViews = remoteViews;
+        mReapplyOnResumeUpdates = isDeferringUpdates();
+        if (mReapplyOnResumeUpdates) {
             return;
         }
-        mLastRemoteViews = null;
 
         super.updateAppWidget(remoteViews);
 
         // The provider info or the views might have changed.
         checkIfAutoAdvance();
+    }
+
+    @Override
+    public void onViewAdded(View child) {
+        super.onViewAdded(child);
+        mReapplyOnResumeUpdates |= isDeferringUpdates();
+    }
+
+    @Override
+    public void onViewRemoved(View child) {
+        super.onViewRemoved(child);
+        mReapplyOnResumeUpdates |= isDeferringUpdates();
     }
 
     private boolean checkScrollableRecursively(ViewGroup viewGroup) {
@@ -165,6 +197,21 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
                         return true;
                     }
                 }
+            }
+        }
+        return false;
+    }
+
+    private boolean isTaggedAsScrollable() {
+        // TODO: Introduce new api in AppWidgetHostView to indicate whether the widget is
+        // scrollable.
+        for (int i = 0; i < this.getChildCount(); i++) {
+            View child = this.getChildAt(i);
+            final Integer layoutId = (Integer) child.getTag(android.R.id.widget_frame);
+            if (layoutId != null) {
+                // The layout id is only set to 0 when RemoteViews is created from
+                // DrawInstructions.
+                return NO_LAYOUT_ID.equals(layoutId);
             }
         }
         return false;
@@ -193,18 +240,16 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
      * {@link #updateAppWidget} and apply any deferred updates.
      */
     public void endDeferringUpdates() {
-        RemoteViews remoteViews;
         mDeferUpdatesUntilMillis = 0;
-        remoteViews = mLastRemoteViews;
-
-        if (remoteViews != null) {
-            updateAppWidget(remoteViews);
+        if (mReapplyOnResumeUpdates) {
+            updateAppWidget(mLastRemoteViews);
         }
     }
 
+    @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
         if (ev.getAction() == MotionEvent.ACTION_DOWN) {
-            BaseDragLayer dragLayer = mActivityContext.getDragLayer();
+            BaseDragLayer<?> dragLayer = mActivityContext.getDragLayer();
             if (mIsScrollable) {
                 dragLayer.requestDisallowInterceptTouchEvent(true);
             }
@@ -214,6 +259,7 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
         return mLongPressHelper.hasPerformedLongPress();
     }
 
+    @Override
     public boolean onTouchEvent(MotionEvent ev) {
         mLongPressHelper.onTouchEvent(ev);
         // We want to keep receiving though events to be able to cancel long press on ACTION_UP
@@ -244,16 +290,6 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
     }
 
     @Override
-    public AppWidgetProviderInfo getAppWidgetInfo() {
-        AppWidgetProviderInfo info = super.getAppWidgetInfo();
-        if (info != null && !(info instanceof LauncherAppWidgetProviderInfo)) {
-            throw new IllegalStateException("Launcher widget must have"
-                    + " LauncherAppWidgetProviderInfo");
-        }
-        return info;
-    }
-
-    @Override
     public void getFocusedRect(Rect r) {
         super.getFocusedRect(r);
         // Outset to a larger rect for drawing a padding between focus outline and widget
@@ -272,7 +308,7 @@ public class LauncherAppWidgetHostView extends BaseLauncherAppWidgetHostView
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
-        mIsScrollable = checkScrollableRecursively(this);
+        mIsScrollable = isTaggedAsScrollable() || checkScrollableRecursively(this);
     }
 
     /**

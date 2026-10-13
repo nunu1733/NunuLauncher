@@ -27,9 +27,8 @@ import com.android.launcher3.LauncherModel;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.model.BgDataModel;
 import com.android.launcher3.model.LayoutWriteCoordinator;
+import com.android.launcher3.model.data.WorkspaceData;
 import com.android.launcher3.pm.UserCache;
-import com.android.launcher3.util.IntSet;
-import com.android.launcher3.util.RunnableList;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -302,16 +301,21 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
             CountDownLatch bound, AtomicInteger boundItemCount) {
         return new BgDataModel.Callbacks() {
             @Override
-            public void onInitialBindComplete(
-                    IntSet boundPages,
-                    RunnableList pendingTasks,
-                    RunnableList onCompleteSignal,
-                    int workspaceItemCount,
-                    boolean isBindSync) {
-                boundItemCount.set(workspaceItemCount);
+            // Issue #532 rebase: the anchor bind seam is bindCompleteModel;
+            // the snapshot size stands in for the old workspaceItemCount.
+            public void bindCompleteModel(WorkspaceData itemIdMap, boolean isBindingSync) {
+                boundItemCount.set(itemIdMapSize(itemIdMap));
                 bound.countDown();
             }
         };
+    }
+
+    private static int itemIdMapSize(WorkspaceData data) {
+        int count = 0;
+        for (Object ignored : data) {
+            count++;
+        }
+        return count;
     }
 
     /** Forces a reload while no lease is held and returns the bound item count. */
@@ -336,7 +340,7 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
             CountDownLatch bound = new CountDownLatch(1);
             BgDataModel.Callbacks callbacks = new BgDataModel.Callbacks() {
                 @Override
-                public void finishBindingItems(IntSet pagesBoundFirst) {
+                public void bindCompleteModel(WorkspaceData itemIdMap, boolean isBindingSync) {
                     bound.countDown();
                 }
             };
@@ -363,7 +367,7 @@ public class RestoreLeaseDeferredLoaderThreadAffinityTest {
         CountDownLatch bound = new CountDownLatch(1);
         BgDataModel.Callbacks cb = new BgDataModel.Callbacks() {
             @Override
-            public void finishBindingItems(IntSet pagesBoundFirst) {
+            public void bindCompleteModel(WorkspaceData itemIdMap, boolean isBindingSync) {
                 bound.countDown();
             }
         };

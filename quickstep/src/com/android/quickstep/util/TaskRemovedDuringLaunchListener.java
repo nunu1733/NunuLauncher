@@ -26,6 +26,7 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
+import com.android.launcher3.Utilities;
 import com.android.quickstep.RecentsModel;
 import com.android.quickstep.views.RecentsViewContainer;
 
@@ -98,10 +99,7 @@ public class TaskRemovedDuringLaunchListener {
             final Runnable taskLaunchFailedCallback = mTaskLaunchFailedCallback;
             RecentsModel.INSTANCE.get(mContext).isTaskRemoved(mLaunchedTaskId, (taskRemoved) -> {
                 if (taskRemoved) {
-                    ActiveGestureLog.INSTANCE.addLog(
-                            new ActiveGestureLog.CompoundString("Launch failed, task (id=")
-                                    .append(launchedTaskId)
-                                    .append(") finished mid transition"));
+                    if (Utilities.ATLEAST_S) ActiveGestureProtoLogProxy.logTaskLaunchFailed(launchedTaskId);
                     taskLaunchFailedCallback.run();
                 }
             }, (task) -> true /* filter */);

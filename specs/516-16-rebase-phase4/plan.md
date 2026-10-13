@@ -1,6 +1,6 @@
 # Plan: Lawnchair 16 rebase Phase 4 — cutover実行（Epic #516）
 
-> Status: accepted（ChatGPT review 3 rounds — round 3 blockingなし。受入は本PRのmergeで完了）
+> Status: accepted（ChatGPT review 3 rounds — round 3 blockingなし。revision 4はPR #590 review round 1対応の実行中契約補訂: CI/audit対象をMへ移動しEをaudit文書のみに限定。詳細はChange history）
 > Risk tier: H（[spec.md](./spec.md)参照）
 > 対象revision: main `85b86610b4731f5f06a116d1bc017385576bf967`（本PR merge後のmain headをplan実行開始時のR候補として扱う）
 > 方針の正本: [ADR-0018 revision 10](../../docs/adr/0018-lawnchair-16-rebase.md)。本planは実行手順（統合順・port対照表・gates・T9手順・正本同期）を固定する。
@@ -74,21 +74,20 @@ mainのreplay基点は `38262fb74d`（Phase 2 plan対象revision）。これ以�
 - production unitは**最終main内容を契約**として16構造へ適応する。適応は既存16適応実績（validation branch）と差分比較し、古い適応で新しい契約を上書きしない。
 - port適用後、対照表に各unitの「適用commit SHA / 方式（clean・adapt・skip+理由）」を記録する（実行記録§10）。これがAC-1機械検証(i)の入力。
 
-## 4. cutover merge機構（ADR Decision 3 rev10の実行手順）
+## 4. cutover merge機構（ADR Decision 3 rev10・rev4順の実行手順）
 
-実行順（循環なし。高リスクaudit契約のdocs-only許容とR固定を組み込んだ固定順）:
+実行順（循環なし。PR #590 review round 1で確定したrev4順: dirtyなSではpull_request CIがdispatchされないため、CIとauditの対象をMへ移動し、Eはaudit文書のみとする）:
 
 1. **R候補のSHA固定**: `R_candidate = origin/main` の厳密なSHAを記録する。以降のG4'（T9）のR APKはこのSHAからbuildする。
-2. 統合source head Sで事前gates（G1'/G2'/G3'/G4'）を全greenにする（G4'のR APKは手順1のR_candidateからbuild）。
-3. **Sをheadとしてcutover PR（base=main）を作成する**（Mはまだ作らない）。
-4. Sで `pull_request` CI final-statusを成功させる。引き続き別sessionによる独立audit（G6'）をSに対して実施する。
-5. audit記録を `docs/assessment/pr-<PR>-<slug>.md` として**docs-only commit E**を同PRへ追加する（記録するHead SHA=S、CI run=Sの成功run）。S→Eの差分はaudit文書のみ。
-6. `origin/main == R_candidate` を再確認する。**mainが進んでいた場合**は、追加unitを統合branchへ適用して対照表へ追記し、**手順1へ戻ってR候補を固定し直し、G1'〜G4'（T9のR依存legを含む）から再実行**する。
-7. `git merge -s ours <R_candidate>` を統合branch上で実行し、merge commit Mを作成する（**M^1=E、M^2=R_candidate**、Mのtree=Eのtree）。machine検証: `git diff E M` が空、`M^2 == R_candidate`。tag `pre-lawnchair16-<YYYYMMDD>` をR_candidateへ付与する。**以後Mに追加commitしない（M=最終PR head）**。
-8. Mで最終CI（pull_request synchronize発火のfinal-status）・high-risk-gate・G7'予備証明（`git revert -m 2 M --no-commit` dry-runのtree hashがR_candidateのtree hashと一致。検証後abort）を通す。S→Mの差分がdocs-only（audit文書とmerge構造のみ）であるためauditのやり直しは不要とする（docs以外の変更が入った場合のみ手順4のauditからやり直す）。
-9. merge直前に `origin/main == R_candidate == tag == M^2 == O^1（予定）` を再確認する。**mainが進んでいた場合は手順1へ戻る**（同上の再実行規則）。
-10. GitHub merge commit（O）でmainへmergeする。O^1=merge時点main head、O^2=M。machine検証: `git diff M O` が空、`O^1 == R_candidate == tag`。
-11. merge後の最終証明: `git revert -m 1 O --no-commit` dry-runのtree hashがR_candidate（tag）のtree hashと一致することを確認し記録（検証後abort。mainへpushしない）。
+2. 統合source head Sで事前gates（G1'/G2'/G3'/G4'）を全greenにする（G4'のR APKは手順1のR_candidateからbuild）。Sは全てのsource・docs（T9証跡・正本同期・本plan改訂を含む）を含む最終source treeとする。**SはRをancestorに持たないため、この時点のPRはdirtyでありpull_request CIはdispatchされない**（実測: PR #590 run 38404418328以前）。
+3. `origin/main == R_candidate` を再確認する。**mainが進んでいた場合**は、追加unitを統合branchへ適用して対照表へ追記し、**手順1へ戻ってR候補を固定し直し、G1'〜G4'（T9のR依存legを含む）から再実行**する。
+4. `git merge -s ours <R_candidate>` を統合branch上で実行し、merge commit Mを作成する（**M^1=S、M^2=R_candidate**、Mのtree=Sのtree）。machine検証: `git diff S M` が空、`M^2 == R_candidate`。tag `pre-lawnchair16-<YYYYMMDD>` をR_candidateへ付与する。
+5. Mをpushする（synchronize event）。**G5'-exact: Mのpull_request CI final-status success**（Sのtreeと同一のため、これがsourceに対するCI証明になる）。Mのtreeはaudit対象headでもある。
+6. **G6': 別sessionによる独立auditをMに対して実施**し、`docs/assessment/pr-<PR>-<slug>.md` を作成する（Head SHA=M、CI run=Mの成功run。validatorのschema準拠）。
+7. **E: audit文書のみを含む単一fileのdocs-only commit** をMの上に作成しpushする（`git diff --name-only M E` がaudit doc 1fileのみ）。**E以後にcommitしない（E=最終PR head）**。EのCI（docs-only差分でもsource filterはPR全体のdiffを見るためfull portfolioが走る）とhigh-risk-gate PASSを確認する。
+8. merge直前に `origin/main == R_candidate == tag == M^2 == O^1（予定）` を再確認する。**mainが進んでいた場合は手順1へ戻る**（同上の再実行規則）。
+9. GitHub merge commit（O）でmainへmergeする。O^1=merge時点main head、O^2=E。machine検証: `git diff E O` が空、`O^1 == R_candidate == tag`。
+10. merge後の最終証明: `git revert -m 1 O --no-commit` dry-runのtree hashがR_candidate（tag）のtree hashと一致することを確認し記録（検証後abort。mainへpushしない）。O/tag/証明結果の記録は、cutover branchではないmain上の後続docs PRで行う（branchのE以後commit禁止規則と矛盾しない）。
 
 PR本文は `Refs #516`（Epic終了条件の全てが満たされる最終PRのみが `Closes #516` を付けられるため、cutover PRは正本同期・処遇記録完了後のEpic close判断までclose構文を使わない）。
 
@@ -100,8 +99,8 @@ PR本文は `Refs #516`（Epic終了条件の全てが満たされる最終PRの
 | G2' unit | organizer unit test gate（quality-strategyのcommand。`--tests 'app.lawnchair.organizer.*'`） |
 | G3' ownership inventory | `measure_upstream_patch_surface.py` をupstream `43a21b43d7`・target 統合headで実行し、candidate baseline（bridge groupsの新path写像・pin再記録）で全counted pathが分類済みであることを確認。**正式採択（JSON/md更新）はcutover PRに含める**（AC-6） |
 | G4' T9 | §6のprotocol（AC-3）。emulator leg必須・実機legはAC-4。**R APKは手順1でSHA固定したR_candidateからbuild**。main前進時はR依存legを含む再実行（§4手順6/9） |
-| G5' CI | 統合source head S（audit対象head。§4手順4）と最終head M（§4手順8）の両方で `pull_request` CI final-status success |
-| G6' 独立audit | 別sessionによるauditを**Sに対して**実施し `docs/assessment/pr-<PR>-<slug>.md` をdocs-only commit Eとして同一PRへ追加（Head SHA=S、CI run=Sの成功runを記録）。high-risk-gate workflow PASS（label: `risk: layout-data`, `risk: migration`）。S→Mがdocs-onlyのためauditやり直し不要（docs以外の変更が入った場合のみSからやり直し） |
+| G5' CI | **M**（`-s ours` merge commit。§4手順5）と**E**（§4手順7）のpull_request CI final-status success（SはdirtyのためCI不可。Mのtree==Sのtree） |
+| G6' 独立audit | 別sessionによるauditを**Mに対して**実施し、`docs/assessment/pr-<PR>-<slug>.md` を**audit文書のみのdocs-only commit E**として同一PRへ追加（Head SHA=M、CI run=Mの成功run、validator schema準拠）。high-risk-gate workflow PASS（label: `risk: layout-data`, `risk: migration`）。M..Eがaudit doc 1fileのみのためauditやり直し不要 |
 | G7' rollback証明 | AC-5。**予備証明（main merge前・M上）**: `git revert -m 2 M --no-commit` dry-run tree hash == R_candidate（tag）のtree hash。**最終証明（merge後）**: `git revert -m 1 O --no-commit` dry-run tree hash == R_candidateのtree hash。T9 rollback leg |
 
 ## 6. T9 protocol（emulator leg）
@@ -158,12 +157,17 @@ rollback対象は **main上のcutover merge O** に一意に固定する（ADR D
 
 ## 10. 実行記録
 
-実行時に追記する（merge順dry-run結果・unit適用対照表・gates結果・T9証跡・cutover SHA・tag SHA）。
+正本は [issue-516-phase4-cutover assessment](../../docs/assessment/issue-516-phase4-cutover.md)。要点:
 
-- 2026-10-13: review round 1対応と並行して機械的統合作業を開始済み（PR #575 merge、統合branch `issue-516-phase4-cutover` で545/526/527/528のmergeとunit portを実行中。結果は最終対照表へ記録する）。本PRのmerge後にP28として統合branchへportする。
+- 2026-10-13: PR #575 merge（559 head `5a9e3ea502`）→ 統合branch `issue-516-phase4-cutover` 構築（merge 4件・conflict 2file解消・ancestry検証OK）→ unit port P01〜P28完了（skip 4件はidentity機械確認付き）→ G1'/G2'/G3'/G4'(T9 emulator leg) PASS → 本PR（cutover PR）としてSを提出。
+- R_candidate: `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`（2026-10-13時点のmain head。PR #589 merge commit）
+- G3': counted 354 files / +32307 / −8923（`--verify` PASS。正式採用を本PRに含む）
+- G4' T9: emulator leg PASS（favorites全stage IDENTICAL・schema33不変・rollback legで16書込みprefs完全保持）。実機legはowner decision待ち。
+- S/E/M/O/tagの各SHAとrollback証明はassessment §5へ追記する。
 
 ## Change history
 
 - 2026-10-13: revision 1 proposed。ADR-0018 revision 10と同時に起草。
 - 2026-10-13: revision 2 proposed（review round 1対応）。rollback対象をmain上のcutover merge Oへ一意固定し `revert -m 1 O`（予備証明は `revert -m 2 M`）へ修正、gate実行順を循環なしの固定順（tag→M作成→PR→G5'/G6'/G7'予備→main再確認→merge→最終証明）へ変更、PR #575 merge済みの実状態へ§1/§2.1/§8を同期。
 - 2026-10-13: revision 3 proposed（review round 2対応）。audit循環を解消: 統合source head SでPR作成→SのCI/独立audit→audit文書をdocs-only commit E→R固定→M(E^1,R^2)→Mで最終gate、の順へ変更（§4/§5 G6'/spec AC-7）。T9のR事前SHA固定（R_candidate）とmain前進時のT9再実行規則を明示（§4手順1/6/9・§5 G4'/§6/spec AC-3）。
+- 2026-10-13: revision 4（PR #590 review round 1対応・実行中の契約補訂）。SはRをancestorに持たないためdirtyでpull_request CIがdispatch不能（run 38404418328で実証）なため、実行順を「S→R確認→M(S^1,R^2)→MのCI→audit(M)→E=audit文書のみ→EのCI+high-risk PASS→merge」へ変更。Eはaudit doc 1fileのみに限定（round 1指摘3）。あわせて (a) rebase規模diffでpaths-filter file listがrunnerのenv上限を超える問題のfail-closed fallback、(b) high-risk validatorの `gh pr diff` 300file上限のlocal three-dot diff化、(c) spec/plan frontmatterのaccepted化、を実施。specのAC-1/AC-7も同順へ同期。

@@ -1,0 +1,6 @@
+10-11 02:10:37.721 D/RecentsView(31418): DIAG563e setOverviewStateEnabled true
+10-11 02:10:38.045 D/RecentsView(31418): DIAG563e dispatchDraw vis=0 alpha=1.0 clip=Rect(3465, 0 - 4545, 2400) width=1080
+10-11 02:10:38.426 D/RecentsView(31418): DIAG563e setOverviewStateEnabled true
+10-11 02:10:45.914 D/RecentsView(31418): DIAG563e setOverviewStateEnabled false
+10-11 02:10:59.813 D/RecentsView(31418): DIAG563e setOverviewStateEnabled true
+10-11 02:10:59.911 D/RecentsView(31418): DIAG563e dispatchDraw vis=0 alpha=1.0 clip=Rect(3465, 0 - 4545, 2400) width=1080

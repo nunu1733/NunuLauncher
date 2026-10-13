@@ -1,0 +1,56 @@
+=== matrix (a) bind crash-check greps (logcat window: a-bind-logcat.txt, boot@20:21 through oracle window) ===
+date: 2026-10-07 20:41:10
+
+--- [1] #524 failure signature NoSuchMethodError (createInputConsumer) count:
+1
+
+--- [2] AndroidRuntime crashes of app.lawnchair.debug in this window:
+10-07 20:21:49.033 E/AndroidRuntime( 1211): Process: app.lawnchair.debug, PID: 1211
+10-07 20:21:52.344 E/AndroidRuntime( 2644): Process: app.lawnchair.debug, PID: 2644
+10-07 20:31:06.920 E/AndroidRuntime( 3898): Process: app.lawnchair.debug, PID: 3898
+10-07 20:31:08.833 E/AndroidRuntime( 3943): Process: app.lawnchair.debug, PID: 3943
+10-07 20:39:43.995 E/AndroidRuntime(15896): Process: app.lawnchair.debug, PID: 15896
+10-07 20:39:46.199 E/AndroidRuntime(16374): Process: app.lawnchair.debug, PID: 16374
+
+--- [3] crash causes (unique exception lines for launcher pids):
+10-07 20:21:49.033 E/AndroidRuntime( 1211): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+10-07 20:21:52.344 E/AndroidRuntime( 2644): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+10-07 20:31:06.920 E/AndroidRuntime( 3898): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+10-07 20:31:08.833 E/AndroidRuntime( 3943): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+10-07 20:39:43.995 E/AndroidRuntime(15896): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+10-07 20:39:46.199 E/AndroidRuntime(16374): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+
+--- [4] LauncherProxyService isConnected (final):
+
+--- [5] 'disabling recents' from LawnchairApp count (expect 0):
+0
+
+--- [6] compat code ERROR markers (expect 0 = reflection lookup+invoke succeeded):
+0
+
+--- [7] input consumer registration proof in launcher process (InputMonitorCompat swipe-up):
+10-07 20:21:46.325 D/InputMonitorCompat( 1211): Input monitor (swipe-up-disp0) created
+10-07 20:21:46.325 D/InputMonitorCompat( 1211): Input event receiver for monitor (swipe-up-disp0) created
+10-07 20:21:46.389 D/InputMonitorCompat( 1211): Input event receiver for monitor (swipe-up-disp0) disposed
+10-07 20:21:46.399 D/InputMonitorCompat( 1211): Input monitor (swipe-up-disp0) disposed
+10-07 20:21:46.583 D/InputMonitorCompat( 1211): Input monitor (swipe-up-disp0) created
+10-07 20:21:46.583 D/InputMonitorCompat( 1211): Input event receiver for monitor (swipe-up-disp0) created
+
+--- NOTE on [1]: the single "NoSuchMethodError" grep hit is line 35552 — an adbd echo of THIS
+    verification session's own `logcat -d -b crash | grep -cE 'NoSuchMethodError|...'` shell command,
+    not an exception. Actual NoSuchMethodError exceptions in the launcher process: 0.
+    The #524 failure signature (NoSuchMethodError at InputConsumerController.registerInputConsumer
+    InputConsumerController.java:143) did NOT reproduce.
+
+--- VERDICT (matrix a): PARTIAL
+  * compat fix PROVEN at its seam: registerInputConsumer (TouchInteractionService.java:873) completes
+    on API 37 (0 NoSuchMethodError, 0 compat ERROR logs, InputMonitorCompat swipe-up monitor +
+    InputEventReceiver created from the returned InputChannel). Execution proceeds past line 873 to
+    mTaskbarManager.onUserUnlocked() (line 889).
+  * bind completion oracle (isConnected=true / overview / task switch) BLOCKED by a pre-existing
+    environment breakage: java.lang.NoSuchFieldError ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX
+    (TaskbarRecentAppsController.<init>:69 via TaskbarActivityContext.<init>:383) — the 16-dev stack
+    (built against compileSdk 37.2 / minor-level 37.2 APIs) references a framework field that does not
+    exist on the API 37.0 emulator image. Same crash for every process restart (bind retry loop).
+    See a-resource-skew-analysis.txt. Unrelated to the #545 change (reproduces for any build of this
+    stack on this image; #524 legs never reached this line because the then-fatal crash was at :873).

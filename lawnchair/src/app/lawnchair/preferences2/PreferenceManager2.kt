@@ -31,11 +31,13 @@ import androidx.datastore.preferences.preferencesDataStore
 import app.lawnchair.data.Converters
 import app.lawnchair.font.FontCache
 import app.lawnchair.gestures.config.GestureHandlerConfig
+import app.lawnchair.gestures.handlers.SleepMode
 import app.lawnchair.gestures.type.GestureType
 import app.lawnchair.hotseat.HotseatMode
 import app.lawnchair.icons.CustomAdaptiveIconDrawable
 import app.lawnchair.icons.shape.IconShape
 import app.lawnchair.icons.shape.IconShapeManager
+import app.lawnchair.predictions.PredictionMode
 import app.lawnchair.preferences.PreferenceManager as LawnchairPreferenceManager
 import app.lawnchair.qsb.providers.QsbSearchProvider
 import app.lawnchair.search.algorithms.LawnchairSearchAlgorithm
@@ -56,7 +58,9 @@ import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.InvariantDeviceProfile.INDEX_DEFAULT
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
+import com.android.launcher3.Workspace
 import com.android.launcher3.graphics.IconShape as L3IconShape
+import com.android.launcher3.reloadIcons
 import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.util.DynamicResource
 import com.android.launcher3.util.MainThreadInitializedObject
@@ -66,12 +70,15 @@ import com.patrykmichalik.opto.core.firstBlocking
 import com.patrykmichalik.opto.core.setBlocking
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class PreferenceManager2 private constructor(private val context: Context) :
     PreferenceManager,
@@ -94,6 +101,15 @@ class PreferenceManager2 private constructor(private val context: Context) :
     )
 
     override val preferencesDataStore = context.preferencesDataStore
+
+    // Rebase Phase 2 adapt (#532): in-memory pref cache used by `firstCached` (anchor
+    // performance behavior); kept warm via the datastore collection in `init`.
+    @Volatile
+    private var cachedPreferences: Preferences = runBlocking {
+        preferencesDataStore.data.first()
+    }
+
+    fun getCachedPreferences(): Preferences = cachedPreferences
     private val reloadHelper = ReloadHelper(context)
 
     // Retired Deck tombstone keys — kept alive so old backup restores can be
@@ -138,6 +154,35 @@ class PreferenceManager2 private constructor(private val context: Context) :
         onSet = { it?.let(iconShape::setBlocking) },
     )
 
+    val folderShape = preference(
+        key = stringPreferencesKey(name = "folder_shape"),
+        defaultValue = IconShape.fromString(
+            value = context.getString(R.string.config_default_folder_shape),
+            context = context,
+        ) ?: IconShape.Circle,
+        parse = {
+            IconShape.fromString(value = it, context = context)
+                ?: IconShapeManager.getSystemIconShape(context)
+        },
+        save = { it.toString() },
+        onSet = {
+            reloadHelper.reloadIcons()
+        },
+    )
+
+    // Rebase Phase 2 adapt (#532): anchor feature (folder shape customisation) using the
+    // fork's IconShape parse model, mirroring customIconShape above.
+    val customFolderShape = preference(
+        key = stringPreferencesKey(name = "custom_folder_shape"),
+        defaultValue = null,
+        parse = {
+            IconShape.fromString(value = it, context = context)
+                ?: IconShapeManager.getSystemIconShape(context)
+        },
+        save = { it.toString() },
+        onSet = { it?.let(folderShape::setBlocking) },
+    )
+
     val alwaysReloadIcons = preference(
         key = booleanPreferencesKey(name = "always_reload_icons"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_always_reload_icons),
@@ -178,6 +223,33 @@ class PreferenceManager2 private constructor(private val context: Context) :
     val appDrawerSearchBarBackground = preference(
         key = booleanPreferencesKey(name = "all_apps_search_bar_background"),
         defaultValue = context.resources.getBoolean(R.bool.config_default_search_bar_background),
+        onSet = { reloadHelper.recreate() },
+    )
+
+    // Rebase Phase 2 adapt (#532): work profile tab color pref referenced by the anchor
+    // AllAppsTabColors token.
+    val workProfileTabBackgroundColor = preference(
+        key = stringPreferencesKey(name = "work_profile_tab_background_color"),
+        parse = ColorOption::fromString,
+        save = ColorOption::toString,
+        onSet = { reloadHelper.recreate() },
+        defaultValue = ColorOption.SystemAccent,
+    )
+
+    // Rebase Phase 2 adapt (#532): anchor pref read by the anchor
+    // ActivityAllAppsContainerView work tab container background.
+    val workProfileTabContainerBackground = preference(
+        key = booleanPreferencesKey(name = "work_profile_tab_container_background"),
+        defaultValue = true,
+        onSet = { reloadHelper.recreate() },
+    )
+
+    // Rebase Phase 2 adapt (#532): anchor pref read by the anchor Hotseat corner
+    // radius handling.
+    val hotseatBackgroundCornerRadius = preference(
+        key = floatPreferencesKey(name = "hotseat_bg_corner_radius"),
+        defaultValue = context.resources.getDimension(R.dimen.bg_round_rect_radius) /
+            context.resources.displayMetrics.density, // This should hopefully match corner of all devices
         onSet = { reloadHelper.recreate() },
     )
 
@@ -340,8 +412,34 @@ class PreferenceManager2 private constructor(private val context: Context) :
         defaultValue = context.resources.getBoolean(R.bool.config_default_lock_home_screen),
     )
 
+    // Rebase Phase 2 adapt (#532): anchor pref backing the workspace default page
+    // (anchor Workspace read path).
+    val defaultHomePage = preference(
+        key = intPreferencesKey(name = "default_home_page"),
+        defaultValue = Workspace.DEFAULT_PAGE,
+    )
+
     val legacyPopupOptionsMigrated = preference(
         key = booleanPreferencesKey(name = "legacy_popup_options_migrated"),
+        defaultValue = false,
+    )
+
+    // Rebase Phase 2 adapt (#532): prediction prefs referenced by the anchor
+    // LawnchairModelDelegate / LawnchairPredictionEngine.
+    val enableGlobalPrediction = preference(
+        key = booleanPreferencesKey(name = "enable_global_prediction"),
+        defaultValue = true,
+    )
+
+    val predictionMode = preference(
+        key = stringPreferencesKey(name = "prediction_mode"),
+        defaultValue = PredictionMode.fromString(context.getString(R.string.config_default_prediction_mode)),
+        parse = { PredictionMode.fromString(it) },
+        save = { it.toString() },
+    )
+
+    val lawnchairPredictorUseWeightedUsageStats = preference(
+        key = booleanPreferencesKey(name = "lawnchair_prediction_use_weighted_usage"),
         defaultValue = false,
     )
 
@@ -510,6 +608,32 @@ class PreferenceManager2 private constructor(private val context: Context) :
         onSet = { reloadHelper.reloadGrid() },
     )
 
+    // Rebase Phase 2 adapt (#532): anchor user padding factor prefs read by the
+    // anchor DeviceProfile layout math; clamped by the caller to the slider range.
+    val workspacePaddingHorizontalFactor = preference(
+        key = floatPreferencesKey(name = "workspace_padding_horizontal"),
+        defaultValue = resourceProvider.getFloat(R.dimen.config_default_workspace_padding_horizontal),
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
+    val workspacePaddingVerticalFactor = preference(
+        key = floatPreferencesKey(name = "workspace_padding_vertical"),
+        defaultValue = resourceProvider.getFloat(R.dimen.config_default_workspace_padding_vertical),
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
+    val widgetPaddingFactor = preference(
+        key = floatPreferencesKey(name = "widget_padding_factor"),
+        defaultValue = resourceProvider.getFloat(R.dimen.config_default_widget_padding_factor),
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
+    val drawerPaddingTopFactor = preference(
+        key = floatPreferencesKey(name = "drawer_padding_top"),
+        defaultValue = resourceProvider.getFloat(R.dimen.config_default_drawer_padding_top),
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
     val hotseatBottomFactor = preference(
         key = floatPreferencesKey(name = "hotseat_bottom_factor"),
         defaultValue = resourceProvider.getFloat(R.dimen.config_default_hotseat_bottom_factor),
@@ -636,6 +760,14 @@ class PreferenceManager2 private constructor(private val context: Context) :
         onSet = { reloadHelper.reloadGrid() },
     )
 
+    // Rebase Phase 2 adapt (#532): anchor unfolded-drawer pref read by the foldable
+    // overrides in DeviceProfileOverrides.Options.
+    val drawerColumnsUnfolded = idpPreference(
+        key = intPreferencesKey(name = "drawer_columns_unfolded"),
+        defaultSelector = { numAllAppsColumns + 2 },
+        onSet = { reloadHelper.reloadGrid() },
+    )
+
     val folderColumns = idpPreference(
         key = intPreferencesKey(name = "folder_columns"),
         defaultSelector = { numFolderColumns[INDEX_DEFAULT] },
@@ -678,6 +810,25 @@ class PreferenceManager2 private constructor(private val context: Context) :
     val smartspaceNowPlaying = preference(
         key = booleanPreferencesKey("enable_smartspace_now_playing"),
         defaultValue = true,
+    )
+
+    // Rebase Phase 2 adapt (#532): smartspace torch/onboarding prefs referenced by the
+    // anchor smartspace providers.
+    val smartspaceTorch = preference(
+        key = booleanPreferencesKey("enable_smartspace_torch"),
+        defaultValue = true,
+    )
+
+    val smartspaceOnboarding = preference(
+        key = booleanPreferencesKey("enable_smartspace_onboarding"),
+        defaultValue = true,
+    )
+
+    // Rebase Phase 2 adapt (#532): app drawer haptic feedback pref referenced by the
+    // anchor AppDrawerHapticFeedbackPreference.
+    val appDrawerHapticFeedback = preference(
+        key = booleanPreferencesKey(name = "app_drawer_haptic_feedback"),
+        defaultValue = context.resources.getBoolean(R.bool.config_default_app_drawer_haptic_feedback),
     )
 
     val smartspaceShowDate = preference(
@@ -732,6 +883,13 @@ class PreferenceManager2 private constructor(private val context: Context) :
         defaultValue = GestureHandlerConfig.Sleep,
     )
 
+    val sleepMode = preference(
+        key = stringPreferencesKey(name = "sleep_mode"),
+        defaultValue = SleepMode.AUTO,
+        parse = { SleepMode.fromString(it) ?: SleepMode.AUTO },
+        save = { it.toString() },
+    )
+
     val swipeUpGestureHandler = serializablePreference<GestureHandlerConfig>(
         key = stringPreferencesKey("swipe_up_gesture_handler"),
         defaultValue = GestureHandlerConfig.OpenAppDrawer,
@@ -765,6 +923,9 @@ class PreferenceManager2 private constructor(private val context: Context) :
     )
 
     init {
+        scope.launch {
+            preferencesDataStore.data.collect { cachedPreferences = it }
+        }
         initializeIconShape(iconShape.firstBlocking())
         iconShape.get()
             .drop(1)
@@ -798,6 +959,18 @@ class PreferenceManager2 private constructor(private val context: Context) :
                     .getOrDefault(GestureHandlerConfig.NoOp)
             } ?: GestureHandlerConfig.NoOp
         }
+    }
+
+    // Rebase Phase 2 adapt (#532): cached variant read by the anchor
+    // IconGestureListener scroll path.
+    fun getGestureForAppCached(key: ComponentKey, gestureType: GestureType): GestureHandlerConfig {
+        val cmp = Converters().fromComponentKey(key)
+        val key = stringPreferencesKey("$cmp:${gestureType.name}")
+        val prefs = getCachedPreferences()
+        return prefs[key]?.let {
+            runCatching { kotlinxJson.decodeFromString<GestureHandlerConfig>(it) }
+                .getOrDefault(GestureHandlerConfig.NoOp)
+        } ?: GestureHandlerConfig.NoOp
     }
 
     private fun initializeIconShape(shape: IconShape) {

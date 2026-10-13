@@ -1,0 +1,24 @@
+=== G3 BAL check — qvb2 leg — API 37 release @ da15f4b2e7 ===
+date: 2026-10-08 03:53:03  source: qvb2-g3-logcat.txt (   51040 lines, window 03:44:39-03:44:55 + full buffer scan)
+
+G3 sequence executed:
+  1. am start SETTINGS      -> SettingsHomepageActivity resumed (task 124)
+  2. KEYCODE_APP_SWITCH     -> onOverviewToggle received (03:44:45.050); shell START_RECENTS_TRANSITION (#12, FIRST_CUSTOM+21)
+     with PI hop (options include android.pendingIntent.backgroundActivityAllowed=3) -> launcher-side parcel unmarshal failures
+     (BadParcelableException 'unread size: 8'; 'Bundle length is not aligned by 4: 6226041') -> 'No matching remote found to
+     takeover (#12)' -> shell fallback animation; overview never visible; Settings returned to foreground
+     (qvb2-overview.png). Task-card tap NOT EXECUTABLE — no launcher overview rendered.
+
+BAL signature grep over the G3 window:
+  'Background activity start'                 : 0
+  'BAL' (token)                               : 7
+  'BAL_' variants (BAL_ALLOW/BAL_BLOCK)       :    1 BAL_ALLOW_ALLOWLISTED_COMPONENT    3 BAL_ALLOW_ALLOWLISTED_UID 
+  'blocked' (any)                             : 44
+  'AbortClientTransaction'                    : 0
+  'BackgroundActivityStart' (any case)        : 0
+  'ActivityTaskManager.*Deny'                 : 0
+
+G3 conclusion: BAL block = 0. The only START in the window is the harness am start (BAL_ALLOW_ALLOWLISTED_UID, result 0).
+  The blocking cause of the shell->launcher->app transition is NOT a BAL denial — it is the reproduced parcel-schema
+  unmarshal break + remote-takeover miss (see qvb2-parcel-oracle.txt). G3 end-to-end transition: FAILED (candidate FAIL
+  carried from the parcel oracle); BAL-blocks=0 sub-observation holds.

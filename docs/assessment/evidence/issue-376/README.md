@@ -16,7 +16,7 @@
 > 即cancelして復元のcorrelated reloadが必ず `MODEL_RELOAD_FAILED` になった。
 > Issue #299のrestore reloadと同一の規約（非bind時はtokenless loaderを起動し、
 > `loaderStarted`で生成生成を判定）を `LauncherModel` bridgeへ適用して解消
-> （[LauncherModel.java](../../../../src/com/android/launcher3/LauncherModel.java) の
+> （[LauncherModel.java](../../../../src/com/android/launcher3/LauncherModel.kt) の
 > Issue #376節）。recovery protocol・reload完了境界（#150/#152）の契約は不変。
 
 ## Captures（実解像度のまま保存）

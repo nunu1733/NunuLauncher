@@ -1,0 +1,112 @@
+Process: app.lawnchair.debug
+PID: 1206
+UID: 10232
+Frozen: false
+Flags: 0x24cbbe47
+Package: app.lawnchair.debug v1600020100 (16.Dev.(fe466c4))
+Foreground: Yes
+Process-Runtime: 220907
+Timestamp: 2026-10-10 00:03:09.194+0900
+Build: google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys
+DefaultScreen-State: ON
+Keyguard-Locked: false
+Crash-Handler: app.lawnchair.bugreport.LawnchairBugReporter$$ExternalSyntheticLambda6
+Loading-Progress: 1.0
+Dropped-Count: 0
+
+java.lang.IllegalArgumentException: Failed requirement.
+	at com.android.quickstep.views.TaskContainer.getThumbnailViewDeprecated(TaskContainer.kt:99)
+	at app.lawnchair.overview.TaskOverlayFactoryImpl$TaskOverlay.initOverlay(TaskOverlayFactoryImpl.kt:39)
+	at com.android.quickstep.views.TaskContainer.refreshOverlay(TaskContainer.kt:163)
+	at com.android.quickstep.views.TaskContainer.setOverlayEnabled(TaskContainer.kt:154)
+	at com.android.quickstep.views.TaskView.updateTaskViewState(TaskView.kt:886)
+	at com.android.quickstep.views.TaskView.access$updateTaskViewState(TaskView.kt:121)
+	at com.android.quickstep.views.TaskView$onAttachedToWindow$1$1.invoke(TaskView.kt:844)
+	at com.android.quickstep.views.TaskView$onAttachedToWindow$1$1.invoke(TaskView.kt:844)
+	at kotlinx.coroutines.flow.FlowKt__MergeKt$mapLatest$1.invokeSuspend(Merge.kt:213)
+	at kotlinx.coroutines.flow.FlowKt__MergeKt$mapLatest$1.invoke(Merge.kt:13)
+	at kotlinx.coroutines.flow.FlowKt__MergeKt$mapLatest$1.invoke(Merge.kt:4)
+	at kotlinx.coroutines.flow.internal.ChannelFlowTransformLatest$flowCollect$3$1$2.invokeSuspend(Merge.kt:30)
+	at kotlinx.coroutines.flow.internal.ChannelFlowTransformLatest$flowCollect$3$1$2.invoke(Merge.kt:8)
+	at kotlinx.coroutines.flow.internal.ChannelFlowTransformLatest$flowCollect$3$1$2.invoke(Merge.kt:4)
+	at kotlinx.coroutines.intrinsics.UndispatchedKt.startCoroutineUndispatched(Undispatched.kt:20)
+	at kotlinx.coroutines.CoroutineStart.invoke(CoroutineStart.kt:360)
+	at kotlinx.coroutines.AbstractCoroutine.start(AbstractCoroutine.kt:134)
+	at kotlinx.coroutines.BuildersKt__Builders_commonKt.launch(Builders.common.kt:209)
+	at kotlinx.coroutines.BuildersKt.launch(dex-id-a31e8423b3e6fa940d4f94c1abb432e8ed513c55:1)
+	at kotlinx.coroutines.BuildersKt__Builders_commonKt.launch$default(Builders.common.kt:200)
+	at kotlinx.coroutines.BuildersKt.launch$default(dex-id-a31e8423b3e6fa940d4f94c1abb432e8ed513c55:1)
+	at kotlinx.coroutines.flow.internal.ChannelFlowTransformLatest$flowCollect$3$1.emit(Merge.kt:29)
+	at kotlinx.coroutines.flow.FlowKt__ChannelsKt.emitAllImpl$FlowKt__ChannelsKt(Channels.kt:33)
+	at kotlinx.coroutines.flow.FlowKt__ChannelsKt.access$emitAllImpl$FlowKt__ChannelsKt(Channels.kt:1)
+	at kotlinx.coroutines.flow.FlowKt__ChannelsKt$emitAllImpl$1.invokeSuspend(Channels.kt:14)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at android.os.Handler.handleCallback(Handler.java:1095)
+	at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+	at android.os.Handler.dispatchMessage(Handler.java:125)
+	at android.os.Looper.loopOnce(Looper.java:296)
+	at android.os.Looper.loop(Looper.java:397)
+	at android.app.ActivityThread.main(ActivityThread.java:9523)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+	Suppressed: kotlinx.coroutines.internal.DiagnosticCoroutineContextException: [CoroutineName(RecentsView), StandaloneCoroutine{Cancelling}@5b69f38, Dispatchers.Main.immediate]
+
+========================================
+2026-10-10 00:03:58 system_app_crash (text, 3663 bytes)
+SystemUptimeMs: 279720
+Process: app.lawnchair.debug
+PID: 4338
+UID: 10232
+Frozen: false
+Flags: 0x24cbbe47
+Package: app.lawnchair.debug v1600020100 (16.Dev.(fe466c4))
+Foreground: Yes
+Process-Runtime: 47837
+Timestamp: 2026-10-10 00:03:58.059+0900
+Build: google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys
+DefaultScreen-State: ON
+Keyguard-Locked: false
+Crash-Handler: app.lawnchair.bugreport.LawnchairBugReporter$$ExternalSyntheticLambda6
+Loading-Progress: 1.0
+Dropped-Count: 0
+
+java.lang.IllegalArgumentException: Failed requirement.
+	at com.android.quickstep.views.TaskContainer.getThumbnailViewDeprecated(TaskContainer.kt:99)
+	at app.lawnchair.overview.TaskOverlayFactoryImpl$TaskOverlay.initOverlay(TaskOverlayFactoryImpl.kt:39)
+	at com.android.quickstep.views.TaskContainer.refreshOverlay(TaskContainer.kt:163)
+	at com.android.quickstep.views.TaskContainer.setOverlayEnabled(TaskContainer.kt:154)
+	at com.android.quickstep.views.TaskView.updateTaskViewState(TaskView.kt:886)
+	at com.android.quickstep.views.TaskView.access$updateTaskViewState(TaskView.kt:121)
+	at com.android.quickstep.views.TaskView$onAttachedToWindow$1$1.invoke(TaskView.kt:844)
+	at com.android.quickstep.views.TaskView$onAttachedToWindow$1$1.invoke(TaskView.kt:844)
+	at kotlinx.coroutines.flow.FlowKt__MergeKt$mapLatest$1.invokeSuspend(Merge.kt:213)
+	at kotlinx.coroutines.flow.FlowKt__MergeKt$mapLatest$1.invoke(Merge.kt:13)
+	at kotlinx.coroutines.flow.FlowKt__MergeKt$mapLatest$1.invoke(Merge.kt:4)
+	at kotlinx.coroutines.flow.internal.ChannelFlowTransformLatest$flowCollect$3$1$2.invokeSuspend(Merge.kt:30)
+	at kotlinx.coroutines.flow.internal.ChannelFlowTransformLatest$flowCollect$3$1$2.invoke(Merge.kt:8)
+	at kotlinx.coroutines.flow.internal.ChannelFlowTransformLatest$flowCollect$3$1$2.invoke(Merge.kt:4)
+	at kotlinx.coroutines.intrinsics.UndispatchedKt.startCoroutineUndispatched(Undispatched.kt:20)
+	at kotlinx.coroutines.CoroutineStart.invoke(CoroutineStart.kt:360)
+	at kotlinx.coroutines.AbstractCoroutine.start(AbstractCoroutine.kt:134)
+	at kotlinx.coroutines.BuildersKt__Builders_commonKt.launch(Builders.common.kt:209)
+	at kotlinx.coroutines.BuildersKt.launch(dex-id-a31e8423b3e6fa940d4f94c1abb432e8ed513c55:1)
+	at kotlinx.coroutines.BuildersKt__Builders_commonKt.launch$default(Builders.common.kt:200)
+	at kotlinx.coroutines.BuildersKt.launch$default(dex-id-a31e8423b3e6fa940d4f94c1abb432e8ed513c55:1)
+	at kotlinx.coroutines.flow.internal.ChannelFlowTransformLatest$flowCollect$3$1.emit(Merge.kt:29)
+	at kotlinx.coroutines.flow.FlowKt__ChannelsKt.emitAllImpl$FlowKt__ChannelsKt(Channels.kt:33)
+	at kotlinx.coroutines.flow.FlowKt__ChannelsKt.access$emitAllImpl$FlowKt__ChannelsKt(Channels.kt:1)
+	at kotlinx.coroutines.flow.FlowKt__ChannelsKt$emitAllImpl$1.invokeSuspend(Channels.kt:14)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at android.os.Handler.handleCallback(Handler.java:1095)
+	at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+	at android.os.Handler.dispatchMessage(Handler.java:125)
+	at android.os.Looper.loopOnce(Looper.java:296)
+	at android.os.Looper.loop(Looper.java:397)
+	at android.app.ActivityThread.main(ActivityThread.java:9523)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+	Suppressed: kotlinx.coroutines.inte

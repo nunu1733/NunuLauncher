@@ -1,0 +1,29 @@
+=== qa (a) result — overview / task-switch oracle — API 37 debug @ 68e68a6a45 ===
+date: 2026-10-08 00:42:16  emulator-5554, native density 420 (no override)
+
+VERDICT: oracle FAIL — blocked by a NEW fifth break, not one of the four repaired signatures.
+
+Bind oracle: PASS (isConnected=true, mBound=true, mConnectionBackoffAttempts=0, no 'disabling recents', no crash of TouchInteractionService bind path).
+Overview oracle: FAIL (crash loop).
+
+Sequence attempted:
+  1. am start -a android.settings.SETTINGS  -> SettingsHomepageActivity resumed (00:36:4x)
+  2. KEYCODE_HOME                           -> LawnchairLauncher home OK
+  3. KEYCODE_APP_SWITCH                     -> overview began, RecentsView coroutine + TaskThumbnailCache hit
+     NoSuchMethodError getTaskSnapshot(IZ) -> process died mid-overview, crash dialog
+  4. dismiss dialog + retry (00:40:59)      -> identical crash on overview entry
+
+Focus evidence:
+  after step 1: mCurrentFocus=Window{... com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}
+  after step 3: mCurrentFocus=Window{a04ae31 u0 Application Error: app.lawnchair.debug}; ResumedActivity=app.lawnchair.debug/app.lawnchair.LawnchairLauncher t114 (home relaunch after death)
+  crash dialog visible in qa-overview.png (both attempts)
+
+Task switch: NOT ACHIEVABLE — task card tap cannot be exercised because the launcher process dies while loading task thumbnails (qa-task-switch.png not produced: no task card list ever rendered).
+
+Root cause of failure (new, distinct from the four repaired signatures):
+  java.lang.NoSuchMethodError: No interface method getTaskSnapshot(IZ)Landroid/window/TaskSnapshot; in class Landroid/app/IActivityTaskManager;
+    at com.android.systemui.shared.system.ActivityManagerWrapper.getTaskThumbnail(ActivityManagerWrapper.java:140)
+  reached from TaskThumbnailCache (background fill x6 + RecentsView coroutine x5).
+  IActivityTaskManager.getTaskSnapshot(int,boolean) is absent on the API 37.0 image (same class of hidden API break as the four repaired ones, next surface).
+
+Screenshots: qa-overview.png (crash dialog after APP_SWITCH overview attempt).

@@ -17,24 +17,21 @@
 package com.android.launcher3.folder;
 
 import static com.android.launcher3.BubbleTextView.DISPLAY_FOLDER;
+import static com.android.launcher3.LauncherSettings.Favorites.DESKTOP_ICON_FLAG;
 import static com.android.launcher3.folder.ClippedFolderIconLayoutRule.ENTER_INDEX;
 import static com.android.launcher3.folder.ClippedFolderIconLayoutRule.EXIT_INDEX;
 import static com.android.launcher3.folder.ClippedFolderIconLayoutRule.MAX_NUM_ITEMS_IN_PREVIEW;
 import static com.android.launcher3.folder.FolderIcon.DROP_IN_ANIMATION_DURATION;
 import static com.android.launcher3.graphics.PreloadIconDrawable.newPendingIcon;
 import static com.android.launcher3.icons.BitmapInfo.FLAG_THEMED;
+import static com.android.launcher3.model.data.ItemInfoWithIcon.FLAG_SHOW_DOWNLOAD_PROGRESS_MASK;
 
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.ObjectAnimator;
-import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Path;
 import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
-import android.util.FloatProperty;
 import android.util.Log;
 import android.view.View;
 
@@ -42,17 +39,17 @@ import androidx.annotation.NonNull;
 import androidx.annotation.VisibleForTesting;
 
 import com.android.launcher3.BubbleTextView;
+import com.android.launcher3.Flags;
+import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.apppairs.AppPairIcon;
 import com.android.launcher3.apppairs.AppPairIconDrawingParams;
 import com.android.launcher3.apppairs.AppPairIconGraphic;
-import com.android.launcher3.graphics.PreloadIconDrawable;
 import com.android.launcher3.model.data.AppPairInfo;
 import com.android.launcher3.model.data.FolderInfo;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.ItemInfoWithIcon;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
-import com.android.launcher3.util.Themes;
 import com.android.launcher3.views.ActivityContext;
 
 import java.util.ArrayList;
@@ -66,20 +63,6 @@ import app.lawnchair.preferences.PreferenceManager;
  * {@link FolderIcon}.
  */
 public class PreviewItemManager {
-
-    private static final FloatProperty<PreviewItemManager> CURRENT_PAGE_ITEMS_TRANS_X = new FloatProperty<PreviewItemManager>(
-            "currentPageItemsTransX") {
-        @Override
-        public void setValue(PreviewItemManager manager, float v) {
-            manager.mCurrentPageItemsTransX = v;
-            manager.onParamsChanged();
-        }
-
-        @Override
-        public Float get(PreviewItemManager manager) {
-            return manager.mCurrentPageItemsTransX;
-        }
-    };
 
     private final Context mContext;
     private final FolderIcon mIcon;
@@ -98,32 +81,15 @@ public class PreviewItemManager {
 
     // These hold the first page preview items
     private ArrayList<PreviewItemDrawingParams> mFirstPageParams = new ArrayList<>();
-    // These hold the current page preview items. It is empty if the current page is
-    // the first page.
-    private ArrayList<PreviewItemDrawingParams> mCurrentPageParams = new ArrayList<>();
-
-    // We clip the preview items during the middle of the animation, so that it does
-    // not go outside
-    // of the visual shape. We stop clipping at this threshold, since the preview
-    // items ultimately
-    // do not get cropped in their resting state.
-    private final float mClipThreshold;
-    private float mCurrentPageItemsTransX = 0;
-    private boolean mShouldSlideInFirstPage;
 
     static final int INITIAL_ITEM_ANIMATION_DURATION = 350;
     private static final int FINAL_ITEM_ANIMATION_DURATION = 200;
-
-    private static final int SLIDE_IN_FIRST_PAGE_ANIMATION_DURATION_DELAY = 100;
-    private static final int SLIDE_IN_FIRST_PAGE_ANIMATION_DURATION = 300;
-    private static final int ITEM_SLIDE_IN_OUT_DISTANCE_PX = 200;
 
     public PreviewItemManager(FolderIcon icon) {
         mContext = icon.getContext();
         mIcon = icon;
         mIconSize = ActivityContext.lookupContext(
                 mContext).getDeviceProfile().folderChildIconSizePx;
-        mClipThreshold = Utilities.dpToPx(1f);
     }
 
     /**
@@ -166,9 +132,11 @@ public class PreviewItemManager {
 
             mIcon.mBackground.setup(mIcon.getContext(), mIcon.mActivity, mIcon, mTotalWidth,
                     mIcon.getPaddingTop());
-            mIcon.mPreviewLayoutRule.init(mIcon.mBackground.previewSize, mIntrinsicIconSize,
-                    Utilities.isRtl(mIcon.getResources()));
-
+            mIcon.mPreviewLayoutRule.init(
+                    mIcon.mBackground.previewSize, mIntrinsicIconSize,
+                    Utilities.isRtl(mIcon.getResources()),
+                    mIcon.mActivity.getDeviceProfile().numFolderColumns
+            );
             updatePreviewItems(false);
         }
     }
@@ -215,19 +183,8 @@ public class PreviewItemManager {
         // The items are drawn in coordinates relative to the preview offset
         PreviewBackground bg = mIcon.getFolderBackground();
         Path clipPath = bg.getClipPath();
-        float firstPageItemsTransX = 0;
-        if (mShouldSlideInFirstPage) {
-            PointF firstPageOffset = new PointF(bg.basePreviewOffsetX + mCurrentPageItemsTransX,
-                    bg.basePreviewOffsetY);
-            boolean shouldClip = mCurrentPageItemsTransX > mClipThreshold;
-            drawParams(canvas, mCurrentPageParams, firstPageOffset, shouldClip, clipPath);
-            firstPageItemsTransX = -ITEM_SLIDE_IN_OUT_DISTANCE_PX + mCurrentPageItemsTransX;
-        }
-
-        PointF firstPageOffset = new PointF(bg.basePreviewOffsetX + firstPageItemsTransX,
-                bg.basePreviewOffsetY);
-        boolean shouldClipFirstPage = firstPageItemsTransX < -mClipThreshold;
-        drawParams(canvas, mFirstPageParams, firstPageOffset, shouldClipFirstPage, clipPath);
+        PointF firstPageOffset = new PointF(bg.basePreviewOffsetX, bg.basePreviewOffsetY);
+        drawParams(canvas, mFirstPageParams, firstPageOffset, /* shouldClipPath */ false, clipPath);
         canvas.restoreToCount(saveCount);
     }
 
@@ -319,27 +276,12 @@ public class PreviewItemManager {
     }
 
     void onFolderClose(int currentPage) {
-        // If we are not closing on the first page, we animate the current page preview
-        // items
-        // out, and animate the first page preview items in.
-        mShouldSlideInFirstPage = currentPage != 0;
-        if (mShouldSlideInFirstPage) {
-            mCurrentPageItemsTransX = 0;
-            buildParamsForPage(currentPage, mCurrentPageParams, false);
-            onParamsChanged();
-
-            ValueAnimator slideAnimator = ObjectAnimator
-                    .ofFloat(this, CURRENT_PAGE_ITEMS_TRANS_X, 0, ITEM_SLIDE_IN_OUT_DISTANCE_PX);
-            slideAnimator.addListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    mCurrentPageParams.clear();
-                }
-            });
-            slideAnimator.setStartDelay(SLIDE_IN_FIRST_PAGE_ANIMATION_DURATION_DELAY);
-            slideAnimator.setDuration(SLIDE_IN_FIRST_PAGE_ANIMATION_DURATION);
-            slideAnimator.start();
+        // Snap back to the first-page preview immediately. The previous slide animation
+        // showed a solid preview background while icons rearranged for ~400ms after close.
+        if (currentPage != 0) {
+            updatePreviewItems(false);
         }
+        onParamsChanged();
     }
 
     void updatePreviewItems(boolean animate) {
@@ -351,13 +293,6 @@ public class PreviewItemManager {
     void updatePreviewItems(Predicate<ItemInfo> itemCheck) {
         boolean modified = false;
         for (PreviewItemDrawingParams param : mFirstPageParams) {
-            if (itemCheck.test(param.item)
-                    || (param.item instanceof AppPairInfo api && api.anyMatch(itemCheck))) {
-                setDrawable(param, param.item);
-                modified = true;
-            }
-        }
-        for (PreviewItemDrawingParams param : mCurrentPageParams) {
             if (itemCheck.test(param.item)
                     || (param.item instanceof AppPairInfo api && api.anyMatch(itemCheck))) {
                 setDrawable(param, param.item);
@@ -451,31 +386,61 @@ public class PreviewItemManager {
         p.anim = anim;
     }
 
+    /** Lawnchair: Find the correct folder size depending on which parent owned them 
+     * @return Icon size that's typically use for workspace or size that's for allapps page */
+    private int getChildIconSize() {
+        if (mIcon.isInAppDrawer()) {
+            return ActivityContext.lookupContext(mContext).getDeviceProfile().getAllAppsProfile().getIconSizePx();
+        }
+        return mIconSize;
+    }
+
     @VisibleForTesting
     public void setDrawable(PreviewItemDrawingParams p, ItemInfo item) {
+        // Lawnchair: Find the correct folder size depending on which parent owned them
+        int iconSize = getChildIconSize();
         if (item instanceof WorkspaceItemInfo wii) {
-            if (wii.hasPromiseIconUi() || (wii.runtimeStatusFlags
-                    & ItemInfoWithIcon.FLAG_SHOW_DOWNLOAD_PROGRESS_MASK) != 0) {
-                PreloadIconDrawable drawable = newPendingIcon(mContext, wii);
-                p.drawable = drawable;
+            if (isActivePendingIcon(wii)) {
+                p.drawable = newPendingIcon(mContext, wii);
             } else {
-                p.drawable = wii.newIcon(mContext,
-                        Themes.isThemedIconEnabled(mContext) ? FLAG_THEMED : 0);
+                p.drawable = wii.newIcon(mContext, FLAG_THEMED);
             }
-            p.drawable.setBounds(0, 0, mIconSize, mIconSize);
+            p.drawable.setBounds(0, 0, iconSize, iconSize);
         } else if (item instanceof AppPairInfo api) {
             AppPairIconDrawingParams appPairParams = new AppPairIconDrawingParams(mContext, DISPLAY_FOLDER);
             p.drawable = AppPairIconGraphic.composeDrawable(api, appPairParams);
-            p.drawable.setBounds(0, 0, mIconSize, mIconSize);
+            p.drawable.setBounds(0, 0, iconSize, iconSize);
         } else if (item instanceof ItemInfoWithIcon withIcon){
-            var isThemed = PreferenceManager.getInstance(mContext).getDrawerThemedIcons().get();
+            var isThemed = PreferenceManager.getInstance(mContext).getDrawerThemedIcons().get() ? FLAG_THEMED : 0;
             p.drawable = withIcon.newIcon(mContext, isThemed);
-            p.drawable.setBounds(0, 0, mIconSize, mIconSize);
+            p.drawable.setBounds(0, 0, iconSize, iconSize);
         }
 
         p.item = item;
         // Set the callback to FolderIcon as it is responsible to drawing the icon. The
         // callback will be released when the folder is opened.
         p.drawable.setCallback(mIcon);
+
+        // Verify high res
+        if (item instanceof ItemInfoWithIcon info
+                && info.getMatchingLookupFlag().isVisuallyLessThan(DESKTOP_ICON_FLAG)) {
+            LauncherAppState.getInstance(mContext).getIconCache().updateIconInBackground(
+                    newInfo -> {
+                        if (p.item == newInfo) {
+                            setDrawable(p, newInfo);
+                            mIcon.invalidate();
+                        }
+                    }, info, DESKTOP_ICON_FLAG);
+        }
+    }
+
+    /**
+     * Returns true if item is a Promise Icon or actively downloading, and the item is not an
+     * inactive archived app.
+     */
+    private boolean isActivePendingIcon(WorkspaceItemInfo item) {
+        return (item.hasPromiseIconUi()
+                || (item.runtimeStatusFlags & FLAG_SHOW_DOWNLOAD_PROGRESS_MASK) != 0)
+                && !(Flags.useNewIconForArchivedApps() && item.isInactiveArchive());
     }
 }

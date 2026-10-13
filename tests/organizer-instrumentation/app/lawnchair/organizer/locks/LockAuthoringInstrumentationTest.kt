@@ -52,7 +52,7 @@ class LockAuthoringInstrumentationTest {
             launcher.model.forceReload()
             val model = launcher.model
             val deadline = System.currentTimeMillis() + 5_000L
-            while (!model.isModelLoaded && System.currentTimeMillis() < deadline) {
+            while (!model.isModelLoaded() && System.currentTimeMillis() < deadline) {
                 Thread.sleep(50)
             }
         } finally {

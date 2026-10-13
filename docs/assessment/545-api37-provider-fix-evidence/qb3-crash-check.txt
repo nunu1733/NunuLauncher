@@ -1,0 +1,50 @@
+=== qb3 crash/oracle check — window: logcat -c → force-stop launcher+systemui → rebind → dump ===
+date: 2026-10-09 20:10:32 JST
+logcat file: qb3-bind-logcat.txt (    2741 lines)
+
+--- Oracle 1: six crash signatures ---
+  createInputConsumer : 0
+  ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX : 0
+  Resources\$NotFoundException : 0
+  NoClassDefFoundError : 0
+  getTaskSnapshot : 0
+  takeTaskSnapshot : 1
+  NoSuchMethodError (any): 0
+
+--- Oracle 2: three reflection failure markers ---
+  'TaskSnapshotManager reflection failed': 0
+  'TaskSnapshotManager takeTaskSnapshot reflection failed': 0
+  'TaskSnapshot.wrapToBitmap reflection failed': 0
+
+--- Oracle 3: AndroidRuntime FATAL for app.lawnchair* ---
+  count: 0
+  any FATAL EXCEPTION lines: 0
+
+--- Oracle 4: parcel exceptions (raw) ---
+  BadParcelableException: 2
+  'Bundle length is not aligned': 0
+  'No matching remote found to takeover': 0
+
+--- Oracle 4 scoped (AC-10e2 operative set per #557/#554) ---
+  'unread size: 8': 0
+
+--- Oracle 5: bind state ---
+  'disabling recents': 0
+2026-10-09 20:09:53.722   919   919 D LauncherProxyService: Launcher proxy service connected
+2026-10-09 20:09:53.724   919   919 D LauncherProxyService: LauncherProxyService connected, initializing launcher proxy
+2026-10-09 20:09:53.821  3660  3660 D TISBindHelper: TIS service connected
+
+--- BadParcelableException raw classification (if any) ---
+  2026-10-09 20:09:53.823   919  3654 W Binder  : android.os.BadParcelableException: Allocation of size 6357068 is above allowed limit of 1MB
+  2026-10-09 20:09:53.825  3660  3688 W Binder  : android.os.BadParcelableException: Parcel data not fully consumed, unread size: 16
+
+--- takeTaskSnapshot:1 annotation ---
+  The single 'takeTaskSnapshot' line is WindowManager WARNING 'takeTaskSnapshot: taskId=157 not found or not
+  visible' (system_server, 20:09:55) — a framework task-lifecycle notice for the previous leg's task, NOT the
+  'NoSuchMethodError ... takeTaskSnapshot' crash signature. NoSuchMethodError (any) = 0. Oracle 1 verdict: PASS.
+
+--- BadParcelableException raw:2 annotation ---
+  Same pre-existing vendor-skew pair as qa3 and all prior runs: system_server TransitionFilter 1MB-overrun
+  (magic 6357068 — IDENTICAL value to prior qb run @ qb-bind-logcat.txt) + launcher IPipAnimationListener
+  'unread size: 16'. Binder-warning level, no process death. Scoped oracle (unread size: 8 / Bundle misaligned /
+  no-remote-takeover) = 0/0/0. Oracle 4 verdict: PASS.

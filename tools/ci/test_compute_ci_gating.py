@@ -175,6 +175,33 @@ class GatingTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             compute_ci_gating.compute(env)
 
+    def test_unknown_lists_fail_closed_to_full(self):
+        # Rebase-scale PR: paths-filter file lists could not be handed over
+        # through env (runner per-var size limit). The gate must fail closed
+        # to the full portfolio rather than silently skipping lanes.
+        env = base_env()
+        env.pop("GATING_SOURCE_FILES")
+        env["GATING_LISTS_UNKNOWN"] = "true"
+        env["GATING_SOURCE"] = "true"
+        result = compute_ci_gating.compute(env)
+        self.assertTrue(result["full"])
+        self.assertTrue(result["permanent_run"])
+        self.assertTrue(result["instrumentation_enabled"])
+        self.assertEqual(result["unmapped_count"], -1)
+        self.assertEqual(result["unmapped_sample"], [])
+
+    def test_unknown_lists_without_source_stays_not_full(self):
+        # Booleans are still available in the fallback path; a docs-only PR
+        # (source=false) must not be escalated to the full portfolio just
+        # because the file lists are unknown.
+        env = base_env()
+        env.pop("GATING_SOURCE_FILES")
+        env["GATING_LISTS_UNKNOWN"] = "true"
+        result = compute_ci_gating.compute(env)
+        self.assertFalse(result["full"])
+        self.assertFalse(result["permanent_run"])
+        self.assertEqual(result["unmapped_count"], -1)
+
     def test_env_is_not_mutated(self):
         env = base_env()
         snapshot = copy.deepcopy(env)

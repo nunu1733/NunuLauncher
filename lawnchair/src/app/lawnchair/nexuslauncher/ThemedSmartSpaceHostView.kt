@@ -89,7 +89,10 @@ class ThemedSmartSpaceHostView(context: Context) : SmartSpaceHostView(context) {
         return if (!bitmap.isRecycled) {
             val newBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(newBitmap)
-            shadowGenerator.recreateIcon(bitmap, canvas)
+            // Rebase Phase 2 adapt (#532): ShadowGenerator.recreateIcon was removed; the
+            // split is now drawShadow + an explicit icon draw.
+            shadowGenerator.drawShadow(bitmap, canvas)
+            canvas.drawBitmap(bitmap, 0f, 0f, null)
             newBitmap
         } else {
             bitmap

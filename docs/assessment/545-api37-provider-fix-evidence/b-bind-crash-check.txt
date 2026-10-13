@@ -1,0 +1,35 @@
+=== matrix (b) bind crash-check greps (logcat window: b-bind-logcat.txt, boot @20:44) ===
+date: 2026-10-07 20:47:49
+
+--- [1] NoSuchMethodError real hits (expect 0):
+       0
+
+--- [2] launcher crash causes (unique):
+10-07 20:44:13.078 E/AndroidRuntime( 1205): java.lang.RuntimeException: Unable to create application app.lawnchair.LawnchairApp
+10-07 20:44:21.255 E/AndroidRuntime( 1826): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+10-07 20:46:53.570 E/AndroidRuntime( 3670): java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type Landroid/window/DesktopExperienceFlags; in class Landroid/window/DesktopExperienceFlags; or its superclasses (declaration of 'android.window.DesktopExperienceFlags' appears in /system/framework/framework.jar!classes4.dex)
+
+--- [3] 'disabling recents' count (expect 0 = gate open, compatible=true path):
+0
+
+--- [4] quickstep_incompatible sheet markers (expect 0):
+0
+
+--- [5] compat degrade markers (expect 0):
+0
+
+--- [6] swipe-up input consumer monitor proof (launcher process):
+
+--- [7] LauncherProxyService final state:
+      isConnected=false
+      mIsEnabled=true
+      mBound=true
+      mConnectionBackoffAttempts=8
+      mIsEnabled=true
+        mLastReportedMergedConfiguration={mGlobalConfig={1.0 310mcc260mnc [en_US] ldltr sw617dp w617dp h1385dp 280dpi lrg long compactNeeded port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2424) mAppBounds=Rect(0, 0 - 1080, 2424) mMaxBounds=Rect(0, 0 - 1080, 2424) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.24 fontWeightAdjustment=0} mOverrideConfig={1.0 310mcc260mnc [en_US] ldltr sw617dp w617dp h1385dp 280dpi lrg long compactNeeded port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2424) mAppBounds=Rect(0, 0 - 1080, 2424) mMaxBounds=Rect(0, 0 - 1080, 2424) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.24 fontWeightAdjustment=0}}
+        mLastConfigurationFromResources={1.0 310mcc260mnc [en_US] ldltr sw617dp w617dp h1385dp 280dpi lrg long compactNeeded port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2424) mAppBounds=Rect(0, 0 - 1080, 2424) mMaxBounds=Rect(0, 0 - 1080, 2424) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} as.2 s.8 fontWeightAdjustment=0}
+
+--- NOTE on [2]: 'Unable to create application app.lawnchair.LawnchairApp' (PID 1205) is the
+    pre-unlock CE-storage Application onCreate crash already documented as a secondary signature
+    in #524 (boot-timing dependent, unrelated to #545). The recurring crash is the same
+    ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX NoSuchFieldError as matrix (a).

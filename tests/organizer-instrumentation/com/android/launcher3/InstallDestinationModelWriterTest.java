@@ -8,6 +8,7 @@ package com.android.launcher3;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.ContentValues;
@@ -19,9 +20,7 @@ import android.os.Process;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.SmallTest;
-import androidx.test.platform.app.InstrumentationRegistry;
 
-import com.android.launcher3.AppFilter;
 import com.android.launcher3.InvariantDeviceProfile;
 import com.android.launcher3.LauncherSettings.Favorites;
 import com.android.launcher3.celllayout.CellPosMapper;
@@ -33,14 +32,15 @@ import com.android.launcher3.model.ModelDbController;
 import com.android.launcher3.model.ModelWriter;
 import com.android.launcher3.model.data.FolderInfo;
 import com.android.launcher3.model.data.ItemInfo;
+import com.android.launcher3.model.data.WorkspaceData;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
-import com.android.launcher3.util.PackageManagerHelper;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,22 +57,6 @@ public class InstallDestinationModelWriterTest {
     private TestDbController mController;
     private BgDataModel mBgDataModel;
     private ModelWriter mWriter;
-
-    /** Routes ModelWriter to the isolated test DB instead of the real one. */
-    static class TestLauncherModel extends LauncherModel {
-        private final ModelDbController mTestController;
-
-        TestLauncherModel(Context context, LauncherAppState app, ModelDbController controller) {
-            super(context, app, app.getIconCache(), new AppFilter(context),
-                    new PackageManagerHelper(context), false);
-            mTestController = controller;
-        }
-
-        @Override
-        public ModelDbController getModelDbController() {
-            return mTestController;
-        }
-    }
 
     private static class TestDbController extends ModelDbController {
         private final Context mContext;
@@ -94,13 +78,11 @@ public class InstallDestinationModelWriterTest {
         mContext.deleteDatabase(TEST_DB);
         mController = new TestDbController(mContext);
         mController.getDb();
-        mBgDataModel = new BgDataModel();
-        // LauncherAppState asserts UI thread and registers process callbacks;
-        // build it once on the main thread like a real launch would.
-        final AtomicReference<LauncherAppState> appRef = new AtomicReference<>();
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(
-                () -> appRef.set(LauncherAppState.getInstance(mContext)));
-        TestLauncherModel model = new TestLauncherModel(mContext, appRef.get(), mController);
+        mBgDataModel = ModelWriterTestSupport.createBgDataModel(mContext);
+        // Issue #532 rebase: the anchor LauncherModel is final and injects its
+        // DB controller, so the model is built with the isolated TestDbController.
+        LauncherModel model = ModelWriterTestSupport.createIsolatedModel(
+                mContext, mController, mBgDataModel);
         mWriter = new ModelWriter(mContext, model, mBgDataModel, /* verifyChanges= */ false,
                 CellPosMapper.DEFAULT, /* owner= */ null);
     }
@@ -141,9 +123,8 @@ public class InstallDestinationModelWriterTest {
         folder.spanX = 1;
         folder.spanY = 1;
         folder.user = Process.myUserHandle();
-        mBgDataModel.itemsIdMap.put(folder.id, folder);
-        mBgDataModel.collections.put(folder.id, folder);
-        mBgDataModel.workspaceItems.add(folder);
+        // Issue #532 rebase: the anchor model carries every item in itemsIdMap.
+        mBgDataModel.addItem(mContext, folder, null);
         insertRow(id, Favorites.CONTAINER_DESKTOP, screenId, cellX, cellY, 0,
                 Favorites.ITEM_TYPE_FOLDER);
         return folder;
@@ -162,10 +143,9 @@ public class InstallDestinationModelWriterTest {
         item.spanY = 1;
         item.rank = rank;
         item.user = Process.myUserHandle();
-        mBgDataModel.itemsIdMap.put(item.id, item);
-        if (container == Favorites.CONTAINER_DESKTOP || container == Favorites.CONTAINER_HOTSEAT) {
-            mBgDataModel.workspaceItems.add(item);
-        }
+        // Issue #532 rebase: the anchor model carries every item in itemsIdMap;
+        // the container field owns the workspace-surface membership.
+        mBgDataModel.addItem(mContext, item, null);
         insertRow(id, container, screenId, cellX, cellY, rank, Favorites.ITEM_TYPE_APPLICATION);
         return item;
     }
@@ -314,7 +294,8 @@ public class InstallDestinationModelWriterTest {
                 screenId == 0 && result.get()[2] == 0 && result.get()[3] == 1);
         assertEquals(Favorites.CONTAINER_DESKTOP, queryInt(payload.id, Favorites.CONTAINER));
         assertTrue(mBgDataModel.itemsIdMap.get(payload.id) == payload);
-        assertTrue(mBgDataModel.workspaceItems.contains(payload));
+        // Issue #532 rebase: workspace-surface membership is the container field.
+        assertEquals(Favorites.CONTAINER_DESKTOP, payload.container);
     }
 
     // --- ADR-0015 required-test row 1: defer → folder deleted → replan ---
@@ -355,7 +336,7 @@ public class InstallDestinationModelWriterTest {
                     // Stage 2 inside admission, after the lease released: the
                     // "organizer apply" removed the designated folder, so the
                     // same pure plan re-runs to a valid upstream-default plan.
-                    if (mBgDataModel.collections.get(510) == null) {
+                    if (mBgDataModel.itemsIdMap.get(510) == null) {
                         return DirectEditContract.DestinationDecision.upstreamDefault(
                                 DirectEditContract.DEST_FOLDER_MISSING);
                     }
@@ -382,9 +363,10 @@ public class InstallDestinationModelWriterTest {
         // is held. Raw SQL on purpose: a controller delete would take the
         // tokenless MODEL_WRITER lane and queue behind our own deferred task.
         mController.getDb().delete(Favorites.TABLE_NAME, Favorites._ID + "=" + 510, null);
-        mBgDataModel.collections.remove(510);
-        mBgDataModel.itemsIdMap.remove(510);
-        mBgDataModel.workspaceItems.remove(folder);
+        // Issue #532 rebase: the anchor live model carries the folder in
+        // itemsIdMap (the collections/workspaceItems indexes are gone).
+        ((WorkspaceData.MutableWorkspaceData) mBgDataModel.itemsIdMap).removeItems(
+                Collections.singletonList(folder), null);
 
         lease.get().close();
         lease.set(null);
@@ -467,6 +449,6 @@ public class InstallDestinationModelWriterTest {
         assertEquals(DirectEditContract.DEST_SNAPSHOT_INVALID, failure.get());
         assertEquals("reject must not write", 1, countRows()); // folder only
         assertEquals("payload id must stay unallocated", ItemInfo.NO_ID, payload.id);
-        assertFalse(mBgDataModel.itemsIdMap.containsKey(payload.id));
+        assertNull("payload must not join the live model", mBgDataModel.itemsIdMap.get(payload.id));
     }
 }

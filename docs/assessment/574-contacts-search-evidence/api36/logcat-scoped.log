@@ -1,0 +1,8 @@
+# Minimized evidence window (api36 tap). Original: 850 lines, broad debug buffer 21:04-21:12.
+# Filter: retained ONLY bounded tap window 21:12:14-21:12:41 showing QuickContactActivity as topActivity from app.lawnchair.debug task, plus close.
+# Excluded: settings/PreferenceActivity transitions, AccessibilityNodeInfoDumper noise, TestRunner unit-test lines, user packages, prior query strings.
+# No ACTION_VIEW START line captured in this scoped file; no ContactSearch/Invalid column exceptions in inspected window (known filter limitation).
+10-11 21:12:14.124 V/WindowManagerShell(  921): Transition requested (#65) topActivity=ComponentInfo{com.google.android.contacts/com.google.android.apps.contacts.quickcontact.QuickContactActivity} realActivity=ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher} [redacted: full transition blob removed]
+10-11 21:12:19.374 V/WindowManagerShell(  921): Transition requested (#67) topActivity=ComponentInfo{com.google.android.contacts/com.google.android.apps.contacts.quickcontact.QuickContactActivity} realActivity=ComponentInfo{app.lawnchair.debug/app.lawnchair.LawnchairLauncher} [redacted: full transition blob removed]
+10-11 21:12:41.246 V/WindowManagerShell(  921): Transition CLOSE QuickContactActivity [redacted: full transition blob removed]
+# End of evidence window. Invalid column count in inspected window: 0. Not proof for whole app. UI photos are primary contract.

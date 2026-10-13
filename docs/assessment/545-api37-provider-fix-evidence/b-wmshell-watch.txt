@@ -1,0 +1,6 @@
+=== matrix (b) wmshell watch — PipInputConsumer / wmshell-origin NoSuchMethodError ===
+--- 'PipInputConsumer' hits (expect 0):
+0
+--- NoSuchMethodError real hits (expect 0):
+       0
+VERDICT: clean

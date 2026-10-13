@@ -45,4 +45,5 @@ jobs:
           python3 tools/repo-contract/validate_high_risk_evidence.py \
             --repo '${{ github.repository }}' \
             --pr-number '${{ github.event.pull_request.number }}' \
-            --head-sha '${{ github.event.pull_request.head.sha }}'
+            --head-sha '${{ github.event.pull_request.head.sha }}' \
+            --base-sha '${{ github.event.pull_request.base.sha }}'

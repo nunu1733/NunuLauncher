@@ -36,6 +36,7 @@ import app.lawnchair.organizer.integration.CanonicalCaptureReadResult
 import app.lawnchair.organizer.integration.CaptureFailureObserver
 import app.lawnchair.organizer.integration.LayoutWriterCanonicalCaptureSource
 import app.lawnchair.preferences.PreferenceManager
+import com.android.launcher3.GridType
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
@@ -93,7 +94,7 @@ abstract class NovaRestoreCaptureTestBase {
     // it must not be used for generation-level causal attribution.
     private val windowBindingFirings = java.util.concurrent.atomic.AtomicInteger(0)
     private val modelCallbacks = object : BgDataModel.Callbacks {
-        override fun finishBindingItems(pagesBoundFirst: IntSet) {
+        override fun bindCompleteModel(itemIdMap: com.android.launcher3.model.data.WorkspaceData, isBindingSync: Boolean) {
             windowBindingFirings.incrementAndGet()
             reloadLatch?.countDown()
         }
@@ -170,7 +171,7 @@ abstract class NovaRestoreCaptureTestBase {
     /**
      * Investigation settle heuristic (not the contract-grade CI-AC-02 oracle,
      * and not a generation identity): reached when a `finishBindingItems`
-     * fired after the restore dispatch and [LauncherModel.isModelLoaded] then
+     * fired after the restore dispatch and [LauncherModel.isModelLoaded()] then
      * holds — the model is loaded with no active loader at the observation
      * instant. Bind firings are not completions and the heuristic carries no
      * generation identity; I-3 must not use it for generation-level causal
@@ -207,13 +208,13 @@ abstract class NovaRestoreCaptureTestBase {
 
     protected fun awaitModelLoaded(label: String) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
-        while (!launcher.model.isModelLoaded && System.nanoTime() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.nanoTime() < deadline) {
             Thread.sleep(25L)
         }
         assertTrue("$label: model must report loaded at the barrier", isModelLoaded())
     }
 
-    protected fun isModelLoaded(): Boolean = launcher.model.isModelLoaded
+    protected fun isModelLoaded(): Boolean = launcher.model.isModelLoaded()
 
     /** Capture through the production composer source, recording failure identities. */
     protected fun captureThroughProductionSource(
@@ -418,13 +419,21 @@ abstract class NovaRestoreCaptureTestBase {
             prefs.workspaceRows.set(originalGrid.numRows)
             prefs.hotseatColumns.set(originalGrid.numHotseatColumns)
         }
+        // Issue #532 rebase: anchor DeviceGridState carries the anchor gridType
+        // (same convention as the G2-repaired Java grid-migration oracles).
         DeviceGridState(
             originalGrid.numColumns,
             originalGrid.numRows,
             originalGrid.numHotseatColumns,
             InvariantDeviceProfile.TYPE_PHONE,
             originalGrid.dbFile,
+            GridType.GRID_TYPE_NON_ONE_GRID,
         ).writeToPrefs(context, true)
+        // Issue #532 rebase: bind the class-original grid through the fork's exact
+        // DBGridInfo binding (Issue #168 applyGridInfo bridge, re-ported on the anchor
+        // IDP). The former setCurrentGrid(ceilingName) + onConfigChanged adaptation
+        // replaced a grid that no enabled preset declares with the ceiling preset's
+        // dimensions, splitting the IDP dbFile binding from the grid-state files.
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             InvariantDeviceProfile.INSTANCE.get(context).applyGridInfo(context, originalGrid)
         }
@@ -477,10 +486,10 @@ abstract class NovaRestoreCaptureTestBase {
         }
         check(latch.await(30, TimeUnit.SECONDS)) { "$label: launcher model reload did not finish" }
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
-        while (!launcher.model.isModelLoaded && System.nanoTime() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.nanoTime() < deadline) {
             Thread.sleep(25L)
         }
-        check(launcher.model.isModelLoaded) { "$label: launcher model did not load" }
+        check(launcher.model.isModelLoaded()) { "$label: launcher model did not load" }
     }
 
     protected companion object {

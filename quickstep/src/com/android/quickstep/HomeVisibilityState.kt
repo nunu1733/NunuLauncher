@@ -16,8 +16,15 @@
 
 package com.android.quickstep
 
+import android.os.BadParcelableException
+import android.os.Build
+import android.os.IBinder
+import android.os.Parcel
 import android.os.RemoteException
 import android.util.Log
+import android.view.InsetsState
+import android.view.WindowInsets
+import com.android.launcher3.Utilities
 import com.android.launcher3.config.FeatureFlags
 import com.android.launcher3.util.Executors
 import com.android.wm.shell.shared.IHomeTransitionListener.Stub
@@ -28,6 +35,8 @@ class HomeVisibilityState {
 
     var isHomeVisible = true
         private set
+
+    @Volatile var navbarInsetPosition = 0
 
     private var listeners = mutableSetOf<VisibilityChangeListener>()
 
@@ -40,11 +49,63 @@ class HomeVisibilityState {
         try {
             transitions?.setHomeTransitionListener(
                 object : Stub() {
-                    override fun onHomeVisibilityChanged(isVisible: Boolean) {
-                        Executors.MAIN_EXECUTOR.execute {
-                            isHomeVisible = isVisible
-                            listeners.forEach { it.onHomeVisibilityChanged(isVisible) }
+                    override fun onTransact(
+                        code: Int,
+                        data: Parcel,
+                        reply: Parcel?,
+                        flags: Int,
+                    ): Boolean {
+                        // Issue #554: Android 17 adds keyguard/desktop flags after visibility.
+                        // Consume them without changing the existing visibility semantics.
+                        if (Build.VERSION.SDK_INT >= 37
+                                && code == IBinder.FIRST_CALL_TRANSACTION) {
+                            data.enforceInterface("com.android.wm.shell.shared.IHomeTransitionListener")
+                            // enforceNoDataAvail only detects surplus, not missing booleans.
+                            if (data.dataAvail() < 3 * Int.SIZE_BYTES) {
+                                throw BadParcelableException("Incomplete home visibility callback")
+                            }
+                            val isVisible = data.readBoolean()
+                            data.readBoolean() // keyguardGoingAwayOrWaking
+                            data.readBoolean() // behindDesktop
+                            data.enforceNoDataAvail()
+                            onHomeVisibilityChanged(isVisible)
+                            return true
                         }
+                        return super.onTransact(code, data, reply, flags)
+                    }
+
+                    override fun onHomeVisibilityChanged(isVisible: Boolean) {
+                        Utilities.postAsyncCallback(Executors.MAIN_EXECUTOR.handler) {
+                            isHomeVisible = isVisible
+                            val copiedListeners = listeners.toSet()
+                            copiedListeners.forEach { it.onHomeVisibilityChanged(isVisible) }
+                        }
+                    }
+
+                    override fun onDisplayInsetsChanged(insetsState: InsetsState) {
+                        val displayFrame = insetsState.displayFrame
+                        val bottomInset =
+                            if (Utilities.ATLEAST_BAKLAVA_1) {
+                                insetsState
+                                    .calculateInsets(
+                                        displayFrame,
+                                        displayFrame,
+                                        WindowInsets.Type.navigationBars(),
+                                        false,
+                                    )
+                                    .bottom
+                            } else {
+                                // pE-TODO(QuickSwitch-Baklava): Investigate
+                                val method = InsetsState::class.java.getMethod(
+                                    "calculateInsets",
+                                    android.graphics.Rect::class.java,
+                                    Integer.TYPE,
+                                    java.lang.Boolean.TYPE
+                                )
+                                val insets = method.invoke(insetsState, displayFrame, WindowInsets.Type.navigationBars(), false) as android.graphics.Insets
+                                insets.bottom
+                            }
+                        navbarInsetPosition = displayFrame.bottom - bottomInset
                     }
                 }
             )

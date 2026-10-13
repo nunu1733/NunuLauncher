@@ -28,8 +28,10 @@ import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.TargetKey
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.model.BgDataModel
+import com.android.launcher3.model.data.FolderInfo
 import com.android.launcher3.model.data.ItemInfo
 import com.android.launcher3.model.data.LauncherAppWidgetInfo
+import com.android.launcher3.model.data.PredictedContainerInfo
 import com.android.launcher3.model.data.WorkspaceItemInfo
 import com.android.launcher3.pm.UserCache
 
@@ -120,21 +122,33 @@ internal object ModelProjectionCodec {
 
     private fun capture(bgDataModel: BgDataModel, context: Context): ModelSnapshot {
         val userCache = UserCache.INSTANCE.get(context)
+        // Rebase Phase 2 adapt (Issue #532 S2b): anchor BgDataModel exposes the
+        // workspace through the WorkspaceData id map (itemsIdMap) and fixed
+        // containers through extraItems. Folders (collections) are FolderInfo
+        // entries reachable from itemsIdMap; their children come from
+        // FolderInfo.getContents().
+        //
+        // Issue #532 G5: anchor dynamic containers are excluded here. The
+        // anchor loader merges QuickstepModelDelegate.loadAndAddExtraModelItems
+        // into itemsIdMap on every load; those PredictedContainerInfo entries
+        // are never persisted (onAddToDatabase throws) and their itemType stays
+        // the ItemInfo default (0 = ITEM_TYPE_APPLICATION), so projecting them
+        // both crashed the legacy launch-identity cast and — without it — would
+        // never equal the DB leg, which persists no such rows. Exclusion mirrors
+        // LayoutState.projectedToModelVerifiable, which drops non-persistent
+        // refs so both verification legs compare like with like (Issue #152).
         val allInfos = ArrayList<ItemInfo>()
         synchronized(bgDataModel) {
-            allInfos += bgDataModel.workspaceItems
-            allInfos += bgDataModel.appWidgets
-            for (index in 0 until bgDataModel.collections.size()) {
-                allInfos += bgDataModel.collections.valueAt(index)
-                allInfos += bgDataModel.collections.valueAt(index).getContents()
+            bgDataModel.itemsIdMap.forEach { if (it !is PredictedContainerInfo) allInfos += it }
+            bgDataModel.extraItems.forEach { fixedContainer ->
+                fixedContainer.items.forEach { if (it !is PredictedContainerInfo) allInfos += it }
             }
         }
         val kindById = HashMap<Long, Int>()
         allInfos.forEach { kindById[it.id.toLong()] = it.itemType }
         val membersByParent = HashMap<Long, List<ItemInfo>>()
-        for (index in 0 until bgDataModel.collections.size()) {
-            val collection = bgDataModel.collections.valueAt(index)
-            membersByParent[collection.id.toLong()] = collection.getContents().sortedBy { it.rank }
+        for (folder in allInfos.filterIsInstance<FolderInfo>()) {
+            membersByParent[folder.id.toLong()] = folder.getContents().sortedBy { it.rank }
         }
         val seen = HashSet<Long>()
         val items = allInfos.mapNotNull { info ->

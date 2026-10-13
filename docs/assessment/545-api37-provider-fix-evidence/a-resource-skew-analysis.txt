@@ -1,0 +1,68 @@
+=== matrix (a): pre-existing environment breakage analysis — 16-dev stack (compileSdk 37.2) vs API 37.0 emulator image ===
+recorded: 2026-10-07, session of the #545 runtime verification matrix
+
+SYMPTOM 1 (at native density 420, sw411dp): launcher process crashes at provider bind with
+  android.content.res.Resources$NotFoundException: Resource ID #0x7f0707de
+  at TaskbarStashController.<init>(TaskbarStashController.java:321)
+ROOT CAUSE:
+  - 0x7f0707de = dimen/taskbar_phone_size, whose value in the built APK is a baked framework
+    reference @0x01050283.
+  - The APK was resource-linked against compileSdk android-37.2 (build.gradle compileSdk
+    release(37){minorApiLevel=2}), where 0x01050283 = android:dimen/navigation_bar_frame_height.
+  - The emulator image (API 37.0) resource table has navigation_bar_frame_height at 0x0105027b,
+    and 0x01050283 = android:dimen/navigation_bar_height_portrait, which has NO default-config
+    value (only sw600dp/sw720dp) -> NotFoundException on a phone.
+  - Accommodation tested and REJECTED: RRO cannot ADD a config bucket to an existing target entry
+    (overlay declaring dimen/navigation_bar_height_portrait default 48dp booted enabled but
+    `cmd overlay lookup android:dimen/navigation_bar_height_portrait` failed: config not added).
+  - Accommodation APPLIED: `wm density 280` (override density; sw = 1080/(280/160) = 617 >= 600).
+    DeviceProfile becomes isTablet -> isPhoneMode() false -> the taskbar_phone_size branch is not
+    read; navigation_bar_height_portrait also resolves natively at sw600dp. Reversible system
+    setting on the pinned AVD; no source or APK change.
+
+SYMPTOM 2 (at density 280; after symptom 1 is bypassed): launcher process crashes at provider bind with
+  java.lang.NoSuchFieldError: No field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX of type
+  Landroid/window/DesktopExperienceFlags; (declaration appears in /system/framework/framework.jar!classes4.dex)
+  at TaskbarRecentAppsController.<init>(TaskbarRecentAppsController.kt:69)
+    <- TaskbarActivityContext.<init>:383 <- TaskbarManagerImpl.createTaskbarActivityContext:1407
+    <- recreateTaskbarForDisplay:838 <- recreateTaskbars:791 <- onUserUnlocked:668
+    <- TouchInteractionService.onUserUnlocked:889
+ROOT CAUSE:
+  - The read is gated by Utilities.ATLEAST_BAKLAVA_1 = SDK_INT>=BAKLAVA(36) && SDK_INT_FULL>=3600001
+    (src/com/android/launcher3/Utilities.java:168). On the API 37.0 image SDK_INT_FULL=3700000
+    (>= 3600001) so the read executes; the field does not exist in the 37.0 image framework.jar
+    (verified by dexdump string search: absent from all classes*.dex of the image's framework.jar;
+    the runtime NoSuchFieldError message itself confirms absence). The field family is minor-level
+    37.1/37.2 API surface that the 16-dev stack (compiled against framework-16.jar from AOSP 16-dev
+    + compileSdk 37.2) references.
+  - On the API 36 image (emulator-5556) SDK_INT_FULL=3600000 < 3600001 -> ATLEAST_BAKLAVA_1=false ->
+    the read is skipped. This is exactly why #524 leg (e) (API 36, same stack, same priv-app method)
+    passed its provider matrix while API 37 legs crashed earlier at registerInputConsumer:143 and
+    never reached this line.
+  - The taskbar creation path is forced by FeatureFlags.ENABLE_TASKBAR_NAVBAR_UNIFICATION (compile-
+    time constant !FeatureFlags.isPhone(); empirically true on this image at runtime) combined with
+    recreateTaskbarForDisplay falling through to createTaskbarActivityContext whenever
+    isTaskbarEnabled (UNIFICATION || dp.isTaskbarPresent) && displayExists. No runtime switch
+    (navigation mode, taskbar-on-phone preference, aconfig flag, RRO) prevents the creation.
+  - NOT FIXABLE without rebuilding the launcher against the image's API surface (forbidden: this
+    matrix uses prebuilt sha256-pinned APKs) or modifying the image (out of scope). The #545 change
+    does not touch this path (unregister/register of the input consumer only).
+
+SCOPE CONSEQUENCE FOR THE MATRIX:
+  - matrix (a)/(b) on the API 37.0 image: compat-fix seam oracles PASS (no #524 signature,
+    registerInputConsumer completes, input consumer monitor+receiver created); bind-completion
+    oracles (isConnected=true, overview, task switch, G3 shell->launcher transitions) are
+    UNREACHABLE because the launcher process dies at onUserUnlocked:889 on every bind retry.
+  - matrix (e) (API 36 image) and matrix (f) (stock, no provider bind -> TouchInteractionService
+    never created -> taskbar path never runs) are unaffected by this breakage.
+
+KEY FACTS (for the record):
+  - android-37.2 platform resource table: 0x01050283 = navigation_bar_frame_height (aapt2 dump
+    ~/Library/Android/sdk/platforms/android-37.2/android.jar)
+  - API 37.0 image framework-res.apk: 0x01050283 = navigation_bar_height_portrait (aapt2 dump of
+    pulled /system/framework/framework-res.apk; also android-37.0 platform matches)
+  - android-36.1 platform: 0x01050283 = notification_2025_action_list_min_height (exists, 10dp ->
+    silently mis-resolves on the API 36 image; harmless for the oracles, #524 leg (e) passed under
+    the same mis-resolution)
+  - ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX string: absent from both the 37.0 and 36 images'
+    framework.jar; reachable only on the 37.0 image because ATLEAST_BAKLAVA_1 gates the read.

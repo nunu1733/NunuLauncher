@@ -20,6 +20,7 @@ import static com.android.launcher3.logging.StatsLogManager.LauncherEvent.LAUNCH
 import android.content.Context;
 import android.content.res.Configuration;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -32,13 +33,16 @@ import com.android.launcher3.views.ActivityContext;
 
 import app.lawnchair.font.FontManager;
 import app.lawnchair.theme.color.tokens.ColorTokens;
+import app.lawnchair.theme.drawable.DrawableTokens;
 
 /**
  * Work profile toggle switch shown at the bottom of AllApps work tab
  */
 public class WorkPausedCard extends LinearLayout implements View.OnClickListener {
 
+    private static final String TAG = "WorkPausedCard";
     private final ActivityContext mActivityContext;
+    private Button mBtn;
 
     public WorkPausedCard(Context context) {
         this(context, null, 0);
@@ -56,7 +60,29 @@ public class WorkPausedCard extends LinearLayout implements View.OnClickListener
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
+        mBtn = findViewById(R.id.enable_work_apps);
+        mBtn.setOnClickListener(this);
+
         setWorkProfilePausedResources();
+        updateStringFromCache();
+    }
+
+    public void updateStringFromCache() {
+        StringCache cache = mActivityContext.getStringCache();
+        if (cache != null) {
+            if (cache.workProfilePausedTitle != null) {
+                TextView title = findViewById(R.id.work_apps_paused_title);
+                title.setText(cache.workProfilePausedTitle);
+            }
+            if (cache.workProfilePausedDescription != null) {
+                TextView body = findViewById(R.id.work_apps_paused_content);
+                body.setText(cache.workProfilePausedDescription);
+            }
+            if (cache.workProfileEnableButton != null) {
+                Button button = findViewById(R.id.enable_work_apps);
+                button.setText(cache.workProfileEnableButton);
+            }
+        }
     }
 
     public void setWorkProfilePausedResources() {
@@ -68,17 +94,19 @@ public class WorkPausedCard extends LinearLayout implements View.OnClickListener
         TextView body = findViewById(R.id.work_apps_paused_content);
         body.setText(R.string.work_apps_paused_body);
         body.setTextColor(ColorTokens.TextColorPrimary.resolveColor(getContext()));
-        FontManager.INSTANCE.get(getContext()).setCustomFont(title, R.id.font_body_medium);
+        FontManager.INSTANCE.get(getContext()).setCustomFont(body, R.id.font_body_medium);
 
         Button button = findViewById(R.id.enable_work_apps);
         button.setText(R.string.work_apps_enable_btn_text);
-        FontManager.INSTANCE.get(getContext()).setCustomFont(title, R.id.font_button);
+        button.setBackground(DrawableTokens.WorkAppsPausedActionButton.resolve(getContext()));
+        button.setTextColor(ColorTokens.TextColorPrimary.resolveColor(getContext()));
+        FontManager.INSTANCE.get(getContext()).setCustomFont(button, R.id.font_button);
         button.setOnClickListener(this);
     }
 
     @Override
     public void onClick(View view) {
-        setEnabled(false);
+        Log.d(TAG, "WorkPausedCard clicked.");
         mActivityContext.getAppsView().getWorkManager().setWorkProfileEnabled(true);
         mActivityContext.getStatsLogManager().logger().log(LAUNCHER_TURN_ON_WORK_APPS_TAP);
     }

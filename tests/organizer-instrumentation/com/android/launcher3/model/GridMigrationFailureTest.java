@@ -10,6 +10,7 @@ import static org.junit.Assert.fail;
 import android.content.Context;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import com.android.launcher3.GridType;
 import com.android.launcher3.InvariantDeviceProfile;
 import com.android.launcher3.LauncherAppState;
 import org.junit.After;
@@ -30,7 +31,7 @@ public class GridMigrationFailureTest {
         context = ApplicationProvider.getApplicationContext();
         LauncherAppState.getIDP(context);
         previousState = new DeviceGridState(context);
-        sourceState = new DeviceGridState(3, 3, 3, InvariantDeviceProfile.TYPE_PHONE, SOURCE_DB);
+        sourceState = new DeviceGridState(3, 3, 3, InvariantDeviceProfile.TYPE_PHONE, SOURCE_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.deleteDatabase(context, SOURCE_DB);
         GridMigrationTestSupport.deleteDatabase(context, TARGET_DB);
         GridMigrationTestSupport.writeGridState(context, sourceState);
@@ -48,7 +49,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixture();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.TRANSACTION_CLOSE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fixture.runtime.executed(GridMigrationOperation.TRANSACTION_CLOSE));
         GridMigrationTestSupport.assertLocks(fixture.source.getWritableDatabase(), 2, 1);
@@ -61,7 +62,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixtureWithPreexistingTarget();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.SOURCE_DETACH);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fixture.runtime.executed(GridMigrationOperation.SOURCE_DETACH));
         assertTrue(fixture.controller.isSourcePublished());
@@ -77,7 +78,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixtureWithPreexistingTarget();
         fixture.runtime.failBeforeDelegate(GridMigrationOperation.SOURCE_DETACH);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fixture.controller.isSourcePublished());
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
@@ -89,7 +90,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixture();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.SOURCE_HELPER_CLOSE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fixture.runtime.executed(GridMigrationOperation.SOURCE_HELPER_CLOSE));
         assertTrue(fixture.controller.isSourcePublished());
@@ -102,7 +103,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixture();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.DESTINATION_PREF_WRITE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
         assertFalse(GridMigrationTestSupport.journal(context, TARGET_DB).exists());
@@ -115,12 +116,12 @@ public class GridMigrationFailureTest {
         fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_RESTORE);
         fixture.runtime.failAfterDelegate(GridMigrationOperation.DESTINATION_PREF_WRITE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fixture.runtime.executed(GridMigrationOperation.TARGET_RESTORE));
         GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
                 GridMigrationJournal.Phase.RESTORE_FAILED, TARGET_DB, SOURCE_DB, sourceState);
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
     }
@@ -132,14 +133,14 @@ public class GridMigrationFailureTest {
         fixture.runtime.failAfterDelegate(GridMigrationOperation.DESTINATION_PREF_WRITE);
 
         try {
-            fixture.controller.tryMigrateDB(null);
+            fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
         } catch (RuntimeException failure) {
             fail("Public controller entry must retain recoverable restore failure: " + failure);
         }
 
         GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
                 GridMigrationJournal.Phase.RESTORE_FAILED, TARGET_DB, SOURCE_DB, sourceState);
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
     }
@@ -154,7 +155,7 @@ public class GridMigrationFailureTest {
                 GridMigrationJournal.Phase.MIGRATED_PENDING_FINALIZATION, TARGET_DB, SOURCE_DB,
                 sourceState);
         Fixture fresh = freshFixture(sourceState, false);
-        fresh.controller.tryMigrateDB(null);
+        fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fresh.controller.isSourcePublished());
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
@@ -170,10 +171,10 @@ public class GridMigrationFailureTest {
 
         expectProcessDeath(fixture.controller);
         DeviceGridState destination = new DeviceGridState(
-                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.writeGridState(context, destination);
         Fixture fresh = freshFixture(destination, false);
-        fresh.controller.tryMigrateDB(null);
+        fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertEquals(TARGET_DB, fresh.controller.publishedHelper().getDatabaseName());
         GridMigrationTestSupport.assertTargetIsUnknown(context, TARGET_DB);
@@ -187,9 +188,9 @@ public class GridMigrationFailureTest {
 
         expectProcessDeath(fixture.controller);
         DeviceGridState unknown = new DeviceGridState(
-                5, 5, 5, InvariantDeviceProfile.TYPE_PHONE, SOURCE_DB);
+                5, 5, 5, InvariantDeviceProfile.TYPE_PHONE, SOURCE_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         Fixture fresh = freshFixture(unknown, false);
-        fresh.controller.tryMigrateDB(null);
+        fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fresh.controller.isSourcePublished());
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
@@ -204,7 +205,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixtureWithPreexistingTarget();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.SOURCE_HELPER_CLOSE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         try (DatabaseHelper target = GridMigrationTestSupport.open(context, TARGET_DB)) {
             GridMigrationTestSupport.assertLocks(target.getWritableDatabase(), 2);
@@ -217,7 +218,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixture();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_DELETE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fixture.runtime.executed(GridMigrationOperation.TARGET_DELETE));
         GridMigrationTestSupport.assertTargetIsUnknown(context, TARGET_DB);
@@ -226,7 +227,7 @@ public class GridMigrationFailureTest {
                 GridMigrationJournal.Phase.FINALIZED, TARGET_DB, SOURCE_DB,
                 new DeviceGridState(context));
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
     }
 
@@ -235,7 +236,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixtureWithPreexistingTarget();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_DELETE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
                 GridMigrationJournal.Phase.FINALIZED, TARGET_DB, SOURCE_DB,
@@ -246,7 +247,7 @@ public class GridMigrationFailureTest {
         }
         Fixture fresh = freshFixture(new DeviceGridState(context), false);
 
-        fresh.controller.tryMigrateDB(null);
+        fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertEquals(SOURCE_DB, fresh.controller.publishedHelper().getDatabaseName());
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
@@ -260,7 +261,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixtureWithPreexistingTarget();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_DELETE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         try (DatabaseHelper target = GridMigrationTestSupport.open(context, TARGET_DB)) {
             GridMigrationTestSupport.mutateBackupFavorite(target.getWritableDatabase(), 50);
@@ -269,7 +270,7 @@ public class GridMigrationFailureTest {
         Fixture fresh = freshFixture(new DeviceGridState(context), false);
 
         try {
-            fresh.controller.tryMigrateDB(null);
+            fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
             fail("Missing finalized source must abort instead of publishing the target");
         } catch (RuntimeException expected) {
             assertNull(fresh.controller.publishedHelper());
@@ -279,13 +280,13 @@ public class GridMigrationFailureTest {
     @Test
     public void finalizedJournalWithTargetAsSourceAbortsActiveTargetMigration() {
         DeviceGridState destination = new DeviceGridState(
-                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, TARGET_DB,
                 sourceState, destination, GridMigrationJournal.Phase.FINALIZED);
         Fixture active = freshFixture(destination, false);
 
         try {
-            active.controller.tryMigrateDB(null);
+            active.controller.tryMigrateDB(null, new ModelDelegate(context));
             fail("A finalized journal whose source is the target must abort");
         } catch (RuntimeException expected) {
         }
@@ -294,14 +295,14 @@ public class GridMigrationFailureTest {
     @Test
     public void restoreFailedJournalWithMissingSourceFailsClosedWithoutCreatingSource() {
         DeviceGridState destination = new DeviceGridState(
-                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
                 sourceState, destination, GridMigrationJournal.Phase.RESTORE_FAILED);
         GridMigrationTestSupport.deleteDatabase(context, SOURCE_DB);
         Fixture fresh = freshFixture(destination, false);
 
         try {
-            fresh.controller.tryMigrateDB(null);
+            fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
             fail("A missing durable-recovery source must fail closed");
         } catch (RuntimeException expected) {
             assertNull(fresh.controller.publishedHelper());
@@ -315,14 +316,14 @@ public class GridMigrationFailureTest {
     @Test
     public void pendingJournalWithTargetAsSourceFailsClosed() {
         DeviceGridState destination = new DeviceGridState(
-                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, TARGET_DB,
                 sourceState, destination,
                 GridMigrationJournal.Phase.MIGRATED_PENDING_FINALIZATION);
         Fixture fresh = freshFixture(destination, false);
 
         try {
-            fresh.controller.tryMigrateDB(null);
+            fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
             fail("A non-finalized journal whose source is the target must fail closed");
         } catch (RuntimeException expected) {
             assertNull(fresh.controller.publishedHelper());
@@ -336,14 +337,14 @@ public class GridMigrationFailureTest {
     @Test
     public void restorePendingJournalWithCorruptSourceFailsClosedAndQuarantinesActiveHelper() {
         DeviceGridState destination = new DeviceGridState(
-                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
                 sourceState, destination, GridMigrationJournal.Phase.RESTORE_PENDING);
         GridMigrationTestSupport.corruptDatabase(context, SOURCE_DB);
         Fixture fresh = freshFixture(destination, false);
 
         try {
-            fresh.controller.tryMigrateDB(null);
+            fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
             fail("An unreadable durable-recovery source must fail closed");
         } catch (RuntimeException expected) {
             assertNull(fresh.controller.publishedHelper());
@@ -357,7 +358,7 @@ public class GridMigrationFailureTest {
     public void
     restorePendingJournalWithValidHeaderCorruptBodyFailsClosedAndPreservesCorruptSource() {
         DeviceGridState destination = new DeviceGridState(
-                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
                 sourceState, destination, GridMigrationJournal.Phase.RESTORE_PENDING);
         byte[] corruptSource = GridMigrationTestSupport
@@ -365,7 +366,7 @@ public class GridMigrationFailureTest {
         Fixture fresh = freshFixture(destination, false);
 
         try {
-            fresh.controller.tryMigrateDB(null);
+            fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
             fail("A durable-recovery source with a corrupt body must fail closed");
         } catch (RuntimeException expected) {
             assertNull(fresh.controller.publishedHelper());
@@ -383,14 +384,14 @@ public class GridMigrationFailureTest {
             GridMigrationTestSupport.seedSource(source.getWritableDatabase());
         }
         DeviceGridState destination = new DeviceGridState(
-                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
                 sourceState, destination, GridMigrationJournal.Phase.RESTORE_FAILED);
         Fixture fresh = freshFixture(destination, false);
         fresh.runtime.failBeforeDelegate(GridMigrationOperation.SOURCE_PREF_WRITE);
 
         try {
-            fresh.controller.tryMigrateDB(null);
+            fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
             fail("A preference failure after source publication must fail closed");
         } catch (RuntimeException expected) {
             assertEquals(SOURCE_DB, fresh.controller.publishedHelper().getDatabaseName());
@@ -406,7 +407,7 @@ public class GridMigrationFailureTest {
         fixture.runtime.failAfterDelegate(GridMigrationOperation.TARGET_RESTORE);
         fixture.runtime.failAfterDelegate(GridMigrationOperation.DESTINATION_PREF_WRITE);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
                 GridMigrationJournal.Phase.RESTORE_FAILED, TARGET_DB, SOURCE_DB, sourceState);
@@ -417,9 +418,9 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixtureWithPreexistingTarget();
         fixture.runtime.failAfterDelegate(GridMigrationOperation.DESTINATION_PREF_WRITE);
 
-        fixture.controller.tryMigrateDB(null);
-        fixture.controller.tryMigrateDB(null);
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
     }
@@ -428,8 +429,8 @@ public class GridMigrationFailureTest {
     public void finalizedJournalIsDeletedBeforeLaterMigration() {
         Fixture fixture = fixture();
 
-        fixture.controller.tryMigrateDB(null);
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
     }
@@ -440,10 +441,10 @@ public class GridMigrationFailureTest {
         fixture.runtime.terminateAfterDelegate(GridMigrationOperation.TRANSACTION_CLOSE);
         expectProcessDeath(fixture.controller);
         DeviceGridState unknown = new DeviceGridState(
-                5, 5, 5, InvariantDeviceProfile.TYPE_PHONE, SOURCE_DB);
+                5, 5, 5, InvariantDeviceProfile.TYPE_PHONE, SOURCE_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         Fixture fresh = freshFixture(unknown, false);
 
-        fresh.controller.tryMigrateDB(null);
+        fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fresh.controller.isSourcePublished());
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
@@ -455,10 +456,10 @@ public class GridMigrationFailureTest {
         fixture.runtime.terminateAfterDelegate(GridMigrationOperation.TRANSACTION_CLOSE);
         expectProcessDeath(fixture.controller);
         DeviceGridState unknownTarget = new DeviceGridState(
-                5, 5, 5, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                5, 5, 5, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         Fixture fresh = freshFixture(unknownTarget, false);
 
-        fresh.controller.tryMigrateDB(null);
+        fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertEquals(SOURCE_DB, fresh.controller.publishedHelper().getDatabaseName());
         GridMigrationTestSupport.assertRecoveryMetadataAbsent(context, TARGET_DB);
@@ -469,7 +470,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixture();
         fixture.runtime.preferenceWriteResults(false, false);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
                 GridMigrationJournal.Phase.RESTORE_FAILED, TARGET_DB, SOURCE_DB, sourceState);
@@ -480,7 +481,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixtureWithPreexistingTarget();
         fixture.runtime.preferenceWriteResults(false, true);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fixture.controller.isSourcePublished());
         GridMigrationTestSupport.assertGridState(sourceState, new DeviceGridState(context));
@@ -493,7 +494,7 @@ public class GridMigrationFailureTest {
     @Test
     public void restoreDigestMismatchRetainsJournalAndBackup() {
         DeviceGridState destination = new DeviceGridState(
-                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.createDurablePhaseFixture(context, TARGET_DB, SOURCE_DB,
                 sourceState, destination, GridMigrationJournal.Phase.MIGRATED_PENDING_FINALIZATION);
         try (DatabaseHelper target = GridMigrationTestSupport.open(context, TARGET_DB)) {
@@ -501,7 +502,7 @@ public class GridMigrationFailureTest {
         }
         Fixture fresh = freshFixture(sourceState, false);
 
-        fresh.controller.tryMigrateDB(null);
+        fresh.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertEquals(SOURCE_DB, fresh.controller.publishedHelper().getDatabaseName());
         GridMigrationTestSupport.assertJournal(GridMigrationTestSupport.journal(context, TARGET_DB),
@@ -515,7 +516,7 @@ public class GridMigrationFailureTest {
         candidate.runtime.terminateAfterDelegate(GridMigrationOperation.TRANSACTION_CLOSE);
         expectProcessDeath(candidate.controller);
         Fixture candidateEntry = freshFixture(sourceState, false);
-        candidateEntry.controller.tryMigrateDB(null);
+        candidateEntry.controller.tryMigrateDB(null, new ModelDelegate(context));
         boolean candidateRecovered = !GridMigrationTestSupport.journal(context, TARGET_DB).exists();
 
         GridMigrationTestSupport.deleteDatabase(context, TARGET_DB);
@@ -523,9 +524,9 @@ public class GridMigrationFailureTest {
         active.runtime.terminateAfterDelegate(GridMigrationOperation.TRANSACTION_CLOSE);
         expectProcessDeath(active.controller);
         DeviceGridState targetState = new DeviceGridState(
-                5, 5, 5, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                5, 5, 5, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID);
         Fixture activeEntry = freshFixture(targetState, false);
-        activeEntry.controller.tryMigrateDB(null);
+        activeEntry.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertEquals(candidateRecovered,
                 !GridMigrationTestSupport.journal(context, TARGET_DB).exists());
@@ -538,7 +539,7 @@ public class GridMigrationFailureTest {
         Fixture fixture = fixture();
         fixture.controller.useTargetDatabaseName(SOURCE_DB);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertLocks(fixture.source.getWritableDatabase(), 2, 1);
         assertFalse(GridMigrationTestSupport.journal(context, SOURCE_DB).exists());
@@ -550,7 +551,7 @@ public class GridMigrationFailureTest {
         GridMigrationTestSupport.ScriptedRuntime runtime = new GridMigrationTestSupport.ScriptedRuntime(
                 false);
         return new Fixture(source, runtime, new GridMigrationSuccessTest.Controller(context, source,
-                new DeviceGridState(4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB), runtime));
+                new DeviceGridState(4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID), runtime));
     }
 
     private Fixture freshFixture(DeviceGridState activeState, boolean fastPath) {
@@ -559,12 +560,12 @@ public class GridMigrationFailureTest {
         GridMigrationTestSupport.ScriptedRuntime runtime = new GridMigrationTestSupport.ScriptedRuntime(
                 fastPath);
         return new Fixture(active, runtime, new GridMigrationSuccessTest.Controller(context, active,
-                new DeviceGridState(4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB), runtime));
+                new DeviceGridState(4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB, GridType.GRID_TYPE_NON_ONE_GRID), runtime));
     }
 
-    private static void expectProcessDeath(ModelDbController controller) {
+    private void expectProcessDeath(ModelDbController controller) {
         try {
-            controller.tryMigrateDB(null);
+            controller.tryMigrateDB(null, new ModelDelegate(context));
             fail("A simulated process death must escape normal RuntimeException compensation");
         } catch (GridMigrationTestSupport.SimulatedProcessDeath expected) {
         }

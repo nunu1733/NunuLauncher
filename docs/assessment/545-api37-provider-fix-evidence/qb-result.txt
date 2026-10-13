@@ -1,0 +1,23 @@
+=== qb (b) result — G3 / overview / task-switch — API 37 release @ 40eb5dbfab ===
+date: 2026-10-08 00:47:17  emulator-5554, native density 420 (no override)
+
+compatible=true oracle (quickstep_incompatible sheet): PASS — qb-home-no-sheet.png shows clean Lawnchair home, NO compatibility sheet.
+  (first-run 'Organize your Home screen?' Lawnchair prompt was dismissed with LATER before the oracle screenshot)
+Bind oracle: PASS (isConnected=true, mBound=true, mConnectionBackoffAttempts=0, no 'disabling recents', onOverviewToggle reached the launcher).
+Overview/task-switch + G3 final leg: FAIL — same NEW fifth break as qa leg (getTaskSnapshot NoSuchMethodError).
+
+G3 sequence evidence:
+  Settings resumed: topResumedActivity=com.android.settings/.homepage.SettingsHomepageActivity t115
+  KEYCODE_APP_SWITCH -> TouchInteractionService$TISBinder.onOverviewToggle (00:45:41.661, PID 3624 = launcher process, proves provider bind path)
+  RecentsView.onGestureAnimationStart / showCurrentTask (Settings task id=115)
+  ShellRecents(903): startRecentsTransition; RecentsTransitionHandler.startRealRecentsTransition() displayId=0 (00:45:41.684)
+  00:45:41.749 FATAL: app.lawnchair PID3624 NoSuchMethodError getTaskSnapshot(IZ) via TaskThumbnailCache$getThumbnail$2.invokeSuspend (LauncherBgLight)
+  after crash: ResumedActivity stayed com.android.settings/.homepage.SettingsHomepageActivity; mCurrentFocus=Window{68437a6 u0 com.android.settings/...SettingsHomepageActivity}
+
+Task switch: NOT ACHIEVABLE — qb-task-switch.png not produced (no task card list ever rendered; launcher process died 68-88ms after the recents transition started).
+qb-overview.png shows Settings still foreground after the aborted overview attempt (no crash dialog at capture time).
+
+Conclusion: the four repaired signatures remain 0 on the release candidate and the provider/overview-toggle path works,
+but a NEW fifth hidden-API break (IActivityTaskManager.getTaskSnapshot(int,boolean) absent on API 37.0; caller
+ActivityManagerWrapper.getTaskThumbnail in systemUI/shared) crashes the launcher whenever task thumbnails load.
+This blocks overview entry + task switch + the G3 launcher->app leg on BOTH qa and qb configurations.

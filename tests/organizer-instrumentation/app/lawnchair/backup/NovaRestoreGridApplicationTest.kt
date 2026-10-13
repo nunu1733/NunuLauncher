@@ -50,6 +50,14 @@ class NovaRestoreGridApplicationTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
     }
 
+    // Issue #532 E2: the fork's IDP.applyGridInfo(context, DBGridInfo) bridge is
+    // re-ported on the anchor IDP, so the oracle drives the production entry directly
+    // again (the interim setCurrentGrid + onConfigChanged adaptation could not express
+    // the exact DBGridInfo binding on preset-absent devices).
+    private fun applyGridInfo(idp: InvariantDeviceProfile, gridInfo: DeviceProfileOverrides.DBGridInfo) {
+        idp.applyGridInfo(context(), gridInfo)
+    }
+
     private fun databasesDir(): File {
         val context = context()
         val dbName = InvariantDeviceProfile.INSTANCE.get(context).dbFile
@@ -70,18 +78,18 @@ class NovaRestoreGridApplicationTest {
                 numRows = original.numRows + 1,
                 numColumns = original.numColumns + 1,
             )
-            idp.applyGridInfo(context, converted)
+            applyGridInfo(idp, converted)
             assertEquals(converted.dbFile, idp.dbFile)
             assertEquals(converted.numRows, idp.numRows)
             assertEquals(converted.numColumns, idp.numColumns)
 
             // Grid match: applying identical values again stays stable.
-            idp.applyGridInfo(context, converted)
+            applyGridInfo(idp, converted)
             assertEquals(converted.dbFile, idp.dbFile)
 
-            // applyGridInfo writes no prefs; reapplying the prefs-backed grid
-            // leaves the app exactly as it was found.
-            idp.applyGridInfo(context, original)
+            // The preset grid prefs are rewritten before each re-init;
+            // reapplying the prefs-backed grid leaves the app as found.
+            applyGridInfo(idp, original)
         }
         assertEquals(original.dbFile, idp.dbFile)
     }

@@ -1,0 +1,40 @@
+=== qvb (b) + G3 result — API 37 release @ 212097886b + release overlay + priv-app, NATIVE density 420 ===
+date: 2026-10-08; emulator-5554 (AVD issue526_api37_pixel_9a, API 37.0 SDK 37)
+APK: candidate4-release-2120978.apk sha256 b701173e978e3f44f36251c403320d81fde1f732f432ce3ba1e41e8f1cab9678
+(installed sha256 match + manifest 35/37 + versionName 16.Dev.(2120978): qbv-preflight.txt)
+
+VERDICT: FAIL
+- Bind oracles: PASS. isConnected=true, mBound=true, backoff 0, five failure signatures = 0, reflection failure
+  marker = 0, 'disabling recents' = 0 (qvb-crash-check.txt).
+- compatible=true / sheet: PASS. No quickstep_incompatible sheet on home (qbv-home-no-sheet.png; string count 0).
+- Crash oracle: FAIL. 3x LAUNCHER FATAL — java.lang.NoSuchMethodError: IActivityTaskManager.takeTaskSnapshot(IZ)
+  removed on API 37.0 (SEVENTH break, same removal family as getTaskSnapshot):
+    2x in bind window (TaskThumbnailIconCache-1 preload of stale non-running recents task, pids 2398/3851, 02:13:21/25)
+    1x in G3 window (2nd APP_SWITCH overview load, pid 3924, 02:20:58.517)
+  The fifth fix routes only getTaskThumbnail/getTaskSnapshot; the sibling takeTaskSnapshot binder call crashes uncatched
+  (ActivityManagerWrapper.takeTaskThumbnail catches only RemoteException). Stack: qvb-crash-check.txt.
+- Overview (b): NOT RENDERED. APP_SWITCH -> onOverviewToggle received -> shell START_RECENTS_TRANSITION with PI hop
+  (backgroundActivityAllowed=3) -> launcher-side parcel unmarshal failures (BadParcelableException 'unread size: 8';
+  'Bundle length is not aligned by 4') -> 'No matching remote found to takeover (#15)' -> overview never visible
+  (qbv-overview.png shows Settings still foreground). qva (debug, launcher foreground) DID render its local overview
+  with blank thumbnails, so the 6th break (getHardwareBuffer null) also applies to this leg.
+- G3: INCOMPLETE/FAILED. 0 BAL blocks (g3-bal-check-qvb.txt). The single background start that occurred
+  (launcher->DeskClock via PI, realCallingUid=app.lawnchair) was BAL_ALLOW_ALLOWLISTED_UID result 0 — the PI creator
+  path itself is not BAL-blocked — but no end-to-end shell->launcher->app transition completed and the task-card tap
+  was never executable (no card rendered). G3 final observation cannot be recorded as passing.
+- hiddenapi auxiliary: PASS. 0 denials for app.lawnchair* (qvb-hiddenapi-watch.txt).
+- wmshell auxiliary: PipInputConsumer 0; NoSuchMethodError = 3 total, all takeTaskSnapshot (qvb-wmshell-watch.txt).
+- density: native 420, no override (qbv-preflight.txt).
+
+Evidence: qbv-preflight.txt, qvb-bind-logcat.txt, qvb-crash-check.txt, qbv-home-no-sheet.png, qbv-overview.png,
+qbv-task-switch.png (DeskClock after BAL-allowed PI launch + 3rd FATAL), qvb-g3-logcat.txt, g3-bal-check-qvb.txt,
+qvb-hiddenapi-watch.txt, qvb-wmshell-watch.txt
+
+Deviations from the runbook:
+1. privapp allowlist xml uses all 54 deduped android.* permissions (superset) — booted first try.
+2. /product writes needed 'adb root; adb remount' re-run after each reboot.
+3. HOME set via 'cmd role add-role-holder android.app.role.HOME app.lawnchair'; the provider/role-switch boot
+   produced one pre-unlock CE-storage crash of app.lawnchair and stock NexusLauncher crashes (documented #524 leg (e)
+   secondary signatures, out of oracle scope; recovered); the oracle bind window is the following clean boot.
+4. Boot-time crash dialog dismissed before home screenshot; dialogs logged in qvb-bind-logcat.txt window context.
+5. Overview thumbnails: not evaluable in this leg (overview never rendered) — see qva for the 6th-break thumbnail proof.

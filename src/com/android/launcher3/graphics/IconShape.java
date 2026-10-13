@@ -123,8 +123,11 @@ public final class IconShape implements SafeCloseable {
             mDelegate = closestShape;
         }
 
-        // Initialize shape properties
-        mNormalizationScale = IconNormalizer.normalizeAdaptiveIcon(drawable, size, null);
+        // Initialize shape properties. Rebase Phase 2 adapt (S2/S3): the anchor
+        // iconloaderlib replaced the static normalizeAdaptiveIcon() with the
+        // instance-based IconNormalizer(int).getScale(); for the adaptive drawable
+        // used here both return ICON_VISIBLE_AREA_FACTOR.
+        mNormalizationScale = new IconNormalizer(size).getScale(drawable);
     }
 
     public interface ShapeDelegate {

@@ -44,6 +44,10 @@ public class InputConsumerController {
 
     private static final String TAG = InputConsumerController.class.getSimpleName();
 
+    // API 37 (Build.VERSION_CODES.CINNAMON_BUN) is absent from the framework-16.jar compile
+    // classpath, so the gate uses the literal (see #545).
+    private static final int API_37 = 37;
+
     /**
      * Listener interface for callers to subscribe to input events.
      */
@@ -140,19 +144,27 @@ public class InputConsumerController {
      */
     public void registerInputConsumer() {
         if (mInputEventReceiver == null) {
-            final InputChannel inputChannel = new InputChannel();
+            InputChannel inputChannel = null;
             try {
-                // Hook for Android P (9) to VANILLA_ICE_CREAM (15), where the method signature changed
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-                    && Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                    hookDestroyInputConsumer(mWindowManager);
+                mWindowManager.destroyInputConsumer(mToken, DEFAULT_DISPLAY);
+                if (Build.VERSION.SDK_INT >= API_37) {
+                    // #545: Android 17 (API 37) replaced IWindowManager.createInputConsumer in
+                    // place — the compiled out-param form (IBinder, String, int, InputChannel)
+                    // -> void was removed in favor of (IBinder, String, int) -> InputChannel.
+                    // The compile classpath (framework-16.jar) only carries the API 36 form, so
+                    // the API 37 form is invoked reflectively. A lookup failure degrades to an
+                    // unregistered consumer instead of crashing the provider bind path.
+                    inputChannel = createInputConsumerCompat(mToken, mName, DEFAULT_DISPLAY);
                 } else {
-                    mWindowManager.destroyInputConsumer(mToken, DEFAULT_DISPLAY);
+                    inputChannel = new InputChannel();
+                    mWindowManager.createInputConsumer(mToken, mName, DEFAULT_DISPLAY, inputChannel);
                 }
-                
-                mWindowManager.createInputConsumer(mToken, mName, DEFAULT_DISPLAY, inputChannel);
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to create input consumer", e);
+            }
+            if (inputChannel == null) {
+                Log.e(TAG, "Input consumer not registered (see #545)");
+                return;
             }
             mInputEventReceiver = new InputEventReceiver(inputChannel, Looper.myLooper(),
                     Choreographer.getInstance());
@@ -162,21 +174,24 @@ public class InputConsumerController {
         }
     }
 
-
     /**
-     * IWindowManager @destroyInputConsumer reflection
+     * Invokes the Android 17 (API 37) return-InputChannel form of
+     * IWindowManager.createInputConsumer reflectively (see #545). Returns null when the lookup
+     * or invocation fails, so the caller can degrade to an unregistered consumer without
+     * crashing.
      */
-    private void hookDestroyInputConsumer(IWindowManager mWindowManager) throws RemoteException {
+    private InputChannel createInputConsumerCompat(IBinder token, String name, int displayId) {
         try {
             Class<?> iWindowManagerClass = Class.forName("android.view.IWindowManager");
-            Method destroyInputConsumerMethod = iWindowManagerClass.getMethod("destroyInputConsumer", String.class, int.class);
-            destroyInputConsumerMethod.invoke(mWindowManager, mName, DEFAULT_DISPLAY);
-        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException |
-                 InvocationTargetException e) {
-            Log.e(TAG, "Failed to invoke destroyInputConsumer", e);
-            mWindowManager.destroyInputConsumer(mToken, DEFAULT_DISPLAY);
+            Method createInputConsumerMethod = iWindowManagerClass.getMethod(
+                    "createInputConsumer", IBinder.class, String.class, int.class);
+            return (InputChannel) createInputConsumerMethod.invoke(
+                    mWindowManager, token, name, displayId);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "Failed to invoke createInputConsumer (API 37 form, see #545)", e);
+            return null;
         }
-
     }
 
     /**
@@ -185,13 +200,7 @@ public class InputConsumerController {
     public void unregisterInputConsumer() {
         if (mInputEventReceiver != null) {
             try {
-                // Hook for Android P (9) to VANILLA_ICE_CREAM (15), where the method signature changed
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-                    && Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                    hookDestroyInputConsumer(mWindowManager);
-                } else {
-                    mWindowManager.destroyInputConsumer(mToken, DEFAULT_DISPLAY);
-                }
+                mWindowManager.destroyInputConsumer(mToken, DEFAULT_DISPLAY);
             } catch (RemoteException e) {
                 Log.e(TAG, "Failed to destroy input consumer", e);
             }

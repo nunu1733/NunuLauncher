@@ -26,7 +26,7 @@ import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.smartspace.SmartspacePreferencesShortcut
 import app.lawnchair.ui.preferences.PreferenceActivity
 import com.android.launcher3.LauncherAppState
-import com.android.launcher3.WidgetPickerActivity
+import com.android.launcher3.widgetpicker.WidgetPickerActivity
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.celllayout.CellPosMapper
@@ -520,10 +520,13 @@ class Issue265ManualEditRecoveryInstrumentationTest {
             try {
                 val modelField = LauncherModel::class.java.getDeclaredField("mBgDataModel")
                 modelField.isAccessible = true
+                // The anchor model core (S1, ADR-0018 Decision 9) exposes
+                // itemsIdMap as a WorkspaceData projection, not an
+                // IntSparseArrayMap; resolve the row through the anchor's
+                // own id lookup.
                 val bgDataModel = modelField.get(launcher.model)
-                val items = bgDataModel.javaClass.getField("itemsIdMap").get(bgDataModel)
-                    as com.android.launcher3.util.IntSparseArrayMap<*>
-                found = items.get(rowId.toInt()) as? ItemInfo
+                    as com.android.launcher3.model.BgDataModel
+                found = bgDataModel.itemsIdMap[rowId.toInt()]
             } catch (t: Throwable) {
                 android.util.Log.e(TAG, "model item lookup failed", t)
             } finally {
@@ -607,10 +610,10 @@ class Issue265ManualEditRecoveryInstrumentationTest {
 
     private fun awaitModelLoaded() {
         val deadline = System.currentTimeMillis() + 15_000L
-        while (!launcher.model.isModelLoaded && System.currentTimeMillis() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.currentTimeMillis() < deadline) {
             Thread.sleep(50)
         }
-        check(launcher.model.isModelLoaded) { "Launcher model did not reload" }
+        check(launcher.model.isModelLoaded()) { "Launcher model did not reload" }
     }
 
     private fun awaitGateReady() {

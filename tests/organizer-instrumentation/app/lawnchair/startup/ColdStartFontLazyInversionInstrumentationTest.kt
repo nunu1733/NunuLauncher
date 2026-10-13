@@ -45,6 +45,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.lang.reflect.Field
 
 @SmallTest
 @RunWith(AndroidJUnit4::class)
@@ -84,6 +85,21 @@ class ColdStartFontLazyInversionInstrumentationTest {
         return !isAlive
     }
 
+
+    // The anchor MainThreadInitializedObject (16-dev) removed the
+    // @VisibleForTesting mutators that the 15-era API had (initializeForTesting
+    // / getNoCreate) together with the Overrides mechanism (ADR-0018 Decision
+    // 9). The hermetic-cold preconditions below reach the process-static
+    // mValue field reflectively; the observed contract is unchanged.
+    private val fontInstanceField: Field =
+        FontManager.INSTANCE.javaClass.getDeclaredField("mValue").apply { isAccessible = true }
+
+    private fun fontValue(): FontManager? = fontInstanceField.get(FontManager.INSTANCE) as FontManager?
+
+    private fun setFontValue(value: FontManager?) {
+        fontInstanceField.set(FontManager.INSTANCE, value)
+    }
+
     private fun stackOf(t: Thread) =
         t.stackTrace.take(10).joinToString("\n    ") { "${it.className}.${it.methodName}:${it.lineNumber}" }
 
@@ -92,18 +108,18 @@ class ColdStartFontLazyInversionInstrumentationTest {
         // Bare provider contract: FontManager must construct on main without
         // the factory's runCatching wrapper, which would otherwise hide a
         // construction failure and make the cold probe vacuous.
-        FontManager.INSTANCE.initializeForTesting(null)
+        setFontValue(null)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             assertNotNull(FontManager.INSTANCE.get(context))
         }
-        assertNotNull(FontManager.INSTANCE.getNoCreate())
+        assertNotNull(fontValue())
     }
 
     @Test
     fun a1ColdConcurrentFontAccessNeverBlocksASecondCallerOnAMonitor() {
         // Hermetic cold state: FontManager unresolved (process-static MTIO).
-        FontManager.INSTANCE.initializeForTesting(null)
-        assertNull("precondition: FontManager must be unresolved", FontManager.INSTANCE.getNoCreate())
+        setFontValue(null)
+        assertNull("precondition: FontManager must be unresolved", fontValue())
 
         val factory = LawnchairLayoutFactory(context)
         caller1.set(
@@ -134,7 +150,7 @@ class ColdStartFontLazyInversionInstrumentationTest {
             assertTrue("first caller must be waiting mid-resolution, was ${t1.state}", parked)
             assertNull(
                 "precondition: font manager still unresolved while first caller is inside onCreateView",
-                FontManager.INSTANCE.getNoCreate(),
+                fontValue(),
             )
 
             caller2.set(
@@ -169,7 +185,7 @@ class ColdStartFontLazyInversionInstrumentationTest {
 
             val mainView = factory.onCreateView(null, "TextView", context, compiledTextViewAttrs())
             assertTrue("main-thread factory call must return a TextView", mainView is TextView)
-            assertNotNull("font manager resolved on main", FontManager.INSTANCE.getNoCreate())
+            assertNotNull("font manager resolved on main", fontValue())
         }
     }
 
@@ -189,7 +205,7 @@ class ColdStartFontLazyInversionInstrumentationTest {
             assertNotNull("cold caller-2 must have returned a view", caller2View.get())
         }
 
-        assertNotNull(FontManager.INSTANCE.getNoCreate())
+        assertNotNull(fontValue())
         val factory = LawnchairLayoutFactory(context)
         val done = CountDownLatch(2)
         val failures = AtomicBoolean(false)

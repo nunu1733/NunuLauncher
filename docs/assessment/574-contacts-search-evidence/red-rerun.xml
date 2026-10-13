@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="3" failures="1" errors="0" skipped="0" time="0.000" timestamp="2026-10-11T12:48:33" hostname="localhost">
+  <testsuite name="app.lawnchair.search.ContactsSearchProviderDataProjectionTest" tests="3" failures="1" errors="0" skipped="0" time="0.004" timestamp="2026-10-11T12:48:33" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554" />
+    </properties>
+    <testcase name="granted_searchEmitsContact_whenAccountColumnsAllowedLikeApi36" classname="app.lawnchair.search.ContactsSearchProviderDataProjectionTest" time="0.002" />
+    <testcase name="granted_searchEmitsContact_whenAccountColumnsRejectedLikeApi37" classname="app.lawnchair.search.ContactsSearchProviderDataProjectionTest" time="0.001">
+      <failure>java.lang.AssertionError: API 37 Data view rejects account_type/account_name projections; search must still emit the synthetic contact instead of silently emitting empty expected:&lt;1&gt; but was:&lt;0&gt;
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at app.lawnchair.search.ContactsSearchProviderDataProjectionTest.granted_searchEmitsContact_whenAccountColumnsRejectedLikeApi37(ContactsSearchProviderDataProjectionTest.kt:92)
+</failure>
+    </testcase>
+    <testcase name="denied_shortCircuitsWithoutAnyProviderQuery" classname="app.lawnchair.search.ContactsSearchProviderDataProjectionTest" time="0.001" />
+  </testsuite>
+</testsuites>

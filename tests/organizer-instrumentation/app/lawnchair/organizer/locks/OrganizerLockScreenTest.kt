@@ -57,7 +57,6 @@ import app.lawnchair.organizer.ui.LockMessages
 import app.lawnchair.ui.preferences.destinations.PlacementLockPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
-import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -77,7 +76,10 @@ class OrganizerLockScreenTest {
 
     @get:Rule
     // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
-    val composeRule = createComposeRule(effectContext = StandardTestDispatcher())
+    // G5 (§6.18): CategoryOverride/CustomCategory と同一の撤去（dispatcher付き
+    // compose ruleはCI x86_64上のcompose idle/key deliveryを刺す。#505の
+    // 実験dispatcherは本classでも効果が未実証のため外す）。
+    val composeRule = createComposeRule()
 
     private class MutableCapture(var state: LayoutState, var revisionValue: String = "r0") : LockCapturePort {
         override fun capture(): LockCapture = LockCapture(state, app.lawnchair.organizer.planning.RevisionId(revisionValue))

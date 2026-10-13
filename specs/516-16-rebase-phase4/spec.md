@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Spec: Lawnchair 16 rebase Phase 4 — baseline切替cutover・T9・正本同期（Epic #516）
@@ -26,7 +26,7 @@ ADR-0018 Decision 3/5/6/7がPhase 4に予約した「保持stackとmain修正を
 ### AC-1 統合完全性（cutover head）
 
 - plan §3対照表の全unitが統合headに適用済みであること（各unitの適用commit SHA・適用方式を対照表へ記録）。
-- cutoverはADR Decision 3 revision 10の機構で行う: 統合source head Sでcutover PRを作成し、SのCIと独立audit（AC-7）を経て、audit記録をdocs-only commit Eとして同一PRへ追加した後、**R（SHA固定したcutover時点の `main` head。tag `pre-lawnchair16-<date>`）を第2 parentとする `-s ours` merge commit M（M^1=E、M^2=R）を最終PR head**とし、main上のPR merge commit Oをcutover mergeとする。**S→Mの差分がdocs-only（audit文書・merge構造のみ）であること**、**OのtreeがMのtreeと完全一致**すること（`git diff` が空）、merge時点で `O^1 == R == tag == M^2` であること。mainが固定後に進んだ場合は、追加unitを対照表へ追記しG1'〜G4'（T9のR依存legを含む）から再実行してM・tag・PRを作り直す。
+- cutoverはADR Decision 3 revision 10（plan rev4の実行順）の機構で行う: 統合source head Sで全てのsource・docsを確定し（SはRをancestorに持たないためPRがdirtyとなりpull_request CIを取得できない）、**R（SHA固定したcutover時点の `main` head。tag `pre-lawnchair16-<date>`）を第2 parentとする `-s ours` merge commit M（M^1=S、M^2=R）** を作成・検証してpushし、**Mのpull_request CI（G5'）とMに対する独立audit（AC-7）** を経て、**audit文書のみを含むdocs-only commit E（M..E の差分がaudit doc 1fileのみ）** を最終PR headとしてpushし、EのCI・high-risk gate PASSを確認してからmergeする。main上のPR merge commit Oがcutover merge（O^1=merge時点main head、O^2=E）。**OのtreeがEのtreeと完全一致**すること（`git diff` が空）、merge時点で `O^1 == R == tag == M^2` であること。mainが固定後に進んだ場合は、追加unitを対照表へ追記しG1'〜G4'（T9のR依存legを含む）から再実行してM・tag・PRを作り直す。
 - cutover後に `git diff --name-status <pre-lawnchair16-tag>..<cutover merge O>` の削除エントリ（D）がすべて意図的dropとして説明済みであること。意図しないmain専用pathの消失を残さない。
 
 ### AC-2 CI
@@ -68,11 +68,7 @@ ADR-0018 Decision 3/5/6/7がPhase 4に予約した「保持stackとmain修正を
 
 ### AC-7 独立audit
 
-- 高リスクPR要件（AGENTS.md「高リスクPRの独立エビデンス」）どおり、cutover PRに `risk: layout-data` / `risk: migration` labelを付け、**統合source head Sに対する別session audit**の記録を `docs/assessment/pr-<cutover PR番号>-<slug>.md` として同一PRのdocs-only commit（E）へ含める（記録: Head SHA=S・参照契約・実行test表面・Sの成功CI run link）。最終head Mまでの差分がdocs-onlyであることを条件に、Sのauditで要件を満たす（docs以外の変更がS→Mで入った場合はauditをやり直す）。high-risk-gate workflowのPASSをMでも確認する。
-
-### AC-8 保持PR・子Issue処遇の記録
-
-- #535/#538/#541/#543/#546/#550/#558/#575と、#532/#545/#554/#574の処遇（cutoverへの到達経路・ancestry証拠・close）をEpic #516へ記録する。
+- 高リスクPR要件（AGENTS.md「高リスクPRの独立エビデンス」）どおり、cutover PRに `risk: layout-data` / `risk: migration` labelを付け、**M（`-s ours` merge commit。CIが最終source tree上で走ったhead）に対する別session audit**の記録を `docs/assessment/pr-<cutover PR番号>-<slug>.md` として、**audit文書のみを含むdocs-only commit E**として同一PRへ追加する（記録: Head SHA=M・参照契約・実行test表面・Mの成功CI run link。`validate_high_risk_evidence.py` が読む `Head SHA:` 欄・`CI run:` 欄・必須heading構成に従う）。M..Eの差分がaudit doc 1fileのみであることを条件に、Mのauditで要件を満たす（docs以外の変更が入った場合はauditをやり直す）。high-risk-gate workflowのPASSを最終head Eでも確認する。
 
 ## 非対象
 

@@ -1,0 +1,15 @@
+1|0|-101|0|0|0|Phone|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;package=com.google.android.dialer;component=com.google.android.dialer/.extensions.GoogleDialtactsActivity;end
+2|0|-101|1|1|0|Messages|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;package=com.google.android.apps.messaging;component=com.google.android.apps.messaging/.ui.ConversationListActivity;end
+3|0|-101|2|2|0|Contacts|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;package=com.google.android.contacts;component=com.google.android.contacts/com.android.contacts.activities.PeopleActivity;end
+4|0|-101|3|3|0|Chrome|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;package=com.android.chrome;component=com.android.chrome/com.google.android.apps.chrome.Main;end
+6|2|-100|0|0|4|Google|
+7|0|6||||Google|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;component=com.google.android.googlequicksearchbox/.SearchActivity;end
+8|0|6|0|1|0|Gmail|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;component=com.google.android.gm/.ConversationListActivityGmail;end
+9|0|6|0|2|0|Maps|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;component=com.google.android.apps.maps/com.google.android.maps.MapsActivity;end
+10|0|6|0|0|1|YouTube|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;component=com.google.android.youtube/.app.honeycomb.Shell%24HomeActivity;end
+11|0|6|0|1|1|Drive|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;component=com.google.android.apps.docs/.app.NewMainProxyActivity;end
+12|0|6|0|2|1|YT Music|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;component=com.google.android.apps.youtube.music/.activities.MusicActivity;end
+13|0|6|0|0|2|Photos|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;component=com.google.android.apps.photos/.home.HomeActivity;end
+14|0|-100|1|0|4|Gmail|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;package=com.google.android.gm;component=com.google.android.gm/.ConversationListActivityGmail;end
+15|0|-100|1|1|3|Photos|#Intent;action=android.intent.action.MAIN;category=android.intent.category.INFO;launchFlags=0x10200000;package=com.google.android.apps.photos;component=com.google.android.apps.photos/.home.HomeActivity;end
+16|0|-100|1|1|4|Settings|#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;package=com.android.settings;component=com.android.settings/.Settings;end

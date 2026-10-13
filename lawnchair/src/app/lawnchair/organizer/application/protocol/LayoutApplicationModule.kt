@@ -308,7 +308,13 @@ internal class LayoutApplicationModule<S>(
         try {
             try {
                 writer.captureCurrent(CaptureId("edit-surface-inspect"))
-            } catch (_: RuntimeException) {
+            } catch (e: RuntimeException) {
+                // Issue #172: capture-side failures surface as the exception
+                // class name on the single organizer tag (debug builds only) —
+                // the same contract the composer capture path already honors;
+                // without it this fail-closed null is indistinguishable from
+                // gate/mutex unavailability.
+                captureFailureObserver.onCaptureFailure(e.javaClass, null)
                 null
             }
         } finally {

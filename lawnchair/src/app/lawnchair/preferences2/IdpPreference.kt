@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lawnchair.LawnchairApp
 import com.android.launcher3.InvariantDeviceProfile
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -40,6 +41,20 @@ class IdpPreference(
 }
 
 fun IdpPreference.firstBlocking(gridOption: InvariantDeviceProfile.GridOption) = runBlocking { get(gridOption = gridOption).first() }
+
+@JvmOverloads
+fun IdpPreference.firstCached(
+    gridOption: InvariantDeviceProfile.GridOption,
+    prefs2: PreferenceManager2 = PreferenceManager2.getInstance(LawnchairApp.instance),
+): Int {
+    val cached = prefs2.getCachedPreferences()
+    val value = cached[key]
+    return if (value == null || value == -1) {
+        defaultSelector(gridOption)
+    } else {
+        value
+    }
+}
 
 @Composable
 fun IdpPreference.state(

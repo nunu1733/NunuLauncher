@@ -139,7 +139,7 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                     is HomeEditPlan.CreateFolder -> mainHandler.post {
                         // The new folder icon does not exist yet on the owning
                         // launcher; bind it from the model folder row.
-                        createdFolder?.let { launcher.bindItems(Collections.singletonList(it), false) }
+                        createdFolder?.let { launcher.bindItemsAdapted(Collections.singletonList(it), false) }
                     }
                 }
             }
@@ -194,7 +194,7 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
                 // accessibility-aware timeout could be honored. The
                 // accessibility-path precedent binds without animation too;
                 // the destination snap below still runs.
-                launcher.bindItems(Collections.singletonList(info), false)
+                launcher.bindItemsAdapted(Collections.singletonList(info), false)
                 showDestinationPage(plan.screenId)
             }
 

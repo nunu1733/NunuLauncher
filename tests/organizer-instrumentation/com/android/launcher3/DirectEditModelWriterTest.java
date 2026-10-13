@@ -20,7 +20,6 @@ import android.os.Process;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.SmallTest;
-import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.launcher3.celllayout.CellPosMapper;
 import com.android.launcher3.LauncherSettings.Favorites;
@@ -33,7 +32,6 @@ import com.android.launcher3.model.ModelWriter;
 import com.android.launcher3.model.data.FolderInfo;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.WorkspaceItemInfo;
-import com.android.launcher3.util.PackageManagerHelper;
 
 import org.junit.After;
 import org.junit.Before;
@@ -57,22 +55,6 @@ public class DirectEditModelWriterTest {
     private BgDataModel mBgDataModel;
     private ModelWriter mWriter;
 
-    /** Routes ModelWriter to the isolated test DB instead of the real one. */
-    static class TestLauncherModel extends LauncherModel {
-        private final ModelDbController mTestController;
-
-        TestLauncherModel(Context context, LauncherAppState app, ModelDbController controller) {
-            super(context, app, app.getIconCache(), new AppFilter(context),
-                    new PackageManagerHelper(context), false);
-            mTestController = controller;
-        }
-
-        @Override
-        public ModelDbController getModelDbController() {
-            return mTestController;
-        }
-    }
-
     private static class FailableController extends ModelDbController {
         private final Context mContext;
         volatile boolean failOnUpdate;
@@ -88,12 +70,12 @@ public class DirectEditModelWriterTest {
         }
 
         @Override
-        public int update(String table, ContentValues values, String selection,
+        public int update(ContentValues values, String selection,
                 String[] selectionArgs) {
             if (failOnUpdate) {
                 throw new IllegalStateException("injected update failure");
             }
-            return super.update(table, values, selection, selectionArgs);
+            return super.update(values, selection, selectionArgs);
         }
     }
 
@@ -103,13 +85,11 @@ public class DirectEditModelWriterTest {
         mContext.deleteDatabase(TEST_DB);
         mController = new FailableController(mContext);
         mController.getDb();
-        mBgDataModel = new BgDataModel();
-        // LauncherAppState asserts UI thread and registers process callbacks;
-        // build it once on the main thread like a real launch would.
-        final AtomicReference<LauncherAppState> appRef = new AtomicReference<>();
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(
-                () -> appRef.set(LauncherAppState.getInstance(mContext)));
-        TestLauncherModel model = new TestLauncherModel(mContext, appRef.get(), mController);
+        mBgDataModel = ModelWriterTestSupport.createBgDataModel(mContext);
+        // Issue #532 rebase: the anchor LauncherModel is final and injects its
+        // DB controller, so the model is built with the isolated FailableController.
+        LauncherModel model = ModelWriterTestSupport.createIsolatedModel(
+                mContext, mController, mBgDataModel);
         mWriter = new ModelWriter(mContext, model, mBgDataModel, /* verifyChanges= */ false,
                 CellPosMapper.DEFAULT, /* owner= */ null);
     }
@@ -137,10 +117,10 @@ public class DirectEditModelWriterTest {
         item.spanY = 1;
         item.rank = rank;
         item.user = Process.myUserHandle();
-        mBgDataModel.itemsIdMap.put(item.id, item);
-        if (container == Favorites.CONTAINER_DESKTOP || container == Favorites.CONTAINER_HOTSEAT) {
-            mBgDataModel.workspaceItems.add(item);
-        }
+        // Issue #532 rebase: the anchor model carries every item in itemsIdMap;
+        // the fork-side workspaceItems index is gone (the container field owns
+        // the surface membership the old index tracked).
+        mBgDataModel.addItem(mContext, item, null);
         insertRow(id, container, screenId, cellX, cellY, rank);
         return item;
     }
@@ -156,9 +136,7 @@ public class DirectEditModelWriterTest {
         folder.spanX = 1;
         folder.spanY = 1;
         folder.user = Process.myUserHandle();
-        mBgDataModel.itemsIdMap.put(folder.id, folder);
-        mBgDataModel.collections.put(folder.id, folder);
-        mBgDataModel.workspaceItems.add(folder);
+        mBgDataModel.addItem(mContext, folder, null);
         insertRow(id, Favorites.CONTAINER_DESKTOP, screenId, cellX, cellY, 0);
         return folder;
     }
@@ -241,8 +219,11 @@ public class DirectEditModelWriterTest {
         assertEquals(1, item.rank);
         assertTrue("FolderInfo.contents must contain the moved item",
                 folder.getContents().contains(item));
-        assertFalse("item must leave workspaceItems",
-                mBgDataModel.workspaceItems.contains(item));
+        // Issue #532 rebase: leaving the workspace surface is carried by the
+        // live item's container (the folder id), not a workspaceItems index.
+        assertFalse("item must leave the workspace surface",
+                item.container == Favorites.CONTAINER_DESKTOP
+                        || item.container == Favorites.CONTAINER_HOTSEAT);
         assertTrue(mBgDataModel.itemsIdMap.get(501) == item);
     }
 
@@ -267,13 +248,17 @@ public class DirectEditModelWriterTest {
         assertEquals(1, countFolders());
         assertEquals(folderId, queryInt(501, Favorites.CONTAINER));
         assertEquals(0, queryInt(501, Favorites.RANK));
-        // Live model: the new folder is in collections, item inside contents.
-        FolderInfo folder = (FolderInfo) mBgDataModel.collections.get(folderId);
-        assertNotNull("created folder must join the model collections", folder);
+        // Live model: the new folder is in the model items map, item inside contents.
+        ItemInfo collection = mBgDataModel.itemsIdMap.get(folderId);
+        assertNotNull("created folder must join the live model", collection);
+        assertTrue(collection instanceof FolderInfo);
+        FolderInfo folder = (FolderInfo) collection;
         assertTrue(folder.getContents().contains(item));
         assertEquals(folderId, item.container);
-        assertFalse(mBgDataModel.workspaceItems.contains(item));
-        assertTrue(mBgDataModel.workspaceItems.contains(folder));
+        assertFalse("item must leave the workspace surface",
+                item.container == Favorites.CONTAINER_DESKTOP
+                        || item.container == Favorites.CONTAINER_HOTSEAT);
+        assertTrue(mBgDataModel.itemsIdMap.get(folderId) == folder);
     }
 
     @Test
@@ -300,14 +285,15 @@ public class DirectEditModelWriterTest {
         assertEquals(0, queryInt(501, Favorites.CELLX));
         assertEquals(4, queryInt(501, Favorites.CELLY));
         assertEquals(0, queryInt(501, Favorites.RANK));
-        // Live model unchanged: the item still points at the desktop cell.
+        // Live model unchanged: the seeded item is still the only model object
+        // (no folder joined the model) and still points at the desktop cell.
+        assertEquals("no folder object may join the live model", 1, modelItemCount());
+        assertTrue(mBgDataModel.itemsIdMap.get(501) == item);
         assertEquals(Favorites.CONTAINER_DESKTOP, item.container);
         assertEquals(1, item.screenId);
         assertEquals(0, item.cellX);
         assertEquals(4, item.cellY);
         assertEquals(0, item.rank);
-        assertEquals(0, mBgDataModel.collections.size());
-        assertTrue(mBgDataModel.workspaceItems.contains(item));
     }
 
     /**
@@ -386,10 +372,22 @@ public class DirectEditModelWriterTest {
 
         assertTrue("removed row must be gone", rowMissing(501));
         assertEquals(Favorites.CONTAINER_DESKTOP, queryInt(502, Favorites.CONTAINER));
-        assertFalse(mBgDataModel.itemsIdMap.containsKey(501));
-        assertTrue(mBgDataModel.itemsIdMap.containsKey(502));
-        assertFalse(mBgDataModel.workspaceItems.contains(victim));
-        assertTrue(mBgDataModel.workspaceItems.contains(survivor));
+        // Issue #532 rebase: workspaceItems/collections are gone; the live
+        // model membership is itemsIdMap, and the survivor keeps its surface
+        // placement via the container field.
+        assertNull("removed item must leave the live model", mBgDataModel.itemsIdMap.get(501));
+        assertTrue("survivor must stay in the live model",
+                mBgDataModel.itemsIdMap.get(502) == survivor);
+        assertEquals(Favorites.CONTAINER_DESKTOP, survivor.container);
+        assertFalse(mBgDataModel.itemsIdMap.get(502) == victim);
+    }
+
+    private int modelItemCount() {
+        int count = 0;
+        for (ItemInfo ignored : mBgDataModel.itemsIdMap) {
+            count++;
+        }
+        return count;
     }
 
     private boolean rowMissing(int id) {

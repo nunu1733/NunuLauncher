@@ -16,6 +16,15 @@
 # instrumentation_enabled / permanent_run) are not surfaces and are excluded
 # from the edge comparison.
 #
+# Issue #532 G4 (replay-log specs/516-16-rebase-phase2 §6.4): the anchor
+# build's Gradle test runner parses -Pandroid.testInstrumentationRunnerArguments
+# as k=v,k=v pairs, so a comma-separated multi-class runner filter dispatches
+# only its first class. The multi-class lanes (shared-writer, db-migration,
+# reservation-recovery, category-override, onboarding-proposal) therefore run
+# one connected invocation per class via tools/ci/run-instrumentation-per-class.sh
+# (fail-fast, same live wrapper as before). Lane set, surface edges and the
+# class set of every lane are unchanged; no lane was added.
+#
 # Surface meaning (path filters live in ci.yml's `changes` job):
 #   surface_layout_write      - layout write coordinator / ModelWriter / DB
 #                               controller seam + organizer application module
@@ -29,16 +38,39 @@
 #   surface_jvm               - planner/rules/diagnostics/locks + JVM test tree;
 #                               owned by the organizer-unit-tests permanent gate
 lanes:
+# Issue #563: PagedViewScreenCenterTest (launcher3 core JVM test) is explicitly
+# listed in the organizer-unit-tests --tests filter; that gate owns surface_jvm
+# ("planner/rules/diagnostics/locks + JVM test tree") and runs on every PR.
+# No lane or edge changes.
+
   organizer-instrumentation-shared-writer-tests:
+    # Issue #526 (spec specs/526-target37-fork-ui): EditSurfaceTarget37ContractInstrumentationTest
+    # was appended to the lane's runner class list. Edges are unchanged; the lane
+    # already owned surface_layout_write (the homeedit session drives the same
+    # apply path) and the edit-surface recreation / in-flight back / double-apply
+    # oracles need the same process + framework boundary as the sibling
+    # EditSurface* classes.
     surfaces:
       - surface_layout_write
   organizer-instrumentation-db-migration-tests:
     # Issue #461: GridMigrationFailureTest was appended to this lane's runner
     # class list (fail-closed on a corrupt durable recovery source). Edges are
     # unchanged; the lane already owned surface_db_schema.
+    # Issue #532 (plan specs/516-16-rebase-phase2 §7 G4): RestoreDbTaskSuccessPathTest
+    # (T4, performRestore success entry), RealZipRestoreE2E (T5, real ZIP32/33
+    # restore) and the device readback half of PrefsLegacyXmlMigrationTest (T7)
+    # were appended to the lane's runner class list. Edges are unchanged; the
+    # lane already owned surface_db_schema and the new test files are listed in
+    # the ci.yml surface_db_schema filter for self-triggering.
     surfaces:
       - surface_db_schema
   organizer-instrumentation-restore-capture-tests:
+    # Issue #532 (plan §7 G4 T8): NovaConverterBoundaryTest and
+    # NovaConverterBoundarySmartspaceOffTest were appended to
+    # tools/ci/run-restore-capture-instrumentation.sh as per-class independent
+    # invocations (one restore per process; the smartspace ON/OFF pair are
+    # separate processes). Edges are unchanged; the lane already owned
+    # surface_backup_restore.
     surfaces:
       - surface_backup_restore
   organizer-instrumentation-production-input-tests:
@@ -100,3 +132,14 @@ contract_tests:
     owner_job: validate-repo-contract
     trigger: every_run
     impact: ci-wrapper-artifact-handling
+
+# Diagnostic (manual only, no CI edge): tools/diagnostics/verify_recents_provider.py
+# Owner: Quickstep/SystemUI provider callback boundary (Issue #554).
+# Trigger: explicit local execution on a configured API37/API36 provider emulator.
+# Existing unmapped-source fallback continues to cover Quickstep code changes;
+# a stock API36 lane cannot prove API37 sender wire compatibility.
+# Companion Diagnostic (same owner/trigger, no CI edge):
+# tools/diagnostics/RecentsParcelProbe.java — actual Stub malformed Parcel dispatch.
+# Diagnostic (manual only, no CI edge): tests/organizer-instrumentation/app/lawnchair/search/ContactsSearchProviderDataProjectionTest
+# Owner: platform Data-view compatibility boundary (Issue #574, public search seam).
+# Trigger: explicit local execution only. No lane/surface edge; no CI job assigned yet.

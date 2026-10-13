@@ -1,0 +1,1 @@
+app.lawnchair/com.android.quickstep.RecentsActivity
