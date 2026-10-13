@@ -1,0 +1,28 @@
+# Issue #528 log redaction proof (logcat excerpts, API 37 emulator, 2026-10-07)
+# app: app.lawnchair.debug commit 47400f0
+# Contract: guard/failure logs contain reason category + permission state + SDK_INT / exception class only.
+# No raw query, no URL template, no host, no userinfo, no response body.
+
+== guard log (denied path, drawer search query 'evidence' — query text does NOT appear) ==
+10-07 06:20:36.292  7934  7978 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:36.861  7934  7973 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:37.228  7934  7963 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:37.901  7934  7963 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:37.922  7934  8177 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:38.614  7934  7963 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:38.970  7934  8169 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+
+== failure logs: cleartext (OkHttp UnknownServiceException) ==
+10-07 06:33:10.924  8367  9620 E CustomWebSearchProvider: Error during suggestion retrieval: java.net.UnknownServiceException
+10-07 06:34:25.762  8367 10211 E CustomWebSearchProvider: Error during suggestion retrieval: java.net.UnknownServiceException
+
+== failure logs: rogue TLS endpoint (SSLHandshakeException) ==
+10-07 06:38:02.809  8367 10716 E CustomWebSearchProvider: Error during suggestion retrieval: javax.net.ssl.SSLHandshakeException
+10-07 06:38:49.804  8367 10815 E CustomWebSearchProvider: Error during suggestion retrieval: javax.net.ssl.SSLHandshakeException
+10-07 06:38:49.804  8367 10815 E CustomWebSearchProvider: Error during suggestion retrieval: javax.net.ssl.SSLHandshakeException
+
+== failure logs: indeterminate hostname (UnknownHostException; query 'ghost' does NOT appear) ==
+10-07 06:42:32.217  8367 11686 E CustomWebSearchProvider: Error during suggestion retrieval: java.net.UnknownHostException
+10-07 06:42:32.223  8367 11836 E CustomWebSearchProvider: Error during suggestion retrieval: java.net.UnknownHostException
+
+== parse-failure log path (redacted to exception class name only) ==

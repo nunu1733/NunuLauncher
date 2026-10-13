@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  Issue #528: debug-only network security config for the LAN suggestion E2E
+  verification (host-side HTTPS server on 10.0.2.2 with a user-installed CA).
+  debug-overrides trusts user-added CAs in debug builds only; release
+  artifacts keep the platform default trust policy unchanged.
+-->
+<network-security-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

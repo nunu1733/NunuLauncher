@@ -1,0 +1,28 @@
+Issue #528 review round 1 — F1 process-death oracle: 実施方法の正確な記録 (head f102d72144, API 37 AVD issue526_api37_pixel_9a)
+
+1. `adb shell am kill app.lawnchair.debug` は本イメージでは **home processをkillしなかった**
+   (kill後も PID 8252 / STIME 11:35 が生存。am kill は "safe to kill" のみ対象で、
+   home app は対象外)。この状態での再表示は process死亡のoracleにならないため不使用。
+2. 代わりに root SIGKILL (`adb root; adb shell kill -9 <pid>`) を使用した。
+   これはLMKによるsystem-initiated process deathとappからは区別不能で、task record
+   (saved instance state含む) は保持される。SIGKILL直後に新PID 9917で再起動を確認。
+3. Recentsからtaskを復元したところ、settings task (PreferenceActivity) の
+   icicle-restore経路が **splash表示のまま固まり、最終的にANR** ("Lawnchair (Debug)
+   isn't responding")。ANR trace: /data/anr/anr_2026-10-07-11-47-41-363。
+   main threadは `LawnchairLayoutFactory.getFontManager` (LawnchairLayoutFactory.kt:18,
+   kotlin.SynchronizedLazyImpl) で "ViewPool-init" thread (tid 33) の持つlockを待ち、
+   tid 33は `MainThreadInitializedObject.get` のmain-thread実行future (FontManager初期化)
+   を待という、Launcher3/lawnchair infrastructureのmain-thread初期化デッドロック。
+   スタックに #528 のコード (WebSearchProvider / CustomWebSearchProvider /
+   LanPermissionGuidance) は一切含まれない。#528 diff外の既存infra動作として記録する
+   (本oracleのための再现条件: process kill直後のtask復元とViewPool初期化の競合)。
+4. したがってF1の決定的oracle (58-lan-r1-f1-after-process-death-request-button.png,
+   59-lan-r1-talkback-focus-label-evidence.txt の末節) は、**process死亡後の新規process
+   (PID 10759, STIME 11:49:27) で settingsを起動し直す** 経路で取得した。旧processで
+   in-sessionに確定させていた settings-guidance 状態 ("Local network access was denied...
+   / Open app settings") は新processでは一切表示されず、plain request button
+   ("Allow local network access") + "Suggestions: not run yet..." に戻る。
+   requestedThisSession はprocess-local `remember` であり、saved instance state経由では
+   復元されない (Fix F1) — この振る舞いと一致する。
+5. 補足: `am kill` + recents復元時にhome resolverが再表示されたため、Lawnchair (Debug) を
+   "Always" で再選択して復元した。

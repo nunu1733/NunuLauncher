@@ -1,0 +1,23 @@
+# Issue #528 merged manifest check (commit 47400f0, 2026-10-07)
+
+== release merged manifest (lawnWithQuickstepGithubRelease): networkSecurityConfig attribute count = 0 ==
+grep -c networkSecurityConfig AndroidManifest.xml -> 0  (debug NSC overlay is NOT in release)
+ACCESS_LOCAL_NETWORK uses-permission present: 1 (declared unconditionally; the fetch guard is SDK 37+ gated in code)
+
+== debug merged manifest: networkSecurityConfig present, pointing at the debug-only NSC ==
+android:networkSecurityConfig="@xml/network_security_config"
+
+== debug NSC content (src/debug/res/xml/network_security_config.xml) ==
+<?xml version="1.0" encoding="utf-8"?><!--
+  Issue #528: debug-only network security config for the LAN suggestion E2E
+  verification (host-side HTTPS server on 10.0.2.2 with a user-installed CA).
+  debug-overrides trusts user-added CAs in debug builds only; release
+  artifacts keep the platform default trust policy unchanged.
+-->
+<network-security-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

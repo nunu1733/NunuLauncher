@@ -1,0 +1,7 @@
+10-07 06:20:36.292  7934  7978 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:36.861  7934  7973 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:37.228  7934  7963 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:37.901  7934  7963 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:37.922  7934  8177 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:38.614  7934  7963 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37
+10-07 06:20:38.970  7934  8169 I CustomWebSearchProvider: suggestion fetch short-circuited: reason=lnp-statically-local permissionGranted=false sdkInt=37

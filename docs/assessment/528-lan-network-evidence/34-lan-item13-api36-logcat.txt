@@ -1,0 +1,7 @@
+# Issue #528 API 36 regression logcat excerpt (emulator-5556, issue142_api36, SDK 36 / Android 16, 2026-10-07)
+# LAN URL configured and fetched with NO permission prompt and NO guard log (guard is SDK 37+ gated):
+
+== CustomWebSearchProvider lines (expect: none — no guard, no block on API 36) ==
+(count: 0)
+
+== successful local suggestion fetch is evidenced by the host server access log (30-*.png / server-access-8443.log) ==

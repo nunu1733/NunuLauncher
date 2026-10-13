@@ -1,0 +1,2 @@
+10-07 06:42:32.217  8367 11686 E CustomWebSearchProvider: Error during suggestion retrieval: java.net.UnknownHostException
+10-07 06:42:32.223  8367 11836 E CustomWebSearchProvider: Error during suggestion retrieval: java.net.UnknownHostException

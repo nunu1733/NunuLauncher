@@ -372,7 +372,12 @@ jobs:
         # blocking merge gate; see build.gradle and specs/443-freeze-ai-exchange.
         # Issue #532 / plan §7 G4 T7: the JVM half of the prefs legacy XML
         # migration oracle joins the gate (device half in db-migration).
-        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.homeedit.*' --tests 'app.lawnchair.ui.popup.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest' --tests 'app.lawnchair.preferences2.SharedPreferencesLegacyKeyMigrationTest' --tests 'com.android.launcher3.PagedViewScreenCenterTest'
+        # Issue #528: the search package (SuggestionUrlClassifier,
+        # SuggestionFetchOutcomeState, SuggestionFetchLog redaction) joins the
+        # gate; surface_jvm already covers tests/unit/** in the changes filter.
+        # Issue #563: PagedViewScreenCenterTest joins the gate (pure launcher3
+        # core function test, filter routing recorded in PR #571).
+        run: ./gradlew testLawnWithQuickstepGithubDebugUnitTest -Pnunu.excludeAiExchangeUnitTests=true --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.homeedit.*' --tests 'app.lawnchair.ui.popup.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.search.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest' --tests 'app.lawnchair.preferences2.SharedPreferencesLegacyKeyMigrationTest' --tests 'com.android.launcher3.PagedViewScreenCenterTest'
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v6

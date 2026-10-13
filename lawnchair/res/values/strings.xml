@@ -974,6 +974,22 @@
     <string name="custom_search_suggestions_hint">&#37;s will be replaced with the search query. Results must be in JSON OpenSearch format.</string>
     <string name="custom_search_input_placeholder" translatable="false">https://example.com/search?q=%s</string>
 
+    <!-- Issue #528: custom suggestion LAN permission guard and typed fetch outcomes -->
+    <string name="custom_suggestion_lan_rationale">This app needs local network access to fetch suggestions from the local network address.</string>
+    <string name="custom_suggestion_lan_request_button">Allow local network access</string>
+    <string name="custom_suggestion_lan_granted">Local network access is granted.</string>
+    <string name="custom_suggestion_lan_denied_guidance">Local network access was denied. To allow it, open the app settings and permit Nearby devices under Permissions.</string>
+    <string name="custom_suggestion_lan_open_settings_button">Open app settings</string>
+    <string name="custom_suggestion_status_not_run">Suggestions: not run yet for the current address.</string>
+    <string name="custom_suggestion_status_success">Suggestions: last fetch succeeded.</string>
+    <string name="custom_suggestion_status_blocked_by_permission">Suggestions: blocked, local network permission is not granted.</string>
+    <string name="custom_suggestion_status_cleartext_blocked">Suggestions: blocked, cleartext (HTTP) traffic is not allowed. Use an HTTPS address.</string>
+    <string name="custom_suggestion_status_tls_ct_failure">Suggestions: failed, TLS certificate check.</string>
+    <string name="custom_suggestion_status_http_error">Suggestions: failed, the server returned an HTTP error.</string>
+    <string name="custom_suggestion_status_generic_network_failure">Suggestions: failed, the address could not be reached.</string>
+    <string name="custom_suggestion_url_not_https">Only http/https URLs are supported. Plain http endpoints are blocked by Android.</string>
+    <string name="custom_suggestion_url_invalid">Invalid URL template. Start with http:// or https:// and include &#37;s where the search query goes.</string>
+
     <!-- Labels of each search result types -->
     <string name="show_search_result_types">Show in search results</string>
 
