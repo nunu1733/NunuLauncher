@@ -127,3 +127,6 @@ contract_tests:
 # a stock API36 lane cannot prove API37 sender wire compatibility.
 # Companion Diagnostic (same owner/trigger, no CI edge):
 # tools/diagnostics/RecentsParcelProbe.java — actual Stub malformed Parcel dispatch.
+# Diagnostic (manual only, no CI edge): tests/organizer-instrumentation/app/lawnchair/search/ContactsSearchProviderDataProjectionTest
+# Owner: platform Data-view compatibility boundary (Issue #574, public search seam).
+# Trigger: explicit local execution only. No lane/surface edge; no CI job assigned yet.

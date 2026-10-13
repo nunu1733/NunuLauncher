@@ -247,3 +247,14 @@ python3 tools/diagnostics/verify_recents_provider.py --serial emulator-5554 --pa
 debug APK内の実Stubをreflectionで取得し、実Parcel/Binder.transactで正常・欠損marker・
 descriptor違い・余剰tailを送り、例外とlistener回数を検証する。production exportなし、CI非routing。
 provider end-to-end oracleとの追加riskはトップレベルmalformed payloadのfail-closed dispatchである。
+
+## Contacts Data-view compatibility diagnostic（Issue #574）
+
+| 項目 | 判断 |
+|---|---|
+| Contract / credible regression | platform Data viewのAPI別projection互換。API 37で`account_type`/`account_name`をprojectionに含めると結果が零件になる。修正前RED（emulator-5554、3 tests中1 fail）で再現済み。GREENはemulator-5554（XML `2026-10-11T11:43:36`、failures 0）と実API 36 runtime（emulator-5556、3/3） |
+| Primary owner | `tests/organizer-instrumentation/app/lawnchair/search/ContactsSearchProviderDataProjectionTest`（public `ContactsSearchProvider.search` seam経由の3 tests。実`ContentResolver` fixture、real contact seedingなし）。詳細は `docs/assessment/574-contacts-search-evidence/green-result.md` と同dirの`test-audit.md` |
+| Overlap / seam | 既存laneは当該Data projection契約を覆わない。test用production export、adapter追加なし |
+| Impact / trigger | 明示local invocationのみ。CI job未割当。lane↔surface edgeは追加しない |
+| Classification / cost | Diagnostic（local-only、owner pending）。emulator起動が主cost、test本体は約0.2 s |
+| Limits | 新testのCI実行は主張しない。実機search/tap PASSは`api37/result.md`と`api36/result.md`が所有 |
