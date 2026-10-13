@@ -45,10 +45,10 @@ replay基点 `38262fb74d` 以降のmain first-parent unitを時系列順に適�
 
 | gate | 結果 | 証跡 |
 |---|---|---|
-| G1' build/format | **PASS**（`assembleLawnWithQuickstepGithubDebug` + `spotlessCheck`、BUILD SUCCESSFUL 22m30s。P28後のS headで再実行も成功） | /tmp gate logs（assessment PR本文に要点記載。CIが正本） |
-| G2' unit | **PASS 2000 tests / 0 failures / 0 skipped**（CI organizer-unit-tests filterと同一のfilter指定） | test-results XML集計 |
-| G3' ownership | **PASS**。upstream ancestor `43a21b43d7` で再測定: counted **354 files / +32307 / −8923**、全path bridge group分類済み・`--verify` PASS。正式採用を同一PRで実施 | [516-phase4-patch-surface-readoption.md](516-phase4-patch-surface-readoption.md)・[upstream-patch-surface-baseline.json](upstream-patch-surface-baseline.json) |
-| G4' T9 | **PASS（emulator leg）**。15→16→15→16同一data roundtrip、favorites全行IDENTICAL・schema33不変・rollback legで16書込みprefs完全保持・FATAL 0 | [516-phase4-t9-evidence/](516-phase4-t9-evidence/) |
+| G1' build/format | **PASS**（rev4やり直し: `assembleLawnWithQuickstepGithubDebug` + `spotlessCheck` + organizer unit gateをS₂=88218ebbcaで一括実行、BUILD SUCCESSFUL 9m1s） | CIが正本 |
+| G2' unit | **PASS 2000 tests / 0 failures / 0 skipped**（S₂。CI organizer-unit-tests filterと同一のfilter指定） | test-results XML集計 |
+| G3' ownership | **PASS**。upstream ancestor `43a21b43d7` で再測定: counted **354 files / +32307 / −8923**（S₂でもcounted面不変・excluded面のみrev4 docs増分でexpected_measurement更新・`--verify` PASS）。正式採用を同一PRで実施 | [516-phase4-patch-surface-readoption.md](516-phase4-patch-surface-readoption.md)・[upstream-patch-surface-baseline.json](upstream-patch-surface-baseline.json) |
+| G4' T9 | **PASS（emulator leg。rev4やり直し実行、S₂最終treeのAPK `16.Dev.(88218eb)` を使用）**。15→16→15→16同一data roundtrip、favorites全stage IDENTICAL・schema33不変・prefs key完全保持・FATAL 0 | [516-phase4-t9-evidence/](516-phase4-t9-evidence/) |
 | G5' CI | Sのpull_request CI final-status（cutover PR）＝ 本PRのchecks | PR checks |
 | G6' audit | 別session audit + `docs/assessment/pr-<PR>-<slug>.md`（Head SHA=S） | audit doc（docs-only commit E） |
 | G7' rollback | 予備: `git revert -m 2 M` dry-run tree hash == R_candidate tree hash（merge前）。最終: `git revert -m 1 O` == 同（merge後追記） | §5へ追記 |
