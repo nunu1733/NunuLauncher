@@ -71,9 +71,9 @@ jobs:
     outputs:
       source: ${{ steps.filter.outputs.source }}
       ci: ${{ steps.filter.outputs.ci }}
-      permanent_run: ${{ steps.gate.outputs.permanent_run }}
-      instrumentation_enabled: ${{ steps.gate.outputs.instrumentation_enabled }}
-      full: ${{ steps.gate.outputs.full }}
+      permanent_run: ${{ steps.gate.outputs.permanent_run || steps.gate-fallback.outputs.permanent_run }}
+      instrumentation_enabled: ${{ steps.gate.outputs.instrumentation_enabled || steps.gate-fallback.outputs.instrumentation_enabled }}
+      full: ${{ steps.gate.outputs.full || steps.gate-fallback.outputs.full }}
       surface_layout_write: ${{ steps.filter.outputs.surface_layout_write }}
       surface_db_schema: ${{ steps.filter.outputs.surface_db_schema }}
       surface_backup_restore: ${{ steps.filter.outputs.surface_backup_restore }}
@@ -249,7 +249,39 @@ jobs:
           GATING_SURFACE_PRODUCTION_INPUT_FILES: ${{ steps.filter.outputs.surface_production_input_files }}
           GATING_SURFACE_ORGANIZER_UI_FILES: ${{ steps.filter.outputs.surface_organizer_ui_files }}
           GATING_SURFACE_JVM_FILES: ${{ steps.filter.outputs.surface_jvm_files }}
+        # A rebase-scale PR can exceed the runner's per-env-var size limit
+        # (paths-filter file lists as one JSON string > ~128 KB), which makes
+        # the runner fail this step at process start ("Argument list too
+        # long"). continue-on-error lets the fail-closed fallback below run
+        # the same gate without the oversized file lists.
+        continue-on-error: true
         run: python3 tools/ci/compute_ci_gating.py
+
+      - name: Fail-closed gating fallback (oversized diff)
+        # File lists are unavailable -> treat every source file as unmapped:
+        # force the full portfolio (never less coverage than the exact rule).
+        id: gate-fallback
+        if: steps.gate.outcome == 'failure'
+        env:
+          GATING_EVENT: ${{ github.event_name }}
+          GATING_REF: ${{ github.ref }}
+          GATING_FULL_PORTFOLIO: ${{ inputs.full-portfolio }}
+          GATING_WORKFLOW_CALL: ${{ github.event_name == 'workflow_call' }}
+          GATING_SOURCE: ${{ steps.filter.outputs.source }}
+          GATING_CI: ${{ steps.filter.outputs.ci }}
+          GATING_LISTS_UNKNOWN: 'true'
+        run: python3 tools/ci/compute_ci_gating.py
+
+      - name: Assert gating produced outputs (fail closed)
+        # If both the exact gate and the fallback produced no outputs, the
+        # job must fail instead of letting downstream lanes read empty
+        # booleans and silently skip.
+        if: >
+          steps.gate.outputs.full == '' &&
+          steps.gate-fallback.outputs.full == ''
+        run: |
+          echo "gating produced no outputs (both the exact gate and the fallback failed)"
+          exit 1
 
   # Always run: the repository contract (internal links, Issue forms, required
   # files, CI portfolio consistency) is cheap and must gate every change,
