@@ -3,7 +3,7 @@
   "status": "accepted",
   "captured_on": "2026-10-13",
   "upstream_commit": "43a21b43d7cc7850ab54e14b1a57dc9646685f35",
-  "main_commit": "ac2b985860eb6c8ad5b6f957640b6470f795c8f1",
+  "main_commit": "e04790fde8508b8adf7c04078173541bbf490e14",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -809,10 +809,10 @@
     "counted_deletions": 8923,
     "counted_files": 354,
     "counted_paths_sha256": "2a38ea036a2bc410e7101c02d63f1a60d7a59f1223fe0d11a618490d91aab71e",
-    "excluded_additions": 1240455,
+    "excluded_additions": 1240266,
     "excluded_deletions": 12026,
-    "excluded_files": 2145,
-    "excluded_paths_sha256": "90163f493d40ff4f654a86b8fd9ddf2432ef73bfc17b9e86b9be74f1df35f956",
+    "excluded_files": 2148,
+    "excluded_paths_sha256": "a699224ec672666607071897110d0aa3aa05872bc485d86e1c4d72a8b2e8cbde",
     "groups": {
       "deck-retirement": {
         "additions": 1472,
