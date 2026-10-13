@@ -1,6 +1,6 @@
 # Issue #516 Phase 4 — baseline切替cutover実行記録
 
-> Status: in progress（S=E前の実行記録。cutover merge後にO/tag/rollback最終証明を追記して完了）
+> Status: in progress（rev4順で実行中。cutover merge後にO/tag/rollback最終証明をmain上の後続docs PRで追記して完了）
 > 対応: Epic [#516](https://github.com/nunu1733/NunuLauncher/issues/516) Phase 4 / [ADR-0018 revision 10](../adr/0018-lawnchair-16-rebase.md) / [spec](../../specs/516-16-rebase-phase4/spec.md) / [plan](../../specs/516-16-rebase-phase4/plan.md)
 > 実行日: 2026-10-13
 
@@ -32,7 +32,7 @@ replay基点 `38262fb74d` 以降のmain first-parent unitを時系列順に適�
 | **P20** | `3b67953d47` (#570) | **adapt適用**（#565 cold-start deadlock fix）。production `LawnchairLayoutFactory.kt` はmain版とbyte一致を機械確認。ci.yml filterへ `ColdStartFontLazyInversionInstrumentationTest` をunion、ci-test-portfolio.mdへ#565行をgraft |
 | P21 | `8fe67e7650` (#572) | 適用（563 docs最終版） |
 | P22 | `7985a45a6e` (#578) | 適用（#577 benchmark seeder test fix。tests配下） |
-| **P23** | `840603371c` (#580) | **適用**（#579 folder capture fix）。production 2file（PersistenceManifest.kt）はmainとbyte一致 |
+| **P23** | `840603371c` (#580) | **適用**（#579 folder capture fix）。production 1file（PersistenceManifest.kt）はmainとbyte一致 |
 | **P24** | `0ef86713b9` (#582) | **適用**（#581 QSB-off page inventory fix）。production（LauncherLayoutAdapter.kt）はmainとbyte一致 |
 | **P25** | `c3898c74f3` (#584) | **適用**（#583 settleImport fix。最終main内容＝interleave RED修正・Handler注入込み）。production 2fileはmainとbyte一致 |
 | **P26** | `a9ec830a81` (#588) | **適用**（#587 cold settings restore fix。最終main内容）。production（LawnchairBackup.kt）はmainとbyte一致 |
@@ -59,7 +59,8 @@ replay基点 `38262fb74d` 以降のmain first-parent unitを時系列順に適�
 
 ## 5. cutover実行記録（merge時に追記）
 
-- R_candidate: `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`（tag `pre-lawnchair16-20261013` を付与）
+- R_candidate: `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`（tag `pre-lawnchair16-20261013` 付与済み・push済み）
+- **rev4やり直し記録（PR #590 review round 1対応）**: 初回 S=8fea123177 → E=dec3ee4929 → M=11b5453447 のCI run 38404418328/38404418234がCI側のrebase規模制限でfail。S₂から順序を「M CI→audit(M)→E(auditのみ)」へ改訂（plan rev4・ADR rev10補訂）し、CI両fixを投入してやり直す。旧E/Mは統合branchから撤去（force-push）。
 - S / E / M / O / tag SHA: （追記）
 - 予備証明 `git revert -m 2 M` dry-run: （追記）
 - 最終証明 `git revert -m 1 O` dry-run: （追記）

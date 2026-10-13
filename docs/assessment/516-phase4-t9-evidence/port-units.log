@@ -25,3 +25,6 @@ P25-583fix c3898c74f3 APPLIED d34daa7928
 P26-587fix a9ec830a81 APPLIED ca52b67628
 P27-573-phase3closure 85b86610b4 APPLIED 9bf53363ad
 P28 APPLIED (ADR=main rev10) 20f7b9f33dd31501cb7a589b8d941b2da5be816c
+P01 b759506e28 SKIPPED-16-side-newer (specs/516-16-rebase-phase2 plan/spec == main, identity verified)
+P02 15ae5bf917 SKIPPED-16-side-synced (S0 sync: ADR/plan rev2/model assessment == main, identity verified)
+P16 6d3cd6c59f APPLIED e86f2ce0ff (issue-559 assessment mainline port)
