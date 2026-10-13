@@ -31,4 +31,3 @@ Notification-listener state matched its captured literal baseline at the cleanup
 - [Owned AVD teardown](./owned-fixture-teardown.md) is complete with stated historical limits. Issue #516 Phase 3 and the Epic’s Phase 4 cutover are not complete; this packet is not an audit record or closure claim.
 
 The [curated evidence index](./native-operations/README.md) lists the published PNG/XML pairs and privacy-filtered receipt. The machine-readable summary is [receipts.json](./native-operations/receipts.json). Only selected PNG/XML captures and the minimal probe source are included; no raw DB, archive, APK, ADB data path, row dump, capture JSON, serial, credential, or unrelated private material is included.
-
