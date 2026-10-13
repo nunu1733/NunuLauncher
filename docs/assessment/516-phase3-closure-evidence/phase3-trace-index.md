@@ -65,4 +65,4 @@ The source/APK/fingerprint for each observation is fixed in its linked packet. D
 | T26 Keystore limits | Retain(c), no runtime AndroidKeyStore bulk generation; APK signing is distinct. |
 | T27 direct NPU | Retain(c), local clipboard/SAF exchange is not an inference runtime. |
 
-The original #521 assessment retains the accepted definitions and official-source citations. This index records where execution/classification evidence lives; it does not replicate or relax that contract. Final pending source-publication/closure-review items are controlled by matrix §15.
+The original #521 assessment retains the accepted definitions and official-source citations. This index records where execution/classification evidence lives; it does not replicate or relax that contract. Final closure effectiveness is governed by matrix§15/PR573.

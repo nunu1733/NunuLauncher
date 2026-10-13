@@ -1,6 +1,6 @@
 # API37 Smartspace and page-capture evidence
 
-Status: native clock/ON-OFF UI and fixed16 page-capture GREEN complete; main/15 PR #582 CI, audit, and merge are complete. Phase 3 remains open because final closure is governed by matrix§15/PR573; supported cold-settings restore #587/#588 is merged and its checks passed; repaired SAF Exchange Import/cold review/discard succeeded on separately identified source754. Updated:2026-10-13. Disposable emulator only, not Pixel or Phase4 cutover.
+Status: native clock/ON-OFF UI and fixed16 page-capture GREEN complete; main/15 PR #582 CI, audit, and merge are complete. Final Phase3 closure effectiveness is governed by matrix§15/PR573; supported cold-settings restore #587/#588 is merged and its checks passed; repaired SAF Exchange Import/cold review/discard succeeded on separately identified source754. Updated:2026-10-13. Disposable emulator only, not Pixel or Phase4 cutover.
 
 ## Native placement and update
 
