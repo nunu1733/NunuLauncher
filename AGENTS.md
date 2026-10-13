@@ -5,7 +5,7 @@
 ## プロジェクト状態
 
 - GitHub repositoryは `nunu1733/NunuLauncher`、`origin` はそのfork、`upstream` は `LawnchairLauncher/lawnchair` である。
-- `main` baselineはLawnchair `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` である。
+- `main` baselineはLawnchair 16-dev commit `43a21b43d7cc7850ab54e14b1a57dc9646685f35`（ADR-0018 Phase 4 cutover、2026-10-13）である。
 - baseline導入は [Issue #1](https://github.com/nunu1733/NunuLauncher/issues/1) で追跡する。
 - Lawnchair 16への変更は通常updateとして扱わず、専用EpicとADRを要求する。
 
@@ -107,7 +107,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 
 ## 検証済みcommand
 
-JDK 21、Android SDK Platform 36.1、Build Tools 36.1.0を使う。環境詳細は [building guide](./docs/engineering/building.md) を正本とする。
+JDK 21、Android SDK Platform 37（minor 2）、Build Tools 37.0.0を使う。環境詳細は [building guide](./docs/engineering/building.md) を正本とする。
 
 ```bash
 git submodule update --init --recursive

@@ -1,21 +1,23 @@
 # Build and Verification
 
 > Status: Verified
-> Baseline: `505dbc40e6154c05158b5d0271c45f6a885a411b`
-> Verified: 2026-08-14
+> Baseline: `43a21b43d7cc7850ab54e14b1a57dc9646685f35`
+> Verified: 2026-10-13
 
 ## Required toolchain
 
 | Tool | Verified version |
 |---|---|
-| JDK | 21.0.12 |
-| Gradle Wrapper | 9.3.0 |
-| Android Gradle Plugin | 9.0.1 |
-| Kotlin | 2.2.21 |
-| Android SDK Platform | 36.1 |
-| Android SDK Build Tools | 36.1.0 |
+| JDK | 21.0.12（Homebrew openjdk@21） |
+| Gradle Wrapper | 9.8.0 |
+| Android Gradle Plugin | 9.4.1 |
+| Kotlin | 2.4.20 |
+| Android SDK Platform | 37（minor 2。ローカルSDK dir名 `android-37.2`） |
+| Android SDK Build Tools | 37.0.0 |
 | Android SDK Platform Tools | 37.0.1 |
-| Source JVM target | 17 |
+| Source JVM target | 21 |
+
+build configは targetSdk 37 / minSdk 26 / compileSdk 37（`compileSdk { release(37) { minorApiLevel 2 } }`）である（`build.gradle` の `allprojects` blockで一括指定、`libs.versions.toml` の `jdkRelease = "21"` がJava/Kotlin両targetの正本）。
 
 上流GitHub ActionsもZulu JDK 21を使用する。Gradleはrepositoryのwrapperを使い、system Gradleを使わない。
 
@@ -33,7 +35,7 @@ git submodule status --recursive
 git submodule update --init --recursive
 ```
 
-baselineのsubmodule `platform_frameworks_libs_systemui` はcommit `6a11ef767998885838a599331b5485f768b3d725` である。
+baselineのsubmodule `platform_frameworks_libs_systemui` はcommit `7d9e92bda50359dc66a530248e15f9748343524e`（upstream 16-dev側pin）である。fork旧pin `6a11ef767998885838a599331b5485f768b3d725` が持つicon shadow修正は16-dev側pinにも内容一致（diff 0行）で含まれるため、pin選択の停止・ADR改訂は不要と判断した（[Phase 2 replay-log §0](../../specs/516-16-rebase-phase2/replay-log.md)、ADR-0018 Decision 2）。
 
 ## Android SDK packages
 
@@ -41,8 +43,8 @@ SDK managerで最低限次を導入する。
 
 ```text
 platform-tools
-platforms;android-36.1
-build-tools;36.1.0
+platforms;android-37.2
+build-tools;37.0.0
 ```
 
 `JAVA_HOME` はJDK 21、`ANDROID_HOME` / `ANDROID_SDK_ROOT` はこれらを導入したSDK rootを指すようにする。個人の絶対pathをrepositoryへcommitしない。
@@ -113,17 +115,17 @@ build/outputs/apk/lawnWithQuickstepGithub/debug/
 
 ## Baseline evidence
 
-macOS 26.5.2 arm64、Homebrew OpenJDK 21.0.12、Android command-line tools環境で確認した。
+macOS 26.5.2 arm64、Homebrew OpenJDK 21.0.12、Android command-line tools環境で確認した（2026-10-13、ADR-0018 Phase 4 cutoverの統合head `20f7b9f33d` に対するgate実行。Phase 4 gate log: G1 `spotlessCheck` + `assembleLawnWithQuickstepGithubDebug`、G2 unit gate、S gates。`./gradlew spotlessCheck` 単独の所要時間は今回分離計測していないため要実測）。
 
 | Command | Result |
 |---|---|
-| `./gradlew --version` | Gradle 9.3.0 / JVM 21.0.12 |
-| `./gradlew spotlessCheck` | `BUILD SUCCESSFUL` in 1m 39s |
-| `./gradlew assembleLawnWithQuickstepGithubDebug` | `BUILD SUCCESSFUL` in 3m 22s |
+| `./gradlew spotlessCheck assembleLawnWithQuickstepGithubDebug`（G1 gate） | `BUILD SUCCESSFUL` in 22m 30s |
+| `./gradlew assembleLawnWithQuickstepGithubDebug spotlessCheck testLawnWithQuickstepGithubDebugUnitTest --tests ...`（S gates。CI `organizer-unit-tests` jobと同一filter集合） | `BUILD SUCCESSFUL` in 8m 4s |
+| organizer unit test（G2 gate、同一filter集合での実行時） | `BUILD SUCCESSFUL` in 5m 44s。うち `app.lawnchair.organizer.*` は1705 tests / 0 failures / 0 skipped（160 classes、2026-10-13実測） |
 
-organizer unit test commandは2026-08-14に同じ環境で確認した（`BUILD SUCCESSFUL` in 3m 5s、377 tests / 0 failures、Issue #41）。
+unit testの実測（2026-10-13）はCI `organizer-unit-tests` jobと同一のfilter集合で実行したものである（`-Pnunu.excludeAiExchangeUnitTests` 指定なし。凍結中のAI exchange suiteを含む、やや広い表面）。15 baseline時代の2026-08-14計測値 377 testsは当時の `app.lawnchair.organizer.*` のみの表面である。
 
-生成物 `Lawnchair.15.Dev.(505dbc4).github.debug.apk` の検証時SHA-256は `197dc5e826d8107a6dfc8f253f26d409a1e36152c71d9e31ab643a84e2fa6404` だった。APKはbuild artifactでありcommitしない。
+生成物 `Lawnchair.16.Dev.(20f7b9f).github.debug.apk` の検証時SHA-256は `c5ae1ae0d859352be07c4991f33cb849bac2a99a7daa64e7852f90c0c46633e8` だった（`build/outputs/apk/lawnWithQuickstepGithub/debug/`）。APKはbuild artifactでありcommitしない。
 
 ## Known upstream warnings
 

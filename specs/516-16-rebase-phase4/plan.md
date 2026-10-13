@@ -158,9 +158,13 @@ rollback対象は **main上のcutover merge O** に一意に固定する（ADR D
 
 ## 10. 実行記録
 
-実行時に追記する（merge順dry-run結果・unit適用対照表・gates結果・T9証跡・cutover SHA・tag SHA）。
+正本は [issue-516-phase4-cutover assessment](../../docs/assessment/issue-516-phase4-cutover.md)。要点:
 
-- 2026-10-13: review round 1対応と並行して機械的統合作業を開始済み（PR #575 merge、統合branch `issue-516-phase4-cutover` で545/526/527/528のmergeとunit portを実行中。結果は最終対照表へ記録する）。本PRのmerge後にP28として統合branchへportする。
+- 2026-10-13: PR #575 merge（559 head `5a9e3ea502`）→ 統合branch `issue-516-phase4-cutover` 構築（merge 4件・conflict 2file解消・ancestry検証OK）→ unit port P01〜P28完了（skip 4件はidentity機械確認付き）→ G1'/G2'/G3'/G4'(T9 emulator leg) PASS → 本PR（cutover PR）としてSを提出。
+- R_candidate: `fef1c27d497f2927b8792ea2cbadd8d5f53c6583`（2026-10-13時点のmain head。PR #589 merge commit）
+- G3': counted 354 files / +32307 / −8923（`--verify` PASS。正式採用を本PRに含む）
+- G4' T9: emulator leg PASS（favorites全stage IDENTICAL・schema33不変・rollback legで16書込みprefs完全保持）。実機legはowner decision待ち。
+- S/E/M/O/tagの各SHAとrollback証明はassessment §5へ追記する。
 
 ## Change history
 

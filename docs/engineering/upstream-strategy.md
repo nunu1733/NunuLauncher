@@ -1,7 +1,7 @@
 # Lawnchair Upstream Strategy
 
 > Status: Accepted for current baseline
-> Updated: 2026-08-09
+> Updated: 2026-10-13
 
 ## Current state
 
@@ -12,12 +12,14 @@ GitHub forkとLawnchair sourceを導入済みである。bootstrapの進捗と�
 ```text
 upstream repository: https://github.com/LawnchairLauncher/lawnchair.git
 origin repository:   https://github.com/nunu1733/NunuLauncher.git
-baseline branch:     main
-upstream branch:     15-beta
-baseline tag:        v15.0.0-beta3.0
-baseline commit:     505dbc40e6154c05158b5d0271c45f6a885a411b
-upstream HEAD:       16-dev (2026-08-09時点)
+baseline branch:     16-dev（commit pin運用）
+upstream branch:     16-dev
+baseline tag:        (commit-pinned) 43a21b43d7
+baseline commit:     43a21b43d7cc7850ab54e14b1a57dc9646685f35（2026-10-02 commit）
+upstream HEAD:       16-dev (2026-10-13時点のbaseline pin)
 ```
+
+baseline切替（15 beta 3 → 16-dev）は [ADR-0018](../adr/0018-lawnchair-16-rebase.md) revision 10のPhase 4 cutover（[Epic #516](https://github.com/nunu1733/NunuLauncher/issues/516)）として2026-10-13に完了した。
 
 ## Bootstrap decision
 

@@ -1,0 +1,51 @@
+databases:
+total 1372
+drwxrwx--x 2 u0_a213 u0_a213    4096 2026-10-13 21:43 .
+drwx------ 8 u0_a213 u0_a213    4096 2026-10-13 21:36 ..
+-rw-rw---- 1 u0_a213 u0_a213 1163264 2026-10-13 21:43 app_icons.db
+-rw-rw---- 1 u0_a213 u0_a213       0 2026-10-13 21:43 app_icons.db-journal
+-rw-rw---- 1 u0_a213 u0_a213   12288 2026-10-13 21:39 launcher_5_4_4.db
+-rw-rw---- 1 u0_a213 u0_a213       0 2026-10-13 21:39 launcher_5_4_4.db-journal
+-rw-rw---- 1 u0_a213 u0_a213   36864 2026-10-13 21:43 organizer_recovery.db
+-rw-rw---- 1 u0_a213 u0_a213   45056 2026-10-13 21:44 preferences
+-rw------- 1 u0_a213 u0_a213   32768 2026-10-13 21:44 preferences-shm
+-rw------- 1 u0_a213 u0_a213   57712 2026-10-13 21:36 preferences-wal
+
+files:
+total 80
+drwxrwx--x 5 u0_a213 u0_a213  4096 2026-10-13 21:43 .
+drwx------ 8 u0_a213 u0_a213  4096 2026-10-13 21:36 ..
+-rw------- 1 u0_a213 u0_a213  1003 2026-10-13 21:43 all_apps_predictions.xml
+drwx------ 2 u0_a213 u0_a213  4096 2026-10-13 21:36 customFonts
+drwx------ 2 u0_a213 u0_a213  4096 2026-10-13 21:43 datastore
+-rw------- 1 u0_a213 u0_a213  3551 2026-10-13 21:36 downgrade_schema.json
+-rw------- 1 u0_a213 u0_a213   992 2026-10-13 21:43 hotseat_predictions.xml
+-rw------- 1 u0_a213 u0_a213 11246 2026-10-13 21:44 log-2
+drwx------ 2 u0_a213 u0_a213  4096 2026-10-13 21:36 organizer_diagnostics
+
+files/customFonts:
+total 16
+drwx------ 2 u0_a213 u0_a213 4096 2026-10-13 21:36 .
+drwxrwx--x 5 u0_a213 u0_a213 4096 2026-10-13 21:43 ..
+
+files/datastore:
+total 32
+drwx------ 2 u0_a213 u0_a213 4096 2026-10-13 21:43 .
+drwxrwx--x 5 u0_a213 u0_a213 4096 2026-10-13 21:43 ..
+-rw------- 1 u0_a213 u0_a213 1096 2026-10-13 21:41 live-information.preferences_pb
+-rw------- 1 u0_a213 u0_a213  228 2026-10-13 21:43 preferences.preferences_pb
+
+files/organizer_diagnostics:
+total 20
+drwx------ 2 u0_a213 u0_a213 4096 2026-10-13 21:36 .
+drwxrwx--x 5 u0_a213 u0_a213 4096 2026-10-13 21:43 ..
+-rw------- 1 u0_a213 u0_a213    0 2026-10-13 21:36 organizer_diagnostics.journal
+
+shared_prefs:
+total 48
+drwxrwx--x 2 u0_a213 u0_a213 4096 2026-10-13 21:44 .
+drwx------ 8 u0_a213 u0_a213 4096 2026-10-13 21:36 ..
+-rw-rw---- 1 u0_a213 u0_a213  515 2026-10-13 21:44 com.android.launcher3.device.prefs.xml
+-rw-rw---- 1 u0_a213 u0_a213  644 2026-10-13 21:43 com.android.launcher3.prefs.xml
+-rw-rw---- 1 u0_a213 u0_a213  128 2026-10-13 21:41 organizer_launcher_origin_v1.xml
+-rw-rw---- 1 u0_a213 u0_a213  412 2026-10-13 21:36 plugin_prefs.xml
