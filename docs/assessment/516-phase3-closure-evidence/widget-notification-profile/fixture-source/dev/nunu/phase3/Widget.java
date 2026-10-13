@@ -1,0 +1,7 @@
+package dev.nunu.phase3;
+import android.appwidget.*;import android.content.*;import android.graphics.Bitmap;import android.graphics.Color;import android.widget.RemoteViews;
+public class Widget extends AppWidgetProvider{
+ public void onUpdate(Context c,AppWidgetManager m,int[] ids){publish(c,false,false);}
+ public static void publish(Context c,boolean oversized){publish(c,oversized,false);}
+ public static void publish(Context c,boolean oversized,boolean large){AppWidgetManager m=c.getSystemService(AppWidgetManager.class);int[] ids=m.getAppWidgetIds(new ComponentName(c,Widget.class));if(ids.length==0){android.util.Log.i("Phase3Fixture","NO_WIDGET_BOUND");return;}RemoteViews v=new RemoteViews(c.getPackageName(),R.layout.widget);v.setTextViewText(R.id.label,(large?"Phase3 large ":"Phase3 update ")+System.currentTimeMillis());if(oversized)v.setImageViewBitmap(R.id.image,Bitmap.createBitmap(3000,3000,Bitmap.Config.ARGB_8888));if(large){Bitmap bitmap=Bitmap.createBitmap(1800,1800,Bitmap.Config.ARGB_8888);bitmap.eraseColor(Color.MAGENTA);v.setImageViewBitmap(R.id.image,bitmap);}try{m.updateAppWidget(ids,v);android.util.Log.i("Phase3Fixture",large?"LARGE_WIDGET_UPDATE ids="+ids.length:oversized?"OVERSIZE_UNEXPECTED_SUCCESS":"NORMAL_WIDGET_UPDATE ids="+ids.length);}catch(IllegalArgumentException e){android.util.Log.i("Phase3Fixture",large?"PROVIDER_REJECTED large=true "+e.getMessage():"PROVIDER_REJECTED oversized="+oversized+" "+e.getMessage());}}
+}

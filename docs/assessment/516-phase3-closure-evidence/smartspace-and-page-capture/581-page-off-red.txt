@@ -1,0 +1,44 @@
+INSTRUMENTATION_STATUS: class=app.lawnchair.organizer.application.PageCaptureInstrumentationTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+app.lawnchair.organizer.application.PageCaptureInstrumentationTest:
+INSTRUMENTATION_STATUS: test=modelOnlyEmptyPagesExcludedFromCapture
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=app.lawnchair.organizer.application.PageCaptureInstrumentationTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stack=java.lang.IllegalArgumentException: Model page inventory omits a page referenced by favorites
+	at app.lawnchair.organizer.application.adapter.RowManifestCodec.capture(RowManifestCodec.kt:75)
+	at app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter.capture(LauncherLayoutAdapter.kt:117)
+	at app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter.captureCurrent(LauncherLayoutAdapter.kt:94)
+	at app.lawnchair.organizer.application.PageCaptureInstrumentationTest.modelOnlyEmptyPagesExcludedFromCapture(PageCaptureInstrumentationTest.kt:112)
+
+INSTRUMENTATION_STATUS: stream=
+Error in modelOnlyEmptyPagesExcludedFromCapture(app.lawnchair.organizer.application.PageCaptureInstrumentationTest):
+java.lang.IllegalArgumentException: Model page inventory omits a page referenced by favorites
+	at app.lawnchair.organizer.application.adapter.RowManifestCodec.capture(RowManifestCodec.kt:75)
+	at app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter.capture(LauncherLayoutAdapter.kt:117)
+	at app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter.captureCurrent(LauncherLayoutAdapter.kt:94)
+	at app.lawnchair.organizer.application.PageCaptureInstrumentationTest.modelOnlyEmptyPagesExcludedFromCapture(PageCaptureInstrumentationTest.kt:112)
+
+INSTRUMENTATION_STATUS: test=modelOnlyEmptyPagesExcludedFromCapture
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 2.76
+There was 1 failure:
+1) modelOnlyEmptyPagesExcludedFromCapture(app.lawnchair.organizer.application.PageCaptureInstrumentationTest)
+java.lang.IllegalArgumentException: Model page inventory omits a page referenced by favorites
+	at app.lawnchair.organizer.application.adapter.RowManifestCodec.capture(RowManifestCodec.kt:75)
+	at app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter.capture(LauncherLayoutAdapter.kt:117)
+	at app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter.captureCurrent(LauncherLayoutAdapter.kt:94)
+	at app.lawnchair.organizer.application.PageCaptureInstrumentationTest.modelOnlyEmptyPagesExcludedFromCapture(PageCaptureInstrumentationTest.kt:112)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1
