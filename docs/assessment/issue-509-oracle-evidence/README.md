@@ -12,7 +12,7 @@ assessment `docs/assessment/issue-509-category-destination-feasibility.md` §3.6
 | ファイル | 内容 |
 |---|---|
 | `ProbeActivity.java` | E4a版probe（installer=vending偽装。`e4.log`の`SecurityException`を生成したsource） |
-| `ProbeActivityV3.java` | E4b3版probe（installer=自己package＋commit-status receiver。`ProbeActivity.java`をE4a→E4b3間でin-place編集したためv3のテキストは別保存されておらず、**実機install済みAPKのdisassemblyから復元したsource**である。復元の正確性は下記`probe-v3-installed-dexdump.txt`とlog文字列の一致で検証） |
+| `ProbeActivityV3.java` | E4b3版probeの**参考復元source（部分復元・再build保証なし）**。`ProbeActivity.java`をE4a→E4b3間でin-place編集したためv3のテキストは別保存されておらず、実機install済みAPKのdisassembly（下記`probe-v3-installed-dexdump.txt`）から主要経路を復元したものである。dexdump上に存在する`ProbeActivity$1.onBadgingChanged`のlog文字列や`ProbeActivity$CommitReceiver`クラスまで含んだ完全復元は行っておらず、このまま`javac`へ渡してもファイル名規則でcompileされない。**E4b3の正は`probe-v3-installed.apk`＋disassemblyであり、sourceからの再buildは要求しない** |
 | `probe-v3-installed.apk` / `probe-v3-installed-dexdump.txt` | **E4b3実行時にemulatorへinstallされていたprobeのAPK**（`pm path`で取得、MD5 `baa9fa89a3dfafed92c6e6ae6989dd94`）とその`dexdump`逆生成物。bytecode上で`setInstallerPackageName(getPackageName())`、`registerReceiver(COMMIT_RESULT)`、`FLAG_UPDATE_CURRENT|FLAG_MUTABLE`（`0xa0000000`）のcommit-status receiverを確認できる |
 | `e1prime.log` | E1'（対照実験。shell session、installer=vending、reason=4、badging無し）のraw log |
 | `e4.log` | E4a（probe、installer=vending偽装）のraw log。`createSessionInternal`の`SecurityException`を含む |
@@ -24,7 +24,7 @@ assessment `docs/assessment/issue-509-category-destination-feasibility.md` §3.6
 
 1. 対象commitからdebug APKをbuild: `./gradlew assembleLawnWithQuickstepGithubDebug`（JDK 21、Android SDK Platform 37.2。`docs/engineering/building.md`参照）
 2. probe appのbuild（一時手順。aapt2 linkに`--min-sdk-version 29 --target-sdk-version 34`、`resources.arsc`はuncompressed+zipalign、debug keystore署名。`classes.dex`は`javac --release 11`＋d8）
-   - E4aは`ProbeActivity.java`、E4b3は`ProbeActivityV3.java`（復元source。実機install済みAPK `probe-v3-installed.apk`が正）をbuild
+   - E4aは`ProbeActivity.java`をbuild。**E4b3の正は`probe-v3-installed.apk`（実機install済みAPK）であり、`ProbeActivityV3.java`は参考復元のためsourceからの再buildは行わない・保証しない**（dexdumpのクラス構成〔`ProbeActivity$1.onBadgingChanged` log、`ProbeActivity$CommitReceiver`〕と復元sourceの対応は部分一致にとどまる）
    - `adb install -r -g probe.apk`（API 37 emulator）
 3. launcherをinstallし既定HOMEへ: `adb install -r -d <launcher.apk>` → `cmd package set-home-activity "app.lawnchair.debug/app.lawnchair.LawnchairLauncher"` → `am start`
 4. benchmark target APK（`tests/benchmark-install-targets`のtarget01 flavor）をprobeのfiles dirへpush（rootで`/data/data/app.lawnchair.probe.sessionbadge/files/target.apk`）

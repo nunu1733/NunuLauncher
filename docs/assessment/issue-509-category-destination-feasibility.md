@@ -170,7 +170,7 @@ install reason定数の実測値: API 35/36とも`--install-reason 4`が`INSTALL
 
 #### E4b3（probe: installer=自己package、badging付きsession。本実験の核心）
 
-非特権probe app（`ProbeActivityV3`。durable証拠の`probe-v3-installed.apk`が実行正）が`setAppIcon`＋`setAppLabel`＋`setInstallReason(4)`＋`setAppPackageName(target)`＋installer=自己package＋target未installの条件下でsessionを作成した。実測:
+非特権probe app（E4b3版。durable証拠の`probe-v3-installed.apk`＋disassemblyが実行正。`ProbeActivityV3.java`は参考復元・再build保証なし）が`setAppIcon`＋`setAppLabel`＋`setInstallReason(4)`＋`setAppPackageName(target)`＋installer=自己package＋target未installの条件下でsessionを作成した。実測:
 
 - `PackageInstallerSession: Writing changed icon /data/system/install_sessions/app_icon.<sessionId>.png` — systemがsession iconを永続化（badging搭載のsystem証跡）。
 - `dumpsys package`のsession snapshot: `appPackageName=app.lawnchair.benchmark.target01 appIcon=true appLabel=Benchmark Target 01 installReason=4 installerPackageName=app.lawnchair.probe.sessionbadge`、**create時点で`pm path`空（target未install）**。
@@ -233,6 +233,7 @@ opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不�
 
 ## Change history
 
+- 2026-10-14: Revision 6対応 round 3 — Revision 5 review round 3（ChatGPT、[PR #592 comment](https://github.com/nunu1733/NunuLauncher/pull/592#issuecomment-6162628487)）の新規指摘（中1）への対応。round 1/2のblocking指摘は全て解消済みと判定された。round 3指摘（`ProbeActivityV3.java`の復元sourceがdexdumpのクラス構成〔`onBadgingChanged` log、`CommitReceiver`〕と一致せず再build手順とも不整合）に対し、`ProbeActivityV3.java`を「部分復元・再build保証なしの参考復元」と明記し、E4b3の正を`probe-v3-installed.apk`＋disassemblyとして再現手順・§3.6へ同期。実験の再実行は不要。判定・状態は不変。
 - 2026-10-14: Revision 6対応 round 2 — Revision 5 review round 2（ChatGPT、[PR #592 comment](https://github.com/nunu1733/NunuLauncher/pull/592#issuecomment-6162321398)）の残存指摘（高1・中1）への対応。高: E4b3実行sourceの欠落とsession ID時系列の非一意性に対し、実機install済みprobe APK（`probe-v3-installed.apk`）とdisassemblyをdurable証拠へ追加し、復元source`ProbeActivityV3.java`を収録。作成session（`1228612374`）と完了callback（`1120207295`）の1:1対応を証跡から証明できないことをREADME「session ID時系列の限界」と§3.6へ明記し、「install完了後の通常追加」の記述を「同構成sessionの同意flow完遂後の観測」へ弱めた。中: PR本文とIssue #509再進行コメントの旧表現（直接観測・emulator構成不能の一般化・/tmp証跡）を訂正コメント/本文編集で同期。判定・状態は不変。
 - 2026-10-14: Revision 6対応 — Revision 5 review round 1（ChatGPT、[PR #592 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-6160025793)）の指摘（高2・中2・低1）への対応。高1: 対象commitの完全SHAを実在する`391ad7eaa0f84f43af67f7101071f91325c998d9`へ訂正。高2: §3.6のoracle証跡を`docs/assessment/issue-509-oracle-evidence/`へdurable化（probe source＋manifest、E1'/E4a/E4b3 raw log、終了時dumpsys snapshot、再現手順）。中1: `isTrustedPackage` gate帰属を「直接観測」から「dumpsysで満たされた他条件との突合による特定」へ証拠強度を修正（log不在はcallback入口未到達と区別できない旨を明記）。中2: 「emulator上で構成不能」を本実験の`google_apis`構成に限定し、Play Store付きimageを範囲外と明記。低1: §1.1の5file列挙から`DirectEditContract`（fork-only）をownership区分として分離。判定・状態は不変。
 - 2026-10-14: Revision 5 — #516（Lawnchair 16 rebase Epic）完了とADR-0018受入を受けた新baseline再評価（Issue本文の再開条件②）。対象commit `391ad7eaa0`（Lawnchair 16-dev baseline cutover後）。§2のpath:lineを実測更新し、fork seam（DirectEditContract 4field/2kind・capture hook・stage-2・S1→S2→S5）の存続を確認。§3.6にoracle再実験（E1'対照実験の再現、E4a installer偽装拒否、E4b3 badging付きsession構成とpromise capture不発の観測、`google_apis`構成でのpromise oracle構成不能の明記）を追加。§1.5に再評価結論、§7/§8/§9を現行化。判定（`rebase後へ延期`）・owner product decision pending・Issue open・`phase: later`は不変。
