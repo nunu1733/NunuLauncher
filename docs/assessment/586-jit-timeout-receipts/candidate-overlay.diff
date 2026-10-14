@@ -1,0 +1,10 @@
+--- /tmp/586-head-test.kt	2026-10-15 03:39:59
++++ /tmp/586-head-test-overlay.kt	2026-10-15 03:39:59
+@@ -125,7 +125,6 @@
+             application = application,
+             planner = OrganizationPlanner { error("planner must not run for a NotReady composition") },
+             usageAccessGate = UsageAccessJitGateProvider.get(context()),
+-            publicationThread = HandlerRunPublicationThread(),
+         )
+     }
+ 

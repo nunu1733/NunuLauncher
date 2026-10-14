@@ -18,12 +18,15 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -51,6 +54,7 @@ import app.lawnchair.organizer.ui.exchange.ExchangeFlowStateHolder
 import app.lawnchair.organizer.ui.exchange.ExchangeScreen
 import app.lawnchair.ui.preferences.destinations.ManualOrganizationPreferences
 import app.lawnchair.ui.theme.LawnchairTheme
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
@@ -130,6 +134,97 @@ class UsageAccessJitInstrumentationTest {
         val process = instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_BACK")
         process.close()
         Thread.sleep(1500)
+    }
+
+    /**
+     * Issue #586 (spec 586): passive, append-only receipt of the grant-check
+     * tick's entry. The host's test-only tracer appends here; nothing reads
+     * the record until a failure receipt is built, so the diagnostics never
+     * become a progress, scheduling, or synchronization condition.
+     */
+    private class GrantCheckTickTrace {
+        val enteredTicks = ConcurrentLinkedQueue<Int>()
+
+        fun onEntered(tick: Int) {
+            enteredTicks.add(tick)
+        }
+    }
+
+    /**
+     * Issue #586 (spec 586): the settings-return oracle's final wait, wrapped
+     * so a timeout is rethrown with failure-time receipts captured BEFORE the
+     * test's cleanup (the appops restore in `finally`). The wait condition,
+     * bound and assertions are unchanged; the receipts are observation-only.
+     */
+    private fun waitUntilInputUnavailableOrCaptureReceipts(
+        runner: ManualOrganizationRun,
+        application: NotReadyApplication,
+        tickTrace: GrantCheckTickTrace,
+    ) {
+        try {
+            composeRule.waitUntil(timeoutMillis = 30_000) {
+                runner.state is ManualOrganizationRun.State.InputUnavailable
+            }
+        } catch (timeout: ComposeTimeoutException) {
+            throw AssertionError(buildSettingsReturnTimeoutReceipts(runner, application, tickTrace), timeout)
+        }
+    }
+
+    /**
+     * Issue #586: the failure-time receipts demanded by the issue's exit
+     * criteria — runner-state kind, gate phase, permission predicate, tick
+     * receipt, journal state, and a compose receipt — all read while the
+     * failure is still on screen (no cleanup has run).
+     */
+    private fun buildSettingsReturnTimeoutReceipts(
+        runner: ManualOrganizationRun,
+        application: NotReadyApplication,
+        tickTrace: GrantCheckTickTrace,
+    ): String {
+        val state = runner.state
+        val gate = runner.usageAccessGate.snapshot.value
+        // One snapshot of the journal: both the RUN_STARTED receipt and the
+        // event list below derive from it, so they can never contradict each
+        // other (spec 586 review round 2). The journal is append-only
+        // (ConcurrentLinkedQueue), so this read never throws while a worker
+        // emits.
+        val eventSnapshot = application.events.toList()
+        val runStarted = eventSnapshot.any { it.phase == PhaseCode.RUN_STARTED }
+        // Non-throwing compose observations: an unreadable tree becomes a
+        // receipt value instead of masking the original timeout.
+        val dialogPresent = runCatching {
+            composeRule
+                .onAllNodesWithTag("usage_access_jit_dialog")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }.map { it.toString() }.getOrDefault("<unavailable>")
+        val settingsUnavailablePresent = runCatching {
+            composeRule
+                .onAllNodesWithTag("usage_access_jit_settings_unavailable")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }.map { it.toString() }.getOrDefault("<unavailable>")
+        val semantics = runCatching { composeRule.onRoot().printToString() }
+            .getOrDefault("<semantics tree unavailable>")
+            .let { if (it.length > 8_000) it.take(8_000) + "…(truncated)" else it }
+        return buildString {
+            appendLine(
+                "settings-return wait timed out; failure-time receipts " +
+                    "(captured before cleanup, spec 586)",
+            )
+            appendLine("runnerState=${state::class.simpleName} ($state)")
+            appendLine("gatePhase=${gate.phase} gateRevision=${gate.revision}")
+            appendLine("usageAccessPredicateGranted=${UsageAccess.isGranted(context())}")
+            appendLine("grantCheckTickEntered=${tickTrace.enteredTicks.toList()}")
+            appendLine(
+                "journalRunStarted=$runStarted " +
+                    "(events=${eventSnapshot.map { it.phase }})",
+            )
+            appendLine("preparationPhase=${runner.preparationPhase.value}")
+            appendLine("operationActive=${runner.operationActive.value}")
+            appendLine("dialogPresent=$dialogPresent settingsUnavailablePresent=$settingsUnavailablePresent")
+            appendLine("semanticsTree=$semantics")
+        }
     }
 
     @Test
@@ -222,6 +317,7 @@ class UsageAccessJitInstrumentationTest {
         val context = context()
         val application = NotReadyApplication(context)
         val owner = TestLifecycleOwner()
+        val tickTrace = GrantCheckTickTrace()
         // LifecycleRegistry state must be set on the main thread.
         InstrumentationRegistry.getInstrumentation().runOnMainSync { owner.registry.currentState = Lifecycle.State.RESUMED }
         val runner = newProductionRunner(application)
@@ -236,6 +332,7 @@ class UsageAccessJitInstrumentationTest {
                         // the injected lifecycle (spec 371 JIT-AC-03).
                         usageAccessSettingsOpener = { true },
                         jitLifecycleOwner = owner,
+                        grantCheckTickTracer = tickTrace::onEntered,
                     )
                 }
             }
@@ -257,7 +354,7 @@ class UsageAccessJitInstrumentationTest {
                 owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
             }
 
-            composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
+            waitUntilInputUnavailableOrCaptureReceipts(runner, application, tickTrace)
             assertEquals(true, application.usageGrantedAtCompose)
             assertTrue(application.events.any { it.phase == PhaseCode.RUN_STARTED })
         } finally {
@@ -270,6 +367,7 @@ class UsageAccessJitInstrumentationTest {
         val context = context()
         val application = NotReadyApplication(context)
         val owner = TestLifecycleOwner()
+        val tickTrace = GrantCheckTickTrace()
         InstrumentationRegistry.getInstrumentation().runOnMainSync { owner.registry.currentState = Lifecycle.State.RESUMED }
         val runner = newProductionRunner(application)
         try {
@@ -280,6 +378,7 @@ class UsageAccessJitInstrumentationTest {
                         run = runner,
                         usageAccessSettingsOpener = { true },
                         jitLifecycleOwner = owner,
+                        grantCheckTickTracer = tickTrace::onEntered,
                     )
                 }
             }
@@ -298,7 +397,7 @@ class UsageAccessJitInstrumentationTest {
                 owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
             }
 
-            composeRule.waitUntil(timeoutMillis = 30_000) { runner.state is ManualOrganizationRun.State.InputUnavailable }
+            waitUntilInputUnavailableOrCaptureReceipts(runner, application, tickTrace)
             assertEquals(false, application.usageGrantedAtCompose)
             assertTrue(application.events.any { it.phase == PhaseCode.RUN_STARTED })
         } finally {
@@ -479,11 +578,11 @@ private class NotReadyApplication(
         override fun recover(request: app.lawnchair.organizer.application.public.RecoveryRequest): app.lawnchair.organizer.application.public.RecoveryResult =
             error("not reached in this test")
 
-    val events = mutableListOf<RunEvent>()
+    val events = ConcurrentLinkedQueue<RunEvent>()
     var usageGrantedAtCompose: Boolean? = null
     private val recordingDiagnostics = object : DiagnosticsPort {
         override fun emit(event: RunEvent) {
-            events += event
+            events.add(event)
         }
 
         override fun snapshot(): List<RunEvent> = events.toList()
