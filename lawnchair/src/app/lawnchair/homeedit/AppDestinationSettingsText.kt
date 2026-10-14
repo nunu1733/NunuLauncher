@@ -19,23 +19,27 @@ enum class DestinationSummaryKind {
     FOLDER_NAMED,
     FOLDER_UNTITLED,
     FOLDER_MISSING,
+    CATEGORY,
 }
 
 object AppDestinationSummaryState {
 
     /**
-     * 3択と既存スイッチの整合（spec AC-1）: スイッチOFFはどのpolicy値でも
+     * 選択肢と既存スイッチの整合（spec AC-1）: スイッチOFFはどのpolicy値でも
      * DONT_ADDを表示し、フォルダ指定はスイッチONのときだけ表示する。
      * 指定idが実在しない場合はFOLDER_MISSING（有効な指定がない状態を示す。
-     * 同名フォルダ再作成でも復活しない。spec AC-3）。
+     * 同名フォルダ再作成でも復活しない。spec AC-3）。カテゴリモードは Issue
+     * #594の4択目であり、coverage範囲の明示はdescription側の文言で行う。
      */
     fun resolve(
         addIconOn: Boolean,
         designatedFolderId: Int?,
         folderExists: Boolean,
         folderTitle: String?,
+        categoryMode: Boolean = false,
     ): DestinationSummaryKind = when {
         !addIconOn -> DestinationSummaryKind.DONT_ADD
+        categoryMode -> DestinationSummaryKind.CATEGORY
         designatedFolderId == null -> DestinationSummaryKind.UPSTREAM
         !folderExists -> DestinationSummaryKind.FOLDER_MISSING
         !folderTitle.isNullOrEmpty() -> DestinationSummaryKind.FOLDER_NAMED
@@ -52,6 +56,7 @@ fun destinationSummaryText(kind: DestinationSummaryKind): Int = when (kind) {
     DestinationSummaryKind.FOLDER_MISSING -> R.string.destination_policy_summary_folder_missing
     DestinationSummaryKind.FOLDER_NAMED -> R.string.destination_policy_summary_folder
     DestinationSummaryKind.FOLDER_UNTITLED -> R.string.destination_policy_summary_folder
+    DestinationSummaryKind.CATEGORY -> R.string.destination_policy_summary_category
 }
 
 /** fallback理由キー → one-shot通知の文字列リソース（package名は出力しない）。 */
@@ -75,10 +80,31 @@ object AppDestinationPolicyTextKeys {
     val choiceUpstream: Int = R.string.destination_policy_choice_upstream
     val choiceFolder: Int = R.string.destination_policy_choice_folder
     val choiceDontAdd: Int = R.string.destination_policy_choice_dont_add
+    val choiceCategory: Int = R.string.destination_policy_choice_category
     val folderPickerTitle: Int = R.string.destination_policy_folder_picker_title
     val folderStop: Int = R.string.destination_policy_folder_stop
     val otherProfile: Int = R.string.destination_policy_other_profile
+    val categoryEditorTitle: Int = R.string.destination_policy_category_editor_title
+    val categoryPickerTitle: Int = R.string.destination_policy_category_picker_title
+    val categoryEditorCoverage: Int = R.string.destination_policy_category_editor_coverage
+    val categoryEditorEmpty: Int = R.string.destination_policy_category_editor_empty
+    val categoryEntryFolderUnset: Int = R.string.destination_policy_category_entry_folder_unset
+    val categoryEditorDone: Int = R.string.destination_policy_category_editor_done
 
-    val all: List<Int> =
-        listOf(dialogTitle, choiceUpstream, choiceFolder, choiceDontAdd, folderPickerTitle, folderStop, otherProfile)
+    val all: List<Int> = listOf(
+        dialogTitle,
+        choiceUpstream,
+        choiceFolder,
+        choiceDontAdd,
+        choiceCategory,
+        folderPickerTitle,
+        folderStop,
+        otherProfile,
+        categoryEditorTitle,
+        categoryPickerTitle,
+        categoryEditorCoverage,
+        categoryEditorEmpty,
+        categoryEntryFolderUnset,
+        categoryEditorDone,
+    )
 }

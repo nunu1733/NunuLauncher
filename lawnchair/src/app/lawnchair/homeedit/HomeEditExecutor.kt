@@ -92,6 +92,32 @@ class HomeEditExecutor(private val launcher: LawnchairLauncher) {
     }
 
     /**
+     * Issue #594: all workspace folders of one profile for the category
+     * mapping editor. Same filters as [fetchAllFolderOptions] (Dock folders
+     * excluded, ADR-0015 Decision 4), narrowed to the given profile serial so
+     * a mapping row for a category is bound to the folder's own profile.
+     */
+    fun fetchFolderOptionsForProfile(userSerial: Long, callback: (List<FolderOption>) -> Unit) {
+        Executors.MODEL_EXECUTOR.execute {
+            val snapshot = buildSnapshot()
+            val options = snapshot.items
+                .filter {
+                    it.itemType == HomeEditItemTypes.FOLDER &&
+                        it.container == HomeEditContainers.DESKTOP &&
+                        it.userSerial == userSerial
+                }
+                .map { folder ->
+                    FolderOption(
+                        folderId = folder.id,
+                        itemCount = snapshot.items.count { it.container == folder.id },
+                        userSerial = folder.userSerial,
+                    )
+                }
+            mainHandler.post { callback(options) }
+        }
+    }
+
+    /**
      * Stage-1 planning at confirm time, then submission of the validated
      * plan. Rejects without any write, reporting a localized reason.
      */

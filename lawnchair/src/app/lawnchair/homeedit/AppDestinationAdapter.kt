@@ -120,10 +120,20 @@ object AppDestinationBridge {
 
     private class Resolver(private val appContext: Context) : DirectEditContract.DestinationResolver {
 
+        private val signalReader = CategoryModeSignalReader(appContext)
+
         /**
          * Enqueue時のcapture（自動追加overloadからのみ呼ばれる）。policy選択
-         * と指定folder idをこの時点で固定する。選択がupstreamのときも必ず
-         * snapshotを永続化する（snapshotの有無が旧format entryとの区別になる）。
+         * と配置先をこの時点で固定する。選択がupstreamのときも必ずsnapshotを
+         * 永続化する（snapshotの有無が旧format entryとの区別になる）。
+         *
+         * カテゴリモード（Issue #594 / ADR-0017 Decision 2）: captureの責務は
+         * 「分類→mapping照合→folderIdの復元」まで。folderIdを復元できた場合は
+         * liveness/profile/layoutを検証せず既存`FOLDER` snapshotを返す（有効性は
+         * stage-2に一本化）。解決不能（signal不在・未mapping・mapping破損）は
+         * 既存`UPSTREAM` snapshotへ落ち、typed理由をFileLogへ記録する（package名
+         * は出力しない）。promise経路（install完了前。signal読めない）も同じ
+         * 予防的fallback契約に従う。
          */
         override fun captureDestination(
             context: Context,
@@ -131,23 +141,61 @@ object AppDestinationBridge {
             user: UserHandle,
         ): String {
             val userSerial = UserCache.getInstance(context).getSerialNumberForUser(user)
-            val folderId = AppDestinationPolicyPrefs.designatedFolderId(context)
-            return if (folderId != null) {
-                DirectEditContract.serializeDestinationSnapshot(
-                    DirectEditContract.DEST_SNAPSHOT_KIND_FOLDER,
-                    folderId,
-                    userSerial,
-                    packageName,
-                )
-            } else {
-                DirectEditContract.serializeDestinationSnapshot(
-                    DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM,
-                    0,
-                    userSerial,
-                    packageName,
-                )
+            val destinationValue = PreferenceManager.getInstance(context).newAppDestination.get()
+            return when {
+                destinationValue == AppDestinationPolicyPrefs.VALUE_CATEGORY ->
+                    captureCategoryDestination(context, packageName, userSerial)
+
+                else -> {
+                    val folderId = AppDestinationPolicyPrefs.folderIdFromValue(destinationValue)
+                    if (folderId != null) {
+                        DirectEditContract.serializeDestinationSnapshot(
+                            DirectEditContract.DEST_SNAPSHOT_KIND_FOLDER,
+                            folderId,
+                            userSerial,
+                            packageName,
+                        )
+                    } else {
+                        serializeUpstream(userSerial, packageName)
+                    }
+                }
             }
         }
+
+        private fun captureCategoryDestination(
+            context: Context,
+            packageName: String,
+            userSerial: Long,
+        ): String {
+            val signal = signalReader.read(packageName, userSerial)
+            val result = AppDestinationCategoryResolver.resolve(
+                signal,
+                AppDestinationPolicyPrefs.categoryMappings(context),
+                userSerial,
+            )
+            return when (result) {
+                is CategoryDestinationResult.FolderTarget ->
+                    DirectEditContract.serializeDestinationSnapshot(
+                        DirectEditContract.DEST_SNAPSHOT_KIND_FOLDER,
+                        result.folderId,
+                        userSerial,
+                        packageName,
+                    )
+
+                is CategoryDestinationResult.Unresolved -> {
+                    FileLog.d(LOG, "category destination unresolved: ${result.reason}")
+                    serializeUpstream(userSerial, packageName)
+                }
+            }
+        }
+
+        private fun serializeUpstream(userSerial: Long, packageName: String): String = DirectEditContract
+            .serializeDestinationSnapshot(
+                DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM,
+                0,
+                userSerial,
+                packageName,
+            )
 
         /**
          * flush時のrouting。persisted snapshotを読むだけ（current policyは
@@ -222,20 +270,53 @@ object AppDestinationBridge {
 
 /**
  * 配置先ポリシーの選択値の読み書き（既存の「ホームにアイコンを追加」と同じ
- * SharedPreferencesに載るtyped pref）。値は `upstream` または `folder:<id>`
- * （「追加しない」は既存 `pref_add_icon_to_home` のOFFそのものであり、本prefに
- * 値を持たない。ADR-0015 Decision 15、spec 497 Open questions 4）。
+ * SharedPreferencesに載るtyped pref）。値は `upstream`、`folder:<id>`、
+ * `category` の3種（Issue #594 / ADR-0017 Decision 5。「追加しない」は既存
+ * `pref_add_icon_to_home` のOFFそのものであり、本prefに値を持たない。旧値の
+ * decode互換は維持され、未知値はupstream扱いでfail-safeに落ちる）。
+ * カテゴリモードのmapping集は別キー [PREF_CATEGORY_MAPPINGS] に保存する
+ * （policy選択値とmapping集の分離。schema/migrationは発生しない）。
  */
 object AppDestinationPolicyPrefs {
 
     const val VALUE_UPSTREAM = "upstream"
     const val VALUE_FOLDER_PREFIX = "folder:"
+    const val VALUE_CATEGORY = "category"
+    private const val PREF_CATEGORY_MAPPINGS_FILE = "app_destination_category_mappings"
+    private const val PREF_CATEGORY_MAPPINGS_KEY = "mappings_v1"
 
     fun designatedFolderId(context: Context): Int? = folderIdFromValue(PreferenceManager.getInstance(context).newAppDestination.get())
 
-    /** `folder:<id>` 値からフォルダidを取り出す（upstream値はnull）。 */
+    /** `folder:<id>` 値からフォルダidを取り出す（upstream/category値はnull）。 */
     fun folderIdFromValue(value: String): Int? = value.takeIf { it.startsWith(VALUE_FOLDER_PREFIX) }
         ?.removePrefix(VALUE_FOLDER_PREFIX)?.toIntOrNull()
+
+    /** カテゴリモードが選択されているか（policy値が `category`）。 */
+    fun isCategoryMode(context: Context): Boolean = PreferenceManager.getInstance(context)
+        .newAppDestination.get() == VALUE_CATEGORY
+
+    /** カテゴリモードのmapping集（`CategoryMappingKey` → folderId文字列。決定的な行形式）。 */
+    fun categoryMappings(context: Context): Map<CategoryMappingKey, String> {
+        val prefs = context.applicationContext.getSharedPreferences(
+            PREF_CATEGORY_MAPPINGS_FILE,
+            Context.MODE_PRIVATE,
+        )
+        return CategoryDestinationMappingCodec.deserialize(prefs.getString(PREF_CATEGORY_MAPPINGS_KEY, null))
+    }
+
+    fun setCategoryMappings(context: Context, entries: Map<CategoryMappingKey, String>) {
+        val prefs = context.applicationContext.getSharedPreferences(
+            PREF_CATEGORY_MAPPINGS_FILE,
+            Context.MODE_PRIVATE,
+        )
+        prefs.edit()
+            .putString(PREF_CATEGORY_MAPPINGS_KEY, CategoryDestinationMappingCodec.serialize(entries))
+            .apply()
+    }
+
+    fun setCategoryMode(context: Context) {
+        PreferenceManager.getInstance(context).newAppDestination.set(VALUE_CATEGORY)
+    }
 
     fun setDesignatedFolder(context: Context, folderId: Int) {
         PreferenceManager.getInstance(context).newAppDestination.set("$VALUE_FOLDER_PREFIX$folderId")

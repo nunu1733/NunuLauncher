@@ -37,6 +37,25 @@ class AppDestinationSettingsTextTest {
     }
 
     @Test
+    fun `category mode shows CATEGORY while the toggle is on`() {
+        // Issue #594: the 4th choice has its own summary kind; a stored folder
+        // designation does not leak into it (choices are mutually exclusive).
+        assertEquals(
+            DestinationSummaryKind.CATEGORY,
+            AppDestinationSummaryState.resolve(true, null, false, null, categoryMode = true),
+        )
+        assertEquals(
+            DestinationSummaryKind.CATEGORY,
+            AppDestinationSummaryState.resolve(true, 42, true, "T", categoryMode = true),
+        )
+        // Toggle off still wins (AC-1).
+        assertEquals(
+            DestinationSummaryKind.DONT_ADD,
+            AppDestinationSummaryState.resolve(false, null, false, null, categoryMode = true),
+        )
+    }
+
+    @Test
     fun `designated id that no longer resolves shows FOLDER_MISSING`() {
         // A deleted folder id must not display as a valid designation, even
         // if a same-named folder is recreated later (spec AC-3, id-based).
@@ -73,6 +92,7 @@ class AppDestinationSettingsTextTest {
                 R.string.destination_policy_summary_folder_missing,
             DestinationSummaryKind.FOLDER_NAMED to R.string.destination_policy_summary_folder,
             DestinationSummaryKind.FOLDER_UNTITLED to R.string.destination_policy_summary_folder,
+            DestinationSummaryKind.CATEGORY to R.string.destination_policy_summary_category,
         )
         for ((kind, expected) in mappings) {
             assertEquals(expected, destinationSummaryText(kind))
@@ -123,11 +143,18 @@ class AppDestinationSettingsTextTest {
         assertEquals(R.string.destination_policy_choice_upstream, AppDestinationPolicyTextKeys.choiceUpstream)
         assertEquals(R.string.destination_policy_choice_folder, AppDestinationPolicyTextKeys.choiceFolder)
         assertEquals(R.string.destination_policy_choice_dont_add, AppDestinationPolicyTextKeys.choiceDontAdd)
+        assertEquals(R.string.destination_policy_choice_category, AppDestinationPolicyTextKeys.choiceCategory)
         assertEquals(R.string.destination_policy_folder_picker_title, AppDestinationPolicyTextKeys.folderPickerTitle)
         assertEquals(R.string.destination_policy_folder_stop, AppDestinationPolicyTextKeys.folderStop)
         assertEquals(R.string.destination_policy_other_profile, AppDestinationPolicyTextKeys.otherProfile)
-        assertEquals(7, AppDestinationPolicyTextKeys.all.size)
-        assertEquals("keys must be distinct resources", 7, AppDestinationPolicyTextKeys.all.toSet().size)
+        assertEquals(R.string.destination_policy_category_editor_title, AppDestinationPolicyTextKeys.categoryEditorTitle)
+        assertEquals(R.string.destination_policy_category_picker_title, AppDestinationPolicyTextKeys.categoryPickerTitle)
+        assertEquals(R.string.destination_policy_category_editor_coverage, AppDestinationPolicyTextKeys.categoryEditorCoverage)
+        assertEquals(R.string.destination_policy_category_editor_empty, AppDestinationPolicyTextKeys.categoryEditorEmpty)
+        assertEquals(R.string.destination_policy_category_entry_folder_unset, AppDestinationPolicyTextKeys.categoryEntryFolderUnset)
+        assertEquals(R.string.destination_policy_category_editor_done, AppDestinationPolicyTextKeys.categoryEditorDone)
+        assertEquals(14, AppDestinationPolicyTextKeys.all.size)
+        assertEquals("keys must be distinct resources", 14, AppDestinationPolicyTextKeys.all.toSet().size)
     }
 
     @Test
@@ -140,13 +167,21 @@ class AppDestinationSettingsTextTest {
                 "destination_policy_summary_folder",
                 "destination_policy_summary_folder_missing",
                 "destination_policy_summary_dont_add",
+                "destination_policy_summary_category",
                 "destination_policy_dialog_title",
                 "destination_policy_choice_upstream",
                 "destination_policy_choice_folder",
                 "destination_policy_choice_dont_add",
+                "destination_policy_choice_category",
                 "destination_policy_folder_picker_title",
                 "destination_policy_folder_stop",
                 "destination_policy_other_profile",
+                "destination_policy_category_editor_title",
+                "destination_policy_category_picker_title",
+                "destination_policy_category_editor_coverage",
+                "destination_policy_category_editor_empty",
+                "destination_policy_category_entry_folder_unset",
+                "destination_policy_category_editor_done",
                 "destination_policy_notice_missing",
                 "destination_policy_notice_profile",
                 "destination_policy_notice_dock",
