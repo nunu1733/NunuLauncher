@@ -27,16 +27,20 @@ JIT settings-return系の待ちがtimeoutしたとき、cleanup前にfailure-tim
   - runner state種別と内容（例: `AwaitingUsageAccessJit(runId, selection, isOwner)`）
   - gate snapshotの `phase` と `revision`（`UsageAccessJitGateProvider` 経由のproduction gate）
   - timeout時点のproduction predicate値（`UsageAccess.isGranted(context)`、appops復元前）
+  - grant-check tick入口receipt（`GRANT_CHECK_TICK_ENTERED` 相当。後述のtest-only passive tracer seamが記録する）
   - journal状態（`RUN_STARTED` 発火有無 — application doubleのdiagnostics listから）
   - `preparationPhase` と `operationActive`
   - compose receipt: dialog tag存在（非throw観察）と、上限付きsemantics tree（`onRoot().printToString()`、文字数上限でtruncate）
+- receiptsは **passive/append-only** であること: 記録はlock-freeな追加専用バッファ（例: `AtomicBoolean`/`ConcurrentLinkedQueue`）への追記のみとし、synchronous logging・lock獲得・await条件・production/testの進行条件・同期プリミティブとして使わない。読み出しはfailure時のみ。
+- grant-check tick入口の観測のための **test-only passive tracer seam**: 既存のinjectable pattern（`usageAccessSettingsOpener` / `jitLifecycleOwner` / `ManualOrganizationRun.writeThreadTracker` / `ExchangeFlowStateHolder.onSettleObserved` と同型）で、host構成に既定no-op（null）の1引数を追加し、tick入口（guard通過直後）で1回追記する。既定経路の振る舞い・公開API・production動作は不変。
 - 制御されたtargeted実行と分類記録（`docs/assessment/issue-586-<slug>.md`）:
   - baseline: HEAD（Handler publication、diagnostics込み）でのtargeted実行。pass pathがdiagnosticsで乱されないことの確認を兼ねる。
   - candidate: 77b6b97時代のfixture variant（`publicationThread` 未注入＝Direct publication相当）をlocal overlay（commitしない一時差分）としてtargeted実行し、原signature（30s無復帰timeout）の再現成否をreceiptsつきで記録する。
-  - receipt → 原因クラスの対応（分類の観測契約）:
-    - predicate=false かつ gate=Presented かつ RUN_STARTED無 → 付与未観測（ただしfallback復帰が動けば `InputUnavailable` に到達するため、到達しない場合はtick/lifecycle/復帰経路の疑いが残る）
-    - predicate=true かつ gate=Presented かつ RUN_STARTED無 → resume claim不発（tick不発 / lifecycle不発 / resume coroutine不発）
-    - gate=Resolved かつ RUN_STARTED無 → claim済みでcomposed phaseが完走していない（machine/publication）
+  - receipt → 原因クラスの対応（分類の観測契約。receiptで直接観測した事実以上の原因名を付けない。複数クラスと整合する場合は `unclassified` とし、無理に決めつけない）:
+    - tick入口receipt無し、gate=Presented、RUN_STARTED無 → lifecycle/tick経路未実行（ON_RESUME observer不発 / `settingsRequested` 不整合 / effect再構成）
+    - tick入口receipt有り、predicate=false → 付与未観測。fallback復帰が正しければ `InputUnavailable` に到達するため、到達しない場合は後続のresume/claim経路側（下段へ）
+    - tick入口receipt有り、gate=Presented、RUN_STARTED無 → post-tick経路（re-read後の `resumeRunOnWorker` / claim不達。resume launch不実行・キャンセル等）。細分が決められない場合は `unclassified`
+    - gate=Resolved、RUN_STARTED無 → claim済み（resolve実行済み）でcomposed phaseが完走していない（machine/publication側）
     - RUN_STARTED有 → resume後のmachine内部での停止（composition以降）
     - gate=Presented かつ dialog不在 → host teardownの異常（abandonされない残留owner）
   - Direct-publication variantで再現した場合: publication fixture exposureへの分類（#585修正が当該signatureを解く傍証）。非再現の場合: 分類は「この環境/platformでは非再現」に限定し、original unknownは維持する（診断は将来のCI発生時に切り分けを提供する）。
@@ -44,7 +48,7 @@ JIT settings-return系の待ちがtimeoutしたとき、cleanup前にfailure-tim
 
 ## Non-goals
 
-- production codeの変更（`UsageAccessJitRequest.kt`、`ManualOrganizationRun.kt`、`RunPublicationThread.kt`、`UsageAccess.kt` は不変）。
+- production **動作**の変更（既定経路の振る舞い・公開API・状態遷移は不変）。`ManualOrganizationRun.kt`、`RunPublicationThread.kt`、`UsageAccess.kt`、run machine は不変。organizer UI sourceへの変更は前述のtest-only passive tracer seam（既定no-op引数1つ）に限定する。
 - timeout上限の引上げ、新規テストクラス/新規CI lane/新規filterの追加、lane構成・`ci_portfolio_map.yml` の変更（既存manual-organization-ui laneがownerのまま）。
 - 将来のPASSをもってflake解決・原因解決と主張すること（Issue本文のとおりautoCloseしない）。
 - #576 / #473 / #418 系の他のunknown失敗の分類。
@@ -65,7 +69,7 @@ JIT settings-return系の待ちがtimeoutしたとき、cleanup前にfailure-tim
 
 Given settings-returnテスト（付与兄弟またはdeny兄弟）が `State.InputUnavailable` を30s待っている
 When 待ちがtimeoutする
-Then テストfailureのメッセージにrunner state種別、gate phase/revision、production predicate値、RUN_STARTED有無、preparationPhase、operationActive、dialog存在、上限付きsemantics treeが含まれる
+Then テストfailureのメッセージにrunner state種別、gate phase/revision、production predicate値、grant-check tick入口receipt、RUN_STARTED有無、preparationPhase、operationActive、dialog存在、上限付きsemantics treeが含まれる
 And receiptsはテスト本体のfinally（appops deny復元）より前に取得される
 And 元の `ComposeTimeoutException` はcauseとして保持される
 
@@ -75,6 +79,13 @@ Given 同一テストが通常どおり `InputUnavailable` に到達する
 When diagnosticsヘルパーが待ちを包む
 Then 待ち条件・上限・assertionは変更前と同一であり、追加のsleep/poll/リトライを導入しない
 And pass時の診断コードはfailure経路以外で観察可能な状態を変えない
+
+### Scenario: receiptsの記録はtimingを変えない
+
+Given grant-check tick入口tracerとfailure時receipt収集が実装されている
+When テストがpass/failureどちらの経路を通っても
+Then 記録はlock-freeな追加専用バッファへの追記のみで、synchronous logging・lock獲得・await条件・進行条件を構成しない
+And tracerはproduction既定経路ではno-opであり、公開API・状態遷移を変えない
 
 ### Scenario: 制御実行が原因クラスを分類する
 
@@ -104,7 +115,7 @@ None（テストharness内部の診断出力であり、user-facing UIに影響�
 
 ## Acceptance criteria
 
-- [ ] AC-1: settings-return 2テストの最終 `InputUnavailable` 待ちがtimeoutした場合、cleanup前のreceipts（runner state種別、gate phase/revision、predicate値、RUN_STARTED有無、preparationPhase、operationActive、dialog存在、上限付きsemantics tree）がfailureメッセージに含まれ、元例外がcauseで保持される。diagnosticsは既存owner内にのみ存在し、新規クラス/lane/filter/timeout変更を伴わない。
+- [ ] AC-1: settings-return 2テストの最終 `InputUnavailable` 待ちがtimeoutした場合、cleanup前のreceipts（runner state種別、gate phase/revision、predicate値、grant-check tick入口receipt、RUN_STARTED有無、preparationPhase、operationActive、dialog存在、上限付きsemantics tree）がfailureメッセージに含まれ、元例外がcauseで保持される。receiptsはpassive/append-onlyでtiming・同期を変えない。diagnosticsは既存owner内にのみ存在し、新規クラス/lane/filter/timeout変更を伴わない。production sourceへの変更は既定no-opのtest-only tracer seam引数1つに限定される。
 - [ ] AC-2: baseline（HEAD、Handler publication、diagnostics込み）のtargeted実行でsettings-return 2テストが連続してPASSし、pass pathがdiagnosticsで乱されないことが実行証跡（invocation、回数、環境）とともに記録される。
 - [ ] AC-3: candidate（77b6b97時代Direct-publication相当のlocal overlay）のtargeted実行が行われ、原signatureの再現成否がreceiptsつきで記録される。
 - [ ] AC-4: `docs/assessment/issue-586-<slug>.md` に、original runの確立済み事実、controlled実行の対象SHA・環境・回数・結果、receipt→原因クラス対応に基づく分類、その根拠境界と未証明範囲が記録され、Issueへ結果コメントが投稿される。分類はsupported evidenceに限定され、flake解決主張・timeout増加・恒久laneを行わない。
@@ -120,7 +131,7 @@ None（テストharness内部の診断出力であり、user-facing UIに影響�
 
 ## 実行マトリクス（階層Lのためplan.mdの代わりに本specに含める）
 
-1. 診断実装（AC-1）→ spotlessCheck + 単体compile確認。
+1. 診断実装（AC-1。tick入口tracer seamを含む）→ spotlessCheck + 単体compile確認。
 2. Timeout receiptsの意図発火確認（AC-1、1回のみの恒久化しない確認）。
 3. Baseline targeted実行（AC-2、API 36 emulator、付与兄弟＋deny兄弟を含むclass単位、≥3回）。
 4. Candidate overlay実行（AC-3、同一手順、≥5回。再現失敗なら5回で打ち切り、環境差を記録）。
@@ -133,3 +144,4 @@ None（テストharness内部の診断出力であり、user-facing UIに影響�
 ## Change history
 
 - 2026-10-15: Draft created for #586.
+- 2026-10-15: Review round 1（PR #597コメント）: tick入口receiptの追加とreceipt→原因クラス対応の一意化、receiptsのpassive/append-only制約、test-only tracer seam（既定no-op）へのscope限定を反映。
