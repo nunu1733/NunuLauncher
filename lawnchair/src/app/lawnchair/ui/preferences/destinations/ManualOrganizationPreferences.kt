@@ -145,6 +145,10 @@ fun ManualOrganizationPreferences(
     // Issue #371: injectable so the settings-return instrumentation can drive
     // the host's lifecycle deterministically.
     jitLifecycleOwner: androidx.lifecycle.LifecycleOwner? = null,
+    // Issue #586 (spec 586): test-only passive receipt of the JIT grant-check
+    // tick's entry (settings-return timeout diagnostics). Null — every
+    // production caller — does nothing.
+    grantCheckTickTracer: ((Int) -> Unit)? = null,
     // Issue #374 (spec 374 DI-AC-01/DI-AC-11): the hub status-card rows'
     // one-shot exchange pre-open argument (request → T-15, pendingReview →
     // ImportReview). Null — every legacy caller — does nothing.
@@ -210,6 +214,7 @@ fun ManualOrganizationPreferences(
         run = coordinator,
         settingsOpener = usageAccessSettingsOpener,
         lifecycleOwner = jitLifecycleOwner ?: androidx.lifecycle.compose.LocalLifecycleOwner.current,
+        grantCheckTickTracer = grantCheckTickTracer,
     )
     // Issue #368: the strategy picker moved to the materials surface T-05
     // (OrganizerStrategyPreferences). The run surface offers no strategy

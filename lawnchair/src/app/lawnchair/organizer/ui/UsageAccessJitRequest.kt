@@ -348,6 +348,13 @@ internal fun RunUsageAccessJitDialogHost(
     // Injectable for the deterministic settings-return instrumentation: the
     // bounded re-read is driven by ON_RESUME (spec 371 JIT-AC-03).
     lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
+    // Issue #586 (spec 586): test-only passive receipt of the grant-check
+    // tick's entry, so the settings-return timeout diagnostics can
+    // distinguish a never-bumped tick from a post-tick resume stall. The
+    // tracer appends only — it is never a scheduling, progress, or
+    // synchronization condition, and null (every production caller) does
+    // nothing.
+    grantCheckTickTracer: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val gateSnapshot by run.usageAccessGate.snapshot.collectAsStateWithLifecycle()
@@ -416,6 +423,10 @@ internal fun RunUsageAccessJitDialogHost(
     }
     LaunchedEffect(grantCheckTick, awaitingRunId) {
         if (grantCheckTick == 0 || awaitingRunId == null) return@LaunchedEffect
+        // Issue #586: the tick-entry receipt fires right after the guard —
+        // before the bounded re-read — so a captured receipt means the
+        // grant-check effect actually started with a non-zero tick.
+        grantCheckTickTracer?.invoke(grantCheckTick)
         withContext(Dispatchers.IO) {
             awaitUsageAccessGrant(isGranted = { UsageAccess.isGranted(context) })
         }
