@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="8" failures="0" errors="0" skipped="0" time="0.000" timestamp="2026-10-14T18:54:49" hostname="localhost">
+  <testsuite name="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" tests="8" failures="0" errors="0" skipped="0" time="113.939" timestamp="2026-10-14T18:54:49" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5556" />
+    </properties>
+    <testcase name="unsupportedSettingsKeepsTheDialogOpenAndAllowsContinue" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="23.930" />
+    <testcase name="jitRequestAppearsBeforeCompositionAndDeclineContinuesUngranted" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="16.363" />
+    <testcase name="jitDialogStaysUsableAt200PercentFontScale" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="9.857" />
+    <testcase name="crossOriginExchangePresentationPausesTheRunUntilResolution" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="14.037" />
+    <testcase name="grantedTriggerNeverShowsTheRequest" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="8.964" />
+    <testcase name="settingsResumeWithoutGrantFallsBackAfterTheBound" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="15.127" />
+    <testcase name="settingsResumeAfterGrantResumesThroughTheProductionPredicate" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="15.824" />
+    <testcase name="jitDialogBackDeclinesAndContinuesWithoutCancellingTheRun" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="9.837" />
+  </testsuite>
+</testsuites>

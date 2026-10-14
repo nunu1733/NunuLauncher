@@ -183,15 +183,27 @@ class UsageAccessJitInstrumentationTest {
     ): String {
         val state = runner.state
         val gate = runner.usageAccessGate.snapshot.value
-        val runStarted = application.events.any { it.phase == PhaseCode.RUN_STARTED }
-        val dialogPresent = composeRule
-            .onAllNodesWithTag("usage_access_jit_dialog")
-            .fetchSemanticsNodes()
-            .isNotEmpty()
-        val settingsUnavailablePresent = composeRule
-            .onAllNodesWithTag("usage_access_jit_settings_unavailable")
-            .fetchSemanticsNodes()
-            .isNotEmpty()
+        // One snapshot of the journal: both the RUN_STARTED receipt and the
+        // event list below derive from it, so they can never contradict each
+        // other (spec 586 review round 2). The journal is append-only
+        // (ConcurrentLinkedQueue), so this read never throws while a worker
+        // emits.
+        val eventSnapshot = application.events.toList()
+        val runStarted = eventSnapshot.any { it.phase == PhaseCode.RUN_STARTED }
+        // Non-throwing compose observations: an unreadable tree becomes a
+        // receipt value instead of masking the original timeout.
+        val dialogPresent = runCatching {
+            composeRule
+                .onAllNodesWithTag("usage_access_jit_dialog")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }.map { it.toString() }.getOrDefault("<unavailable>")
+        val settingsUnavailablePresent = runCatching {
+            composeRule
+                .onAllNodesWithTag("usage_access_jit_settings_unavailable")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+        }.map { it.toString() }.getOrDefault("<unavailable>")
         val semantics = runCatching { composeRule.onRoot().printToString() }
             .getOrDefault("<semantics tree unavailable>")
             .let { if (it.length > 8_000) it.take(8_000) + "…(truncated)" else it }
@@ -206,7 +218,7 @@ class UsageAccessJitInstrumentationTest {
             appendLine("grantCheckTickEntered=${tickTrace.enteredTicks.toList()}")
             appendLine(
                 "journalRunStarted=$runStarted " +
-                    "(events=${application.events.map { it.phase }})",
+                    "(events=${eventSnapshot.map { it.phase }})",
             )
             appendLine("preparationPhase=${runner.preparationPhase.value}")
             appendLine("operationActive=${runner.operationActive.value}")
@@ -566,11 +578,11 @@ private class NotReadyApplication(
         override fun recover(request: app.lawnchair.organizer.application.public.RecoveryRequest): app.lawnchair.organizer.application.public.RecoveryResult =
             error("not reached in this test")
 
-    val events = mutableListOf<RunEvent>()
+    val events = ConcurrentLinkedQueue<RunEvent>()
     var usageGrantedAtCompose: Boolean? = null
     private val recordingDiagnostics = object : DiagnosticsPort {
         override fun emit(event: RunEvent) {
-            events += event
+            events.add(event)
         }
 
         override fun snapshot(): List<RunEvent> = events.toList()
