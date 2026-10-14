@@ -195,3 +195,47 @@ object CategoryDestinationMappingCodec {
 
     fun isWithinCapacity(entries: Map<CategoryMappingKey, String>): Boolean = entries.size <= MAX_ENTRIES
 }
+
+/**
+ * mapping editorの行構築（純粋関数。Issue #594 review round 2高1対応）。built-in
+ * （S2 8種＋S5のTOOLS）をprofile serialごとに展開する。既存mappingに依存せず、
+ * 初回のwork mapping作成を可能にする（profile serial一覧は呼び出し側が
+ * `UserCache.getUserProfiles` から取得する）。S1由来のuser-defined行は
+ * profile別に読んだ結果をそのまま渡す（personal行のworkへのcopyは行わない）。
+ */
+object CategoryMappingRowBuilder {
+
+    fun buildCategoryRows(
+        androidCategoryValues: List<String>,
+        googleCategoryValue: String,
+        profileSerials: List<Long>,
+    ): List<CategoryMappingKey> = profileSerials
+        .filter { it >= 0 }
+        .flatMap { serial ->
+            (androidCategoryValues + googleCategoryValue).distinct().map {
+                CategoryMappingKey(it, serial)
+            }
+        }
+}
+
+/**
+ * カテゴリeditorのDone遷移（Issue #594 review round 2中1対応のfocused
+ * regression対象）。mapping保存とpolicy選択のcategory化を1つの責務に寄せ、
+ * state遷移をJVM testで固定できるようにする（UI wiringはこのhelperを呼ぶ）。
+ * Cancelは本helperを呼ばないため旧policyが維持される。addIcon OFFのときは
+ * ONへ復帰する（既存AC-1整合）。
+ */
+object CategoryModeEditorCommit {
+
+    fun onDone(
+        entries: Map<CategoryMappingKey, String>,
+        previousAddIconOn: Boolean,
+        persistMappings: (Map<CategoryMappingKey, String>) -> Unit,
+        selectCategoryMode: () -> Unit,
+        setAddIconOn: (Boolean) -> Unit,
+    ) {
+        persistMappings(entries)
+        selectCategoryMode()
+        if (!previousAddIconOn) setAddIconOn(true)
+    }
+}

@@ -160,12 +160,10 @@ fun DestinationPolicyPreference(enabled: Boolean, modifier: Modifier = Modifier)
             context = context,
             launcher = launcher,
             executor = executor,
+            previousAddIconOn = addIconOn,
+            setAddIconOn = { addIconToHomeAdapter.onChange(it) },
             onDismiss = { showCategoryEditor = false },
-            onEdit = {
-                // Leaving the editor keeps the category mode selected (the AC-1
-                // toggle stays on, matching the other choices' behavior).
-                if (!addIconOn) addIconToHomeAdapter.onChange(true)
-            },
+            onEdit = { },
         )
     }
 
@@ -262,6 +260,8 @@ private fun DestinationCategoryEditorDialog(
     context: android.content.Context,
     launcher: LawnchairLauncher?,
     executor: HomeEditExecutor?,
+    previousAddIconOn: Boolean,
+    setAddIconOn: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
 ) {
@@ -286,32 +286,35 @@ private fun DestinationCategoryEditorDialog(
     // Mappable categories: S2's 8 Android categories plus S5's TOOLS from the
     // existing bundle (per profile), plus user-defined categories that already
     // have at least one S1 override in that profile (only they can be resolved
-    // at capture time).
+    // at capture time). Profile serials come from the launcher's own profile
+    // enumeration (UserCache.getUserProfiles), NOT from existing mappings — a
+    // first-ever work mapping must be creatable from a zero-mapping state
+    // (spec 594 profile-separation scenarios; review round 2 high 1).
     LaunchedEffect(Unit) {
         val bundle = app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource.readActive()
         val overrideStore = app.lawnchair.organizer.rules.CategoryOverrideStoreModule.source(context)
-        val rows = mutableListOf<CategoryMappingKey>()
-        for (profile in listOf(mainSerial)) {
-            rows += userDefinedRowsForProfile(overrideStore, context, profile)
-        }
-        val workProfileSerials = AppDestinationPolicyPrefs.categoryMappings(context)
-            .keys.map { it.userSerial }.filter { it != mainSerial }.distinct()
-        for (workSerial in workProfileSerials) {
-            rows += rows.map { it.copy(userSerial = workSerial) }
-        }
+        val userCache = UserCache.getInstance(context)
+        val profileSerials = userCache.userProfiles
+            .map { userCache.getSerialNumberForUser(it) }
+            .filter { it >= 0 }
+            .distinct()
         val builtInRows = when (bundle) {
-            is app.lawnchair.organizer.rules.BundleReadResult.Ready -> sequence {
-                yieldAll(
-                    bundle.bundle.classification.androidCategoryMapping.values.map {
-                        CategoryMappingKey(it.value, mainSerial)
-                    },
-                )
-                yield(CategoryMappingKey(bundle.bundle.classification.googleCategory.value, mainSerial))
-            }.distinct().toList()
+            is app.lawnchair.organizer.rules.BundleReadResult.Ready ->
+                app.lawnchair.homeedit.CategoryMappingRowBuilder
+                    .buildCategoryRows(
+                        bundle.bundle.classification.androidCategoryMapping.values.map { it.value },
+                        bundle.bundle.classification.googleCategory.value,
+                        profileSerials,
+                    )
 
             else -> emptyList()
         }
-        pickableCategories = (builtInRows + rows).distinct().map { key ->
+        // Per-profile S1 rows: each profile reads its own override store view.
+        // No cross-profile copying of personal rows (review round 2 high 1).
+        val s1Rows = profileSerials.flatMap { serial ->
+            userDefinedRowsForProfile(overrideStore, context, serial)
+        }
+        pickableCategories = (builtInRows + s1Rows).distinct().map { key ->
             key to categoryLabel(context, key.categoryIdentity)
         }
     }
@@ -353,12 +356,17 @@ private fun DestinationCategoryEditorDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    AppDestinationPolicyPrefs.setCategoryMappings(context, entries)
                     // Done is the category-mode activation point (spec 594
-                    // Scope 4択拡張): saving the mapping and selecting the
-                    // category mode happen together, while Cancel keeps the
-                    // previous policy untouched.
-                    AppDestinationPolicyPrefs.setCategoryMode(context)
+                    // Scope 4択拡張): mapping save + category-mode selection +
+                    // AC-1 toggle restore are one transition (review round 2
+                    // medium 1 — the state helper is JVM-regression-tested).
+                    app.lawnchair.homeedit.CategoryModeEditorCommit.onDone(
+                        entries = entries,
+                        previousAddIconOn = previousAddIconOn,
+                        persistMappings = { AppDestinationPolicyPrefs.setCategoryMappings(context, it) },
+                        selectCategoryMode = { AppDestinationPolicyPrefs.setCategoryMode(context) },
+                        setAddIconOn = setAddIconOn,
+                    )
                     onEdit()
                     onDismiss()
                 },
