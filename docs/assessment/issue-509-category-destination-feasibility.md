@@ -158,7 +158,7 @@ install reason定数の実測値: API 35/36とも`--install-reason 4`が`INSTALL
 
 ### 3.6 Revision 5のoracle再実験（2026-10-14、API 37 `issue526_api37_pixel_9a`、`391ad7eaa0` APK `Lawnchair.16.Dev.(391ad7e).github.debug.apk`）
 
-#516完了後の再評価として、Revision 2のE1再現と、Revision 2で未実施だった「badging付きsessionの直接構成」を実施した。**durable証跡は`docs/assessment/issue-509-oracle-evidence/`**（READMEに実施session・再現手順・主要観測のlog引用。probe appの完全source、E1'/E4a/E4b3のraw log、終了時`dumpsys` snapshot、workspace確認pngを収録）。
+#516完了後の再評価として、Revision 2のE1再現と、Revision 2で未実施だった「badging付きsessionの直接構成」を実施した。**durable証跡は`docs/assessment/issue-509-oracle-evidence/`**（READMEに実施session・再現手順・主要観測のlog引用・session ID時系列の限界・証拠強度の限界。probe appのsource（E4a版＋実機install済みAPK/disassemblyから復元したE4b3版）、E1'/E4a/E4b3のraw log、終了時`dumpsys` snapshot、workspace確認pngを収録）。
 
 #### E1'（対照実験。shell session、installer=vending、reason=4、badging無し）
 
@@ -170,11 +170,11 @@ install reason定数の実測値: API 35/36とも`--install-reason 4`が`INSTALL
 
 #### E4b3（probe: installer=自己package、badging付きsession。本実験の核心）
 
-非特権probe appが`setAppIcon`＋`setAppLabel`＋`setInstallReason(4)`＋`setAppPackageName(target)`＋target未installの条件下でsessionを作成した。実測:
+非特権probe app（`ProbeActivityV3`。durable証拠の`probe-v3-installed.apk`が実行正）が`setAppIcon`＋`setAppLabel`＋`setInstallReason(4)`＋`setAppPackageName(target)`＋installer=自己package＋target未installの条件下でsessionを作成した。実測:
 
 - `PackageInstallerSession: Writing changed icon /data/system/install_sessions/app_icon.<sessionId>.png` — systemがsession iconを永続化（badging搭載のsystem証跡）。
 - `dumpsys package`のsession snapshot: `appPackageName=app.lawnchair.benchmark.target01 appIcon=true appLabel=Benchmark Target 01 installReason=4 installerPackageName=app.lawnchair.probe.sessionbadge`、**create時点で`pm path`空（target未install）**。
-- commitは`STATUS_PENDING_USER_ACTION`（ユーザー同意必須）。同意flowを完遂しinstall完了まで記録。完了後は`SessionCommitReceiver: ... has app icon: true, has app label: true`→`ItemInstallQueue`（install後の通常追加。workspaceへicon追加を確認）。
+- commitは`STATUS_PENDING_USER_ACTION`（ユーザー同意必須）。同意flowを完遂しinstall完了まで記録。完了後は`SessionCommitReceiver: ... has app icon: true, has app label: true`→`ItemInstallQueue`（install後の通常追加。workspaceへicon追加を確認）。なおsession ID時系列の限界（作成sessionと完了callbackのID対応が本logcatからは一意に結べない。durable証拠README「session ID時系列の限界」）があるため、この記述は「同構成のbadging付きsessionの同意flow完遂後の観測」レベルである。
 - **launcher側のpromise経路は発火しなかった**。session作成時（badging＋reason=4＋target未installの全条件成立）に`InstallSessionTracker`/`InstallSessionHelper`/`SessionCommitReceiver`のlogは一切なし。コード上の経路は、launcherが`LauncherApps.registerPackageInstallerSessionCallback`でeventを受信した後、`pushSessionDisplayToLauncher`→`getVerifiedSessionInfo`→`verify()`→`isTrustedPackage(installer)`（`pm/InstallSessionHelper.java:163-171`、`ApplicationInfoWrapper.kt:112`の`isSystem()=hasFlag(FLAG_SYSTEM)`）で排除され、`tryQueuePromiseAppIcon`へ到達しない（:226-247）というものである。**本実験の観測（log不在）は、この`isTrustedPackage`排除経路と整合する。ただしlog不在はcallback入口自体へ届かなかった場合とも区別できないため、gate帰属は「dumpsysで満たされた他の全条件（reason・icon・label・target未install）との突合から特定される」段階であり、callback入口〜gate判定の直接観測ではない**（gate通過後の詳細logはverified sessionがnon-nullになった後にのみ出る。durable証拠README「gate帰属の証拠強度」参照）。
 
 #### E4の帰結
@@ -233,6 +233,7 @@ opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不�
 
 ## Change history
 
+- 2026-10-14: Revision 6対応 round 2 — Revision 5 review round 2（ChatGPT、[PR #592 comment](https://github.com/nunu1733/NunuLauncher/pull/592#issuecomment-6162321398)）の残存指摘（高1・中1）への対応。高: E4b3実行sourceの欠落とsession ID時系列の非一意性に対し、実機install済みprobe APK（`probe-v3-installed.apk`）とdisassemblyをdurable証拠へ追加し、復元source`ProbeActivityV3.java`を収録。作成session（`1228612374`）と完了callback（`1120207295`）の1:1対応を証跡から証明できないことをREADME「session ID時系列の限界」と§3.6へ明記し、「install完了後の通常追加」の記述を「同構成sessionの同意flow完遂後の観測」へ弱めた。中: PR本文とIssue #509再進行コメントの旧表現（直接観測・emulator構成不能の一般化・/tmp証跡）を訂正コメント/本文編集で同期。判定・状態は不変。
 - 2026-10-14: Revision 6対応 — Revision 5 review round 1（ChatGPT、[PR #592 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-6160025793)）の指摘（高2・中2・低1）への対応。高1: 対象commitの完全SHAを実在する`391ad7eaa0f84f43af67f7101071f91325c998d9`へ訂正。高2: §3.6のoracle証跡を`docs/assessment/issue-509-oracle-evidence/`へdurable化（probe source＋manifest、E1'/E4a/E4b3 raw log、終了時dumpsys snapshot、再現手順）。中1: `isTrustedPackage` gate帰属を「直接観測」から「dumpsysで満たされた他条件との突合による特定」へ証拠強度を修正（log不在はcallback入口未到達と区別できない旨を明記）。中2: 「emulator上で構成不能」を本実験の`google_apis`構成に限定し、Play Store付きimageを範囲外と明記。低1: §1.1の5file列挙から`DirectEditContract`（fork-only）をownership区分として分離。判定・状態は不変。
 - 2026-10-14: Revision 5 — #516（Lawnchair 16 rebase Epic）完了とADR-0018受入を受けた新baseline再評価（Issue本文の再開条件②）。対象commit `391ad7eaa0`（Lawnchair 16-dev baseline cutover後）。§2のpath:lineを実測更新し、fork seam（DirectEditContract 4field/2kind・capture hook・stage-2・S1→S2→S5）の存続を確認。§3.6にoracle再実験（E1'対照実験の再現、E4a installer偽装拒否、E4b3 badging付きsession構成とpromise capture不発の観測、`google_apis`構成でのpromise oracle構成不能の明記）を追加。§1.5に再評価結論、§7/§8/§9を現行化。判定（`rebase後へ延期`）・owner product decision pending・Issue open・`phase: later`は不変。
 - 2026-10-04: Revision 4 — Phase 1 review round 3（[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-5973674659)）の残存指摘（中1件。高・低は解消確認）に対応。§1/§3.3/§3.4/§9に残っていた無条件の断定を、round 2中指摘と同一の条件付き表現（「Play等の主要経路がbadging付きpromise sessionとして動く場合はcapture時分類が成立しないと強く示唆される。Play実機は未確認」）へ統一した。
