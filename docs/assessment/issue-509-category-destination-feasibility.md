@@ -1,6 +1,6 @@
 # Issue #509 — カテゴリ別新規アプリ配置のfeasibility調査（Phase A）
 
-> Status: Complete（technical investigation）/ **implementation deferred** / owner product decision **pending**（判定: **`rebase後へ延期`**。Revision 2で「前へ進める」を撤回。owner判断項目はPhase A exitの未完了項目として§7に明示）
+> Status: Complete（technical investigation）/ ~~implementation deferred~~ **owner decision accepted（2026-10-14、Revision 7）— 実装は新Issue/specで前進**（Phase A判定は`rebase後へ延期`として記録。Revision 2で「前へ進める」を撤回した経緯とRevision 7のowner受容は併記して残す。owner判断項目は§7で完了）
 > **Revision 5（2026-10-14）**: #516（Lawnchair 16 rebase Epic）完了と受入ADR-0018成立を受け、新baselineでPhase Aのseam再調査とoracle再実験を実施した（Issue本文の再開条件②）。技術判定・延期理由・owner判断待ちの状態はRevision 4から変更なし（§1.5）。
 > Date: 2026-10-14（Revision 5同日。Revision 1〜4: 2026-10-04）
 > 対象commit: `main` @ `391ad7eaa0f84f43af67f7101071f91325c998d9`（2026-10-14時点。Lawnchair 16-dev `43a21b43d7cc7850ab54e14b1a57dc9646685f35` baselineへのcutover後。本Revision 5のfork側path:line実測とエミュレータ実証はこのcommitで実施）。Revision 1〜4の対象commit: `8508c14182412c2a9cf6f6240eadfe30b5322047`（再確認 `aac74df8e2cf3503af2f729934cc77d40f57e51b`）
@@ -201,7 +201,7 @@ opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不�
 
 - [x] 調査成果物に確認日・対象commit・根拠path/行・再現手順と結果、変更候補path、未確認範囲を記録した（本書。`docs/assessment/issue-509-category-destination-feasibility.md`。Revision 5で新baseline `391ad7eaa0`分を追記）。
 - [x] **技術的境界の確定**: profile内classification、明示対応identity、enqueue固定/reflush/stage-2の境界を確定した（§2〜§6。**Revision 5: 新baselineでseam存続を再確認**。§2.2）。ADR-0015を変える部分はsuccessor ADRを要するが、実装停止のため起草しない（Revision 1草案は履歴`59aa164a62`に残す。obsolete draft。§9）。
-- [ ] **promise不足時の扱いを含む成功対象scopeについてowner判断が確定した** → **未完了（Revision 5でも未完了のまま）**。promise経路（主要install経路と強く示唆される。§3.3/§3.6/§8.1）のcapture時分類不成立により、成功対象が非promise captureへ縮小することの製品受容がowner判断として未成立である。これが延期の理由そのものである（§1/§9）。再開時はこの項目から始める。
+- [x] **promise不足時の扱いを含む成功対象scopeについてowner判断が確定した** → **完了（2026-10-14、Revision 7）**。ownerが縮小scope（promise経路を成功対象外とし、分類成功対象を「`appCategory`宣言アプリ＋新規`com.google.*`アプリ＋S1 override存在の再install」に限定）の**製品受容を明示判断した**（判断記録はIssue #509 comment 2026-10-14、本文§9）。実装はこのscopeで新Issue/specへ進める。
 - [x] **前に進める条件は満たさない**: fork-owned moduleのみの変更・既存hook・既存4field snapshot・既存書込み/queue protocolの使用は証明できたが（Revision 5で新baselineでも再確認）、「必要なprofile/**promise**/fallback契約が成立する証拠」をPhase A内で示せなかった（promise契約の成立を裏付ける実機証跡がなく、emulator上の構成限界を§3.6 E4の帰結4で明記、製品scope判断も未成立）。
 - [x] **後へ回す条件の技術的動機には非該当**だが、Issue本文の停止規則（製品判断未成立でも実装を停止）により`rebase後へ延期`として記録する（§9）。
 - [x] 判定を本Issueに`rebase後へ延期`として記録した（worker comment。Phase 1 review round 1/2の指摘対応と合わせる。Revision 5の再進行記録は§9）。
@@ -213,12 +213,12 @@ opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不�
 3. **非promise captureの実際の頻度**（信頼できないinstaller経由installの割合、`INSTALL_REASON_USER`成立率）: 測定していない。縮小scopeの価値評価に必要なdataであり、owner判断の材料とする。
 4. work profileでのcapture経路: 構造分析のみ（各profileのlauncher processが自profileのbroadcast/callbackを受け、promise経路の制約は同一）。
 
-## 9. 延期の記録と再開条件（Revision 5: ②のseam再調査完了、判定は不変）
+## 9. 延期の記録と再開条件（Revision 7: owner判断成立、実装へ前進）
 
-- 本Issueはopenのまま`phase: later`を維持する。依存linkは#516（Lawnchair 16 rebase Epic。**2026-10-14に完了close、ADR-0018 accepted、mainは16-dev `43a21b43d7` baselineへcutover済み**）。
-- 延期理由は「追加bridgeの必要性」ではなく「**AOSP＋launcherコード＋probe実証から、Play等の主要install経路がbadging付きpromise sessionとして動く場合はcapture時分類が成立しないと強く示唆されること**（Play実機は未確認。§3.3/§3.6/§8.1）」と、それに伴う「**成功対象の縮小（非promise captureのみ＋appCategory等のsignal coverage制約）の製品受容がowner判断として未成立**」である。bridge増分0の技術成果（§2）はrevision 1から変更なく成立しており、**Revision 5の新baseline再調査でも維持された**。
-- **Revision 5の再進行記録（2026-10-14）**: 再開条件②のうち「#516完了と受入rebase ADRの成立」が成立したため、新baseline（`391ad7eaa0`）でseam再調査（§2）とoracle再実験（§3.6）を実施した。結果: seam存続・bridge増分0・E1結論の再現・`isTrustedPackage` gateの実効性確認。判定を左右する新事実はなく、**判定は`rebase後へ延期`のまま不変**。owner product decision（①）は引き続き未成立であり、本Revisionは①の判断材料を更新するものにとどまる。
-- 再開条件（現行版。②のseam再調査は実施済みのため、残るのは①と③）: ①ownerが「promise経路を成功対象外とする縮小scope」を受容するかを判断する（これが先決。受容しない場合、本機能は capture時分類の限界により実装困難であり、FR-009等の別の解決（install後の明示的移動支援）へ分流する）。②受容する場合、新baselineでの再調査はRevision 5で完了済み。§8.1の実機oracle（Play installでのpromise capture発火・badging成立の直接確認）をowner判断の材料として実施するか、emulator構成限界（§3.6 E4の帰結4）を踏まえた縮小証拠での判断とするかをownerが選ぶ。③platform制約（capture時分類の構造的限界）はbaseline更新では解消しない。
+- ~~本Issueはopenのまま`phase: later`を維持する~~ → **2026-10-14、owner判断成立に伴いIssue #509はCOMPLETEDでclose済み**。依存linkは#516（Lawnchair 16 rebase Epic。2026-10-14に完了close、ADR-0018 accepted、mainは16-dev `43a21b43d7` baselineへcutover済み）。
+- 延期理由は「追加bridgeの必要性」ではなく「**AOSP＋launcherコード＋probe実証から、Play等の主要install経路がbadging付きpromise sessionとして動く場合はcapture時分類が成立しないと強く示唆されること**（Play実機は未確認。§3.3/§3.6/§8.1）」と、それに伴う「**成功対象の縮小（非promise captureのみ＋appCategory等のsignal coverage制約）の製品受容がowner判断として未成立**」であった。bridge増分0の技術成果（§2）はrevision 1から変更なく成立しており、**Revision 5の新baseline再調査でも維持された**。
+- **Revision 5の再進行記録（2026-10-14）**: 再開条件②のうち「#516完了と受入rebase ADRの成立」が成立したため、新baseline（`391ad7eaa0`）でseam再調査（§2）とoracle再実験（§3.6）を実施した。結果: seam存続・bridge増分0・E1結論の再現・`isTrustedPackage` gateの突合による特定。判定を左右する新事実はなく、判定は`rebase後へ延期`のまま維持された。
+- **Revision 7（2026-10-14）: owner判断成立**。ownerが**縮小scopeを受容した**: promise経路を成功対象外とし、分類成功対象を「`appCategory`宣言アプリ＋新規`com.google.*`アプリ（＋S1 overrideが存在する再install）」に限定する。§8.1の実機oracle（Play installでのpromise capture発火確認）は、**実装受入の前提ではなく判断材料としての位置づけに留める**（emulator構成限界〔§3.6 E4の帰結4〕を踏まえ、AOSP＋launcherコード＋probe実証の縮小証拠で判断した。実機確認は実装PRの実機検証〔spec Verification〕の中で二重化する）。実装は**新しいIssue/spec**で開始する（本Issueは調査・判断記録としてCOMPLETEDでclose済み）。設計はwithdrawn draft（履歴`59aa164a62`）を基に、review round 1指摘の論点（D11 relation明文化、promise/work profile/reflush/category identity oracleの再設計）と新baselineのpath:lineを反映して起草し直す。
 - 本調査の他の成果物: Revision 1で起草したspec/ADR草案（履歴`59aa164a62`）は**withdrawn/obsolete draftであり、そのまま再利用しない**。この草案はreview round 1で指摘された論点（ADR-0015 Decision 11との置換関係の明文化、promise/work profile/reflush/category identityのoracle不足）が未修正のままである。再開時は、縮小scopeの受容判断を踏まえたうえで、新baselineでD11 relationの明文化と不足oracleの再設計を行ったうえで起草し直す。
 
 ## 10. External reference scan（研究記録）
@@ -233,6 +233,7 @@ opt-in UX（既存ポリシー行の拡張）、曖昧・未設定・分類不�
 
 ## Change history
 
+- 2026-10-14: Revision 7 — owner判断成立。縮小scope（promise経路を成功対象外、分類成功対象をappCategory＋com.google.*＋S1 override再installに限定）の製品受容をownerが明示判断し、§7の未完了項目を完了へ、§9を実装前進の状態へ更新。実装は新Issue/specで開始する。判定の技術的根拠はRevision 6対応版から変更なし。
 - 2026-10-14: Revision 6対応 round 3 — Revision 5 review round 3（ChatGPT、[PR #592 comment](https://github.com/nunu1733/NunuLauncher/pull/592#issuecomment-6162628487)）の新規指摘（中1）への対応。round 1/2のblocking指摘は全て解消済みと判定された。round 3指摘（`ProbeActivityV3.java`の復元sourceがdexdumpのクラス構成〔`onBadgingChanged` log、`CommitReceiver`〕と一致せず再build手順とも不整合）に対し、`ProbeActivityV3.java`を「部分復元・再build保証なしの参考復元」と明記し、E4b3の正を`probe-v3-installed.apk`＋disassemblyとして再現手順・§3.6へ同期。実験の再実行は不要。判定・状態は不変。
 - 2026-10-14: Revision 6対応 round 2 — Revision 5 review round 2（ChatGPT、[PR #592 comment](https://github.com/nunu1733/NunuLauncher/pull/592#issuecomment-6162321398)）の残存指摘（高1・中1）への対応。高: E4b3実行sourceの欠落とsession ID時系列の非一意性に対し、実機install済みprobe APK（`probe-v3-installed.apk`）とdisassemblyをdurable証拠へ追加し、復元source`ProbeActivityV3.java`を収録。作成session（`1228612374`）と完了callback（`1120207295`）の1:1対応を証跡から証明できないことをREADME「session ID時系列の限界」と§3.6へ明記し、「install完了後の通常追加」の記述を「同構成sessionの同意flow完遂後の観測」へ弱めた。中: PR本文とIssue #509再進行コメントの旧表現（直接観測・emulator構成不能の一般化・/tmp証跡）を訂正コメント/本文編集で同期。判定・状態は不変。
 - 2026-10-14: Revision 6対応 — Revision 5 review round 1（ChatGPT、[PR #592 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-6160025793)）の指摘（高2・中2・低1）への対応。高1: 対象commitの完全SHAを実在する`391ad7eaa0f84f43af67f7101071f91325c998d9`へ訂正。高2: §3.6のoracle証跡を`docs/assessment/issue-509-oracle-evidence/`へdurable化（probe source＋manifest、E1'/E4a/E4b3 raw log、終了時dumpsys snapshot、再現手順）。中1: `isTrustedPackage` gate帰属を「直接観測」から「dumpsysで満たされた他条件との突合による特定」へ証拠強度を修正（log不在はcallback入口未到達と区別できない旨を明記）。中2: 「emulator上で構成不能」を本実験の`google_apis`構成に限定し、Play Store付きimageを範囲外と明記。低1: §1.1の5file列挙から`DirectEditContract`（fork-only）をownership区分として分離。判定・状態は不変。
