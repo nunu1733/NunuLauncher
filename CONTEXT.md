@@ -28,6 +28,10 @@ _Avoid_: layout snapshot（organizer runの入力。別の粒度）、編集snap
 配置先ポリシーで利用者が選んだ1つのフォルダ。アイテムidで保持し、名前では保持しない（ADR-0015 Decision 5）。
 _Avoid_: 分類フォルダ（カテゴリ一致の自動分類は別の将来機能）、整理先フォルダ（organizerのplan artifactが作るフォルダ）
 
+**カテゴリ別配置 (Category Destination)**:
+配置先ポリシーの選択肢の1つ（Issue #594 / ADR-0017）。利用者が `CategoryIdentity + profile → 既存フォルダid` の対応を明示設定し、capture時点で分類（S1→S2→S5の既存優先順位）が解決できた新規アプリを対応フォルダへ置く。mappingはstable identityで保持し、表示名では保持しない。解決不能（分類不可・未mapping・対応カテゴリ消失・promise経路）は上流の既定へ落ちる。
+_Avoid_: 分類フォルダ（利用者の明示mappingと、分類結果からの暗黙のfolder成長は区別する。後者は採用しない）、Deckの自動追加（`PackageUpdatedTask`への直接追記とtitle一致を含まない。ADR-0015 Decision 13）
+
 **フォールバック (Fallback)**:
 指定フォルダが観測可能な制約違反により使えず、上流の既定（空きセル）へ戻ること。typedな理由を持ち、記録と設定行での一度だけの通知の対象になる。
 _Avoid_: 拒否（Reject。書込み経路のinvariant failureであり配置の例外ではない）、満杯（fallback条件としない。ADR-0015 Decision 4）

@@ -268,9 +268,12 @@ private fun DestinationCategoryEditorDialog(
     val mainSerial = UserCache.getInstance(context).getSerialNumberForUser(
         android.os.Process.myUserHandle(),
     )
-    // The mapping binds a category to a folder of its own profile; the editor
-    // edits the main profile's rows (work-profile rows come from the work
-    // side's own settings surface, mirroring the per-profile capture).
+    // The mapping binds a category to a folder of its own profile. The editor
+    // lists one row per (profile x mappable category): the personal profile's
+    // S1 overrides come from this side's override store; work-profile rows
+    // reuse the existing "another profile" presentation convention of the
+    // folder picker so a work mapping is creatable from this single surface
+    // (spec 594 profile-separation scenarios require a real settings path).
     var entries by remember {
         mutableStateOf(AppDestinationPolicyPrefs.categoryMappings(context).toMutableMap())
     }
@@ -281,11 +284,22 @@ private fun DestinationCategoryEditorDialog(
     }
 
     // Mappable categories: S2's 8 Android categories plus S5's TOOLS from the
-    // existing bundle, plus user-defined categories that already have at least
-    // one S1 override (only they can be resolved at capture time).
+    // existing bundle (per profile), plus user-defined categories that already
+    // have at least one S1 override in that profile (only they can be resolved
+    // at capture time).
     LaunchedEffect(Unit) {
         val bundle = app.lawnchair.organizer.rules.BuiltInOrganizerPolicyBundleSource.readActive()
-        val builtInRows: List<CategoryMappingKey> = when (bundle) {
+        val overrideStore = app.lawnchair.organizer.rules.CategoryOverrideStoreModule.source(context)
+        val rows = mutableListOf<CategoryMappingKey>()
+        for (profile in listOf(mainSerial)) {
+            rows += userDefinedRowsForProfile(overrideStore, context, profile)
+        }
+        val workProfileSerials = AppDestinationPolicyPrefs.categoryMappings(context)
+            .keys.map { it.userSerial }.filter { it != mainSerial }.distinct()
+        for (workSerial in workProfileSerials) {
+            rows += rows.map { it.copy(userSerial = workSerial) }
+        }
+        val builtInRows = when (bundle) {
             is app.lawnchair.organizer.rules.BundleReadResult.Ready -> sequence {
                 yieldAll(
                     bundle.bundle.classification.androidCategoryMapping.values.map {
@@ -297,29 +311,15 @@ private fun DestinationCategoryEditorDialog(
 
             else -> emptyList()
         }
-        val userDefinedRows = app.lawnchair.organizer.rules.CategoryOverrideStoreModule.source(context)
-            .read(setOf(app.lawnchair.organizer.planning.ProfileId(mainSerial.toString())))
-            .let { read ->
-                (read as? app.lawnchair.organizer.rules.OverrideSnapshotReadResult.Ready)
-                    ?.snapshot?.assignments
-                    ?.mapNotNull { (_, identity) ->
-                        // User-defined identities carry the u:<uuid> canonical
-                        // value (CategoryIdentity.canonicalValue); built-in
-                        // ones are already covered above.
-                        identity as? app.lawnchair.organizer.planning.CategoryIdentity.UserDefined
-                            ?: return@mapNotNull null
-                        CategoryMappingKey(identity.canonicalValue, mainSerial)
-                    }
-                    ?.distinct()
-                    ?: emptyList()
-            }
-        pickableCategories = (builtInRows + userDefinedRows).distinct().map { key ->
+        pickableCategories = (builtInRows + rows).distinct().map { key ->
             key to categoryLabel(context, key.categoryIdentity)
         }
     }
     LaunchedEffect(pickerFor) {
         if (pickerFor != null) {
-            executor?.fetchFolderOptionsForProfile(mainSerial) { fetched -> folderOptions = fetched }
+            executor?.fetchFolderOptionsForProfile(pickerFor!!.userSerial) { fetched ->
+                folderOptions = fetched
+            }
         }
     }
 
@@ -336,19 +336,7 @@ private fun DestinationCategoryEditorDialog(
                     Text(stringResource(AppDestinationPolicyTextKeys.categoryEditorEmpty))
                 } else {
                     pickableCategories.forEach { (key, label) ->
-                        val folderIdText = entries[key]?.toIntOrNull()
-                        val folderTitle = folderIdText?.let { folderIcon(launcher, it) }
-                            ?.mInfo?.title?.toString()?.takeIf { it.isNotEmpty() }
-                        val target = when {
-                            folderTitle != null -> folderTitle
-
-                            folderIdText != null ->
-                                stringResource(R.string.homeedit_folder_default_label)
-
-                            else ->
-                                stringResource(AppDestinationPolicyTextKeys.categoryEntryFolderUnset)
-                        }
-                        val rowLabel = "$label: $target"
+                        val rowLabel = categoryRowLabel(context, launcher, label, key, entries)
                         Text(
                             text = rowLabel,
                             modifier = Modifier
@@ -366,6 +354,11 @@ private fun DestinationCategoryEditorDialog(
             TextButton(
                 onClick = {
                     AppDestinationPolicyPrefs.setCategoryMappings(context, entries)
+                    // Done is the category-mode activation point (spec 594
+                    // Scope 4択拡張): saving the mapping and selecting the
+                    // category mode happen together, while Cancel keeps the
+                    // previous policy untouched.
+                    AppDestinationPolicyPrefs.setCategoryMode(context)
                     onEdit()
                     onDismiss()
                 },
@@ -445,5 +438,72 @@ private fun categoryLabel(context: android.content.Context, identity: String): S
                 ?.snapshot?.categories
                 ?.firstOrNull { it.id.value == uuid }?.displayName
         }
-    return displayName ?: uuid
+    // Fail closed: an unresolvable user-defined identity is an opaque internal
+    // value and must never surface (CategoryIdentity contract). The stale row
+    // is shown as unavailable, not as a raw UUID.
+    return displayName ?: context.getString(R.string.destination_policy_category_unavailable)
 }
+
+/**
+ * One mapping row's label: "<category>: <target>". Separates "an existing
+ * folder without a title" from "a mapped id whose folder no longer resolves"
+ * (spec: a deleted mapping target must not look like a valid untitled
+ * folder); the stored mapping itself is kept for re-edit, never silently
+ * dropped on a transient catalog/folder read failure.
+ */
+@Composable
+private fun categoryRowLabel(
+    context: android.content.Context,
+    launcher: LawnchairLauncher?,
+    categoryDisplay: String,
+    key: CategoryMappingKey,
+    entries: Map<CategoryMappingKey, String>,
+): String {
+    val profileSuffix = if (key.userSerial != UserCache.getInstance(context)
+            .getSerialNumberForUser(android.os.Process.myUserHandle())
+    ) {
+        " " + stringResource(AppDestinationPolicyTextKeys.otherProfile)
+    } else {
+        ""
+    }
+    val storedId = entries[key]?.toIntOrNull()
+    val target = when {
+        storedId == null -> stringResource(AppDestinationPolicyTextKeys.categoryEntryFolderUnset)
+
+        else -> {
+            val icon = folderIcon(launcher, storedId)
+            val title = icon?.mInfo?.title?.toString()?.takeIf { it.isNotEmpty() }
+            when {
+                title != null -> title
+
+                icon != null -> stringResource(R.string.homeedit_folder_default_label)
+
+                // The mapped id no longer resolves to a live folder.
+                else -> stringResource(R.string.destination_policy_summary_folder_missing)
+            }
+        }
+    }
+    return "$categoryDisplay$profileSuffix: $target"
+}
+
+/** One profile's S1-derived user-defined rows (u:<uuid> canonical values). */
+private fun userDefinedRowsForProfile(
+    overrideStore: app.lawnchair.organizer.rules.CategoryOverrideSnapshotSource,
+    context: android.content.Context,
+    profileSerial: Long,
+): List<CategoryMappingKey> = overrideStore
+    .read(setOf(app.lawnchair.organizer.planning.ProfileId(profileSerial.toString())))
+    .let { read ->
+        (read as? app.lawnchair.organizer.rules.OverrideSnapshotReadResult.Ready)
+            ?.snapshot?.assignments
+            ?.mapNotNull { (_, identity) ->
+                // User-defined identities carry the u:<uuid> canonical value
+                // (CategoryIdentity.canonicalValue); built-in ones are covered
+                // by the bundle rows.
+                identity as? app.lawnchair.organizer.planning.CategoryIdentity.UserDefined
+                    ?: return@mapNotNull null
+                CategoryMappingKey(identity.canonicalValue, profileSerial)
+            }
+            ?.distinct()
+            ?: emptyList()
+    }

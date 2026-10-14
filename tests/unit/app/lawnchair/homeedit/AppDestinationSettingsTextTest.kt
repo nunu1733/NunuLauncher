@@ -182,6 +182,7 @@ class AppDestinationSettingsTextTest {
                 "destination_policy_category_editor_empty",
                 "destination_policy_category_entry_folder_unset",
                 "destination_policy_category_editor_done",
+                "destination_policy_category_unavailable",
                 "destination_policy_notice_missing",
                 "destination_policy_notice_profile",
                 "destination_policy_notice_dock",

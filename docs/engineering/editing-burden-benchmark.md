@@ -156,6 +156,7 @@ identity→roleの対応（課題対象の指定に使う。正本は seeding in
 | B6 | 84 | 32 | 2ページ目に置かれた8個（各: swipe 1 + 長押し2 + 1ページ跨ぎdrag 5 = 8）+ 3ページ目に置かれた2個（各: swipe 2 + 長押し2 + 2ページ跨ぎdrag 6 = 10）。配置内訳は§3.4の走査規則から決定的（2ページ目の空き8cellを先に消費し、残り2個は3ページ目） | **追加操作0**（2026-10-02に[spec 497](../../specs/497-new-app-destination-policy-impl/spec.md)で確定。配置先を設定した後の10個の合計。重み付きコスト・操作数ともに0。B1の改善の10個分。実装: [#497](https://github.com/nunu1733/NunuLauncher/issues/497)） |
 | B7 | 9 | 5 | ページ0のペア削除（長押し2 + 同ページdrag 2）+ ページ1へswipe（1）+ ページ1のペア削除（4）。重複の在処は§5のidentity表で既知であり、探索は数えない（§4） | 構造保証: 全体整理（full-run再編成）の適用後、任意の新規フォルダ内に同一起動先のmemberの重複は0組（[spec 451](../../specs/451-organizer-duplicate-items/spec.md) N-2/N-5の性質testで検証）。可視性: 重複を含むホームでの新規runのpreviewで、重複の存在が警告行で識別できる（重複超過分の行数 ≥ 1/組）。**削除提案経路（[spec 507](../../specs/507-duplicate-removal-proposal/spec.md)が確定）**: 重複確認 → 明示選択 → 既存Remove → 確定の固定手順の重み付き操作コスト **9未満**（8。入口3 + サマリ行1 + 選択2 + 面内Remove 1 + 確定1。長押し1回（重み2）+ 以降はtapのみ。drag・swipe・追加の確認stepなし。#449/#450の既存経路の再利用であり、#451の構造保証・可視性目標は不変） |
 | B8 | 10 | 8 | 現行経路（提案確定 → 手編集。本機能なしの最短）: hub入口（空きスペース長押し2 + hub row 1 + 方法選択1 = 4）+ 確定1 + Aが入ったフォルダを開く1 + A長押し2 + popup「ページへ移動…」1 + ページ選択dialog 1。fixture前提: 適用後にAの元セルが当該ページの最初の空きセルになる（決定的会計の前提をfixture側で保証） | **提案除外経路（[spec 508](../../specs/508-visual-preview-item-exclusion/spec.md)が確定）**: 確認面でAの行の「提案から外す」→ 再計画された新previewで確定の固定手順の重み付き操作コスト **8未満**（6。hub入口4 + 除外1 + 確定1。再計画と新preview表示は操作なし。全解除→再計画の復帰も同一会計）。図previewと除外は零書込みの表示であり、適用は既存の安全経路（1適用 = 1復元点）のみ |
+| B1-CAT | 8 | 3 | B1と同一のbaseline内訳（#497の固定フォルダでは本課題を解決しない: 指定は1フォルダのみであり、カテゴリごとの振り分けは残る。B1/B6の追加操作0を本課題の改善として二重計上しない） | **追加操作0**（[spec 594](../../specs/594-category-new-app-destination/spec.md)が確定。mapping設定後の、**S2/S5/S1で解決できた**カテゴリ新規アプリの合計。重み付きコスト・操作数ともに0。coverageはcapture時に到達するカテゴリ〔appCategory 8種＋TOOLS＋S1 override再install〕に限られ、promise経路は成功対象外〔owner判断、Issue #509 comment 2026-10-14〕。mapping設定は一度だけの設定コストとして会計から分離） |
 
 baselineの算出は2026-09-26の本書改正で確定した。メモ §4.1の初期目標（B1=追加操作0、B2〜B4=50%削減、B5=1操作）を確定値として載せた（B2≤24、B3≤10、B4≤12。B2〜B4の合否はNow-2全体（#448+#449のうち適した方）で判定する）。起草時の概算（B2=40、B3=20、B4=24、B6=未確定、B7=8+探索分）は、drop後の視点移動と課題内のページ移動を内訳に含めていなかったため、確定時に再計算した（Change history）。確定前にNow段階の機能specは受け入れない（メモ §5、NFR-014）。NFR-014のstatus確定は `docs/product/requirements.md` への更新と同時に行う。
 
@@ -171,6 +172,7 @@ baselineの算出は2026-09-26の本書改正で確定した。メモ §4.1の�
 
 ## Change history
 
+- 2026-10-14: Issue #594（[spec 594](../../specs/594-category-new-app-destination/spec.md)、accepted）が新課題 **B1-CAT**（B1の固定派生scenario）を確定した（§6のbaseline・目標行追加。実装PR [PR #596](https://github.com/nunu1733/NunuLauncher/pull/596)で§7に準じた会計確認を実施: installReason=4 oracle記録込み、S2経路2個＋mapping外fallback＋S5経路で追加操作0成立）。既存B1〜B8のbaseline・目標・会計の変更なし。
 - 2026-10-03: Issue #508（[spec 508](../../specs/508-visual-preview-item-exclusion/spec.md)、accepted）が新課題 **B8** を確定した（§2の課題定義・§6の現行経路baseline（10/操作数8）と提案除外経路の目標（重み付き8未満 = 6）・§5のB8対象A役割）。既存B1〜B7のbaseline・目標・会計の変更なし。実装PRで会計の照合表とfixtureでの手順成立確認を記録する（spec AC-11）。
 
 - 2026-10-03: Issue #507（[spec 507](../../specs/507-duplicate-removal-proposal/spec.md)、accepted）がB7の削除提案経路の目標を確定した（重複確認 → 明示選択 → 既存Remove → 確定の固定手順の重み付き操作コスト9未満。実装PRで§6のB7行へ反映）。#451の構造保証・可視性目標は不変。baseline（9/操作数5）と内訳の変更なし。

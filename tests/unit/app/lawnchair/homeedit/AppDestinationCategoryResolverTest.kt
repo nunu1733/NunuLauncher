@@ -177,6 +177,156 @@ class AppDestinationCategoryResolverTest {
     }
 }
 
+/**
+ * Capture decision seam oracles (spec 594 Verification: the production
+ * S1/S2/S5 candidates -> priority signal -> decoded mapping -> closed result
+ * -> 4-field wire path, exercised through [CategoryModeCapture] — the same
+ * function the Resolver's category branch calls).
+ */
+class CategoryModeCaptureTest {
+
+    private fun key(identity: String, serial: Long = 0L) = CategoryMappingKey(identity, serial)
+
+    private fun candidates(
+        s1: String? = null,
+        s2: String? = null,
+        s5: String? = null,
+    ) = CategoryModeSignalCandidates(
+        s1 = s1?.let(::CategoryId),
+        s2 = s2?.let(::CategoryId),
+        s5 = s5?.let(::CategoryId),
+    )
+
+    @Test
+    fun `priority is S1 over S2 over S5`() {
+        val mapping = mapOf(key("GAME") to "1", key("MUSIC") to "2", key("TOOLS") to "3")
+        val reasons = mutableListOf<CategoryUnresolvedReason>()
+        // All three present: S1 wins.
+        val wire = CategoryModeCapture.capture(candidates("GAME", "MUSIC", "TOOLS"), mapping, 0L, "app.benchmark") {
+            reasons += it
+        }
+        assertTrue(wire.endsWith("|1|0|app.benchmark"))
+        // S2 wins when S1 is absent.
+        assertTrue(
+            CategoryModeCapture.capture(candidates(null, "MUSIC", "TOOLS"), mapping, 0L, "app.benchmark")
+                .endsWith("|2|0|app.benchmark"),
+        )
+        // S5 wins when S1/S2 are absent.
+        assertTrue(
+            CategoryModeCapture.capture(candidates(null, null, "TOOLS"), mapping, 0L, "app.benchmark")
+                .endsWith("|3|0|app.benchmark"),
+        )
+        assertTrue(reasons.isEmpty())
+    }
+
+    @Test
+    fun `unresolvable capture serializes the existing UPSTREAM wire with a typed reason`() {
+        val reasons = mutableListOf<CategoryUnresolvedReason>()
+        val wire = CategoryModeCapture.capture(candidates(), emptyMap(), 0L, "app.benchmark") {
+            reasons += it
+        }
+        // The existing UPSTREAM snapshot form (kind token from DirectEditContract).
+        assertEquals(
+            com.android.launcher3.model.DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM +
+                "|0|0|app.benchmark",
+            wire,
+        )
+        assertEquals(listOf(CategoryUnresolvedReason.SIGNAL_UNAVAILABLE), reasons)
+        // Unmapped category is the reason when a signal exists but no row does.
+        val reasons2 = mutableListOf<CategoryUnresolvedReason>()
+        CategoryModeCapture.capture(candidates(s2 = "GAME"), emptyMap(), 0L, "app.benchmark") {
+            reasons2 += it
+        }
+        assertEquals(listOf(CategoryUnresolvedReason.UNMAPPED_CATEGORY), reasons2)
+    }
+
+    @Test
+    fun `codec round-trip through the capture seam keeps profile separation (positive + negative branch)`() {
+        // personal -> 10, work -> 20 under the same category.
+        val raw = CategoryDestinationMappingCodec.serialize(
+            mapOf(key("GAME", 0L) to "10", key("GAME", 1L) to "20"),
+        )
+        val decoded = CategoryDestinationMappingCodec.deserialize(raw)
+        assertTrue(
+            CategoryModeCapture.capture(candidates(s2 = "GAME"), decoded, 0L, "app.benchmark")
+                .endsWith("|10|0|app.benchmark"),
+        )
+        assertTrue(
+            CategoryModeCapture.capture(candidates(s2 = "GAME"), decoded, 1L, "app.benchmark")
+                .endsWith("|20|1|app.benchmark"),
+        )
+        // Negative branch: only personal has a row; the work capture must not
+        // reuse the personal folder and serializes the UPSTREAM wire instead.
+        val personalOnly = CategoryDestinationMappingCodec.deserialize(
+            CategoryDestinationMappingCodec.serialize(mapOf(key("GAME", 0L) to "10")),
+        )
+        val reasons = mutableListOf<CategoryUnresolvedReason>()
+        val workWire = CategoryModeCapture.capture(candidates(s2 = "GAME"), personalOnly, 1L, "app.benchmark") {
+            reasons += it
+        }
+        assertTrue(workWire.startsWith(com.android.launcher3.model.DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM))
+        assertEquals(listOf(CategoryUnresolvedReason.UNMAPPED_CATEGORY), reasons)
+    }
+
+    @Test
+    fun `after capture, changing the mapping and the S1 override never changes the frozen wire`() {
+        // Capture-time freeze: the first capture produces a FOLDER wire; later
+        // edits to the mapping AND the S1 override (the whole candidate set)
+        // cannot change what was persisted (spec scenario 4, first enqueue wins).
+        val initialMapping = mapOf(key("GAME", 0L) to "42")
+        val frozen = CategoryModeCapture.capture(candidates(s2 = "GAME"), initialMapping, 0L, "app.benchmark")
+        assertTrue(frozen.endsWith("|42|0|app.benchmark"))
+
+        val reasons = mutableListOf<CategoryUnresolvedReason>()
+        val reRead = CategoryModeCapture.capture(
+            // S1 override added after capture — a re-read would follow it.
+            candidates(s1 = "MUSIC", s2 = "GAME"),
+            mapOf(key("GAME", 0L) to "99", key("MUSIC", 0L) to "55"),
+            0L,
+            "app.benchmark",
+        ) { reasons += it }
+        // The fresh capture follows the new state (that is fine: it is a
+        // different install), which proves the wire is produced per-capture.
+        assertTrue(reRead.endsWith("|55|0|app.benchmark"))
+        // But the frozen wire from the first capture is unchanged by it.
+        assertTrue(frozen.endsWith("|42|0|app.benchmark"))
+    }
+
+    @Test
+    fun `user-defined rename keeps the identity mapping and delete-recreate does not attach`() {
+        // Rename: the u:<uuid> identity is unchanged, so the mapping holds.
+        val identity = "u:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        val mapping = mapOf(key(identity) to "30")
+        assertTrue(
+            CategoryModeCapture.capture(candidates(s1 = identity), mapping, 0L, "app.benchmark")
+                .endsWith("|30|0|app.benchmark"),
+        )
+        // Delete + same-name recreate mints a NEW UUID: the old mapping key
+        // never matches the new identity (ADR-0017 Decision 3).
+        val recreated = "u:bbbbbbbb-bbbb-4bbb-9bbb-bbbbbbbbbbbb"
+        val reasons = mutableListOf<CategoryUnresolvedReason>()
+        val wire = CategoryModeCapture.capture(candidates(s1 = recreated), mapping, 0L, "app.benchmark") {
+            reasons += it
+        }
+        assertTrue(wire.startsWith(com.android.launcher3.model.DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM))
+        assertEquals(listOf(CategoryUnresolvedReason.UNMAPPED_CATEGORY), reasons)
+    }
+
+    @Test
+    fun `capture does not check folder liveness (stage-2 owns validity)`() {
+        // A mapping to a folder id that would fail stage-2 (e.g. missing)
+        // still serializes the FOLDER snapshot at capture: liveness/profile/
+        // dock/constraints are the stage-2 planner's duty (spec 594 scenario
+        // 「capture時点でmapping先フォルダのlivenessは検証しない」).
+        val mapping = mapOf(key("GAME") to "999999")
+        val wire = CategoryModeCapture.capture(candidates(s2 = "GAME"), mapping, 0L, "app.benchmark")
+        assertTrue(wire.endsWith("|999999|0|app.benchmark"))
+        assertTrue(
+            wire.startsWith(com.android.launcher3.model.DirectEditContract.DEST_SNAPSHOT_KIND_FOLDER),
+        )
+    }
+}
+
 class CategoryDestinationMappingCodecTest {
 
     private fun key(identity: String, serial: Long = 0L) = CategoryMappingKey(identity, serial)

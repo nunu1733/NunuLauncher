@@ -784,18 +784,22 @@
     },
     {
       "id": "new-app-destination",
-      "responsibility": "New-app destination policy (Issue #497, ADR-0015): the pure planner with the closed result, the snapshot classifier, the settings row + folder picker wiring, and the minimal upstream writer surface (AddWorkspaceItemsTask / ItemInstallQueue / PersistedItemArray) that realizes the ADR-0013 contract 4 admission-in-completion write. Registered here retroactively: the paths were merged with PR #498 but the bridge assignment missing from this inventory was only surfaced by the Issue #507 measurement.",
+      "responsibility": "New-app destination policy (Issue #497, ADR-0015; category mode added by Issue #594 / ADR-0017): the pure planner with the closed result, the snapshot classifier, the category-mode pure resolution + mapping codec + capture decision seam (AppDestinationCategoryResolver.kt, incl. CategoryModeCapture), the capture-time signal reader reusing the organizer sources (CategoryModeSignalReader.kt), the settings row + folder picker + category mapping editor wiring, and the minimal upstream writer surface (AddWorkspaceItemsTask / ItemInstallQueue / PersistedItemArray) that realizes the ADR-0013 contract 4 admission-in-completion write. Registered here retroactively: the paths were merged with PR #498 but the bridge assignment missing from this inventory was only surfaced by the Issue #507 measurement.",
       "evidence": [
         "specs/497-new-app-destination-policy-impl/spec.md",
+        "specs/594-category-new-app-destination/spec.md",
         "docs/adr/0015-new-app-destination-policy.md",
+        "docs/adr/0017-category-new-app-destination.md",
         "docs/adr/0013-direct-edit-write-contract.md"
       ],
       "paths": [
         "lawnchair/src/app/lawnchair/LawnchairProcessInitializer.kt",
         "lawnchair/src/app/lawnchair/homeedit/AppDestinationAdapter.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationCategoryResolver.kt",
         "lawnchair/src/app/lawnchair/homeedit/AppDestinationNotice.kt",
         "lawnchair/src/app/lawnchair/homeedit/AppDestinationPlanner.kt",
         "lawnchair/src/app/lawnchair/homeedit/AppDestinationSettingsText.kt",
+        "lawnchair/src/app/lawnchair/homeedit/CategoryModeSignalReader.kt",
         "lawnchair/src/app/lawnchair/homeedit/ui/AppDestinationPreference.kt",
         "lawnchair/src/app/lawnchair/preferences/PreferenceManager.kt",
         "src/com/android/launcher3/model/AddWorkspaceItemsTask.java",
@@ -805,14 +809,14 @@
     }
   ],
   "expected_measurement": {
-    "counted_additions": 32307,
+    "counted_additions": 32882,
     "counted_deletions": 8923,
-    "counted_files": 354,
-    "counted_paths_sha256": "2a38ea036a2bc410e7101c02d63f1a60d7a59f1223fe0d11a618490d91aab71e",
-    "excluded_additions": 1240266,
+    "counted_files": 356,
+    "counted_paths_sha256": "5638de79af8d61ce5e3d2bc873b1f7de7725cebe6393077941ce760995ce32b7",
+    "excluded_additions": 1243229,
     "excluded_deletions": 12026,
-    "excluded_files": 2148,
-    "excluded_paths_sha256": "a699224ec672666607071897110d0aa3aa05872bc485d86e1c4d72a8b2e8cbde",
+    "excluded_files": 2164,
+    "excluded_paths_sha256": "f89f059380b84f9b8780c2c36bdcc138507fe28568117061c854c150eaa51f1b",
     "groups": {
       "deck-retirement": {
         "additions": 1472,
@@ -827,7 +831,7 @@
         "paths_sha256": "c62219fae73437d13d3113fe805f286538e7acda84e83f991ec8c5ee25870421"
       },
       "homeedit-edit-surface": {
-        "additions": 10107,
+        "additions": 10133,
         "deletions": 60,
         "files": 26,
         "paths_sha256": "c208728baf447b224d7aefda03573fe98a0c6f2fef9ecf76317d7cc4b59e9988"
@@ -851,10 +855,10 @@
         "paths_sha256": "24bf80a7326226994de10844e36969bcf059da87d0d3b2d169fac380ece09267"
       },
       "new-app-destination": {
-        "additions": 970,
+        "additions": 1503,
         "deletions": 142,
-        "files": 10,
-        "paths_sha256": "2dabf75efced4b6bee37f2c113f088e4281c180a953e57a36c00057aa0fce0f4"
+        "files": 12,
+        "paths_sha256": "91642e4a013a2b237eee1986137dbdba7d6a5b823f9332e0537ff1ab34f20888"
       },
       "organizer-home-entry": {
         "additions": 36,
@@ -863,7 +867,7 @@
         "paths_sha256": "6482bd763964e08a8ba115731819355cae35ec183124ed363bc6ec10e3e299f0"
       },
       "organizer-ui-and-lock-authoring": {
-        "additions": 6326,
+        "additions": 6342,
         "deletions": 45,
         "files": 13,
         "paths_sha256": "7f9dc79c4f97a2456a48e23a6fcfbc218dd0bf3c2148ebd65d194d361403004f"

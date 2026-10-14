@@ -12,6 +12,7 @@
 package app.lawnchair.homeedit
 
 import app.lawnchair.organizer.planning.CategoryId
+import com.android.launcher3.model.DirectEditContract
 
 /** capture時点でresolverが読める分類signal（優先順位の適用結果。空なら解決不能）。 */
 data class CategoryModeSignal(
@@ -76,6 +77,70 @@ object AppDestinationCategoryResolver {
             CategoryUnresolvedReason.MAPPING_CORRUPT,
         )
         return CategoryDestinationResult.FolderTarget(folderId)
+    }
+}
+
+/**
+ * capture時の分類signal候補（S1 override / S2 / S5のraw読取結果）。優先順位の
+ * 適用自体は純粋関数側で行い、Android依存の読取はreaderが担う（spec 594
+ * Verification「実際のmapping codec/resolver→capture seam」をJVM testで
+ * 固定するためのtest可能なcapture decision seam）。
+ */
+data class CategoryModeSignalCandidates(
+    val s1: CategoryId?,
+    val s2: CategoryId?,
+    val s5: CategoryId?,
+)
+
+/**
+ * カテゴリモードcaptureの決定（純粋関数。本番capture pathとJVM testの共通正）。
+ * signal候補→優先signal（S1→S2→S5、`OrganizationInputComposer.materializeSignals`
+ * と同一順序）→decoded mapping→closed result→4field wire snapshotまでを
+ * 1箇所に固定する。folderのlivenessは検証しない（stage-2に一本化。spec 594）。
+ * 解決不能は既存`UPSTREAM` snapshot wireを返し、typed理由はreason引数へ出る
+ * （package名はwireへ載るが、FileLog等の出力面には出ない）。
+ */
+object CategoryModeCapture {
+
+    fun firstSignal(candidates: CategoryModeSignalCandidates): CategoryModeSignal? = when {
+        candidates.s1 != null -> CategoryModeSignal(candidates.s1)
+        candidates.s2 != null -> CategoryModeSignal(candidates.s2)
+        candidates.s5 != null -> CategoryModeSignal(candidates.s5)
+        else -> null
+    }
+
+    fun capture(
+        candidates: CategoryModeSignalCandidates,
+        mapping: Map<CategoryMappingKey, String>,
+        userSerial: Long,
+        packageName: String,
+        reason: (CategoryUnresolvedReason) -> Unit = {},
+    ): String {
+        val result = AppDestinationCategoryResolver.resolve(
+            firstSignal(candidates),
+            mapping,
+            userSerial,
+        )
+        return when (result) {
+            is CategoryDestinationResult.FolderTarget ->
+                DirectEditContract
+                    .serializeDestinationSnapshot(
+                        DirectEditContract.DEST_SNAPSHOT_KIND_FOLDER,
+                        result.folderId,
+                        userSerial,
+                        packageName,
+                    )
+
+            is CategoryDestinationResult.Unresolved -> {
+                reason(result.reason)
+                DirectEditContract.serializeDestinationSnapshot(
+                    DirectEditContract.DEST_SNAPSHOT_KIND_UPSTREAM,
+                    0,
+                    userSerial,
+                    packageName,
+                )
+            }
+        }
     }
 }
 

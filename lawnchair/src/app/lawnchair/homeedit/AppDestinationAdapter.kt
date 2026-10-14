@@ -166,28 +166,12 @@ object AppDestinationBridge {
             context: Context,
             packageName: String,
             userSerial: Long,
-        ): String {
-            val signal = signalReader.read(packageName, userSerial)
-            val result = AppDestinationCategoryResolver.resolve(
-                signal,
-                AppDestinationPolicyPrefs.categoryMappings(context),
-                userSerial,
-            )
-            return when (result) {
-                is CategoryDestinationResult.FolderTarget ->
-                    DirectEditContract.serializeDestinationSnapshot(
-                        DirectEditContract.DEST_SNAPSHOT_KIND_FOLDER,
-                        result.folderId,
-                        userSerial,
-                        packageName,
-                    )
-
-                is CategoryDestinationResult.Unresolved -> {
-                    FileLog.d(LOG, "category destination unresolved: ${result.reason}")
-                    serializeUpstream(userSerial, packageName)
-                }
-            }
-        }
+        ): String = CategoryModeCapture.capture(
+            signalReader.readCandidates(packageName, userSerial),
+            AppDestinationPolicyPrefs.categoryMappings(context),
+            userSerial,
+            packageName,
+        ) { reason -> FileLog.d(LOG, "category destination unresolved: $reason") }
 
         private fun serializeUpstream(userSerial: Long, packageName: String): String = DirectEditContract
             .serializeDestinationSnapshot(

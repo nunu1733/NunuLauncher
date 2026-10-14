@@ -94,6 +94,7 @@
     <string name="destination_policy_category_editor_empty">対応付けできるカテゴリがまだありません。カスタムカテゴリやアプリが宣言するカテゴリに属するアプリが現れるとここに表示されます</string>
     <string name="destination_policy_category_entry_folder_unset">タップしてフォルダを選択</string>
     <string name="destination_policy_category_editor_done">完了</string>
+<string name="destination_policy_category_unavailable">利用できないカテゴリ</string>
     <string name="destination_policy_folder_picker_title">フォルダを選択</string>
     <string name="destination_policy_folder_stop">指定をやめる（上流の既定）</string>
     <string name="destination_policy_other_profile">（別のプロフィール）</string>
