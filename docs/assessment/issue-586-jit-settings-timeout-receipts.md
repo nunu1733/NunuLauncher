@@ -22,17 +22,17 @@ Issue #586 の終了条件（controllerd baseline/candidate targeted execution �
 - `UsageAccessJitInstrumentationTest` に failure-time receipts ヘルパー（`waitUntilInputUnavailableOrCaptureReceipts` / `buildSettingsReturnTimeoutReceipts` / `GrantCheckTickTrace`）を追加し、settings-return 2テストの最終 `InputUnavailable` 待ちを包む。待ち条件・上限・assertionは変更前と同一。receiptsはlock-free append-onlyで、failure時にのみ読まれる。
 - receiptsの最小集合: runner state種別、gate phase/revision、production predicate値（appops復元前）、grant-check tick入口receipt、RUN_STARTED有無、preparationPhase、operationActive、dialog存在、上限8,000字にtruncateしたsemantics tree。
 
-## Receipts経路の意図発火確認（AC-1、恒久化しない1回限りの確認）
+## Receipts経路の意図発火確認（AC-1、恒久化しない一時差分による確認）
 
-`waitUntil` 上限を一時的に1msへ下げたlocal overlay（commitしていない一時差分）でreceipts経路を発火させた。出力されたfailure message（API 36 local emulator、2026-10-15）:
+`waitUntil` を一時的に短期上限へ下げたlocal overlay（commitしない一時差分）でreceipts経路を発火させた。最終確認はreview round 2後のhead `9ac0b7eb60` で、待ち条件を一時的に `false`（上限2s）へ置き換えてtimeout経路を確実に発火させたもの。出力は [586-jit-timeout-receipts/receipts-intentional-fire.xml](./586-jit-timeout-receipts/receipts-intentional-fire.xml) に保存:
 
 ```text
 java.lang.AssertionError: settings-return wait timed out; failure-time receipts (captured before cleanup, spec 586)
-runnerState=AwaitingUsageAccessJit (AwaitingUsageAccessJit(runId=RunId(value=371aaaa371aaaa371aaaa371aaaa371a), selection=null, isOwner=true))
-gatePhase=Presented gateRevision=2
+runnerState=Capturing (Capturing)
+gatePhase=Resolved gateRevision=3
 usageAccessPredicateGranted=true
 grantCheckTickEntered=[1]
-journalRunStarted=false (events=[RUN_STARTED, INPUT_NOT_READY])
+journalRunStarted=false (events=[])
 preparationPhase=CAPTURE
 operationActive=false
 dialogPresent=false settingsUnavailablePresent=false
@@ -40,18 +40,29 @@ semanticsTree=Printing with useUnmergedTree = 'false'
 Node #1 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px ...
 ```
 
-全receiptフィールド（tick入口receiptを含む）がfailure messageへ出力され、元例外（`ComposeTimeoutException`）はcauseで保持された。一時差分は確認後にrevert済み（恒久的な常時失敗テストは残していない）。
+- 全receiptフィールド（tick入口receiptを含む）がfailure messageへ出力され、元例外（`ComposeTimeoutException: Condition still not satisfied after 2000 ms`）はcauseで保持された。
+- `journalRunStarted` と `events=[...]` は同一snapshotから導出され、自己矛盾は発生していない（round 2修正の確認項目）。`runnerState=Capturing` かつ `events=[]` は、state publishとRUN_STARTED emitの間の読み取りとして自己整合である。
+- 一時差分は確認後にrevert済み（恒久的な常時失敗テストは残していない）。初回確認（`34ab763528`、1ms上限）では `journalRunStarted=false (events=[RUN_STARTED, INPUT_NOT_READY])` の自己矛盾が観察され、これがround 2修正（単一snapshot化）の直接の動機となった。
 
 ## Controlled targeted execution（AC-2/AC-3）
 
-実行環境（全run共通）: host macOS arm64、local emulator AVD `issue142_api36`（API 36 / Android 16、`sdk_gphone64_arm64`）。**CI（API 36 / x86_64 / pixel_7_pro / disable-animations / clean boot）とはarch・emulator image・実行履歴が異なる**。実行は `connectedLawnWithQuickstepGithubDebugAndroidTest` のclass/method filter。結果XMLは [586-jit-timeout-receipts/](./586-jit-timeout-receipts/) へ保存。
+実行環境（全run共通）: host macOS arm64、local emulator AVD `issue142_api36`（API 36 / Android 16、`sdk_gphone64_arm64`）。**CI（API 36 / x86_64 / pixel_7_pro / disable-animations / clean boot）とはarch・emulator image・実行履歴が異なる**。実行コマンド（共通）:
 
-| 系列 | source状態 | 対象 | 回数 | 結果 |
+```bash
+ANDROID_SERIAL=emulator-5556 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=<class or class#method>
+```
+
+対象SHAと実行の対応:
+
+| 系列 | source状態（対象SHA） | 対象 | 回数 | 結果 |
 |---|---|---|---|---|
-| receipts意図発火 | impl + 一時1ms上限overlay | grant method | 1 | receipts出力確認（上記）→ revert |
-| baseline | impl（Handler publication + diagnostics） | settings-return 2本を含むclass全体 | 5 | **settings-return 2本は5/5回PASS**（11–16s）。XML: impl-class-run1/2.xml（+保存前の3run） |
-| 対照 | stash適用で一時再現した main（`cd50255146` + spec） | settings-return 2本を含むclass全体 | 2 | settings-return 2本PASS（11–14s）。XML: clean-class-run1/2.xml |
-| candidate | impl + Direct-publication overlay（[candidate-overlay.diff](./586-jit-timeout-receipts/candidate-overlay.diff)：`newProductionRunner` から `publicationThread = HandlerRunPublicationThread()` を除去＝77b6b97時代相当） | grant method | 5 | **5/5回PASS（12–22s）。原signature（30s無復帰timeout）は非再現**。XML: candidate-grant-run1..5.xml |
+| receipts意図発火 | impl `34ab763528` + 一時1ms上限overlay（非commit） | grant method | 1 | receipts出力確認。`journalRunStarted` とevent列の自己矛盾を観察 → round 2修正の動機 |
+| receipts意図発火（再確認） | round 2 head `9ac0b7eb60` + 一時 `false` 条件overlay（非commit、上限2s） | grant method | 1 | 全receiptフィールド出力・cause保持・自己整合を確認。XML: receipts-intentional-fire.xml |
+| baseline | impl `34ab763528`（Handler publication + diagnostics） | settings-return 2本を含むclass全体 | 5 | **settings-return 2本は5/5回PASS**（11–16s）。XML: impl-class-run1/2.xml（保存済み2回）+ 保存前3回 |
+| baseline（最終head再確認） | round 2 head `9ac0b7eb60` | settings-return 2本を含むclass全体 | 1 | **8テスト全PASS**（settings-return 15.1s/15.8s、BACK testもPASS）。XML: impl-class-run3.xml |
+| 対照 | 一時stash適用の main `cd50255146`（spec取り込みのみ、impl無し） | settings-return 2本を含むclass全体 | 2 | settings-return 2本PASS（11–14s）。XML: clean-class-run1/2.xml |
+| candidate | impl `34ab763528` + Direct-publication overlay（[candidate-overlay.diff](./586-jit-timeout-receipts/candidate-overlay.diff)：impl headの `newProductionRunner` から `publicationThread = HandlerRunPublicationThread()` を除去する1行差分＝77b6b97時代相当） | grant method | 5 | **5/5回PASS（12–22s）。原signature（30s無復帰timeout）は非再現**。XML: candidate-grant-run1..5.xml |
 
 ## 分類（supported evidence の範囲で）
 
@@ -62,7 +73,7 @@ Node #1 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px ...
 
 ## 調査中の環境観察（本Issueのscope外・分類しない）
 
-local実行中、`jitDialogBackDeclinesAndContinuesWithoutCancellingTheRun`（BACK keyevent経路）が **tree非依存**で局所的に失敗した（impl 5/5、clean HEAD 2/2のclass実行で失敗。method単体では1回PASS/1回FAIL）。失敗は `pressBack()` が注入したshell `KEYCODE_BACK` の配信系（logcat上は `WindowOnBackDispatcher: sendCancelIfRunning` の連鎖）で止まっており、settings-return経路・本diagnostics・本diffとは無関係であることを stash A/B で確認した。これは本長寿命local emulatorの環境問題のシグネチャであり、CI（同testが最新exact-head runでPASS継続）や#586の原signature（settings-return待ち）とは異なる。**本Issueでは分類せず、必要なら別Issue（failure class 3/5候補）として追跡する。**
+local実行中、`jitDialogBackDeclinesAndContinuesWithoutCancellingTheRun`（BACK keyevent経路）が **tree非依存**で断続的に失敗した。class実行9回中7回失敗・2回PASS（impl系列7回中6回失敗、対照系列2回中1回失敗…保存XMLの範囲：impl-class-run1/2とclean-class-run1/2は失敗、impl-class-run3はPASS）。method単体では1回PASS/1回FAIL。失敗は `pressBack()` が注入したshell `KEYCODE_BACK` の配信系（logcat上は `WindowOnBackDispatcher: sendCancelIfRunning` の連鎖）で止まっており、settings-return経路・本diagnostics・本diffとは無関係であることを stash A/B（同時期のimpl/clean比較）で確認した。これは本長寿命local emulatorの環境問題のシグネチャであり、CI（同testが最新exact-head runでPASS継続）や#586の原signature（settings-return待ち）とは異なる。**本Issueでは分類せず、必要なら別Issue（failure class 3/5候補）として追跡する。**
 
 ## 未証明範囲
 
