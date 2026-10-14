@@ -1,6 +1,6 @@
 ---
 issue: "#594"
-status: draft
+status: accepted
 tier: M
 requirements:
   - FR-008
@@ -19,7 +19,8 @@ updated: 2026-10-14
 階層Mの軽量specである（[Risk tiers](../../docs/project/github-workflow.md#risk-tiersリスク階層)）。Launcher DB書込み経路・schema・上流model/loader bridge・queue wire formatの変更を含まない（変更surfaceはfork-owned moduleのみ。§Verification）。
 
 > Risk tier: M — 新しい書込み経路を持たない。新規アプリのINSERTは#497の既存admission内write（`ModelWriter.addPendingInstallForDirectEdit`）をそのまま使い、本機能は既存適用経路の前段（capture時の配置先決定）と選択面を拡張する。高リスクpath一覧（`tools/repo-contract/validate_high_risk_evidence.py`）に触れない。
-> 判断の正本: [ADR-0015](../../docs/adr/0015-new-app-destination-policy.md)（accepted）。本specはそのDecision 3/15をsuccessor ADR（[ADR-0017](../../docs/adr/0017-category-new-app-destination.md)。本specと同じPRで新設、受入はmergeで完了）で拡張する。Decision 1/4/5/6/7/8/9/10/11/14は不変。**Decision 11（same-destination / no-move）は維持し、promise経路のruntime到達条件とCategory mode fallback意味論のみADR-0017 Decision 4が明確化する。**
+> 判断の正本: [ADR-0015](../../docs/adr/0015-new-app-destination-policy.md)（accepted）。本specはそのDecision 3/15をsuccessor ADR（[ADR-0017](../../docs/adr/0017-category-new-app-destination.md)）で拡張する。Decision 1/4/5/6/7/8/9/10/11/14は不変。**Decision 11（same-destination / no-move）は維持し、promise経路のruntime到達条件とCategory mode fallback意味論のみADR-0017 Decision 4が明確化する。**
+> 受入: **PR #595のmergeを受入eventとし、本specとADR-0017は同時にacceptedとなる**。runtime実装・検証は後続の実装PR（#594の終了条件2/3）が行い、spec/ADR statusの後追い変更は発生しない。
 > Phase A根拠: `docs/assessment/issue-509-category-destination-feasibility.md`（Revision 7、対象commit `391ad7eaa0f84f43af67f7101071f91325c998d9`）とowner判断（[Issue #509 comment](https://github.com/nunu1733/NunuLauncher/issues/509#issuecomment-6163435986)、2026-10-14。縮小scope受容）
 
 ## Problem
@@ -48,7 +49,7 @@ updated: 2026-10-14
 
 - **policy選択の拡張**: 既存のポリシー行（[AppDestinationPreference](../../lawnchair/src/app/lawnchair/homeedit/ui/AppDestinationPreference.kt)）の選択肢にカテゴリモードを追加する（既存の「上流の既定／指定フォルダ／追加しない」と排他的な1選択。「追加しない」⇔`pref_add_icon_to_home` OFFの整合、ホーム画面ロック中の無効化は既存のまま）。
 - **mapping管理**: 利用者が`CategoryIdentity + profile → 既存フォルダ（favorites行id）`の対応を明示設定する。mapping対象カタログは**capture時に実際に到達するカテゴリ**に限定する（S2のAndroid category 8種〔GAME/MUSIC/VIDEO/PHOTOGRAPHY/SOCIAL/NEWS/MAPS/PRODUCTIVITY〕、S5の`com.google.*`→TOOLS、S1 overrideが存在するuser-definedカテゴリ。Phase A assessment §3.3/§4、実装調査〔`BuiltInOrganizerPolicyBundleSource.kt:22-35`〕）。`OTHER`等capture時に到達しないbuilt-inは露出しない。フォルダ選択は既存のフォルダ選択dialogと同型（Dock上のフォルダ除外、profile注記）。mappingはid基準であり、rename・同名再作成で復活しない。
-- **capture時の解決**: `AppDestinationBridge`のresolver（captureDestination）内で、既存優先順位（S1 override → S2 Android category → S5 system/Google。`OrganizationInputComposer.materializeSignals`と同一順序）で分類signalを解決し、mapping照合して既存`FOLDER` snapshotを返す。分類seamはorganizerの既存source（`CategoryOverrideStoreModule`、`AndroidClassificationSignalSnapshotSource`、`BuiltInOrganizerPolicyBundleSource`）を再利用し、organizer run/snapshot/recoveryは起動しない。解決不能は既存`UPSTREAM` snapshotを返す（上流既定）。解決関数はAndroid-freeな純粋関数としてplanner側（`AppDestinationPlanner.kt`と同じJVM test対象面）に置き、adapterはwire変換のみに保つ（既存分離の継承）。
+- **capture時の解決**: `AppDestinationBridge`のresolver（captureDestination）内で、既存優先順位（S1 override → S2 Android category → S5 system/Google。`OrganizationInputComposer.materializeSignals`と同一順序）で分類signalを解決し、mapping照合して既存`FOLDER` snapshotを返す。**captureの責務は「分類→mapping照合→folderIdの復元」までに限定する**: 分類不可・未mapping・mapping記録からfolderIdを復元不能の場合は既存`UPSTREAM` snapshotを返すが、folderIdを復元できた場合は**liveness/profile/layout検証を行わず**既存4field `FOLDER(folderId, userSerial, packageName)` snapshotを作る。folder missing / profile mismatch / Dock / 制約違反の検証は既存のstage-2 planner（`AppDestinationPlanner`）に一本化し、#497のtyped fallback＋one-shot通知契約（ADR-0015 Decision 4/5/7/8）をそのまま使う（capture側での重複validation・新model-read seamを作らない）。分類seamはorganizerの既存source（`CategoryOverrideStoreModule`、`AndroidClassificationSignalSnapshotSource`、`BuiltInOrganizerPolicyBundleSource`）を再利用し、organizer run/snapshot/recoveryは起動しない。解決関数はAndroid-freeな純粋関数としてplanner側（`AppDestinationPlanner.kt`と同じJVM test対象面）に置き、adapterはwire変換のみに保つ（既存分離の継承）。`CategoryIdentity`はcapture前のpolicy stateにのみ留め、`DirectEditContract`へのfield/kind追加は行わない。
 - **分類fallbackの記録**: capture時に分類・mappingが解決できなかったことをtypedにFileLogへ記録する（`AppDestination` tag + reasonキー。package名は出力しない）。**設定行での通知は行わない**（分類不能は正常系であり、installのたびの通知は騒音になるため。mapping自体が無効になっている状態は設定行のsummary表示で扱う）。
 - **queue wire・書込み経路の変更なし**: `DirectEditContract`の4field snapshot・2kind、`ItemInstallQueue`/`AddWorkspaceItemsTask`/`ModelWriter`/`PersistedItemArray`の差分0。stage-2検証・admission内write・typed fallback・one-shot通知・post-admission bindは#497実装をそのまま使う。
 - **successor ADR**: ADR-0015のDecision 3（選択肢）/Decision 15（設定）の拡張と、Decision 11のruntime到達性とCategory mode fallback意味論の明確化（ADR-0017 Decision 4。same-destination / no-move invariant自体は不変）。ADR-0015本文は上書きせず、Change historyへ関連リンクを1行追加する。
@@ -98,11 +99,20 @@ When flushの前にmappingをGAME→別フォルダへ変更し、processが死�
 Then AはsnapshotどおりG内へ置かれる（capture後のmapping変更を再読しない。first enqueue wins継承）
 And stage-2はGの存在・profile・Dock・制約のみを再検証し、別のカテゴリフォルダへ再選択しない
 
-### Scenario: 対応先フォルダが削除された場合は既存のtyped fallback
+### Scenario: 対応先フォルダが削除された場合は既存のtyped fallback（stage-2側）
 
-Given GAME→GのmappingでGが削除された後に新規アプリがinstallされる（capture時にGの解決が試みられる時点、および既に`FOLDER` snapshotでqueueに載っている両方）
-Then capture時に解決した場合: アプリは上流の既定へ置かれ、typed fallbackがFileLogへ記録される。`FOLDER` snapshotでflushした場合: 理由`FOLDER_MISSING`が既存経路で記録・通知される（#497契約のまま）
+Given GAME→Gのmappingが設定され、かつ新規アプリAがcapture時にmapping照合を通過し`FOLDER`(G) snapshotでqueueに載っている
+When flush前にGが削除され、flushでstage-2が実行される
+Then stage-2 plannerはGのliveness検証で失敗し、Aは上流の既定（空きセル）へ置かれる（`UpstreamDefault(FOLDER_MISSING)`。既存経路でtyped記録・one-shot通知される。#497契約のまま）
 And 同名のフォルダを再作成してもmappingは復活しない（id基準）
+
+### Scenario: capture時点でmapping先フォルダのlivenessは検証しない（責務分離）
+
+Given GAME→Gのmappingが設定され、Gがこの時点で既に削除されている
+When 新規アプリAがinstallされ、capture時に分類→mapping照合が成功する（folderId=Gを復元できる）
+Then captureはGのlivenessを検証せず、既存4field `FOLDER`(G) snapshotを永続化する（capture側でtyped fallbackを発火させない）
+When flushでstage-2が実行される
+Then stage-2がGの欠損を検出し、Aは上流の既定へ置かれ、`FOLDER_MISSING`が既存経路で記録・通知される（folder有効性の検証はstage-2に一本化）
 
 ### Scenario: 対応先カテゴリがcatalogから消えた場合はfail-closed
 
@@ -111,12 +121,36 @@ When Uが削除された後に、S1でUに分類されるアプリの再install�
 Then capture時の解決は失敗し、アプリは上流の既定へ置かれる（誤配送は起こらない。zero新規mapping解決）
 And 分類fallbackがFileLogへtypedに記録される
 
+### Scenario: 同一カテゴリ・同一アプリでもmappingはprofileで分離される（正方向）
+
+Given カテゴリモードでカテゴリCについてpersonal profile→フォルダP、work profile→フォルダWのmappingが設定されている。同一package Xがpersonalとworkの両方にinstallされている
+When personal側でXの自動追加が発生し、work側でもXの自動追加が発生する
+Then personal captureは`FOLDER`(P, personalSerial, X)、work captureは`FOLDER`(W, workSerial, X)をserializeする（mapping keyは`CategoryIdentity + profile`であり、profileをまたいだ値の共有は発生しない）
+And 各profileのcaptureは自profileのmappingとuserSerialのみを使う（既存`canonicalProfileId`のuserSerial）
+
+### Scenario: work側にmappingが無い場合、personalのmappingを使わない（negative branch）
+
+Given カテゴリCのmappingはpersonal→Pのみ設定されており、work側にはCのmappingが存在しない
+When work profileのXの自動追加が発生する
+Then work captureはpersonal側のmapping（P）を使わず、mappingなしとして既存`UPSTREAM` snapshotをserializeする（上流既定配置）
+And 分類fallbackがFileLogへtypedに記録される
+
+### Scenario: カテゴリ削除→同名再作成では旧mappingが復活しない（identity基準）
+
+Given user-definedカテゴリU（UUID identity `u:<uuid1>`）→フォルダFのmappingが設定されている
+When Uを削除し、**同じ表示名で**新しいuser-definedカテゴリを作成する（新identity `u:<uuid2>`）
+Then 旧mapping（`u:<uuid1>`→F）は新カテゴリ（`u:<uuid2>`）にはattachされない（persisted identityは表示名ではなくUUID。ADR-0015 Decision 5のsame-name recreation不採用と同型）
+And S1で新カテゴリに分類される再installはmappingなしとして上流既定へ落ちる
+And built-inカテゴリもlocalized labelではなく既存のstable identity（`CategoryId`値）で保持する
+
 ## Verification
 
-- owner確認用のスクリーンショット/録画は**実機で取得**する（B1-CAT会計: mapping設定→2カテゴリのinstall〔非promise経路〕→追加操作0。Phase A assessment §8.1の未確認範囲「実機GMS端末でのpromise capture発火・分類不可」は、実機での通常install観察〔promise icon位置＝上流既定から動かないこと〕としてこの実機確認で二重化する）。emulatorは補助証跡。
-- capture解決の純粋関数JVM test（signal解決の優先順位〔S1→S2→S5〕、mapping照合、typed fallback、決定性・冪等性。capture後にmappingとS1 overrideの双方を変更してもserialized destinationは不変、category rename不変。既存homeedit gateへ追加。test-audit適用をPRへ記録）。
+- **B1-CAT実機確認（必須・gating）**: owner確認用のスクリーンショット/録画は**実機で取得**するが、**必須証跡は「captureが発生したこと（queue投入log）」「capture時の4field snapshotの値」「最終DB/layout destination（追加操作0）」であり、動画/スクリーンショットは補助証跡に留める**。B1-CATのinstall手順は、Phase A assessment §3.5で確立したinstall-session手順（`pm install-create --install-reason 4` → write → commit）か、**実行前に`INSTALL_REASON_USER`成立を同等に保証・確認できる手順**をnormativeとし、destination判定前に`installReason=4 (USER)`を`dumpsys`等でoracle記録する（shell経路の利用自体は問題ではなく、reason成立の保証と記録が要件）。
+- **promise経路の実機観察（best-effort・non-gating）**: 実機GMS端末でPlay install→promise iconが上流既定位置へ置かれ、完了後も動かないことの観察を**best-effortで行う**（owner判断どおりimplementation prerequisiteではない。直接観察できなくても実装受入をfailさせない）。Decision 11のsame-destination / no-moveは、promise経路の予防的fallback scenario（`UPSTREAM` snapshot凍結・`alreadyAddedPromiseIcon`抑止）の構造testと既存contractで必須のまま維持する。
+- capture解決の純粋関数JVM test（signal解決の優先順位〔S1→S2→S5〕、mapping照合、typed fallback、決定性・冪等性。capture後にmappingとS1 overrideの双方を変更してもserialized destinationは不変、category rename不変。**実際のmapping codec/resolver→capture seamを通す**。既存homeedit gateへ追加。test-audit適用をPRへ記録）。
+- **work profile分離のJVM test**: 上記の正方向scenario（personal/workで別snapshot）とnegative branch（work側mappingなし→personal mappingを使わず`UPSTREAM`）を、実際のmapping codec/resolver→capture seamで検証する。identityは既存userSerial/`canonicalProfileId`を使い、新profile ID型は追加しない。
+- **category identityのJVM test**: rename不変に加え、削除→同名再作成で新identityが生まれ旧mappingがattachされないnegative testを検証する。
 - #497の既存test（homeedit JVM gate + 書込み経路harness + queue test）が回帰なく通ること（固定フォルダ/既定/追加しない・fallback・snapshot契約への回帰なし）。
-- work profile: 同一packageのclassification/mappingがpersonalと分離されることを、既存write/queue instrumentationまたは実機確認で検証する（mocked JVMのみで済ませない）。
 - 書込み経路を追加しないことの確認（diffで触れるpathの列挙。`src/`配下の差分0）と、`python3 tools/repo-contract/measure_upstream_patch_surface.py --target HEAD --enforce-baseline`の結果をPR本文へreportする（階層M要件）。
 - `python3 tools/repo-contract/validate_writer_inventory.py`がPASSすること（新規writer fileなし）。
 
@@ -127,4 +161,5 @@ And 分類fallbackがFileLogへtypedに記録される
 
 ## Change history
 
+- 2026-10-14: Review round 1対応（ChatGPT、[PR #595 comment](https://github.com/nunu1733/NunuLauncher/pull/595#issuecomment-6164162557)）: 高1（lifecycle）— 受入をPR #595 mergeに一本化し、statusをacceptedへ。高2（capture責務分離）— captureは分類→mapping照合→folderId復元までに限定し、folder有効性検証はstage-2に一本化するScope修正とscenario 2件（stage-2側FOLDER_MISSING / capture時liveness不検証）へ分離。中1（B1-CAT手順）— install手順をnormative化（`installReason=4` oracle記録を必須化）、必須証跡をlog/snapshot/DB destinationに固定、promise実機観察をbest-effort・non-gatingとして分離。中2（work profile誤流用）— 正方向＋negative branch scenario 2件を追加し、mapping codec→capture seamでの検証を必須化。中3（category identity削除/再作成）— negative scenarioを追加し、persisted identityの正（UUID/CategoryId値）を明記。
 - 2026-10-14: Draft created for #594（#509 owner判断〔縮小scope受容〕を受けて起草。履歴`59aa164a62`のobsolete draftを、review round 1指摘論点〔D11 relation明文化・promise/reflush/category identity/work profile oracle設計・新baseline path:line〕を反映して起草し直したもの）。

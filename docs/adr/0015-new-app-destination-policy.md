@@ -115,4 +115,4 @@ Rejected（Phase 1 reviewで確定）。process死の間にpolicy/folder指定�
 
 - 2026-09-27: Accepted。#446の決定Issueで起草・受入（出典: #446 付録の承認済み草案2026-09-24）。Phase 1 review（#446 のreviewコメント）で確定した書込み構造（Decision 7）、closed result意味論（Decision 8）、policy snapshotのcapture/read境界とsnapshot欠損・破損時の一意化（Decision 10）、「満杯」のfallback条件からの除外（Decision 4）を含む。
 - 2026-10-02: 要求テスト表の「Layout Application interface相当のJVM test（test DB使用）」の実現surfaceについて、[ADR-0016](./0016-layout-application-test-surface.md) が本表の割付けを引き継ぐ判断を記録した（#497 Phase 1 review round 3/4で確定）。本ADRの本文は変更しない（`docs/adr/README.md` の更新規約どおり、判断の変更はsuccessor ADRが置換関係を示す）。
-- 2026-10-14: [ADR-0017](./0017-category-new-app-destination.md)（Proposed）がDecision 3/15を拡張し、Decision 11のruntime到達条件とCategory mode fallback意味論を明確化した。Decision 11のsame-destination / no-move invariantは維持される。本ADRの本文は変更しない。
+- 2026-10-14: [ADR-0017](./0017-category-new-app-destination.md)（accepted。docs受入PR #595のmergeで受入）がDecision 3/15を拡張し、Decision 11のruntime到達条件とCategory mode fallback意味論を明確化した。Decision 11のsame-destination / no-move invariantは維持される。本ADRの本文は変更しない。
