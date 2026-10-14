@@ -1,0 +1,21 @@
+=== E4b3 full logcat (commit completion through install finish) ===
+UTC: 2026-10-14T02:49:36Z
+--- SessionBadgeProbe / launcher promise-path tags ---
+10-14 11:48:31.778 16628 16628 I SessionBadgeProbe: activity started
+10-14 11:48:31.798 16628 16628 I SessionBadgeProbe: session callback registered
+10-14 11:48:31.963 16628 16628 I SessionBadgeProbe: commit status receiver registered
+10-14 11:48:34.003 16628 16628 I SessionBadgeProbe: apk loaded, bytes=2607707
+10-14 11:48:34.022 16628 16628 I SessionBadgeProbe: session created id=1228612374 with badging (icon+label), installer=self, reason=4 (no spoof)
+10-14 11:48:34.367 16628 16628 I SessionBadgeProbe: session committed
+10-14 11:48:34.373 16628 16628 I SessionBadgeProbe: cb onCreated 1228612374
+10-14 11:48:34.426 16628 16628 I SessionBadgeProbe: commit status=-1
+10-14 11:48:34.564 16628 16628 I SessionBadgeProbe: launched confirm intent
+10-14 11:49:15.693 16628 16628 I SessionBadgeProbe: cb onFinished 1120207295 success=true
+10-14 11:49:16.378 13837 13876 D SessionCommitReceiver: Adding package name to install queue. Package name: app.lawnchair.benchmark.target01, has app icon: true, has app label: true
+10-14 11:49:16.636 13837 13876 W LawnchairActivityCachingLogic: 	at com.android.launcher3.model.ItemInstallQueue$PendingInstallShortcutInfo.getItemInfo(ItemInstallQueue.java:387)
+10-14 11:49:16.636 13837 13876 W LawnchairActivityCachingLogic: 	at com.android.launcher3.model.ItemInstallQueue.lambda$queuePendingShortcutInfo$5(ItemInstallQueue.java:264)
+10-14 11:49:16.636 13837 13876 W LawnchairActivityCachingLogic: 	at com.android.launcher3.model.ItemInstallQueue.$r8$lambda$hQhmjXoSHf8RIi6fbkVbyXmz_wQ(ItemInstallQueue.java:0)
+10-14 11:49:16.636 13837 13876 W LawnchairActivityCachingLogic: 	at com.android.launcher3.model.ItemInstallQueue$$ExternalSyntheticLambda6.run(D8$$SyntheticClass:0)
+10-14 11:49:16.665 13837 13876 D ItemInstallQueue: Adding PendingInstallShortcutInfo to queue. Attached info: ItemInfo(id=-1 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@7bc6f targetComponent=ComponentInfo{app.lawnchair.benchmark.target01/app.lawnchair.benchmark.target.TargetActivity} screen=-1 cell(-1,-1) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} title=Benchmark Target 01 supportsMultiInstance=false nonResizeable=false)
+--- session finish related (system) ---
+10-14 11:49:15.693 16628 16628 I SessionBadgeProbe: cb onFinished 1120207295 success=true
