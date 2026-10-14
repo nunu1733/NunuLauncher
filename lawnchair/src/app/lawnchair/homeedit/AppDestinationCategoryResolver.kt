@@ -239,23 +239,24 @@ object CategoryModeEditorCommit {
     }
 
     /**
-     * Cancel遷移（review round 3中1対応）。productionのCancel buttonは本
-     * helperを通る。既存state（mapping集・policy・toggle）を一切変更せず
-     * closingだけを行う。state不変をJVM testで固定し、将来Cancel pathへの
-     * 誤追加（policy/mapping書換）を検出できる。
+     * Cancel遷移（review round 3中1→round 5中1対応）。productionで使う実
+     * mutator callback（mapping persist / policy select / toggle変更）を
+     * 受け取り、**1回も呼ばない**実装である。既存state（mapping集・policy・
+     * toggle）を一切変更せずclosingだけを行う。JVM testはcounter/fake mutator
+     * を渡してcall count 0とstored state不変をassertするため、将来Cancel
+     * pathへのwrite誤追加はこのseam経由で検出される。
      */
     fun onCancel(
         currentEntries: Map<CategoryMappingKey, String>,
         currentAddIconOn: Boolean,
-        observedEntries: (Map<CategoryMappingKey, String>) -> Unit = {},
-        observedPolicyChange: (Boolean) -> Unit = {},
-        observedToggleChange: (Boolean) -> Unit = {},
+        persistMappings: (Map<CategoryMappingKey, String>) -> Unit,
+        selectCategoryMode: () -> Unit,
+        setAddIconOn: (Boolean) -> Unit,
     ) {
         // No persistence, no policy change, no toggle change: the pre-existing
-        // state survives untouched. The observers let the test assert that the
-        // production wiring performed no write on the Cancel path.
-        observedEntries(currentEntries)
-        observedPolicyChange(false)
-        observedToggleChange(currentAddIconOn)
+        // state survives untouched. The mutators are the SAME production
+        // callbacks the Done path uses, so any write added to this body would
+        // be observable by the JVM regression oracle (call count 0).
+        check(currentEntries.isNotEmpty() || true) // no-op; state read only
     }
 }

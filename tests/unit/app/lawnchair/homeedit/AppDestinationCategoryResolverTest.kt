@@ -425,29 +425,40 @@ class CategoryModeEditorCommitTest {
     }
 
     @Test
-    fun `cancel keeps the stored state and performs no write (production wiring routes through onCancel)`() {
-        // The dialog's Cancel button calls onCancel with the current state and
-        // no persistence callbacks wired (production passes only observers).
-        // Any future write added to the Cancel path (policy/mapping/toggle)
-        // would have to bypass this seam, which the production wiring does not
-        // do — the seam records what a write WOULD look like and the test
-        // asserts none of the persist/select/toggle callbacks were handed out.
+    fun `cancel keeps the stored state and performs no write (production mutators observed, 0 calls)`() {
+        // The dialog's Cancel path routes through onCancel with the SAME
+        // production mutators the Done path uses. The test hands in counters
+        // and asserts every mutator call count is 0 and the stored state is
+        // untouched — a future write added to the Cancel body is detected.
         val stored = mapOf(CategoryMappingKey("GAME", 0L) to "42")
-        var persistCalled = false
-        var policyChanged = false
-        var toggleChanged = false
+        var persistCalls = 0
+        var selectCalls = 0
+        var toggleCalls = 0
         CategoryModeEditorCommit.onCancel(
             currentEntries = stored,
             currentAddIconOn = true,
-            observedEntries = { /* the seam only reports; production wires no write */ },
-            observedPolicyChange = { policyChanged = it },
-            observedToggleChange = { toggleChanged = it != true },
+            persistMappings = { persistCalls++ },
+            selectCategoryMode = { selectCalls++ },
+            setAddIconOn = { toggleCalls++ },
         )
-        assertTrue(!persistCalled)
-        assertTrue(!policyChanged)
-        assertTrue(!toggleChanged)
+        assertEquals(0, persistCalls)
+        assertEquals(0, selectCalls)
+        assertEquals(0, toggleCalls)
         // The stored mapping survives unchanged (the seam never mutates it).
         assertEquals(mapOf(CategoryMappingKey("GAME", 0L) to "42"), stored)
+    }
+
+    @Test
+    fun `cancel does not change the toggle even when it was off`() {
+        var toggleCalls = 0
+        CategoryModeEditorCommit.onCancel(
+            currentEntries = emptyMap(),
+            currentAddIconOn = false,
+            persistMappings = { },
+            selectCategoryMode = { },
+            setAddIconOn = { toggleCalls++ },
+        )
+        assertEquals(0, toggleCalls)
     }
 }
 

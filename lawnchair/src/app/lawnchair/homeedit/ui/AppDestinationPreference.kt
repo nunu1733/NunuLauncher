@@ -326,8 +326,24 @@ private fun DestinationCategoryEditorDialog(
         }
     }
 
+    // The Cancel path routes both the explicit button and the
+    // outside-tap/back dismiss through the tested seam, with the SAME
+    // production mutators the Done path uses (review round 5 medium: the seam
+    // must observe the real callbacks so the 0-call oracle detects future
+    // writes added to the Cancel path).
+    val cancelThroughSeam: () -> Unit = {
+        app.lawnchair.homeedit.CategoryModeEditorCommit.onCancel(
+            currentEntries = entries,
+            currentAddIconOn = previousAddIconOn,
+            persistMappings = { AppDestinationPolicyPrefs.setCategoryMappings(context, it) },
+            selectCategoryMode = { AppDestinationPolicyPrefs.setCategoryMode(context) },
+            setAddIconOn = setAddIconOn,
+        )
+        onDismiss()
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = cancelThroughSeam,
         title = { Text(stringResource(AppDestinationPolicyTextKeys.categoryEditorTitle)) },
         text = {
             Column {
@@ -373,16 +389,7 @@ private fun DestinationCategoryEditorDialog(
             ) { Text(stringResource(AppDestinationPolicyTextKeys.categoryEditorDone)) }
         },
         dismissButton = {
-            TextButton(onClick = {
-                // Cancel routes through the tested transition seam: no mapping
-                // write, no policy change, no toggle change (review round 3
-                // medium 1 — the no-op is asserted, not assumed).
-                app.lawnchair.homeedit.CategoryModeEditorCommit.onCancel(
-                    currentEntries = entries,
-                    currentAddIconOn = previousAddIconOn,
-                )
-                onDismiss()
-            }) {
+            TextButton(onClick = cancelThroughSeam) {
                 Text(stringResource(android.R.string.cancel))
             }
         },
