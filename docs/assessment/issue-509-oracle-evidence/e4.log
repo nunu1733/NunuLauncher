@@ -1,0 +1,37 @@
+=== E4 probe badging-bearing session (core experiment) ===
+UTC start: 2026-10-14T02:33:04Z
+--- full logcat dump (filtered) ---
+10-14 11:33:08.600 14289 14289 I SessionBadgeProbe: activity started
+10-14 11:33:08.603 14289 14289 I SessionBadgeProbe: session callback registered
+10-14 11:33:10.364 14289 14289 I SessionBadgeProbe: apk loaded, bytes=2607707
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: session failed
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: java.lang.SecurityException: Package com.android.vending does not belong to 10238
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3392)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Parcel.createException(Parcel.java:3376)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Parcel.readException(Parcel.java:3359)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Parcel.readException(Parcel.java:3301)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.content.pm.IPackageInstaller$Stub$Proxy.createSession(IPackageInstaller.java:768)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.content.pm.PackageInstaller.createSession(PackageInstaller.java:1052)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at app.lawnchair.probe.sessionbadge.ProbeActivity.runSession(ProbeActivity.java:83)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at app.lawnchair.probe.sessionbadge.ProbeActivity.$r8$lambda$G4odjhzwkMHlmv80riFQJeuF-rI(ProbeActivity.java:0)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at app.lawnchair.probe.sessionbadge.ProbeActivity$2.run(D8$$SyntheticClass:0)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Handler.handleCallback(Handler.java:1095)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Looper.loopOnce(Looper.java:296)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Looper.loop(Looper.java:397)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at java.lang.reflect.Method.invoke(Native Method)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: Caused by: android.os.RemoteException: Remote stack trace:
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.app.AppOpsManager.checkPackage(AppOpsManager.java:10505)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at com.android.server.pm.PackageInstallerService.createSessionInternal(PackageInstallerService.java:830)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at com.android.server.pm.PackageInstallerService.createSession(PackageInstallerService.java:758)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.content.pm.IPackageInstaller$Stub.onTransact(IPackageInstaller.java:342)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 	at android.os.Binder.execTransactInternal(Binder.java:1364)
+10-14 11:33:10.384 14289 14289 E SessionBadgeProbe: 
+10-14 11:33:10.384 14289 14289 I SessionBadgeProbe: session FAILED: java.lang.SecurityException: Package com.android.vending does not belong to 10238
+--- post: target install state ---
+--- dumpsys installer info ---
+UTC end: 2026-10-14T02:33:25Z

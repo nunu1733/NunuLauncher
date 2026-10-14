@@ -1,0 +1,937 @@
+=== final state snapshot (UTC 2026-10-14T02:51:07Z) ===
+--- packages ---
+package:/data/app/~~85syvBqy2tHHAn1-N2YR1w==/app.lawnchair.debug-hML-nMr_1Heb58i5e45CZA==/base.apk
+package:/data/app/~~54RMcaGjEnOzjp6K2H4vFw==/app.lawnchair.benchmark.target01-mYe6oZ7f6blGFXxWJTZYZQ==/base.apk
+package:/data/app/~~s5wTZ48eyTXvh_V-S3cZEg==/app.lawnchair.probe.sessionbadge-2KMhvrrZlsWke_GpIywpXA==/base.apk
+--- target installer info ---
+    installerPackageName=app.lawnchair.probe.sessionbadge
+      installReason=4
+      firstInstallTime=2026-10-14 11:49:13
+      uninstallReason=0
+--- install sessions (dumpsys package, session entries) ---
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=1
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=app.lawnchair.probe.sessionbadge
+      installReason=4
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+    installerPackageName=null
+      installReason=0
+      uninstallReason=0
+  Active Session 36031868:
+    installerPackageName=app.lawnchair.probe.sessionbadge 
+    mode=1 installFlags=0x500012 installLocation=1 installReason=4 installScenario=0 sizeBytes=2607707 
+    appPackageName=app.lawnchair.benchmark.target01 appIcon=true appLabel=Benchmark Target 01 originatingUri=null 
+    installerPackageName=app.lawnchair.probe.sessionbadge isMultiPackage=false isStaged=false forceQueryable=false 
+  Active Session 1642314046:
+    installerPackageName=app.lawnchair.probe.sessionbadge 
+    mode=1 installFlags=0x500012 installLocation=1 installReason=4 installScenario=0 sizeBytes=2607707 
+    appPackageName=app.lawnchair.benchmark.target01 appIcon=true appLabel=Benchmark Target 01 originatingUri=null 
+    installerPackageName=app.lawnchair.probe.sessionbadge isMultiPackage=false isStaged=false forceQueryable=false 
+  Active Session 699762444:
+    installerPackageName=app.lawnchair.probe.sessionbadge 
+    mode=1 installFlags=0x500012 installLocation=1 installReason=4 installScenario=0 sizeBytes=2607707 
+    appPackageName=app.lawnchair.benchmark.target01 appIcon=true appLabel=Benchmark Target 01 originatingUri=null 
+    installerPackageName=app.lawnchair.probe.sessionbadge isMultiPackage=false isStaged=false forceQueryable=false 
+  Active Session 1751601691:
+    installerPackageName=app.lawnchair.probe.sessionbadge 
+    mode=1 installFlags=0x500012 installLocation=1 installReason=4 installScenario=0 sizeBytes=2607707 
+    appPackageName=app.lawnchair.benchmark.target01 appIcon=true appLabel=Benchmark Target 01 originatingUri=null 
+    installerPackageName=app.lawnchair.probe.sessionbadge isMultiPackage=false isStaged=false forceQueryable=false 
+  Active Session 1228612374:
+    installerPackageName=app.lawnchair.probe.sessionbadge 
+    mode=1 installFlags=0x500012 installLocation=1 installReason=4 installScenario=0 sizeBytes=2607707 
+    appPackageName=app.lawnchair.benchmark.target01 appIcon=true appLabel=Benchmark Target 01 originatingUri=null 
+    installerPackageName=app.lawnchair.probe.sessionbadge isMultiPackage=false isStaged=false forceQueryable=false 
+  Session 260191383:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x1500036 installLocation=1 installReason=0 installScenario=0 sizeBytes=54424290 appPackageName=
+    null appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=
+  Session 882568156:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x1500136 installLocation=1 installReason=0 installScenario=0 sizeBytes=2365086 appPackageName=n
+    ull appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=n
+  Session 1847162964:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x1500036 installLocation=1 installReason=0 installScenario=0 sizeBytes=54424298 appPackageName=
+    null appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=
+  Session 731203901:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x1500136 installLocation=1 installReason=0 installScenario=0 sizeBytes=2495892 appPackageName=n
+    ull appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=n
+  Session 1541391437:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x1500036 installLocation=1 installReason=0 installScenario=0 sizeBytes=54424302 appPackageName=
+    null appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=
+  Session 1808027961:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x1500136 installLocation=1 installReason=0 installScenario=0 sizeBytes=2495906 appPackageName=n
+    ull appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=n
+  Session 419148200:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x1500036 installLocation=1 installReason=0 installScenario=0 sizeBytes=54424302 appPackageName=
+    null appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=
+  Session 417080680:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x1500136 installLocation=1 installReason=0 installScenario=0 sizeBytes=2495906 appPackageName=n
+    ull appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=n
+  Session 106758398:
+    installerPackageName=com.android.vending installInitiatingPackageName=com.android.shell 
+    mode=1 installFlags=0x500072 installLocation=1 installReason=4 installScenario=0 sizeBytes=100 appPackageName=null a
+  Session 1040550784:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=-1 appPackageName=null ap
+  Session 686007785:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=12691 appPackageName=null
+     appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=null
+  Session 1493503902:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=-1 appPackageName=null ap
+  Session 532515930:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=12691 appPackageName=null
+     appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=null
+  Session 931696239:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=-1 appPackageName=null ap
+  Session 1193339971:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=12691 appPackageName=null
+     appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=null
+  Session 501649540:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=-1 appPackageName=null ap
+  Session 1414246042:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=12691 appPackageName=null
+     appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=null
+  Session 1213893944:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500172 installLocation=1 installReason=0 installScenario=0 sizeBytes=-1 appPackageName=null ap
+  Session 1629222638:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x5000f2 installLocation=1 installReason=0 installScenario=0 sizeBytes=54475691 appPackageName=n
+    ull appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=n
+  Session 1651794998:
+    installerPackageName=com.android.vending installInitiatingPackageName=com.android.shell 
+    mode=1 installFlags=0x500072 installLocation=1 installReason=4 installScenario=0 sizeBytes=2607707 appPackageName=nu
+    ll appIcon=false appLabel=null originatingUri=null originatingUid=-1 referrerUri=null abiOverride=null volumeUuid=nu
+  Session 1304801685:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500072 installLocation=1 installReason=0 installScenario=0 sizeBytes=-1 appPackageName=null ap
+  Session 210187217:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500072 installLocation=1 installReason=0 installScenario=0 sizeBytes=-1 appPackageName=null ap
+  Session 528423258:
+    userId=0 mOriginalInstallerUid=0 mOriginalInstallerPackageName=null installerPackageName=null 
+    mode=1 installFlags=0x500072 installLocation=1 installReason=0 installScenario=0 sizeBytes=-1 appPackageName=null ap
+  Session 1120207295:
+    installerPackageName=app.lawnchair.probe.sessionbadge 
+    mode=1 installFlags=0x500012 installLocation=1 installReason=4 installScenario=0 sizeBytes=2607707 appPackageName=ap
+    p.lawnchair.benchmark.target01 appIcon=true appLabel=Benchmark Target 01 originatingUri=null originatingUid=-1 refer
+    ull autoRevokePermissions=3 installerPackageName=app.lawnchair.probe.sessionbadge isMultiPackage=false isStaged=fals
