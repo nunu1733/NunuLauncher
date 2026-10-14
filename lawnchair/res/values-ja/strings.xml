@@ -86,6 +86,15 @@
     <string name="destination_policy_choice_upstream">上流の既定</string>
     <string name="destination_policy_choice_folder">指定フォルダ\u2026</string>
     <string name="destination_policy_choice_dont_add">新しいアプリを追加しない</string>
+    <string name="destination_policy_choice_category">カテゴリ別（カテゴリごとにフォルダを指定\u2026）</string>
+    <string name="destination_policy_summary_category">カテゴリ別 — フォルダを指定したカテゴリの新規アプリはそのフォルダへ、それ以外は既定の位置へ</string>
+    <string name="destination_policy_category_editor_title">カテゴリとフォルダの対応</string>
+    <string name="destination_policy_category_picker_title">カテゴリを選択</string>
+    <string name="destination_policy_category_editor_coverage">install時にlauncherが読み取れるカテゴリのみ対応付けされます（アプリが宣言するカテゴリ、Googleアプリ、カスタムカテゴリに割り当てたアプリ）。それ以外は既定の位置へ置かれます</string>
+    <string name="destination_policy_category_editor_empty">対応付けできるカテゴリがまだありません。カスタムカテゴリやアプリが宣言するカテゴリに属するアプリが現れるとここに表示されます</string>
+    <string name="destination_policy_category_entry_folder_unset">タップしてフォルダを選択</string>
+    <string name="destination_policy_category_editor_done">完了</string>
+<string name="destination_policy_category_unavailable">利用できないカテゴリ</string>
     <string name="destination_policy_folder_picker_title">フォルダを選択</string>
     <string name="destination_policy_folder_stop">指定をやめる（上流の既定）</string>
     <string name="destination_policy_other_profile">（別のプロフィール）</string>

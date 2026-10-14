@@ -58,6 +58,11 @@ Rejected。Decision 10（capture/read境界）とDecision 11（no-move）の両�
 - 変更surfaceはfork-owned moduleと設定UI、resourcesに限られ、`src/`のupstream patch増分は0である。
 - spec 594の実装が本ADRのDecisionを参照して書かれる。判断を重複定義しない。
 
+## Implementation outcome（2026-10-14）
+
+- 実装PR [#596](https://github.com/nunu1733/NunuLauncher/pull/596): 純粋解決関数（`AppDestinationCategoryResolver`）、mapping行codec（entry単位fail-closed）、test可能なcapture decision seam（`CategoryModeCapture`。S1→S2→S5優先順位適用込みで本番pathとJVM testの共通正）、`CategoryModeSignalReader`（organizer既存sourceの再利用）、settings UI（4択＋mapping editor）、strings（default＋ja）。
+- B1-CAT会計成立（API 37 emulator、installReason=4 oracle記録込み。manifest `appCategory`宣言アプリ2個＝対応フォルダ末尾rankへ追加操作0、mapping外＝typed fallback logとともに上流既定、S5経路も成立。成立経路: S2＋S5＋fallback）。benchmark §6へB1-CAT行を追加。
+
 ## Change history
 
 - 2026-10-14: Review round 1対応（ChatGPT、[PR #595 comment](https://github.com/nunu1733/NunuLauncher/pull/595#issuecomment-6164162557)）と受入。高1（lifecycle）: 受入をdocs受入PR #595のmergeに一本化しstatusをacceptedへ（runtime実装PRを受入条件にしない）。高2（Decision 2）: captureの責務を分類→mapping照合→folderId復元までに限定し、folder有効性検証のstage-2一本化を明記（typed fallback/通知契約の継承と、capture時layout snapshot読込の新sem回避）。中3（Decision 3）: mapping identityの正を既存stable id（`CategoryId`値/`u:<uuid>`）とし、削除→同名再作成での復活なしを明記。

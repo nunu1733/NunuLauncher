@@ -1102,6 +1102,15 @@
 <string name="destination_policy_choice_upstream">Upstream default</string>
 <string name="destination_policy_choice_folder">Designated folder\u2026</string>
 <string name="destination_policy_choice_dont_add">Don\u2019t add new apps</string>
+<string name="destination_policy_choice_category">By category (designate folders per category\u2026)</string>
+<string name="destination_policy_summary_category">By category \u2014 new apps whose category has a designated folder go to that folder; others take the default spot</string>
+<string name="destination_policy_category_editor_title">Category folder mapping</string>
+<string name="destination_policy_category_picker_title">Choose a category</string>
+<string name="destination_policy_category_editor_coverage">Only apps whose category the launcher can read at install time are mapped (declared app categories, Google apps, and apps you assigned to a custom category). Others take the default spot</string>
+<string name="destination_policy_category_editor_empty">No mappable categories yet. Apps placed in a category (via custom categories or app-declared categories) appear here</string>
+<string name="destination_policy_category_entry_folder_unset">Tap to choose a folder</string>
+<string name="destination_policy_category_editor_done">Done</string>
+<string name="destination_policy_category_unavailable">Category unavailable</string>
 <string name="destination_policy_folder_picker_title">Choose a folder</string>
 <string name="destination_policy_folder_stop">Stop designating (upstream default)</string>
 <string name="destination_policy_other_profile">(another profile)</string>
