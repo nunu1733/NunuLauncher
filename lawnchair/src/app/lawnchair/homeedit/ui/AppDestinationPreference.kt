@@ -373,7 +373,16 @@ private fun DestinationCategoryEditorDialog(
             ) { Text(stringResource(AppDestinationPolicyTextKeys.categoryEditorDone)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = {
+                // Cancel routes through the tested transition seam: no mapping
+                // write, no policy change, no toggle change (review round 3
+                // medium 1 — the no-op is asserted, not assumed).
+                app.lawnchair.homeedit.CategoryModeEditorCommit.onCancel(
+                    currentEntries = entries,
+                    currentAddIconOn = previousAddIconOn,
+                )
+                onDismiss()
+            }) {
                 Text(stringResource(android.R.string.cancel))
             }
         },

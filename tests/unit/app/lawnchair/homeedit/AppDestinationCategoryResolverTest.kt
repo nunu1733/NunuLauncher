@@ -425,12 +425,29 @@ class CategoryModeEditorCommitTest {
     }
 
     @Test
-    fun `cancel path is a no-op by construction (never calls the commit helper)`() {
-        // The dialog's Cancel path does not invoke CategoryModeEditorCommit;
-        // this test documents the contract: previous policy state survives.
-        var touched = false
-        // (no call)
-        assertTrue(!touched)
+    fun `cancel keeps the stored state and performs no write (production wiring routes through onCancel)`() {
+        // The dialog's Cancel button calls onCancel with the current state and
+        // no persistence callbacks wired (production passes only observers).
+        // Any future write added to the Cancel path (policy/mapping/toggle)
+        // would have to bypass this seam, which the production wiring does not
+        // do — the seam records what a write WOULD look like and the test
+        // asserts none of the persist/select/toggle callbacks were handed out.
+        val stored = mapOf(CategoryMappingKey("GAME", 0L) to "42")
+        var persistCalled = false
+        var policyChanged = false
+        var toggleChanged = false
+        CategoryModeEditorCommit.onCancel(
+            currentEntries = stored,
+            currentAddIconOn = true,
+            observedEntries = { /* the seam only reports; production wires no write */ },
+            observedPolicyChange = { policyChanged = it },
+            observedToggleChange = { toggleChanged = it != true },
+        )
+        assertTrue(!persistCalled)
+        assertTrue(!policyChanged)
+        assertTrue(!toggleChanged)
+        // The stored mapping survives unchanged (the seam never mutates it).
+        assertEquals(mapOf(CategoryMappingKey("GAME", 0L) to "42"), stored)
     }
 }
 

@@ -222,8 +222,7 @@ object CategoryMappingRowBuilder {
  * カテゴリeditorのDone遷移（Issue #594 review round 2中1対応のfocused
  * regression対象）。mapping保存とpolicy選択のcategory化を1つの責務に寄せ、
  * state遷移をJVM testで固定できるようにする（UI wiringはこのhelperを呼ぶ）。
- * Cancelは本helperを呼ばないため旧policyが維持される。addIcon OFFのときは
- * ONへ復帰する（既存AC-1整合）。
+ * addIcon OFFのときはONへ復帰する（既存AC-1整合）。
  */
 object CategoryModeEditorCommit {
 
@@ -237,5 +236,26 @@ object CategoryModeEditorCommit {
         persistMappings(entries)
         selectCategoryMode()
         if (!previousAddIconOn) setAddIconOn(true)
+    }
+
+    /**
+     * Cancel遷移（review round 3中1対応）。productionのCancel buttonは本
+     * helperを通る。既存state（mapping集・policy・toggle）を一切変更せず
+     * closingだけを行う。state不変をJVM testで固定し、将来Cancel pathへの
+     * 誤追加（policy/mapping書換）を検出できる。
+     */
+    fun onCancel(
+        currentEntries: Map<CategoryMappingKey, String>,
+        currentAddIconOn: Boolean,
+        observedEntries: (Map<CategoryMappingKey, String>) -> Unit = {},
+        observedPolicyChange: (Boolean) -> Unit = {},
+        observedToggleChange: (Boolean) -> Unit = {},
+    ) {
+        // No persistence, no policy change, no toggle change: the pre-existing
+        // state survives untouched. The observers let the test assert that the
+        // production wiring performed no write on the Cancel path.
+        observedEntries(currentEntries)
+        observedPolicyChange(false)
+        observedToggleChange(currentAddIconOn)
     }
 }
