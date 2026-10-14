@@ -54,7 +54,7 @@ updated: 2026-10-14
 - **queue wire・書込み経路の変更なし**: `DirectEditContract`の4field snapshot・2kind、`ItemInstallQueue`/`AddWorkspaceItemsTask`/`ModelWriter`/`PersistedItemArray`の差分0。stage-2検証・admission内write・typed fallback・one-shot通知・post-admission bindは#497実装をそのまま使う。
 - **successor ADR**: ADR-0015のDecision 3（選択肢）/Decision 15（設定）の拡張と、Decision 11のruntime到達性とCategory mode fallback意味論の明確化（ADR-0017 Decision 4。same-destination / no-move invariant自体は不変）。ADR-0015本文は上書きせず、Change historyへ関連リンクを1行追加する。
 - **テスト**: capture解決の純粋関数（分類signal解決→mapping照合→snapshot生成、typed fallback、決定性・冪等性）を既存homeedit JVM gateへ追加する（test-audit適用）。#497の既存JVM/instrumentation testが回帰なく通ることを同じPRで確認する。新規CI laneは作らない。
-- **文書**: 本spec受入時に`CONTEXT.md`（「分類フォルダ」語の更新）、successor ADR、ベンチマーク§6/§7へのB1-CAT記録、`docs/product/requirements.md`のFR-008への注記（implementedの範囲が固定1フォルダ＋カテゴリmappingへ広がったこと。カテゴリ自動分類の品質向上は含まない）を同じPRで更新する。
+- **文書**: 後続の実装PR（#594終了条件2/3）で`CONTEXT.md`（「分類フォルダ」語の更新）、successor ADRの実装outcome追記、ベンチマーク§6/§7へのB1-CAT記録、`docs/product/requirements.md`のFR-008への注記（implementedの範囲が固定1フォルダ＋カテゴリmappingへ広がったこと。カテゴリ自動分類の品質向上は含まない）を実装結果と同時に更新する（本docs受入PRでは実装前の事実を先取りしない）。
 
 ## Non-goals
 
@@ -161,5 +161,6 @@ And built-inカテゴリもlocalized labelではなく既存のstable identity�
 
 ## Change history
 
+- 2026-10-14: Review round 2対応（ChatGPT、[PR #595 comment](https://github.com/nunu1733/NunuLauncher/pull/595#issuecomment-6164387447)）: 残存中1（旧lifecycle文言の混線）— Scope「文書」を「後続の実装PR（#594終了条件2/3）で実装結果と同時に更新」へ変更（本docs受入PRでの`implemented`範囲の先取りを避ける。前倒し追加は行わない）。round 1の5指摘は全て解消済みと判定された。
 - 2026-10-14: Review round 1対応（ChatGPT、[PR #595 comment](https://github.com/nunu1733/NunuLauncher/pull/595#issuecomment-6164162557)）: 高1（lifecycle）— 受入をPR #595 mergeに一本化し、statusをacceptedへ。高2（capture責務分離）— captureは分類→mapping照合→folderId復元までに限定し、folder有効性検証はstage-2に一本化するScope修正とscenario 2件（stage-2側FOLDER_MISSING / capture時liveness不検証）へ分離。中1（B1-CAT手順）— install手順をnormative化（`installReason=4` oracle記録を必須化）、必須証跡をlog/snapshot/DB destinationに固定、promise実機観察をbest-effort・non-gatingとして分離。中2（work profile誤流用）— 正方向＋negative branch scenario 2件を追加し、mapping codec→capture seamでの検証を必須化。中3（category identity削除/再作成）— negative scenarioを追加し、persisted identityの正（UUID/CategoryId値）を明記。
 - 2026-10-14: Draft created for #594（#509 owner判断〔縮小scope受容〕を受けて起草。履歴`59aa164a62`のobsolete draftを、review round 1指摘論点〔D11 relation明文化・promise/reflush/category identity/work profile oracle設計・新baseline path:line〕を反映して起草し直したもの）。
