@@ -117,6 +117,20 @@ AC-324-13 (on-device rendered evidence, normal + enlarged font) remains open and
 
 **APPROVE** — all three round-4 fixes verified at head `3bb99f0f86a26dc1d4ea8611e8783ace8d9ac8a9`; the packet seal holds, the table is schema-complete at 626/1:1 with the canonical 8 classes and documented post-processing, and the guard record is complete and provenance-bearing. Non-blocking follow-ups: (1) optionally strip the historical Finding-1 identity derivation from this record's earlier rounds; (2) AC-324-13 on-device rendered verification remains an owner gate outside this audit's surfaces.
 
+## Reseal verification (round 5, 2026-10-15, head `374874855615783e854c4b93b5c48e797f766e22`)
+
+Scope: the round-5 reseal only (fresh random ids on the owner-blind packet). Diff since `af2a2c8b40`/`3bb99f0f86…` touches only evidence files and this record; the lifecycle note below is superseded by this head.
+
+| Check | Result |
+|---|---|
+| 1. New labels and mapping leakage | **Pass.** The packet's two candidate section headings (lines 8 and 163) use only `candidate-2FB9` and `candidate-E34A`. `git grep -in "E34A"` / `"2FB9"` over all checked-in files: the only text occurrences are inside the packet itself (lines 4/8/163); the sole other matches are character-level byte coincidences in binary `prebuilts/libs/framework-14.jar`/`framework-16.jar` (no correspondence). No checked-in file maps candidate-E34A or candidate-2FB9 to any model, vendor, family, or α/β/P/Q/C1/C2. |
+| 2. Historical finding text identity-neutrality | **Pass with a non-blocking residual.** Round-1 Finding items 1–2 carry the "specific derivation redacted per the round-5 review" notes; the record contains no reference to candidate-E34A/2FB9. Residual (non-blocking): the round-2 historical text (Re-audit rows (b)/updated-verdict) still derives the *former* id Q's vendor/family via `zai-offpeak-idle-plan` = GLM-5.3; that id was retired by the reseal and its pre-reseal packet is already in git history, so the live blind scoring (on candidate-E34A/2FB9) is not affected. |
+| 3. Packet completeness after resealing | **Pass.** 593-line packet retains both full candidate outputs (`## Candidate candidate-2FB9 output`, 12 units; `## Candidate candidate-E34A output`, 24 field-table units) and the intact scoring instructions (line 5: 24 units of `issue-324-bakeoff-context.md`, 8 axes, 0–2 scale, accuracy/safety hard-failure rule, tie-break, record + unseal-at-time instruction). Reseal diff vs prior head is structurally label/footer redaction only; both outputs' bodies are unchanged. |
+
+### Reseal verdict
+
+**PASS (final).** At head `374874855615783e854c4b93b5c48e797f766e22` the resealed packet satisfies the blind-adjudication seal: fresh ids appear only in the packet with no correspondence published anywhere, historical derivation text is identity-neutral for the live ids, and the two candidate outputs plus scoring instructions are complete. Prior audit surfaces carry over unchanged.
+
 ## Head correction (baseline-only commit)
 
-The verification above ran on the working tree that became commit `af2a2c8b40` (the round-4 fix commit). Final audited head: `af2a2c8b40`.
+The verification above ran on the working tree that became commit `af2a2c8b40` (the round-4 fix commit). Final audited head superseded by the reseal head `374874855615783e854c4b93b5c48e797f766e22` above.
