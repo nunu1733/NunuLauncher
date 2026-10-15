@@ -583,7 +583,7 @@ Fixed input: `docs/assessment/evidence/issue-324-bakeoff-context.md` (24 units, 
 
 - Base SHA of audited tree: `25f97aef4d353566b442a4c40552c49e77fbd9c0` (= evidence file pin `25f97aef4d`; verified `git rev-parse HEAD`).
 - Inventory regeneration command: unknown — the fixed 24-unit inventory is `docs/assessment/evidence/issue-324-bakeoff-context.md`; no regeneration command was supplied to the reviewer and none was looked up (bake-off scope restriction).
-- Reviewer runtime / model / provider / date / session: [identity redacted] subagent run; provider `zai-offpeak-idle-plan`; model `[identity redacted]`; date 2026-10-15; session id not exposed to the reviewer (recorded as unknown). Note for the adjudicator: [identity redacted] is the implementation worker's model family per the evidence file's family rule (AC-324-04) — this candidate can be scored but cannot be adopted.
+- Reviewer runtime / model / provider / date / session: [identity redacted] subagent run; provider `[identity redacted]`; model `[identity redacted]`; date 2026-10-15; session id not exposed to the reviewer (recorded as unknown). Note for the adjudicator: [identity redacted] is the implementation worker's model family per the evidence file's family rule (AC-324-04) — this candidate can be scored but cannot be adopted.
 - Batches covered: single batch, units 01–24, all reviewed. Skip reasons: none.
 - Disposition counts: OK 11 / REVISE 13 / PRODUCT_DECISION 0 / TECHNICAL_ONLY 0.
 - Coordinated change sets (apply together, single worker pass):
