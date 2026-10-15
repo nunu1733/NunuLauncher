@@ -1,9 +1,14 @@
-# Issue #324 bake-off — anonymized candidate outputs (owner blind adjudication packet, part 2)
+# Issue #324 owner blind adjudication packet — candidate outputs (sealed ids)
 
 > Status: preserved verbatim from the 2026-10-15 bake-off run, with self-identifying model/runtime strings replaced by `[identity redacted]` so the owner can score blind. The identity mapping is recorded in issue-324-bakeoff.md and must be consulted only after scoring.
 
-## Candidate α output
 
+
+> Status: sealed-id packet for the owner's blind scoring (spec AC-324-04 / #161 §7).
+> Candidate ids below are fresh random labels with no published correspondence to any model, adapter, or earlier α/β record. The identity mapping is held outside the repository until the owner's scoring is recorded; do not search git history or earlier PR/Issue comments before scoring — that defeats the purpose.
+> Score each candidate per unit on the 8 axes (0–2) defined in `issue-324-bakeoff.md` §Protocol, using `issue-324-bakeoff-context.md` as the fixed input. A 0 on Accuracy or Safety preservation for any unit is a hard failure. Record your per-unit scores and adoption ruling by appending to this file or the final PR record; the mapping is then unsealed alongside.
+
+## Candidate P output
 ### 01
 
 | resource_name | disposition | ui_role | user_class | surface | current | proposed | reason | severity | meaning_preserved | layout_risk | rule |
@@ -158,9 +163,7 @@
 - **使用参照:** `SKILL.md`、`review-rubric.md`、`input-schema.md`、`output-schema.md`、`ai-register-tells.md`、`ja-style-guide.md`、`ja-glossary.tsv`、`固定入力`。指定順で参照。Issues・specs・plansは未参照。
 - **終了点検:** ファイル変更・プロセス起動・ポート使用・worktree作成なし。`git status --short`には既存の未追跡項目4件（`.agents/skills/product-language-review/`、`.[identity redacted]/agents/product-language-reviewer.toml`、`.[identity redacted]/`、固定入力ファイル）。削除せず保持。両`pgrep`はプロセス一覧取得不可、`adb devices`はコマンド未導入のため確認不能。使用ポートがないため`lsof`対象なし。
 - **既存worktree一覧:** 以下11件を確認。今回作成したものはなく、削除していない。
-
-## Candidate β output
-
+## Candidate Q output
 # Candidate β review (identity withheld)
 
 Fixed input: `docs/assessment/evidence/issue-324-bakeoff-context.md` (24 units, pinned to main `25f97aef4d`; audited tree HEAD matches). Canon: `docs/localization/ja-style-guide.md`, `docs/localization/ja-glossary.tsv`, skill references. Fields follow `references/output-schema.md` order. Safety-class units carry an explicit meaning-preservation note.
