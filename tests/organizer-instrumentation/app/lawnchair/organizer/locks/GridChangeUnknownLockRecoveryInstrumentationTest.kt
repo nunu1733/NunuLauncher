@@ -64,7 +64,7 @@ class GridChangeUnknownLockRecoveryInstrumentationTest {
     private var reloadLatch: CountDownLatch? = null
     private val intent = UserReviewedIntent("instrumentation_confirm")
     private val modelCallbacks = object : BgDataModel.Callbacks {
-        override fun finishBindingItems(pagesBoundFirst: IntSet) {
+        override fun bindCompleteModel(itemIdMap: com.android.launcher3.model.data.WorkspaceData, isBindingSync: Boolean) {
             reloadLatch?.countDown()
         }
     }
@@ -394,10 +394,10 @@ class GridChangeUnknownLockRecoveryInstrumentationTest {
             "Launcher model reload did not finish for Issue #287"
         }
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
-        while (!launcher.model.isModelLoaded && System.nanoTime() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.nanoTime() < deadline) {
             Thread.sleep(25L)
         }
-        check(launcher.model.isModelLoaded) { "Launcher model did not load for Issue #287" }
+        check(launcher.model.isModelLoaded()) { "Launcher model did not load for Issue #287" }
     }
 
     private companion object {

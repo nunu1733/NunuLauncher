@@ -1,0 +1,48 @@
+=== qva2 (a) preflight — API 37 debug @ compat 7-commit head 0c25041285 (compat7b-debug-0c25041.apk, sha256 04d048b23b8f5b42fa37e67147279c4a7faf9a4a36d1a633ff7aa28181d3c2fc) ===
+date: 2026-10-08 03:12:02
+AVD: issue526_api37_pixel_9a (API 37.0, SDK 37), serial emulator-5554
+google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys
+config: /product/priv-app/LawnchairDebug/LawnchairDebug.apk + /product/etc/permissions/privapp-permissions-app.lawnchair.debug.xml (55 perms, deduped superset of declared android.* permissions regenerated from compat7b APK); overlay nunu.overlay.quickstepconfig -> app.lawnchair.debug/com.android.quickstep.RecentsActivity; HOME=app.lawnchair.debug
+
+--- wm density (NATIVE, no override; 'wm density reset' done at leg start):
+Physical density: 420
+
+--- cmd overlay lookup --user 0 android android:string/config_recentsComponentName:
+app.lawnchair.debug/com.android.quickstep.RecentsActivity
+
+--- overlay state:
+[x] nunu.overlay.quickstepconfig
+
+--- SystemUI mRecentsComponentName:
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+
+--- package install state:
+    codePath=/product/priv-app/LawnchairDebug
+    versionName=16.Dev.(0c25041)
+    pkgFlags=[ SYSTEM DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP KILL_AFTER_RESTORE RESTORE_ANY_VERSION ]
+
+--- default launcher:
+  name=app.lawnchair.LawnchairLauncher
+    name=app.lawnchair.LawnchairApp
+
+--- LauncherProxyService state:
+    LauncherProxyService state:
+      isConnected=true
+      mIsEnabled=true
+      mRecentsComponentName=ComponentInfo{app.lawnchair.debug/com.android.quickstep.RecentsActivity}
+      mBound=true
+      mConnectionBackoffAttempts=0
+    SysUiState state:
+      mSysUiStateFlags=268566528
+      mIsEnabled=true
+
+--- sha256 of installed priv-app:
+04d048b23b8f5b42fa37e67147279c4a7faf9a4a36d1a633ff7aa28181d3c2fc  /product/priv-app/LawnchairDebug/LawnchairDebug.apk
+
+--- manifest static check (aapt2 dump xmltree, from /tmp artifact /tmp/545-evidence-apk/compat7b-debug-0c25041.apk):
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="xyz.paphonb.quickstepswitcher.minSdk" (Raw: "xyz.paphonb.quickstepswitcher.minSdk")
+            A: http://schemas.android.com/apk/res/android:value(0x01010024)=0
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="xyz.paphonb.quickstepswitcher.maxSdk" (Raw: "xyz.paphonb.quickstepswitcher.maxSdk")
+            A: http://schemas.android.com/apk/res/android:value(0x01010024)=100000
+
+--- density override: NONE expected (only 'Physical density: 420' printed above)

@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="8" failures="1" errors="0" skipped="0" time="0.000" timestamp="2026-10-14T17:53:27" hostname="localhost">
+  <testsuite name="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" tests="8" failures="1" errors="0" skipped="0" time="142.099" timestamp="2026-10-14T17:53:27" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5556" />
+    </properties>
+    <testcase name="unsupportedSettingsKeepsTheDialogOpenAndAllowsContinue" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="17.345" />
+    <testcase name="jitRequestAppearsBeforeCompositionAndDeclineContinuesUngranted" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="15.313" />
+    <testcase name="jitDialogStaysUsableAt200PercentFontScale" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="15.360" />
+    <testcase name="crossOriginExchangePresentationPausesTheRunUntilResolution" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="11.240" />
+    <testcase name="grantedTriggerNeverShowsTheRequest" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="8.891" />
+    <testcase name="settingsResumeWithoutGrantFallsBackAfterTheBound" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="15.576" />
+    <testcase name="settingsResumeAfterGrantResumesThroughTheProductionPredicate" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="12.119" />
+    <testcase name="jitDialogBackDeclinesAndContinuesWithoutCancellingTheRun" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="46.255">
+      <failure>androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 30000 ms
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:990)
+	at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:504)
+	at app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest.jitDialogBackDeclinesAndContinuesWithoutCancellingTheRun(UsageAccessJitInstrumentationTest.kt:333)
+</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

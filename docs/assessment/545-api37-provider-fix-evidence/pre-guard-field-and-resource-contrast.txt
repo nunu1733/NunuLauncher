@@ -1,0 +1,52 @@
+=== pre-guard diagnostic run — primary contrast outputs (field presence + resource ID tables) ===
+recorded: 2026-10-07 (addendum primary evidence for spec Owner decision 8/9)
+diagnostic run provenance: debug APK @ compat commit 416273ce2f33d7d91a84e6cbd7925df8a290c5b2,
+  sha256 4c091d8d0b55f193cb0931341c2c02a58cd62ab1080a0fc22f76da9e4f9f8a8f,
+  AVD issue526_api37_pixel_9a (API 37.0, google_apis, arm64), wm density 280 override (see below)
+
+--- [1] ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX field contrast ---
+
+compile classpath (prebuilts/libs/framework-16.jar, javap -p android.window.DesktopExperienceFlags):
+  public static final android.window.DesktopExperienceFlags ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX;
+  (95 public static final fields total in the class)
+
+API 37.0 image framework.jar (dexdump of Landroid/window/DesktopExperienceFlags; classes*.dex,
+  pulled from emulator-5554 in the #524 session, /tmp/524-hiddenapi/dex-37*; re-grepped 2026-10-07):
+  field ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX ABSENT (string search over dexdump output:
+  0 hits; the runtime NoSuchFieldError message itself confirms absence —
+  see a-bind-crash-check.txt [3])
+
+--- [2] navigation_bar framework dimen ID/value contrast (aapt2 dump resources) ---
+
+compile-time table (SDK android-37.2 android.jar):
+  resource 0x01050283 dimen/navigation_bar_frame_height
+    () @dimen/navigation_bar_height
+  resource 0x01050287 dimen/navigation_bar_height
+    () 48.000000dp
+    (sw900dp) 56.000000dp
+
+API 37.0 image (framework-res.apk pulled from emulator-5554):
+  resource 0x0105027b dimen/navigation_bar_frame_height
+    () @dimen/navigation_bar_height
+  resource 0x0105027f dimen/navigation_bar_height
+    () 48.000000dp
+    (sw900dp) 56.000000dp
+  (the baked ID 0x01050283 on the 37.0 image = navigation_bar_height_portrait, which has
+   NO default-config value -> Resources$NotFoundException at phone density. See
+   a-resource-skew-analysis.txt SYMPTOM 1.)
+
+API 36 image (emulator-5556): leg (e) preflight shows the same baked 0x01050283 resolving
+  successfully (provider bind isConnected=true) -> 36.1 table still has
+  navigation_bar_frame_height at 0x01050283.
+
+CONCLUSION: the dimen VALUE chain is identical on 36.1/37.0/37.2 (48dp default; navigation_bar_height
+  dereference), only the framework resource ID shifted between 36.1/37.2 and 37.0. The baked
+  0x01050283 therefore reproduces on real Android 17.0 devices in phone mode — NOT a test-rig-only
+  artifact (classification option 2 of PR #549 review round 1 finding 2).
+
+--- [3] wm density 280 accommodation scope ---
+
+applied ONLY during the superseded pre-guard diagnostic run (reversible system setting; original
+  physical density 420). The final verification matrix runs at native density (no override), so
+  the resource fix is exercised on the phone profile it is meant to protect. Density reset before
+  the final matrix: `wm density reset` (verification procedure step).

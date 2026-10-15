@@ -1,0 +1,36 @@
+=== qvb2 parcel exception oracle (AC-10e2) — API 37 release @ da15f4b2e7 — REPRODUCED = candidate FAIL ===
+date: 2026-10-08 03:53:03; source: qvb2-g3-logcat.txt (   51040 lines; G3 attempt 03:44:39-03:44:55)
+
+ORACLE: 'BadParcelableException: Parcel data not fully consumed', 'Bundle length is not aligned by 4' (launcher pid),
+        'ShellRecents: No matching remote found to takeover' — expected 0. RESULT: ALL THREE REPRODUCED.
+
+--- hits in G3 window (launcher pid 1915 / shell pid 905):
+1. 03:44:40.134  1915  2986 W Binder: android.os.BadParcelableException: Parcel data not fully consumed, unread size: 8  (pre-gesture, Settings just foregrounded)
+2. 03:44:45.102  1915  3786 W Binder: android.os.BadParcelableException: Parcel data not fully consumed, unread size: 8
+     at android.os.Parcel.enforceNoDataAvail(Parcel.java:1185)
+     at b13.onTransact(...)  [obfuscated launcher-side binder stub]
+3. 03:44:45.104   905   967 V ShellRecents: No matching remote found to takeover (#12)
+4. 03:44:45.105  1915  3786 W Binder: java.lang.IllegalStateException: Bundle length is not aligned by 4: 6226041   [SAME magic value 6226041 as previous run @2120978]
+     at android.os.BaseBundle.readFromParcelInner(BaseBundle.java:1914)
+     at android.os.Parcel.readBundle(Parcel.java:3702)
+     at u13.onTransact(...)
+     at com.android.quickstep.SystemUiProxy$RecentsAnimationListenerStub.onTransact(...)  <- shell->launcher recents animation callback Bundle unmarshal
+
+--- G3 timeline:
+  03:44:39.943 647: START com.android.settings/.SettingsHomepageActivity from uid 0 shell (BAL_ALLOW_ALLOWLISTED_UID) result 0 [harness am start]
+  03:44:45.050 1915: TouchInteractionService$TISBinder.onOverviewToggle -> OverviewCommandHelper.addCommand (APP_SWITCH gesture; QuickstepProtoLogGroup stack captured)
+  03:44:45.097  905: WindowManagerShell onTransitionReady (#12 t=FIRST_CUSTOM+21) — TO_FRONT home(Task=1) + TO_BACK Settings(Task=124) + wallpaper
+  03:44:45.103  905: ShellRecents RecentsController.start; hiding home taskId=1; adding pausing leaf taskId=124
+  03:44:45.104  905: ShellRecents: No matching remote found to takeover (#12)  <- launcher remote-transition runner not matched
+  03:44:45.104  905: ShellRecents RecentsController.start: calling onAnimationStart with 2 apps  <- shell plays FALLBACK animation itself
+  03:44:45.104 647: startWCT hop: pendingIntent options Bundle[{...android.pendingIntent.backgroundActivityAllowed=3, android.activity.transientLaunch=true...}] (PI hop present as in previous runs)
+  03:44:45.102/105 1915: launcher-side parcel unmarshal failures (items 2 & 4 above) while shell already fell back
+  03:44:45.104 1915: RecentsView: applyLoadPlan - taskGroups: [6 tasks: ids 18,60,70,72,76,124]  <- launcher DID load the task list
+  outcome: overview UI NEVER RENDERS; Settings returns to foreground — qvb2-overview.png shows Settings full-screen post-APP_SWITCH
+
+--- delta vs previous run @2120978 (qbv): parcel failures IDENTICAL (incl. magic 6226041); the takeTaskSnapshot NoSuchMethodError
+    FATAL that previously followed is GONE (7th fix holds crash-wise: 0 NoSuchMethodError, launcher survived with pid 1915) —
+    but removing the FATAL does NOT make the shell->launcher recents transition succeed: the parcel-schema unmarshal breaks and
+    'No matching remote found to takeover' still prevent the launcher from receiving the transition.
+
+VERDICT: parcel oracle AC-10e2 = FAIL -> candidate FAIL. Evidence captured; run STOPPED per stop rule.

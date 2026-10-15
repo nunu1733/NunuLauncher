@@ -1,0 +1,53 @@
+10-08 20:19:47.205  1660  2700 E Nunu555 : TTCache.getThumbnail task=154 taskThumb=null cached=null systemFetch=null
+10-08 20:19:47.218  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.219  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.219  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.219  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.219  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.221  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.222  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.271  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.272  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.272  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.272  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.272  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.273  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.273  1660  1660 E Nunu555 : TaskContainer.setState task=null refactorContentView=false thumb=null
+10-08 20:19:47.420  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(154 thumb=null live=true locked=false)
+10-08 20:19:47.420  1660  1660 E Nunu555 : TaskContainer.setState task=154 refactorContentView=false thumb=null
+10-08 20:19:47.421  1660  1660 E Nunu555 : TTV.setState task=154 state=LiveTile bmp=null
+10-08 20:19:47.421  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(154 thumb=null live=true locked=false)
+10-08 20:19:47.421  1660  1660 E Nunu555 : TaskContainer.setState task=154 refactorContentView=false thumb=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(153 thumb=null live=false locked=false)
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskContainer.setState task=153 refactorContentView=false thumb=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TTV.setState task=153 state=BackgroundOnly bmp=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(151 thumb=null live=false locked=false)
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskContainer.setState task=151 refactorContentView=false thumb=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TTV.setState task=151 state=BackgroundOnly bmp=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(72 thumb=null live=false locked=false)
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskContainer.setState task=72 refactorContentView=false thumb=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TTV.setState task=72 state=BackgroundOnly bmp=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(70 thumb=null live=false locked=false)
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskContainer.setState task=70 refactorContentView=false thumb=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TTV.setState task=70 state=BackgroundOnly bmp=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(60 thumb=null live=false locked=false)
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskContainer.setState task=60 refactorContentView=false thumb=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TTV.setState task=60 state=BackgroundOnly bmp=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(18 thumb=null live=false locked=false)
+10-08 20:19:47.427  1660  1660 E Nunu555 : TaskContainer.setState task=18 refactorContentView=false thumb=null
+10-08 20:19:47.427  1660  1660 E Nunu555 : TTV.setState task=18 state=BackgroundOnly bmp=null
+10-08 20:19:47.544  1660  2700 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=true real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 540x1211 hw=true gen=2266)
+10-08 20:19:47.544  1660  2700 E Nunu555 : TTCache.getThumbnail task=153 taskThumb=null cached=null systemFetch=HARDWARE 540x1211 hw=true
+10-08 20:19:47.602  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(153 thumb=HARDWARE 540x1211 live=false locked=false)
+10-08 20:19:47.602  1660  1660 E Nunu555 : TaskContainer.setState task=153 refactorContentView=false thumb=HARDWARE 540x1211
+10-08 20:19:47.602  1660  1660 E Nunu555 : TTV.setState task=153 state=SnapshotSplash bmp=HARDWARE 540x1211
+10-08 20:19:47.602  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(153 thumb=HARDWARE 540x1211 live=false locked=false)
+10-08 20:19:47.602  1660  1660 E Nunu555 : TaskContainer.setState task=153 refactorContentView=false thumb=HARDWARE 540x1211
+10-08 20:19:47.602  1660  1660 E Nunu555 : TTV.setState task=153 state=SnapshotSplash bmp=HARDWARE 540x1211
+10-08 20:19:47.650  1660  2700 E Nunu555 : TTCache.getThumbnail task=151 taskThumb=null cached=null systemFetch=null
+10-08 20:19:47.650  1660  2229 E Nunu555 : makeThumbnail sdk=37 constructor=android.window.TaskSnapshot taskSize=Point(1080, 2424) lowRes=false real=true translucent=false hwBuffer=null result=Bitmap(cfg=HARDWARE 864x1939 hw=true gen=2278)
+10-08 20:19:47.735  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(151 thumb=null live=false locked=false)
+10-08 20:19:47.735  1660  1660 E Nunu555 : TaskContainer.setState task=151 refactorContentView=false thumb=null
+10-08 20:19:47.736  1660  1660 E Nunu555 : TTV.setState task=151 state=Uninitialized bmp=null
+10-08 20:19:47.739  1660  1660 E Nunu555 : TaskView.updateTaskViewState type=SINGLE tasks=(154 thumb=null live=true locked=false)
+10-08 20:19:47.739  1660  1660 E Nunu555 : TaskContainer.setState task=154 refactorContentView=false thumb=null

@@ -1,0 +1,8 @@
+=== leg (e) result — API 36, head debug 96746bc161 as priv-app + debug overlay
+date: 2026-10-07 16:11:19
+1. LauncherProxyService isConnected=true (provider bound+connected) -> e-preflight.txt
+2. 'disabling recents' absent (e-logcat.txt)
+3. APP_SWITCH -> Lawnchair overview (e-overview-api36.png)
+4. task tap -> Settings launched (e-task-switch-api36.png, mCurrentFocus=com.android.settings/com.android.settings.Settings)
+5. note: stock nexuslauncher crashed once around provider switch boot (Application Error dialog) — outside this issue's oracle, recorded as observation
+6. pre-change data copy f102d72 was present on this AVD and was updated to head 96746bc via adb install -r before the run

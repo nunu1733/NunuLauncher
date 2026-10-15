@@ -14,7 +14,7 @@ requirements:
   - NFR-005
   - NFR-006
   - NFR-010
-updated: 2026-09-08
+updated: 2026-09-30
 source:
   - ../10-pure-organization-planning/spec.md
   - ../11-planner-fixture-property-harness/spec.md
@@ -145,6 +145,13 @@ predicate keeps the captured target exactly. Additional observable rules are:
 
 Warnings are one value per affected item and use Issue #10 canonical ordering.
 
+> Amendment (2026-09-30, Issue #451 / [spec 451](../451-organizer-duplicate-items/spec.md)):
+> every duplicate surplus item (same launch target beyond the representative;
+> see P-04 amendment) additionally emits
+> `Warning(DUPLICATE_LAUNCH_TARGET, [ItemParam(item)])`. The new code is
+> appended last in the `WarningCode` order, so the canonical order of the
+> pre-existing warning codes is unchanged.
+
 ### P-04: eligible folder members
 
 In `FullOrganization`, eligible members are top-level, available, unlocked
@@ -157,6 +164,16 @@ category equals `taxonomy.fallbackCategory`, its size is below
 `folderPolicy.minGroupSize`, or folder capacity is below that minimum. No item
 joins an existing folder in v1. Existing folders only move as intact workspace
 units.
+
+> Amendment (2026-09-30, Issue #451 / [spec 451](../451-organizer-duplicate-items/spec.md)):
+> eligible members are additionally required to not be duplicate surplus items
+> — a captured `APPLICATION`/`DEEP_SHORTCUT` item beyond the representative of
+> its launch-target duplicate set (`TargetKey.AppKey`/`ShortcutKey` value
+> equality; representative = first `ItemId` in canonical UTF-8 byte order,
+> detected over all captured items regardless of preservation state or folder
+> membership). The exclusion happens before grouping, and P-05's size and
+> capacity judgments apply to the members that remain. The representative is
+> planned normally.
 
 Group order is `(ProfileId, CategoryId)` and member order is `ItemId`, using the
 typed canonical comparisons. Cross-profile folders are forbidden.
@@ -180,6 +197,11 @@ ordinals are assigned in group/chunk order from zero. Member rank is the index
 in that ordered chunk; `NewFolder.members` uses the same rank order. Every
 member targets that `NewFolderOrdinal` with `Moved(FOLDER_MEMBER)`. A new folder
 has span `(1,1)` and the group's profile.
+
+> Amendment (2026-09-30, Issue #451 / [spec 451](../451-organizer-duplicate-items/spec.md)):
+> P-05 operates on the post-exclusion member list (see the P-04 amendment), so
+> exclusion can shrink a group below `minGroupSize` and prevent folder
+> formation; the remaining rules are unchanged.
 
 ### P-06: workspace units and ordering
 
@@ -233,6 +255,14 @@ the greatest captured order; with no captured page, order starts at zero.
 Every inventory item has exactly one placement. Existing folder/app-pair
 members never receive a newly selected rank or container.
 
+> Amendment (2026-09-30, Issue #451 / [spec 451](../451-organizer-duplicate-items/spec.md)):
+> `PreserveReason.DUPLICATE_LAUNCH_TARGET` joins the closed preservation
+> vocabulary as the lowest-priority predicate (below every existing reason
+> including `STRUCTURAL`, above `ALREADY_CANONICAL`): a duplicate surplus item
+> that no higher predicate covers is preserved at its captured position with
+> this reason. Locked, unavailable, docked, structural, and non-target
+> duplicates keep their stronger reason.
+
 ### P-08: run modes
 
 `FullOrganization` rejects additions via V-18 and recomputes all movable
@@ -240,6 +270,12 @@ top-level targets under P-02–P-07. `IncrementalPlacement` preserves every
 captured target, even when its membership is `Movable`; it classifies all
 inventory but allocates only additions. A rejected incremental run returns no
 partial placements for otherwise placeable additions.
+
+> Amendment (2026-09-30, Issue #451 / [spec 451](../451-organizer-duplicate-items/spec.md)):
+> duplicate detection is a run-mode-independent observation, so
+> `IncrementalPlacement` keeps every captured target as before but relabels a
+> duplicate surplus item's reason from `ALREADY_CANONICAL` to
+> `DUPLICATE_LAUNCH_TARGET`.
 
 ### P-09: determinism and totality
 
@@ -256,6 +292,13 @@ After an Issue #11 materialization of a planned full result, a second full run
 returns every target unchanged, uses the exact preservation reason (including
 `ALREADY_CANONICAL` where applicable), and returns no `Moved`, `newPages`, or
 `newFolders`.
+
+> Amendment (2026-09-30, Issue #451 / [spec 451](../451-organizer-duplicate-items/spec.md)):
+> the exact-preservation-reason proof includes `DUPLICATE_LAUNCH_TARGET`. The
+> representative is chosen by `ItemId` canonical order — stable across moves
+> and folder joins — so the materialize-and-replan cycle keeps the same
+> representative, the same surplus set, and the same preservation reasons.
+> (Visual order was rejected for exactly this reason; see spec 451 N-5.)
 
 After an incremental result, a full run is empty only when the pre-existing
 layout was already full-canonical. Otherwise it may move noncanonical items,
@@ -275,6 +318,11 @@ captured grid alone produces a planned result; it does not imply rejection.
 values. The planner exposes no localized prose or package/profile raw data in a
 diagnostic. Result collections and plan-local ordinals follow Issue #10
 canonical ordering; `NewFolder.members` follows its unique member ranks.
+
+> Amendment (2026-09-30, Issue #451 / [spec 451](../451-organizer-duplicate-items/spec.md)):
+> `WarningCode.DUPLICATE_LAUNCH_TARGET` joins the typed warning vocabulary
+> (appended last; see the P-03 amendment). Its diagnostics are `ItemParam`
+> only — no component or package raw data.
 
 ## Representative examples
 
@@ -410,6 +458,17 @@ data flow. There is no migration or recovery action in this Issue.
 None.
 
 ## Change history
+
+- 2026-09-30: Amended by Issue #451 ([spec 451](../451-organizer-duplicate-items/spec.md),
+  accepted): duplicate launch-target handling. Duplicate surplus items
+  (`TargetKey.AppKey`/`ShortcutKey` beyond the `ItemId`-canonical-order
+  representative, detected over all captured items) are excluded from new
+  folder membership (P-04/P-05), preserved at their captured position with the
+  new lowest-priority `DUPLICATE_LAUNCH_TARGET` reason (P-03/P-07), relabeled
+  under `IncrementalPlacement` (P-08), warned once per surplus item with the
+  new typed code appended last (P-03/P-12), and covered by the P-10
+  exact-reason idempotence proof. Policy bundle `organization-policy-v2.8`
+  (ADR-0007 §8); strategy catalog and `StrategyId`s unchanged (ADR-0012).
 
 - 2026-09-04: Spec 182 (accepted) records that the `CANONICAL_V1` ordering
   policy becomes the first built-in strategy `CANONICAL_PAGE_COMPACT_V1` under

@@ -1,0 +1,27 @@
+=== matrix (b) G3 (SystemUiProxy.getRecentsPendingIntent creator mode) observation attempt ===
+date: 2026-10-07 20:50:30
+
+--- Procedure attempted: Settings foreground (focus=com.android.settings/.SettingsHomepageActivity)
+    -> input keyevent KEYCODE_APP_SWITCH -> observe transition
+--- Result: focus UNCHANGED after APP_SWITCH (no overview, no task switch):
+    mCurrentFocus=Window{416243f u0 com.android.settings/com.android.settings.homepage.SettingsHomepageActivity}
+    Screenshot: b-overview-attempt.png (Settings unchanged, no Lawnchair overview)
+
+--- REASON: the G3 oracle requires a bound provider (SystemUiProxy path lives in the launcher
+    process reached through the SystemUI->launcher connection). On the API 37.0 image the launcher
+    process dies at TouchInteractionService.onUserUnlocked:889 (pre-existing taskbar breakage, see
+    a-resource-skew-analysis.txt) on every bind retry, so isConnected=false throughout and the
+    shell->launcher transition cannot be exercised. NOT obtainable in this environment.
+
+--- BAL block grep over the attempt window (b-g3-logcat.txt):
+  'Background activity start': 0
+  'BAL ': 0
+  'AbortClientTransaction': 0
+  'ActivityTaskManager': 65
+  (with the caveat that no transition occurred, so absence of block signatures is NOT evidence
+   of BAL-allowed behavior — the oracle is unobtainable, not PASS)
+
+--- G3 disposition: spec Scenario/Owner decision 5 requires (b)-configuration observation; the
+    creator-mode decision remains 'no failure evidence -> legacy MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+    retention (interim, per #524/#527)' and is NOT finalized by this matrix. To be recorded in the
+    README/PR as an environment-blocked unconfirmed item.

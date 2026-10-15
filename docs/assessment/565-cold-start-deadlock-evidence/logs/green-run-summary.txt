@@ -1,0 +1,5 @@
+# gradle connected run on issue108_api36_pixel_tablet (emulator-5558, API 36) with FIXED production code (28b5800a88):
+# ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.startup.ColdStartFontLazyInversionInstrumentationTest
+BUILD SUCCESSFUL in 1m 52s
+
+All 4 tests PASS: a0FontManagerProviderIsConstructibleOnMain, a1ColdConcurrentFontAccessNeverBlocksASecondCallerOnAMonitor, bWarmBackgroundCallsCompleteUnaidedAfterInit, cFactoryConstructorContractStaysOnMainThread

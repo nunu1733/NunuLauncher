@@ -2,9 +2,8 @@ package app.lawnchair.allapps
 
 import android.content.Context
 import android.util.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.viewModels
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.lifecycleScope
 import app.lawnchair.data.folder.model.FolderOrderUtils
 import app.lawnchair.data.folder.model.FolderViewModel
@@ -12,6 +11,7 @@ import app.lawnchair.launcher
 import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.util.categorizeAppsWithSystemAndGoogle
+import app.lawnchair.viewModels
 import com.android.launcher3.InvariantDeviceProfile.OnIDPChangeListener
 import com.android.launcher3.allapps.AllAppsStore
 import com.android.launcher3.allapps.AlphabeticalAppsList
@@ -39,7 +39,10 @@ class LawnchairAlphabeticalAppsList<T>(
     private val prefs2 = PreferenceManager2.getInstance(context)
     private val prefs = PreferenceManager.getInstance(context)
 
-    private val viewModel: FolderViewModel by (context as ComponentActivity).viewModels()
+    // Issue #532 D5 (fork contract port): the launcher implements ViewModelStoreOwner
+    // (androidx), replacing the pre-rebase ComponentActivity cast that the anchor
+    // BaseActivity structure cannot satisfy.
+    private val viewModel: FolderViewModel by (context as ViewModelStoreOwner).viewModels()
     private var folderList = mutableListOf<FolderInfo>()
     private val filteredList = mutableListOf<AppInfo>()
 

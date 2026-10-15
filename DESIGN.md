@@ -81,7 +81,7 @@ apply(ValidatedLayoutPlan) -> ApplyResult
 recover(RecoveryRequest) -> RecoveryResult
 ```
 
-このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。生成フォルダのuser-facing title解決 (`FolderTitleResolver`) はmaterializer内の単一点で行われ、production adapterはouter composition (`LawnchairApp`) が注入する。適用後検証は、相関リロード生成のモデルスナップショットをmodel-verifiable projectionで独立DB再取得と突き合わせ、DB/model収束を証明してから初めて成功結果を返す([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。読み取り専用の preview seam (recovery preview `inspectRecovery` [spec 84](./specs/84-recovery-preview-seam/spec.md)、plan preview `inspectPlan` [spec 194](./specs/194-plan-preview-seam/spec.md)) もこのmoduleが所有し、いずれも書込み・lifecycle遷移・diagnostics発行を行わない。さらに、re-opened SettingsがIdleと「never organized」を区別できるように、recovery storeのrecord/tombstoneから閉じた語彙へ導出する読み取り専用の durable status projection (`durableOrganizerStatus` [spec 271](./specs/271-organizer-durable-status-projection/spec.md)) もこのmoduleが所有する。そして [spec 376](./specs/376-durable-status-recovery-entry/spec.md)（D-15）により、hub status cardの復元CTAのために最新の検証済み1点を選択する読み取り専用の restore entry hint (`readRestorableRecoveryEntry`。閉じた `RestorableRecoveryEntry` 型: opaque pointId + 粗粒度残時間。`durableOrganizerStatus` と同一のfail-closed gate契約で読み、両readは同一の非block mutexを争うためUI側は直列化する) もこのmoduleが所有する。UIは閉じたenumだけを読み、recovery storeには触れない。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
+このmoduleの実装は、revision再確認、recovery point作成、transactional write、memory model/UI bind、適用後検証を隠す。生成フォルダのuser-facing title解決 (`FolderTitleResolver`) はmaterializer内の単一点で行われ、production adapterはouter composition (`LawnchairApp`) が注入する。適用後検証は、相関リロード生成のモデルスナップショットをmodel-verifiable projectionで独立DB再取得と突き合わせ、DB/model収束を証明してから初めて成功結果を返す([Issue #152 spec](./specs/152-reload-model-snapshot-verification/spec.md))。読み取り専用の preview seam (recovery preview `inspectRecovery` [spec 84](./specs/84-recovery-preview-seam/spec.md)、plan preview `inspectPlan` [spec 194](./specs/194-plan-preview-seam/spec.md)) もこのmoduleが所有し、いずれも書込み・lifecycle遷移・diagnostics発行を行わない。`inspectPlan` のprojectionは [spec 508](./specs/508-visual-preview-item-exclusion/spec.md) により変更前後のページ図（純粋な図投影）と提案除外の表面を含んで完成し（図だけ欠けたdetailsは型上作れない）、run coordinatorはbase inputから対象集合だけを変えた派生inputで純粋plannerに再計画させる除外・再計画の確認前段を所有する（適用契約・書込み経路は不変）。さらに、編集画面（Issue #449）のセッション開始とstale時の開き直しに使う読み取り専用 capture seam (`inspectCapture`。同契約族: 書込み・lifecycle遷移・diagnostics発行なし、未ready・mutex競合・capture失敗はfail-closedのnull) もこのmoduleが所有する。さらに、re-opened SettingsがIdleと「never organized」を区別できるように、recovery storeのrecord/tombstoneから閉じた語彙へ導出する読み取り専用の durable status projection (`durableOrganizerStatus` [spec 271](./specs/271-organizer-durable-status-projection/spec.md)) もこのmoduleが所有する。そして [spec 376](./specs/376-durable-status-recovery-entry/spec.md)（D-15）により、hub status cardの復元CTAのために最新の検証済み1点を選択する読み取り専用の restore entry hint (`readRestorableRecoveryEntry`。閉じた `RestorableRecoveryEntry` 型: opaque pointId + 粗粒度残時間。`durableOrganizerStatus` と同一のfail-closed gate契約で読み、両readは同一の非block mutexを争うためUI側は直列化する) もこのmoduleが所有する。UIは閉じたenumだけを読み、recovery storeには触れない。Launcher DBはlocal-substitutable dependencyとして扱い、production adapterとtest databaseで同じinterfaceを検証する。
 
 #### Post-apply verification vocabulary
 
@@ -216,6 +216,29 @@ lawnchair/src/app/lawnchair/homeedit/     # Issue #448: per-item edit actions
 │                                         # (pure planning shared with #449, popup UI,
 │                                         # undo evidence; DB writes stay in ModelWriter via
 │                                         # DirectEditContract, ADR-0013 contract 4)
+│                                         # Issue #449: multi-select visual edit surface
+│                                         # (pure 4 layers: session state/projection/
+│                                         # session planner/apply-plan builder + thin access
+│                                         # window; full-screen Activity and 2 entries; the
+│                                         # one-shot apply goes through the existing organizer
+│                                         # apply path — ORGANIZER lease, one recovery point,
+│                                         # 1 transaction, correlated reload + verification.
+│                                         # ADR-0014 case B)
+│                                         # Issue #450: edit undo (undo record with a
+│                                         # generation-bound compare-and-consume slot, pure
+│                                         # undo planner + availability verifier, inverse
+│                                         # operations in ModelWriter via DirectEditContract
+│                                         # ADR-0013 contract 5; edit-session undo flows
+│                                         # through the existing organizer recovery path with
+│                                         # the apply receipt's verified post revision)
+│                                         # Issue #497: new-app destination policy (pure
+│                                         # planner with the ADR-0015 closed result, snapshot
+│                                         # classifier, settings row + folder picker; the
+│                                         # resolver/bridge reads the current policy only at
+│                                         # enqueue time and the persisted snapshot only at
+│                                         # flush time; the admitted write is the minimal
+│                                         # ModelWriter op with the upstream finder semantics
+│                                         # inside admission, ADR-0013 contract 4)
 ```
 
 package数をこの図に合わせること自体を目的にしない。interfaceを深く保ち、変更のlocalityが高まる分割だけを採用する。platform source側には最小のbridgeを置く。テスト配置は上流のconvention確認後に決める。
@@ -245,7 +268,7 @@ package数をこの図に合わせること自体を目的にしない。interfa
 | 4. grid非依存の配置policy v1 | [spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md) (元提案: [Issue #5](https://github.com/nunu1733/NunuLauncher/issues/5) / [layout-strategy-v1](./docs/product/layout-strategy-v1.md)) |
 | 5. category taxonomyと分類source | planner側のtaxonomy契約、signal source、category resolution: [spec 10](./specs/10-pure-organization-planning/spec.md)、[spec 12](./specs/12-deterministic-full-layout-planner-v1/spec.md)。ユーザー定義カテゴリのfirst-class identityとactive category catalog: [spec 336](./specs/336-user-defined-categories/spec.md)。adapter側の分類source提案: [Issue #6](https://github.com/nunu1733/NunuLauncher/issues/6) / [category-taxonomy-v1](./docs/product/category-taxonomy-v1.md) |
 | 6. 整理ルールのfile formatとversioning | 正本なし (D-009)。未起票proposalは [docs/project/seed-backlog.md](./docs/project/seed-backlog.md) を参照 |
-| 7. 新規アプリの配置先ポリシー | 上流が追加を決めたアイコンの配置先（上流の既定/指定フォルダ/追加しない）とfallback条件、書込み構造（ADR-0013契約4のadmission内完結）、policy snapshotのcapture/read境界: [ADR-0015](./docs/adr/0015-new-app-destination-policy.md) / [Issue #446](https://github.com/nunu1733/NunuLauncher/issues/446)。書込みの安全条件は [ADR-0013](./docs/adr/0013-direct-edit-write-contract.md)（gate 2系統の直接編集契約）に委譲 |
+| 7. 新規アプリの配置先ポリシー | 上流が追加を決めたアイコンの配置先（上流の既定/指定フォルダ/追加しない）とfallback条件、書込み構造（ADR-0013契約4のadmission内完結）、policy snapshotのcapture/read境界: [ADR-0015](./docs/adr/0015-new-app-destination-policy.md) / [Issue #446](https://github.com/nunu1733/NunuLauncher/issues/446)。実現surface（Layout Application interface相当の要求テスト行のcanonical owner）: [ADR-0016](./docs/adr/0016-layout-application-test-surface.md)。最初の実装: [spec 497](./specs/497-new-app-destination-policy-impl/spec.md) / [Issue #497](https://github.com/nunu1733/NunuLauncher/issues/497)。書込みの安全条件は [ADR-0013](./docs/adr/0013-direct-edit-write-contract.md)（gate 2系統の直接編集契約）に委譲 |
 | 8. 直接編集（項目単位の編集アクション） | 書込み契約（二段階検証、1アクション=1 transaction、MODEL_WRITER admission内完結、Undo fail-closed）とAGENTS.md安全規約のcarve-out: [ADR-0013](./docs/adr/0013-direct-edit-write-contract.md) / [Issue #445](https://github.com/nunu1733/NunuLauncher/issues/445)。操作面と純粋計画module（#449と共有）の最初の実装: [spec 448](./specs/448-edit-actions-per-item/spec.md) / [Issue #448](https://github.com/nunu1733/NunuLauncher/issues/448)。Undo本体・寿命: #450。第2段の視覚的編集画面: [ADR-0014](./docs/adr/0014-edit-surface.md) / #449 |
 
 正本が存在しない、または正本が提案どまりの判断を実装で固定しない。gateの変更は、正本となるADR/spec/Issue側から行う。

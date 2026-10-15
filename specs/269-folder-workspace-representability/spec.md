@@ -147,6 +147,14 @@ Thus write and capture describe the same row deterministically. The strict
 desktop capture check remains in this Issue; mapping its exception to a
 localized typed preview result remains Issue #270.
 
+For exact persistence, a folder-child row may also carry the ordinary paired
+`CELLX=-1`/`CELLY=-1` sentinel. The internal manifest retains both signed values
+only when the child's non-negative container resolves to a distinct, existing
+folder row in the same profile. This raw column data does not become part of
+`FolderChild`, and it does not relax desktop, Hotseat, or AppPair geometry
+validation. `NULL` and non-negative folder-child cell columns remain supported;
+mixed or other negative values and invalid parent references remain rejected.
+
 ### D3: Minimal Launcher3 writer bridge
 
 The bridge is limited to `moveItemInDatabase` calls whose destination is
@@ -285,10 +293,12 @@ this Issue.
 - The public planner/application state is unchanged. `FolderChild` continues
   to carry only parent identity and rank; workspace items continue to carry an
   exact positive `GridSpan`.
-- `PersistenceManifest` continues to record the raw `SPANX`/`SPANY` values and
-  the recovery record codec remains byte-compatible. The change affects the
-  values written by the targeted workspace transition, not the manifest
-  schema.
+- `PersistenceManifest` records the raw `CELLX`/`CELLY` and `SPANX`/`SPANY`
+  values, including the paired folder-child sentinel. The recovery record wire
+  format and manifest schema remain unchanged; a pre-fix reader still rejects
+  the sentinel value. Issue #579’s sentinel correction changes neither the values
+  written by the workspace transition nor the manifest schema. Issue #269’s
+  existing transition still normalizes workspace spans to `1×1` as required below.
 - No `favorites` schema version, recovery format version, backup allowlist, or
   migration is added.
 - Every existing `WorkspaceItemInfo` moved into the desktop through
@@ -360,3 +370,11 @@ Owner acceptance of this Spec 13 revision is the implementation gate.
   reproduction at repository `main` `b25f20ca7c31ad384fbe8f8b696e87118f8fbe8c`.
   Selected the targeted writer transition as the owner seam; retained the
   strict desktop capture boundary and separated typed preview failure to #270.
+- 2026-10-01: Fixture reconciliation for #487 (spec 487): the
+  `seedLayoutWithFolder()` rows now carry distinct launch targets, so the
+  AC-269-03 second-organize oracle keeps reaching `Applied` under spec 451
+  N-1/N-2 duplicate-surplus preservation. AC text unchanged.
+- 2026-10-12: Issue #579 clarified that ordinary folder-child `CELLX/CELLY`
+  values of paired `-1` are exact internal persistence data when the referenced
+  parent is an existing same-profile folder. Public parent/rank semantics and
+  the #269 desktop-entry writer rule remain unchanged.

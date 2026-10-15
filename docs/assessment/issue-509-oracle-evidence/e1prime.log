@@ -1,0 +1,27 @@
+=== E1' shell-session control experiment (new baseline) ===
+UTC start: 2026-10-14T02:31:23Z
+--- pre: target install state ---
+(empty above = not installed)
+--- clear logcat ---
+--- pm install-create ---
+Success: created install session [1651794998]
+SESSION_ID=1651794998
+--- pm install-write ---
+Success: streamed 2607707 bytes
+--- logcat during/after write (promise enqueue should be ABSENT) ---
+10-14 11:31:25.631  1492  1492 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:logcat -d | grep -E 'InstallSessionHelper|SessionCommitReceiver|ItemInstallQueue|SessionBadgeProbe''
+(end of write-time logcat)
+--- pm install-commit ---
+Success
+--- logcat 3s after commit ---
+10-14 11:31:25.631  1492  1492 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:logcat -d | grep -E 'InstallSessionHelper|SessionCommitReceiver|ItemInstallQueue|SessionBadgeProbe''
+10-14 11:31:26.454 13837 13876 D SessionCommitReceiver: Adding package name to install queue. Package name: app.lawnchair.benchmark.target01, has app icon: false, has app label: false
+10-14 11:31:26.759 13837 13876 W LawnchairActivityCachingLogic: 	at com.android.launcher3.model.ItemInstallQueue$PendingInstallShortcutInfo.getItemInfo(ItemInstallQueue.java:387)
+10-14 11:31:26.759 13837 13876 W LawnchairActivityCachingLogic: 	at com.android.launcher3.model.ItemInstallQueue.lambda$queuePendingShortcutInfo$5(ItemInstallQueue.java:264)
+10-14 11:31:26.759 13837 13876 W LawnchairActivityCachingLogic: 	at com.android.launcher3.model.ItemInstallQueue.$r8$lambda$hQhmjXoSHf8RIi6fbkVbyXmz_wQ(ItemInstallQueue.java:0)
+10-14 11:31:26.759 13837 13876 W LawnchairActivityCachingLogic: 	at com.android.launcher3.model.ItemInstallQueue$$ExternalSyntheticLambda6.run(D8$$SyntheticClass:0)
+10-14 11:31:26.794 13837 13876 D ItemInstallQueue: Adding PendingInstallShortcutInfo to queue. Attached info: ItemInfo(id=-1 type=APP container=# com.android.launcher3.logger.LauncherAtom$ContainerInfo@7bc6f targetComponent=ComponentInfo{app.lawnchair.benchmark.target01/app.lawnchair.benchmark.target.TargetActivity} screen=-1 cell(-1,-1) span(1,1) minSpan(1,1) rank=0 user=UserHandle{0} title=Benchmark Target 01 supportsMultiInstance=false nonResizeable=false)
+10-14 11:31:29.507  1492  1492 I adbd    : adbd service requested 'shell,v2,TERM=dumb,raw:logcat -d | grep -E 'InstallSessionHelper|SessionCommitReceiver|ItemInstallQueue|SessionBadgeProbe''
+--- post: target install state ---
+package:/data/app/~~2t7xt2OuLozHh27KkSiupQ==/app.lawnchair.benchmark.target01-mY14fnby6ZxJ2t56i41geA==/base.apk
+UTC end: 2026-10-14T02:31:29Z

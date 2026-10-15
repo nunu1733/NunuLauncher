@@ -288,7 +288,10 @@ public final class FeatureFlags {
                                         + " split screen launching.");
 
         public static boolean enableAppPairs() {
-                return ENABLE_APP_PAIRS.get() || com.android.wm.shell.Flags.enableAppPairs();
+                // Rebase Phase 2 adapt (S2/S3): the checked-in anchor shell flag set
+                // (flags/src/com/android/wm/shell/Flags.java) has no enableAppPairs()
+                // aconfig method, so only the launcher debug flag is consulted.
+                return ENABLE_APP_PAIRS.get();
         }
 
         // TODO(Block 19): Clean up flags
@@ -385,8 +388,10 @@ public final class FeatureFlags {
                         "Enable initiating split screen from workspace to workspace.");
 
         public static boolean enableSplitContextually() {
-                return ENABLE_SPLIT_FROM_WORKSPACE_TO_WORKSPACE.get() ||
-                                com.android.wm.shell.Flags.enableSplitContextual();
+                // Rebase Phase 2 adapt (S2/S3): the checked-in anchor shell flag set
+                // has no enableSplitContextual() aconfig method, so only the launcher
+                // debug flag is consulted.
+                return ENABLE_SPLIT_FROM_WORKSPACE_TO_WORKSPACE.get();
         }
 
         public static final BooleanFlag ENABLE_TRACKPAD_GESTURE = getDebugFlag(271010401,
@@ -396,6 +401,12 @@ public final class FeatureFlags {
         public static final BooleanFlag ENABLE_ALL_APPS_BUTTON_IN_HOTSEAT = getDebugFlag(270393897,
                         "ENABLE_ALL_APPS_BUTTON_IN_HOTSEAT", DISABLED,
                         "Enables displaying the all apps button in the hotseat.");
+
+        // Rebase Phase 2 adapt (S2/S3): accessor the anchor taskbar code calls;
+        // restored onto the existing fork flag constant.
+        public static boolean enableAllAppsButtonInHotseat() {
+                return ENABLE_ALL_APPS_BUTTON_IN_HOTSEAT.get() || Flags.enableAllAppsButtonInHotseat();
+        }
 
         public static final BooleanFlag ENABLE_KEYBOARD_QUICK_SWITCH = getDebugFlag(270396844,
                         "ENABLE_KEYBOARD_QUICK_SWITCH", ENABLED, "Enables keyboard quick switching");

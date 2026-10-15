@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
@@ -88,6 +89,12 @@ import org.junit.runner.RunWith
 class CustomCategoryPreferencesInstrumentationTest {
 
     @get:Rule
+    // Issue #505 queued this class's effects with a StandardTestDispatcher;
+    // replay-log §6.15/§6.16 found that dispatcher breaks D-pad key delivery
+    // and focus reflection timing here (local arm64 A/B: 2 failing tests with
+    // it, 10/10 green without), so the default rule — the rollback path named
+    // by the issue #490 assessment — is used. Async create/rename/save flows
+    // are bounded by explicit waitUntil below instead.
     val composeRule = createComposeRule()
 
     private val userId = UserCategoryId("3f2b8c4e-1234-4abc-9de0-1234567890ab")
@@ -104,20 +111,32 @@ class CustomCategoryPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_create)).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_create)).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").performTextInput("Commute")
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_save)).performClick()
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isNotEmpty()
         }
 
-        // Duplicate name is a typed, localized failure — no write.
+        // Duplicate name is a typed, localized failure — no write. The
+        // "Commute" wait above also matches the editor field's EditableText,
+        // so it can pass before the list recomposition brings the create
+        // button back; wait for the button itself (issue #532 §6.16).
+        composeRule.waitUntil(15_000) {
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_create)).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_create)).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").performTextInput("Commute")
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_save)).performClick()
+        // The typed duplicate feedback lands after the coordinator's write
+        // returns; wait bounded, then keep the displayed assert.
+        composeRule.waitUntil(15_000) {
+            composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_error_duplicate_name))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_error_duplicate_name)).assertIsDisplayed()
 
         // AC-6 state 2: the create editor's full semantics tree carries no raw id.
@@ -142,7 +161,7 @@ class CustomCategoryPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_delete_row)).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_row)).performClick()
@@ -156,7 +175,7 @@ class CustomCategoryPreferencesInstrumentationTest {
         composeRule.onNodeWithText(expectedText).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_confirm)).performClick()
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isEmpty()
         }
     }
@@ -173,21 +192,21 @@ class CustomCategoryPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_delete_row)).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_row)).performClick()
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_delete_confirm)).performClick()
 
         // The truthful partial state: assignments removed, empty category remains.
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_retry)).fetchSemanticsNodes().isNotEmpty()
         }
         // AC-6 state 5: the partial-delete view carries no raw id either.
         assertNoRawIdsPresent(userId.value, mintedId)
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_retry)).performClick()
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isEmpty()
         }
     }
@@ -202,7 +221,7 @@ class CustomCategoryPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isNotEmpty()
         }
         // The row exposes the rename affordance as its content description,
@@ -214,7 +233,7 @@ class CustomCategoryPreferencesInstrumentationTest {
         composeRule.onNodeWithTag("custom-category-name-field").performTextInput("Morning routine")
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_rename_confirm)).performClick()
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Morning routine").fetchSemanticsNodes().isNotEmpty()
         }
     }
@@ -231,7 +250,7 @@ class CustomCategoryPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithContentDescription(
@@ -267,7 +286,7 @@ class CustomCategoryPreferencesInstrumentationTest {
                 CustomCategoryPreferences(coordinator = UserDefinedCategoryAuthoringCoordinator(catalog, overrides))
             }
         }
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText(summary).fetchSemanticsNodes().isNotEmpty()
         }
 
@@ -283,7 +302,7 @@ class CustomCategoryPreferencesInstrumentationTest {
         composeRule.onNodeWithText(create).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").performTextInput("Errand")
         composeRule.onNodeWithText(save).performClick()
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Errand").fetchSemanticsNodes().isNotEmpty()
         }
         awaitSummaryFocus(summary)
@@ -306,7 +325,7 @@ class CustomCategoryPreferencesInstrumentationTest {
         composeRule.onNodeWithTag("custom-category-name-field").performTextClearance()
         composeRule.onNodeWithTag("custom-category-name-field").performTextInput("Groceries")
         composeRule.onNodeWithText(renameConfirm).performClick()
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Groceries").fetchSemanticsNodes().isNotEmpty()
         }
         awaitSummaryFocus(summary)
@@ -331,7 +350,7 @@ class CustomCategoryPreferencesInstrumentationTest {
             .requestFocus()
             .assertIsFocused()
             .performClick()
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isEmpty()
         }
         awaitSummaryFocus(summary)
@@ -349,7 +368,7 @@ class CustomCategoryPreferencesInstrumentationTest {
 
         val context = ApplicationProvider.getApplicationContext<Context>()
         val create = context.getString(R.string.organizer_custom_category_create)
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText(create).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.runOnIdle {
@@ -358,19 +377,27 @@ class CustomCategoryPreferencesInstrumentationTest {
         val summary = composeRule.onNodeWithText(
             context.getString(R.string.organizer_custom_category_summary),
         )
-        summary.requestFocus().assertIsFocused()
+        // Focus reflection into semantics can lag a frame on a loaded CI
+        // emulator (issue #532 §6.16), so every focus assert is preceded by a
+        // bounded wait; the assert still fails if focus never arrives.
+        summary.requestFocus()
+        awaitFocused(summary)
+        summary.assertIsFocused()
         // The create action is the first item under the summary, so one
         // DirectionDown from the summary must land on it.
         summary.performKeyInput {
             keyDown(Key.DirectionDown)
             keyUp(Key.DirectionDown)
         }
-        composeRule.onNodeWithText(create).assertIsFocused()
-        composeRule.onNodeWithText(create).performKeyInput {
-            keyDown(Key.DirectionCenter)
-            keyUp(Key.DirectionCenter)
-        }
-        composeRule.waitUntil(5_000) {
+        val createTarget = composeRule.onNodeWithText(create)
+        awaitFocused(createTarget)
+        createTarget
+            .assertIsFocused()
+            .performKeyInput {
+                keyDown(Key.DirectionCenter)
+                keyUp(Key.DirectionCenter)
+            }
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithTag("custom-category-name-field").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithTag("custom-category-name-field").assertIsDisplayed()
@@ -386,7 +413,7 @@ class CustomCategoryPreferencesInstrumentationTest {
             }
         }
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText("Commute").fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithContentDescription(
@@ -410,7 +437,7 @@ class CustomCategoryPreferencesInstrumentationTest {
         }
 
         val renameLabel = context.getString(R.string.organizer_custom_category_rename_action, longName)
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithContentDescription(renameLabel).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription(renameLabel))
@@ -424,7 +451,7 @@ class CustomCategoryPreferencesInstrumentationTest {
         )
 
         val deleteLabel = context.getString(R.string.organizer_custom_category_delete_action, longName)
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithContentDescription(deleteLabel).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasContentDescription(deleteLabel))
@@ -453,7 +480,7 @@ class CustomCategoryPreferencesInstrumentationTest {
         composeRule.onNodeWithText(create).performClick()
         composeRule.onNodeWithTag("custom-category-name-field").performTextInput(longName)
         composeRule.onNodeWithText(context.getString(R.string.organizer_custom_category_save)).performClick()
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             composeRule.onAllNodesWithText(context.getString(R.string.organizer_custom_category_error_duplicate_name))
                 .fetchSemanticsNodes().isNotEmpty()
         }
@@ -473,7 +500,7 @@ class CustomCategoryPreferencesInstrumentationTest {
         val entryRow = composeRule.onNodeWithContentDescription(
             context.getString(R.string.organizer_custom_category_rename_action, "Commute"),
         )
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             try {
                 entryRow.fetchSemanticsNode()
                 true
@@ -488,15 +515,22 @@ class CustomCategoryPreferencesInstrumentationTest {
 
     // ---- shared helpers ------------------------------------------------------
 
-    private fun awaitSummaryFocus(summary: String) {
-        composeRule.waitUntil(5_000) {
+    // Focus can reflect into semantics a frame late under load (CI flake,
+    // issue #532 §6.16), so focus asserts are gated on a bounded wait; the
+    // caller-level assert still fails if focus never arrives.
+    private fun awaitFocused(node: SemanticsNodeInteraction) {
+        composeRule.waitUntil(15_000) {
             try {
-                composeRule.onNodeWithText(summary).assertIsFocused()
+                node.assertIsFocused()
                 true
             } catch (_: AssertionError) {
                 false
             }
         }
+    }
+
+    private fun awaitSummaryFocus(summary: String) {
+        awaitFocused(composeRule.onNodeWithText(summary))
     }
 
     private fun collectSemanticsStrings(node: SemanticsNode, out: MutableList<String>) {

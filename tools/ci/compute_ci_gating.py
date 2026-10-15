@@ -9,6 +9,13 @@ no shell interpolation and no eval; it is the single place where the
 per-path fail-closed rule is applied:
 
     unmapped_files = source_files - (union of surface-matched files)
+    unknown_lists = GATING_LISTS_UNKNOWN == true
+      (oversized diff: file lists could not be handed over through env, but
+       the paths-filter booleans are still trustworthy because that step
+       itself succeeded. With source=true every source file is treated as
+       unmapped, which forces the full portfolio — the fail-closed
+       direction. With source=false there is nothing to map and the run
+       stays conditional.)
     smoke          = workflow_dispatch && full-portfolio == false
     full           = !smoke && ( ci || unmapped exists || schedule
                                  || workflow_call || main push || dispatch-full )
@@ -67,6 +74,7 @@ def compute(env: dict[str, str]) -> dict[str, object]:
     source = flag(env, "GATING_SOURCE")
     ci_change = flag(env, "GATING_CI")
 
+    lists_unknown = flag(env, "GATING_LISTS_UNKNOWN")
     source_files = parse_file_list(
         env.get("GATING_SOURCE_FILES"), "GATING_SOURCE_FILES"
     )
@@ -75,12 +83,19 @@ def compute(env: dict[str, str]) -> dict[str, object]:
         env_name = "GATING_" + name.upper() + "_FILES"
         surface_files.update(parse_file_list(env.get(env_name), env_name))
 
-    unmapped = [path for path in source_files if path not in surface_files]
+    unmapped: list[str] | None
+    if lists_unknown:
+        # File lists were unavailable (oversized diff): conservatively treat
+        # every source file as unmapped so the full portfolio is forced.
+        unmapped = None
+    else:
+        unmapped = [path for path in source_files if path not in surface_files]
 
     smoke = event == "workflow_dispatch" and full_portfolio == "false"
     dispatch_full = event == "workflow_dispatch" and full_portfolio != "false"
     full = not smoke and (
         ci_change
+        or (unmapped is None and source)
         or bool(unmapped)
         or event == "schedule"
         or workflow_call
@@ -95,8 +110,8 @@ def compute(env: dict[str, str]) -> dict[str, object]:
         "full": full,
         "permanent_run": permanent_run,
         "instrumentation_enabled": instrumentation_enabled,
-        "unmapped_count": len(unmapped),
-        "unmapped_sample": unmapped[:5],
+        "unmapped_count": -1 if unmapped is None else len(unmapped),
+        "unmapped_sample": [] if unmapped is None else unmapped[:5],
         "source_file_count": len(source_files),
     }
 

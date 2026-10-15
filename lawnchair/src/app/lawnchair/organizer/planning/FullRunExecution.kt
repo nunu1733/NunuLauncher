@@ -14,6 +14,14 @@ internal data class FullRunContext(
     val itemById: Map<ItemId, CapturedItem>,
     /** Captured items with no preservation predicate — the strategy's raw material. */
     val movableItems: List<CapturedItem>,
+    /**
+     * Issue #451 (spec 451 N-1): the duplicate surplus item ids over the
+     * captured items, computed once in `PlanningPlacement.place`. Executors
+     * and `appendPreservedPlacements` must re-apply the same preservation
+     * predicate with this same set so surplus items keep exactly one
+     * `PlannedPlacement` (conservation) and their cells stay occupied.
+     */
+    val duplicateSurplus: Set<ItemId>,
     val allocator: Allocator,
     val pageOrderMap: Map<PageId, PageOrder>,
     val preservationWarnings: List<Warning>,
@@ -202,7 +210,9 @@ internal object FullRunExecution {
 
         val pageObstaclesBuilder = mutableMapOf<PageId, MutableList<Rect>>()
         for (item in context.input.snapshot.items) {
-            if (determinePreservation(item, context.rolesById[item.id], reservations, relocateWidgets = true) != null) {
+            // Issue #451: the same duplicate surplus set the movable stream
+            // used — a preserved surplus item's captured cell is an obstacle.
+            if (determinePreservation(item, context.rolesById[item.id], reservations, relocateWidgets = true, duplicateSurplus = context.duplicateSurplus) != null) {
                 val ws = item.placement as? CapturedPlacement.Workspace ?: continue
                 pageObstaclesBuilder.getOrPut(ws.page.pageId) { mutableListOf() } += rectOf(ws.cell, ws.span)
             }
@@ -407,6 +417,9 @@ internal object FullRunExecution {
                 context.rolesById[item.id],
                 context.input.snapshot.reservedWorkspaceRegions,
                 relocateWidgets = relocateWidgets,
+                // Issue #451: same surplus set as the movable stream, so a
+                // duplicate surplus item always keeps exactly one placement.
+                duplicateSurplus = context.duplicateSurplus,
             )
             if (reason != null) {
                 placements += PlannedPlacement(

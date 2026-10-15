@@ -3,6 +3,7 @@ package app.lawnchair.organizer.ui
 import android.content.Context
 import app.lawnchair.LawnchairApp
 import app.lawnchair.organizer.application.actions.OrganizationPlanMaterializer
+import app.lawnchair.organizer.application.protocol.CapturedSnapshot
 import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.application.public.ApplyResult
@@ -15,6 +16,7 @@ import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.RecoveryPointId
 import app.lawnchair.organizer.application.public.RecoveryPreviewConfirmation
 import app.lawnchair.organizer.application.public.RecoveryPreviewResult
+import app.lawnchair.organizer.application.public.RecoveryRequest
 import app.lawnchair.organizer.application.public.RecoveryResult
 import app.lawnchair.organizer.application.public.RestorableRecoveryEntry
 import app.lawnchair.organizer.application.public.RunId
@@ -58,14 +60,16 @@ import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.Planned
 import app.lawnchair.organizer.planning.PlanningResult
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.ProposalExclusionDerivation
+import app.lawnchair.organizer.planning.ProposalExclusionKey
 import app.lawnchair.organizer.planning.RejectionCode
+import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.StrategyId
 import app.lawnchair.organizer.planning.UnplacedReason
 import app.lawnchair.organizer.planning.WarningCode
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Narrow façade used by the manual run coordinator. It deliberately exposes
@@ -123,6 +127,29 @@ internal interface ManualOrganizationApplication {
      * without the user navigating away.
      */
     val readinessState: StateFlow<ReadinessGate.State>
+
+    /**
+     * Issue #449: read-only capture for the visual edit surface (zero-write,
+     * fail-closed; `null` = unready gate / mutex contention / capture failure).
+     * The edit surface session starts from — and a stale session reopens with —
+     * this capture. It never touches the run state machine.
+     */
+    fun inspectCapture(): CapturedSnapshot?
+
+    /**
+     * Issue #450: apply plus the verified post-apply revision for the undo
+     * record (internal receipt; the public [ApplyResult] contract is
+     * unchanged). The revision is the exact operand of the apply path's
+     * post-write verification — the materialized post-state — and is null for
+     * any non-Applied result.
+     */
+    fun applyWithUndoReceipt(plan: ValidatedLayoutPlan, runId: RunId): Pair<ApplyResult, RevisionId?>
+
+    /**
+     * Issue #450: the undo tap's recovery request (the existing public
+     * recovery mutation entry; no new write path).
+     */
+    fun recover(request: RecoveryRequest): RecoveryResult
 }
 
 internal class ProductionManualOrganizationApplication(
@@ -167,11 +194,22 @@ internal class ProductionManualOrganizationApplication(
 
     override val readinessState: StateFlow<ReadinessGate.State>
         get() = module.readinessGate.stateFlow
+
+    override fun inspectCapture(): CapturedSnapshot? = module.inspectCapture()
+
+    override fun applyWithUndoReceipt(plan: ValidatedLayoutPlan, runId: RunId): Pair<ApplyResult, RevisionId?> = module.applyWithUndoReceipt(plan, runId)
+
+    override fun recover(request: RecoveryRequest): RecoveryResult = module.recover(request)
 }
 
 /** Process-local composition holder. Construction itself is read-only. */
 internal object ManualOrganizationModule {
     @Volatile private var instance: ManualOrganizationRun? = null
+
+    // Issue #449: the same application seam, reachable for the edit surface
+    // without the run state machine. Never a second construction — the edit
+    // surface shares the single process instance created by [get].
+    @Volatile private var editSurfaceApplication: ManualOrganizationApplication? = null
 
     fun get(context: Context): ManualOrganizationRun = instance ?: synchronized(this) {
         instance ?: run {
@@ -190,6 +228,7 @@ internal object ManualOrganizationModule {
                 app,
                 app.layoutApplicationModule,
             ).let { application ->
+                editSurfaceApplication = application
                 // Issue #371: the process-wide JIT Usage Access request gate is
                 // created here so the run machine and the exchange holder
                 // share one instance (the request opportunity is process-
@@ -211,8 +250,26 @@ internal object ManualOrganizationModule {
                     exchangeGateTransaction = ManualOrganizationRun.gateHeldExchangeGateTransaction(
                         PendingImportedIntentModule.gate(),
                     ),
+                    // Issue #418: production publishes UI state on the Android
+                    // main thread; the machine itself never runs there (its
+                    // entry points fail fast on main).
+                    publicationThread = HandlerRunPublicationThread(),
                 ).also { instance = it }
             }
+        }
+    }
+
+    /**
+     * Issue #449: the minimal edit-surface accessor over the shared application
+     * seam (inspectCapture + apply + newRunId). Reuses [get]'s single
+     * construction (including the LauncherAppState bootstrap and the startup
+     * reconciliation trigger) and never builds a second application instance.
+     */
+    fun applicationForEditSurface(context: Context): ManualOrganizationApplication = editSurfaceApplication ?: synchronized(this) {
+        editSurfaceApplication ?: run {
+            get(context)
+            editSurfaceApplication
+                ?: error("ManualOrganizationModule.get did not bind the edit-surface application")
         }
     }
 }
@@ -259,6 +316,18 @@ class ManualOrganizationRun internal constructor(
     // mutation without a gate so embedders/tests that never wire the exchange
     // side keep today's behavior.
     private val exchangeGateTransaction: ExchangeGateTransaction = DirectExchangeGateTransaction,
+    // Issue #418: the thread that owns UI state publication. Production wires
+    // the Android main thread (HandlerRunPublicationThread in get(context));
+    // the same-thread default keeps JVM/instrumentation tests exactly on
+    // today's behavior. Machine entry points fail fast on the publication
+    // thread, and every UI state write block-joins onto it through a
+    // lock-free task (spec 418; spec 375 amendment for the gate-held path).
+    private val publicationThread: RunPublicationThread = DirectRunPublicationThread(),
+    // Issue #418 (test seam): records (field, thread) for every state bus
+    // write so the confinement oracle can verify publication threads. The
+    // production default observes nothing — the same pattern as
+    // ExchangeFlowStateHolder.onSettleObserved.
+    writeThreadTracker: ((String, Thread) -> Unit)? = null,
 ) {
     enum class DismissalOutcome {
         CancelledAndMayNavigate,
@@ -568,7 +637,33 @@ class ManualOrganizationRun internal constructor(
 
         data class PlanningRejected(val kind: PlanningFailureKind, val summary: Summary) : State
         data object NoChanges : State
-        data class Preview(val summary: Summary, val details: PlanPreviewDetails?) : State
+
+        /**
+         * Issue #194: the confirmation surface. [details] is null only for the
+         * pre-existing environmental count-only fallback. [exclusions] is the
+         * run's current exclusion set (Issue #508) — empty for a proposal the
+         * user has not excluded anything from.
+         */
+        data class Preview(
+            val summary: Summary,
+            val details: PlanPreviewDetails?,
+            val exclusions: Set<ProposalExclusionKey> = emptySet(),
+        ) : State
+
+        /**
+         * Issue #508: a proposal replan (exclusion change) is in flight.
+         * Zero-write waiting: [summary]/[stableDetails] are the last stable
+         * preview's values — still accurate for what they describe (the
+         * pre-exclusion proposal, which the progress notice makes explicit) —
+         * and [exclusions] is the requested set the replan is computing for.
+         * Confirm is structurally impossible here (`confirm` only accepts
+         * [Preview]).
+         */
+        data class Replanning(
+            val summary: Summary,
+            val stableDetails: PlanPreviewDetails?,
+            val exclusions: Set<ProposalExclusionKey>,
+        ) : State
 
         /**
          * Issue #228 (spec AC-14): a run whose plan contains Add rows cannot
@@ -689,10 +784,16 @@ class ManualOrganizationRun internal constructor(
         )
     }
 
-    private val stateHolder = MutableStateFlow<State>(State.Idle)
-    val stateFlow: StateFlow<State> = stateHolder.asStateFlow()
+    // Issue #418: the UI-facing holders live in the state bus — its publish
+    // methods are the only write path, and each write is routed onto the
+    // publication thread by the helpers below.
+    private val stateBus = ManualOrganizationRunStateBus(
+        initialState = State.Idle,
+        writeThreadTracker = writeThreadTracker,
+    )
+    val stateFlow: StateFlow<State> = stateBus.stateFlow
     val state: State
-        get() = stateHolder.value
+        get() = stateBus.state
 
     // Issue #368: run/recovery operation lifetime, independent of the display
     // State enumeration. Terminal states (Applied, NoChanges, Stale, …) stay
@@ -700,26 +801,45 @@ class ManualOrganizationRun internal constructor(
     // them as "run active"; this projection tracks the actual lifetime
     // (activeOperation / recoveryLease). It is not equivalent to admission
     // domain occupancy: another AUTHORING token can hold the domain.
-    private val operationActiveHolder = MutableStateFlow(false)
 
     /** True while a run or recovery operation is alive (spec #368). */
-    val operationActive: StateFlow<Boolean> = operationActiveHolder.asStateFlow()
+    val operationActive: StateFlow<Boolean> = stateBus.operationActive
 
     // Issue #369 (spec RD-7): deterministic user-visible preparation phase for
     // T-09. Reset to DETECTION on every admission and only advanced under the
     // lock, before the state publish it describes.
-    private val preparationPhaseHolder = MutableStateFlow(PreparationPhase.DETECTION)
 
     /** Issue #369 (spec RD-7): the visible 検出 → capture → plan progression. */
-    val preparationPhase: StateFlow<PreparationPhase> = preparationPhaseHolder.asStateFlow()
+    val preparationPhase: StateFlow<PreparationPhase> = stateBus.preparationPhase
 
     private val lock = Any()
+
+    // Issue #583: invalidated before authority mutations, so a worker's
+    // lock-held observation can be fenced on publication main without a lock.
+    private val scopeOwnershipRevision = AtomicLong()
     private var activeOperation: Operation? = null
     private var pending: PendingPlan? = null
     private var appliedPoint: RecoveryPointId? = null
     private var pendingRecovery: RecoveryPreviewResult.Restorable? = null
     private var recoveryLease: AutoCloseable? = null
     private var lastVerifiedApply: State.Applied? = null
+
+    // Issue #418: run-scoped UI state publications. Each helper block-joins on
+    // the publication thread with a lock-free bus write; the calling machine
+    // section keeps its own lock held so section atomicity and publication
+    // instants are unchanged (spec 418; spec 375 gate-held amendment).
+    private fun publishState(next: State) {
+        scopeOwnershipRevision.incrementAndGet()
+        publicationThread.run { stateBus.publishState(next) }
+    }
+
+    private fun publishPreparationPhase(phase: PreparationPhase) {
+        publicationThread.run { stateBus.publishPreparationPhase(phase) }
+    }
+
+    private fun publishOperationActive(active: Boolean) {
+        publicationThread.run { stateBus.publishOperationActive(active) }
+    }
 
     /**
      * Issue #376 (spec D5): which surface opened the live recovery flow, and
@@ -768,10 +888,13 @@ class ManualOrganizationRun internal constructor(
     }
 
     private fun updateOperationActiveLocked() {
-        operationActiveHolder.value = activeOperation != null || recoveryLease != null
+        publishOperationActive(activeOperation != null || recoveryLease != null)
     }
 
-    fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome = start(trigger, intent = null)
+    fun start(trigger: Trigger = Trigger.MANUAL_FULL): StartOutcome {
+        publicationThread.assertNotPublicationThread()
+        return start(trigger, intent = null)
+    }
 
     /**
      * Issue #205: run entry from an imported, validated personalization intent
@@ -796,6 +919,7 @@ class ManualOrganizationRun internal constructor(
         admissionAnchor: StartAdmissionAnchor? = null,
         selectionRestore: SelectionRestore = SelectionRestore.None,
     ): StartOutcome {
+        publicationThread.assertNotPublicationThread()
         when (val attempt = beginAdmission(trigger, intent, admissionAnchor)) {
             is StartAttempt.Busy -> return StartOutcome.Busy
             is StartAttempt.Refused -> return StartOutcome.AdmissionRefused
@@ -823,11 +947,15 @@ class ManualOrganizationRun internal constructor(
             var created: Operation? = null
             val complete = {
                 val operation = Operation(application.newRunId(), trigger, lease, intent)
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = operation
                 pending = null
                 pendingRecovery = null
                 appliedPoint = null
                 lastVerifiedApply = null
+                // Issue #418: a fresh operation starts unbound — the volatile
+                // mirror follows the lock-held [Operation.boundExportId].
+                boundScopeRunId = null
                 // Issue #376 (spec D5): a fresh run dissolves any live recovery
                 // flow identity — the entry origin never outlives its flow.
                 recoveryEntryOrigin = null
@@ -835,8 +963,8 @@ class ManualOrganizationRun internal constructor(
                 // Issue #369 (RD-7): a fresh run always starts the visible
                 // progression at detection — the legacy admission Capturing below
                 // projects as 検出, so the first visible phase is never capture.
-                preparationPhaseHolder.value = PreparationPhase.DETECTION
-                stateHolder.value = State.Capturing
+                publishPreparationPhase(PreparationPhase.DETECTION)
+                publishState(State.Capturing)
                 updateOperationActiveLocked()
                 created = operation
             }
@@ -1025,6 +1153,7 @@ class ManualOrganizationRun internal constructor(
      * method choice decides when (and whether) the composed phase runs.
      */
     fun confirmSelection(selection: Set<CandidateTarget.AppKey>) {
+        publicationThread.assertNotPublicationThread()
         val sortedSelection = selection.sortedWith(
             compareBy({ it.component.value }, { it.profile.value }),
         )
@@ -1059,12 +1188,14 @@ class ManualOrganizationRun internal constructor(
                 )
             }
             if (earlyCause != null) {
-                stateHolder.value = State.Selecting(
-                    current.runId,
-                    current.detectedCandidates.orEmpty(),
-                    intentScopeCount = intent!!.session.scopeCandidates.size,
-                    scopeRejection = app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(earlyCause),
-                    intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                publishState(
+                    State.Selecting(
+                        current.runId,
+                        current.detectedCandidates.orEmpty(),
+                        intentScopeCount = intent!!.session.scopeCandidates.size,
+                        scopeRejection = app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(earlyCause),
+                        intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                    ),
                 )
                 null
             } else if (current.trigger == Trigger.ONBOARDING_PROPOSAL || current.intent != null) {
@@ -1090,11 +1221,13 @@ class ManualOrganizationRun internal constructor(
                 // [planWithConfirmedScope] and [attachIntent] continue from
                 // here.
                 val cut = current.detectedCandidates.orEmpty()
-                stateHolder.value = State.ScopeConfirmed(
-                    runId = current.runId,
-                    candidates = cut,
-                    selection = sortedSelection,
-                    candidateLabels = cut.associate { it.target to it.label },
+                publishState(
+                    State.ScopeConfirmed(
+                        runId = current.runId,
+                        candidates = cut,
+                        selection = sortedSelection,
+                        candidateLabels = cut.associate { it.target to it.label },
+                    ),
                 )
                 null
             }
@@ -1115,6 +1248,7 @@ class ManualOrganizationRun internal constructor(
      * operation is a no-op: nothing is composed, nothing is written.
      */
     fun planWithConfirmedScope() {
+        publicationThread.assertNotPublicationThread()
         val claimed = synchronized(lock) {
             val current = state as? State.ScopeConfirmed ?: return
             val operation = activeOperation ?: return
@@ -1140,18 +1274,23 @@ class ManualOrganizationRun internal constructor(
      * here — the hosting surface calls this only after the scope-bound request
      * discard ([discardScopeBoundRequest]) succeeded.
      */
-    fun reopenSelection(): Boolean = synchronized(lock) {
-        val current = state as? State.ScopeConfirmed ?: return@synchronized false
-        val operation = activeOperation ?: return@synchronized false
-        if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized false
-        if (current.candidates.isEmpty()) return@synchronized false
-        stateHolder.value = State.Selecting(
-            current.runId,
-            current.candidates,
-            intentScopeCount = current.intentScopeCount,
-            intentScopeCandidates = current.intentScopeCandidates,
-        )
-        true
+    fun reopenSelection(): Boolean {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            val current = state as? State.ScopeConfirmed ?: return@synchronized false
+            val operation = activeOperation ?: return@synchronized false
+            if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized false
+            if (current.candidates.isEmpty()) return@synchronized false
+            publishState(
+                State.Selecting(
+                    current.runId,
+                    current.candidates,
+                    intentScopeCount = current.intentScopeCount,
+                    intentScopeCandidates = current.intentScopeCandidates,
+                ),
+            )
+            true
+        }
     }
 
     /**
@@ -1165,6 +1304,7 @@ class ManualOrganizationRun internal constructor(
      * paths.
      */
     fun continueAfterUsageAccessGate() {
+        publicationThread.assertNotPublicationThread()
         val claimed = synchronized(lock) {
             val current = state as? State.AwaitingUsageAccessJit ?: return
             val op = activeOperation ?: return
@@ -1172,7 +1312,7 @@ class ManualOrganizationRun internal constructor(
             // Resolution is idempotent and owner-checked; safe to call for the
             // non-owner (waiter) path too, where it is a no-op.
             usageAccessGate.resolve(current.runId)
-            stateHolder.value = State.ResumingUsageAccessJit(current.runId, current.selection)
+            publishState(State.ResumingUsageAccessJit(current.runId, current.selection))
             op to current.selection
         }
         val (operation, selection) = claimed
@@ -1213,6 +1353,7 @@ class ManualOrganizationRun internal constructor(
      * the explicit consent point, so no additional confirmation is inserted.
      */
     fun attachIntent(intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent): AttachIntentOutcome {
+        publicationThread.assertNotPublicationThread()
         val claimed: Triple<AttachIntentOutcome, Operation?, List<CandidateTarget.AppKey>> = synchronized(lock) {
             when (val current = state) {
                 is State.Selecting -> {
@@ -1221,9 +1362,11 @@ class ManualOrganizationRun internal constructor(
                         Triple(AttachIntentOutcome.NotAttachable, null, emptyList<CandidateTarget.AppKey>())
                     } else {
                         operation.intent = intent
-                        stateHolder.value = current.copy(
-                            intentScopeCount = intent.session.scopeCandidates.size,
-                            intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                        publishState(
+                            current.copy(
+                                intentScopeCount = intent.session.scopeCandidates.size,
+                                intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                            ),
                         )
                         Triple(AttachIntentOutcome.Attached, null, emptyList<CandidateTarget.AppKey>())
                     }
@@ -1246,14 +1389,16 @@ class ManualOrganizationRun internal constructor(
                         if (cause != null) {
                             val failure =
                                 app.lawnchair.organizer.personalization.IntentValidationFailure.ScopeMismatch(cause)
-                            stateHolder.value = current.copy(scopeRejection = failure)
+                            publishState(current.copy(scopeRejection = failure))
                             Triple(AttachIntentOutcome.Rejected(failure), null, emptyList<CandidateTarget.AppKey>())
                         } else {
                             operation.intent = intent
-                            stateHolder.value = current.copy(
-                                intentScopeCount = intent.session.scopeCandidates.size,
-                                intentScopeCandidates = intent.session.scopeCandidates.toSet(),
-                                scopeRejection = null,
+                            publishState(
+                                current.copy(
+                                    intentScopeCount = intent.session.scopeCandidates.size,
+                                    intentScopeCandidates = intent.session.scopeCandidates.toSet(),
+                                    scopeRejection = null,
+                                ),
                             )
                             Triple(AttachIntentOutcome.Attached, operation, current.selection)
                         }
@@ -1298,19 +1443,22 @@ class ManualOrganizationRun internal constructor(
      * null when there is no live [State.ScopeConfirmed] on this run or
      * [scopeIdentity] is not exactly the confirmed selection (fail-closed).
      */
-    fun claimGenerationEpoch(scopeIdentity: List<CandidateTarget.AppKey>): GenerationEpoch? = synchronized(lock) {
-        val current = state as? State.ScopeConfirmed ?: return@synchronized null
-        val operation = activeOperation ?: return@synchronized null
-        if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized null
-        if (scopeIdentity != current.selection) return@synchronized null
-        val next = GenerationEpoch(
-            runId = operation.runId,
-            operationId = operation.operationId,
-            scopeIdentity = scopeIdentity,
-            epoch = (operation.generationEpoch?.epoch ?: 0L) + 1L,
-        )
-        operation.generationEpoch = next
-        next
+    fun claimGenerationEpoch(scopeIdentity: List<CandidateTarget.AppKey>): GenerationEpoch? {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            val current = state as? State.ScopeConfirmed ?: return@synchronized null
+            val operation = activeOperation ?: return@synchronized null
+            if (operation.runId != current.runId || !isActiveLocked(operation)) return@synchronized null
+            if (scopeIdentity != current.selection) return@synchronized null
+            val next = GenerationEpoch(
+                runId = operation.runId,
+                operationId = operation.operationId,
+                scopeIdentity = scopeIdentity,
+                epoch = (operation.generationEpoch?.epoch ?: 0L) + 1L,
+            )
+            operation.generationEpoch = next
+            next
+        }
     }
 
     /**
@@ -1322,6 +1470,7 @@ class ManualOrganizationRun internal constructor(
      * (and advances) again.
      */
     fun invalidateGenerationEpoch() {
+        publicationThread.assertNotPublicationThread()
         synchronized(lock) {
             activeOperation?.generationEpoch = null
         }
@@ -1332,8 +1481,11 @@ class ManualOrganizationRun internal constructor(
      * generation epoch. The commit path re-verifies this under the run lock;
      * this read is the cheap stale-check for completion/cleanup paths.
      */
-    fun isCurrentEpoch(epoch: GenerationEpoch): Boolean = synchronized(lock) {
-        activeOperation?.generationEpoch == epoch
+    fun isCurrentEpoch(epoch: GenerationEpoch): Boolean {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            activeOperation?.generationEpoch == epoch
+        }
     }
 
     /**
@@ -1363,11 +1515,13 @@ class ManualOrganizationRun internal constructor(
         if (operation.generationEpoch != epoch) {
             return@synchronized GenerationCommitOutcome.Rejected(GenerationCommitRejection.STALE_EPOCH)
         }
+        scopeOwnershipRevision.incrementAndGet()
         val persisted = exchangeGateTransaction.withinGate(
             durableMutation = { exchangeGateTransaction.commit() },
             onGateHeld = { outcome ->
                 if (outcome == PersistOutcome.Committed) {
                     operation.boundExportId = exportId
+                    boundScopeRunId = operation.runId
                 }
             },
         )
@@ -1398,11 +1552,16 @@ class ManualOrganizationRun internal constructor(
         if (operation == null || state !is State.ScopeConfirmed || bound != expectedExportId) {
             return@synchronized ExportCleanupOutcome.Superseded
         }
+        scopeOwnershipRevision.incrementAndGet()
         val outcome = exchangeGateTransaction.withinGate(
             durableMutation = { exchangeGateTransaction.commit() },
             onGateHeld = { result ->
                 when (result) {
-                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> operation.boundExportId = null
+                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> {
+                        operation.boundExportId = null
+                        boundScopeRunId = null
+                    }
+
                     StoreInvalidationOutcome.WriteFailed -> Unit
                 }
             },
@@ -1447,11 +1606,16 @@ class ManualOrganizationRun internal constructor(
             // cut off by the epoch invalidation above — no store call needed.
             return@synchronized ScopeDiscardOutcome.Discarded
         }
+        scopeOwnershipRevision.incrementAndGet()
         val outcome = exchangeGateTransaction.withinGate(
             durableMutation = { exchangeGateTransaction.commit(bound) },
             onGateHeld = { result ->
                 when (result) {
-                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> operation.boundExportId = null
+                    StoreInvalidationOutcome.Committed, StoreInvalidationOutcome.NoMatch -> {
+                        operation.boundExportId = null
+                        boundScopeRunId = null
+                    }
+
                     StoreInvalidationOutcome.WriteFailed -> Unit
                 }
             },
@@ -1514,9 +1678,33 @@ class ManualOrganizationRun internal constructor(
      * exchange side ASK without reaching into the run-private
      * `Operation.boundExportId`.
      */
-    fun isLiveScopeOwner(runId: RunId, expectedExportId: String): Boolean = synchronized(lock) {
-        isLiveScopeOwnerLocked(runId, expectedExportId)
+    fun isLiveScopeOwner(runId: RunId, expectedExportId: String): Boolean {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            isLiveScopeOwnerLocked(runId, expectedExportId)
+        }
     }
+
+    /** A worker observation; only a still-current observation may drive UI adoption. */
+    class ScopeOwnershipObservation internal constructor(
+        val ownedByLiveScope: Boolean,
+        internal val revision: Long,
+    )
+
+    /**
+     * Issue #583: authoritative worker read paired with its invalidation
+     * revision. The UI must re-observe on a worker if the revision changed;
+     * an in-flight/failed discard is not mistaken for an ownerless run.
+     */
+    fun observeLiveScopeOwner(runId: RunId, expectedExportId: String): ScopeOwnershipObservation {
+        publicationThread.assertNotPublicationThread()
+        return synchronized(lock) {
+            ScopeOwnershipObservation(isLiveScopeOwnerLocked(runId, expectedExportId), scopeOwnershipRevision.get())
+        }
+    }
+
+    /** Lock-free UI fence, not authority to persist or attach an intent. */
+    fun isCurrentScopeOwnership(observation: ScopeOwnershipObservation): Boolean = observation.revision == scopeOwnershipRevision.get()
 
     /** The [isLiveScopeOwner] verdict; callers hold [lock]. */
     private fun isLiveScopeOwnerLocked(runId: RunId, expectedExportId: String): Boolean {
@@ -1524,6 +1712,16 @@ class ManualOrganizationRun internal constructor(
         val operation = activeOperation ?: return false
         return operation.runId == runId && isActiveLocked(operation) && operation.boundExportId == expectedExportId
     }
+
+    // Issue #418: mirrors [Operation.boundExportId] presence per run so
+    // [hasBoundScopeRequest] can answer WITHOUT taking the run lock. Its only
+    // production caller runs on the main thread (the method-choice face's
+    // system-Back routing), and main must never wait on the run lock now that
+    // machine sections block-join their state writes onto main (spec 418
+    // deadlock audit rule 2). Updated inside the same critical sections that
+    // mutate [Operation.boundExportId].
+    @Volatile
+    private var boundScopeRunId: RunId? = null
 
     /**
      * Issue #417 (spec 417, AC-5): read-only UI routing fact — whether the
@@ -1534,11 +1732,20 @@ class ManualOrganizationRun internal constructor(
      * the confirmed scope, so it must never freeze it (the Back path then
      * re-opens the selection without a 破棄確認). Pure read — no mutation, no
      * store access.
+     *
+     * Lock-free by construction (see [boundScopeRunId]): the volatile mirror
+     * may trail the authoritative lock-held state by the microseconds of the
+     * publishing section. For this Back-routing hint a stale `true` merely
+     * raises the confirmation while the run is already tearing down, where the
+     * next display state settles the face; a stale `false` routes to the
+     * selection re-open, whose own lock section re-validates. The lock-taken
+     * `isActiveLocked` half of the original verdict is subsumed by the state
+     * check within that window (a cancelled run publishes `Cancelled`, which
+     * fails the [State.ScopeConfirmed] test).
      */
-    fun hasBoundScopeRequest(): Boolean = synchronized(lock) {
-        val current = state as? State.ScopeConfirmed ?: return@synchronized false
-        val operation = activeOperation ?: return@synchronized false
-        operation.runId == current.runId && isActiveLocked(operation) && operation.boundExportId != null
+    fun hasBoundScopeRequest(): Boolean {
+        val current = state as? State.ScopeConfirmed ?: return false
+        return current.runId == boundScopeRunId
     }
 
     /**
@@ -1546,19 +1753,137 @@ class ManualOrganizationRun internal constructor(
      * Add-run whose concrete preview was unavailable. The layout may have
      * moved since planning — staleness surfaces through the same inspect
      * seam as the first attempt.
+     *
+     * Issue #508: the same seam re-runs a failed replan's preview. A retained
+     * replan (generation > 0) keeps the sticky count-only prohibition and
+     * restores `exclusions = currentExclusions` (updated at request admission)
+     * on success; the journal stays unchanged for replan retries.
      */
     fun retryPlanPreview() {
+        publicationThread.assertNotPublicationThread()
         val retained = synchronized(lock) {
             if (state !is State.PreviewUnavailable) return
             val operation = activeOperation ?: return
             val plan = pending ?: return
-            operation to plan
+            Triple(operation, plan, operation.replanGeneration)
+        }
+        val (operation, plan, generation) = retained
+        try {
+            handlePlanPreview(
+                operation,
+                plan.input,
+                plan.result,
+                plan.summary,
+                expectedGeneration = generation.takeIf { it > 0 },
+                emitPreviewed = generation == 0,
+            )
+        } catch (failure: Throwable) {
+            abort(operation)
+            throw failure
+        }
+    }
+
+    /**
+     * Issue #508: applies the user's exclusion set as an absolute set and
+     * replans the proposal. Accepted on the confirmation surfaces
+     * ([State.Preview] / [State.Replanning]) while a stable proposal exists;
+     * every key must belong to the run's base excludable surface and the set
+     * must differ from the current one — anything else is a no-op (the UI
+     * only sends validated keys). Admission advances the replan generation
+     * and updates `currentExclusions` (the latest REQUESTED set — the retry
+     * restoration key), publishes [State.Replanning] with the last stable
+     * summary/details, and the worker then derives the input directly from
+     * the immutable base, replans with the pure planner, and completes through
+     * the existing preview handling (generation-gated: a superseded result is
+     * discarded zero-write; an empty diff ends as [State.NoChanges]).
+     */
+    fun applyProposalExclusions(next: Set<ProposalExclusionKey>) {
+        publicationThread.assertNotPublicationThread()
+        val claimed = synchronized(lock) {
+            if (state !is State.Preview && state !is State.Replanning) return
+            val operation = activeOperation ?: return
+            val plan = pending ?: return
+            if (!isActiveLocked(operation)) return
+            val base = operation.baseInput ?: return
+            val excludable = operation.baseExcludable ?: return
+            if (next == operation.currentExclusions) return
+            if (!excludable.containsAll(next)) return
+            operation.replanGeneration += 1
+            operation.currentExclusions = next
+            // Phase-before-worker: the progress surface commits under the same
+            // lock section as the generation claim, so a collector never sees
+            // the request unacknowledged and confirm is blocked immediately.
+            publishState(State.Replanning(plan.summary, plan.details, next))
+            ClaimedReplan(operation, plan.summary, plan.details, base, operation.replanGeneration)
         }
         try {
-            handlePlanPreview(retained.first, retained.second.input, retained.second.result, retained.second.summary)
+            replanProposal(claimed.operation, claimed.base, next, claimed.generation, claimed.summary)
         } catch (failure: Throwable) {
-            abort(retained.first)
+            abort(claimed.operation)
             throw failure
+        }
+    }
+
+    private data class ClaimedReplan(
+        val operation: Operation,
+        val summary: Summary,
+        val details: PlanPreviewDetails?,
+        val base: OrganizationInput,
+        val generation: Int,
+    )
+
+    /**
+     * The replan worker: base-derived input → pure planner → the shared
+     * preview handling with the claiming generation. Every terminal publish
+     * (finish / stale / preview) is generation-gated, so a result arriving
+     * after a newer exclusion request can neither surface nor end the run.
+     */
+    private fun replanProposal(
+        operation: Operation,
+        base: OrganizationInput,
+        exclusions: Set<ProposalExclusionKey>,
+        generation: Int,
+        claimedSummary: Summary,
+    ) {
+        val derived = when (val derivation = ProposalExclusionDerivation.derive(base, exclusions)) {
+            is ProposalExclusionDerivation.Result.Ready -> derivation.input
+
+            // Defensive: keys were validated against the base surface at
+            // admission, so the derivation cannot fail here. Treat a failure
+            // as a contract violation, fail closed like a materialization
+            // violation, and never guess an input.
+            ProposalExclusionDerivation.Result.Invalid -> {
+                finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, claimedSummary), generation)
+                return
+            }
+        }
+        val result = planner.plan(derived)
+        when (val outcome = result.outcome) {
+            is Planned -> {
+                val summary = outcome.summary(derived)
+                if (summary.movedCount == 0 && summary.newFolderCount == 0 && summary.newPageCount == 0 && summary.addedCount == 0) {
+                    if (outcome.unplaced.isEmpty()) {
+                        finish(operation, State.NoChanges, generation)
+                    } else {
+                        finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary), generation)
+                    }
+                } else {
+                    handlePlanPreview(
+                        operation,
+                        derived,
+                        result,
+                        summary,
+                        expectedGeneration = generation,
+                        emitPreviewed = false,
+                    )
+                }
+            }
+
+            is app.lawnchair.organizer.planning.Rejected.Invalid ->
+                finish(operation, State.PlanningRejected(PlanningFailureKind.INVALID, result.summary(derived)), generation)
+
+            is app.lawnchair.organizer.planning.Rejected.Impossible ->
+                finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, result.summary(derived)), generation)
         }
     }
 
@@ -1629,10 +1954,12 @@ class ManualOrganizationRun internal constructor(
                     usageAccessGate.release(runId)
                     return
                 }
-                stateHolder.value = State.AwaitingUsageAccessJit(
-                    runId,
-                    selection,
-                    isOwner = gateDecision == UsageAccessJitGate.Decision.Present,
+                publishState(
+                    State.AwaitingUsageAccessJit(
+                        runId,
+                        selection,
+                        isOwner = gateDecision == UsageAccessJitGate.Decision.Present,
+                    ),
                 )
             }
             return
@@ -1655,8 +1982,8 @@ class ManualOrganizationRun internal constructor(
             // never observe RUN_STARTED issued while the run still shows
             // Selecting/Resuming, and a paused run never shows a capture
             // that has not started.
-            preparationPhaseHolder.value = PreparationPhase.CAPTURE
-            stateHolder.value = State.Capturing
+            publishPreparationPhase(PreparationPhase.CAPTURE)
+            publishState(State.Capturing)
             operation.journalStarted = true
             emit(
                 RunEvent(
@@ -1712,11 +2039,13 @@ class ManualOrganizationRun internal constructor(
                             val detected = operation.detectedCandidates
                             if (isActiveLocked(operation) && detected != null) {
                                 operation.intent = null
-                                stateHolder.value = State.Selecting(
-                                    operation.runId,
-                                    detected,
-                                    intentScopeCount = 0,
-                                    scopeRejection = failure,
+                                publishState(
+                                    State.Selecting(
+                                        operation.runId,
+                                        detected,
+                                        intentScopeCount = 0,
+                                        scopeRejection = failure,
+                                    ),
                                 )
                                 true
                             } else {
@@ -1755,8 +2084,8 @@ class ManualOrganizationRun internal constructor(
                 // Planning publish, in the same lock section.
                 synchronized(lock) {
                     if (isActiveLocked(operation)) {
-                        preparationPhaseHolder.value = PreparationPhase.PLAN
-                        stateHolder.value = State.Planning
+                        publishPreparationPhase(PreparationPhase.PLAN)
+                        publishState(State.Planning)
                     }
                 }
                 if (!isActive(operation)) return
@@ -1819,57 +2148,70 @@ class ManualOrganizationRun internal constructor(
     }
 
     /**
-     * Issue #194 + #228: obtains (or re-obtains) the read-only preview. A run
-     * without Add rows keeps the count-only compatibility fallback for
+     * Issue #194 + #228 + #508: obtains (or re-obtains) the read-only preview.
+     * A run without Add rows keeps the count-only compatibility fallback for
      * environmental preview failures; a run with Add rows must never be
      * confirmable without the concrete change list, so the same failures stop
      * at [State.PreviewUnavailable] with a re-preview action instead (spec
-     * AC-14).
+     * AC-14). Once a proposal replan has been requested ([Operation.replanGeneration]
+     * > 0 — the sticky "exclusions were changed" state, still true after the
+     * set returns to empty), the count-only fallback is unreachable for that
+     * run: the same environmental failures stop at [State.PreviewUnavailable]
+     * too (spec D-7).
+     *
+     * [expectedGeneration] gates replan completions: a result whose generation
+     * was superseded is discarded zero-write. [emitPreviewed] stays true for
+     * the initial flow (one PREVIEWED per run journal); replan completions
+     * keep the journal unchanged.
      */
     private fun handlePlanPreview(
         operation: Operation,
         input: OrganizationInput,
         result: PlanningResult,
         summary: Summary,
+        expectedGeneration: Int? = null,
+        emitPreviewed: Boolean = true,
     ) {
         val includesAdditions = input.targets.additions.isNotEmpty()
+        val stickyReplan = operation.replanGeneration > 0
         when (val preview = application.inspectPlan(input, result)) {
-            is PlanPreviewResult.Previewed -> enterPreview(operation, input, result, summary, preview.preview)
+            is PlanPreviewResult.Previewed -> enterPreview(operation, input, result, summary, preview.preview, expectedGeneration)
 
             is PlanPreviewResult.Stale -> transitionToStale(
                 operation,
                 emitRejection = true,
                 origin = StaleOrigin.DETECTED_BEFORE_REVIEW,
+                expectedGeneration = expectedGeneration,
             )
 
             // Review P2: the typed candidate-resolution failure from the
             // preview seam keeps its identity — re-detect outcome, zero-write.
             is PlanPreviewResult.CandidateResolutionFailed ->
-                finish(operation, State.CandidateResolutionFailed(preview.failure))
+                finish(operation, State.CandidateResolutionFailed(preview.failure), expectedGeneration)
 
             is PlanPreviewResult.NotPlannable -> when (preview.reason) {
                 PlanPreviewRejection.CAPTURE_FAILED ->
-                    if (includesAdditions) {
-                        enterPreviewUnavailable(operation, input, result, summary)
+                    if (includesAdditions || stickyReplan) {
+                        enterPreviewUnavailable(operation, input, result, summary, expectedGeneration)
                     } else {
                         enterPreview(operation, input, result, summary, null)
                     }
 
                 PlanPreviewRejection.OUTCOME_NOT_PLANNED,
                 PlanPreviewRejection.MATERIALIZATION_INVALID,
-                -> finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary))
+                -> finish(operation, State.PlanningRejected(PlanningFailureKind.IMPOSSIBLE, summary), expectedGeneration)
             }
 
             is PlanPreviewResult.Unavailable,
             PlanPreviewResult.WriterBusy,
             PlanPreviewResult.Concurrent,
-            -> if (includesAdditions) {
-                enterPreviewUnavailable(operation, input, result, summary)
+            -> if (includesAdditions || stickyReplan) {
+                enterPreviewUnavailable(operation, input, result, summary, expectedGeneration)
             } else {
                 enterPreview(operation, input, result, summary, null)
             }
         }
-        if (state is State.Preview) {
+        if (emitPreviewed && state is State.Preview) {
             emit(
                 RunEvent(
                     journalSequence = 0L,
@@ -1892,15 +2234,19 @@ class ManualOrganizationRun internal constructor(
         input: OrganizationInput,
         result: PlanningResult,
         summary: Summary,
+        expectedGeneration: Int? = null,
     ) {
         synchronized(lock) {
             if (!isActiveLocked(operation)) return
+            // Issue #508: same stale-generation discard as [enterPreview].
+            if (expectedGeneration != null && operation.replanGeneration != expectedGeneration) return
             pending = PendingPlan(operation, input, result, summary, previewPlan = null)
-            stateHolder.value = State.PreviewUnavailable(summary)
+            publishState(State.PreviewUnavailable(summary))
         }
     }
 
     fun cancel() {
+        publicationThread.assertNotPublicationThread()
         val operation = synchronized(lock) {
             val candidate = activeOperation ?: return
             if (candidate.applicationAdmitted.get()) return
@@ -1910,14 +2256,19 @@ class ManualOrganizationRun internal constructor(
                 state !is State.ResumingUsageAccessJit &&
                 // Issue #417: the method-choice face is interruptible — an
                 // empty-cut run's Back is an interruption (zero-write).
-                state !is State.ScopeConfirmed
+                state !is State.ScopeConfirmed &&
+                // Issue #508: a replan in flight is zero-write waiting and
+                // stays interruptible like the preview it replaces.
+                state !is State.Replanning
             ) {
                 return
             }
+            scopeOwnershipRevision.incrementAndGet()
             candidate.cancelled.set(true)
             pending = null
+            scopeOwnershipRevision.incrementAndGet()
             activeOperation = null
-            stateHolder.value = State.Cancelled
+            publishState(State.Cancelled)
             updateOperationActiveLocked()
             candidate
         }
@@ -1946,11 +2297,12 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun confirm() {
+        publicationThread.assertNotPublicationThread()
         val (operation, pendingPlan) = synchronized(lock) {
             val currentOperation = activeOperation ?: return
             val currentPlan = pending ?: return
             if (state !is State.Preview) return
-            stateHolder.value = State.Applying
+            publishState(State.Applying)
             currentOperation to currentPlan
         }
         try {
@@ -1995,6 +2347,7 @@ class ManualOrganizationRun internal constructor(
             val result = application.apply(plan, pendingPlan.runId)
             synchronized(lock) {
                 if (!isActiveLocked(operation)) return
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = null
                 updateOperationActiveLocked()
                 val nextState = when (result) {
@@ -2012,7 +2365,7 @@ class ManualOrganizationRun internal constructor(
                     appliedPoint = result.pointId
                     lastVerifiedApply = nextState
                 }
-                stateHolder.value = nextState
+                publishState(nextState)
             }
             operation.lease.close()
         } catch (failure: Throwable) {
@@ -2022,6 +2375,7 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun beginRecoveryPreview() {
+        publicationThread.assertNotPublicationThread()
         val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return
         val request = synchronized(lock) {
             val current = lastVerifiedApply
@@ -2034,7 +2388,7 @@ class ManualOrganizationRun internal constructor(
                 recoveryEntryOrigin = RecoveryEntryOrigin.AppliedSurface
                 recoveryEntryReturnState = null
                 recoveryLease = lease
-                stateHolder.value = State.InspectingRecovery
+                publishState(State.InspectingRecovery)
                 updateOperationActiveLocked()
                 pointId to current
             }
@@ -2065,7 +2419,7 @@ class ManualOrganizationRun internal constructor(
                             ?.takeIf { it.pointId == restorable.pointId }
                             ?.let { retained.summary }
                     }
-                stateHolder.value = State.RecoveryPreview(preview, correlated)
+                publishState(State.RecoveryPreview(preview, correlated))
                 true
             }
         }
@@ -2100,9 +2454,10 @@ class ManualOrganizationRun internal constructor(
      * an empty run face.
      */
     fun beginRecoveryPreviewFromDurableEntry(): Boolean {
+        publicationThread.assertNotPublicationThread()
         val lease = operationGate.tryAcquire(OrganizationOperationLease.Kind.RECOVERY) ?: return false
         val admitted = synchronized(lock) {
-            val current = stateHolder.value
+            val current = stateBus.state
             if (activeOperation != null || recoveryLease != null ||
                 !(current is State.Idle || current is State.Cancelled)
             ) {
@@ -2111,7 +2466,7 @@ class ManualOrganizationRun internal constructor(
                 recoveryEntryOrigin = RecoveryEntryOrigin.HubStatusCard
                 recoveryEntryReturnState = current
                 recoveryLease = lease
-                stateHolder.value = State.InspectingRecovery
+                publishState(State.InspectingRecovery)
                 updateOperationActiveLocked()
                 current
             }
@@ -2145,7 +2500,7 @@ class ManualOrganizationRun internal constructor(
                 pendingRecovery = preview as? RecoveryPreviewResult.Restorable
                 // spec 230 D2 correlation gate, reused unchanged: with no
                 // retained verified apply this always renders without history.
-                stateHolder.value = State.RecoveryPreview(preview, appliedSummary = null)
+                publishState(State.RecoveryPreview(preview, appliedSummary = null))
                 true
             }
         }
@@ -2170,11 +2525,12 @@ class ManualOrganizationRun internal constructor(
      * reports whether this call resolved the flow.
      */
     fun leaveRecoveryResultToHub(): Boolean {
+        publicationThread.assertNotPublicationThread()
         val restored = synchronized(lock) {
             if (state !is State.RecoveryResultState || recoveryEntryOrigin != RecoveryEntryOrigin.HubStatusCard) {
                 false
             } else {
-                stateHolder.value = recoveryEntryReturnState ?: State.Idle
+                publishState(recoveryEntryReturnState ?: State.Idle)
                 recoveryEntryOrigin = null
                 recoveryEntryReturnState = null
                 true
@@ -2184,9 +2540,10 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun cancelRecoveryPreview() {
+        publicationThread.assertNotPublicationThread()
         val lease = synchronized(lock) {
             pendingRecovery = null
-            stateHolder.value = recoveryCancelTargetLocked()
+            publishState(recoveryCancelTargetLocked())
             recoveryEntryOrigin = null
             recoveryEntryReturnState = null
             recoveryLease.also { recoveryLease = null }
@@ -2207,9 +2564,10 @@ class ManualOrganizationRun internal constructor(
     }
 
     fun confirmRecovery() {
+        publicationThread.assertNotPublicationThread()
         val preview = synchronized(lock) {
             val current = pendingRecovery ?: return
-            stateHolder.value = State.Recovering
+            publishState(State.Recovering)
             pendingRecovery = null
             current
         }
@@ -2220,7 +2578,7 @@ class ManualOrganizationRun internal constructor(
             throw failure
         }
         val lease = synchronized(lock) {
-            if (state is State.Recovering) stateHolder.value = State.RecoveryResultState(result)
+            if (state is State.Recovering) publishState(State.RecoveryResultState(result))
             recoveryLease.also { recoveryLease = null }
                 .also { updateOperationActiveLocked() }
         }
@@ -2247,10 +2605,11 @@ class ManualOrganizationRun internal constructor(
         get() = application.readinessState
 
     fun dismiss(): DismissalOutcome {
+        publicationThread.assertNotPublicationThread()
         val recovery = synchronized(lock) {
             if (activeOperation == null && recoveryLease != null) {
                 pendingRecovery = null
-                stateHolder.value = recoveryCancelTargetLocked()
+                publishState(recoveryCancelTargetLocked())
                 recoveryEntryOrigin = null
                 recoveryEntryReturnState = null
                 recoveryLease.also { recoveryLease = null }
@@ -2271,11 +2630,13 @@ class ManualOrganizationRun internal constructor(
             if (operation == null) {
                 return@synchronized DismissalOutcome.NoActiveOperation to null
             }
+            scopeOwnershipRevision.incrementAndGet()
             operation.cancelled.set(true)
+            scopeOwnershipRevision.incrementAndGet()
             activeOperation = null
             pending = null
             pendingRecovery = null
-            stateHolder.value = State.Cancelled
+            publishState(State.Cancelled)
             updateOperationActiveLocked()
             DismissalOutcome.CancelledAndMayNavigate to operation
         }
@@ -2313,11 +2674,21 @@ class ManualOrganizationRun internal constructor(
         result: PlanningResult,
         summary: Summary,
         preview: PlanPreview?,
+        expectedGeneration: Int? = null,
     ) {
         synchronized(lock) {
             if (!isActiveLocked(operation)) return
-            pending = PendingPlan(operation, input, result, summary, preview?.plan)
-            stateHolder.value = State.Preview(summary, preview?.details)
+            // Issue #508: a replan completion whose generation was superseded
+            // by a newer exclusion request is discarded zero-write — an older
+            // async result never overwrites the newer request's surface.
+            if (expectedGeneration != null && operation.replanGeneration != expectedGeneration) return
+            if (operation.baseInput == null) {
+                operation.baseInput = input
+                operation.baseExcludable = ProposalExclusionDerivation.excludableKeys(input)
+                operation.currentExclusions = emptySet()
+            }
+            pending = PendingPlan(operation, input, result, summary, preview?.plan, preview?.details)
+            publishState(State.Preview(summary, preview?.details, operation.currentExclusions))
         }
     }
 
@@ -2325,15 +2696,25 @@ class ManualOrganizationRun internal constructor(
      * Ends the active run in [State.Stale]. [emitRejection] reproduces the
      * existing A2 stale-rejection run event for materialize-time staleness.
      * [origin] records whether the user had attempted to apply (Issue #210).
+     * [expectedGeneration] gates replan completions (Issue #508) — a stale
+     * detected by a superseded replan is discarded zero-write.
      */
-    private fun transitionToStale(operation: Operation, emitRejection: Boolean, origin: StaleOrigin) {
+    private fun transitionToStale(
+        operation: Operation,
+        emitRejection: Boolean,
+        origin: StaleOrigin,
+        expectedGeneration: Int? = null,
+    ) {
         val stale = synchronized(lock) {
-            if (!isActiveLocked(operation)) {
+            if (!isActiveLocked(operation) ||
+                (expectedGeneration != null && operation.replanGeneration != expectedGeneration)
+            ) {
                 false
             } else {
                 pending = null
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = null
-                stateHolder.value = State.Stale(origin)
+                publishState(State.Stale(origin))
                 updateOperationActiveLocked()
                 true
             }
@@ -2350,18 +2731,21 @@ class ManualOrganizationRun internal constructor(
 
     private fun setIfActive(operation: Operation, nextState: State) {
         synchronized(lock) {
-            if (isActiveLocked(operation)) stateHolder.value = nextState
+            if (isActiveLocked(operation)) publishState(nextState)
         }
     }
 
-    private fun finish(operation: Operation, nextState: State) {
+    private fun finish(operation: Operation, nextState: State, expectedGeneration: Int? = null) {
         val completed = synchronized(lock) {
-            if (!isActiveLocked(operation)) {
+            if (!isActiveLocked(operation) ||
+                (expectedGeneration != null && operation.replanGeneration != expectedGeneration)
+            ) {
                 false
             } else {
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = null
                 pending = null
-                stateHolder.value = nextState
+                publishState(nextState)
                 updateOperationActiveLocked()
                 true
             }
@@ -2374,9 +2758,10 @@ class ManualOrganizationRun internal constructor(
             if (!isActiveLocked(operation)) {
                 false
             } else {
+                scopeOwnershipRevision.incrementAndGet()
                 activeOperation = null
                 pending = null
-                stateHolder.value = State.Cancelled
+                publishState(State.Cancelled)
                 updateOperationActiveLocked()
                 true
             }
@@ -2523,6 +2908,12 @@ class ManualOrganizationRun internal constructor(
         val summary: Summary,
         /** Previewed executable plan; null means the count-only compatibility fallback. */
         val previewPlan: ValidatedLayoutPlan?,
+        /**
+         * Issue #508: the details published with this pending plan, kept so a
+         * replan (exclusion change) can keep showing the last stable change
+         * list while it computes. Null for count-only fallbacks.
+         */
+        val details: PlanPreviewDetails? = null,
     ) {
         val runId: RunId
             get() = operation.runId
@@ -2539,6 +2930,21 @@ class ManualOrganizationRun internal constructor(
          * single-shot (see [attachIntent]).
          */
         var intent: app.lawnchair.organizer.personalization.ValidatedPersonalizedIntent? = null,
+        /**
+         * Issue #508: the immutable base of this run's proposal — the first
+         * successful preview's composed input — plus its excludable key
+         * surface and the replan bookkeeping. Every exclusion replan derives
+         * directly from [baseInput] (never from a previously derived input),
+         * so an exclusion followed by its reversal reproduces the original
+         * proposal. `currentExclusions` is the LATEST REQUESTED set (updated
+         * when a request is admitted, not when it succeeds) so a failed
+         * replan's retry re-derives the same set. All process-local; never
+         * serialized. Null base fields mean no stable preview yet.
+         */
+        var baseInput: OrganizationInput? = null,
+        var baseExcludable: Set<ProposalExclusionKey>? = null,
+        var currentExclusions: Set<ProposalExclusionKey> = emptySet(),
+        var replanGeneration: Int = 0,
         /**
          * Issue #331: the detection-time candidate cut this run surfaced, kept
          * so a scope binding rejection can restore the selection surface.

@@ -1,0 +1,15 @@
+runner-valid: PASS calls=1
+runner-missing-info-marker rejected: android.os.BadParcelableException: Incomplete recents callback field: transitionInfo
+runner-missing-info-marker: PASS calls=0
+runner-wrong-descriptor rejected: java.lang.SecurityException: Binder invocation to an incorrect interface
+runner-wrong-descriptor: PASS calls=0
+runner-extra-tail rejected: android.os.BadParcelableException: Parcel data not fully consumed, unread size: 4
+runner-extra-tail: PASS calls=0
+home-valid: PASS calls=1
+home-missing-tail rejected: android.os.BadParcelableException: Incomplete home visibility callback
+home-missing-tail: PASS calls=0
+home-wrong-descriptor rejected: java.lang.SecurityException: Binder invocation to an incorrect interface
+home-wrong-descriptor: PASS calls=0
+home-extra-tail rejected: android.os.BadParcelableException: Parcel data not fully consumed, unread size: 4
+home-extra-tail: PASS calls=0
+RESULT PASS failures=0

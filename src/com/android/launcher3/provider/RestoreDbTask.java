@@ -87,6 +87,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -112,6 +113,23 @@ public class RestoreDbTask {
     public static final String[] DB_COLUMNS_TO_LOG = { "profileId", "title", "itemType", "screen",
             "container", "cellX", "cellY", "spanX", "spanY", "intent", "appWidgetProvider",
             "appWidgetId", "restored" };
+
+    /**
+     * Creates a task for restoring the backed up DB if needed. It performs the initial
+     * pending check immediately and returns a callback which completes the restore
+     * after the database is open.
+     *
+     * <p>Rebase Phase 2 adapt (S2/S3): anchor ModelDbController drives restore through
+     * this factory instead of calling {@link #restoreIfNeeded} directly; the callback
+     * body keeps the fork's post-open restore sequence unchanged.
+     */
+    public static Consumer<ModelDbController> createRestoreTask(Context context) {
+        if (!isPending(context)) {
+            Log.d(TAG, "No restore task pending, exiting RestoreDbTask");
+            return c -> { };
+        }
+        return dbController -> restoreIfNeeded(context, dbController);
+    }
 
     /**
      * Tries to restore the backup DB if needed
@@ -143,7 +161,12 @@ public class RestoreDbTask {
             idp.reset(context);
             trySettingPreviousGidAsCurrent(context, idp, oldPhoneFileName, previousDbs);
         } else {
-            idp.reinitializeAfterRestore(context);
+            // Rebase Phase 2 adapt (S2/S3): the fork fallback called
+            // InvariantDeviceProfile.reinitializeAfterRestore() (re-init the grid from
+            // prefs and prune stale grid DBs), which the anchor IDP no longer carries.
+            // enableNarrowGridRestore() is a fixed-true fork flag, so this branch is
+            // unreachable; reset() keeps the re-init-from-current-grid semantics.
+            idp.reset(context);
         }
     }
 
@@ -497,7 +520,11 @@ public class RestoreDbTask {
     }
 
     public static boolean isPending(Context context) {
-        return LauncherPrefs.get(context).has(RESTORE_DEVICE);
+        return isPending(LauncherPrefs.get(context));
+    }
+
+    public static boolean isPending(LauncherPrefs prefs) {
+        return prefs.has(RESTORE_DEVICE);
     }
 
     /**

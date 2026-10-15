@@ -1,0 +1,9 @@
+=== qa (a) wmshell auxiliary watch — API 37 debug @ 68e68a6a45 ===
+date: 2026-10-08 00:42:16  source: qa-bind-logcat.txt
+NOTE: auxiliary only. The accepted wmshell PASS from post-guard run (commit fc5169566c, ma-wmshell-watch.txt) stands; this is the natural re-observation.
+
+PipInputConsumer mentions: 0
+NoSuchMethodError in shell/systemui context (WindowManagerShell|SystemUI): 0
+shell-side crash (Process: com.android.wm.shell|SystemUI): 0
+any wmshell-origin fatal: 0
+RESULT: no wmshell-origin crash observed during qa run.

@@ -1,0 +1,23 @@
+=== qva2 hiddenapi watch — denials/blocks mentioning app.lawnchair (esp. TaskSnapshotManager / new reflection calls) ===
+date: 2026-10-08 03:32:25; source: qva2-bind-logcat.txt (   75583 lines, whole window boot→task-switch)
+
+--- 'hiddenapi' occurrences:
+3415:10-08 03:10:45.011   645   661 I SystemConfig: Reading permissions from /system/etc/sysconfig/hiddenapi-package-whitelist.xml
+3504:10-08 03:10:45.102   645   661 I SystemConfig: Reading permissions from /product/etc/sysconfig/google-hiddenapi-package-whitelist.xml
+35862:10-08 03:11:11.944  2697  2723 E droid.deskclock: hiddenapi: Accessing hidden field Ljava/util/Collections$SynchronizedCollection;->mutex:Ljava/lang/Object; (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+35863:10-08 03:11:11.944  2697  2723 E droid.deskclock: hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedSet;-><init>(Ljava/util/Set;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+35864:10-08 03:11:11.944  2697  2723 E droid.deskclock: hiddenapi: Accessing hidden method Ljava/util/Collections$SynchronizedCollection;-><init>(Ljava/util/Collection;Ljava/lang/Object;)V (runtime_flags=0, domain=core-platform, api=max-target-o) from Lj$/util/DesugarCollections; (domain=app, TargetSdkVersion=33) using reflection: denied
+56923:10-08 03:15:57.850  3898  3898 I app_process: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+72301:10-08 03:29:24.649  4312  4312 I app_process: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+(count: 7)
+
+--- 'Access denied.*hidden|blocked.*hidden API|hidden API.*blocked|Accessing hidden API' style:
+0
+
+--- TaskSnapshotManager mentions:
+0
+
+--- wrapToBitmap mentions:
+0
+
+RESULT: hiddenapi DENIAL for app.lawnchair* = 0 (no denial/block lines; only informational app_process enforcement-enabled lines above, if any).

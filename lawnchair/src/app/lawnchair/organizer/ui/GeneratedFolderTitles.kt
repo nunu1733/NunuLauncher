@@ -86,6 +86,12 @@ object GeneratedFolderTitles {
             // (already validated, non-blank) proposal label the user saw in the
             // preview; there is no stored identity to resolve.
             is FolderNaming.FromProposalLabel -> naming.label
+
+            // Issue #449: a user-created edit-surface folder carries no naming
+            // semantic; the apply path writes its row untitled. The branch only
+            // keeps the resolver contract total (non-blank) if ever resolved.
+            FolderNaming.FromUserCreation ->
+                stringProvider.string(R.string.organizer_generated_folder_fallback_name)
         }
     }
 }

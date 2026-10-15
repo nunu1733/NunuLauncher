@@ -1,7 +1,7 @@
 # 編集負担ベンチマーク
 
 > Status: Accepted
-> Updated: 2026-09-26
+> Updated: 2026-09-30
 > 出典: 再焦点化方針メモ（2026-09-24承認、Revision 5）§4.1（R-2）、§11（B-9）、§12（B3）。付録全文は [Issue #441](https://github.com/nunu1733/NunuLauncher/issues/441)。受理条件とfixture seeding契約は [spec 441](../../specs/441-editing-burden-benchmark/spec.md)
 > Requirements: NFR-014
 > 形式の参考にした文書: [performance-budgets](./performance-budgets.md)（測定protocol・見直し条件の構成）
@@ -45,6 +45,7 @@ Now段階の機能specは「改善する課題と目標値」を本書から引�
 | B5 | 誤って動かした・外したアイコンを元に戻す | B2/B4の操作を1回実行した直後（表示ページはその操作の結果。共通開始条件の例外） | 元の位置・状態に戻っている |
 | B6 | アプリを10個入れた後のホームを整える | 直前に10個の新規アプリをinstallした直後（B1の繰り返し） | 10個すべての新規アプリのアイコンが指定フォルダ内に存在する（新規アイコンの配置内訳は§3.4の走査規則から決定的。2ページ目8個・3ページ目2個） |
 | B7 | 重複しているアイコンを見つけて1つにする | fixtureホームに同一起動先の重複アイコンが2組ある | 各組で1個だけが残る |
+| B8 | 提案の1項目を元位置に残し、他の提案を適用する | Organizerの提案が確認面に表示され、指定項目A（fixture identityで指定。提案ではAが新規フォルダへ移動される）を元位置に残したい | 提案の他の変更がすべて適用され、Aのみ元のセルに存在する |
 
 課題の対象は§5のidentity（fixture起動先のlabel）で指定する（会計上の指定であり、視覚的探索の負担は数えない。§4）。
 
@@ -132,7 +133,8 @@ identity→roleの対応（課題対象の指定に使う。正本は seeding in
 | Fixture 12〜14 | B4 削除対象（3個） | 1 |
 | Fixture 15〜16 | B3 対象（2個） | 1 |
 | Fixture 17〜18 | B3 対象（2個） | 2 |
-| Fixture 19〜23 | 通常（5個） | 0 |
+| Fixture 19 | B8 対象A（通常5個のうちの1個。Organizer提案では新規フォルダへ移動される） | 0 |
+| Fixture 20〜23 | 通常（4個） | 0 |
 | Fixture 24〜28 | 通常（5個） | 1 |
 | Fixture 29〜34 | 通常（6個） | 2 |
 
@@ -151,8 +153,10 @@ identity→roleの対応（課題対象の指定に使う。正本は seeding in
 | B3 | 21 | 9 | 1ページ目へswipe（1）+ フォルダ作成（長押し2 + 同ページdrag 2）+ ページ2の2個（各: swipe 1 + 長押し2 + 1ページ跨ぎdrag 5 = 8。drop後に視点が1ページ目へ戻るため） | 同上（≤10）。判定はNow-2全体 |
 | B4 | 25 | 13 | ページ0の3個（各: 長押し2 + Remove targetへの同ページdrag 2）+ ページ1へswipe（1）+ ページ1の3個（各4） | 同上（≤12）。判定はNow-2全体 |
 | B5 | 削除: 1 / 移動: 8 | 1 / 2 | 削除はundo tap（4秒以内）。移動はundoなしで逆drag（2ページ跨ぎ: 長押し2 + drag 6。視点は移動先ページ） | 1操作。対象はforkの編集のうち利用者が画面上で行うもの（項目単位のアクション、編集画面の確定）。新規アプリの配置は対象外。上流のdrag移動の取り消しはNext、上流の削除snackbar（約4秒）はbaselineとして記録（メモ§4.1） |
-| B6 | 84 | 32 | 2ページ目に置かれた8個（各: swipe 1 + 長押し2 + 1ページ跨ぎdrag 5 = 8）+ 3ページ目に置かれた2個（各: swipe 2 + 長押し2 + 2ページ跨ぎdrag 6 = 10）。配置内訳は§3.4の走査規則から決定的（2ページ目の空き8cellを先に消費し、残り2個は3ページ目） | B1の改善に従属（10個分の合計。#446のspecで確定） |
-| B7 | 9 | 5 | ページ0のペア削除（長押し2 + 同ページdrag 2）+ ページ1へswipe（1）+ ページ1のペア削除（4）。重複の在処は§5のidentity表で既知であり、探索は数えない（§4） | #451の対象。目標は#451のspecで確定 |
+| B6 | 84 | 32 | 2ページ目に置かれた8個（各: swipe 1 + 長押し2 + 1ページ跨ぎdrag 5 = 8）+ 3ページ目に置かれた2個（各: swipe 2 + 長押し2 + 2ページ跨ぎdrag 6 = 10）。配置内訳は§3.4の走査規則から決定的（2ページ目の空き8cellを先に消費し、残り2個は3ページ目） | **追加操作0**（2026-10-02に[spec 497](../../specs/497-new-app-destination-policy-impl/spec.md)で確定。配置先を設定した後の10個の合計。重み付きコスト・操作数ともに0。B1の改善の10個分。実装: [#497](https://github.com/nunu1733/NunuLauncher/issues/497)） |
+| B7 | 9 | 5 | ページ0のペア削除（長押し2 + 同ページdrag 2）+ ページ1へswipe（1）+ ページ1のペア削除（4）。重複の在処は§5のidentity表で既知であり、探索は数えない（§4） | 構造保証: 全体整理（full-run再編成）の適用後、任意の新規フォルダ内に同一起動先のmemberの重複は0組（[spec 451](../../specs/451-organizer-duplicate-items/spec.md) N-2/N-5の性質testで検証）。可視性: 重複を含むホームでの新規runのpreviewで、重複の存在が警告行で識別できる（重複超過分の行数 ≥ 1/組）。**削除提案経路（[spec 507](../../specs/507-duplicate-removal-proposal/spec.md)が確定）**: 重複確認 → 明示選択 → 既存Remove → 確定の固定手順の重み付き操作コスト **9未満**（8。入口3 + サマリ行1 + 選択2 + 面内Remove 1 + 確定1。長押し1回（重み2）+ 以降はtapのみ。drag・swipe・追加の確認stepなし。#449/#450の既存経路の再利用であり、#451の構造保証・可視性目標は不変） |
+| B8 | 10 | 8 | 現行経路（提案確定 → 手編集。本機能なしの最短）: hub入口（空きスペース長押し2 + hub row 1 + 方法選択1 = 4）+ 確定1 + Aが入ったフォルダを開く1 + A長押し2 + popup「ページへ移動…」1 + ページ選択dialog 1。fixture前提: 適用後にAの元セルが当該ページの最初の空きセルになる（決定的会計の前提をfixture側で保証） | **提案除外経路（[spec 508](../../specs/508-visual-preview-item-exclusion/spec.md)が確定）**: 確認面でAの行の「提案から外す」→ 再計画された新previewで確定の固定手順の重み付き操作コスト **8未満**（6。hub入口4 + 除外1 + 確定1。再計画と新preview表示は操作なし。全解除→再計画の復帰も同一会計）。図previewと除外は零書込みの表示であり、適用は既存の安全経路（1適用 = 1復元点）のみ |
+| B1-CAT | 8 | 3 | B1と同一のbaseline内訳（#497の固定フォルダでは本課題を解決しない: 指定は1フォルダのみであり、カテゴリごとの振り分けは残る。B1/B6の追加操作0を本課題の改善として二重計上しない） | **追加操作0**（[spec 594](../../specs/594-category-new-app-destination/spec.md)が確定。mapping設定後の、**S2/S5/S1で解決できた**カテゴリ新規アプリの合計。重み付きコスト・操作数ともに0。coverageはcapture時に到達するカテゴリ〔appCategory 8種＋TOOLS＋S1 override再install〕に限られ、promise経路は成功対象外〔owner判断、Issue #509 comment 2026-10-14〕。mapping設定は一度だけの設定コストとして会計から分離） |
 
 baselineの算出は2026-09-26の本書改正で確定した。メモ §4.1の初期目標（B1=追加操作0、B2〜B4=50%削減、B5=1操作）を確定値として載せた（B2≤24、B3≤10、B4≤12。B2〜B4の合否はNow-2全体（#448+#449のうち適した方）で判定する）。起草時の概算（B2=40、B3=20、B4=24、B6=未確定、B7=8+探索分）は、drop後の視点移動と課題内のページ移動を内訳に含めていなかったため、確定時に再計算した（Change history）。確定前にNow段階の機能specは受け入れない（メモ §5、NFR-014）。NFR-014のstatus確定は `docs/product/requirements.md` への更新と同時に行う。
 
@@ -163,10 +167,20 @@ baselineの算出は2026-09-26の本書改正で確定した。メモ §4.1の�
 1. **fixture契約の検証（§5）**: `EditingBurdenBenchmarkFixtureSeedingInstrumentationTest`（restore mode、2 test）がgreenであること。「同一入力から同一fixture」「hotseat・その子孫・予約領域重複行の保持」「`ReservationOverlapAcceptance` 基準の非交差」「identity一意性と重複2組」を検証する。実行記録: [441-fixture-seeding-evidence](../assessment/441-fixture-seeding-evidence.md)（reference系emulator `nunu_smoke_api35` での実行を記録。実機Pixel 9aでの検証実績は[Issue #441コメント](https://github.com/nunu1733/NunuLauncher/issues/441#issuecomment-5842816844)に記録があり有効だが、repository内evidenceはemulator実績が正。オーナー判断以降、実機は計測に使用しない）。
 2. **§3.4の配置規則とB6配置内訳の実証**: session install（`INSTALL_REASON_USER`）による新規アプリの自動追加が「1ページ目を除外した最初の空きセル」へ置かれること、および10個を順次installすると「2ページ目に8個・3ページ目に2個」（§3.4の走査規則とfixture空き数から決定的）になることを、DB oracleで確認する。実証記録: 同evidence §4/§5（`tests/benchmark-install-targets/` の固定対象APKを使用。install時にはLawnchairが既定ランチャーかつ前面Activityである必要がある。再検証が必要な場合は同moduleを再利用する）。
 3. **§6の算術照合**: baseline表の内訳が§2の共通開始条件、§3の手順、§4の重みから一意に再計算できること（操作数を含む）。改正PRの本文に照合表を載せ、reviewで確認する。
+4. **B1-CATの会計確認（[spec 594](../../specs/594-category-new-app-destination/spec.md) Verification）**: カテゴリモード設定（UI手順のみで `pref_new_app_destination=category` になることのprefs確認込み）の後、normative session install手順（destination判定前の`installReason=4` oracle記録を含む）で、対応カテゴリ新規アプリの追加操作0とmapping外アプリの上流既定配置を確認する。必須証跡はspecと同一の3点（「capture発生log」「**capture時の4field snapshot値**〔flush前のqueue XML `destination_policy`属性の実値〕」「最終DB destination（container/rank）」）。実施記録: [594-b1cat-evidence](../assessment/issue-594-b1cat-evidence.md)（2026-10-14、API 37 emulator、head `0dd033c95e`。4/4試行でsnapshot実値取得。成立経路: S2×2＋S5＋fallback）。
 
 将来の人間実測・agent自動計測（UI Automator等）について: 本ベンチマークの会計指標では所要時間・知覚負担を扱わない。それらを測る必要が生じた場合は、課題の再定義（実アプリの使用を含む）と併せて、performance-budgets §10と同じ分離基準で別Issueとして再設計する。2026-09-26のオーナー判断におけるscenario再設計の要否判断は「本改正では行わない」である（理由: §1の指標の性質により会計に実アプリ性は不要なこと、開発フローで人手が必須になる構成を避ける方針）。
 
 ## Change history
+
+- 2026-10-14: Issue #594（[spec 594](../../specs/594-category-new-app-destination/spec.md)、accepted）が新課題 **B1-CAT**（B1の固定派生scenario）を確定した（§6のbaseline・目標行追加。実装PR [PR #596](https://github.com/nunu1733/NunuLauncher/pull/596)で§7に準じた会計確認を実施: installReason=4 oracle記録込み、S2経路2個＋mapping外fallback＋S5経路で追加操作0成立）。既存B1〜B8のbaseline・目標・会計の変更なし。
+- 2026-10-03: Issue #508（[spec 508](../../specs/508-visual-preview-item-exclusion/spec.md)、accepted）が新課題 **B8** を確定した（§2の課題定義・§6の現行経路baseline（10/操作数8）と提案除外経路の目標（重み付き8未満 = 6）・§5のB8対象A役割）。既存B1〜B7のbaseline・目標・会計の変更なし。実装PRで会計の照合表とfixtureでの手順成立確認を記録する（spec AC-11）。
+
+- 2026-10-03: Issue #507（[spec 507](../../specs/507-duplicate-removal-proposal/spec.md)、accepted）がB7の削除提案経路の目標を確定した（重複確認 → 明示選択 → 既存Remove → 確定の固定手順の重み付き操作コスト9未満。実装PRで§6のB7行へ反映）。#451の構造保証・可視性目標は不変。baseline（9/操作数5）と内訳の変更なし。
+
+- 2026-10-02: Issue #497（[spec 497](../../specs/497-new-app-destination-policy-impl/spec.md)）の実装PRで、§6のB6行の目標をspec 497 AC-8の確定値へ反映した（追加操作0。配置先を設定した後の10個の合計、重み付きコスト・操作数ともに0）。baseline（84/操作数32）と内訳の変更なし。
+
+- 2026-09-30: Issue #451（[spec 451](../../specs/451-organizer-duplicate-items/spec.md)、accepted）の実装PRで、§6のB7行の目標を#451 spec「B7目標」節の確定値へ反映した（構造保証: 新規フォルダ内の同一起動先重複0組、可視性: preview警告行での重複識別。baselineと操作数の変更なし）。FR-021のstatus更新（proposed → accepted）は spec accept時に `docs/product/requirements.md` へ反映済み。
 
 - 2026-09-26: Issue #441の成果物として新設。付録草案（2026-09-24承認）を正本へ移す際に、grid表記をreference環境の実値「4列×5行」へ正規化し（草案の「5列×4行」は列/行の取り違え。`lawnchair/res/xml/device_profiles.xml` の既定phone grid `4_by_5` と performance-budgets §2.1 に一致）、QSB有効時の新規アプリ配置規則（`WorkspaceItemSpaceFinder.java:55-66` の1ページ目除外）に合わせてB1の操作経路とbaseline概算（8）を修正した。fixture identity（35種のactivity-alias、重複2組限定）と決定的配置規則、seedingの永続mode手順は [spec 441](../../specs/441-editing-burden-benchmark/spec.md) で確定した。
 - 2026-09-26: 実装検証（`docs/assessment/441-fixture-seeding-evidence.md`）で、launcher loaderが1項目フォルダを自動でiconへ展開する挙動（`LAUNCHER_FOLDER_CONVERTED_TO_ICON`）を確認したため、指定フォルダのseed内容を2個（Fixture 01・35）へ変更した。

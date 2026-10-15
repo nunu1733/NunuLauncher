@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "status": "accepted",
-  "captured_on": "2026-08-23",
-  "upstream_commit": "505dbc40e6154c05158b5d0271c45f6a885a411b",
-  "main_commit": "79c1a7db6f1909c248f3bd22365ee9a240357ce1",
+  "captured_on": "2026-10-14",
+  "upstream_commit": "43a21b43d7cc7850ab54e14b1a57dc9646685f35",
+  "main_commit": "e6019476fbf10cce9b4b7e35a207bdc523e7fff7",
   "metric": {
     "counted_paths": "Every changed repository path in git diff --no-renames upstream_commit..target except an explicit non-production exclusion or a new project-owned addition. Each remaining path must be assigned to exactly one bridge group.",
     "counted_lines": "The additions and deletions reported by git diff --no-renames --numstat upstream_commit..target for counted paths, including production source, base resources, schemas, manifests, and other non-excluded upstream/bridge paths.",
@@ -17,7 +17,8 @@
     "New production modules under project_owned_addition_prefixes are reported separately and do not enter the counted metric.",
     "Base resources, schemas, manifests, and every other non-excluded path must be assigned to an explicit bridge group before the measurement can pass.",
     "Known pure translation churn under localized values-* directories is pinned to its recorded upstream/target content pair instead of being excluded by locale-directory prefix; a new localized production change therefore returns to ownership review.",
-    "Extensions, build paths, and localized resource directories that could carry a production change (images, YAML configuration, build.gradle, dependency catalogs, values-*/strings.xml) are never excluded by pattern alone. Known non-production changes to such paths are pinned to their exact recorded content pair and fail closed on divergence."
+    "Extensions, build paths, and localized resource directories that could carry a production change (images, YAML configuration, build.gradle, dependency catalogs, values-*/strings.xml) are never excluded by pattern alone. Known non-production changes to such paths are pinned to their exact recorded content pair and fail closed on divergence.",
+    "Binary font assets retained from the 15-era fork (lawnchair/res/font/inter_*.ttf; upstream 16 replaced Inter with Google Sans Flex) cannot carry a text line metric; they are excluded as explicit paths at this candidate and require ownership review (pin conversion or deletion) at formal baseline adoption."
   ],
   "explicit_exclusions": {
     "prefixes": [
@@ -32,304 +33,311 @@
       ".md"
     ],
     "paths": [
-      ".gitignore"
+      ".agents/skills/ux-visual-review/agents/openai.yaml",
+      ".codex/agents/ux-critic.toml",
+      ".codex/agents/ux-observer.toml",
+      ".gitignore",
+      "lawnchair/res/font/inter_bold.ttf",
+      "lawnchair/res/font/inter_medium.ttf",
+      "lawnchair/res/font/inter_regular.ttf",
+      "lawnchair/res/font/inter_semi_bold.ttf"
     ]
   },
   "pinned_content_exclusions": {
     "build.gradle": {
       "reason": "Root Gradle build script differs from upstream only in test-only and tooling-only build configuration at this baseline; any further edit requires ownership review.",
-      "upstream_blob_sha256_git": "fc3ef62c9a39ab792fc848752b1228011a44afb4",
-      "target_blob_sha256_git": "65827d0c56ff8ccdd4db1cbd912f2f14925f5932"
+      "target_blob_sha256_git": "ca3262d80987f63c294c83551b747ffe48063c91",
+      "upstream_blob_sha256_git": "d0421b51be0d43d977e12290bc5648f932c8de3b"
     },
     "gradle/libs.versions.toml": {
       "reason": "Version catalog changes at this baseline are consumed by project-owned organizer tooling and tests only; any further edit requires ownership review per AGENTS.md dependency policy.",
-      "upstream_blob_sha256_git": "02b9dcd79cd58bcf28bdee1b06007c1831d92de7",
-      "target_blob_sha256_git": "b48958ada4f9bc42dfdb5aeea48cb4bb2ad73d30"
+      "target_blob_sha256_git": "a7cc534b9a6cc9bca5651a9619d82a89580a82a8",
+      "upstream_blob_sha256_git": "11b2c513d31d39d65f494232694adaf961d1f59d"
     },
     "lawnchair/res/values-af-rZA/strings.xml": {
-      "upstream_blob_sha256_git": "ee20d0016f82a44b5591fe733731520f210221dc",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "38e4aae518f4d8f3a70040894fe1dc40678477fa",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "2c2a33e1141765ac57e78677cc4789e9f83a7f9e"
     },
     "lawnchair/res/values-am-rET/strings.xml": {
-      "upstream_blob_sha256_git": "8243d386515be264896b30a97fa0a1ef0945bbe9",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "8a0be7a0a89f83202b26fc98d184d2bc52622180",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "6c788d559a36ff8d6a0fe8a50790d560681471f5"
     },
     "lawnchair/res/values-ar-rSA/strings.xml": {
-      "upstream_blob_sha256_git": "291ab35dd24b68717f6cae24236a1c8f5e63453a",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "44cf14c85f98b8fcac56a289b2460855ce8b6ecb",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "e4a6744904c169351d4920964dae3f230c52afa8"
     },
     "lawnchair/res/values-az-rAZ/strings.xml": {
-      "upstream_blob_sha256_git": "158398edfc11976bf55bf5c0db93b610a338d33d",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "0431e2b430a1c4506f6a808e5acf56e12288f2f1",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "50df3100673f7bd04162b75fe44e78091bb21a94"
     },
     "lawnchair/res/values-b+sr+Latn/strings.xml": {
-      "upstream_blob_sha256_git": "3a194b2a044d1337670ea524d64b5a9267e651b7",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "d6b5fcbd2fce7cb2ffb89e8795822572aa5eb1e2",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "5c1d4884e877fe9082130dc6604915638ebee8ac"
     },
     "lawnchair/res/values-bn-rBD/strings.xml": {
-      "upstream_blob_sha256_git": "05289dbe5f9d7bd959bcc4a23a568165c4538708",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "2ca09b5ea738dda5272437c74bbbf929fe2733ab",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "64297adcb193222f12057b61c2fd2c4ede9c760b"
     },
     "lawnchair/res/values-bs-rBA/strings.xml": {
-      "upstream_blob_sha256_git": "e3db41d30ba73788068506c814aafe76af55c845",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "71de958123393aba183b290deac08fbc67d96b3b",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "65c272e334fe1737450fb12f8209c26c2a1a51f9"
     },
     "lawnchair/res/values-ca-rES/strings.xml": {
-      "upstream_blob_sha256_git": "936cbea490588bb7a3e202a8d421ecd8f5a5f338",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "62e1a8a4522abf9feabf70cd7dd32d2d63c34bc8",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "13d03f0851d85a93ba81ec71156698911242da9e"
     },
     "lawnchair/res/values-cs-rCZ/strings.xml": {
-      "upstream_blob_sha256_git": "9c6b499c8e8dd4a7b138dd20a4d175190c31e039",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "1f2b72324a07fe34bbd785469b89bebe73d50df6",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "b4b97e8e6594b80f30df37ed7850c97c8095cac6"
     },
     "lawnchair/res/values-da-rDK/strings.xml": {
-      "upstream_blob_sha256_git": "677590d210b408a518fa7413022ec2d666a3bd14",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "b9076570631c43eee1b9f640f2027910387c2bec",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "75a67f4161d05b8b59d8895cd52d1058208cda4b"
     },
     "lawnchair/res/values-de-rDE/strings.xml": {
-      "upstream_blob_sha256_git": "6bc1d5e67dd299e2a5e6d21944ccff941a39d434",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "dd22527f3dfe872d4dfc316e5054af17761fc4cd",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "023ad7097cbad2895acd0cbd8fcda247b5791321"
     },
     "lawnchair/res/values-el-rGR/strings.xml": {
-      "upstream_blob_sha256_git": "dc0da1ca6d8403fa1c5805678a835cd3d4ef936a",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "ecf18de89b1f40159771fd74e8c604c00991d852",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "44f2e022f539d5890eacea17d80325f7eb56aa0f"
     },
     "lawnchair/res/values-en-rCA/strings.xml": {
-      "upstream_blob_sha256_git": "04a8b21b61b42bcb3a3ad0d65b08075ad037fcaf",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "177c34fc71c76c99977b440ba3daae300ccddb99",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "e8ae6042c0d3f2249769d427f30d796dc6cb8f13"
     },
     "lawnchair/res/values-es-rES/strings.xml": {
-      "upstream_blob_sha256_git": "a8d699a3b26cfcee71de5ceaee52f89a27859e30",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "f026b9cc7032c9eb192cbaa016cee99d05481fb6",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "09c1682f22046f79a11ce8f2a8c6e73df605b54f"
     },
     "lawnchair/res/values-et-rEE/strings.xml": {
-      "upstream_blob_sha256_git": "b029513fcd1788f3b411042db69c84f41064d220",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "2b7a342cbb8db4bbfe884ee0d8b088a0bf6d1411",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "d2c14e0a96396501d673bfc2d3a9d885e892ab3c"
     },
     "lawnchair/res/values-fa-rIR/strings.xml": {
-      "upstream_blob_sha256_git": "21eeb0dc34592a2838589c02679d5aa2af772ce2",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "500ceafcce22407cfb805656edf954b06c00aeb8",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "c916ed7a9a7fde85b1dfd9ed9cd75ec2b8fdc48b"
     },
     "lawnchair/res/values-fi-rFI/strings.xml": {
-      "upstream_blob_sha256_git": "db2d4dff9f64e6b31b98ec0695c3940513d9d754",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "2fef27339ac356b49eb400294adc20001ab48cd9",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "69edb422679cf9e95b566eb735373fb40bf00341"
     },
     "lawnchair/res/values-fil-rPH/strings.xml": {
-      "upstream_blob_sha256_git": "03a1f6358b37ec62ef76282b11e8bbfd919b3140",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "9a2ccf610410d2f83a0e1187913bd76fbd29d7b0",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "403fddce6ae906b2dedcb9e30ad6f8e308b3aabd"
     },
     "lawnchair/res/values-fr-rFR/strings.xml": {
-      "upstream_blob_sha256_git": "bf924659751f0019de65f2aa3edc9c299b48975a",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "38dd5831724ebfc27003cd97ea1f0169ce9f792d",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "28a38039af06d8adb3baf9b74622e111c86f9d20"
     },
     "lawnchair/res/values-gl-rES/strings.xml": {
-      "upstream_blob_sha256_git": "23ab3016d90cfb5ed4584c610906bd194c76e94f",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "d6d8e4c561585e4664901f6da69ae2b70aa1975f",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "8f3df51a9770a8cf3e1c3887385f9c74bbd87f10"
     },
     "lawnchair/res/values-hi-rIN/strings.xml": {
-      "upstream_blob_sha256_git": "f62cbfee830fbd72fd1c7b4bd2e136a163e717d3",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "a73230112ca29c578c5436032486b4b1ea97a11e",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "b621d7da5750e9351f3164844df734e55b43143a"
     },
     "lawnchair/res/values-hr-rHR/strings.xml": {
-      "upstream_blob_sha256_git": "87f91e63371110e4839c5298a3412e2186160069",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "b6f4919d5309f5059a2985df02570c8749fe4af8",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "09893d2312c24d68f20455cec48ad016f4fb5d49"
     },
     "lawnchair/res/values-hu-rHU/strings.xml": {
-      "upstream_blob_sha256_git": "fc2402e97cb7f77b762dfd6a7e209d12549e5d45",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "6d25fa645487e0bb579d33a79aa426ca129b7a84",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "5660827dd4361127f03efeb374540a0af8ef0b02"
     },
     "lawnchair/res/values-in-rID/strings.xml": {
-      "upstream_blob_sha256_git": "1132add7bb05c8e1fbbbe4559e0a93f2aca6e8c7",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "000d349f65a93a6a40e2db196d8f7649a92e5eb9",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "a7336ed0680d49e1ddf4594367b94384e422a5ce"
     },
     "lawnchair/res/values-it-rIT/strings.xml": {
-      "upstream_blob_sha256_git": "cd68c9dd7abe7e4427f580c4e255aa81356d39ac",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "1e0d25dc4864a5a985970b2d30ff6d406cc6a3b5",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "251297217278a81b267e59491c102bc7618f802a"
     },
     "lawnchair/res/values-iw-rIL/strings.xml": {
-      "upstream_blob_sha256_git": "0787db91dc022bf459b09dafe8f0fd3d08ebcdff",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "fbe8692312bb1c8b1d9be17266b9e0064421a578",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "3310441937b4b2d41fa7980a8f555be423d28345"
     },
     "lawnchair/res/values-ja-rJP/strings.xml": {
-      "upstream_blob_sha256_git": "51c528c417713b83895c5b103d78acc3f03235eb",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "3a8ca953c14f863f7f214779cd1880e980d61714",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "35787a793ad617661eb40ca704f67e0d4a47038f"
     },
     "lawnchair/res/values-ka-rGE/strings.xml": {
-      "upstream_blob_sha256_git": "4327a6f70bc881f951774dc8ec03f012a164f86d",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "523663414018d175ba075d97a0fc269d8c9d10da",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "bb635bdb13521bd8cbadb2bc8206f1b2992e63fa"
     },
     "lawnchair/res/values-kmr-rTR/strings.xml": {
-      "upstream_blob_sha256_git": "4b7959cdfac072f06211b1161c3dde7ebf6dcf2e",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "2646d49184d806f5c3e0940e9ebf14762f3c1562",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "dfc23fb3045a154cd169ebb13765e9f859329679"
     },
     "lawnchair/res/values-ko-rKR/strings.xml": {
-      "upstream_blob_sha256_git": "0601d50013afdf29ea2e18c0f0390fa7aa791c15",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "1f1ac2e7286c09f646093d2a88cb9acd684d028c",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "968fc1c96e8df9126c3452efc02768f788f62ba2"
     },
     "lawnchair/res/values-lt-rLT/strings.xml": {
-      "upstream_blob_sha256_git": "c84a9864448c23cceaf803681dca19396d0f8f21",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "60469ba6b69f44142816dfd6dec1e2ab6ccccadd",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "6a70ef3ff91b02a7e58bcf37c38280db2c76996d"
     },
     "lawnchair/res/values-ml-rIN/strings.xml": {
-      "upstream_blob_sha256_git": "41afdb05eeb96a43660ea279888c7658f4b6f31a",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "23789463681a7369a0fc5fa1d0cf781f2ae4d8c0",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "2ba55cc6ff48707eb9cab9233099b5b02bd423c3"
     },
     "lawnchair/res/values-mr-rIN/strings.xml": {
-      "upstream_blob_sha256_git": "a89245e2dde05f28c1dbc2f639eab27e652fe482",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "3207252a62af78e81cb9fa6918d5776ebd4bf246",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "2091f40d1a5f09ddcceafe01a7d931316536ae15"
     },
     "lawnchair/res/values-nl-rNL/strings.xml": {
-      "upstream_blob_sha256_git": "b9f079224cda13e4f1fcdf3956ffee2b43ed47cd",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "2e1bce82d7128a39a2ec8c10122ff37931f8079d",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "f9e0c00ab821c6df34aa87dfb4425e277faf25ab"
     },
     "lawnchair/res/values-no-rNO/strings.xml": {
-      "upstream_blob_sha256_git": "aa6653aa11e7ed246fc9065b140d227bd5f371b2",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "f503ad2928534868c411be81e67ff8a395ff5a42",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "8887ab1a654fe8d5e8a994213cb266b541223367"
     },
     "lawnchair/res/values-pl-rPL/strings.xml": {
-      "upstream_blob_sha256_git": "35df23f765f856ed08004c0df689128993df8434",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "534bccaaa743900cab66b95190ba3c0096ec47f0",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "07a1c5af24f184f07f3fd665c1bdc5fb7c9c2a91"
     },
     "lawnchair/res/values-pt-rBR/strings.xml": {
-      "upstream_blob_sha256_git": "15d1dd865bb2a890a468a83a0677ab35b9bea7d2",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "d8227a809acf880831522b7474bab66d5023d446",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "f33697bd99846adb2d5c40a9831fba50de3baf23"
     },
     "lawnchair/res/values-pt-rPT/strings.xml": {
-      "upstream_blob_sha256_git": "e836acb3c88643a5142db35671f38c14118a7a32",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "d53a17d8727497fefd8a41bc7b2c125a0f6720f0",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "52301bfa837c5f9e6a02f7796227142fc919a293"
     },
     "lawnchair/res/values-ro-rRO/strings.xml": {
-      "upstream_blob_sha256_git": "f360fd89ebcb022c840a730857913050ac2c11a2",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "376a23298b59116d77a7db25feda3d19400575e4",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "04cb1db7e3c6355fd53e6389d2f75cd653d53528"
     },
     "lawnchair/res/values-ru-rRU/strings.xml": {
-      "upstream_blob_sha256_git": "dc44f8285b2f437659845805764dce06646c9900",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "afe1214f3213da18a650511e6582471e553777a8",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "ce3b791cc40ef9c5f63dc87a9911671e2308117b"
     },
     "lawnchair/res/values-sk-rSK/strings.xml": {
-      "upstream_blob_sha256_git": "623d450527b52edb18768a7d944a9d064f2e3c53",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "13386ca333f219a40c3af87194680626aeb50728",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "1259766bda4c1e1692df6ec2dc79022a25b259fa"
     },
     "lawnchair/res/values-sl-rSI/strings.xml": {
-      "upstream_blob_sha256_git": "a6f01c1ef81abed0900d09162ebf00dfbb21874c",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "3463add3f4aa91bc3d2cc8da865931b9beb61477",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "40d4f823dbb9b024b8099c5ffcebaf37b2ed088d"
     },
     "lawnchair/res/values-sq-rAL/strings.xml": {
-      "upstream_blob_sha256_git": "c3ae39771da746bef450b909e4bed16d85595e84",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "9438cdbdd60671304f62ee49581f97a9c4ec8482",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "8316e38eccb7a96ce155f4900f0eb22c473bc7b1"
     },
     "lawnchair/res/values-sr/strings.xml": {
-      "upstream_blob_sha256_git": "53ba665066c16e93dc2342d2334de64951376d31",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "946782aebca5c16b59d6764f4ba3f93e512773ca",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "e0f3f44176d35a3b7665d4219ae3588183581999"
     },
     "lawnchair/res/values-sv-rSE/strings.xml": {
-      "upstream_blob_sha256_git": "a8c5ae0020718aecbe6027131bf400650292f9a7",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "2d514635f8e12b794caad788f4d24991ca5e4f8f",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "03547472acf8078b33fdf6d0066408e16177830e"
     },
     "lawnchair/res/values-sw-rKE/strings.xml": {
-      "upstream_blob_sha256_git": "21c6b250805dcbd722d45d27a965cec0fe2fbbd3",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "ac8b00cb98aa1b46c816b70479b8f0f6532f1d41",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "ad5e60c53c88b2775e4423341015225ce6502638"
     },
     "lawnchair/res/values-ta-rIN/strings.xml": {
-      "upstream_blob_sha256_git": "b59b830e4811924ed094ed65b742681bc21012b0",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "ab836e63a94e334d9572c81c66230fb55cf590c4",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "220dfb207247972fadfd8e715b1b4214e3913d70"
     },
     "lawnchair/res/values-te-rIN/strings.xml": {
-      "upstream_blob_sha256_git": "74688cfd4a8ae656a2f1a16f8df2e3091de46763",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "43444b5c3b52fce7e66a62098365441d16529af8",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "ff1833353790a363e8c1dcccc6bc411fbda5fddf"
     },
     "lawnchair/res/values-th-rTH/strings.xml": {
-      "upstream_blob_sha256_git": "a1dd0c05bb37686fa9ba88468c641c773f944944",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "3640f1895e6a791760327d3c6921a686a1c0be70",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "3dae44ba2155436714d629e96c8936a35b941463"
     },
     "lawnchair/res/values-tr-rTR/strings.xml": {
-      "upstream_blob_sha256_git": "1d0ab7cb51ecca0dc005c330808b1d9dfe713880",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "9a0e11058484ff1eb56d2597dececfd974d4a25e",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "38d057df988ce1e03f2f201162e43de2b8cf2795"
     },
     "lawnchair/res/values-uk-rUA/strings.xml": {
-      "upstream_blob_sha256_git": "d6e51dc1c798c38b14b0ca99d557610532775336",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "edfb563688aeb679e1da0462342c74ad626c4e6b",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "73d3d6a9c38f5a504b88213ef72d832c87ffad16"
     },
     "lawnchair/res/values-ur-rIN/strings.xml": {
-      "upstream_blob_sha256_git": "60e3810c9d8165570fd8408cf7eb2072a32dcf10",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "b5f48589e938b8cb3e83c6d370190f2a3ec68ae3",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "f44416ef2a496cffec990eaa9cf8afd944a18371"
     },
     "lawnchair/res/values-ur-rPK/strings.xml": {
-      "upstream_blob_sha256_git": "707460a72f5e101248286a415acfc7166d8c3d14",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "206a5d46378d48ac2d853b337a4a13bc8709fb67",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "3f5e6672e0831442ab39dc2145b15ae3a7d847b5"
     },
     "lawnchair/res/values-uz-rUZ/strings.xml": {
-      "upstream_blob_sha256_git": "c10b8f35f80e6d0f8c7bab540ed219bfc928735a",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "f2d3e934ca15c1d1f3014b629c3e6b2e2bb99051",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "e432291afb1407d7ddc182f1cee94b098f37d3c8"
     },
     "lawnchair/res/values-vi-rVN/strings.xml": {
-      "upstream_blob_sha256_git": "5dc47baae257fc1e6435c34cc22d17e1034a3239",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "51632f7211462a13da37e9c58110e0e514893344",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "3fc20b7a3415b53bd0d10affae5ad6faf0023fe7"
     },
     "lawnchair/res/values-zh-rCN/strings.xml": {
-      "upstream_blob_sha256_git": "8b13d3eb3a6542be331f58c6c28c55303a4fd0dd",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "f95e70858590d56a3d29e7f2394384f9540e5b5e",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "e5bb5de3adffe2613c5fc2686b4a8bf341ba53fc"
     },
     "lawnchair/res/values-zh-rTW/strings.xml": {
-      "upstream_blob_sha256_git": "95fcdb040ba030f80ef2cb22d770b69d2ff2e519",
+      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded.",
       "target_blob_sha256_git": "b10e482db6f4b64e163dcff6fced0cc8fbf9f658",
-      "reason": "Upstream/Crowdin translation churn at this baseline. Any further edit on either the candidate upstream or target side requires ownership review before these blobs are re-recorded."
+      "upstream_blob_sha256_git": "055e4d258c5645108169debde8fbbc1c34e564bb"
     }
   },
   "project_owned_addition_prefixes": [
@@ -385,7 +393,12 @@
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/ManualOrganizationPreferences.kt",
         "lawnchair/src/app/lawnchair/ui/preferences/destinations/PlacementLockPreferences.kt",
         "res/values/strings.xml",
-        "src/com/android/launcher3/model/BaseLauncherBinder.java"
+        "src/com/android/launcher3/model/BaseLauncherBinder.java",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/CustomCategoryPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerDiagnosticsPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerStrategyPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerUsageMaterialRows.kt",
+        "res/values-ja/strings.xml"
       ]
     },
     {
@@ -397,13 +410,20 @@
         "tools/repo-contract/validate_writer_inventory.py"
       ],
       "paths": [
+        "lawnchair/src/app/lawnchair/util/MainThreadInitializedObject.java",
         "lawnchair/src/com/android/launcher3/OrganizerModelReloadAdapter.java",
+        "quickstep/src/com/android/launcher3/hybridhotseat/HotseatRestoreHelper.java",
+        "src/com/android/launcher3/InvariantDeviceProfile.java",
+        "src/com/android/launcher3/LauncherAppState.kt",
         "src/com/android/launcher3/LauncherModel.java",
+        "src/com/android/launcher3/LauncherModel.kt",
         "src/com/android/launcher3/LauncherProvider.java",
+        "src/com/android/launcher3/model/DirectEditContract.java",
         "src/com/android/launcher3/model/LayoutWriteCoordinator.java",
         "src/com/android/launcher3/model/LoaderTask.java",
         "src/com/android/launcher3/model/ModelDbController.java",
         "src/com/android/launcher3/model/ModelWriter.java",
+        "src/com/android/launcher3/util/DaggerSingletonObject.java",
         "src/com/android/launcher3/util/MainThreadInitializedObject.java"
       ]
     },
@@ -420,6 +440,7 @@
       "paths": [
         "res/raw/downgrade_schema.json",
         "src/com/android/launcher3/LauncherSettings.java",
+        "src/com/android/launcher3/Utilities.java",
         "src/com/android/launcher3/model/DatabaseHelper.java",
         "src/com/android/launcher3/model/DbDowngradeHelper.java",
         "src/com/android/launcher3/model/FavoritesTableDigest.java",
@@ -428,48 +449,433 @@
         "src/com/android/launcher3/model/GridMigrationRuntime.java",
         "src/com/android/launcher3/model/GridSizeMigrationUtil.java",
         "src/com/android/launcher3/provider/LauncherDbUtils.java",
+        "src/com/android/launcher3/provider/LauncherDbUtils.kt",
         "src/com/android/launcher3/provider/RestoreDbTask.java"
+      ]
+    },
+    {
+      "id": "homeedit-edit-surface",
+      "responsibility": "Visual multi-select edit surface (Issue #449, ADR-0014 case B): pure session/planning layers, thin organizer-access window, full-screen UI, and the two entries. Since Issue #452 this file also hosts the fork's added popup entries generally (organize_home for #452, alongside edit_surface for #449) plus the DEFAULT_ORDER-relative order restoration and the no-op write guard; #452's share of this file's growth is adopted with #452 rationale. The one-shot apply goes through the existing organizer apply path (ORGANIZER lease, one recovery point, 1 transaction, correlated reload + verification); no direct DB writes. Includes the plan-coupled minimal extension of the apply path: the manifest-absence delete pass in LauncherLayoutAdapter (plan 結合点7) that materializes intended-row removals, and the read-only inspectCapture seam in LayoutApplicationModule. Since Issue #507 it also hosts the duplicate-group projection (EditSurfaceDuplicateGroups) over the session-applied working diagram; the #451 detection rule is generalized in place (planning/DuplicateLaunchTargets.kt, behavior-invariant delegation) and the last-one guard runs only at the duplicate-dialog boundaries. Since Issue #508 the shared read-only diagram parts (page surface, cell placement, item visuals) extracted from EditSurfaceScreen live in ui/diagram/HomeDiagramParts.kt and are counted here; the organizer confirmation's before/after diagrams consume the same parts (#508 rationale: minimal extraction, no selection/session/icon logic shared).",
+      "evidence": [
+        "specs/449-multi-select-surface/spec.md",
+        "docs/adr/0014-edit-surface.md",
+        "docs/assessment/pr-476-edit-surface.md"
+      ],
+      "paths": [
+        "lawnchair/AndroidManifest.xml",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceApplyGate.kt",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceDuplicateGroups.kt",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfacePlanBuilder.kt",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceProjection.kt",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceSessionPlanner.kt",
+        "lawnchair/src/app/lawnchair/homeedit/EditSurfaceState.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditAdapter.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditExecutor.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditModel.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditPlanner.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditSurfaceAccess.kt",
+        "lawnchair/src/app/lawnchair/homeedit/WorkspaceViewLookup.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/EditActionsShortcuts.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/EditSurfaceScreen.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/HomeEditSurfaceActivity.kt",
+        "lawnchair/src/app/lawnchair/organizer/application/adapter/LauncherLayoutAdapter.kt",
+        "lawnchair/src/app/lawnchair/organizer/application/protocol/LayoutApplicationModule.kt",
+        "lawnchair/src/app/lawnchair/organizer/planning/PlanningResult.kt",
+        "lawnchair/src/app/lawnchair/organizer/ui/GeneratedFolderTitles.kt",
+        "lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt",
+        "lawnchair/src/app/lawnchair/ui/diagram/HomeDiagramParts.kt",
+        "lawnchair/src/app/lawnchair/ui/popup/LauncherOptionsPopup.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/OrganizerHubPreferences.kt",
+        "src/com/android/launcher3/DeviceProfile.java",
+        "src/com/android/launcher3/Workspace.java"
+      ]
+    },
+    {
+      "id": "homeedit-edit-undo",
+      "responsibility": "Edit undo (Issue #450, ADR-0013 contract 5): the generation-bound process-local undo record, the pure undo planner with availability verification, the undo executor and snackbar entry, and the recovery-result text mapper. The inverse operations themselves live in ModelWriter via the DirectEditContract extension (already in the direct-edit bridge group); the edit-session undo reuses the existing organizer recovery path through the HomeEditSurfaceAccess window (receipt accessor additive to ManualOrganizationApplication). Also owns the one upstream bind-path guard created for this Issue: Folder.java suppresses the bind-time single-child cleanup for a folder carrying the direct-edit OPTIONS bit, so the cleanup cannot flatten it inside the undo snackbar's window.",
+      "evidence": [
+        "specs/450-edit-undo/spec.md",
+        "specs/450-edit-undo/plan.md",
+        "docs/adr/0013-direct-edit-write-contract.md"
+      ],
+      "paths": [
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoAvailability.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoExecutor.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoPlanner.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoRecord.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoRecoveryText.kt",
+        "lawnchair/src/app/lawnchair/homeedit/HomeEditUndoVerifier.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/HomeEditUndoSnackbar.kt",
+        "src/com/android/launcher3/folder/Folder.java",
+        "src/com/android/launcher3/folder/FolderIcon.java"
+      ]
+    },
+    {
+      "id": "organizer-home-entry",
+      "responsibility": "Organizer run entry from the workspace long-press popup (Issue #452): the popup edit screen's locked-state branch, the entry's monochrome icon, and the order-restoration contract are owned here. The organize_home OptionItem/DEFAULT_ORDER entry itself lives in the fork's shared options-popup entries file (LauncherOptionsPopup.kt, counted under homeedit-edit-surface because #449 first patched that file); its growth is adopted with #452 rationale. No model, loader, or DB path: the handler only opens PreferenceActivity at the HomeScreenManualOrganization route.",
+      "evidence": [
+        "specs/452-organizer-home-entry/spec.md",
+        "specs/452-organizer-home-entry/plan.md"
+      ],
+      "paths": [
+        "lawnchair/res/drawable/ic_organize_home.xml",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/LauncherPopupPreference.kt"
+      ]
+    },
+    {
+      "id": "fork-platform-preexisting",
+      "responsibility": "Pre-existing fork platform changes that predate Issue #449 and are already in the baseline upstream..main diff (backup/restore UI, bugreport, device-profile config, build configuration). Recorded for measurement completeness; ownership review of each belongs to the issues that introduced them.",
+      "evidence": [
+        "docs/assessment/upstream-patch-surface-baseline.md",
+        "docs/engineering/building.md"
+      ],
+      "paths": [
+        "build.gradle",
+        "lawnchair/res/drawable/ic_app_drawer.xml",
+        "lawnchair/res/drawable/search_input_fg.xml",
+        "lawnchair/res/layout/search_container_all_apps.xml",
+        "lawnchair/res/layout/search_container_hotseat.xml",
+        "lawnchair/res/values/config.xml",
+        "lawnchair/src/app/lawnchair/AccentColorExtractor.java",
+        "lawnchair/src/app/lawnchair/BlankActivity.kt",
+        "lawnchair/src/app/lawnchair/DeviceProfileOverrides.kt",
+        "lawnchair/src/app/lawnchair/HeadlessWidgetsManager.kt",
+        "lawnchair/src/app/lawnchair/LawnchairLayoutFactory.kt",
+        "lawnchair/src/app/lawnchair/NotificationManager.kt",
+        "lawnchair/src/app/lawnchair/SearchBarStateHandler.kt",
+        "lawnchair/src/app/lawnchair/allapps/AllAppsSearchInput.kt",
+        "lawnchair/src/app/lawnchair/allapps/FallbackSearchInputView.kt",
+        "lawnchair/src/app/lawnchair/allapps/LawnchairAlphabeticalAppsList.kt",
+        "lawnchair/src/app/lawnchair/allapps/views/SearchContainerView.kt",
+        "lawnchair/src/app/lawnchair/allapps/views/SearchItemBackground.kt",
+        "lawnchair/src/app/lawnchair/allapps/views/SearchResultIcon.kt",
+        "lawnchair/src/app/lawnchair/allapps/views/SearchResultIconRow.kt",
+        "lawnchair/src/app/lawnchair/allapps/views/SearchResultRightLeftIcon.kt",
+        "lawnchair/src/app/lawnchair/allapps/views/SearchResultText.kt",
+        "lawnchair/src/app/lawnchair/backup/BackupPageSummaryReader.kt",
+        "lawnchair/src/app/lawnchair/backup/ui/CreateBackupScreen.kt",
+        "lawnchair/src/app/lawnchair/backup/ui/RestoreBackupScreen.kt",
+        "lawnchair/src/app/lawnchair/backup/ui/RestoreBackupViewModel.kt",
+        "lawnchair/src/app/lawnchair/backup/ui/RestoreNovaBackupScreen.kt",
+        "lawnchair/src/app/lawnchair/bugreport/LawnchairBugReporter.kt",
+        "lawnchair/src/app/lawnchair/bugreport/UploaderService.kt",
+        "lawnchair/src/app/lawnchair/dagger/ForkServiceModule.kt",
+        "lawnchair/src/app/lawnchair/data/AppDatabase.kt",
+        "lawnchair/src/app/lawnchair/data/folder/FolderEntity.kt",
+        "lawnchair/src/app/lawnchair/data/folder/model/FolderViewModel.kt",
+        "lawnchair/src/app/lawnchair/data/folder/service/FolderDao.kt",
+        "lawnchair/src/app/lawnchair/data/folder/service/FolderService.kt",
+        "lawnchair/src/app/lawnchair/data/iconoverride/IconOverride.kt",
+        "lawnchair/src/app/lawnchair/data/iconoverride/IconOverrideRepository.kt",
+        "lawnchair/src/app/lawnchair/data/wallpaper/model/WallpaperViewModel.kt",
+        "lawnchair/src/app/lawnchair/data/wallpaper/service/WallpaperService.kt",
+        "lawnchair/src/app/lawnchair/font/FontCache.kt",
+        "lawnchair/src/app/lawnchair/font/FontManager.kt",
+        "lawnchair/src/app/lawnchair/font/googlefonts/GoogleFontsListing.kt",
+        "lawnchair/src/app/lawnchair/gestures/GestureController.kt",
+        "lawnchair/src/app/lawnchair/gestures/VerticalSwipeTouchController.kt",
+        "lawnchair/src/app/lawnchair/gestures/handlers/OpenAppDrawerGestureHandler.kt",
+        "lawnchair/src/app/lawnchair/gestures/handlers/OpenAppSearchGestureHandler.kt",
+        "lawnchair/src/app/lawnchair/gestures/handlers/OpenNotificationsHandler.kt",
+        "lawnchair/src/app/lawnchair/gestures/ui/CreateActionsScreen.kt",
+        "lawnchair/src/app/lawnchair/icons/CustomIconPack.kt",
+        "lawnchair/src/app/lawnchair/icons/IconEntry.kt",
+        "lawnchair/src/app/lawnchair/icons/IconEntryWithDrawable.kt",
+        "lawnchair/src/app/lawnchair/icons/IconPack.kt",
+        "lawnchair/src/app/lawnchair/icons/IconPackProvider.kt",
+        "lawnchair/src/app/lawnchair/icons/IconPickerCategory.kt",
+        "lawnchair/src/app/lawnchair/icons/IconPickerItem.kt",
+        "lawnchair/src/app/lawnchair/icons/LawnchairIconProvider.kt",
+        "lawnchair/src/app/lawnchair/icons/SystemIconPack.kt",
+        "lawnchair/src/app/lawnchair/icons/ThemedIconDrawable.kt",
+        "lawnchair/src/app/lawnchair/icons/shape/IconShape.kt",
+        "lawnchair/src/app/lawnchair/icons/shape/IconShapeManager.kt",
+        "lawnchair/src/app/lawnchair/icons/shape/PathShapeDelegate.kt",
+        "lawnchair/src/app/lawnchair/nexuslauncher/OverlayCallbackImpl.kt",
+        "lawnchair/src/app/lawnchair/nexuslauncher/SmartSpaceHostView.kt",
+        "lawnchair/src/app/lawnchair/nexuslauncher/ThemedSmartSpaceHostView.kt",
+        "lawnchair/src/app/lawnchair/override/CustomizeDialog.kt",
+        "lawnchair/src/app/lawnchair/overview/TaskOverlayFactoryImpl.kt",
+        "lawnchair/src/app/lawnchair/preferences/BasePreferenceManager.kt",
+        "lawnchair/src/app/lawnchair/preferences/PreferenceAdapter.kt",
+        "lawnchair/src/app/lawnchair/preferences/PreferenceManagerModule.kt",
+        "lawnchair/src/app/lawnchair/preferences2/IdpPreference.kt",
+        "lawnchair/src/app/lawnchair/preferences2/PreferenceUtils.kt",
+        "lawnchair/src/app/lawnchair/preferences2/ReloadHelper.kt",
+        "lawnchair/src/app/lawnchair/qsb/AssistantIconView.kt",
+        "lawnchair/src/app/lawnchair/qsb/LawnQsbLayout.kt",
+        "lawnchair/src/app/lawnchair/qsb/QsbIconUtil.kt",
+        "lawnchair/src/app/lawnchair/qsb/providers/AppSearch.kt",
+        "lawnchair/src/app/lawnchair/qsb/providers/Google.kt",
+        "lawnchair/src/app/lawnchair/qsb/providers/QsbSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/qsb/providers/Startpage.kt",
+        "lawnchair/src/app/lawnchair/search/LawnchairSearchAdapterProvider.kt",
+        "lawnchair/src/app/lawnchair/search/adapter/SearchAdapterItem.kt",
+        "lawnchair/src/app/lawnchair/search/adapter/SearchTargetCompat.kt",
+        "lawnchair/src/app/lawnchair/search/adapter/SearchTargetFactory.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/LawnchairAppSearchAlgorithm.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/LawnchairLocalSearchAlgorithm.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/LawnchairSearchAlgorithm.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/data/ContactInfo.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/SectionBuilder.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/ContactsSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/FileSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/SettingsSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/apps/AppSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/BuiltInWebSearchProviders.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/CustomWebSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/LanNetworkContract.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/SuggestionFetchOutcome.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/SuggestionUrlClassifier.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/WebSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/search/algorithms/engine/provider/web/WebSuggestionProvider.kt",
+        "lawnchair/src/app/lawnchair/smartspace/BcSmartSpaceUtil.kt",
+        "lawnchair/src/app/lawnchair/smartspace/DoubleShadowTextView.kt",
+        "lawnchair/src/app/lawnchair/smartspace/IcuDateTextView.kt",
+        "lawnchair/src/app/lawnchair/smartspace/PageIndicator.kt",
+        "lawnchair/src/app/lawnchair/smartspace/SmartspaceViewContainer.kt",
+        "lawnchair/src/app/lawnchair/smartspace/SmartspacerView.kt",
+        "lawnchair/src/app/lawnchair/smartspace/model/SmartspaceCalendar.kt",
+        "lawnchair/src/app/lawnchair/smartspace/model/SmartspaceScores.kt",
+        "lawnchair/src/app/lawnchair/smartspace/model/SmartspaceTarget.kt",
+        "lawnchair/src/app/lawnchair/smartspace/provider/BatteryStatusProvider.kt",
+        "lawnchair/src/app/lawnchair/smartspace/provider/SmartspaceProvider.kt",
+        "lawnchair/src/app/lawnchair/theme/ThemeProvider.kt",
+        "lawnchair/src/app/lawnchair/theme/color/tokens/ColorStateListTokens.kt",
+        "lawnchair/src/app/lawnchair/theme/color/tokens/ColorTokens.kt",
+        "lawnchair/src/app/lawnchair/theme/drawable/DrawableTokens.kt",
+        "lawnchair/src/app/lawnchair/ui/popup/LawnchairShortcut.kt",
+        "lawnchair/src/app/lawnchair/ui/popup/WallpaperCarouselView.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/PreferenceViewModel.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/Preferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/About.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/AboutModels.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/AboutViewModel.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/ChangesDialog.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/ContributorRow.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/GithubService.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/LawnchairLink.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/NightlyBuildsRepository.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/about/UpdateSection.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/AnnouncementPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/AppItem.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/FontPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/GridOverridesPreview.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/LauncherPreview.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/NavigationActionPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/NotificationDotsPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/OverlayHandlerPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/PermissionDialog.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/QuickActionsPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/SuggestionsPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/WallpaperPreview.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/colorpreference/ColorContrastWarning.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/colorpreference/ColorPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/colorpreference/ColorPreferenceModelList.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/colorpreference/ColorSelectionPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/colorpreference/ColorSlider.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/colorpreference/pickers/CustomColorPicker.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/colorpreference/pickers/PresetsList.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/colorpreference/pickers/SwatchGrid.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/ClickablePreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/ListPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/MainSwitchPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/PreferenceCategory.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/SliderPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/SwitchPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/TextPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/TwoTargetSwitchPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/controls/WarningPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/layout/ClickableIcon.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/layout/DividerColumn.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/layout/LazyColumnPreferenceGroup.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/layout/LoadingScreen.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/layout/PreferenceGroup.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/layout/PreferenceTemplate.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/layout/TopBar.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/layout/TwoTabPreferenceLayout.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/reorderable/PositionalReorderer.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/reorderable/ReorderHapticFeedback.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/reorderable/ReorderablePreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/reorderable/ReorderablePreferenceDefaults.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/search/DockSearchPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/search/DrawerSearchPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/search/FileSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/search/SearchProviderPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/components/search/WebSearchProvider.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/data/liveinfo/LiveInformationManager.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/data/liveinfo/LiveInformationRequest.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/data/liveinfo/LiveInformationService.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/data/liveinfo/SyncLiveInformation.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/AppDrawerFoldersPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/AppDrawerPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/CustomIconShapePreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/DockPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/FeatureFlagsPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/FolderPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/FontSelectionPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/GeneralPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/GesturePreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/HiddenAppsPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenGridPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/IconPackPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/IconPickerPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/IconShapePreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/PickAppForGesture.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/QuickstepPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/SearchPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/SearchProviderPreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/SelectAppsForDrawerFolder.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/SelectIconPreference.kt",
+        "lawnchair/src/app/lawnchair/ui/preferences/destinations/SmartspacePreferences.kt",
+        "lawnchair/src/app/lawnchair/ui/theme/Shape.kt",
+        "lawnchair/src/app/lawnchair/ui/theme/Theme.kt",
+        "lawnchair/src/app/lawnchair/ui/theme/Type.kt",
+        "lawnchair/src/app/lawnchair/ui/util/LazyGridLayout.kt",
+        "lawnchair/src/app/lawnchair/ui/util/NavigationResult.kt",
+        "lawnchair/src/app/lawnchair/ui/util/ProvideBottomSheetHandler.kt",
+        "lawnchair/src/app/lawnchair/ui/util/preview/PreferenceGroupPreviewContainer.kt",
+        "lawnchair/src/app/lawnchair/util/AppCategorizationUtils.kt",
+        "lawnchair/src/app/lawnchair/util/AppsList.kt",
+        "lawnchair/src/app/lawnchair/util/Compatibility.kt",
+        "lawnchair/src/app/lawnchair/util/DrawableUtils.kt",
+        "lawnchair/src/app/lawnchair/util/FileAccessManager.kt",
+        "lawnchair/src/app/lawnchair/util/FlowUtils.kt",
+        "lawnchair/src/app/lawnchair/util/ImageViewWrapper.kt",
+        "lawnchair/src/app/lawnchair/util/LawnchairUtils.kt",
+        "lawnchair/src/app/lawnchair/util/PackageManagerExtensions.kt",
+        "lawnchair/src/app/lawnchair/util/RecentHelper.kt",
+        "lawnchair/src/app/lawnchair/views/FullScreenOverlayView.kt",
+        "lawnchair/src/app/lawnchair/views/LawnchairFloatingSurfaceView.kt",
+        "lawnchair/src/app/lawnchair/wallpaper/WallpaperManagerCompat.kt",
+        "lawnchair/src/com/google/android/libraries/launcherclient/LauncherClient.java",
+        "quickstep/dagger/com/android/launcher3/dagger/LauncherAppComponent.java",
+        "quickstep/res/drawable/bg_overview_clear_all_button.xml",
+        "quickstep/src/com/android/launcher3/taskbar/TaskbarRecentAppsController.kt",
+        "quickstep/src/com/android/launcher3/uioverrides/QuickstepInteractionHandler.java",
+        "quickstep/src/com/android/launcher3/uioverrides/SystemApiWrapper.kt",
+        "quickstep/src/com/android/quickstep/AbsSwipeUpHandler.java",
+        "quickstep/src/com/android/quickstep/HomeVisibilityState.kt",
+        "quickstep/src/com/android/quickstep/SystemUiProxy.java",
+        "quickstep/src/com/android/quickstep/SystemUiProxy.kt",
+        "quickstep/src/com/android/quickstep/logging/StatsLogCompatManager.java",
+        "quickstep/src/com/android/quickstep/views/RecentsView.java",
+        "quickstep/src/com/android/quickstep/views/TaskContainer.kt",
+        "res/values/attrs.xml",
+        "res/values/dimens.xml",
+        "res/xml/folder_shapes.xml",
+        "settings.gradle",
+        "src/com/android/launcher3/PagedView.java",
+        "src/com/android/launcher3/config/FeatureFlags.java",
+        "src/com/android/launcher3/graphics/IconShape.java",
+        "src/com/android/launcher3/preview/PreviewContext.kt",
+        "src/com/android/launcher3/util/ContextTracker.java",
+        "src/debug/AndroidManifest.xml",
+        "src/debug/res/xml/network_security_config.xml",
+        "systemUI/shared/src/com/android/systemui/shared/navigationbar/KeyButtonRipple.java",
+        "systemUI/shared/src/com/android/systemui/shared/recents/model/ThumbnailData.kt",
+        "systemUI/shared/src/com/android/systemui/shared/system/ActivityManagerWrapper.java",
+        "systemUI/shared/src/com/android/systemui/shared/system/InputConsumerController.java",
+        "wmshell/multivalentTestsForDevice",
+        "wmshell/multivalentTestsForDeviceless",
+        "wmshell/shared/src/com/android/wm/shell/shared/pip/PipFlags.kt"
+      ]
+    },
+    {
+      "id": "new-app-destination",
+      "responsibility": "New-app destination policy (Issue #497, ADR-0015; category mode added by Issue #594 / ADR-0017): the pure planner with the closed result, the snapshot classifier, the category-mode pure resolution + mapping codec + capture decision seam (AppDestinationCategoryResolver.kt, incl. CategoryModeCapture), the capture-time signal reader reusing the organizer sources (CategoryModeSignalReader.kt), the settings row + folder picker + category mapping editor wiring, and the minimal upstream writer surface (AddWorkspaceItemsTask / ItemInstallQueue / PersistedItemArray) that realizes the ADR-0013 contract 4 admission-in-completion write. Registered here retroactively: the paths were merged with PR #498 but the bridge assignment missing from this inventory was only surfaced by the Issue #507 measurement.",
+      "evidence": [
+        "specs/497-new-app-destination-policy-impl/spec.md",
+        "specs/594-category-new-app-destination/spec.md",
+        "docs/adr/0015-new-app-destination-policy.md",
+        "docs/adr/0017-category-new-app-destination.md",
+        "docs/adr/0013-direct-edit-write-contract.md"
+      ],
+      "paths": [
+        "lawnchair/src/app/lawnchair/LawnchairProcessInitializer.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationAdapter.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationCategoryResolver.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationNotice.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationPlanner.kt",
+        "lawnchair/src/app/lawnchair/homeedit/AppDestinationSettingsText.kt",
+        "lawnchair/src/app/lawnchair/homeedit/CategoryModeSignalReader.kt",
+        "lawnchair/src/app/lawnchair/homeedit/ui/AppDestinationPreference.kt",
+        "lawnchair/src/app/lawnchair/preferences/PreferenceManager.kt",
+        "src/com/android/launcher3/model/AddWorkspaceItemsTask.java",
+        "src/com/android/launcher3/model/ItemInstallQueue.java",
+        "src/com/android/launcher3/util/PersistedItemArray.java"
       ]
     }
   ],
   "expected_measurement": {
-    "counted_files": 47,
-    "counted_additions": 3993,
-    "counted_deletions": 1017,
-    "counted_paths_sha256": "b743954a95bec97743f5f09d1dcfafe3cef0946a79274b27b7eab41c86ebdfab",
-    "project_owned_files": 91,
-    "project_owned_additions": 15898,
-    "project_owned_deletions": 0,
-    "project_owned_paths_sha256": "d12e4bf1d65f1c1646dbccd9752f5c835f9d28b69b6cda6a8079805d1c00a100",
-    "excluded_files": 309,
-    "excluded_additions": 57611,
-    "excluded_deletions": 685,
-    "excluded_paths_sha256": "af64abd7f8f3554bfe9ab163845e51420e68ec2212d18cb8a93f36d736178a02",
+    "counted_additions": 33088,
+    "counted_deletions": 8923,
+    "counted_files": 356,
+    "counted_paths_sha256": "5638de79af8d61ce5e3d2bc873b1f7de7725cebe6393077941ce760995ce32b7",
+    "excluded_additions": 1243574,
+    "excluded_deletions": 12026,
+    "excluded_files": 2165,
+    "excluded_paths_sha256": "7d598afc6c99336d2470d542c52ab18606da565a7fed1bc544d900cf1b90aad5",
     "groups": {
       "deck-retirement": {
-        "files": 20,
-        "additions": 288,
-        "deletions": 853,
-        "paths_sha256": "3f68fcbdba6182596817bcec19c8327c2f23cda9ee51a69499b7d2017a89616a"
+        "additions": 1472,
+        "deletions": 1678,
+        "files": 19,
+        "paths_sha256": "1ff800e0f92ec39151fca7bcde4417e0b572701e865debd297eadad70d10e66d"
+      },
+      "fork-platform-preexisting": {
+        "additions": 7944,
+        "deletions": 6409,
+        "files": 250,
+        "paths_sha256": "c62219fae73437d13d3113fe805f286538e7acda84e83f991ec8c5ee25870421"
+      },
+      "homeedit-edit-surface": {
+        "additions": 10133,
+        "deletions": 60,
+        "files": 26,
+        "paths_sha256": "c208728baf447b224d7aefda03573fe98a0c6f2fef9ecf76317d7cc4b59e9988"
+      },
+      "homeedit-edit-undo": {
+        "additions": 953,
+        "deletions": 4,
+        "files": 9,
+        "paths_sha256": "309aef8442881e3e0f51b810e0fe1ff05b7653979149a02c03f3f1b7d9c6c03f"
       },
       "layout-schema-and-recovery": {
-        "files": 11,
-        "additions": 677,
-        "deletions": 84,
-        "paths_sha256": "cd6606755781c3f5eac65d513e346f70b4b78f6fdddd1e851de8803836600724"
+        "additions": 917,
+        "deletions": 188,
+        "files": 12,
+        "paths_sha256": "d3f0a02001b1ef4399384f3d3a9f14df62b951dafa0bc7d770d5e51be0424735"
       },
       "model-reload-and-transaction-gates": {
-        "files": 8,
-        "additions": 1349,
-        "deletions": 71,
-        "paths_sha256": "7a86bf7ecb43d4b5ae47c2cba0f6302d149f401c315f74a6f661c03f96e2653c"
+        "additions": 3582,
+        "deletions": 395,
+        "files": 13,
+        "paths_sha256": "24bf80a7326226994de10844e36969bcf059da87d0d3b2d169fac380ece09267"
+      },
+      "new-app-destination": {
+        "additions": 1707,
+        "deletions": 142,
+        "files": 12,
+        "paths_sha256": "91642e4a013a2b237eee1986137dbdba7d6a5b823f9332e0537ff1ab34f20888"
+      },
+      "organizer-home-entry": {
+        "additions": 36,
+        "deletions": 2,
+        "files": 2,
+        "paths_sha256": "6482bd763964e08a8ba115731819355cae35ec183124ed363bc6ec10e3e299f0"
       },
       "organizer-ui-and-lock-authoring": {
-        "files": 8,
-        "additions": 1679,
-        "deletions": 9,
-        "paths_sha256": "91bd58512c8dc412093d80f72688c32dc7339f94bb12d0b3c6d70fb678a0b7e0"
+        "additions": 6344,
+        "deletions": 45,
+        "files": 13,
+        "paths_sha256": "7f9dc79c4f97a2456a48e23a6fcfbc218dd0bf3c2148ebd65d194d361403004f"
       }
-    }
+    },
+    "project_owned_additions": 37690,
+    "project_owned_deletions": 0,
+    "project_owned_files": 179,
+    "project_owned_paths_sha256": "d3d709c352f15794adf698fa3a87a8f45334fac0739a4d1b6a5a35b30f2b440f"
   }
 }

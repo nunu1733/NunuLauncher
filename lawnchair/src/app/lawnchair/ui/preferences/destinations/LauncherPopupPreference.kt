@@ -97,7 +97,7 @@ fun LauncherPopupPreference(
             val metadata = LauncherOptionsPopup.getMetadataForOption(item.identifier)
 
             val enabled = when (item.identifier) {
-                "edit_mode", "widgets" -> (!isHomeScreenLocked)
+                "edit_mode", "organize_home", "widgets" -> (!isHomeScreenLocked)
                 "home_settings" -> false
                 else -> true
             }

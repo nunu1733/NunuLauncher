@@ -191,4 +191,35 @@ object DrawableTokens {
     @JvmField
     val WidgetAddButtonBackground = ResourceDrawableToken<InsetDrawable>(R.drawable.widget_cell_add_button_background)
         .setTint(ColorTokens.WidgetAddButtonBackgroundColor)
+
+    // Rebase Phase 2 adapt (#532): anchor work-profile FAB/scheduler/paused tokens
+    // referenced by the anchor WorkUtilityView and work paused action button.
+    @JvmField
+    val WorkFabBackground = ResourceDrawableToken<RippleDrawable>(R.drawable.work_mode_fab_background)
+        .mutate { context, scheme, uiColorMode ->
+            val background = getDrawable(0) as? GradientDrawable
+            background?.setColor(ColorTokens.PrimaryButton.resolveColor(context, scheme, uiColorMode))
+        }
+
+    @JvmField
+    val WorkSchedulerBackground = ResourceDrawableToken<RippleDrawable>(R.drawable.work_scheduler_background)
+        .mutate { context, scheme, uiColorMode ->
+            val background = getDrawable(0) as? GradientDrawable
+            background?.setColor(ColorTokens.PrimaryButton.resolveColor(context, scheme, uiColorMode))
+        }
+
+    @JvmField
+    val WorkAppsPausedActionButton = ResourceDrawableToken<RippleDrawable>(R.drawable.bg_work_apps_paused_action_button)
+        .mutate { context, scheme, uiColorMode ->
+            val strokeWidth = context.resources.getDimensionPixelSize(R.dimen.work_apps_paused_button_stroke)
+            val strokeColor = ColorTokens.PrimaryButton.resolveColor(context, scheme, uiColorMode)
+            // Rebase Phase 2 adapt (#532): androidx.core ktx findDrawableByLayerId is
+            // not on this module's classpath; the paused-action ripple's background is
+            // its only GradientDrawable layer.
+            val background = (0 until numberOfLayers)
+                .mapNotNull { getDrawable(it) }
+                .filterIsInstance<GradientDrawable>()
+                .firstOrNull()
+            background?.setStroke(strokeWidth, strokeColor)
+        }
 }

@@ -12,6 +12,8 @@ import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.protocol.CaptureId
+import app.lawnchair.organizer.application.public.ApplicationItemRef
+import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.PageId
@@ -71,7 +73,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
     private var capturedRows: Int = 0
     private var reloadLatch: CountDownLatch? = null
     private val modelCallbacks = object : BgDataModel.Callbacks {
-        override fun finishBindingItems(pagesBoundFirst: IntSet) {
+        override fun bindCompleteModel(itemIdMap: com.android.launcher3.model.data.WorkspaceData, isBindingSync: Boolean) {
             reloadLatch?.countDown()
         }
     }
@@ -390,6 +392,24 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
     }
 
     private fun assertReservationDisjoint(fixtureOwnedIds: Set<Long>) {
+        // Issue #577: use the production capture decoder, not a raw-number assertion.
+        // Literal 0 is UNKNOWN and would make the benchmark ineligible for editing.
+        val capture =
+            LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
+                .captureCurrent(CaptureId("issue577-fixture-locks"))
+        val capturedFixtureItems = capture.layoutState.items.filter { item ->
+            val id = (item.ref as? ApplicationItemRef.PersistentItem)?.itemId?.value?.toLongOrNull()
+            id != null && id in fixtureOwnedIds
+        }
+        assertEquals(
+            "Every fixture-owned row must be captured",
+            fixtureOwnedIds.size,
+            capturedFixtureItems.size,
+        )
+        assertTrue(
+            "Benchmark fixture rows must be known unlocked items",
+            capturedFixtureItems.all { it.lockState == OrganizerLockState.UNLOCKED },
+        )
         snapshotFavorites()
             .filter {
                 it.getAsInteger(Favorites.CONTAINER) == Favorites.CONTAINER_DESKTOP &&
@@ -628,7 +648,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
                 put(Favorites.RANK, screen)
                 put(Favorites.OPTIONS, 0)
                 put(Favorites.APPWIDGET_SOURCE, -1)
-                put(Favorites.ORGANIZER_LOCK_STATE, 0)
+                put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
             },
         )
         return id.toLong()
@@ -659,7 +679,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
                 put(Favorites.RANK, 0)
                 put(Favorites.OPTIONS, 0)
                 put(Favorites.APPWIDGET_SOURCE, -1)
-                put(Favorites.ORGANIZER_LOCK_STATE, 0)
+                put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
             },
         )
     }
@@ -689,7 +709,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
                 put(Favorites.RANK, 0)
                 put(Favorites.OPTIONS, 0)
                 put(Favorites.APPWIDGET_SOURCE, -1)
-                put(Favorites.ORGANIZER_LOCK_STATE, 0)
+                put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
             },
         )
     }
@@ -724,7 +744,7 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
                 put(Favorites.RANK, 0)
                 put(Favorites.OPTIONS, 0)
                 put(Favorites.APPWIDGET_SOURCE, -1)
-                put(Favorites.ORGANIZER_LOCK_STATE, 0)
+                put(Favorites.ORGANIZER_LOCK_STATE, OrganizerLockState.UNLOCKED.ordinal)
             },
         )
         return id.toLong()
@@ -784,10 +804,10 @@ class EditingBurdenBenchmarkFixtureSeedingInstrumentationTest {
 
     private fun waitForModel() {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
-        while (!launcher.model.isModelLoaded && System.nanoTime() < deadline) {
+        while (!launcher.model.isModelLoaded() && System.nanoTime() < deadline) {
             Thread.sleep(25L)
         }
-        check(launcher.model.isModelLoaded) { "Launcher model did not load for Issue #441 fixture" }
+        check(launcher.model.isModelLoaded()) { "Launcher model did not load for Issue #441 fixture" }
     }
 
     private fun reloadAndWait() {

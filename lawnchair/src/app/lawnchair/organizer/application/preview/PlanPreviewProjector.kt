@@ -13,7 +13,6 @@ import app.lawnchair.organizer.application.public.NewFolderChange
 import app.lawnchair.organizer.application.public.NewPageChange
 import app.lawnchair.organizer.application.public.OptionalText
 import app.lawnchair.organizer.application.public.PlacementState
-import app.lawnchair.organizer.application.public.PlanPreviewDetails
 import app.lawnchair.organizer.application.public.PreservedChange
 import app.lawnchair.organizer.application.public.PreviewChange
 import app.lawnchair.organizer.application.public.PreviewCounts
@@ -48,8 +47,19 @@ import app.lawnchair.organizer.planning.PreserveReason
  */
 object PlanPreviewProjector {
 
+    /**
+     * Issue #508: the projection now returns the raw rows and counts; the
+     * preview protocol aggregates them with the diagram projection into the
+     * single [app.lawnchair.organizer.application.public.PlanPreviewDetails]
+     * value, so a details object is only ever built complete (rows, counts,
+     * and diagrams together).
+     */
     sealed interface Result {
-        data class Ready(val details: PlanPreviewDetails) : Result
+        data class Ready(
+            val changes: List<PreviewChange>,
+            val counts: PreviewCounts,
+        ) : Result
+
         data object Invalid : Result
     }
 
@@ -157,37 +167,34 @@ object PlanPreviewProjector {
             }
         }
 
-        val details = PlanPreviewDetails(
-            changes = changes.toList(),
-            counts = PreviewCounts(
-                movedCount = changes.count { it is MoveChange },
-                preservedCount = changes.count { it is PreservedChange },
-                newFolderCount = plan.newFolders.size,
-                newPageCount = plan.newPages.size,
-                warningCounts = capturedWarnings.groupingBy { it.code }.eachCount(),
-                // Spec 182 strategy consequences, derived from the same rows
-                // the change list renders so header and rows share one truth.
-                crossPageMovedCount = changes.count { change ->
-                    change is MoveChange &&
-                        change.source is PreviewPosition.Workspace &&
-                        change.destination is PreviewPosition.Workspace &&
-                        (change.source as PreviewPosition.Workspace).pageDisplayOrdinal !=
-                        (change.destination as PreviewPosition.Workspace).pageDisplayOrdinal
-                },
-                preservedByStrategyCount = changes.count { change ->
-                    change is PreservedChange && change.reason == PreserveReason.STRATEGY_PRESERVED
-                },
-                // Issue #228 (spec AC-5): Add rows count every fixed-destination
-                // candidate, including generated-folder members.
-                addedCount = changes.count { it is AddChange },
-                // Issue #235 (spec D-4): widget relocations counted separately
-                // from app/folder moves, from the same rows the list renders.
-                widgetMovedCount = changes.count { change ->
-                    change is MoveChange && change.rationale == PlacementCode.WIDGET_UNIT
-                },
-            ),
+        val counts = PreviewCounts(
+            movedCount = changes.count { it is MoveChange },
+            preservedCount = changes.count { it is PreservedChange },
+            newFolderCount = plan.newFolders.size,
+            newPageCount = plan.newPages.size,
+            warningCounts = capturedWarnings.groupingBy { it.code }.eachCount(),
+            // Spec 182 strategy consequences, derived from the same rows
+            // the change list renders so header and rows share one truth.
+            crossPageMovedCount = changes.count { change ->
+                change is MoveChange &&
+                    change.source is PreviewPosition.Workspace &&
+                    change.destination is PreviewPosition.Workspace &&
+                    (change.source as PreviewPosition.Workspace).pageDisplayOrdinal !=
+                    (change.destination as PreviewPosition.Workspace).pageDisplayOrdinal
+            },
+            preservedByStrategyCount = changes.count { change ->
+                change is PreservedChange && change.reason == PreserveReason.STRATEGY_PRESERVED
+            },
+            // Issue #228 (spec AC-5): Add rows count every fixed-destination
+            // candidate, including generated-folder members.
+            addedCount = changes.count { it is AddChange },
+            // Issue #235 (spec D-4): widget relocations counted separately
+            // from app/folder moves, from the same rows the list renders.
+            widgetMovedCount = changes.count { change ->
+                change is MoveChange && change.rationale == PlacementCode.WIDGET_UNIT
+            },
         )
-        return Result.Ready(details)
+        return Result.Ready(changes = changes.toList(), counts = counts)
     }
 
     /**

@@ -25,6 +25,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.StrictMode
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -52,6 +53,7 @@ import app.lawnchair.views.ComposeBottomSheet
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.Launcher
+import com.android.launcher3.LauncherApplication
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
 import com.android.launcher3.model.LayoutWriteCoordinator
@@ -61,7 +63,13 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
-class LawnchairApp : Application() {
+// Issue #532 D4 (S3 port completion): restore the anchor supertype. The anchor's
+// LawnchairApp extends LauncherApplication, whose component carries the real
+// PackageManager safe-mode flag; as a plain Application, LauncherComponentProvider
+// fell back to a secondary component hardwired with setSafeModeEnabled(true), so the
+// app ran in the dagger "safe mode" and WidgetInflater degraded every widget row to
+// TYPE_PENDING (the loader's restore repair never bound or updated the DB).
+class LawnchairApp : LauncherApplication() {
     internal lateinit var layoutApplicationModule: LayoutApplicationModule<RecoveryStore>
         private set
     private val compatible = Build.VERSION.SDK_INT in BuildConfig.QUICKSTEP_MIN_SDK..BuildConfig.QUICKSTEP_MAX_SDK
@@ -73,6 +81,16 @@ class LawnchairApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // NunuLauncher #527: debug-only BAL block detection (log-only, never kills the process).
+        // Base on the existing VM policy so no framework-provided detection is dropped.
+        if (BuildConfig.DEBUG && Utilities.ATLEAST_BAKLAVA) {
+            StrictMode.setVmPolicy(
+                StrictMode.VmPolicy.Builder(StrictMode.getVmPolicy())
+                    .detectBlockedBackgroundActivityLaunch()
+                    .penaltyLog()
+                    .build(),
+            )
+        }
         instance = this
         QuickStepContract.sRecentsDisabled = !recentsEnabled
         if (isDefaultProcess()) {
@@ -106,12 +124,36 @@ class LawnchairApp : Application() {
         }
     }
 
-    fun onLauncherAppStateCreated() {
+    fun onLauncherAppStateCreated(appState: com.android.launcher3.LauncherAppState) {
+        // Issue #532 G5 (§6.10, single-instance contract restore): the anchor's
+        // LauncherAppState binding is UNSCOPED — every getInstance() resolves a
+        // NEW wrapper, and this hook ran on every construction, replacing
+        // `layoutApplicationModule` with a fresh, never-reconciled module (its
+        // readiness gate back at IDLE, its run mutex and recovery-store binding
+        // re-created). The organizer module is a PROCESS-SINGLE instance
+        // ("Single instance per process", the module's own contract; the fork's
+        // v15 MainThreadInitializedObject hook this bridge replaced also ran
+        // once per process): surfaces that hold the module reference (the edit
+        // surface's process access) stayed permanently fail-closed against the
+        // first module — null captures, WriterBusy recoveries. Keep the first
+        // construction; later wrappers share the same scoped model, so
+        // composing the module from the first one is faithful to the fork.
+        if (::layoutApplicationModule.isInitialized) {
+            return
+        }
         registerActivityLifecycleCallbacks(activityHandler)
         // Issue #14: make restart reconciliation reachable before organizer requests are accepted.
         // Issue #201: the outer composition supplies the generated-folder title
         // resolver, so the application module never depends on the UI layer.
-        layoutApplicationModule = LayoutApplicationModule.production(this, GeneratedFolderTitles.resolver(this))
+        // S2c (#532): appState is handed over by the caller (LauncherAppState
+        // init) so this hook never re-enters LauncherAppState.getInstance()
+        // during component construction; LayoutApplicationModule.production
+        // receives the instance explicitly.
+        layoutApplicationModule = LayoutApplicationModule.production(
+            this,
+            GeneratedFolderTitles.resolver(this),
+            appState,
+        )
     }
 
     /**
@@ -146,12 +188,12 @@ class LawnchairApp : Application() {
             )
             val model = com.android.launcher3.LauncherAppState.getInstance(this@LawnchairApp).model
             com.android.launcher3.util.Executors.MAIN_EXECUTOR.execute {
-                if (!model.isModelLoaded && !model.hasCallbacks()) {
+                if (!model.isModelLoaded() && !model.hasCallbacks()) {
                     model.startLoaderWithoutCallbacks()
                 }
             }
             val deadline = SystemClock.elapsedRealtime() + ORGANIZER_MODEL_LOAD_TIMEOUT_MS
-            while (!model.isModelLoaded && SystemClock.elapsedRealtime() < deadline) {
+            while (!model.isModelLoaded() && SystemClock.elapsedRealtime() < deadline) {
                 try {
                     Thread.sleep(50)
                 } catch (_: InterruptedException) {
@@ -159,7 +201,7 @@ class LawnchairApp : Application() {
                     break
                 }
             }
-            if (!model.isModelLoaded) {
+            if (!model.isModelLoaded()) {
                 Log.e(TAG, "Organizer startup reconciliation began without a completed model load")
                 layoutApplicationModule.failStartupReconciliation()
                 return@thread

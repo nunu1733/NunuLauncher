@@ -1,11 +1,15 @@
 package app.lawnchair.organizer.application.public
 
 import app.lawnchair.organizer.planning.ContainerCode
+import app.lawnchair.organizer.planning.GridCell
+import app.lawnchair.organizer.planning.GridSpan
 import app.lawnchair.organizer.planning.ItemId
 import app.lawnchair.organizer.planning.NewFolderOrdinal
 import app.lawnchair.organizer.planning.NewPageOrdinal
+import app.lawnchair.organizer.planning.PageId
 import app.lawnchair.organizer.planning.PlacementCode
 import app.lawnchair.organizer.planning.PreserveReason
+import app.lawnchair.organizer.planning.ProposalExclusionKey
 import app.lawnchair.organizer.planning.SplitStage
 import app.lawnchair.organizer.planning.WarningCode
 
@@ -53,9 +57,105 @@ data class PlanPreview(
     val details: PlanPreviewDetails,
 )
 
+/**
+ * The per-item concrete change projection plus the before/after diagrams, all
+ * derived from one materialized plan (Issue #508). [diagrams] is required —
+ * the rows, counts, and diagrams are one total projection of the same plan,
+ * so a details value without diagrams (a "list without the picture" state) is
+ * not constructible; the only diagram-less confirmation surface is
+ * `details == null` itself, the pre-existing environmental fallback.
+ */
 data class PlanPreviewDetails(
     val changes: List<PreviewChange>,
     val counts: PreviewCounts,
+    val diagrams: PlanPreviewDiagrams,
+    /** Issue #508: the items this proposal lets the user exclude. Empty means
+     *  nothing is excludable — a legitimate value, not an incomplete state. */
+    val excludableItems: List<PreviewExcludableItem> = emptyList(),
+)
+
+/**
+ * Issue #508: before/after page diagrams of one plan — `before` projects the
+ * plan's `sourceState`, `after` its `intendedState`. Pure display data for
+ * the read-only confirmation diagram; the UI draws geometry from it but never
+ * renders cells/identifiers as text, and the whole model is process-local
+ * (never serialized, journaled, or exported).
+ */
+data class PlanPreviewDiagrams(
+    val before: PreviewDiagram,
+    val after: PreviewDiagram,
+)
+
+/**
+ * One side's full diagram: the grid dimensions, the pages in display order,
+ * the dock items in rank order, and the platform-reserved regions.
+ */
+data class PreviewDiagram(
+    val columns: Int,
+    val rows: Int,
+    val pages: List<PreviewDiagramPage>,
+    val dockItems: List<PreviewDiagramItem>,
+    val reservedRegions: List<PreviewDiagramRegion>,
+)
+
+sealed interface PreviewDiagramPageRef {
+    data class Persistent(val pageId: PageId) : PreviewDiagramPageRef
+
+    /** A page this plan creates — identified by its proposal-local ordinal,
+     *  never a persistent id (it does not exist yet). */
+    data class Planned(val ordinal: NewPageOrdinal) : PreviewDiagramPageRef
+}
+
+/**
+ * One page of a diagram: its typed reference (display order follows the same
+ * combined `PageOrder` sort the change rows use) and the top-level items on
+ * it. Folder members and app-pair members are represented by the container
+ * item's [PreviewDiagramItem.memberCount], not drawn individually.
+ */
+data class PreviewDiagramPage(
+    val ref: PreviewDiagramPageRef,
+    val items: List<PreviewDiagramItem>,
+)
+
+/**
+ * One drawable item of a diagram. Cells/spans are drawing geometry only —
+ * never rendered as text, never logged; [ref] is an opaque correlation key
+ * (persistent id or proposal-local ordinal) and never displayed.
+ */
+data class PreviewDiagramItem(
+    val ref: PreviewDiagramItemRef,
+    val label: PreviewLabel,
+    val kind: CanonicalItemKind,
+    val cell: GridCell,
+    val span: GridSpan,
+    /** Folder member count for folder items; null otherwise. */
+    val memberCount: Int?,
+)
+
+sealed interface PreviewDiagramItemRef {
+    data class Persistent(val itemId: ItemId) : PreviewDiagramItemRef
+    data class PlannedCandidate(val itemId: ItemId) : PreviewDiagramItemRef
+    data class PlannedFolder(val ordinal: NewFolderOrdinal) : PreviewDiagramItemRef
+}
+
+/** A platform-reserved workspace region (QSB etc.) drawn but never a layout item. */
+data class PreviewDiagramRegion(
+    val page: PreviewDiagramPageRef,
+    val cell: GridCell,
+    val span: GridSpan,
+)
+
+/**
+ * Issue #508: one item the confirmation surface lets the user exclude from
+ * this proposal — an existing top-level app/deep-shortcut or a selected
+ * candidate. [key] is the neutral planning-owned exclusion key; labels come
+ * from the same canonical capture the change rows use.
+ */
+data class PreviewExcludableItem(
+    val key: ProposalExclusionKey,
+    val label: PreviewLabel,
+    val kind: CanonicalItemKind,
+    val isCandidate: Boolean,
 )
 
 /**

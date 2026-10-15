@@ -19,6 +19,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Issue #528: runtime permission for local network destinations on
+         Android 17 (API 37, targetSdk 37). Only consulted by the custom
+         suggestion fetch guard; Internet-only usage is unchanged. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -38,6 +42,10 @@
     <uses-permission android:name="android.permission.FORCE_STOP_PACKAGES" tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.STATUS_BAR_SERVICE" tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.SUSPEND_APPS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.FLASHLIGHT" />
+
+    <!-- Support non-cellular enabled devices -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
 
     <!--override minSdk declared in it-->
     <uses-sdk tools:overrideLibrary="com.kieronquinn.app.smartspacer.sdk" />
@@ -62,6 +70,7 @@
             android:autoRemoveFromRecents="true"
             android:exported="true"
             android:label="@string/settings_button_text"
+            android:icon="@mipmap/ic_settings"
             android:theme="@style/Theme.Lawnchair"
             android:windowSoftInputMode="adjustResize"
             android:enableOnBackInvokedCallback="true">
@@ -69,15 +78,69 @@
                 <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="lawnchair" android:host="settings" android:pathPrefix="/" />
+            </intent-filter>
         </activity>
+
+        <activity
+            android:label="@string/lawnchair_actions"
+            android:icon="@mipmap/ic_launcher_home"
+            android:name="app.lawnchair.gestures.ui.LawnchairShortcutActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Lawnchair">
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="app.lawnchair.gestures.ui.RunHandlerActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Lawnchair">
+            <intent-filter>
+                <action android:name="app.lawnchair.START_ACTION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
 
         <activity
             android:name="com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher"
             tools:node="remove" />
 
         <activity
+            android:name="app.lawnchair.ui.ApplyIconPackActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Transparent">
+            <intent-filter>
+                <action android:name="app.lawnchair.APPLY_ICONS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name="app.lawnchair.BlankActivity"
             android:theme="@style/Theme.Transparent" />
+
+        <!-- Issue #449: visual edit surface (ADR-0014 case B). Launcher-process
+             internal only; the session is process-local and nothing persists. -->
+        <!-- Issue #526: targetSdk 37 predictive back contract — same
+             enableOnBackInvokedCallback declaration PreferenceActivity has;
+             in-flight-apply back blocking is enforced by the activity's own
+             Compose BackHandler. -->
+        <activity
+            android:name="app.lawnchair.homeedit.ui.HomeEditSurfaceActivity"
+            android:autoRemoveFromRecents="true"
+            android:exported="false"
+            android:label="@string/edit_surface_title"
+            android:theme="@style/Theme.Lawnchair"
+            android:enableOnBackInvokedCallback="true" />
 
         <activity
             android:name="app.lawnchair.smartspace.SmartspacePreferencesShortcut"

@@ -8,13 +8,15 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.lawnchair.organizer.application.adapter.LauncherLayoutAdapter
 import app.lawnchair.organizer.application.protocol.CaptureId
 import app.lawnchair.organizer.planning.PageId
+import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherModel
 import com.android.launcher3.LauncherSettings.Favorites
-import com.android.launcher3.WorkspaceLayoutManager.FIRST_SCREEN_ID
 import com.android.launcher3.config.FeatureFlags
 import com.android.launcher3.model.BgDataModel
 import com.android.launcher3.util.IntSet
+import com.patrykmichalik.opto.core.firstBlocking
+import com.patrykmichalik.opto.core.setBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -25,14 +27,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Page capture regression: desktop-rows-derived PageIds in deterministic
- * ascending order, model-only empty pages excluded by construction.
- *
- * Finding 1 (Stage B review). Issue #155 / ADR-0008: when the platform QSB
- * lives on the first screen, the rowless first screen is
- * platform-authoritative and leads the page list even without desktop rows,
- * so expectations are built from the same contract inputs (flag +
- * [FIRST_SCREEN_ID]) as the accepted contract.
+ * Issue #581: QSB-off normalization must preserve every row-backed page,
+ * including screen 0, while retaining #155's enabled and empty-set fallback.
  */
 @RunWith(AndroidJUnit4::class)
 class PageCaptureInstrumentationTest {
@@ -42,38 +38,21 @@ class PageCaptureInstrumentationTest {
             "#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;" +
                 "component=com.android.settings/.Settings;launchFlags=0x10200000;end"
 
-        /**
-         * Expected page list for the given inserted desktop screens under the
-         * accepted #155 contract: the rowless first screen leads whenever the
-         * platform QSB is on the first screen; remaining pages follow in
-         * ascending numeric order.
-         */
-        fun expectedPages(vararg insertedScreens: Int): List<PageId> {
-            val rowPages = insertedScreens.map { PageId(it.toString()) }.distinct()
-                .sortedBy { it.value.toLong() }
-            return if (FeatureFlags.topQsbOnFirstScreenEnabled(
-                    InstrumentationRegistry.getInstrumentation().targetContext)
-            ) {
-                val firstScreen = PageId(FIRST_SCREEN_ID.toString())
-                buildList {
-                    add(firstScreen)
-                    addAll(rowPages.filterNot { it == firstScreen })
-                }.distinct()
-            } else {
-                rowPages
-            }
-        }
     }
 
     private lateinit var db: SQLiteDatabase
     private lateinit var model: LauncherModel
     private lateinit var writer: LauncherLayoutAdapter
+    private lateinit var preferences: PreferenceManager2
     private var originalSnapshot: List<ContentValues>? = null
+    private var originalSmartspaceEnabled: Boolean? = null
 
     @Before
     fun setUp() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val launcher = LauncherAppState.getInstance(context)
+        preferences = PreferenceManager2.getInstance(context)
+        originalSmartspaceEnabled = preferences.enableSmartspace.firstBlocking()
         model = launcher.model
         writer = LauncherLayoutAdapter(context, launcher.model.modelDbController, launcher.model)
         db = launcher.model.modelDbController.db
@@ -82,14 +61,20 @@ class PageCaptureInstrumentationTest {
 
     @After
     fun tearDown() {
-        originalSnapshot?.let {
-            restoreFavorites(it)
-            forceReloadAndWait()
+        try {
+            // Restore rows while the permissive QSB-off loader rule is active,
+            // then restore the original setting and reload the original layout.
+            if (::preferences.isInitialized) setSmartspacePreference(false)
+            originalSnapshot?.let(::restoreFavorites)
+        } finally {
+            originalSmartspaceEnabled?.let(::setSmartspacePreference)
+            if (originalSnapshot != null) forceReloadAndWait()
         }
     }
 
     @Test
     fun captureReturnsDesktopRowsDerivedPageIdsInSortedAscendingOrder() {
+        setQsbEnabled(false)
         deleteAllFavorites()
         insertOnDesktop(screen = 5, rowId = 1)
         insertOnDesktop(screen = 2, rowId = 2)
@@ -100,11 +85,12 @@ class PageCaptureInstrumentationTest {
             (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
         }
 
-        assertEquals(expectedPages(5, 2, 8), pageIds)
+        assertEquals(listOf(PageId("2"), PageId("5"), PageId("8")), pageIds)
     }
 
     @Test
     fun modelOnlyEmptyPagesExcludedFromCapture() {
+        setQsbEnabled(false)
         deleteAllFavorites()
         insertOnDesktop(screen = 0, rowId = 1)
         insertOnDesktop(screen = 1, rowId = 2)
@@ -114,7 +100,9 @@ class PageCaptureInstrumentationTest {
             (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
         }
 
-        assertEquals(expectedPages(0, 1), pageIds)
+        assertEquals(listOf(PageId("0"), PageId("1")), pageIds)
+        assertTrue("Row-backed page 0 must remain in the page inventory", pageIds.contains(PageId("0")))
+        assertTrue("Row-backed page 1 must remain in the page inventory", pageIds.contains(PageId("1")))
         assertTrue(
             "Page 3 has no desktop row and must be absent",
             pageIds.none { it.value == "3" },
@@ -122,7 +110,49 @@ class PageCaptureInstrumentationTest {
     }
 
     @Test
+    fun qsbOffKeepsFirstScreenWhenItIsTheOnlyRowBackedPage() {
+        setQsbEnabled(false)
+        deleteAllFavorites()
+        insertOnDesktop(screen = 0, rowId = 1)
+
+        val snapshot = writer.captureCurrent(CaptureId("page-cap-off-first-only"))
+        val pageIds = snapshot.layoutState.pages.map {
+            (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
+        }
+
+        assertEquals(listOf(PageId("0")), pageIds)
+    }
+
+    @Test
+    fun qsbOffEmptyWorkspaceRetainsLogicalFirstScreenFallback() {
+        setQsbEnabled(false)
+        deleteAllFavorites()
+
+        val snapshot = writer.captureCurrent(CaptureId("page-cap-off-empty"))
+        val pageIds = snapshot.layoutState.pages.map {
+            (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
+        }
+
+        assertEquals(listOf(PageId("0")), pageIds)
+    }
+
+    @Test
+    fun qsbOnSynthesizesFirstScreenForRowlessFirstPage() {
+        deleteAllFavorites()
+        setQsbEnabled(true)
+        insertOnDesktop(screen = 1, rowId = 1)
+
+        val snapshot = writer.captureCurrent(CaptureId("page-cap-on-synthetic-first"))
+        val pageIds = snapshot.layoutState.pages.map {
+            (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
+        }
+
+        assertEquals(listOf(PageId("0"), PageId("1")), pageIds)
+    }
+
+    @Test
     fun repeatedCaptureReturnsDeterministicIdenticalPages() {
+        setQsbEnabled(false)
         deleteAllFavorites()
         insertOnDesktop(screen = 3, rowId = 1)
         insertOnDesktop(screen = 1, rowId = 2)
@@ -131,7 +161,7 @@ class PageCaptureInstrumentationTest {
         val second = writer.captureCurrent(CaptureId("cap-2"))
         val third = writer.recaptureDb()
 
-        val expected = expectedPages(3, 1)
+        val expected = listOf(PageId("1"), PageId("3"))
         assertEquals(expected, first.layoutState.pages.map {
             (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
         })
@@ -141,6 +171,24 @@ class PageCaptureInstrumentationTest {
         assertEquals(expected, third.layoutState.pages.map {
             (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
         })
+    }
+
+    private fun setSmartspacePreference(enabled: Boolean) {
+        // The real preference callback recreates the active Launcher activity.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            preferences.enableSmartspace.setBlocking(enabled)
+        }
+    }
+
+    private fun setQsbEnabled(enabled: Boolean) {
+        setSmartspacePreference(enabled)
+        assertEquals(
+            "The real preference seam must control Launcher first-screen QSB",
+            enabled,
+            FeatureFlags.topQsbOnFirstScreenEnabled(
+                InstrumentationRegistry.getInstrumentation().targetContext,
+            ),
+        )
     }
 
     private fun deleteAllFavorites() {
@@ -213,7 +261,7 @@ class PageCaptureInstrumentationTest {
     private fun forceReloadAndWait() {
         val latch = CountDownLatch(1)
         val callback = object : BgDataModel.Callbacks {
-            override fun finishBindingItems(pagesBoundFirst: IntSet) {
+            override fun bindCompleteModel(itemIdMap: com.android.launcher3.model.data.WorkspaceData, isBindingSync: Boolean) {
                 latch.countDown()
             }
         }

@@ -1,0 +1,18 @@
+=== hiddenapi flags table attempt — 2026-10-07 ===
+--- emulator-5554 (API 37.0):
+ls /system/etc/hiddenapi/ -> ls: /system/etc/hiddenapi/: No such file or directory
+ls /system/etc/ | grep -i hidden -> (empty = none)
+ls /system/framework/ | grep -i hiddenapi -> (empty = none)
+--- emulator-5556 (API 36):
+ls /system/etc/hiddenapi/ -> ls: /system/etc/hiddenapi/: No such file or directory
+ls /system/etc/ | grep -i hidden -> (empty = none)
+
+RESULT: no hiddenapi flags table / CSV is present on either image (modern images encode flags inside
+boot-framework.vdex), and the platform 'hiddenapi' shell tool is not available. The flags-table primary
+output required by AC-3 (if obtainable) is therefore NOT obtainable on these AVDs; the observability that
+IS available was recorded instead:
+  - d-hiddenapi-logcat-post.txt: 0 hiddenapi denial lines mentioning app.lawnchair (the 3 'Accessing hidden'
+    denials belong to droid.deskclock, an unrelated system app).
+  - ma-keybuttonripple-flags-class-check.txt: dexdump primary output showing the class the app needs
+    (android.companion.virtualdevice.flags.Flags) exists on the image only under the
+    com.android.internal.hidden_from_bootclasspath wrapper, i.e. not resolvable by app code.

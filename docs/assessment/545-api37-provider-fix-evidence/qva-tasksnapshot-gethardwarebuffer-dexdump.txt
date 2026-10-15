@@ -1,0 +1,20 @@
+=== primary output: android.window.TaskSnapshot on API 37.0 image (framework.jar classes4.dex, dexdump -d) ===
+pulled: /system/framework/framework.jar from emulator-5554 (AVD issue526_api37_pixel_9a, SDK 37, CE2A.260420.019) at 2026-10-08
+
+--- getHardwareBuffer: stubbed, returns null unconditionally ---
+4a94c0: 1a00 c483                              |0000: const-string v0, "TaskSnapshot" // string@83c4
+4a94c4: 1a01 f3bd                              |0002: const-string v1, "getHardwareBuffer is deprecated!" // string@bdf3
+4a94c8: 7120 c555 1000                         |0004: invoke-static {v0, v1}, Landroid/util/Log;.e:(Ljava/lang/String;Ljava/lang/String;)I // method@55c5
+4a94ce: 1200                                   |0007: const/4 v0, #int 0 // #0
+4a94d0: 1100                                   |0008: return-object v0
+  hiddenapi flag on dexdump: 0x0002 (BLOCKED) — yet executed in launcher process (logcat E TaskSnapshot x9),
+  i.e. runtime enforcement did not hard-block this call for the priv-app launcher; the method itself returns null by design.
+
+--- contrast: the hardware buffer object EXISTS in the field, sibling accessors return real values ---
+  getHardwareBufferFormat/Width/Height: iget-object mSnapshot:Landroid/hardware/HardwareBuffer; -> getFormat/getHeight/getWidth
+  getColorSpace: iget-object mColorSpace; isSameHardwareBuffer: compares mSnapshot by reference; getTaskSize: mTaskSize (hiddenapi 0x0006)
+
+--- consequence for #545 fix (ActivityManagerWrapper.getTaskThumbnail reflection route) ---
+  TaskSnapshotManager.getTaskSnapshot(taskId, flag) returns a valid TaskSnapshot (marker=0, no NoSuchMethodError),
+  but ThumbnailData.makeThumbnail -> snapshot.hardwareBuffer == null -> black-bitmap fallback; rendered overview card is blank
+  (no real app screenshot can be extracted through this route on API 37.0). Sixth framework break: pixel extraction path.

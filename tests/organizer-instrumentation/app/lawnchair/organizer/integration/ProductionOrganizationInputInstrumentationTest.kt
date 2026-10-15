@@ -77,7 +77,7 @@ import app.lawnchair.organizer.ui.CategoryOverrideAuthoringResult
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
 import com.android.launcher3.pm.UserCache
-import com.android.wm.shell.common.split.SplitScreenConstants
+import com.android.wm.shell.shared.split.SplitScreenConstants // Issue #532 rebase: anchor moved the constants to wm.shell.shared.split
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.Executors
@@ -502,7 +502,7 @@ class ProductionOrganizationInputInstrumentationTest {
             .getSerialNumberForUser(Process.myUserHandle()).toString()
         // Fixture ranks come from the live platform constants so drift between the
         // persisted format and the codec's mirrored decoder fails this test first.
-        val snapPosition = SplitScreenConstants.SNAP_TO_50_50
+        val snapPosition = SplitScreenConstants.SNAP_TO_2_50_50
         val topRank = (SplitScreenConstants.SPLIT_POSITION_TOP_OR_LEFT shl 16) + snapPosition
         val bottomRank = (SplitScreenConstants.SPLIT_POSITION_BOTTOM_OR_RIGHT shl 16) + snapPosition
         val source = android.database.sqlite.SQLiteDatabase.create(null)
@@ -602,8 +602,8 @@ class ProductionOrganizationInputInstrumentationTest {
             "legacy plain ranks" to (0 to 1),
             "out-of-domain snap" to (3 to (65536 + 3)),
             "mismatched snaps" to (
-                (SplitScreenConstants.SPLIT_POSITION_TOP_OR_LEFT shl 16) + SplitScreenConstants.SNAP_TO_50_50 to
-                    (SplitScreenConstants.SPLIT_POSITION_BOTTOM_OR_RIGHT shl 16) + SplitScreenConstants.SNAP_TO_70_30
+                (SplitScreenConstants.SPLIT_POSITION_TOP_OR_LEFT shl 16) + SplitScreenConstants.SNAP_TO_2_50_50 to
+                    (SplitScreenConstants.SPLIT_POSITION_BOTTOM_OR_RIGHT shl 16) + SplitScreenConstants.SNAP_TO_2_66_33
                 ),
         )
         for ((label, ranks) in malformedRankPairs) {

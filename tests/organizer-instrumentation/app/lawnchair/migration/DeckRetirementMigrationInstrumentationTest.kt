@@ -101,9 +101,9 @@ class DeckRetirementMigrationInstrumentationTest {
      */
     private fun ensureActiveDbExists(context: Context) {
         val controller = ModelDbController(context)
+        // Issue #532 rebase: the anchor ModelDbController CRUD is favorites-fixed.
         controller
             .query(
-                LauncherSettings.Favorites.TABLE_NAME,
                 arrayOf("COUNT(*)"),
                 null,
                 null,

@@ -36,10 +36,16 @@ object ColorTokens {
     val Accent1_500 = SwatchColorToken(Swatch.Accent1, Shade.S500)
     val Accent1_600 = SwatchColorToken(Swatch.Accent1, Shade.S600)
     val Accent1_700 = SwatchColorToken(Swatch.Accent1, Shade.S700)
+
+    // Rebase Phase 2 adapt (#532): swatch used by the anchor shade_panel token.
+    val Accent1_800 = SwatchColorToken(Swatch.Accent1, Shade.S800)
     val Accent1_900 = SwatchColorToken(Swatch.Accent1, Shade.S900)
 
+    // Rebase Phase 2 adapt (#532): swatches used by the anchor blur fallback token.
+    val Accent2_10 = SwatchColorToken(Swatch.Accent2, Shade.S10)
     val Accent2_50 = SwatchColorToken(Swatch.Accent2, Shade.S50)
     val Accent2_100 = SwatchColorToken(Swatch.Accent2, Shade.S100)
+    val Accent2_200 = SwatchColorToken(Swatch.Accent2, Shade.S200)
     val Accent2_300 = SwatchColorToken(Swatch.Accent2, Shade.S300)
     val Accent2_500 = SwatchColorToken(Swatch.Accent2, Shade.S500)
     val Accent2_600 = SwatchColorToken(Swatch.Accent2, Shade.S600)
@@ -156,6 +162,37 @@ object ColorTokens {
     val SwitchTrackOff = DayNightColorToken(Neutral2_500.setLStar(45.0), Neutral1_700)
 
     @JvmField val PredictedPlateColor = Accent1_300
+
+    // Rebase Phase 2 adapt (#532): anchor tokens referenced by the anchor
+    // Launcher3 Java views (overview scrim over blur, popup arrow, bottom sheet
+    // blur fallback, shade panel and page indicator).
+    @JvmField val OverviewScrimOverBlurColor = DayNightColorToken(
+        StaticColorToken(0x80FFFFFF),
+        StaticColorToken(0x80000000),
+    )
+
+    @JvmField val OverviewScrimOverBlur = OverviewScrimOverBlurColor
+        .withPreferences { prefs ->
+            val translucent = prefs.recentsTranslucentBackground.get()
+            val translucentIntensity = prefs.recentsTranslucentBackgroundAlpha.get()
+            if (translucent) setAlpha(translucentIntensity) else this
+        }
+
+    @JvmField val PopupArrow = PopupShadeFirst
+
+    @JvmField val BottomSheetBackgroundColorBlurFallback = DayNightColorToken(Accent2_200, Accent2_800)
+
+    @JvmField val shade_panel_fg_color = DayNightColorToken(
+        Accent1_100.setAlpha(0.32f),
+        Accent1_800.setAlpha(0.32f),
+    )
+
+    @JvmField val shade_panel_bg_color = Surface.setAlpha(0.32f)
+
+    @JvmField val pageIndicatorDotColor = DayNightColorToken(
+        Accent1_600,
+        Accent1_500,
+    )
 }
 
 @Composable

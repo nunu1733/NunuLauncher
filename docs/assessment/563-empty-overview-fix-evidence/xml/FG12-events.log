@@ -1,0 +1,13 @@
+== setup: force-stop launcher, fresh Settings
+== gesture UP to overview
+gesture-entry task_view_single=2 overview_panel_lines=1
+== card tap (540,1200)
+card-tap Overview->Normal transitions=1
+== HOME + 10s dwell + APP_SWITCH
+dump@0s task_view_single=2
+dump@0.5s task_view_single=2
+dump@1s task_view_single=2
+dump@3s task_view_single=2
+dump@6s task_view_single=2
+dump@8s task_view_single=2
+== done FG12

@@ -60,11 +60,16 @@ import app.lawnchair.organizer.planning.ProfileId
 import app.lawnchair.organizer.planning.RevisionId
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TargetSet
+import app.lawnchair.organizer.ui.DedicatedThreadPublication
+import app.lawnchair.organizer.ui.DirectRunPublicationThread
 import app.lawnchair.organizer.ui.ManualOrganizationRun
+import app.lawnchair.organizer.ui.RunPublicationThread
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
@@ -1059,6 +1064,17 @@ class ExchangeFlowStateHolderTest {
     private class ExchangeRunApplication(
         private val detectionReady: Boolean = true,
     ) : app.lawnchair.organizer.ui.ManualOrganizationApplication {
+        // Issue #449: unused by the exchange holder tests; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
+        // Issue #450: unused by the exchange holder tests; fail fast if reached.
+        override fun applyWithUndoReceipt(
+            plan: app.lawnchair.organizer.application.public.ValidatedLayoutPlan,
+            runId: app.lawnchair.organizer.application.public.RunId,
+        ): Pair<app.lawnchair.organizer.application.public.ApplyResult, app.lawnchair.organizer.planning.RevisionId?> = error("not reached in exchange holder tests")
+
+        override fun recover(request: app.lawnchair.organizer.application.public.RecoveryRequest): app.lawnchair.organizer.application.public.RecoveryResult = error("not reached in exchange holder tests")
+
         var composeFullCalls = 0
         var detectionCalls = 0
         private var runIdCounter = 0
@@ -1142,11 +1158,13 @@ class ExchangeFlowStateHolderTest {
 
     private fun newExchangeRun(
         detectionReady: Boolean = true,
+        publicationThread: RunPublicationThread = DirectRunPublicationThread(),
     ): Pair<app.lawnchair.organizer.ui.ManualOrganizationRun, ExchangeRunApplication> {
         val application = ExchangeRunApplication(detectionReady)
         val run = app.lawnchair.organizer.ui.ManualOrganizationRun(
             application,
             app.lawnchair.organizer.planning.OrganizationPlanner { error("planner must not run") },
+            publicationThread = publicationThread,
         )
         return run to application
     }
@@ -1261,11 +1279,13 @@ class ExchangeFlowStateHolderTest {
         scopedStructural: Boolean = false,
         now: Long = 1_000_000L,
         pendingStore: FakePendingIntentStore = FakePendingIntentStore(),
+        publicationThread: RunPublicationThread = DirectRunPublicationThread(),
+        uiDispatcher: CoroutineDispatcher = Dispatchers.IO,
         encodeExport: (app.lawnchair.organizer.personalization.PersonalizationContextExportV1) -> app.lawnchair.organizer.personalization.ContextExportResult =
             app.lawnchair.organizer.personalization.ContextExportCodec::encode,
     ): HolderFixture {
         val store = FakeStore()
-        val (run, application) = newExchangeRun(detectionReady)
+        val (run, application) = newExchangeRun(detectionReady, publicationThread)
         val unhandled = mutableListOf<Throwable>()
         val scope = CoroutineScope(
             Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, throwable ->
@@ -1291,7 +1311,7 @@ class ExchangeFlowStateHolderTest {
             run = run,
             scope = scope,
             settleDispatcher = Dispatchers.IO,
-            uiDispatcher = Dispatchers.IO,
+            uiDispatcher = uiDispatcher,
             pendingImportStore = pendingStore,
         )
         return HolderFixture(holder, controller, store, run, application, unhandled, scope, pendingStore)
@@ -1603,29 +1623,122 @@ class ExchangeFlowStateHolderTest {
         // request, and the CTA attaches the intent at ScopeConfirmed — the
         // composed phase consumes the confirmed scope (the fixture's
         // composition is NotReady → InputUnavailable).
-        val fixture = newFixture(detectionReady = true, scopedStructural = true)
-        confirmScopedCandidate(fixture)
-        fixture.holder.openMethodChoiceFlow()
-        fixture.holder.generateScoped(
-            PrivacyTier.EXTERNAL_REDACTED,
-            listOf(scopedCandidate),
-            mapOf(scopedCandidate to "c1"),
+        // Issue #583: unlike the same-thread fixtures, this uses the real
+        // confinement guard and separate publication/worker threads. The
+        // method-face import and durable-save projections must not acquire
+        // the run lock on publication main.
+        val publication = DedicatedThreadPublication("exchange-import-publication")
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                Dispatchers.IO.dispatch(context) { publication.run { block.run() } }
+            }
+        }
+        val fixture = newFixture(
+            detectionReady = true,
+            scopedStructural = true,
+            publicationThread = publication,
+            uiDispatcher = dispatcher,
         )
-        awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
-        val generatedSession = fixture.store.session!!
+        try {
+            confirmScopedCandidate(fixture)
+            publication.run {
+                fixture.holder.openMethodChoiceFlow()
+                fixture.holder.generateScoped(
+                    PrivacyTier.EXTERNAL_REDACTED,
+                    listOf(scopedCandidate),
+                    mapOf(scopedCandidate to "c1"),
+                )
+            }
+            awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Disclosing }
+            val generatedSession = fixture.store.session!!
 
-        fixture.holder.openImport()
-        fixture.holder.import(scopedReplyFor(generatedSession))
-        val success = awaitImportSuccess(fixture.holder)
-        assertEquals(ExchangeImportEntryKind.RUN_IN, success.entryKind)
-        assertEquals(1, success.summary.scopeCandidateCount)
-        assertEquals("the run state stays untouched while the success state shows", "ScopeConfirmed", fixture.run.state::class.java.simpleName)
+            publication.run {
+                fixture.holder.openImport()
+                fixture.holder.import(scopedReplyFor(generatedSession))
+            }
+            // Surface the actual guard failure immediately, rather than
+            // passing from an unrelated timeout or a missing import attempt.
+            awaitScreen(fixture.holder) {
+                fixture.holder.screen is ExchangeScreen.ImportSuccess || synchronized(fixture.unhandled) { fixture.unhandled.isNotEmpty() }
+            }
+            assertEquals("publication-thread import must not crash", emptyList<Throwable>(), fixture.unhandled)
+            val success = awaitImportSuccess(fixture.holder)
+            assertEquals(ExchangeImportEntryKind.RUN_IN, success.entryKind)
+            assertEquals(1, success.summary.scopeCandidateCount)
+            assertEquals(generatedSession.exportId, fixture.pendingStore.record!!.exportId)
+            assertEquals(PendingImportEntryKind.RUN_IN, fixture.pendingStore.record!!.entryKind)
+            assertEquals("the run state stays untouched while the success state shows", "ScopeConfirmed", fixture.run.state::class.java.simpleName)
 
-        fixture.holder.continueImport()
-        awaitClosed(fixture.holder)
-        // The validated intent bound at ScopeConfirmed and the composed phase
-        // began (attach consumed the confirmed scope).
-        awaitRunState(fixture.run) { it is ManualOrganizationRun.State.InputUnavailable }
+            publication.run { fixture.holder.continueImport() }
+            awaitClosed(fixture.holder)
+            awaitRunState(fixture.run) { it is ManualOrganizationRun.State.InputUnavailable }
+            assertEquals("continuation keeps the durable proposal", generatedSession.exportId, fixture.pendingStore.record!!.exportId)
+            assertEquals(emptyList<Throwable>(), fixture.unhandled)
+        } finally {
+            fixture.scope.cancel()
+        }
+        assertQueuedImportOwnerChange(discardFails = false)
+        assertQueuedImportOwnerChange(discardFails = true)
+    }
+
+    /** Issue #583: park after the worker read but before its UI projection. */
+    private fun assertQueuedImportOwnerChange(discardFails: Boolean) {
+        val publication = DedicatedThreadPublication("queued-import-publication")
+        val pending = FakePendingIntentStore()
+        val queued = java.util.concurrent.atomic.AtomicReference<Runnable?>()
+        val parked = CountDownLatch(1)
+        val armed = java.util.concurrent.atomic.AtomicBoolean(true)
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (pending.completedSaves > 0 && armed.compareAndSet(true, false)) {
+                    queued.set(block)
+                    parked.countDown()
+                } else {
+                    Dispatchers.IO.dispatch(context) { publication.run { block.run() } }
+                }
+            }
+        }
+        val fixture = newFixture(scopedStructural = true, pendingStore = pending, publicationThread = publication, uiDispatcher = dispatcher)
+        try {
+            confirmScopedCandidate(fixture)
+            publication.run { fixture.holder.openMethodChoiceFlow() }
+            val session = generateBoundScopedSession(fixture)
+            val runId = (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId
+            publication.run {
+                fixture.holder.openImport()
+                fixture.holder.import(scopedReplyFor(session))
+            }
+            assertTrue("saved-import UI projection was not queued", parked.await(5, TimeUnit.SECONDS))
+            assertEquals(session.exportId, pending.record!!.exportId)
+            fixture.store.failInvalidateIf = discardFails
+            val discarded = fixture.run.discardScopeBoundRequest { exportId ->
+                when (fixture.controller.invalidateSessionIf(exportId)) {
+                    ExportInvalidationResult.Committed -> ManualOrganizationRun.StoreInvalidationOutcome.Committed
+                    ExportInvalidationResult.NoMatch -> ManualOrganizationRun.StoreInvalidationOutcome.NoMatch
+                    ExportInvalidationResult.WriteFailed -> ManualOrganizationRun.StoreInvalidationOutcome.WriteFailed
+                }
+            }
+            assertEquals(
+                if (discardFails) ManualOrganizationRun.ScopeDiscardOutcome.WriteFailed else ManualOrganizationRun.ScopeDiscardOutcome.Discarded,
+                discarded,
+            )
+            assertEquals("the run id alone cannot detect binding loss", runId, (fixture.run.state as ManualOrganizationRun.State.ScopeConfirmed).runId)
+            publication.run { queued.getAndSet(null)!!.run() }
+            if (discardFails) {
+                awaitImportSuccess(fixture.holder)
+                assertEquals(session.exportId, pending.record!!.exportId)
+                assertTrue(fixture.run.isLiveScopeOwner(runId, session.exportId))
+            } else {
+                awaitScreen(fixture.holder) { fixture.holder.screen is ExchangeScreen.Closed || fixture.holder.screen is ExchangeScreen.ImportSuccess }
+                assertEquals("a discarded binding must never adopt direct success", ExchangeScreen.Closed, fixture.holder.screen)
+                assertNull(pending.record)
+            }
+            assertEquals("re-observation must not repeat the durable save", 1, pending.saveCalls)
+            assertEquals(emptyList<Throwable>(), fixture.unhandled)
+        } finally {
+            queued.getAndSet(null)?.let { publication.run { it.run() } }
+            fixture.scope.cancel()
+        }
     }
 
     @Test

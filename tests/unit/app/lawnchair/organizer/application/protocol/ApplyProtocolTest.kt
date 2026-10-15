@@ -5,6 +5,7 @@ import app.lawnchair.organizer.application.adapter.FakeLayoutWriter
 import app.lawnchair.organizer.application.adapter.FakeRecoveryStore
 import app.lawnchair.organizer.application.canonical.CanonicalFixtures
 import app.lawnchair.organizer.application.lifecycle.LifecycleState
+import app.lawnchair.organizer.application.protocol.LayoutApplicationModule
 import app.lawnchair.organizer.application.public.ApplyAction
 import app.lawnchair.organizer.application.public.ApplyFailure
 import app.lawnchair.organizer.application.public.ApplyResult
@@ -14,6 +15,7 @@ import app.lawnchair.organizer.application.public.OrganizerLockState
 import app.lawnchair.organizer.application.public.PreWriteRejection
 import app.lawnchair.organizer.application.public.ProfileAvailability
 import app.lawnchair.organizer.application.public.RecoveryPointId
+import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.planning.GridCell
 import app.lawnchair.organizer.planning.GridSpan
@@ -26,6 +28,7 @@ import app.lawnchair.organizer.planning.RuleVersion
 import app.lawnchair.organizer.planning.TargetKey
 import app.lawnchair.organizer.planning.TaxonomyVersion
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -57,6 +60,245 @@ class ApplyProtocolTest {
         val mutex = RunMutex()
         val ids = FixedOperationIdSource()
         protocol = ApplyProtocol(writer, store, FakeClock, ids, faults, mutex)
+    }
+
+    /**
+     * Issue #450 (review round 2 finding 1): the undo receipt must be
+     * invocation-local. Two applies back to back — A completing first, B
+     * completing before A's caller reads its receipt — must still leave A's
+     * receipt intact, because the revision is captured inside A's own
+     * ApplyContext while A holds the run mutex. Regression oracle for the
+     * removed shared-slot implementation, where B overwrote A's revision
+     * before A could read it.
+     */
+    @Test
+    fun undoReceiptSurvivesAConcurrentApplyCompletingInsideTheReceiptWindow() {
+        // True-concurrency regression oracle for the removed shared-slot
+        // implementation (round 1 finding 1 / round 3 finding 1). A hook fires
+        // at A's A5 boundary — BEFORE A's Applied result (and receipt) is
+        // assembled — and blocks until B has fully completed its own
+        // applyWithUndoReceipt invocation, including its receipt read. With
+        // the old shared-slot code, B's completion overwrote the slot keyed
+        // by run id before A's caller could read it, so A's receipt read
+        // returned null; with the invocation-local context, A's receipt is
+        // already decided and must survive B's interleaving untouched.
+        val planA = mutatingPlan()
+        val planB = mutatingPlan(
+            CanonicalFixtures.state(items = listOf(CanonicalFixtures.appItem(cell = GridCell(1, 1)))),
+        )
+        val aReceiptAssemblyStarted = java.util.concurrent.CountDownLatch(1)
+        val bCompleted = java.util.concurrent.CountDownLatch(1)
+        val bOutcome = java.util.concurrent.atomic.AtomicReference<Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?>?>()
+        val aOutcome = java.util.concurrent.atomic.AtomicReference<Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?>?>()
+        val threadB = Thread {
+            // B's mutex acquisition is non-blocking: while A holds the run
+            // mutex B is rejected with ConcurrentRun, so B retries until A's
+            // release lets it in. This reproduces the old shared-slot race
+            // (B completing right at A's release/receipt boundary) without
+            // depending on scheduler timing.
+            var attempt = 0
+            while (attempt < 200) {
+                val outcome = protocol.applyWithUndoReceipt(planB, RunId("b123456789abcdef0123456789abcdef"))
+                if (outcome.first is ApplyResult.Applied) {
+                    bOutcome.set(outcome)
+                    break
+                }
+                attempt += 1
+                Thread.sleep(25)
+            }
+            bCompleted.countDown()
+        }
+        threadB.isDaemon = true
+        writer.onApplyA5Reread = {
+            // A is inside its apply (mutex held, at the A5 boundary — before
+            // its Applied result and receipt are assembled). Signal the main
+            // thread to START B here: B's mutex acquisition blocks until A
+            // releases, which reproduces the removed shared-slot code's race
+            // window (A releases → A reads the shared slot → B overwrote it).
+            // With the invocation-local context, A's receipt is decided before
+            // its mutex release and must survive B's interleaving untouched.
+            aReceiptAssemblyStarted.countDown()
+        }
+        // A runs on its own thread; B is started from the main thread the
+        // moment A reaches its A5 boundary (inside A's apply window), so B's
+        // apply+receipt cycle races A's release/receipt boundary.
+        val threadA = Thread {
+            aOutcome.set(protocol.applyWithUndoReceipt(planA, RunId("a123456789abcdef0123456789abcdef")))
+        }
+        threadA.isDaemon = true
+        threadA.start()
+        assertTrue("A never reached its A5 boundary", aReceiptAssemblyStarted.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        // Start B while A is still inside its apply; B blocks on the mutex
+        // until A releases and then completes.
+        threadB.start()
+        threadA.join(10_000)
+        threadB.join(10_000)
+        val (resultA, receiptA) = aOutcome.get()!!
+        val (resultB, receiptB) = bOutcome.get()!!
+        assertTrue("expected Applied for B, got $resultB", resultB is ApplyResult.Applied)
+        assertNotNull("B's receipt must carry its own verified post revision", receiptB)
+        assertTrue("expected Applied for A, got $resultA", resultA is ApplyResult.Applied)
+        // THE regression assertion: A's receipt survives B's completion that
+        // raced A's release/receipt boundary. Under the shared-slot code the
+        // post-release read returned null (run-id mismatch after B overwrote
+        // the slot).
+        assertNotNull("A's receipt must survive B's concurrent completion", receiptA)
+        // B ran last (it waited for A's release), so the final state is B's
+        // post-state; what the oracle pins is that BOTH receipts were decided
+        // inside their own invocations — A's from A's intended state, B's from
+        // B's — and neither was lost or cross-wired by the interleaving.
+        assertEquals(planB.intendedState, writer.currentState())
+        assertTrue("receipts must be per-invocation", receiptA != receiptB)
+        writer.onApplyA5Reread = null
+    }
+
+    /**
+     * A [RunMutexPort] double that parks ONLY the caller releasing [parkedRunId]
+     * — after the delegate has actually released the mutex — so the parking
+     * window is strictly post-release for that run while every other run's
+     * acquire/release passes through untouched. This reproduces the window
+     * where the removed shared-slot implementation read the slot.
+     */
+    private class GatedRunMutex(private val parkedRunId: RunId) : app.lawnchair.organizer.application.protocol.RunMutexPort {
+        private val delegate = RunMutex()
+        val releaseStarted = java.util.concurrent.CountDownLatch(1)
+        var releaseGate: java.util.concurrent.CountDownLatch? = null
+
+        override fun tryAcquire(runId: RunId): Boolean = delegate.tryAcquire(runId)
+
+        val actuallyReleased = java.util.concurrent.CountDownLatch(1)
+
+        override fun release(runId: RunId) {
+            if (runId == parkedRunId) {
+                // Release the mutex FIRST and signal only AFTER the release
+                // has actually completed — the parked window is then strictly
+                // post-release (the mutex is free) while the caller's
+                // applyWithUndoReceipt call has not returned yet.
+                delegate.release(runId)
+                actuallyReleased.countDown()
+                releaseGate?.await()
+            } else {
+                delegate.release(runId)
+            }
+        }
+    }
+
+    /**
+     * Issue #450 (round 6 finding 1): the deterministic receipt race oracle
+     * through the production module wrapper — `LayoutApplicationModule
+     * .applyWithUndoReceipt` — which is where the round-1 bug lived (the
+     * wrapper read a shared slot AFTER the protocol released the mutex; old
+     * head `480d85c5f0` `LayoutApplicationModule.kt:170-171`). A
+     * [GatedRunMutex] parks ONLY A's release: after A's mutex is actually
+     * free but before A's module call returns, B completes a full
+     * apply+receipt cycle through the same module. Under the removed
+     * shared-slot implementation A's post-release slot read returned null (B
+     * overwrote it) — reverting the module fails this oracle
+     * deterministically; the invocation-local implementation passes because
+     * A's receipt was decided before the release.
+     */
+    @Test
+    fun moduleReceiptSurvivesAConcurrentApplyCompletingInsideThePostReleaseWindow() {
+        val runIdA = RunId("a123456789abcdef0123456789abcdef")
+        val runIdB = RunId("b123456789abcdef0123456789abcdef")
+        val gatedMutex = GatedRunMutex(runIdA)
+        val module = LayoutApplicationModule(
+            writer = writer,
+            store = store,
+            clock = FakeClock,
+            operationIds = FixedOperationIdSource(),
+            folderTitleResolver = app.lawnchair.organizer.application.adapter.RecordingFolderTitleResolver(),
+            diagnosticsPort = app.lawnchair.organizer.diagnostics.DiagnosticsPort.NOOP,
+            runMutexOverride = gatedMutex,
+        )
+        module.reconcileAtStart()
+
+        val planA = mutatingPlan()
+        // B's source state is A's post-state (B applies on top of A), with a
+        // real title change so B is not a no-op.
+        val planB = mutatingPlan(planA.intendedState, intendedTitle = "Q")
+
+        val bCompleted = java.util.concurrent.CountDownLatch(1)
+        val bOutcome = java.util.concurrent.atomic.AtomicReference<Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?>?>()
+        val aOutcome = java.util.concurrent.atomic.AtomicReference<Pair<ApplyResult, app.lawnchair.organizer.planning.RevisionId?>?>()
+        val aError = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        val bError = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+
+        val gate = java.util.concurrent.CountDownLatch(1)
+        gatedMutex.releaseGate = gate
+
+        val threadA = Thread {
+            try {
+                aOutcome.set(module.applyWithUndoReceipt(planA, runIdA))
+            } catch (t: Throwable) {
+                aError.set(t)
+            } finally {
+                // Safety: if the gate never opens, unblock A so the test can
+                // report the failure instead of hanging.
+                gate.countDown()
+            }
+        }
+        threadA.isDaemon = true
+        threadA.start()
+
+        val threadB = Thread {
+            try {
+                bOutcome.set(module.applyWithUndoReceipt(planB, runIdB))
+            } catch (t: Throwable) {
+                bError.set(t)
+            } finally {
+                bCompleted.countDown()
+            }
+        }
+        threadB.isDaemon = true
+
+        // The watchdog starts B only after A's mutex is ACTUALLY released
+        // (not merely "release begun") — the deterministic post-release window.
+        Thread {
+            gatedMutex.actuallyReleased.await()
+            threadB.start()
+        }.apply {
+            isDaemon = true
+            start()
+        }
+
+        assertTrue("A never actually released", gatedMutex.actuallyReleased.await(20, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue("B never completed inside A's post-release window", bCompleted.await(30, java.util.concurrent.TimeUnit.SECONDS))
+        // B completed inside the window; now open the gate so A can return.
+        gate.countDown()
+        threadA.join(30_000)
+        aError.get()?.let { throw it }
+        bError.get()?.let { throw it }
+
+        val (resultA, receiptA) = aOutcome.get()
+            ?: error("A never returned from applyWithUndoReceipt")
+        val (resultB, receiptB) = bOutcome.get()
+            ?: error("B never returned from applyWithUndoReceipt")
+        assertTrue("expected Applied for A, got $resultA", resultA is ApplyResult.Applied)
+        assertTrue("expected Applied for B, got $resultB", resultB is ApplyResult.Applied)
+        // THE regression assertions: A's receipt was decided BEFORE its mutex
+        // release and survives B's completion inside the post-release window.
+        // Under the shared-slot implementation A's post-release read returned
+        // null (B overwrote the slot first) — reverting the module fails this
+        // oracle deterministically.
+        assertNotNull("A's receipt must survive B's completion in the post-release window", receiptA)
+        assertNotNull("B's receipt must carry its own verified post revision", receiptB)
+        assertTrue("receipts must be per-invocation", receiptA != receiptB)
+    }
+
+    @Test
+    fun undoReceiptIsNullForANonAppliedResult() {
+        // A concurrent run holds the mutex: the receipt invocation fails
+        // closed with ConcurrentRun and no revision.
+        val blocking = RunMutex()
+        assertTrue(blocking.tryAcquire(RunId("c123456789abcdef0123456789abcdef")))
+        val protocol2 = ApplyProtocol(writer, store, FakeClock, FixedOperationIdSource(), faults, blocking)
+        val (result, receipt) = protocol2.applyWithUndoReceipt(
+            mutatingPlan(),
+            RunId("d123456789abcdef0123456789abcdef"),
+        )
+        assertTrue("expected ConcurrentRun, got $result", result is ApplyResult.ConcurrentRun)
+        assertNull("a non-Applied result carries no receipt revision", receipt)
     }
 
     @Test
@@ -806,9 +1048,12 @@ class ApplyProtocolTest {
         )
     }
 
-    private fun mutatingPlan(sourceState: app.lawnchair.organizer.application.public.LayoutState): ValidatedLayoutPlan {
+    private fun mutatingPlan(
+        sourceState: app.lawnchair.organizer.application.public.LayoutState,
+        intendedTitle: String = "Z",
+    ): ValidatedLayoutPlan {
         val sourceItem = sourceState.items.first()
-        val intendedItem = sourceItem.copy(title = OptionalText.Present("Z"))
+        val intendedItem = sourceItem.copy(title = OptionalText.Present(intendedTitle))
         val intendedState = sourceState.copy(items = listOf(intendedItem))
         val action = ApplyAction.Update(
             ref = sourceItem.ref,

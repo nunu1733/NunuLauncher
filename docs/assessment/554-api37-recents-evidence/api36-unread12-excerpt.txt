@@ -1,0 +1,22 @@
+10-08 10:08:15.381   923  1209 W Binder  : Caught a RuntimeException from the binder stub implementation.
+10-08 10:08:15.381   923  1209 W Binder  : android.os.BadParcelableException: Parcel data not fully consumed, unread size: 12
+10-08 10:08:15.381   923  1209 W Binder  : 	at android.os.Parcel.enforceNoDataAvail(Parcel.java:1155)
+10-08 10:08:15.381   923  1209 W Binder  : 	at com.android.wm.shell.recents.RecentTasksController$IRecentTasksImpl.onTransact(go/retraceme 5ef7505f3172d45c77e95a8eba788f1ba3487bafbb4dd5bf3a1ad9be0371fc04:114)
+10-08 10:08:15.381   923  1209 W Binder  : 	at android.os.Binder.execTransactInternal(Binder.java:1426)
+10-08 10:08:15.381   923  1209 W Binder  : 	at android.os.Binder.execTransact(Binder.java:1365)
+10-08 10:08:15.381  1223  1223 D RecentsView: onGestureAnimationStart - groupedTaskInfo: Desk ID= -1, Desk Display ID=-1, Tasks=[id=873 winMode=fullscreen visReq=false vis=false excluded=false baseIntent=com.android.settings/.homepage.SettingsHomepageActivity], Type=FULLSCREEN, Minimized Task IDs=null
+10-08 10:08:15.381  1223  1223 D RecentsView: showCurrentTask(onGestureAnimationStart) - groupedTaskInfo: Desk ID= -1, Desk Display ID=-1, Tasks=[id=873 winMode=fullscreen visReq=false vis=false excluded=false baseIntent=com.android.settings/.homepage.SettingsHomepageActivity], Type=FULLSCREEN, Minimized Task IDs=null
+10-08 10:08:15.382  1223  1223 D RecentsView: reloadIfNeeded - getTasks: -1
+10-08 10:08:15.383  1223  1455 I lawnchair.debug: AssetManager2(0xb4000075be23bd38) locale list changing from [] to [en-US]
+10-08 10:08:15.385  1223  1223 W QuickstepProtoLogGroup: Attempting to log to ProtoLog before initializing it.
+10-08 10:06:21.827   909   928 W Binder  : Caught a RuntimeException from the binder stub implementation.
+10-08 10:06:21.827   909   928 W Binder  : android.os.BadParcelableException: Parcel data not fully consumed, unread size: 12
+10-08 10:06:21.827   909   928 W Binder  : 	at android.os.Parcel.enforceNoDataAvail(Parcel.java:1155)
+10-08 10:06:21.827   909   928 W Binder  : 	at com.android.wm.shell.recents.RecentTasksController$IRecentTasksImpl.onTransact(go/retraceme 5ef7505f3172d45c77e95a8eba788f1ba3487bafbb4dd5bf3a1ad9be0371fc04:114)
+10-08 10:06:21.827   909   928 W Binder  : 	at android.os.Binder.execTransactInternal(Binder.java:1426)
+10-08 10:06:21.827   909   928 W Binder  : 	at android.os.Binder.execTransact(Binder.java:1365)
+10-08 10:06:21.827   666  1631 W ActivityTaskManager: takeTaskSnapshot: taskId=848 not found or not visible
+10-08 10:06:21.829   666   865 D BackgroundInstallControlService: Package event received: 0
+10-08 10:06:21.831  1160  1160 D RecentsView: applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=15138] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=15139] null, type=SINGLE task=[id=848 windowingMode=0 user=0 lastActiveTime=15140] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=15141] null, type=SINGLE task=[id=871 windowingMode=1 user=0 lastActiveTime=226934] null]
+10-08 10:06:21.832  1160  1160 D TaskViewModel: bind: []
+10-08 10:06:21.842  1160  1160 D TaskViewModel: bind: []

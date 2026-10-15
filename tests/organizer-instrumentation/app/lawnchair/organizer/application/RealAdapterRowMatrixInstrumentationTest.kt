@@ -103,6 +103,18 @@ class RealAdapterRowMatrixInstrumentationTest {
                     intent = "#Intent;component=com.example/.Main;end",
                 ),
                 row(
+                    4,
+                    Favorites.ITEM_TYPE_APPLICATION,
+                    10,
+                    1,
+                    null,
+                    -1,
+                    -1,
+                    OrganizerLockState.UNLOCKED,
+                    rank = 1,
+                    intent = "#Intent;component=com.example/.FolderChild;end",
+                ),
+                row(
                     3,
                     Favorites.ITEM_TYPE_APPWIDGET,
                     20,
@@ -127,6 +139,9 @@ class RealAdapterRowMatrixInstrumentationTest {
                 listOf(PageId("0"), PageId("99")),
                 profiles,
             )
+            val capturedFolderChildren = captured.manifest.rows.filter { it.containerCode.value == 1 }
+            assertEquals(listOf(null to null, -1 to -1), capturedFolderChildren.map { it.cellX to it.cellY })
+            assertEquals(GridCell(-1, -1), capturedFolderChildren[1].rawCell)
             assertEquals(listOf(PageId("0")), captured.state.pages.map {
                 (it.ref as app.lawnchair.organizer.application.public.ApplicationPageRef.PersistentPage).pageId
             })
@@ -144,6 +159,9 @@ class RealAdapterRowMatrixInstrumentationTest {
             }
             val recovered = RowManifestCodec.capture(restored, capabilities, listOf(PageId("0")), profiles)
             assertEquals(captured.manifest, recovered.manifest)
+            assertEquals(listOf(null to null, -1 to -1), recovered.manifest.rows
+                .filter { it.containerCode.value == 1 }
+                .map { it.cellX to it.cellY })
             assertEquals(captured.state, recovered.state)
             assertTrue(
                 RecoveryWriteSetMaterializer.materialize(captured.manifest, recovered.manifest)

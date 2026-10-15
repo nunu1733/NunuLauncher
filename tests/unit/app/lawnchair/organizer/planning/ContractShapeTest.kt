@@ -752,7 +752,8 @@ class ContractShapeTest {
 
     @Test
     fun everyPreserveReasonVariantIsConstructible() {
-        assertEquals(11, PreserveReason.entries.size)
+        // Issue #451: DUPLICATE_LAUNCH_TARGET joins the closed vocabulary.
+        assertEquals(12, PreserveReason.entries.size)
         assertTrue(
             PreserveReason.entries.containsAll(
                 listOf(
@@ -766,6 +767,7 @@ class ContractShapeTest {
                     PreserveReason.NON_TARGET,
                     PreserveReason.STRATEGY_PRESERVED,
                     PreserveReason.STRUCTURAL,
+                    PreserveReason.DUPLICATE_LAUNCH_TARGET,
                     PreserveReason.ALREADY_CANONICAL,
                 ),
             ),
@@ -774,6 +776,10 @@ class ContractShapeTest {
         // STRUCTURAL and never outranks an existing reason.
         assertTrue(PreserveReason.STRATEGY_PRESERVED.ordinal > PreserveReason.NON_TARGET.ordinal)
         assertTrue(PreserveReason.STRATEGY_PRESERVED.ordinal < PreserveReason.STRUCTURAL.ordinal)
+        // Spec 451 N-3: DUPLICATE_LAUNCH_TARGET is below every existing
+        // preservation predicate (incl. STRUCTURAL) and above ALREADY_CANONICAL.
+        assertTrue(PreserveReason.DUPLICATE_LAUNCH_TARGET.ordinal > PreserveReason.STRUCTURAL.ordinal)
+        assertTrue(PreserveReason.DUPLICATE_LAUNCH_TARGET.ordinal < PreserveReason.ALREADY_CANONICAL.ordinal)
     }
 
     @Test

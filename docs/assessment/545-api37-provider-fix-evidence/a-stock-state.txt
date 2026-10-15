@@ -1,0 +1,9 @@
+=== matrix (a) step1: stock state after cleanup, 2026-10-07 19:54:42 ===
+--- cmd overlay lookup (stock):
+com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity
+--- packages (lawnchair should be absent):
+(none)
+--- /product/overlay QuickstepConfigOverlay absent:
+(none)
+--- /product/priv-app lawnchair dirs absent:
+(none)

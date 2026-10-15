@@ -77,6 +77,16 @@ data object FeatureFlags : PreferenceRoute
 @Serializable
 data class GeneralFontSelection(val prefKey: String) : PreferenceRoute
 
+// Predictions section routes
+// Rebase Phase 2 adapt (#532): route for the fork's dismissed-predictions screen.
+@Serializable
+data object DismissedPredictionApps : PreferenceRoute
+
+// Rebase Phase 2 adapt (#532): anchor predictions route; the anchor
+// HotseatEduController opens it directly.
+@Serializable
+data object Predictions : PreferenceRoute
+
 @Serializable
 data object GeneralIconPack : PreferenceRoute
 

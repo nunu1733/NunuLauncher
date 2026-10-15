@@ -28,6 +28,7 @@ import app.lawnchair.ui.preferences.destinations.CategoryOverridePreferences
 import app.lawnchair.ui.preferences.destinations.CustomCategoryPreferences
 import app.lawnchair.ui.preferences.destinations.CustomIconShapePreference
 import app.lawnchair.ui.preferences.destinations.DebugMenuPreferences
+import app.lawnchair.ui.preferences.destinations.DismissedPredictionAppsPreferences
 import app.lawnchair.ui.preferences.destinations.DockPreferences
 import app.lawnchair.ui.preferences.destinations.DummyPreference
 import app.lawnchair.ui.preferences.destinations.ExperimentalFeaturesPreferences
@@ -49,6 +50,7 @@ import app.lawnchair.ui.preferences.destinations.OrganizerHubPreferences
 import app.lawnchair.ui.preferences.destinations.OrganizerStrategyPreferences
 import app.lawnchair.ui.preferences.destinations.PickAppForGesture
 import app.lawnchair.ui.preferences.destinations.PlacementLockPreferences
+import app.lawnchair.ui.preferences.destinations.PredictionsPreferences
 import app.lawnchair.ui.preferences.destinations.PreferencesDashboard
 import app.lawnchair.ui.preferences.destinations.QuickstepPreferences
 import app.lawnchair.ui.preferences.destinations.SearchPreferences
@@ -183,6 +185,13 @@ fun PreferenceNavigation(
 
         composable<DebugMenu> { DebugMenuPreferences() }
         composable<FeatureFlags> { FeatureFlagsPreference() }
+
+        // Rebase Phase 2 adapt (#532): dismissed predictions destination.
+        composable<DismissedPredictionApps> { DismissedPredictionAppsPreferences() }
+
+        // Rebase Phase 2 adapt (#532): anchor predictions destination; the anchor
+        // HotseatEduController opens it directly.
+        composable<Predictions> { PredictionsPreferences() }
 
         composable<SelectIcon> { backStackEntry ->
             val args: SelectIcon = backStackEntry.toRoute()

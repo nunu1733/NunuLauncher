@@ -2,10 +2,13 @@ package app.lawnchair.organizer.ui
 
 import android.app.Activity
 import android.content.Context
+import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -20,14 +23,17 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -35,6 +41,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -159,37 +166,55 @@ class OrganizerHubPreferencesInstrumentationTest {
         exchangeHolderOverride: ExchangeFlowStateHolder? = null,
     ) {
         composeRule.setContent {
-            if (captureDispatcher != null) {
-                captureDispatcher(LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher)
-            }
-            CompositionLocalProvider(
-                LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
-            ) {
-                val navController: NavHostController = rememberNavController()
-                if (captureNav != null) captureNav(navController)
-                CompositionLocalProvider(LocalNavController provides navController) {
-                    LawnchairTheme {
-                        NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
-                            composable<HomeScreenOrganizer> {
-                                OrganizerHubPreferences(run = runner)
-                            }
-                            composable<HomeScreenManualOrganization> { backStackEntry ->
-                                val route = backStackEntry.toRoute<HomeScreenManualOrganization>()
-                                ManualOrganizationPreferences(
-                                    run = runner,
-                                    trigger = route.trigger,
-                                    durableRecovery = route.durableRecovery,
-                                    onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
-                                    exchangeOpen = route.exchangeOpen,
-                                    exchangeHolderOverride = exchangeHolderOverride,
-                                )
-                            }
-                            composable<HomeScreenOrganizerDiagnostics> {
-                                Text(text = DIAGNOSTICS_STUB_TEXT)
-                            }
-                            composable<HomeScreenOrganizerStrategy> {
-                                OrganizerStrategyPreferences(run = runner)
-                            }
+            HubHost(runner, fontScale, captureDispatcher, captureNav, exchangeHolderOverride)
+        }
+    }
+
+    /**
+     * The hub host composition, shared by `composeRule.setContent` and the
+     * post-recreation `Activity.setContent` (the rule's setContent is a
+     * once-per-test contract). The two compositions must be structurally
+     * identical so the saveable state — the list position and the #479 drag
+     * guard — restores into the recreated activity's composition.
+     */
+    @Composable
+    private fun HubHost(
+        runner: ManualOrganizationRun,
+        fontScale: Float = 1f,
+        captureDispatcher: ((OnBackPressedDispatcher?) -> Unit)? = null,
+        captureNav: ((NavHostController) -> Unit)? = null,
+        exchangeHolderOverride: ExchangeFlowStateHolder? = null,
+    ) {
+        if (captureDispatcher != null) {
+            captureDispatcher(LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher)
+        }
+        CompositionLocalProvider(
+            LocalDensity provides Density(context.resources.displayMetrics.density, fontScale),
+        ) {
+            val navController: NavHostController = rememberNavController()
+            if (captureNav != null) captureNav(navController)
+            CompositionLocalProvider(LocalNavController provides navController) {
+                LawnchairTheme {
+                    NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
+                        composable<HomeScreenOrganizer> {
+                            OrganizerHubPreferences(run = runner)
+                        }
+                        composable<HomeScreenManualOrganization> { backStackEntry ->
+                            val route = backStackEntry.toRoute<HomeScreenManualOrganization>()
+                            ManualOrganizationPreferences(
+                                run = runner,
+                                trigger = route.trigger,
+                                durableRecovery = route.durableRecovery,
+                                onOpenDiagnostics = { navController.navigate(HomeScreenOrganizerDiagnostics) },
+                                exchangeOpen = route.exchangeOpen,
+                                exchangeHolderOverride = exchangeHolderOverride,
+                            )
+                        }
+                        composable<HomeScreenOrganizerDiagnostics> {
+                            Text(text = DIAGNOSTICS_STUB_TEXT)
+                        }
+                        composable<HomeScreenOrganizerStrategy> {
+                            OrganizerStrategyPreferences(run = runner)
                         }
                     }
                 }
@@ -1109,11 +1134,26 @@ class OrganizerHubPreferencesInstrumentationTest {
 
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryPreview }
         composeRule.waitUntil(5_000) { application.previewRequests >= 1 }
+        // G5 (§6.17, run 37324581952): the state-only waits above can pass
+        // before the preview face recomposed, and clicking into the face swap
+        // crashed the frame measure in MutableIntervalList on the x86_64 CI
+        // emulator (IndexOutOfBoundsException). Wait for each target row to
+        // exist before operating; every assert target is unchanged.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_recovery_confirm),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_recovery_confirm),
         ).performClick()
 
         composeRule.waitUntil(5_000) { runner.state is ManualOrganizationRun.State.RecoveryResultState }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_safe_terminal),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_safe_terminal),
         ).assertIsDisplayed()
@@ -1121,6 +1161,11 @@ class OrganizerHubPreferencesInstrumentationTest {
         // destination, come back, and the result/safe-support face must have
         // survived the run face's disposal — the handoff/process-id guard
         // must not re-run the admission (which would pop the result away).
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.manual_organization_open_diagnostics),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText(
             context.getString(R.string.manual_organization_open_diagnostics),
         ).assertIsDisplayed().performClick()
@@ -1488,7 +1533,11 @@ class OrganizerHubPreferencesInstrumentationTest {
             context.getString(R.string.manual_organization_recovery),
         ).performSemanticsAction(SemanticsActions.RequestFocus)
         awaitFocused(context.getString(R.string.manual_organization_recovery))
+        // Issue #449: the edit-surface row joins the hub between the start
+        // CTA and the diagnostics row; the DPAD budget includes the extra
+        // row.
         val order = listOf(
+            R.string.edit_surface_menu_open,
             R.string.organizer_diagnostics_title,
             R.string.organizer_category_overrides_title,
             R.string.organizer_custom_category_title,
@@ -1499,7 +1548,7 @@ class OrganizerHubPreferencesInstrumentationTest {
         )
         order.forEach { res ->
             val text = context.getString(res)
-            pressDownUntilFocused(text)
+            pressDownUntilFocused(text, maxPresses = 14)
             composeRule.onNodeWithText(text).assertHasClickAction()
         }
     }
@@ -1645,6 +1694,20 @@ class OrganizerHubPreferencesInstrumentationTest {
      * hub must never call is left to fail loudly.
      */
     private class FakeHubApplication : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
+        // Issue #450: the undo receipt/recovery seams are out of scope for
+        // this test; the fake fails fast if ever reached.
+        override fun applyWithUndoReceipt(
+            plan: app.lawnchair.organizer.application.public.ValidatedLayoutPlan,
+            runId: app.lawnchair.organizer.application.public.RunId,
+        ): Pair<app.lawnchair.organizer.application.public.ApplyResult, app.lawnchair.organizer.planning.RevisionId?> =
+            error("not reached in this test")
+
+        override fun recover(request: app.lawnchair.organizer.application.public.RecoveryRequest): app.lawnchair.organizer.application.public.RecoveryResult =
+            error("not reached in this test")
+
         override val diagnostics = RecordingDiagnostics()
         var applyCalls = 0
 

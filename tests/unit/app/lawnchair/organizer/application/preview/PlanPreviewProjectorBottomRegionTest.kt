@@ -211,7 +211,7 @@ class PlanPreviewProjectorBottomRegionTest {
 
         // Spatial oracle: every movable destination inside the region, zero
         // above it.
-        val moves = projection.details.changes.filterIsInstance<MoveChange>()
+        val moves = projection.changes.filterIsInstance<MoveChange>()
         assertEquals(14, moves.size)
         for (move in moves) {
             val destination = move.destination as PreviewPosition.Workspace
@@ -222,9 +222,9 @@ class PlanPreviewProjectorBottomRegionTest {
         }
 
         // Counts fixed to expected values.
-        assertEquals(14, projection.details.counts.movedCount)
-        assertEquals(0, projection.details.counts.newPageCount)
-        assertEquals(2, projection.details.counts.crossPageMovedCount)
-        assertEquals(1, projection.details.counts.preservedByStrategyCount)
+        assertEquals(14, projection.counts.movedCount)
+        assertEquals(0, projection.counts.newPageCount)
+        assertEquals(2, projection.counts.crossPageMovedCount)
+        assertEquals(1, projection.counts.preservedByStrategyCount)
     }
 }

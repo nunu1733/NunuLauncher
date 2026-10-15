@@ -1,0 +1,7 @@
+10-11 03:11:21.342 D/StateManager( 6164): goToState - fromState: Normal, toState: Overview, partial trace:
+10-11 03:11:21.366 W/QuickstepProtoLogGroup( 6164): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-11 03:11:21.366 W/QuickstepProtoLogGroup( 6164): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-11 03:11:21.367 W/QuickstepProtoLogGroup( 6164): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:298)
+10-11 03:11:21.367 W/QuickstepProtoLogGroup( 6164): 	at com.android.launcher3.statemanager.StateManager.goToState(StateManager.java:186)
+10-11 03:11:21.414 D/RecentsView( 6164): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=18802] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=18803] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=18804] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=18805] null, type=SINGLE task=[id=1038 windowingMode=1 user=0 lastActiveTime=2388658] null]
+10-11 03:11:21.448 D/TasksRepository( 6164): updateTaskRequests to: [1038, 1005, 855], removed: [], added: [1038, 1005, 855]

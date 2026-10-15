@@ -1,0 +1,27 @@
+[02:48:34.756] MONITOR:
+10-14 11:48:31.778 16628 16628 I SessionBadgeProbe: activity started
+10-14 11:48:31.798 16628 16628 I SessionBadgeProbe: session callback registered
+10-14 11:48:31.963 16628 16628 I SessionBadgeProbe: commit status receiver registered
+[02:48:35.333] MONITOR: pm path = []
+[02:48:36.203] MONITOR:
+10-14 11:48:31.778 16628 16628 I SessionBadgeProbe: activity started
+10-14 11:48:31.798 16628 16628 I SessionBadgeProbe: session callback registered
+10-14 11:48:31.963 16628 16628 I SessionBadgeProbe: commit status receiver registered
+10-14 11:48:34.003 16628 16628 I SessionBadgeProbe: apk loaded, bytes=2607707
+10-14 11:48:34.022 16628 16628 I SessionBadgeProbe: session created id=1228612374 with badging (icon+label), installer=self, reason=4 (no spoof)
+[02:48:36.530] MONITOR: pm path = []
+[02:48:37.322] MONITOR:
+10-14 11:48:31.778 16628 16628 I SessionBadgeProbe: activity started
+10-14 11:48:31.798 16628 16628 I SessionBadgeProbe: session callback registered
+10-14 11:48:31.963 16628 16628 I SessionBadgeProbe: commit status receiver registered
+10-14 11:48:34.003 16628 16628 I SessionBadgeProbe: apk loaded, bytes=2607707
+10-14 11:48:34.022 16628 16628 I SessionBadgeProbe: session created id=1228612374 with badging (icon+label), installer=self, reason=4 (no spoof)
+10-14 11:48:34.204   642   666 W PackageInstallerSession: Writing changed icon /data/system/install_sessions/app_icon.1228612374.png
+10-14 11:48:34.362   642  1160 E SystemServiceRegistry: 	at com.android.server.pm.PackageInstallerSession.markAsSealed(PackageInstallerSession.java:2651)
+10-14 11:48:34.362   642  1160 E SystemServiceRegistry: 	at com.android.server.pm.PackageInstallerSession.commit(PackageInstallerSession.java:2401)
+10-14 11:48:34.362   642  1160 E SystemServiceRegistry: 	at android.content.pm.IPackageInstallerSession$Stub.onTransact(IPackageInstallerSession.java:461)
+10-14 11:48:34.367 16628 16628 I SessionBadgeProbe: session committed
+10-14 11:48:34.373 16628 16628 I SessionBadgeProbe: cb onCreated 1228612374
+10-14 11:48:34.426 16628 16628 I SessionBadgeProbe: commit status=-1
+10-14 11:48:34.564 16628 16628 I SessionBadgeProbe: launched confirm intent
+[02:48:38.250] MONITOR: pm path = []

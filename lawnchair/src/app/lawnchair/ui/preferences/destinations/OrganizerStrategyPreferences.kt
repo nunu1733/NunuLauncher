@@ -177,11 +177,38 @@ private fun readSelectedStrategy(context: Context): LayoutStrategySelectionSnaps
 }
 
 /**
- * Spec 182: strategy picker. Only the active bundle's runtime-supported
- * strategies are offered, each with a localized name and intent description.
- * Selection uses radio semantics so TalkBack announces name, state, and
- * description as one node; a store read failure hides the active selection
- * instead of inventing one (fail-closed, matching the composer).
+ * Spec #453 (FR-023): the intent-level choices the picker offers, in display
+ * order. This is a UI-layer display judgment only — the catalog, bundle digest,
+ * write-time validation, and fail-closed read stay on the full
+ * runtime-supported set (spec 182 / ADR-0012).
+ */
+private val OFFERED_STRATEGY_CHOICES = listOf(
+    StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+    StrategyId("STABLE_PAGE_TIDY_V2"),
+    StrategyId("BOTTOM_REGION_V1"),
+)
+
+/**
+ * Spec #453: rows the picker composes. The offered choices in order, plus the
+ * stored selection as one appended selected row when it is a runtime-supported
+ * strategy hidden from the offered set — it stays selected until the user
+ * changes it. A selection outside the runtime-supported set (unknown/removed
+ * ID) and failed reads keep the existing fail-closed display: no appended row,
+ * nothing shown as selected.
+ */
+internal fun strategyPickerDisplayRows(catalog: List<StrategyId>, selected: StrategyId?): List<StrategyId> {
+    val offered = OFFERED_STRATEGY_CHOICES.filter { it in catalog }
+    val hiddenSelected = selected?.takeIf { it in catalog && it !in OFFERED_STRATEGY_CHOICES }
+    return offered + listOfNotNull(hiddenSelected)
+}
+
+/**
+ * Spec 182: strategy picker. The offered strategies are an intent-curated
+ * subset of the active bundle's runtime-supported catalog (spec #453), each
+ * with a localized name and intent description. Selection uses radio semantics
+ * so TalkBack announces name, state, and description as one node; a store read
+ * failure hides the active selection instead of inventing one (fail-closed,
+ * matching the composer).
  */
 internal fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
     catalog: List<StrategyId>?,
@@ -192,12 +219,14 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
     onSelect: (StrategyId) -> Unit,
 ) {
     if (catalog.isNullOrEmpty()) return
+    val displayRows = strategyPickerDisplayRows(catalog, selected)
     // The whole picker lives in one selectableGroup so TalkBack announces the
     // rows as a single mutually-exclusive radio group ("x of N" semantics).
-    // The catalog's rows may exceed one small screen (eight strategies since
-    // issue #235); losing LazyColumn virtualization here only composes rows
-    // off-screen — never clips them — so the radio-group a11y contract holds
-    // (spec 182 child 8; picker tests scroll rows into view).
+    // The rows stay non-virtualized for that radio-group a11y contract; since
+    // spec #453 the offered set is three rows (plus one appended row while a
+    // hidden runtime-supported strategy is the stored selection), so the list
+    // fits without scrolling on small screens (picker tests still scroll rows
+    // into view for the appended-row case).
     item(key = "strategy-picker") {
         Column(
             modifier = Modifier
@@ -231,7 +260,7 @@ internal fun androidx.compose.foundation.lazy.LazyListScope.strategyPickerItems(
                         .testTag("strategy-picker-retry-notice"),
                 )
             }
-            catalog.forEach { id ->
+            displayRows.forEach { id ->
                 val name = stringResource(strategyDisplayName(id))
                 val description = stringResource(strategyDescription(id))
                 val isSelected = selected == id

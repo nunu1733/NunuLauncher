@@ -1,0 +1,15 @@
+=== qb3 wmshell auxiliary watch — windows: bind + G3 + permanent oracle ===
+date: 2026-10-09 20:17:50 JST
+
+  PipInputConsumer : bind=0 g3=0 oracle=0
+  NoSuchMethodError : bind=0 g3=0 oracle=0
+  FATAL EXCEPTION : bind=0 g3=0 oracle=0
+  DeadObjectException : bind=3 g3=0 oracle=0
+
+--- DeadObjectException context (expected: force-stop fallout at bind window only) ---
+2026-10-09 20:09:51.590   919  1011 E SingleInstanceRemoteListener: android.os.DeadObjectException
+2026-10-09 20:09:52.553   648   847 E AppWidgetServiceImpl: android.os.DeadObjectException
+2026-10-09 20:09:54.764   648  1471 W WindowManager: android.os.DeadObjectException
+
+--- ShellRecents takeover diagnostic count (spec auxiliary, PASS profile = 1) ---
+  g3 window: 1; oracle window: 1

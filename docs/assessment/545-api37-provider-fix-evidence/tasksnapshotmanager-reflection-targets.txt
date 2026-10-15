@@ -1,0 +1,43 @@
+=== TaskSnapshotManager reflection target primary output — API 37.0 image (addendum v4 round 1 finding 2) ===
+recorded: 2026-10-08
+source: /system/framework/framework.jar pulled from emulator-5554 (AVD issue526_api37_pixel_9a,
+  API 37.0, google_apis); dexdump -d (build-tools 37.0.0), classes4.dex.
+  Class descriptor 'Landroid/window/TaskSnapshotManager;' found in classes4.dex (app-visible, plain
+  descriptor — contrast: companion.virtualdevice.flags.Flags was hidden_from_bootclasspath-only).
+
+--- reflection target methods (dex metadata) ---
+  getInstance
+    type          : '()Landroid/window/TaskSnapshotManager;'
+    access        : 0x0009 (PUBLIC STATIC)
+    hiddenapi     : 0x0002 (BLOCKED)
+  getTaskSnapshot
+    type          : '(II)Landroid/window/TaskSnapshot;'
+    access        : 0x0001 (PUBLIC)
+    hiddenapi     : 0x0002 (BLOCKED)
+  convertRetrieveFlag
+    type          : '(Z)I'
+    access        : 0x0009 (PUBLIC STATIC)
+    hiddenapi     : 0x0002 (BLOCKED)
+    bytecode      : isLowResolution ? 2 : 1  (const/4 v0 #int 2 / #int 1 — confirms
+                    RESOLUTION_LOW=2, RESOLUTION_HIGH=1 from android17-release source)
+
+--- enforcement calibration (same dex metadata encoding) ---
+  Landroid/view/IWindowManager;.createInputConsumer
+    type          : '(Landroid/os/IBinder;Ljava/lang/String;I)Landroid/view/InputChannel;'
+    hiddenapi     : 0x0002 (BLOCKED)
+  …and the launcher's reflection call to exactly this method SUCCEEDED on both qa/qb legs
+  (registerInputConsumer completed, input monitor + receiver created, isConnected=true,
+  zero hiddenapi denials for app.lawnchair* in qa-hiddenapi-watch.txt / qb-hiddenapi-watch.txt).
+  The dex-metadata label therefore does NOT correlate with runtime denial for this priv-app
+  configuration. Runtime behavior of the NEW TaskSnapshotManager reflection is nevertheless not
+  assumed from this calibration: the fix includes an identifiable failure log marker, and the
+  qva/qvb oracles require marker 0 + at least one real thumbnail render, with auxiliary
+  hiddenapi denial observation for the new call.
+
+--- fix shape (plan 実装詳細4) ---
+  SDK_INT >= 37 branch in ActivityManagerWrapper.getTaskThumbnail:
+    Class.forName("android.window.TaskSnapshotManager").getMethod("getInstance").invoke(null)
+      -> .getMethod("getTaskSnapshot", int.class, int.class).invoke(tsm, taskId, isLowResolution ? 2 : 1)
+  - convertRetrieveFlag is NOT reflected; the bytecode-confirmed constant mapping (2/1) is inlined.
+  - Any lookup/invoke failure logs a tagged marker and falls through to the existing null path
+    (empty ThumbnailData) — no crash.

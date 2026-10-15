@@ -1,0 +1,21 @@
+=== matrix (a) step 1: clean stock state — API 37 emulator-5554 ===
+date: 2026-10-07
+AVD: issue526_api37_pixel_9a (API 37.0, SDK 37), serial emulator-5554
+post-clean: after rm of /product/priv-app/LawnchairRelease, /product/etc/permissions/privapp-permissions-app.lawnchair.xml, /product/overlay/QuickstepConfigOverlay.apk + reboot
+
+--- wm density (reset applied before clean):
+Physical density: 420
+(no Override density line = no override)
+
+--- cmd overlay lookup --user 0 android android:string/config_recentsComponentName:
+com.google.android.apps.nexuslauncher/com.android.quickstep.RecentsActivity
+
+--- cmd overlay list | grep -i nunu:
+(empty)
+
+--- pm list packages | grep -i lawnchair:
+(empty)
+
+--- cmd shortcut get-default-launcher:
+Launcher: ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+Success

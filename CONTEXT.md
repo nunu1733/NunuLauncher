@@ -20,6 +20,22 @@ _Avoid_: Position（座標だけを意味する場合）
 上流が既にホームへ追加するアイコン（`pref_add_icon_to_home`が有効で上流の追加条件を満たすもの）について、どこへ置くかを決めるユーザー選択の規則（ADR-0015）。追加するかどうかの判定は含まない。
 _Avoid_: 増分配置 (Incremental Placement)（既存アイテムを動かす整理runを指す既存語との混同）、自動配置（ユーザー選択の規則であることの不明瞭化）
 
+**ポリシースナップショット (Policy Snapshot)**:
+自動追加1件のqueue投入時にcaptureされ、queueとともに永続化される、配置先決定の不変入力（policy選択、指定folder id、user、package）。flush時は読むだけであり、current policyから再生成しない。欠損・破損時もcurrent policyを再読しない（ADR-0015 Decision 10）。
+_Avoid_: layout snapshot（organizer runの入力。別の粒度）、編集snapshot（単一編集操作の投影。別の経路）
+
+**指定フォルダ (Designated Folder)**:
+配置先ポリシーで利用者が選んだ1つのフォルダ。アイテムidで保持し、名前では保持しない（ADR-0015 Decision 5）。
+_Avoid_: 分類フォルダ（カテゴリ一致の自動分類は別の将来機能）、整理先フォルダ（organizerのplan artifactが作るフォルダ）
+
+**カテゴリ別配置 (Category Destination)**:
+配置先ポリシーの選択肢の1つ（Issue #594 / ADR-0017）。利用者が `CategoryIdentity + profile → 既存フォルダid` の対応を明示設定し、capture時点で分類（S1→S2→S5の既存優先順位）が解決できた新規アプリを対応フォルダへ置く。mappingはstable identityで保持し、表示名では保持しない。解決不能（分類不可・未mapping・対応カテゴリ消失・promise経路）は上流の既定へ落ちる。
+_Avoid_: 分類フォルダ（利用者の明示mappingと、分類結果からの暗黙のfolder成長は区別する。後者は採用しない）、Deckの自動追加（`PackageUpdatedTask`への直接追記とtitle一致を含まない。ADR-0015 Decision 13）
+
+**フォールバック (Fallback)**:
+指定フォルダが観測可能な制約違反により使えず、上流の既定（空きセル）へ戻ること。typedな理由を持ち、記録と設定行での一度だけの通知の対象になる。
+_Avoid_: 拒否（Reject。書込み経路のinvariant failureであり配置の例外ではない）、満杯（fallback条件としない。ADR-0015 Decision 4）
+
 **対象集合 (Target Set)**:
 1回の整理で移動、保持、または新規配置を検討する配置アイテムの明示的な集合。
 _Avoid_: 全アプリ（対象範囲が曖昧な場合）
@@ -259,3 +275,35 @@ _Avoid_: 意図 (UserReviewedIntent)（lock authoringの語）、plan（organize
 **編集snapshot (Edit Snapshot)**:
 1回の編集意図の計画と検証のために、現在のホームレイアウトを投影した読み取り専用の入力。organizerのレイアウトsnapshotより小さく、単一操作の検証に必要なfieldのみを持つ ([spec 448](./specs/448-edit-actions-per-item/spec.md))。
 _Avoid_: レイアウトsnapshot（organizer runの入力。別の粒度）
+
+**編集画面 (Edit Surface)**:
+現在のホームレイアウトをcapture時点の図で表示し、複数選択、選択への編集アクション、確定時の一括適用を提供するfork側の全画面UI（ADR-0014案B。正本の操作面と契約は [spec 449](./specs/449-multi-select-surface/spec.md)）。図の幾何はcaptureにセッション計画を適用した作業投影が単一の権威であり、icon解決はcustom bytes→TargetKey→placeholderの順で行う。
+_Avoid_: EDIT_MODE（上流のworkspace状態。案Aで不採用）、整理run面（organizer runの確認・結果面と混同）
+
+**編集セッション (Edit Session)**:
+編集画面を開いてから確定またはキャンセルで終わるまでの、1回の複数選択編集の試行。選択と、適用待ちのアクション結果（セッション計画）を持ち、process内でのみ存在する。確定 = 1回の適用 = 1個の復元点。
+_Avoid_: 整理run（organizerのsnapshot取得〜適用〜検証の一連の試行。別の粒度）、依頼（AI相談の語）
+
+**セッション計画 (Session Plan)**:
+編集セッション内でアクション実行の結果として図に反映されている、まだ適用されていない変更の集まり。#448の純粋計画関数の結果から構成される純dataであり、確定時にcaptureと照合される。
+_Avoid_: レイアウトplan（organizerのplan artifact。適用の正本と混同）、Undo記録（#450が所有する情報）
+
+**編集の取り消し (Edit Undo)**:
+利用者がforkの編集（項目単位のアクション、編集画面の確定）の直後に1操作で直前の編集を元に戻す操作（FR-020。正本の契約は [spec 450](./specs/450-edit-undo/spec.md)）。入口は操作直後のUndo snackbarのみ。
+_Avoid_: 復元 (restore)（organizerのrecovery point復元と混同。編集画面確定のundoは結果として復元経路を使うが、操作の語は取り消し）、redo
+
+**取り消し記録 (Undo Record)**:
+直前のfork編集1件を取り消すためにprocess内の単一slotへ保持する閉じたrecord。世代識別子を持ち、次のfork編集の成功で置換され、process死で消失する。編集画面entryのrevision正本は、apply経路が適用後検証に使ったmaterialized post-stateのrevisionである。
+_Avoid_: recovery point（organizerの適用前状態の永続復旧手段。別の物）、履歴（複数段を保持しない）
+
+**逆操作 (Inverse Operation)**:
+項目単位のアクションを戻すための、ADR-0013契約に従う直接の編集書込み（逆UPDATE / 逆INSERT+逆DELETEの組 / 逆INSERT）。実行前に現在状態との照合（配置・availability込み）を必ず通る。
+_Avoid_: abort（上流の遅延commit取消との混同）
+
+**図プレビュー (visual plan preview)**:
+materialize 済み `ValidatedLayoutPlan` のsource/intended stateから、確認面のために純粋投影が作る変更前後のページ図。読み取り専用・process-localで、書込み・チェックポイント・recovery操作を行わない（[spec 508](./specs/508-visual-preview-item-exclusion/spec.md)）。
+_Avoid_: 編集画面の図（#449の編集セッションが所有する作業投影）、plan preview（一覧を含む上位概念。spec 194）
+
+**提案除外 (proposal exclusion)**:
+1回の整理提案に限って、既存項目を対象から外してcaptured配置のまま保持する、または追加候補を今回の追加から外す明示操作。run限り・process-localであり、永続lock・次回runの対象には影響しない（[spec 508](./specs/508-visual-preview-item-exclusion/spec.md)）。
+_Avoid_: lock（永続的な整理対象固定）、削除（ホームから外す操作）

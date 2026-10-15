@@ -24,6 +24,7 @@ import app.lawnchair.ui.util.OnResult
 import app.lawnchair.util.requireSystemService
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.R
+import com.android.launcher3.reloadIcons
 import com.android.launcher3.util.ComponentKey
 import kotlinx.coroutines.launch
 

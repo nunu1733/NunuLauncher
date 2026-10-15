@@ -18,8 +18,10 @@ class BuiltInOrganizerPolicyBundleSourceTest {
         // Issue #235 published -v2.6 with both widget-relocating successors
         // enabled on one mainline (STABLE_PAGE_TIDY_V2, BOTTOM_FIRST_V2).
         // Issue #398 published -v2.7 with the lower-region successor
-        // (BOTTOM_REGION_V1).
-        assertEquals("organization-policy-v2.7", bundle.identity.semanticVersion)
+        // (BOTTOM_REGION_V1). Issue #451 published -v2.8 as a planner
+        // behavior fix (duplicate surplus exclusion/warnings) with no
+        // strategy or catalog change.
+        assertEquals("organization-policy-v2.8", bundle.identity.semanticVersion)
         assertEquals("v2", bundle.rules.version.value)
         assertEquals("v1", bundle.taxonomy.version.value)
         assertEquals(34, bundle.taxonomy.allowedCategories.size)
@@ -28,6 +30,30 @@ class BuiltInOrganizerPolicyBundleSourceTest {
         assertTrue(bundle.classification.intentRules.isEmpty())
         assertEquals(bundle.identity.sha256, bundle.canonicalDigest())
         assertEquals(null, bundle.validate())
+    }
+
+    @Test
+    fun issue451VersionBumpLeavesTheStrategyCatalogAndDefaultUnchanged() {
+        // Spec 451 AC-6/N-7: the bundle's semantic version is the only
+        // identity that moved; the runtime-supported catalog, the default
+        // strategy, and every StrategyId are unchanged.
+        val bundle = activeBundle()
+        assertEquals(9, bundle.layoutStrategies.runtimeSupported.size)
+        assertEquals(
+            listOf(
+                StrategyId("BOTTOM_FIRST_V1"),
+                StrategyId("BOTTOM_FIRST_V2"),
+                StrategyId("BOTTOM_REGION_V1"),
+                StrategyId("CANONICAL_PAGE_COMPACT_V1"),
+                StrategyId("CATEGORY_CONTIGUOUS_V1"),
+                StrategyId("GLOBAL_COMPACT_V1"),
+                StrategyId("GLOBAL_COMPACT_V2"),
+                StrategyId("STABLE_PAGE_TIDY_V1"),
+                StrategyId("STABLE_PAGE_TIDY_V2"),
+            ),
+            bundle.layoutStrategies.runtimeSupported.sorted(),
+        )
+        assertEquals(StrategyId("CANONICAL_PAGE_COMPACT_V1"), bundle.layoutStrategies.default)
     }
 
     @Test

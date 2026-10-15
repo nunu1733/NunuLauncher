@@ -59,8 +59,26 @@ public class PersistedItemArray<T extends ItemInfo> {
 
     private final String mFileName;
 
+    @Nullable
+    private final EntryExtension<T> mEntryExtension;
+
     public PersistedItemArray(String fileName) {
+        this(fileName, null);
+    }
+
+    /**
+     * Issue #497: extension hook that persists additional per-entry XML
+     * attributes next to the base itemType/profileId/intent triple. Unknown
+     * attributes are ignored by the stock parser, so the extension is
+     * backward- and forward-compatible and never changes the base entry
+     * semantics. {@link EntryExtension#readAttributes} must not throw: a
+     * corrupt extension attribute is surfaced to the caller through the
+     * attribute value itself (null or a corrupt marker), never by dropping
+     * the base entry.
+     */
+    public PersistedItemArray(String fileName, @Nullable EntryExtension<T> entryExtension) {
         mFileName = fileName + ".xml";
+        mEntryExtension = entryExtension;
     }
 
     /**
@@ -95,6 +113,9 @@ public class PersistedItemArray<T extends ItemInfo> {
                 out.attribute(null, Favorites.PROFILE_ID,
                         Long.toString(userCache.getSerialNumberForUser(item.user)));
                 out.attribute(null, Favorites.INTENT, intent.toUri(0));
+                if (mEntryExtension != null) {
+                    mEntryExtension.writeAttributes(out, item);
+                }
                 out.endTag(null, TAG_ENTRY);
             }
             out.endTag(null, TAG_ROOT);
@@ -147,6 +168,9 @@ public class PersistedItemArray<T extends ItemInfo> {
                     if (user != null && intent != null) {
                         T item = factory.createInfo(itemType, user, intent);
                         if (item != null) {
+                            if (mEntryExtension != null) {
+                                mEntryExtension.readAttributes(item, parser);
+                            }
                             result.add(item);
                         }
                     }
@@ -180,5 +204,20 @@ public class PersistedItemArray<T extends ItemInfo> {
          */
         @Nullable
         T createInfo(int itemType, UserHandle user, Intent intent);
+    }
+
+    /**
+     * Issue #497: per-entry attribute extension (see the constructor). The
+     * parser position is on the entry start tag while reading; attributes
+     * are read with {@link XmlPullParser#getAttributeValue} which never
+     * throws.
+     */
+    public interface EntryExtension<T extends ItemInfo> {
+
+        /** Writes extra attributes on the entry start tag. */
+        void writeAttributes(XmlSerializer out, T item) throws IOException;
+
+        /** Reads extra attributes from the entry start tag into the item. */
+        void readAttributes(T item, XmlPullParser parser);
     }
 }

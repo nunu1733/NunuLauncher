@@ -1,0 +1,32 @@
+=== seventh break primary contrast — IActivityTaskManager.takeTaskSnapshot(IZ) removed on API 37.0 (addendum v5 Owner decision 13) ===
+recorded: 2026-10-08
+
+--- runtime evidence (qvb leg, API 37.0 release @ 212097886b; qvb-crash-check.txt, committed 8108e3a1aa) ---
+  java.lang.NoSuchMethodError: No interface method takeTaskSnapshot(IZ)Landroid/window/TaskSnapshot;
+    in class Landroid/app/IActivityTaskManager;
+    at com.android.systemui.shared.system.ActivityManagerWrapper.takeTaskThumbnail(ActivityManagerWrapper.java:195)
+  3 launcher FATALs on the qvb leg (bind window x2, G3 window x1). The vendored takeTaskThumbnail
+  catches only RemoteException, so the NoSuchMethodError escapes and kills the process.
+
+--- compile classpath (framework-16.jar javap android.app.IActivityTaskManager) ---
+  takeTaskSnapshot(int, boolean) — the (IZ) form the launcher compiles against.
+
+--- API 37.0 device framework.jar (dexdump -d classes4.dex, pulled from emulator-5554) ---
+  Landroid/app/IActivityTaskManager; takeTaskSnapshot overloads present:
+    (IZZZ)Landroid/window/TaskSnapshot;   [4-arg form; the compiled (IZ) form is ABSENT]
+  Landroid/window/TaskSnapshotManager; (app-visible, plain class descriptor — same class as the
+  fifth fix's reflection target):
+    takeTaskSnapshot
+      type          : '(IZ)Landroid/window/TaskSnapshot;'   <- (taskId, updateCache)
+      access        : 0x0001 (PUBLIC)
+    [second overload: (IZZ)]
+
+--- upstream fix shape (android17-release packages/SystemUI/shared ActivityManagerWrapper.java:157-170) ---
+  takeTaskThumbnail routes through TaskSnapshotManager:
+    snapshot = TaskSnapshotManager.getInstance().takeTaskSnapshot(taskId, true /* updateCache */);
+
+--- fix shape (plan 実装詳細6) ---
+  ActivityManagerWrapper.takeTaskThumbnail: SDK_INT >= 37 branch reflectively invokes
+  TaskSnapshotManager.getInstance().takeTaskSnapshot(taskId, true) (same reflection target class
+  as the fifth fix; marker-tagged failure degrades to the existing empty-ThumbnailData path).
+  API <= 36 keeps the existing direct (IZ) call byte-identical.

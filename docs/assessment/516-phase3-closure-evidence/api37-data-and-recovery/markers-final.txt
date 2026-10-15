@@ -1,0 +1,4 @@
+I/Phase3LargeHome( 6158): APPLY_VERIFIED rows=500->501 locks=49 preserved; independent readonly SQLite handle
+I/Phase3LargeHome( 6158): PROCESS_APPLY pid=6158 point=RecoveryPointId(value=0820775f500c5c59e2dcb1319b0606bf)
+I/Phase3LargeHome( 6232): COLD_RESULT Restored(pointId=RecoveryPointId(value=0820775f500c5c59e2dcb1319b0606bf))
+I/Phase3LargeHome( 6232): COLD_RECOVERY_VERIFIED pid=6158->6232 rows=500 exact semantic independent SQLite projection

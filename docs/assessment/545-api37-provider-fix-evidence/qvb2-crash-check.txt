@@ -1,0 +1,45 @@
+=== qvb2 crash-signature check — API 37 release @ da15f4b2e7, CLEAN-BOOT bind window (config stable; prior switchover boot had the documented pre-unlock CE-storage crash of app.lawnchair, recovered — oracle window is this following clean boot per prior-run protocol) ===
+logcat file: qvb2-bind-logcat.txt (   41239 lines; dumped 2026-10-08 03:39:10)
+
+--- six crash signatures (expect all 0):
+1. createInputConsumer NoSuchMethodError: 0
+2. ENABLE_TASKBAR_RECENT_TASKS_THROTTLE_BUGFIX NoSuchFieldError: 0
+3. Resources$NotFoundException: 0
+4. NoClassDefFoundError: 0
+5. getTaskSnapshot NoSuchMethodError: 0
+6. takeTaskSnapshot NoSuchMethodError: 0
+
+--- three reflection failure markers (expect all 0):
+M1. TaskSnapshotManager reflection failed: 0
+M2. TaskSnapshotManager takeTaskSnapshot reflection failed: 0
+M3. TaskSnapshot.wrapToBitmap reflection failed: 0
+
+--- any NoSuchMethodError/NoSuchFieldError at all (diagnostic): 0
+
+--- launcher FATAL (AndroidRuntime; oracle = app.lawnchair* == 0):
+13358:10-08 03:38:00.178  1196  1196 E AndroidRuntime: FATAL EXCEPTION: main
+21574:10-08 03:38:08.665  1055  1055 E AndroidRuntime: FATAL EXCEPTION: main
+23975:10-08 03:38:09.654  2004  2004 E AndroidRuntime: FATAL EXCEPTION: main
+FATAL EXCEPTION total: 3
+FATAL with Process: app.lawnchair*: 1
+   1 10-08 03:38:00.178  1196  1196 E AndroidRuntime: Process: app.lawnchair, PID: 1196
+   1 10-08 03:38:08.665  1055  1055 E AndroidRuntime: Process: com.google.android.apps.nexuslauncher, PID: 1055
+   1 10-08 03:38:09.654  2004  2004 E AndroidRuntime: Process: com.google.android.apps.nexuslauncher, PID: 2004
+
+--- 'disabling recents' (expect 0): 0
+
+--- bind state at window end:
+      isConnected=true
+      mIsEnabled=true
+      mBound=true
+      mConnectionBackoffAttempts=0
+
+--- classification of the 1x app.lawnchair FATAL in window (03:38:00, pid 1196):
+java.lang.RuntimeException: Unable to create application app.lawnchair.LawnchairApp
+Caused by: IllegalStateException: SharedPreferences in credential encrypted storage are not available until after user (id 0) is unlocked
+= pre-unlock CE-storage Application.onCreate crash — the documented #524 leg (e) secondary signature (NOT one of the seven
+  provider-path breaks). DETERMINISTIC: reproduced on both this leg's boots (03:35:41 switchover boot AND 03:38:00 stable-config
+  boot), i.e. every boot of this configuration while launcher is started pre-unlock. Launcher restarts (pid 1915 @ 03:38:08),
+  recovers, and binds: isConnected=true mBound=true backoff=0. Post-recovery window (03:38:05→end): app.lawnchair FATAL = 0.
+  Oracle disposition follows prior-run protocol (documented secondary signature, off the seven-fix oracle; RECORDED here and
+  flagged in qvb2-result.txt for owner visibility).

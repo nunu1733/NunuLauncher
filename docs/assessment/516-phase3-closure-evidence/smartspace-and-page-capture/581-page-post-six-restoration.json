@@ -1,0 +1,20 @@
+{
+  "rows": 500,
+  "stable_layout_columns": [
+    "_id",
+    "container",
+    "screen",
+    "cellX",
+    "cellY",
+    "spanX",
+    "spanY",
+    "itemType",
+    "profileId",
+    "rank",
+    "organizerLockState"
+  ],
+  "stable_layout_exact_equal": true,
+  "archived_semantic_sha256": "c67bdf165011036042694cf4a4aa4a04d92f172c867dd82092cfbfa1b07285c7",
+  "after_reload_semantic_sha256": "f531d7e9db4369d775b0f24134bc4f1e01738cadfa9be84f27655b69902ad527",
+  "limits": "Loader refreshed synthetic titles to actual activity labels and added package to equivalent launch intents; full13column projection changed. Full canonical500 SAF roundtrip afterreload remains required."
+}

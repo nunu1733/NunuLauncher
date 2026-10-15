@@ -187,6 +187,86 @@ class HomeEditPlannerTest {
         assertEquals(HomeEditPlan.RemoveItem(target), plan)
     }
 
+    // --- Issue #449: create folder at a pinned cell (edit surface) ---
+
+    @Test
+    fun `create folder at pins the given cell instead of first-fit`() {
+        // The cell (3,5) is free but NOT the row-major first free cell; the
+        // pinned variant must place there (spec: 先頭アイテムの元セル契約).
+        val target = item(id = 100, screenId = 1, cellX = 3, cellY = 5)
+        val plan = HomeEditPlanner.plan(
+            snapshot(listOf(target)),
+            HomeEditIntent.CreateFolderAt(target, screenId = 1, cellX = 3, cellY = 5),
+        )
+        assertEquals(HomeEditPlan.CreateFolder(target, 1, 3, 5), plan)
+    }
+
+    @Test
+    fun `create folder at counts the target cell as free`() {
+        // The first selected item's own cell is vacated by the action, so the
+        // folder lands there even though the target still occupies it.
+        val target = item(id = 100, screenId = 1, cellX = 0, cellY = 0)
+        val plan = HomeEditPlanner.plan(
+            snapshot(listOf(target)),
+            HomeEditIntent.CreateFolderAt(target, screenId = 1, cellX = 0, cellY = 0),
+        )
+        assertEquals(HomeEditPlan.CreateFolder(target, 1, 0, 0), plan)
+    }
+
+    @Test
+    fun `create folder at rejects an occupied cell`() {
+        val target = item(id = 100, screenId = 1, cellX = 3, cellY = 5)
+        val blocker = item(id = 1, screenId = 1, cellX = 0, cellY = 0, spanX = 4, spanY = 6)
+        val plan = HomeEditPlanner.plan(
+            snapshot(listOf(target, blocker)),
+            HomeEditIntent.CreateFolderAt(target, screenId = 1, cellX = 0, cellY = 0),
+        )
+        assertEquals(HomeEditPlan.Rejected(HomeEditRejection.NO_SPACE), plan)
+    }
+
+    @Test
+    fun `create folder at rejects an out of bounds cell`() {
+        val target = item(id = 100, screenId = 1)
+        val plan = HomeEditPlanner.plan(
+            snapshot(listOf(target)),
+            HomeEditIntent.CreateFolderAt(target, screenId = 1, cellX = 4, cellY = 0),
+        )
+        assertEquals(HomeEditPlan.Rejected(HomeEditRejection.NO_SPACE), plan)
+    }
+
+    @Test
+    fun `create folder at rejects a missing page as stale`() {
+        val target = item(id = 100)
+        val plan = HomeEditPlanner.plan(
+            snapshot(listOf(target)),
+            HomeEditIntent.CreateFolderAt(target, screenId = 99, cellX = 0, cellY = 0),
+        )
+        assertEquals(HomeEditPlan.Rejected(HomeEditRejection.STALE), plan)
+    }
+
+    @Test
+    fun `create folder at respects reserved synthetic rows`() {
+        // The edit-surface projection adds reserved regions as RESERVED rows;
+        // their cells must not be considered free.
+        val target = item(id = 100, screenId = 1, cellX = 0, cellY = 0)
+        val reserved = item(
+            id = editSurfaceReservationKey(0),
+            screenId = 1,
+            cellX = 0,
+            cellY = 0,
+            spanX = 4,
+            spanY = 1,
+            itemType = HomeEditItemTypes.RESERVED,
+        )
+        val plan = HomeEditPlanner.plan(
+            snapshot(listOf(target, reserved)),
+            HomeEditIntent.CreateFolderAt(target, screenId = 1, cellX = 0, cellY = 0),
+        )
+        // The target's own row is ignored, but the RESERVED row still occupies
+        // the cell.
+        assertEquals(HomeEditPlan.Rejected(HomeEditRejection.NO_SPACE), plan)
+    }
+
     // --- determinism: same input, same output ---
 
     @Test

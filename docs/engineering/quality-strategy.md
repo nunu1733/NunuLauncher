@@ -107,7 +107,7 @@ successful clean-checkout or CI run before it is added here.
 Issue #41 で organizer JVM test gateをCIに追加した。`.github/workflows/ci.yml` の `organizer-unit-tests` jobが、local開発で使うのと同一のtest surfaceをsource PRで実行する。第二のtest seamは作らない。
 
 ```bash
-./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
+./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*' --tests 'app.lawnchair.ui.popup.*' --tests 'app.lawnchair.ui.preferences.navigation.*' --tests 'app.lawnchair.bugreport.*' --tests 'app.lawnchair.backup.*' --tests 'app.lawnchair.migration.*' --tests 'app.lawnchair.DeviceProfileOverridesPresetResolutionTest'
 ```
 
 この command の正本は `.github/workflows/ci.yml` の `organizer-unit-tests` step である

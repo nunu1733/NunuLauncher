@@ -1,0 +1,39 @@
+=== fifth break primary contrast — IActivityTaskManager.getTaskSnapshot (addendum v4 Owner decision 11) ===
+recorded: 2026-10-08
+
+--- crash signature (qa run, API 37.0, debug @ 68e68a6a45; qa-crash-check.txt / qa-bind-logcat.txt) ---
+java.lang.NoSuchMethodError: No interface method getTaskSnapshot(IZ)Landroid/window/TaskSnapshot; in class Landroid/app/IActivityTaskManager;
+  at com.android.systemui.shared.system.ActivityManagerWrapper.getTaskThumbnail(ActivityManagerWrapper.java:140)
+  via TaskThumbnailCache background/coroutine loaders (overview thumbnail path; provider-bound only)
+11 FATAL lines / 3 process deaths across overview attempts; bind itself succeeded (isConnected=true).
+
+--- compile classpath (prebuilts/libs/framework-16.jar, javap -p android.app.IActivityTaskManager) ---
+  public abstract android.window.TaskSnapshot getTaskSnapshot(int, boolean) throws android.os.RemoteException;
+
+--- API 37.0 device framework.jar (dexdump, /system/framework/framework.jar pulled from emulator-5554,
+    build-tools 37.0.0; Landroid/app/IActivityTaskManager;) ---
+  getTaskSnapshot overloads present (type descriptors):
+    (II)Landroid/window/TaskSnapshot;
+    (IJI)Landroid/window/TaskSnapshot;
+  the compiled (IZ) form: ABSENT.
+
+--- upstream fix shape (android17-release packages/SystemUI/shared .../ActivityManagerWrapper.java) ---
+  getTaskThumbnail no longer calls IActivityTaskManager.getTaskSnapshot; it routes through
+  android.window.TaskSnapshotManager:
+    TaskSnapshotManager.getInstance().getTaskSnapshot(taskId, TaskSnapshotManager.convertRetrieveFlag(isLowResolution))
+  TaskSnapshotManager (core/java/android/window/TaskSnapshotManager.java @ android17-release):
+    getInstance(): singleton; getTaskSnapshot(int taskId, @Resolution int retrieveResolution)
+      -> ISnapshotManager.getTaskSnapshot(taskId, captureTime, retrieveResolution)  [= the (IJI) binder form]
+    convertRetrieveFlag(boolean isLowResolution) -> isLowResolution ? RESOLUTION_LOW : RESOLUTION_HIGH
+    RESOLUTION_HIGH = 1; RESOLUTION_LOW = 2; (RESOLUTION_ANY = 3)
+
+--- device class visibility (dexdump class descriptors, 37.0 framework.jar) ---
+  Landroid/window/TaskSnapshotManager;  present as a plain (app-visible) class descriptor
+  (contrast: android.companion.virtualdevice.flags.Flags was hidden_from_bootclasspath-only)
+
+--- scope ---
+  The getTaskSnapshot call is reached only from the overview thumbnail path (TaskThumbnailCache /
+  RecentsView), which runs only when quickstep recents is active (provider configured). The fix's
+  SDK_INT >= 37 gate leaves API <= 36 paths (direct (IZ) call; UPSIDE_DOWN_CAKE 3-arg reflection
+  precedent at the same site) byte-identical. matrix (e)/(f) PASS results remain valid
+  (36 device has the (IZ) form; stock config never reaches the path).

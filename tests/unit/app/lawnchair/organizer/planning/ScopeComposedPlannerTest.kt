@@ -39,11 +39,17 @@ class ScopeComposedPlannerTest {
         fallback: CategoryId = CategoryId("OTHER"),
     ) = TaxonomyContract(TaxonomyVersion("tv1"), allowed, fallback)
 
-    private fun app(id: String, x: Int = 0, y: Int = 0, page: String = "p0") = CapturedItem(
+    private fun app(
+        id: String,
+        x: Int = 0,
+        y: Int = 0,
+        page: String = "p0",
+        component: String = "com.example.$id",
+    ) = CapturedItem(
         id = ItemId(id),
         profile = p0,
         kind = ItemKind.APPLICATION,
-        target = TargetKey.AppKey(ComponentKey("com.example.$id"), p0),
+        target = TargetKey.AppKey(ComponentKey(component), p0),
         placement = CapturedPlacement.Workspace(PageRef(PageId(page)), GridCell(x, y), GridSpan(1, 1)),
         locked = false,
         availability = Availability.AVAILABLE,
@@ -295,6 +301,71 @@ class ScopeComposedPlannerTest {
                 planned.newFolders.isEmpty(),
             )
             assertEquals(additions.map { it.id }.toSet(), planned.placements.map { it.item }.toSet())
+        }
+    }
+
+    @Test
+    fun duplicateSurplusUnderNeverCreatingFolderStrategiesIsPreservedAndWarnedOnce() {
+        // Review P2 (spec 451 AC-3): duplicate exclusion, preservation, and
+        // warning are independent of `createsFolders`, and the
+        // ScopeComposedOrganization full-run phase applies them through the
+        // strategy's own executor. Both `createsFolders = false` catalog
+        // strategies are driven through the planner seam with a captured
+        // duplicate pair.
+        val items = listOf(
+            app("10", x = 0, y = 0, component = "com.example.photos"),
+            app("3", x = 1, y = 0, component = "com.example.maps"),
+            app("2", x = 2, y = 0, component = "com.example.photos"),
+        )
+
+        for (strategyId in listOf("STABLE_PAGE_TIDY_V1", "CATEGORY_CONTIGUOUS_V1")) {
+            val planned = planner
+                .plan(input(items, additions = emptyList(), rules = defaultRules(strategy = StrategyId(strategyId))))
+                .outcome as Planned
+
+            // Conservation: every captured item is placed exactly once.
+            assertEquals(
+                "strategy $strategyId lost an item",
+                items.map { it.id }.toSet(),
+                planned.placements.map { it.item }.toSet(),
+            )
+
+            // createsFolders = false: no folder forms, so the "unique launch
+            // targets inside every new folder" invariant holds vacuously.
+            assertTrue(
+                "$strategyId formed a folder despite createsFolders = false",
+                planned.newFolders.isEmpty(),
+            )
+
+            // Surplus "2" (canonical ItemId byte order: "10" < "2" < "3", so
+            // "10" is the representative) is preserved at its captured cell.
+            val surplus = planned.placements.single { it.item == ItemId("2") }
+            assertEquals(
+                "strategy $strategyId did not preserve the duplicate surplus",
+                Disposition.Preserved(PreserveReason.DUPLICATE_LAUNCH_TARGET),
+                surplus.disposition,
+            )
+            assertEquals(
+                "strategy $strategyId relocated the duplicate surplus",
+                PlacementTarget.WorkspaceTarget(PageRef(PageId("p0")), GridCell(2, 0), GridSpan(1, 1)),
+                surplus.target,
+            )
+
+            // Exactly one DUPLICATE_LAUNCH_TARGET warning carrying exactly the
+            // surplus item; the representative is never warned.
+            val duplicateWarnings = planned.warnings.filter { it.code == WarningCode.DUPLICATE_LAUNCH_TARGET }
+            assertEquals(
+                "strategy $strategyId emitted ${duplicateWarnings.size} duplicate warnings",
+                1,
+                duplicateWarnings.size,
+            )
+            assertEquals(
+                "strategy $strategyId warned an unexpected item set",
+                listOf(ItemId("2")),
+                duplicateWarnings.flatMap { warning ->
+                    warning.params.filterIsInstance<DiagnosticParam.ItemParam>().map { it.item }
+                },
+            )
         }
     }
 

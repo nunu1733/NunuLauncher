@@ -1,0 +1,44 @@
+=== qb3 parcel exception oracle (AC-10e2) — API 37 release @ candidate6 4ddd6ae306 — G3 window ===
+date: 2026-10-09 20:17:31 JST; sources: qb3-g3-logcat.txt (    2633 lines) + permanent oracle qb3-oracle-* (tools/diagnostics/verify_recents_provider.py)
+
+ORACLE (operative set, per #557/#554 + spec auxiliary-signature note):
+  parcel-break signatures: 'BadParcelableException: Parcel data not fully consumed' (launcher recents path,
+  i.e. unread size: 8) and 'Bundle length is not aligned by 4' — expected 0.
+  'ShellRecents: No matching remote found to takeover' = spec-documented AUXILIARY diagnostic (non-failing);
+  all 3 #554 PASS runs recorded takeover_diagnostic_count=1 (554-api37-recents-evidence/README.md AC table
+  + head-api37-run1/run2/guardfix result.json).
+
+RESULT (qb3 manual G3 window, qb3-g3-logcat.txt):
+  'unread size: 8'                                : 0
+  'Bundle length is not aligned'                  : 0
+  'No matching remote found to takeover'          : 1  (= spec auxiliary diagnostic, matches PASS profile)
+  RAW BadParcelableException (any) in G3 window   : 0
+  VERDICT: parcel oracle PASS — matches #554 PASS profile exactly (0/0 + takeover 1).
+
+RESULT (permanent oracle run, qb3-oracle-result.json @ google/sdk_gphone64_arm64/emu64a:17/CE2A.260420.019/15611780:userdebug/dev-keys):
+  {
+    "overview_and_task_return": true,
+    "parcel_exception_count": 0,
+    "takeover_diagnostic_count": 1,
+    "bal_blocks": [],
+    "launcher_fatal_count": 0,
+    "pass": true
+  }
+  qb3-oracle-parcel-signatures.txt: EMPTY (1 byte) — identical to head-api37-run1-parcel-signatures.txt in #554.
+
+BIND-window note (qb3-bind-logcat.txt, NOT the G3 window): 2 raw BadParcelableException = TransitionFilter
+  1MB-overrun (magic 6357068, IDENTICAL to prior qb run) + IPipAnimationListener 'unread size: 16' — both
+  present in every prior run incl. PASS runs (qa/qva2/qb-bind-logcat.txt); binder-warning level, deterministic,
+  not candidate6 regressions. The permanent oracle's pass criteria do not include them (they occur at bind,
+  outside the oracle window, and did not appear in the #554 PASS runs' oracle windows either).
+
+--- G3 transition timeline (key lines, qb3-g3-logcat.txt) ---
+2026-10-09 20:11:32.168   648   662 I ActivityTaskManager: START u0 {act=android.settings.SETTINGS flg=0x10000000 xflg=0x4 cmp=com.android.settings/.homepage.SettingsHomepageActivity} with LAUNCH_MULTIPLE from uid 0 (com.android.shell) (BAL_ALLOW_ALLOWLISTED_UID) result code=0
+2026-10-09 20:11:36.435   919  1011 V ShellRecents: startRecentsTransition
+2026-10-09 20:11:36.496   919  1011 V ShellRecents: [3939530] RecentsController.start
+2026-10-09 20:11:36.512   919  1011 V ShellRecents: [3939530] RecentsController.start: calling onAnimationStart with 2 apps
+2026-10-09 20:11:36.940   919  1011 V ShellRecents: [3939530] RecentsController.setInputConsumerEnabled: set focus to recents
+2026-10-09 20:12:03.933   919  1011 V ShellRecents: [3939530] RecentsController.finishInner: toHome=false userLeave=false willFinishToHome=false state=0 hasPausingTasks=true reason=requested
+2026-10-09 20:12:03.934   919  1011 V ShellRecents: [3939530] RecentsController.finishInner: Queuing TRANSIT_END_RECENTS_TRANSITION
+2026-10-09 20:12:03.987   919  1011 V ShellRecents: [3939530] RecentsController.finishInner: Completing finish
+2026-10-09 20:12:04.023   919  1011 V ShellRecents: [3939530] RecentsController.finishInner: calling finish callback

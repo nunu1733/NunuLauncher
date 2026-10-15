@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 import android.content.Context;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import com.android.launcher3.GridType;
 import com.android.launcher3.InvariantDeviceProfile;
 import com.android.launcher3.LauncherAppState;
 import com.android.launcher3.LauncherSettings.Favorites;
@@ -27,7 +28,11 @@ public class GridMigrationSuccessTest {
         context = ApplicationProvider.getApplicationContext();
         LauncherAppState.getIDP(context);
         previousState = new DeviceGridState(context);
-        sourceState = new DeviceGridState(3, 3, 3, InvariantDeviceProfile.TYPE_PHONE, SOURCE_DB);
+        // Issue #532 rebase: the anchor DeviceGridState carries the anchor grid
+        // type; gridType does not participate in the compatibility contract
+        // these oracles pin (db-file identity decides it).
+        sourceState = new DeviceGridState(3, 3, 3, InvariantDeviceProfile.TYPE_PHONE, SOURCE_DB,
+                GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.deleteDatabase(context, SOURCE_DB);
         GridMigrationTestSupport.deleteDatabase(context, TARGET_DB);
         GridMigrationTestSupport.writeGridState(context, sourceState);
@@ -44,7 +49,7 @@ public class GridMigrationSuccessTest {
     public void initialTargetTransactionContainsBackupJournalMigrationUnknownAndTmpCleanup() {
         ControllerFixture fixture = controllerFixture(false);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertTargetIsUnknown(context, TARGET_DB);
         assertFalse(GridMigrationTestSupport.tableExists(fixture.controller.getDb(), Favorites.TMP_TABLE));
@@ -55,7 +60,7 @@ public class GridMigrationSuccessTest {
     public void fastControllerMigrationPublishesUnknownTargetAfterTransactionClose() {
         ControllerFixture fixture = controllerFixture(true);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         assertTrue(fixture.controller.isTargetPublished());
         assertFalse(fixture.runtime.executed(GridMigrationOperation.PLACEMENT));
@@ -67,7 +72,7 @@ public class GridMigrationSuccessTest {
     public void generalControllerMigrationPreservesSourceUntilTargetIsPublished() {
         ControllerFixture fixture = controllerFixture(false);
 
-        fixture.controller.tryMigrateDB(null);
+        fixture.controller.tryMigrateDB(null, new ModelDelegate(context));
 
         GridMigrationTestSupport.assertLocks(fixture.source.getWritableDatabase(), 2, 1);
         assertTrue(fixture.runtime.executed(GridMigrationOperation.PLACEMENT));
@@ -78,8 +83,10 @@ public class GridMigrationSuccessTest {
         DatabaseHelper source = GridMigrationTestSupport.open(context, SOURCE_DB);
         GridMigrationTestSupport.seedSource(source.getWritableDatabase());
         DeviceGridState targetState = fastPath
-                ? new DeviceGridState(3, 4, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB)
-                : new DeviceGridState(4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB);
+                ? new DeviceGridState(3, 4, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB,
+                        GridType.GRID_TYPE_NON_ONE_GRID)
+                : new DeviceGridState(4, 3, 3, InvariantDeviceProfile.TYPE_PHONE, TARGET_DB,
+                        GridType.GRID_TYPE_NON_ONE_GRID);
         GridMigrationTestSupport.ScriptedRuntime runtime =
                 new GridMigrationTestSupport.ScriptedRuntime(fastPath);
         return new ControllerFixture(source, runtime, new Controller(context, source, targetState, runtime));

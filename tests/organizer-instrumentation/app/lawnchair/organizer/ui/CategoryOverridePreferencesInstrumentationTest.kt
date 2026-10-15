@@ -1,6 +1,8 @@
 package app.lawnchair.organizer.ui
 
 import android.content.Context
+import android.os.Looper
+import android.util.Log
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -15,6 +17,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -47,7 +53,11 @@ import app.lawnchair.organizer.rules.sha256Canonical
 import app.lawnchair.ui.preferences.destinations.CategoryOverridePreferences
 import app.lawnchair.ui.theme.LawnchairTheme
 import com.android.launcher3.R
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import org.junit.After
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,7 +66,95 @@ import org.junit.runner.RunWith
 @OptIn(ExperimentalTestApi::class)
 class CategoryOverridePreferencesInstrumentationTest {
     @get:Rule
+    // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
+    // G5 (§6.14): anchorのManualOrganizationPreferences compose oracleと同一の既定
+    // compose rule. StandardTestDispatcher effect context は本classでは未使用で、
+    // CI(x86_64)上のcompose idle待ちが刺さる再現源のため外した。
     val composeRule = createComposeRule()
+
+    /**
+     * G5 (§6.13): bound the framework's implicit compose idle synchronization per test method.
+     *
+     * CI run 37299029278 hung this class for ~8 minutes inside that implicit sync: on the x86_64
+     * CI emulator SurfaceFlinger stopped delivering the vsync the test process had requested
+     * (failure-time capture shows the app EventThread connection stuck in `VSyncRequest::Single`
+     * for 490+s while the "app" dispatch source kept running), so
+     * `AndroidComposeUiTest.waitForNextChoreographerFrame` spins on `while (!frameHit)` forever.
+     * Compose itself was idle, so neither Espresso's idling-resource timeout (26s) nor the
+     * `waitUntil` deadlines (5s) could fire — `waitUntil`'s budget only applies between condition
+     * evaluations, while each evaluation enters the same unbounded idle sync — and the per-class
+     * 20m cap killed the lane with exit 124 and no per-test report.
+     *
+     * This watchdog does not wrap or replace the compose rule (the JUnit Timeout/RuleChain
+     * approach was reverted in `47a76a33e4` because `createComposeRule` requires the test
+     * thread): the test method still runs on the instrumentation thread. A daemon side thread
+     * watches the method wall clock; on deadline it dumps the blocked stacks to logcat as
+     * evidence and interrupts the test thread, which unblocks the interruptible
+     * `Espresso.onIdle` future waits (or fails the in-flight wait) and turns the hang into a
+     * bounded per-test failure while the failure-capture wrapper still owns the live emulator.
+     * Assert contracts and every `waitUntil` timeout are unchanged. The per-class script cap and
+     * the job timeout remain the outer backstops.
+     */
+    private val idleSyncWatchdogArmed = AtomicBoolean(false)
+    private lateinit var idleSyncWatchdogTarget: Thread
+
+    @Before
+    fun armIdleSyncWatchdog() {
+        idleSyncWatchdogTarget = Thread.currentThread()
+        idleSyncWatchdogArmed.set(true)
+        val deadlineNanos =
+            System.nanoTime() + TimeUnit.SECONDS.toNanos(IDLE_SYNC_DEADLINE_SECONDS)
+        Thread(
+            {
+                while (idleSyncWatchdogArmed.get()) {
+                    if (System.nanoTime() >= deadlineNanos) break
+                    Thread.sleep(IDLE_SYNC_WATCHDOG_POLL_MS)
+                }
+                if (idleSyncWatchdogArmed.compareAndSet(true, false)) {
+                    failStuckIdleSync()
+                }
+            },
+            IDLE_SYNC_WATCHDOG_THREAD_NAME,
+        ).apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    @After
+    fun disarmIdleSyncWatchdog() {
+        idleSyncWatchdogArmed.set(false)
+    }
+
+    private fun failStuckIdleSync() {
+        Log.w(
+            IDLE_SYNC_WATCHDOG_TAG,
+            "no test progress for ${IDLE_SYNC_DEADLINE_SECONDS}s; " +
+                "dumping stacks and interrupting the compose idle sync",
+        )
+        dumpThreadStack("test", idleSyncWatchdogTarget)
+        dumpThreadStack("main", Looper.getMainLooper().thread)
+        idleSyncWatchdogTarget.interrupt()
+    }
+
+    private fun dumpThreadStack(label: String, thread: Thread) {
+        val frames = thread.stackTrace
+        Log.w(IDLE_SYNC_WATCHDOG_TAG, "$label thread state=${thread.state} depth=${frames.size}")
+        frames.take(IDLE_SYNC_STACK_DUMP_LIMIT).forEachIndexed { index, frame ->
+            Log.w(IDLE_SYNC_WATCHDOG_TAG, "$label #$index $frame")
+        }
+    }
+
+    private companion object {
+        // Normal CI duration of a method in this class is seconds (run 37299029278: 3-5s each)
+        // and every in-test wait is already bounded (5s waitUntil), so 180s leaves a wide margin
+        // over the legitimate maximum while still failing far inside the 20m per-class cap.
+        const val IDLE_SYNC_DEADLINE_SECONDS = 180L
+        const val IDLE_SYNC_WATCHDOG_POLL_MS = 1_000L
+        const val IDLE_SYNC_STACK_DUMP_LIMIT = 60
+        const val IDLE_SYNC_WATCHDOG_THREAD_NAME = "compose-idle-sync-watchdog"
+        const val IDLE_SYNC_WATCHDOG_TAG = "CatOverrideIdleSync"
+    }
 
     @Test
     fun samePackageProfilesExposeTextStateAndIndependentAccessibleRows() {
@@ -101,9 +199,11 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.onNodeWithContentDescription(
             appContentDescription(context, R.string.organizer_category_override_profile_personal, longLabel),
         ).assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.onNode(hasScrollAction()).performScrollToNode(
-            hasText(context.getString(R.string.organizer_category_override_cancel)),
-        )
+        // G5 (§6.13): at 200% font scale the cancel row can sit below the fold and
+        // performScrollToNode's implicit idle-wait never settles on a slow CI
+        // emulator (reproduced 2/3 runs). Drive the scroll explicitly with a
+        // bounded wait; the reachable-node contract is unchanged.
+        scrollToNodeBounded(hasText(context.getString(R.string.organizer_category_override_cancel)))
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_cancel))
             .assertHasClickAction()
             .performSemanticsAction(SemanticsActions.OnClick)
@@ -210,12 +310,29 @@ class CategoryOverridePreferencesInstrumentationTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().isNotEmpty()
         }
+        // G5 (§6.17, run 37324581952): on the x86_64 CI emulator the scroll's
+        // beyond-bounds measure raced the list→editor interval swap and threw
+        // IndexOutOfBoundsException from MutableIntervalList. The first wait
+        // above can pass while the second app row is still composing, and the
+        // scroll could then land mid-swap. Settle each face with a bounded
+        // wait before operating; the contract — the equivalent semantics
+        // activation opens the editor and the use-automatic row is displayed —
+        // is unchanged.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Example").fetchSemanticsNodes().size == 2
+        }
         composeRule.onNodeWithContentDescription(
             appContentDescription(context, R.string.organizer_category_override_profile_personal),
         ).assertHasClickAction().performSemanticsAction(SemanticsActions.OnClick)
-        composeRule.onNode(hasScrollAction()).performScrollToNode(
-            hasText(context.getString(R.string.organizer_category_override_use_automatic)),
-        )
+        // The editor's current-status text is the first editor-only exact
+        // match (the list view renders it only inside composite descriptions);
+        // its existence means the editor face composed and laid out.
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText(
+                context.getString(R.string.organizer_category_override_automatic),
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
+        scrollToNodeBounded(hasText(context.getString(R.string.organizer_category_override_use_automatic)))
         composeRule.onNodeWithText(context.getString(R.string.organizer_category_override_use_automatic)).assertIsDisplayed()
     }
 
@@ -317,6 +434,26 @@ class CategoryOverridePreferencesInstrumentationTest {
             context.getString(profileResource),
             context.getString(R.string.organizer_category_override_automatic),
         )
+
+    /**
+     * G5 (§6.13): performScrollToNode with a bounded settle — scroll by page
+     * increments until the target node exists (or the bound expires, failing
+     * like any other unreachable-node contract violation).
+     */
+    private fun scrollToNodeBounded(matcher: SemanticsMatcher) {
+        // performScrollToNode remains the authoritative scroll mechanism (a raw
+        // swipe can land on a nested scrollable); unreachability is retried
+        // until the deadline instead of hanging on a single idle sync.
+        composeRule.waitUntil(10_000) {
+            try {
+                composeRule.onNode(hasScrollAction()).performScrollToNode(matcher)
+                composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
+            } catch (t: Throwable) {
+                false
+            }
+        }
+        composeRule.onNode(matcher).assertExists("not reachable after bounded scroll")
+    }
 
     private fun coordinator(
         label: String = "Example",

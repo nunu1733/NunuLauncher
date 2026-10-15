@@ -41,7 +41,7 @@ picker を見ただけで、effective selected strategy が一意に判別でき
 - planner、composer、application、selection store の semantics 変更。`LayoutStrategySelectionModule` の read/write contract、fail-closed 規則、Rule Management write command 経由の選択 ([spec 182](../182-layout-strategy-catalog/spec.md) Selection contract) は不変である。
 - effective selection の導出規則の変更 (absent 選択時に bundle default を表示する規則、読取失敗時に非選択表示とする規則の維持)。
 - 選択状態の新規永続化、新規 preference、新規 diagnostics event。
-- picker の候補集合・順序・section 表題の変更。（#368 amend、2026-09-19: run 表面への配置の変更凍結は解除 — picker は materials 面 T-05 へ移設され run 表面からは撤去された。T-05 での本 spec の契約は不変）
+- picker の候補集合・順序・section 表題の変更。（#368 amend、2026-09-19: run 表面への配置の変更凍結は解除 — picker は materials 面 T-05 へ移設され run 表面からは撤去された。T-05 での本 spec の契約は不変）（#453 amend、2026-10-01: 候補集合・順序の変更は #453 に限って解除 — picker は意図ごとの curated 3択と、runtime-supported 内で非表示の strategy が選択済みの場合の追加1行（選択中表示）を表示する。selected affordance 契約（選択中1行の視覚判別、1 row = 1 logical option、child `RadioButton(onClick = null)` は独立 focus/selectable target を増やさない）は表示対象の行に対してそのまま適用される）
 - preview 表面の strategy identity 表示 (`manual_organization_preview_strategy`) や consequence counts の変更 ([spec 194](../194-plan-preview-seam/spec.md) / [spec 195](../195-organizer-confirmation-change-list/spec.md) / [spec 235](../235-widget-strategy-placement/spec.md))。
 - （#368 amend、2026-09-19: 「選択時の active run の dismiss + 再計画の挙動変更」凍結は解除 — run 差し替え経路そのものが廃止され、選択は次回 run の composition にのみ効く ([spec 182](../182-layout-strategy-catalog/spec.md) write-authority step 4)。affordance 契約は不変。）
 - canonical strategy 以外の strategy description の文言修正 (具体問題が確認されていないため)。ja/en 以外の locale の新規翻訳。
@@ -57,7 +57,7 @@ picker を見ただけで、effective selected strategy が一意に判別でき
 
 Given strategy picker が表示されており、selection store の読取が成功している
 When picker が初期描画される
-Then runtime-supported catalog のうち、effective selection (persisted selection、absent なら bundle default) に対応する1行だけが persistent visual indicator により選択済みとして表示される
+Then 表示されている候補行（#453 以降は curated 3択＋非表示選択済み strategy の追加1行。それ以前は runtime-supported catalog 全件）のうち、effective selection (persisted selection、absent なら bundle default) に対応する1行だけが persistent visual indicator により選択済みとして表示される
 And 他の行は選択済みに見えない
 And 表示される選択行は Compose semantics の `Selected` 状態と同一の truth から導出される (`selectedStrategy` と indicator の分離が発生しない)
 
@@ -116,7 +116,7 @@ And description は選択した場合に何が起こるか (observable behavior)
 Given 上記のいずれかの視覚・copy 変更が適用されている
 When 既存の strategy 選択 → preview → apply → recovery の contract test 群を実行する
 Then selection store の generation / digest / fail-closed 規則、composer の読取規則、planner の結果が変化しない
-And 既存の `StrategyPickerInstrumentationTest` の契約 (runtime-supported のみ提示、default-as-effective、fail-closed、selectableGroup、write command 経由) が回帰なしで維持される
+And 既存の `StrategyPickerInstrumentationTest` の契約 (提示は offered subset ＋ hidden selected 追加行 (#453)、default-as-effective、fail-closed、selectableGroup、write command 経由) が回帰なしで維持される
 
 ## Data and state
 
@@ -147,7 +147,7 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 - [ ] AC-6: selection store の fail-closed 表示規則 (読取失敗時に非選択表示) と absent 時の default-as-effective 表示規則が視覚表現でも維持される。
 - [ ] AC-7: light / dark の代表状態で selected / unselected が視覚的に区別できる evidence が PR に残る。
 - [ ] AC-8: canonical strategy の ja/en description から実装履歴説明が除かれ、observable behavior の説明になる。
-- [ ] AC-9: planner / application / selection-store / composer の semantics と既存 picker 契約 test 群に回帰がない。
+- [ ] AC-9: planner / application / selection-store / composer の semantics と既存 picker 契約 test 群に回帰がない。(#453 amend: picker 契約 test 群は curated 3択＋追加行構成へ #453 実装 PR で更新済み。semantics 回帰契約は不変)
 
 ## Test oracle
 
@@ -161,7 +161,7 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 | AC-6 | instrumentation: 既存 `failedReadShowsNoActiveSelection` / `firstRunShowsTheBundleDefaultAsTheEffectiveSelection` を parent row の state で拡張し、visual indicator の fail-closed / default-as-effective 表示は screenshot oracle で確認 |
 | AC-7 | emulator screenshot (light / dark × selected / unselected) を PR へ添付 |
 | AC-8 | instrumentation または unit: canonical description resource が historical note を含まないことの表明。ja/en 対応の目視確認を PR へ記録 |
-| AC-9 | 既存 `StrategyPickerInstrumentationTest` + selection store unit test ([LayoutStrategySelectionStoreTest](../../tests/unit/app/lawnchair/organizer/rules/LayoutStrategySelectionStoreTest.kt)) の無修正通過 (contract 変更がないことの回帰証拠) |
+| AC-9 | 既存 `StrategyPickerInstrumentationTest` + selection store unit test ([LayoutStrategySelectionStoreTest](../../tests/unit/app/lawnchair/organizer/rules/LayoutStrategySelectionStoreTest.kt)) の無修正通過 (contract 変更がないことの回帰証拠)。#453 以降は picker test 群が curated 3択＋追加行構成へ更新された上で、semantics/store 契約の回帰がないこと |
 
 ## Open questions
 
@@ -174,3 +174,4 @@ None。新規 permission、外部送信、sensitive data は存在しない。di
 - 2026-09-13: Spec/plan review の Request changes (P1: `RadioButton(onClick = null)` は visual-only、P2: AC-3 の visual oracle、P2: 200% font-scale evidence) を反映。selection semantics の唯一の truth を parent row に固定し、視覚・font-scale evidence を screenshot または bounds 検査で拘束した。
 - 2026-09-13: ユーザー承認により spec を `accepted` に遷移し、実装を開始する。
 - 2026-09-19: Amended by #368 — Non-goals の「run 表面への配置」「dismiss + 再計画」凍結を解除し、AC-1〜AC-9 の selected affordance 契約が materials 面 T-05 に適用されることを追記（契約節本体は不変）。
+- 2026-10-01: Amended by #453 — Non-goals の「候補集合・順序の変更」を #453 に限って解除し、scenario・AC-9・test oracle の候補集合前提を curated 3択＋非表示選択済み strategy の追加1行へ読み替えた。selected affordance 契約（選択中1行の視覚判別、1 row = 1 logical option、child RadioButton の非独立 focus）は不変。正本: [spec 453](../453-strategy-choice-reduction/spec.md)。

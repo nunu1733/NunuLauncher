@@ -32,3 +32,12 @@ adb shell am instrument -w -e class app.lawnchair.backup.NovaRestoreCaptureCross
 # it too, and the gradle uninstall above keeps its state isolated from the
 # capture stages.
 ./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaRestoreGridApplicationTest
+# Issue #532 / plan §7 G4 T8: the converter boundary fixtures run at the
+# converter's normal entry (NovaBackupConverter.parseInfo + convertAndRestore)
+# and each performs exactly one restore, so the #299 per-class independent
+# invocation contract applies. The smartspace conflict toggle's ON and OFF
+# states are separate classes/processes for the same reason: each class
+# restores once (NovaConverterBoundaryScenarioBase pins enable_smartspace for
+# its process).
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaConverterBoundaryTest
+./gradlew connectedLawnWithQuickstepGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.lawnchair.backup.NovaConverterBoundarySmartspaceOffTest

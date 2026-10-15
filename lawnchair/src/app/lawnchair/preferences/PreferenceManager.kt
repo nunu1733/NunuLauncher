@@ -44,12 +44,31 @@ class PreferenceManager private constructor(private val context: Context) :
 
     val iconPackPackage = StringPref("pref_iconPackPackage", "", reloadIcons)
     val themedIconPackPackage = StringPref("pref_themedIconPackPackage", "", recreate)
+
+    // Rebase Phase 2 adapt (#532): anchor's LawnchairThemeManager (and the mono icon
+    // pipeline via pref_forceIconMonochrome) reads this pref; restored with the anchor key.
+    val forceIconMonochrome = BoolPref("pref_forceIconMonochrome", false)
     val allowRotation = BoolPref("pref_allowRotation", false)
     val wrapAdaptiveIcons = BoolPref("prefs_wrapAdaptive", false, recreate)
     val transparentIconBackground = BoolPref("prefs_transparentIconBackground", false, recreate)
     val shadowBGIcons = BoolPref("pref_shadowBGIcons", true, recreate)
     val addIconToHome = BoolPref("pref_add_icon_to_home", true)
+
+    // Issue #497: new-app destination policy selection ("upstream" or
+    // "folder:<id>"). "Don't add" is the addIconToHome off state itself and
+    // has no value here (ADR-0015 Decision 15).
+    val newAppDestination = StringPref("pref_new_app_destination", "upstream")
     val hotseatColumns = IntPref("pref_hotseatColumns", 4, reloadGrid)
+
+    // Rebase Phase 2 adapt (#532): anchor grid prefs the anchor model layer reads
+    // (multi-row/page dock in DeviceProfile and the foldable hotseat overrides in
+    // DeviceProfileOverrides.Options). Keys and defaults follow the anchor; the
+    // unfolded default mirrors hotseatColumns because the fork has no LayoutConfig
+    // foldable spec yet.
+    val hotseatColumnsUnfolded = IntPref("pref_hotseatColumnsUnfolded", 4, reloadGrid)
+    val hotseatRows = IntPref("pref_hotseatRows", 1, reloadGrid)
+    val dockPages = IntPref("pref_dockPages", 1, reloadGrid)
+
     val workspaceColumns = IntPref("pref_workspaceColumns", 4)
     val workspaceRows = IntPref("pref_workspaceRows", 5)
     val workspaceIncreaseMaxGridSize = BoolPref("pref_workspace_increase_max_grid_size", false)

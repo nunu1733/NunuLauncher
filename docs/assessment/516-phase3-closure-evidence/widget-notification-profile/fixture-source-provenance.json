@@ -1,0 +1,52 @@
+{
+  "kind": "reviewed synthetic fixture source; generated outputs and APKs excluded",
+  "source_files": [
+    {
+      "path": "fixture-source/AndroidManifest.xml",
+      "sha256": "505e88c4bcc1d8dcc888fad9676e331ecdca2b463474d6145f2c499d1b0c9621"
+    },
+    {
+      "path": "fixture-source/dev/nunu/phase3/MainActivity.java",
+      "sha256": "1a2db26d37b6ade0a9b1be60d7bd808ce11e60e7646089432b770ec7df449e69"
+    },
+    {
+      "path": "fixture-source/dev/nunu/phase3/Widget.java",
+      "sha256": "e7bd46ffafcc9b2841ee1979dc9ed77a4071e91c3a5744aa6d6a8039cddde581"
+    },
+    {
+      "path": "fixture-source/res/drawable/icon.xml",
+      "sha256": "acae87461314de29de398b322e0d6342001e00c1d260c79302ae96701e9cdef4"
+    },
+    {
+      "path": "fixture-source/res/layout/widget.xml",
+      "sha256": "01f4e92b85ebc5ce697564c491c9823855a2978df66301e48858e6fad4a6589d"
+    },
+    {
+      "path": "fixture-source/res/xml/widget.xml",
+      "sha256": "e1969aa7b62a8673618d7cd9023d7ff113bd63e2800cb34cc3fb54ec4dfabbbc"
+    },
+    {
+      "path": "PNGCompare-source.txt",
+      "sha256": "60618f3f312f58da170f32ebcb84f50e50bea06dd19e813d6b336e875676059b",
+      "role": "read-only two-image pixel comparison over a hard-coded ROI"
+    }
+  ],
+  "large_widget_observation": {
+    "source_operation": "Widget.publish(..., large=true) allocates and supplies an 1800x1800 ARGB_8888 bitmap",
+    "nominal_bitmap_bytes": 12960000,
+    "calculation": "1800 * 1800 * 4 bytes per ARGB_8888 pixel",
+    "stable_capture": "widget-large-stable.png and widget-large-stable.xml",
+    "stable_hierarchy_label": "Phase3 large 1791808719218"
+  },
+  "oversized_rejection": {
+    "source_operation": "Widget.publish(..., oversized=true) allocates a 3000x3000 ARGB_8888 bitmap",
+    "attempted_bitmap_bytes": 36000000,
+    "curated_marker": "widget-provider-markers.txt",
+    "framework_reported_max_bytes": 15707520,
+    "framework_reported_used_bytes": 36000000,
+    "result": "provider request rejected; not counted as an accepted large widget"
+  },
+  "exclusions": [
+    "APK, DEX, generated R classes, compiled classes, databases, signing material, and build outputs are not included"
+  ]
+}

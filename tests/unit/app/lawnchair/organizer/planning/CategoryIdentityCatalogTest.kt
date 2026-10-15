@@ -230,6 +230,7 @@ class CategoryIdentityCatalogTest {
             rolesById = contextInput.targets.existing.associate { it.item to it.role },
             itemById = contextInput.snapshot.items.associateBy { it.id },
             movableItems = contextInput.snapshot.items,
+            duplicateSurplus = emptySet(),
             allocator = Allocator(device, listOf(Page(PageId("p0"), PageOrder(0))), null, AllocationFault.NONE, CellTraversal.TOP_LEFT_ROW_MAJOR),
             pageOrderMap = mapOf(PageId("p0") to PageOrder(0)),
             preservationWarnings = emptyList(),

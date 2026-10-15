@@ -76,6 +76,89 @@
     <string name="homeedit_error_profile_mismatch">仕事用プロファイルのアイコンはこのフォルダに入れられません。</string>
     <string name="homeedit_error_unsupported">このアイコンは編集アクションの対象外です。</string>
     <string name="homeedit_error_write_failed">書き込みに失敗しました。レイアウトは変更されていません。</string>
+    <!-- Issue #497: 新規アプリの配置先ポリシー -->
+    <string name="destination_policy_label">新しいアプリの配置先</string>
+    <string name="destination_policy_summary_upstream">上流の既定（最初の空きセル）</string>
+    <string name="destination_policy_summary_folder">指定フォルダ: %1$s</string>
+    <string name="destination_policy_summary_folder_missing">指定フォルダが見つかりません。選び直してください</string>
+    <string name="destination_policy_summary_dont_add">新しいアプリを追加しない</string>
+    <string name="destination_policy_dialog_title">新しいアプリの配置先</string>
+    <string name="destination_policy_choice_upstream">上流の既定</string>
+    <string name="destination_policy_choice_folder">指定フォルダ\u2026</string>
+    <string name="destination_policy_choice_dont_add">新しいアプリを追加しない</string>
+    <string name="destination_policy_choice_category">カテゴリ別（カテゴリごとにフォルダを指定\u2026）</string>
+    <string name="destination_policy_summary_category">カテゴリ別 — フォルダを指定したカテゴリの新規アプリはそのフォルダへ、それ以外は既定の位置へ</string>
+    <string name="destination_policy_category_editor_title">カテゴリとフォルダの対応</string>
+    <string name="destination_policy_category_picker_title">カテゴリを選択</string>
+    <string name="destination_policy_category_editor_coverage">install時にlauncherが読み取れるカテゴリのみ対応付けされます（アプリが宣言するカテゴリ、Googleアプリ、カスタムカテゴリに割り当てたアプリ）。それ以外は既定の位置へ置かれます</string>
+    <string name="destination_policy_category_editor_empty">対応付けできるカテゴリがまだありません。カスタムカテゴリやアプリが宣言するカテゴリに属するアプリが現れるとここに表示されます</string>
+    <string name="destination_policy_category_entry_folder_unset">タップしてフォルダを選択</string>
+    <string name="destination_policy_category_editor_done">完了</string>
+<string name="destination_policy_category_unavailable">利用できないカテゴリ</string>
+    <string name="destination_policy_folder_picker_title">フォルダを選択</string>
+    <string name="destination_policy_folder_stop">指定をやめる（上流の既定）</string>
+    <string name="destination_policy_other_profile">（別のプロフィール）</string>
+    <string name="destination_policy_notice_missing">指定フォルダが見つからないため、新しいアプリは既定の位置へ置かれました</string>
+    <string name="destination_policy_notice_profile">指定フォルダが別のプロフィールにあるため、新しいアプリは既定の位置へ置かれました</string>
+    <string name="destination_policy_notice_dock">指定フォルダがDockへ移されたため、新しいアプリは既定の位置へ置かれました</string>
+    <string name="destination_policy_notice_constraint">指定フォルダの配置制約を満たせないため、新しいアプリは既定の位置へ置かれました</string>
+    <string name="destination_policy_notice_snapshot">配置先を確認できなかったため、新しいアプリは既定の位置へ置かれました</string>
+    <!-- Issue #450: undo -->
+    <string name="homeedit_undo_label">編集を適用しました</string>
+    <string name="homeedit_undo_error_stale">元に戻せません: アイコンがその後移動されています。</string>
+    <string name="homeedit_undo_error_no_space">元に戻せません: 元の位置に空きがありません。</string>
+    <string name="homeedit_undo_error_folder_changed">元に戻せません: 作成したフォルダの状態が変わっています。</string>
+    <string name="homeedit_undo_error_item_unavailable">元に戻せません: アプリが端末にありません。</string>
+    <string name="homeedit_undo_error_write_failed">元に戻せませんでした。レイアウトは変更されていません。</string>
+    <string name="homeedit_undo_error_stale_revision">元に戻せません: 確定後にホーム画面が変更されています。</string>
+    <string name="homeedit_undo_error_not_restorable">元に戻せません: 復元点はもう利用できません。</string>
+    <string name="homeedit_undo_error_busy">現在元に戻せません: 整理処理が実行中です。</string>
+    <string name="homeedit_undo_error_restore_failed">元に戻せませんでした。整理機能から復元できます。</string>
+    <!-- Issue #449: 複数選択の視覚的編集画面 -->
+    <string name="edit_surface_menu_open">編集画面</string>
+    <!-- Issue #452: ワークスペース長押しpopupの整理入口 -->
+    <string name="home_screen_organize">ホームを整理</string>
+    <string name="edit_surface_title">編集画面</string>
+    <string name="edit_surface_snapshot_notice">この画面を開いた時点のレイアウトを表示しています。他で行った変更は反映されません。</string>
+    <string name="edit_surface_discard_notice">前回の未確定の編集内容は破棄されました</string>
+    <string name="edit_surface_selection_count">%1$d件を選択中</string>
+    <string name="edit_surface_action_move_to_page">ページへ移動\u2026</string>
+    <string name="edit_surface_action_add_to_folder">フォルダへ入れる\u2026</string>
+    <string name="edit_surface_action_create_folder">新しいフォルダを作る</string>
+    <string name="edit_surface_action_remove">ホームから外す</string>
+    <string name="edit_surface_confirm">確定</string>
+    <string name="edit_surface_reset">リセット</string>
+    <string name="edit_surface_cancel">キャンセル</string>
+    <string name="edit_surface_error_capture_unavailable">レイアウトを準備できていません。もう一度お試しください。</string>
+    <string name="edit_surface_error_empty_session">適用できる変更がありません。</string>
+    <string name="edit_surface_error_lock_unknown">ロック状態を確認できない項目があるため確定できません。</string>
+    <string name="edit_surface_error_stale_reopen">レイアウトが変化しました。最新のレイアウトで開き直します。</string>
+    <string name="edit_surface_error_busy">別のレイアウト操作が進行中です。しばらくしてからもう一度お試しください。</string>
+    <string name="edit_surface_error_blocked">復元点の受付が止まっています。しばらくしてからもう一度お試しください。</string>
+    <string name="edit_surface_error_no_changes">変更は反映されませんでした。</string>
+    <string name="edit_surface_error_unchanged">適用に失敗しました。レイアウトは変更されていません。</string>
+    <string name="edit_surface_error_unresolved">適用結果を確認できませんでした。復元導線から復旧してください。</string>
+    <string name="edit_surface_error_generic">変更を適用できませんでした。</string>
+    <string name="edit_surface_no_folder_available">選択したアイテムを入れられるフォルダがありません。</string>
+    <string name="edit_surface_widget_label">ウィジェット</string>
+    <string name="edit_surface_a11y_selected">選択中</string>
+    <string name="edit_surface_a11y_not_selectable">選択できません</string>
+    <string name="edit_surface_a11y_locked">配置ロック中</string>
+    <string name="edit_surface_a11y_lock_unknown">ロック状態を確認できません</string>
+    <string name="edit_surface_a11y_widget">ウィジェット</string>
+    <string name="edit_surface_a11y_folder">フォルダ、%1$d件</string>
+    <string name="edit_surface_a11y_reserved">予約領域</string>
+    <string name="edit_surface_a11y_dock">ドック</string>
+    <string name="edit_surface_a11y_page">ページ %1$d</string>
+    <!-- Issue #507: duplicate confirmation surface -->
+    <string name="edit_surface_duplicate_summary">重複アイコン: %1$d組</string>
+    <string name="edit_surface_duplicate_dialog_title">重複アイコン</string>
+    <string name="edit_surface_duplicate_guard_last">各重複グループで少なくとも1個は残してください</string>
+    <string name="edit_surface_duplicate_no_selectable">このグループには外せるアイコンがありません</string>
+    <string name="edit_surface_duplicate_handled">このセッションで処理済み</string>
+    <string name="edit_surface_duplicate_workspace_position">ページ%1$d・行%2$d、列%3$d</string>
+    <string name="edit_surface_duplicate_in_folder">フォルダ「%1$s」内</string>
+    <string name="edit_surface_duplicate_on_dock">Dock上</string>
     <string name="organizer_lock_state_locked">ロック中</string>
     <string name="organizer_lock_state_unlocked">ロック解除済み</string>
     <string name="organizer_lock_state_unknown">要確認</string>
@@ -244,6 +327,8 @@
     <string name="manual_organization_preserved_non_target">対象外の配置を保持: %1$d件</string>
     <string name="manual_organization_preserved_strategy">選択した戦略により保持: %1$d件</string>
     <string name="manual_organization_preserved_structural">関連する項目を保持: %1$d件</string>
+    <!-- Issue #451: 重複超過分は元の位置に保持される（削除は行わない）。 -->
+    <string name="manual_organization_preserved_duplicate_launch_target">重複のため元の位置に保持: %1$d件</string>
     <string name="manual_organization_strategy_section">整理ストラテジー</string>
     <!-- Issue #368: strategy materials surface (T-05), reached only from the
          organizer hub materials section; the run surface no longer hosts the picker. -->
@@ -253,16 +338,16 @@
     <string name="organizer_strategy_retry_when_busy">他の整理の変更を実行中です。完了後に再度お試しください。</string>
     <string name="organization_strategy_canonical_name">標準コンパクト</string>
     <string name="organization_strategy_canonical_description">各ページを左上から詰めます。</string>
-    <string name="organization_strategy_tidy_name">ページ内で隙間を詰める</string>
+    <string name="organization_strategy_tidy_name">ページ内で隙間を詰める（ウィジェットは移動しません）</string>
     <string name="organization_strategy_tidy_description">アプリを別のページへ移動せずに、各ページの隙間を閉じます。ウィジェットは移動しません。</string>
-    <string name="organization_strategy_tidy_v2_name">ページ内で隙間を詰める（ウィジェット対応）</string>
-    <string name="organization_strategy_tidy_v2_description">アプリの隙間を埋め、ウィジェットは今ある範囲の中にまとめて配置します。</string>
+    <string name="organization_strategy_tidy_v2_name">ページごとに整える</string>
+    <string name="organization_strategy_tidy_v2_description">アプリを別のページへ移動せず、各ページのすき間を詰めます。ウィジェットも同じページ内で整えます。</string>
     <string name="organization_strategy_bottom_first_name">下段から詰める</string>
     <string name="organization_strategy_bottom_first_description">アプリを各ページの下段から順に配置します。ウィジェットは移動しません。</string>
     <string name="organization_strategy_bottom_first_v2_name">下段から詰める（ウィジェット対応）</string>
     <string name="organization_strategy_bottom_first_v2_description">アプリを画面下部に配置し、ウィジェットをその上に配置します。</string>
     <!-- Issue #398 BOTTOM_REGION_V1: lower-preferred-region sweep. -->
-    <string name="organization_strategy_bottom_region_name">下側半分にまとめる</string>
+    <string name="organization_strategy_bottom_region_name">下半分に集める</string>
     <string name="organization_strategy_bottom_region_description">各ページの下側半分を主な場所として使い、上側は余白として残します。ページが増えることがあります。ウィジェットは移動しません。</string>
     <string name="organization_strategy_global_name">ページ間でコンパクト（アプリのみ）</string>
     <string name="organization_strategy_global_description">後ろのページのアプリを、前のページの空きスペースへ移動します。既存のフォルダは移動しません。</string>
@@ -284,6 +369,8 @@
     <string name="manual_organization_warning_legacy_shortcut">旧形式のショートカットの確認が必要: %1$d件</string>
     <string name="manual_organization_warning_fallback_category">代替カテゴリを使用: %1$d件</string>
     <string name="manual_organization_warning_unavailable">利用できない配置を保持: %1$d件</string>
+    <!-- Issue #451: 重複は警告で示すのみで、削除は促さない。 -->
+    <string name="manual_organization_warning_duplicate_launch_target">重複のため移動させなかった配置: %1$d件</string>
     <string name="manual_organization_rejection_unknown_item_kind">未対応のアイテム種別: %1$d件</string>
     <string name="manual_organization_rejection_invalid_container">無効なコンテナ: %1$d件</string>
     <string name="manual_organization_rejection_unknown_page">不明なページ参照: %1$d件</string>
@@ -398,9 +485,12 @@
     <string name="manual_organization_preview_preserved_reason_structural">構造メンバーとして保持</string>
     <string name="manual_organization_preview_preserved_reason_strategy">選択した整理戦略により保持</string>
     <string name="manual_organization_preview_preserved_reason_already_canonical">既に整列済みのため保持</string>
+    <!-- Issue #451: 重複のため整理では移動させずに残した（削除は促さない）。 -->
+    <string name="manual_organization_preview_preserved_reason_duplicate_launch_target">同じ起動先の項目と重複しているため保持</string>
     <string name="manual_organization_preview_warning_legacy_shortcut_item">旧形式のショートカットのため確認が必要</string>
     <string name="manual_organization_preview_warning_fallback_category_item">分類を推定できずフォールバックカテゴリを使用</string>
     <string name="manual_organization_preview_warning_unavailable_item">現在利用できないため保持</string>
+    <string name="manual_organization_preview_warning_duplicate_launch_target_item">同じ起動先の項目と重複しているため、整理では移動させずに保持しています</string>
     <string name="manual_organization_preview_page">%1$dページ目</string>
     <string name="manual_organization_preview_new_page_position">新規ページ (%1$dページ目)</string>
     <string name="manual_organization_preview_position_workspace">%1$s・%2$s</string>
@@ -429,6 +519,28 @@
     <string name="manual_organization_preview_kind_unknown">アイテム</string>
     <string name="manual_organization_preview_new_folder_row">"新規フォルダ「%1$s」を%2$sに作成（メンバー: %3$s）"</string>
     <string name="manual_organization_preview_new_page_row">%1$dページ目に新規ページを追加</string>
+    <!-- Issue #508: 変更前後の図・項目単位の除外・再計画の進行（確認面。零書込みの表示state）。 -->
+    <string name="manual_organization_diagram_before">変更前</string>
+    <string name="manual_organization_diagram_after">変更後</string>
+    <string name="manual_organization_diagram_page">ページ%1$d</string>
+    <string name="manual_organization_diagram_new_page">新しいページ</string>
+    <string name="manual_organization_diagram_dock">ドック</string>
+    <string name="manual_organization_diagram_widget">ウィジェット</string>
+    <string name="manual_organization_diagram_item_a11y">"%1$s、%2$s、%3$s"</string>
+    <string name="manual_organization_exclude_action">提案から外す</string>
+    <string name="manual_organization_include_action">提案に戻す</string>
+    <string name="manual_organization_excluded_heading">"提案から外した項目: %1$d件"</string>
+    <string name="manual_organization_excluded_unknown_item">"項目"</string>
+    <string name="manual_organization_exclusion_blocked_kind">"除外できません: この種類の項目は除外対象外です"</string>
+    <string name="manual_organization_exclusion_blocked_placement">"除外できません: ドック・フォルダ・アプリペア内の配置は除外対象外です"</string>
+    <string name="manual_organization_exclusion_blocked_preserved">"除外できません: より強い保持規則がこの配置を守っています"</string>
+    <string name="manual_organization_exclusion_blocked_structural">"除外できません: 再計画が自動的に決定する行です"</string>
+    <string name="manual_organization_exclusion_state_included">"提案に含まれています"</string>
+    <string name="manual_organization_exclusion_state_excluded">"除外済み"</string>
+    <string name="manual_organization_unplaced_candidates_heading">"この提案では配置されない候補: %1$d件"</string>
+    <string name="manual_organization_unplaced_candidate_a11y">"%1$s（%2$s）。この提案では配置されない候補"</string>
+    <string name="manual_organization_replanning">提案を再計算中</string>
+    <string name="manual_organization_replanning_summary">"除外した項目を反映した新しい提案を準備しています。下の図と一覧は直前の提案のものです。"</string>
     <!-- Issue #201: safe generic title for generated folders whose semantic name cannot be resolved. -->
     <string name="organizer_generated_folder_fallback_name">"フォルダ"</string>
     <!-- Issue #53: non-blocking onboarding proposal. -->
@@ -667,4 +779,20 @@
     <plurals name="exchange_import_summary_keep">
         <item quantity="other">位置の維持の希望: %1$d件</item>
     </plurals>
+
+    <!-- Issue #528: custom suggestion LAN permission guard and typed fetch outcomes -->
+    <string name="custom_suggestion_lan_rationale">ローカルネットワーク上のアドレスから検索候補を取得するには、このアプリにローカルネットワークへのアクセスを許可してください。</string>
+    <string name="custom_suggestion_lan_request_button">ローカルネットワークへのアクセスを許可</string>
+    <string name="custom_suggestion_lan_granted">ローカルネットワークへのアクセスは許可されています。</string>
+    <string name="custom_suggestion_lan_denied_guidance">ローカルネットワークへのアクセスは拒否されています。許可するには、アプリ設定を開いて権限の「付近のデバイス」を許可してください。</string>
+    <string name="custom_suggestion_lan_open_settings_button">アプリ設定を開く</string>
+    <string name="custom_suggestion_status_not_run">検索候補: 現在のアドレスではまだ実行されていません。</string>
+    <string name="custom_suggestion_status_success">検索候補: 前回の取得に成功しました。</string>
+    <string name="custom_suggestion_status_blocked_by_permission">検索候補: ブロックされました。ローカルネットワーク権限が許可されていません。</string>
+    <string name="custom_suggestion_status_cleartext_blocked">検索候補: ブロックされました。平文（HTTP）通信は許可されていません。HTTPSのアドレスを使用してください。</string>
+    <string name="custom_suggestion_status_tls_ct_failure">検索候補: 失敗しました。TLS証明書の検証で失敗しました。</string>
+    <string name="custom_suggestion_status_http_error">検索候補: 失敗しました。サーバーがHTTPエラーを返しました。</string>
+    <string name="custom_suggestion_status_generic_network_failure">検索候補: 失敗しました。アドレスに接続できませんでした。</string>
+    <string name="custom_suggestion_url_not_https">http/httpsのURLのみ対応しています。平文（http）のエンドポイントはAndroidによってブロックされます。</string>
+    <string name="custom_suggestion_url_invalid">URLテンプレートが無効です。http://またはhttps://で始まり、検索クエリの位置に&#37;sを含めてください。</string>
 </resources>

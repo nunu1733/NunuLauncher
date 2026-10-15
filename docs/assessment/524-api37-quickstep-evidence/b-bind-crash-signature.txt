@@ -1,0 +1,27 @@
+=== leg (b) bind-crash signature — head release (maxSdk 37) as priv-app provider, API 37
+date: 2026-10-07 16:02:53
+preflight: overlay lookup + SystemUI mRecentsComponentName = app.lawnchair/com.android.quickstep.RecentsActivity (b-preflight.txt)
+
+--------- beginning of crash
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: FATAL EXCEPTION: main
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: Process: app.lawnchair, PID: 1180
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: java.lang.RuntimeException: Unable to create application app.lawnchair.LawnchairApp
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at android.app.ActivityThread.handleBindApplication(ActivityThread.java:8313)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mhandleBindApplication(ActivityThread.java:0)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2761)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:296)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:397)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:9523)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+10-07 16:01:30.509  1180  1180 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+--
+10-07 16:01:37.882  1718  1718 D AndroidRuntime: Shutting down VM
+10-07 16:01:37.882  1718  1718 E AndroidRuntime: FATAL EXCEPTION: main
+10-07 16:01:37.882  1718  1718 E AndroidRuntime: Process: app.lawnchair, PID: 1718
+10-07 16:01:37.882  1718  1718 E AndroidRuntime: java.lang.NoSuchMethodError: No interface method createInputConsumer(Landroid/os/IBinder;Ljava/lang/String;ILandroid/view/InputChannel;)V in class Landroid/view/IWindowManager; or its super classes (declaration of 'android.view.IWindowManager' appears in /system/framework/framework.jar!classes4.dex)
+
+--- gate state: 'disabling recents' absent (isRecentsComponent=true), sheet oracle not visually confirmable (crash loop kills launcher before stable home)
+--- BAL block: 0 matches in b-g3-logcat.txt (recents transition never reached; crash preempts)

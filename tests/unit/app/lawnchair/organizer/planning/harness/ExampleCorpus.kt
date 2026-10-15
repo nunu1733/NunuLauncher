@@ -114,6 +114,23 @@ internal object ExampleCorpus {
     val deviceProfileVariation: PlannerFixture by lazy { buildDeviceProfileVariation() }
     val deckOutputCompatibility: PlannerFixture by lazy { buildDeckOutputCompatibility() }
 
+    // Issue #451 (spec 451 N-7/AC-5): duplicate launch-target fixtures. Their
+    // per-fixture digests are intentionally excluded from the pre-#451
+    // per-source stability pin (GoldenOracleCorpusTest): the pin proves the
+    // pre-existing corpus was not affected by the #451 planner change, while
+    // these fixtures exist to be affected by it.
+    val duplicateLaunchTargets: PlannerFixture by lazy { buildDuplicateLaunchTargets() }
+    val duplicateLockedRepresentative: PlannerFixture by lazy { buildDuplicateLockedRepresentative() }
+    val duplicateMinGroupBoundary: PlannerFixture by lazy { buildDuplicateMinGroupBoundary() }
+    val duplicateMultiSurplusFolder: PlannerFixture by lazy { buildDuplicateMultiSurplusFolder() }
+
+    val duplicateFixtureSources: Set<String> = setOf(
+        "fixture:duplicate-launch-targets",
+        "fixture:duplicate-locked-representative",
+        "fixture:duplicate-min-group-boundary",
+        "fixture:duplicate-multi-surplus-folder",
+    )
+
     val allExamples: Map<FixtureId, PlannerFixture> by lazy {
         listOf(
             emptyHome,
@@ -127,6 +144,10 @@ internal object ExampleCorpus {
             undefinedCategory,
             deviceProfileVariation,
             deckOutputCompatibility,
+            duplicateLaunchTargets,
+            duplicateLockedRepresentative,
+            duplicateMinGroupBoundary,
+            duplicateMultiSurplusFolder,
         ).associateBy { it.id }
     }
 
@@ -893,6 +914,338 @@ internal object ExampleCorpus {
                 outcome = ExpectedOutcome.Planned(),
             ),
             checks = setOf(ContractCheck.EXPECTATION, ContractCheck.CONTAINER_INTEGRITY),
+        )
+    }
+
+    /**
+     * Issue #451 (spec 451): duplicate launch-target fixtures. The
+     * representative is the first ItemId in canonical UTF-8 byte order —
+     * deliberately "10" before "2" to pin the string (not numeric) comparison
+     * the spec normative rules depend on. All duplicate fixtures run the
+     * IDEMPOTENCE check so the materialize-and-replan stability (spec 12
+     * P-10) is proven over the new surplus vocabulary.
+     */
+    private fun buildDuplicateLaunchTargets(): PlannerFixture {
+        val items = listOf(
+            CapturedItem(
+                id = ItemId("10"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+            CapturedItem(
+                id = ItemId("3"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.maps"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(1, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+            CapturedItem(
+                id = ItemId("2"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p1")), GridCell(0, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+        )
+        val input = OrganizationInput(
+            snapshot = LayoutSnapshot(
+                revision = RevisionId("rev-duplicate-launch-targets"),
+                device = defaultDevice,
+                pages = listOf(
+                    Page(id = PageId("p0"), order = PageOrder(0)),
+                    Page(id = PageId("p1"), order = PageOrder(1)),
+                ),
+                items = items,
+            ),
+            rules = defaultRules,
+            taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
+            signals = ClassificationSignals(
+                entries = listOf(
+                    ClassificationSignal(ItemId("10"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(ItemId("3"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(ItemId("2"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                ),
+            ),
+            targets = TargetSet(
+                existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
+                additions = emptyList(),
+            ),
+            runMode = RunMode.FullOrganization,
+        )
+        return PlannerFixture(
+            id = FixtureId("duplicate-launch-targets"),
+            input = input,
+            expectation = FixtureExpectation(
+                outcome = ExpectedOutcome.Planned(
+                    requiredPreservations = mapOf(ItemId("2") to PreserveReason.DUPLICATE_LAUNCH_TARGET),
+                    expectedNewFolderCount = 1,
+                ),
+                requiredWarningCodes = setOf(WarningCode.DUPLICATE_LAUNCH_TARGET),
+            ),
+            checks = setOf(
+                ContractCheck.EXPECTATION,
+                ContractCheck.CONSERVATION,
+                ContractCheck.BOUNDS,
+                ContractCheck.NO_OVERLAP,
+                ContractCheck.DETERMINISM,
+                ContractCheck.INPUT_PERMUTATION,
+                ContractCheck.IDEMPOTENCE,
+            ),
+        )
+    }
+
+    /**
+     * Spec 451 scenario "重複の一方が既に保全predicateに掛かる": the locked
+     * duplicate outranks DUPLICATE_LAUNCH_TARGET and the movable duplicate is
+     * move-inhibited (N-1 contract extension / N-3 precedence).
+     */
+    private fun buildDuplicateLockedRepresentative(): PlannerFixture {
+        val items = listOf(
+            CapturedItem(
+                id = ItemId("a"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(1, 1)),
+                locked = true,
+                availability = Availability.AVAILABLE,
+            ),
+            CapturedItem(
+                id = ItemId("b"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(1, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+        )
+        val input = OrganizationInput(
+            snapshot = LayoutSnapshot(
+                revision = RevisionId("rev-duplicate-locked"),
+                device = defaultDevice,
+                pages = listOf(Page(id = PageId("p0"), order = PageOrder(0))),
+                items = items,
+            ),
+            rules = defaultRules,
+            taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
+            signals = ClassificationSignals(
+                entries = listOf(
+                    ClassificationSignal(ItemId("a"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(ItemId("b"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                ),
+            ),
+            targets = TargetSet(
+                existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
+                additions = emptyList(),
+            ),
+            runMode = RunMode.FullOrganization,
+        )
+        return PlannerFixture(
+            id = FixtureId("duplicate-locked-representative"),
+            input = input,
+            expectation = FixtureExpectation(
+                outcome = ExpectedOutcome.Planned(
+                    requiredPreservations = mapOf(
+                        ItemId("a") to PreserveReason.LOCKED,
+                        ItemId("b") to PreserveReason.DUPLICATE_LAUNCH_TARGET,
+                    ),
+                    expectedNewFolderCount = 0,
+                ),
+                requiredWarningCodes = setOf(WarningCode.DUPLICATE_LAUNCH_TARGET),
+            ),
+            checks = setOf(
+                ContractCheck.EXPECTATION,
+                ContractCheck.CONSERVATION,
+                ContractCheck.LOCK_PRESERVATION,
+                ContractCheck.NO_OVERLAP,
+                ContractCheck.DETERMINISM,
+                ContractCheck.IDEMPOTENCE,
+            ),
+        )
+    }
+
+    /**
+     * Spec 451 scenario "除外でgroupが最小サイズを下回る": exactly two
+     * same-category members where one is the surplus — after exclusion the
+     * group is below minGroupSize, so no folder forms.
+     */
+    private fun buildDuplicateMinGroupBoundary(): PlannerFixture {
+        val items = listOf(
+            CapturedItem(
+                id = ItemId("1"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+            CapturedItem(
+                id = ItemId("2"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(1, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+        )
+        val input = OrganizationInput(
+            snapshot = LayoutSnapshot(
+                revision = RevisionId("rev-duplicate-min-boundary"),
+                device = defaultDevice,
+                pages = listOf(Page(id = PageId("p0"), order = PageOrder(0))),
+                items = items,
+            ),
+            rules = defaultRules,
+            taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
+            signals = ClassificationSignals(
+                entries = listOf(
+                    ClassificationSignal(ItemId("1"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(ItemId("2"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                ),
+            ),
+            targets = TargetSet(
+                existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
+                additions = emptyList(),
+            ),
+            runMode = RunMode.FullOrganization,
+        )
+        return PlannerFixture(
+            id = FixtureId("duplicate-min-group-boundary"),
+            input = input,
+            expectation = FixtureExpectation(
+                outcome = ExpectedOutcome.Planned(
+                    requiredPreservations = mapOf(ItemId("2") to PreserveReason.DUPLICATE_LAUNCH_TARGET),
+                    expectedNewFolderCount = 0,
+                ),
+                requiredWarningCodes = setOf(WarningCode.DUPLICATE_LAUNCH_TARGET),
+            ),
+            checks = setOf(
+                ContractCheck.EXPECTATION,
+                ContractCheck.CONSERVATION,
+                ContractCheck.BOUNDS,
+                ContractCheck.DETERMINISM,
+                ContractCheck.IDEMPOTENCE,
+            ),
+        )
+    }
+
+    /**
+     * Spec 451: three copies of one launch target plus a second GAMES app.
+     * Two surplus items preserve at their captured positions while the
+     * representative and the fourth app form the folder; the
+     * materialize-and-replan check (P-10) proves both surplus reasons and
+     * positions stay stable.
+     */
+    private fun buildDuplicateMultiSurplusFolder(): PlannerFixture {
+        val duplicateItems = listOf(
+            CapturedItem(
+                id = ItemId("10"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(0, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+            CapturedItem(
+                id = ItemId("2"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(1, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+            CapturedItem(
+                id = ItemId("3"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.photos"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(2, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+            CapturedItem(
+                id = ItemId("4"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.maps"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(3, 0), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            ),
+        )
+        val fillerItems = (1..4).map { i ->
+            CapturedItem(
+                id = ItemId("f$i"),
+                profile = p0,
+                kind = ItemKind.APPLICATION,
+                target = TargetKey.AppKey(ComponentKey("com.example.filler.$i"), p0),
+                placement = CapturedPlacement.Workspace(PageRef(PageId("p0")), GridCell(i - 1, 1), GridSpan(1, 1)),
+                locked = false,
+                availability = Availability.AVAILABLE,
+            )
+        }
+        val items = duplicateItems + fillerItems
+        val input = OrganizationInput(
+            snapshot = LayoutSnapshot(
+                revision = RevisionId("rev-duplicate-multi-surplus"),
+                device = defaultDevice,
+                pages = listOf(Page(id = PageId("p0"), order = PageOrder(0))),
+                items = items,
+            ),
+            rules = defaultRules,
+            taxonomy = defaultTaxonomy,
+            catalog = ActiveCategoryCatalog(defaultTaxonomy, emptyList()),
+            signals = ClassificationSignals(
+                entries = listOf(
+                    ClassificationSignal(ItemId("10"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(ItemId("4"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(ItemId("2"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                    ClassificationSignal(ItemId("3"), SignalSource.S1, CategoryIdentity.BuiltIn(CategoryId("GAMES"))),
+                ),
+            ),
+            targets = TargetSet(
+                existing = items.map { ExistingTargetMembership(it.id, ExistingRole.Movable) },
+                additions = emptyList(),
+            ),
+            runMode = RunMode.FullOrganization,
+        )
+        return PlannerFixture(
+            id = FixtureId("duplicate-multi-surplus-folder"),
+            input = input,
+            expectation = FixtureExpectation(
+                outcome = ExpectedOutcome.Planned(
+                    requiredPreservations = mapOf(
+                        ItemId("2") to PreserveReason.DUPLICATE_LAUNCH_TARGET,
+                        ItemId("3") to PreserveReason.DUPLICATE_LAUNCH_TARGET,
+                    ),
+                    expectedNewFolderCount = 1,
+                ),
+                requiredWarningCodes = setOf(WarningCode.DUPLICATE_LAUNCH_TARGET),
+            ),
+            checks = setOf(
+                ContractCheck.EXPECTATION,
+                ContractCheck.CONSERVATION,
+                ContractCheck.BOUNDS,
+                ContractCheck.NO_OVERLAP,
+                ContractCheck.DETERMINISM,
+                ContractCheck.IDEMPOTENCE,
+            ),
         )
     }
 

@@ -21,6 +21,8 @@ import android.app.Instrumentation.ActivityResult
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.util.Log
+import android.view.ViewGroup
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultRegistry
@@ -30,7 +32,11 @@ import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.AbstractComposeView
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.state.ToggleableState
@@ -113,6 +119,7 @@ import app.lawnchair.organizer.planning.TaxonomyVersion
 import app.lawnchair.organizer.planning.Warning
 import app.lawnchair.organizer.planning.WarningCode
 import app.lawnchair.organizer.ui.ManualOrganizationModule
+import app.lawnchair.organizer.ui.InjectedInputEnvironment
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.ManualOrganizationApplication
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
@@ -358,7 +365,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_category_overrides_title),
             ).performClick()
-            assertCurrentDestination(navController, HomeScreenCategoryOverrides)
+            awaitCurrentDestination(navController, HomeScreenCategoryOverrides)
             composeRule.runOnIdle { navController.popBackStack() }
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithText(
@@ -370,7 +377,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_custom_category_title),
             ).performClick()
-            assertCurrentDestination(navController, HomeScreenCustomCategories)
+            awaitCurrentDestination(navController, HomeScreenCustomCategories)
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_custom_category_create),
             ).assertIsDisplayed()
@@ -385,7 +392,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_lock_screen_title),
             ).performClick()
-            assertCurrentDestination(navController, HomeScreenPlacementLocks)
+            awaitCurrentDestination(navController, HomeScreenPlacementLocks)
             composeRule.onNodeWithText(
                 context.getString(R.string.organizer_lock_screen_unknown_banner_none),
             ).assertIsDisplayed()
@@ -414,6 +421,12 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
      * the SAME durable session. Every transition is a real UI row click /
      * system Back, and the request row never admits a run (the coordinator
      * stays `Idle`).
+     *
+     * #479 resolution: the ghost-row root cause (the hub exchange row laid
+     * into the app-bar contentPadding gap by a LazyListState anchor race) is
+     * fixed in OrganizerHubPreferences and the quarantine is lifted — the
+     * oracle runs unconditionally again (classified failure + failure-instant
+     * screenshot diagnostics stay for regression evidence).
      */
     @Test
     fun issue372ConsultationSessionSurvivesARealMaterialsWriteViaTheProductionRoute() {
@@ -423,20 +436,7 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         // (#204 contract): the production controller's generation is covered
         // by its own oracle suite; this test owns the persistence-and-
         // materials-route interaction, so the session is written directly.
-        val sessionStore = app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
-            .store(context)
-        val now = System.currentTimeMillis()
-        sessionStore.save(
-            app.lawnchair.organizer.personalization.ExportSession(
-                exportId = "issue372-materials-route",
-                itemRefs = emptyMap(),
-                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
-                sourceContextDigest = "digest",
-                signalProvenance = null,
-                createdAtEpochMs = now,
-                expiresAtEpochMs = now + 24L * 60L * 60L * 1000L,
-            ),
-        )
+        val sessionStore = seedActiveConsultationSession()
         try {
             val navController = composeProductionGraph(startDestination = HomeScreen)
 
@@ -453,28 +453,36 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             }
 
             fun openRequestRowAndAwaitT15(activeAwaitTag: String) {
+                // #479 bounds-timeline: re-anchor the sample timeline at this
+                // hub entry; every sample's elapsed ms is relative to here.
+                resetIssue479Timeline()
                 composeRule.waitUntil(5_000) {
                     composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
                 }
-                composeRule.onNodeWithText(context.getString(R.string.organizer_hub_request_open)).performClick()
-                // The run surface is showing (its explainer is unique to it)…
-                composeRule.waitUntil(5_000) {
-                    composeRule.onAllNodesWithText(
-                        context.getString(R.string.manual_organization_explainer),
-                    ).fetchSemanticsNodes().isNotEmpty()
-                }
+                // S_pre: the state right after hub entry, BEFORE any scroll
+                // attempt (key sample — did the row ever sit at ~676?).
+                recordIssue479TimelineSample("S_pre")
+                clickRequestRowAndAwaitRunSurface(navController)
                 // …with the T-15 pre-display for the active request.
-                composeRule.waitUntil(5_000) {
+                awaitIssue372SurfaceWith479Evidence(navController, "the T-15 request title") {
                     composeRule.onAllNodesWithText(
                         context.getString(R.string.exchange_request_title),
                     ).fetchSemanticsNodes().isNotEmpty()
                 }
-                composeRule.waitUntil(5_000) {
+                awaitIssue372SurfaceWith479Evidence(navController, "the T-15 pre-display tag [$activeAwaitTag]") {
                     composeRule.onAllNodesWithTag(activeAwaitTag).fetchSemanticsNodes().isNotEmpty()
                 }
             }
 
             // Hub → 進行中のAI依頼 row → T-15 pre-display.
+            // Issue #479 (swallow-2): the same scroll-into-view +
+            // assertIsDisplayed discipline the request row uses — a clipped
+            // row's tap center can sit inside the system gesture-nav inset,
+            // where SystemUI consumes the tap.
+            composeRule.onNode(hasScrollAction()).performScrollToNode(
+                hasText(context.getString(R.string.organizer_hub_title)),
+            )
+            composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).assertIsDisplayed()
             composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithText(
@@ -486,21 +494,35 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             // Back: T-15 closes zero-write to the entry face, then the entry
             // face returns to the hub.
             pressBack()
+            recordIssue479TimelineSample("B1")
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithTag("exchange-request-title").fetchSemanticsNodes().isEmpty()
             }
+            recordIssue479TimelineSample("B1W")
             pressBack()
+            recordIssue479TimelineSample("B2")
             composeRule.waitUntil(5_000) {
                 composeRule.onAllNodesWithText(
                     context.getString(R.string.organizer_strategy_title),
                 ).fetchSemanticsNodes().isNotEmpty()
             }
+            recordIssue479TimelineSample("B2W")
 
             // The hub materials 「Organization strategy」 row opens T-05; one
             // real strategy write commits (AUTHORING token, no rejection).
+            recordIssue479TimelineSample("SC0")
+            // Issue #479 (swallow-2): the strategy row can be bottom-clipped
+            // with its center inside the system gesture-nav inset — the same
+            // scroll-into-view + assertIsDisplayed discipline as the request
+            // row before the tap.
+            composeRule.onNode(hasScrollAction()).performScrollToNode(
+                hasText(context.getString(R.string.organizer_strategy_title)),
+            )
+            composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).assertIsDisplayed()
             composeRule.onNodeWithText(context.getString(R.string.organizer_strategy_title)).performClick()
-            assertCurrentDestination(navController, HomeScreenOrganizerStrategy)
-            val tidy = context.getString(R.string.organization_strategy_tidy_name)
+            recordIssue479TimelineSample("SC1")
+            awaitStrategySurfaceWith479Evidence(navController)
+            val tidy = context.getString(R.string.organization_strategy_tidy_v2_name)
             composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(tidy))
             composeRule.onNodeWithText(tidy).assertIsNotSelected().performClick()
             composeRule.waitForIdle()
@@ -522,6 +544,79 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
             sessionStore.invalidate("issue372-materials-route")
             installProcessLocalRunner(null)
         }
+    }
+
+    /**
+     * Issue #477 review round 1: the hub request row's semantics OnClick is
+     * the TalkBack activation path of the SAME production click handler the
+     * touch route uses. This test owns that a11y oracle separately from the
+     * touch-route oracle above, so a gesture-delivery defect (the #477
+     * swallow) can neither mask nor be masked by the activation contract.
+     * Same production graph and durable session seeding as the touch test;
+     * the only difference is how the row's action is driven.
+     */
+    @Test
+    fun requestRowSemanticsActivationOpensTheRunSurface() {
+        val fixture = ManualOrganizationRun(FakeManualOrganizationApplication(), OrganizationPlanner { planningResult() })
+        installProcessLocalRunner(fixture)
+        val sessionStore = seedActiveConsultationSession()
+        try {
+            val navController = composeProductionGraph(startDestination = HomeScreen)
+            composeRule.onNodeWithText(context.getString(R.string.organizer_hub_title)).performClick()
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.manual_organization_start),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.waitUntil(5_000) {
+                composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes().isNotEmpty()
+            }
+            val openLabel = context.getString(R.string.organizer_hub_request_open)
+            val onClick: (() -> Boolean)? = composeRule.onNodeWithText(openLabel).fetchSemanticsNode()
+                .config.getOrNull(SemanticsActions.OnClick)?.action
+            checkNotNull(onClick) { "request row carries no OnClick semantics action" }
+            composeRule.runOnIdle { onClick.invoke() }
+
+            // The run surface shows with the T-15 pre-display for the SAME
+            // durable request, without run admission (the #417 lease rule).
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.manual_organization_explainer),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            awaitCurrentDestination(navController, HomeScreenManualOrganization())
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithText(
+                    context.getString(R.string.exchange_request_title),
+                ).fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.waitUntil(10_000) {
+                composeRule.onAllNodesWithTag("exchange-request-active").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals(ManualOrganizationRun.State.Idle, fixture.state)
+        } finally {
+            sessionStore.invalidate("issue372-materials-route")
+            installProcessLocalRunner(null)
+        }
+    }
+
+    /** Seeds the #372 consultation session through the REAL durable store. */
+    private fun seedActiveConsultationSession(): app.lawnchair.organizer.personalization.ExportSessionStore {
+        val sessionStore = app.lawnchair.organizer.integration.exchange.ExchangeSessionStoreModule
+            .store(context)
+        val now = System.currentTimeMillis()
+        sessionStore.save(
+            app.lawnchair.organizer.personalization.ExportSession(
+                exportId = "issue372-materials-route",
+                itemRefs = emptyMap(),
+                tier = app.lawnchair.organizer.personalization.PrivacyTier.EXTERNAL_REDACTED,
+                sourceContextDigest = "digest",
+                signalProvenance = null,
+                createdAtEpochMs = now,
+                expiresAtEpochMs = now + 24L * 60L * 60L * 1000L,
+            ),
+        )
+        return sessionStore
     }
 
     /**
@@ -618,14 +713,466 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         return node.config.getOrNull(SemanticsProperties.ToggleableState) == ToggleableState.On
     }
 
-    /** Asserts the production graph's current destination is [route]. */
-    private fun assertCurrentDestination(navController: NavHostController, route: PreferenceRoute) {
-        composeRule.waitForIdle()
-        var arrived = false
-        composeRule.runOnIdle {
-            arrived = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
+    /**
+     * Waits (polling, not one-shot) for the production graph's current
+     * destination to be [route]. One-shot arrival reads raced the navigation
+     * frame (#477: "assertCurrentDestination のnavigation未到達"), so the
+     * back-stack state itself is the polled oracle, replacing the former
+     * one-shot post-click assert.
+     */
+    private fun awaitCurrentDestination(navController: NavHostController, route: PreferenceRoute) {
+        composeRule.waitUntil(10_000) {
+            var matches = false
+            composeRule.runOnIdle {
+                matches = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
+            }
+            matches
         }
-        assertTrue("expected navigation to $route", arrived)
+    }
+
+    /**
+     * Issue #477 (revised classification — see the issue and PR): clicks the
+     * hub's request row with REAL touch injection and waits for the run
+     * surface. Evidence chain: the tap is injected at the row's reported
+     * bounds while `windowFocus=true`, the back stack never moves, the same
+     * handler driven through the semantics action navigates fine, and the
+     * failure-instant screenshot shows the VISIBLE hub without the row even
+     though the node reports on-screen bounds — a Compose-level
+     * composition/semantics anomaly candidate (ghost row node), not a
+     * harness wait defect. The touch route stays this test's primary oracle
+     * with the only success path (#477 review round 1: a semantics fallback
+     * would let the anomaly go green; the a11y activation path is owned by
+     * [requestRowSemanticsActivationOpensTheRunSurface]). Synchronization is
+     * the observable standard: settle, #300 environment gate, and the
+     * #366/#369 scroll-into-view discipline, then a classified failure whose
+     * message carries the back-stack route, row geometry, device environment,
+     * and screen state, with the failure instant screenshotted into the
+     * lane's always-uploaded UI evidence. #479 review round 1: the oracle is
+     * a SINGLE real touch (REQUEST_ROW_CLICK_ATTEMPTS = 1, no test-side
+     * retry) — a retry would mask a "first user touch lost" regression,
+     * which is exactly the #479 anomaly.
+     */
+    private fun clickRequestRowAndAwaitRunSurface(navController: NavHostController) {
+        val openLabel = context.getString(R.string.organizer_hub_request_open)
+        val explainer = context.getString(R.string.manual_organization_explainer)
+        repeat(REQUEST_ROW_CLICK_ATTEMPTS) { attempt ->
+            composeRule.waitForIdle()
+            InjectedInputEnvironment.ensureWindowFocused(composeRule.activity)
+            // #479 bounds-timeline: S0 is sampled right before the scroll,
+            // S1 right after it (before assertIsDisplayed), S2 right after
+            // the click; polls S3… run inside the arrival wait below.
+            val attemptLabel = if (attempt == 0) "" else "a${attempt + 1}-"
+            recordIssue479TimelineSample("${attemptLabel}S0")
+            // Standard #366/#369 visibility discipline before the click. It
+            // passes here while the tap is still swallowed — the failure
+            // screenshot shows the visible hub WITHOUT the row while its
+            // semantics node reports on-screen bounds — which is the #477
+            // follow-up's evidence that this is a Compose-level
+            // composition/semantics anomaly, not a harness wait defect.
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(openLabel))
+            recordIssue479TimelineSample("${attemptLabel}S1")
+            composeRule.onNodeWithText(openLabel).assertIsDisplayed()
+            composeRule.onNodeWithText(openLabel).performClick()
+            recordIssue479TimelineSample("${attemptLabel}S2")
+            if (awaitRunSurfaceOrStillOnHub(navController, explainer)) return
+            if (attempt >= REQUEST_ROW_CLICK_ATTEMPTS - 1) {
+                val issue479Diagnostics = issue479ComposeRootDiagnostics(navController)
+                captureArrivalFailureScreenshot()
+                error(
+                    "request row touch click never opened the run surface " +
+                        "(attempts=$REQUEST_ROW_CLICK_ATTEMPTS): ${arrivalDiagnosis(navController)} " +
+                        issue479Diagnostics +
+                        "\n" + issue479TimelineBlock(),
+                )
+            }
+            check(!isOnDestination(navController, HomeScreenManualOrganization())) {
+                // Navigation verifiably dispatched but the surface never
+                // composed — re-injecting would double-push the entry.
+                val issue479Diagnostics = issue479ComposeRootDiagnostics(navController)
+                captureArrivalFailureScreenshot()
+                "request row touch click navigated but the run surface never composed: " +
+                    arrivalDiagnosis(navController) + " " + issue479Diagnostics +
+                    "\n" + issue479TimelineBlock()
+            }
+        }
+    }
+
+    /** Reads the back-stack arrival state on the main thread. */
+    private fun isOnDestination(navController: NavHostController, route: PreferenceRoute): Boolean {
+        var onRoute = false
+        composeRule.runOnIdle {
+            onRoute = navController.currentBackStackEntry?.destination?.hasRoute(route::class) == true
+        }
+        return onRoute
+    }
+
+    /**
+     * #479 investigation (failure-instant, before the classified failure is
+     * raised): census of every compose view and compose root in the activity
+     * window with the [ViewRootForTest.semanticsOwner] identity of each
+     * root, the full semantics tree per owner, owner attribution of the ghost
+     * request-row node (fetched exactly like the oracle does — merged tree,
+     * `onAllNodesWithTag`) versus a visibly present hub row, and the nav
+     * back stack. Full dump goes to logcat (tag `Issue479Diag`) and the app
+     * external files dir; `dumpsys activity top` and a uiautomator dump are
+     * written to `/sdcard/Download` from the shell identity at the same
+     * instant. Returns a compact summary for the failure message.
+     */
+    private fun issue479ComposeRootDiagnostics(navController: NavHostController): String {
+        val lines = mutableListOf<String>()
+        composeRule.runOnIdle {
+            fun walk(view: android.view.View) {
+                val className = view.javaClass.simpleName
+                if (view is AbstractComposeView) {
+                    val location = IntArray(2).also { view.getLocationOnScreen(it) }
+                    lines.add(
+                        "COMPOSE_VIEW cls=$className viewId=${System.identityHashCode(view)} " +
+                            "shown=${view.isShown} size=${view.width}x${view.height} " +
+                            "screen=(${location[0]},${location[1]})",
+                    )
+                }
+                if (view is ViewRootForTest) {
+                    val location = IntArray(2).also { view.getLocationOnScreen(it) }
+                    val owner = view.semanticsOwner
+                    val ownerId = System.identityHashCode(owner)
+                    lines.add(
+                        "COMPOSE_ROOT cls=$className viewId=${System.identityHashCode(view)} " +
+                            "ownerId=$ownerId shown=${view.isShown} " +
+                            "size=${view.width}x${view.height} screen=(${location[0]},${location[1]})",
+                    )
+                    lines.add("OWNER_TREE ownerId=$ownerId")
+                    appendIssue479SemanticsTree(owner.rootSemanticsNode, lines, "  ", depth = 0)
+                }
+                (view as? ViewGroup)?.let { group ->
+                    for (index in 0 until group.childCount) walk(group.getChildAt(index))
+                }
+            }
+            walk(composeRule.activity.window.decorView)
+            val entries = navController.currentBackStack.value
+            lines.add(
+                "BACK_STACK current=${navController.currentDestination?.route} " +
+                    "entries=${entries.joinToString(" -> ") { it.destination.route ?: "?" }}",
+            )
+        }
+
+        // Owner attribution through the test engine (merged tree, matching
+        // the oracle's own fetch): the ghost row node and a row that is
+        // visibly present on the failing screen.
+        val openLabel = context.getString(R.string.organizer_hub_request_open)
+        val startLabel = context.getString(R.string.manual_organization_start)
+        runCatching {
+            val ghostNodes = composeRule.onAllNodesWithTag("organizer-hub-request").fetchSemanticsNodes()
+            lines.add(
+                "GHOST_ROWS tag=organizer-hub-request count=${ghostNodes.size} " +
+                    "ownerIds=${ghostNodes.map { System.identityHashCode(it.root?.semanticsOwner) }} " +
+                    "boundsInRoot=${ghostNodes.map { it.boundsInRoot }}",
+            )
+        }.onFailure { lines.add("GHOST_ROWS fetch failed: $it") }
+        runCatching {
+            val startNodes = composeRule.onAllNodesWithText(startLabel).fetchSemanticsNodes()
+            lines.add(
+                "VISIBLE_ROWS text=$startLabel count=${startNodes.size} " +
+                    "ownerIds=${startNodes.map { System.identityHashCode(it.root?.semanticsOwner) }} " +
+                    "boundsInRoot=${startNodes.map { it.boundsInRoot }}",
+            )
+        }.onFailure { lines.add("VISIBLE_ROWS fetch failed: $it") }
+
+        lines.forEach { Log.e(ISSUE479_DIAG_TAG, it) }
+        runCatching {
+            val dir = context.getExternalFilesDir(null) ?: context.filesDir
+            File(dir, "issue479-diag-${System.currentTimeMillis()}.txt").writeText(lines.joinToString("\n"))
+        }
+        // Cross-check dumps from the shell identity at the same failure instant.
+        runCatching { shell("dumpsys activity top > /sdcard/Download/issue479-dumpsys-top.txt 2>&1") }
+        runCatching { shell("uiautomator dump /sdcard/Download/issue479-uiautomator.xml") }
+
+        return lines.filter {
+            it.startsWith("COMPOSE_ROOT") ||
+                it.startsWith("GHOST_ROWS") ||
+                it.startsWith("VISIBLE_ROWS") ||
+                it.startsWith("BACK_STACK")
+        }.joinToString(prefix = "issue479Census[", separator = " | ", postfix = "]")
+    }
+
+    /** Recursively appends a semantics subtree (tags, text, bounds) for #479 diagnostics. */
+    private fun appendIssue479SemanticsTree(
+        node: SemanticsNode,
+        lines: MutableList<String>,
+        indent: String,
+        depth: Int,
+    ) {
+        if (depth > 30) {
+            lines.add("${indent}…")
+            return
+        }
+        val tag = node.config.getOrNull(SemanticsProperties.TestTag)
+        val text = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("|")
+        lines.add(
+            "${indent}node=#${node.id} tag=$tag text=$text " +
+                "boundsInRoot=${node.boundsInRoot} boundsInWindow=${node.boundsInWindow}",
+        )
+        node.children.forEach { appendIssue479SemanticsTree(it, lines, "$indent  ", depth + 1) }
+    }
+
+    // ----- #479 bounds-timeline diagnostics ---------------------------------
+
+    /** #479: labelled sample lines recorded since the last hub entry. */
+    private val issue479Timeline = mutableListOf<String>()
+
+    /** #479: epoch every timeline sample's elapsed ms is relative to (hub entry). */
+    private var issue479TimelineStartMs = 0L
+
+    /** #479: next S-label for the arrival-window poll samples (S3, S4, …). */
+    private var issue479NextPollLabel = 3
+
+    /** #479: wall clock of the last throttled poll sample. */
+    private var issue479LastPollSampleMs = 0L
+
+    /**
+     * #479 bounds-timeline: clears the sample list and re-anchors the
+     * timeline at a hub entry ([openRequestRowAndAwaitT15]). S0 inside
+     * [clickRequestRowAndAwaitRunSurface] marks the first scroll attempt of
+     * a click attempt; a second attempt labels its samples `a2-…`.
+     */
+    private fun resetIssue479Timeline() {
+        issue479Timeline.clear()
+        issue479NextPollLabel = 3
+        issue479LastPollSampleMs = 0L
+        issue479TimelineStartMs = System.currentTimeMillis()
+    }
+
+    /**
+     * #479 bounds-timeline: one compact sample line — elapsed ms since the
+     * timeline start plus the semantics node COUNT and boundsInRoot of the
+     * request row's "View request" text, the visibly-present control "Start
+     * organizing", the hub materials "Organization strategy" row text (the
+     * #479 swallow-2 tap target), and the hub app-bar title text
+     * (`organizer_hub_label`; `organizer_hub_title` is the ENTRY-face row
+     * and renders the same word, so the count is reported for every fetch).
+     * All fetches are runCatching-wrapped: a vanished node reports `gone`
+     * (itself signal), a failed fetch reports `ERR`, and this helper never
+     * throws.
+     */
+    private fun sampleIssue479RowBounds(): String {
+        val elapsed =
+            if (issue479TimelineStartMs == 0L) {
+                0L
+            } else {
+                System.currentTimeMillis() - issue479TimelineStartMs
+            }
+        val request = issue479TextNodeBounds(context.getString(R.string.organizer_hub_request_open))
+        val start = issue479TextNodeBounds(context.getString(R.string.manual_organization_start))
+        // #479 swallow-2: the hub materials 「Organization strategy」 row is
+        // the second tap target whose bounds were invisible on failure; every
+        // sample now carries its geometry (`gone` off-hub).
+        val strategy = issue479TextNodeBounds(context.getString(R.string.organizer_strategy_title))
+        val hubTitle = issue479TextNodeBounds(context.getString(R.string.organizer_hub_label))
+        return "+${elapsed}ms req[$request] start[$start] strategy[$strategy] hubLabel[$hubTitle]"
+    }
+
+    /** #479 bounds-timeline: count + boundsInRoot of every text node, or `gone`. */
+    private fun issue479TextNodeBounds(text: String): String = runCatching {
+        val nodes = composeRule.onAllNodesWithText(text).fetchSemanticsNodes()
+        if (nodes.isEmpty()) {
+            "n=0 gone"
+        } else {
+            "n=${nodes.size} " + nodes.joinToString(separator = "~") { node ->
+                val bounds = node.boundsInRoot
+                "(${bounds.left},${bounds.top})-(${bounds.right},${bounds.bottom})"
+            }
+        }
+    }.getOrElse { "ERR:${it.javaClass.simpleName}" }
+
+    /** #479 bounds-timeline: records one labelled sample and logs it (same tag as the census). */
+    private fun recordIssue479TimelineSample(label: String) {
+        runCatching {
+            val line = "$label ${sampleIssue479RowBounds()}"
+            issue479Timeline.add(line)
+            Log.i(ISSUE479_DIAG_TAG, line)
+        }
+    }
+
+    /**
+     * #479 bounds-timeline: throttled poll sample (S3, S4, …) from inside the
+     * arrival waitUntil condition — at most one sample per
+     * [ISSUE479_TIMELINE_POLL_INTERVAL_MS], pure diagnostics, never throws
+     * into the wait.
+     */
+    private fun issue479ThrottledPollSample() {
+        val now = System.currentTimeMillis()
+        if (now - issue479LastPollSampleMs < ISSUE479_TIMELINE_POLL_INTERVAL_MS) return
+        issue479LastPollSampleMs = now
+        runCatching { recordIssue479TimelineSample("S${issue479NextPollLabel++}") }
+    }
+
+    /** Formats the #479 timeline for the classified failure message (one line per sample). */
+    private fun issue479TimelineBlock(): String =
+        issue479Timeline.joinToString(separator = "\n") { "ISSUE479_TIMELINE[$it]" }
+
+    /**
+     * Saves the failure-instant screen to the lane's ALWAYS-uploaded UI
+     * evidence directory (the #300 review-screenshot pattern). The
+     * failure-time emulator capture runs ~60s after this test, so this is
+     * the only visual record of the tap-swallow state (#477 root-cause
+     * evidence). Best-effort: never masks the classified failure.
+     */
+    private fun captureArrivalFailureScreenshot(
+        name: String = "issue477-request-row-arrival-failure.png",
+    ) {
+        runCatching {
+            composeRule.waitForIdle()
+            val screenshot = instrumentation.uiAutomation.takeScreenshot()
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Issue52-ui-evidence")
+                put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = requireNotNull(
+                resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values),
+            )
+            try {
+                check(
+                    resolver.openOutputStream(uri).use { output ->
+                        output != null &&
+                            screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+                    },
+                )
+                values.clear()
+                values.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } catch (error: Throwable) {
+                resolver.delete(uri, null, null)
+                throw error
+            }
+        }
+    }
+
+    /**
+     * Waits for the run surface (explainer present AND the back stack on the
+     * manual-organization destination). Returns true on arrival, false after
+     * the budget while the explainer never showed — the caller owns the
+     * classification of whether navigation dispatched.
+     */
+    private fun awaitRunSurfaceOrStillOnHub(navController: NavHostController, explainer: String): Boolean {
+        val arrived = runCatching {
+            composeRule.waitUntil(REQUEST_ROW_ARRIVAL_TIMEOUT_MS) {
+                // #479 bounds-timeline: throttled poll samples alongside the
+                // wait — diagnostics only, the wait semantics and timeout
+                // are unchanged and sampling never throws into the condition.
+                issue479ThrottledPollSample()
+                composeRule.onAllNodesWithText(explainer).fetchSemanticsNodes().isNotEmpty()
+            }
+        }.isSuccess
+        if (!arrived) return false
+        awaitCurrentDestination(navController, HomeScreenManualOrganization())
+        return true
+    }
+
+    /**
+     * #479 swallow-2 instrumented await (issue372 strategy row → T-05): same
+     * condition shape and 10 s budget as [awaitCurrentDestination] for
+     * HomeScreenOrganizerStrategy, plus the throttled bounds-timeline poll,
+     * and on timeout a classified failure carrying the same failure-instant
+     * evidence as the request-row path — compose-root census (full semantics
+     * trees to logcat), the always-uploaded screenshot, the strategy-row and
+     * request-row geometry, and the bounds timeline. Diagnostics only: the
+     * pass/fail semantics and timeout are unchanged.
+     */
+    private fun awaitStrategySurfaceWith479Evidence(navController: NavHostController) {
+        val arrived = runCatching {
+            composeRule.waitUntil(10_000) {
+                issue479ThrottledPollSample()
+                var matches = false
+                composeRule.runOnIdle {
+                    matches = navController.currentBackStackEntry?.destination
+                        ?.hasRoute(HomeScreenOrganizerStrategy::class) == true
+                }
+                matches
+            }
+        }.isSuccess
+        if (!arrived) {
+            error(
+                "strategy row touch click never opened the strategy surface: " +
+                    "${arrivalDiagnosis(navController)} ${issue479ArrivalEvidenceBlock(navController)}",
+            )
+        }
+    }
+
+    /**
+     * #479 instrumented T-15 arrival wait (issue372 run surface): same 10 s
+     * budget and polling condition as the plain waitUntil it replaces, plus
+     * the throttled bounds-timeline poll and, on timeout, a classified
+     * failure with the request-row path's failure-instant evidence.
+     * Diagnostics only: the pass/fail semantics and timeout are unchanged.
+     */
+    private fun awaitIssue372SurfaceWith479Evidence(
+        navController: NavHostController,
+        what: String,
+        condition: () -> Boolean,
+    ) {
+        val arrived = runCatching {
+            composeRule.waitUntil(10_000) {
+                issue479ThrottledPollSample()
+                condition()
+            }
+        }.isSuccess
+        if (!arrived) {
+            error(
+                "$what never showed after the request-row click: " +
+                    "${arrivalDiagnosis(navController)} ${issue479ArrivalEvidenceBlock(navController)}",
+            )
+        }
+    }
+
+    /**
+     * #479 swallow-2 evidence: captures the failure-instant census (full
+     * dump to logcat tag `Issue479Diag` and the app files dir) and the
+     * failure screenshot, then returns the evidence block for the classified
+     * failure message — census summary, strategy-row/request-row geometry,
+     * and the bounds timeline. Best-effort: never throws into the caller's
+     * failure path.
+     */
+    private fun issue479ArrivalEvidenceBlock(navController: NavHostController): String {
+        val census = runCatching { issue479ComposeRootDiagnostics(navController) }
+            .getOrElse { "issue479 census failed: $it" }
+        runCatching { captureArrivalFailureScreenshot("issue479-arrival-failure.png") }
+        return "$census\n${issue479StrategyRowBoundsLine()}\n${issue479TimelineBlock()}"
+    }
+
+    /** #479 swallow-2: one line with the strategy row and request row geometry. */
+    private fun issue479StrategyRowBoundsLine(): String =
+        "strategy[${issue479TextNodeBounds(context.getString(R.string.organizer_strategy_title))}] " +
+            "req[${issue479TextNodeBounds(context.getString(R.string.organizer_hub_request_open))}]"
+
+    /** Non-blocking screen snapshot for arrival-failure classification (#477). */
+    private fun arrivalDiagnosis(navController: NavHostController): String {
+        val openLabel = context.getString(R.string.organizer_hub_request_open)
+        val rowNode = composeRule.onAllNodesWithText(openLabel).fetchSemanticsNodes().firstOrNull()
+        val view = composeRule.activity.window.decorView
+        var route = "unavailable"
+        composeRule.runOnIdle {
+            route = navController.currentBackStackEntry?.destination?.route ?: "null"
+        }
+        val screen = composeRule.onAllNodes(hasAnyTestTagOrText()).fetchSemanticsNodes()
+            .take(40)
+            .joinToString(prefix = "[", postfix = "]") { node ->
+                val tag = node.config.getOrNull(SemanticsProperties.TestTag)
+                val text = node.config.getOrNull(SemanticsProperties.Text)?.joinToString(" / ")
+                listOfNotNull(tag, text).joinToString(":").ifEmpty { "?" }
+            }
+        return "backStackRoute=$route " +
+            "requestRowBounds=${rowNode?.boundsInRoot} " +
+            "window=${view.width}x${view.height} " +
+            "windowFocus=${view.hasWindowFocus()} " +
+            "deviceEnv=${InjectedInputEnvironment.describeDeviceState()} screen=$screen"
+    }
+
+    /** Matches any node carrying a test tag or text (diagnosis dump only). */
+    private fun hasAnyTestTagOrText(): SemanticsMatcher = SemanticsMatcher("has tag or text") { node ->
+        node.config.getOrNull(SemanticsProperties.TestTag) != null ||
+            !node.config.getOrNull(SemanticsProperties.Text).isNullOrEmpty()
     }
 
     /** A lifecycle owner whose state the test drives, to dispatch ON_RESUME. */
@@ -858,6 +1405,20 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
     }
 
     private class FakeManualOrganizationApplication : ManualOrganizationApplication {
+        // Issue #449: the edit-surface read seam is out of scope here; fail-closed null.
+        override fun inspectCapture(): app.lawnchair.organizer.application.protocol.CapturedSnapshot? = null
+
+        // Issue #450: the undo receipt/recovery seams are out of scope for
+        // this test; the fake fails fast if ever reached.
+        override fun applyWithUndoReceipt(
+            plan: app.lawnchair.organizer.application.public.ValidatedLayoutPlan,
+            runId: app.lawnchair.organizer.application.public.RunId,
+        ): Pair<app.lawnchair.organizer.application.public.ApplyResult, app.lawnchair.organizer.planning.RevisionId?> =
+            error("not reached in this test")
+
+        override fun recover(request: app.lawnchair.organizer.application.public.RecoveryRequest): app.lawnchair.organizer.application.public.RecoveryResult =
+            error("not reached in this test")
+
         override val diagnostics = RecordingPort()
         var applyResult: ApplyResult = ApplyResult.Applied(RunId(RUN_ID), RecoveryPointId(POINT_ID))
 
@@ -933,6 +1494,25 @@ class OrganizerDiagnosticsRouteInstrumentationTest {
         const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         const val REVISION = "revision"
         const val SHA_256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        /**
+         * #479 review round 1: the touch oracle is a SINGLE real touch — no
+         * test-side retry, because a retry would mask a "first user touch
+         * lost" regression, which is exactly the #479 anomaly. The #300
+         * window-focus/idle gates and the #366/#369 scroll-into-view
+         * discipline remain the synchronization standard; failure
+         * diagnostics (census/timeline/screenshot) are unchanged.
+         */
+        const val REQUEST_ROW_CLICK_ATTEMPTS = 1
+
+        /** #477: arrival budget for the run surface after a request-row click. */
+        const val REQUEST_ROW_ARRIVAL_TIMEOUT_MS = 10_000L
+
+        /** #479: logcat tag for the failure-instant compose-root census dump. */
+        const val ISSUE479_DIAG_TAG = "Issue479Diag"
+
+        /** #479: minimum ms between arrival-window bounds-timeline poll samples. */
+        const val ISSUE479_TIMELINE_POLL_INTERVAL_MS = 250L
 
         fun planningResult() = PlanningResult(
             revision = RevisionId(REVISION),

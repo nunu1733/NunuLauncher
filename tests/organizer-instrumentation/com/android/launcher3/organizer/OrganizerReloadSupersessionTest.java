@@ -18,8 +18,7 @@ import com.android.launcher3.LauncherModel;
 import com.android.launcher3.OrganizerModelReloadAdapter;
 import com.android.launcher3.model.BgDataModel;
 import com.android.launcher3.model.LayoutWriteCoordinator;
-import com.android.launcher3.util.IntArray;
-import com.android.launcher3.util.IntSet;
+import com.android.launcher3.model.data.WorkspaceData;
 
 import org.junit.After;
 import org.junit.Before;
@@ -538,10 +537,13 @@ public class OrganizerReloadSupersessionTest {
     }
 
     /**
-     * One-shot barrier at the synchronous page-selection callback. The LoaderTask invokes
-     * {@link BgDataModel.Callbacks#getPagesToBindSynchronously(IntArray)} before it can schedule the
-     * organizer completion signal, so holding this callback prevents A from completing until the
-     * test has issued B or cancellation.
+     * One-shot barrier that holds the loader mid-task before the organizer
+     * completion can be scheduled. Issue #532 rebase: the anchor bind seam is
+     * {@code bindCompleteModel} (the fork-era page-selection callback hook is
+     * gone from {@code BgDataModel.Callbacks}); the bind callback executes on
+     * the main thread while the loader parks in {@code waitForIdle()}, so
+     * holding it still prevents A from completing until the test has issued B
+     * or cancellation.
      */
     private static final class SyncPageSelectionBarrier implements BgDataModel.Callbacks {
         private final CountDownLatch reached = new CountDownLatch(1);
@@ -550,9 +552,9 @@ public class OrganizerReloadSupersessionTest {
         private final AtomicBoolean waitFailed = new AtomicBoolean(false);
 
         @Override
-        public IntSet getPagesToBindSynchronously(IntArray orderedScreenIds) {
+        public void bindCompleteModel(WorkspaceData itemIdMap, boolean isBindingSync) {
             if (!armed.compareAndSet(true, false)) {
-                return new IntSet();
+                return;
             }
             reached.countDown();
             try {
@@ -563,7 +565,6 @@ public class OrganizerReloadSupersessionTest {
                 waitFailed.set(true);
                 Thread.currentThread().interrupt();
             }
-            return new IntSet();
         }
 
         void awaitReached() throws InterruptedException {
@@ -588,11 +589,10 @@ public class OrganizerReloadSupersessionTest {
 
     /**
      * Holds the callback that follows the existing organizer bind-completion
-     * signal. Its default-null item inflater selects the synchronous
-     * non-inflation path for this callback, where every Launcher binder mode
-     * calls {@code onInitialBindComplete} after the organizer signal. This
-     * controls the loader transaction through an existing callback seam rather
-     * than changing a feature flag.
+     * signal. Issue #532 rebase: the anchor bind seam is
+     * {@code bindCompleteModel} (the pre-rebase seam was
+     * {@code onInitialBindComplete}); this controls the loader transaction
+     * through an existing callback seam rather than changing a feature flag.
      */
     private static final class LoaderTransactionBarrier implements BgDataModel.Callbacks {
         private final CountDownLatch entered = new CountDownLatch(1);
@@ -602,14 +602,8 @@ public class OrganizerReloadSupersessionTest {
         private final AtomicBoolean waitFailed = new AtomicBoolean(false);
 
         @Override
-        public void onInitialBindComplete(
-                IntSet boundPages,
-                com.android.launcher3.util.RunnableList pendingTasks,
-                com.android.launcher3.util.RunnableList onCompleteSignal,
-                int workspaceItemCount,
-                boolean isBindSync) {
+        public void bindCompleteModel(WorkspaceData itemIdMap, boolean isBindingSync) {
             if (!armed.compareAndSet(true, false)) {
-                pendingTasks.executeAllAndDestroy();
                 return;
             }
             holding.set(true);
@@ -624,7 +618,6 @@ public class OrganizerReloadSupersessionTest {
             } finally {
                 holding.set(false);
             }
-            pendingTasks.executeAllAndDestroy();
         }
 
         void arm() {
@@ -660,12 +653,12 @@ public class OrganizerReloadSupersessionTest {
         if (model.isModelLoaded()) {
             return;
         }
-        // Model is not idle; force a reload and wait for finishBindingItems.
+        // Model is not idle; force a reload and wait for the bind callback
+        // (Issue #532 rebase: bindCompleteModel replaces finishBindingItems).
         var latch = new CountDownLatch(1);
         var cb = new BgDataModel.Callbacks() {
             @Override
-            public void finishBindingItems(
-                    @SuppressWarnings("unused") com.android.launcher3.util.IntSet pagesBoundFirst) {
+            public void bindCompleteModel(WorkspaceData itemIdMap, boolean isBindingSync) {
                 latch.countDown();
             }
         };

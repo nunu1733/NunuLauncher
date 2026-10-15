@@ -73,6 +73,8 @@ single-flightと検証付き書込契約（spec 182 AC-3b/AC-7）は維持され
   `NavigationActionPreference` pattern）を追加し、既存のstrategy picker UI
   （runtime-supported catalogのradio group＋localized name/intent description＋
   spec 283のselected affordance）を専用destinationとして受ける。
+  （#453 amend、2026-10-01: 受けるpickerの表示は意図ごとのcurated 3択＋非表示選択済み
+  strategyの追加1行へ絞られた。T-05への移設・arbiter・書込み契約は不変）
 - 実行面からのpicker撤去: `ManualOrganizationPreferences` からstrategy picker行・
   選択状態・arbiter wiringを削除する。run面にstrategyの読み取り専用表示は置かない
   （strategyを確認・変更する導線は材料面T-05のみ。Contract notes 1参照）。
@@ -171,8 +173,8 @@ single-flightと検証付き書込契約（spec 182 AC-3b/AC-7）は維持され
 
 Given #365/#366/#367が適用済みである（hub材料セクションが実在する）
 When hubの材料セクションで「整理方針」entryを開く
-Then runtime-supported catalogのstrategy行（radio＋localized name/description＋selected
-affordance）が表示され、effective selection（persisted selection、absentならbundle
+Then strategy行（radio＋localized name/description＋selected
+affordance。#453以降はcurated 3択＋非表示選択済みstrategyの追加1行）が表示され、effective selection（persisted selection、absentならbundle
 default）の1行だけが選択済みとして表示される
 And manual organization実行面（Idle/Cancelledを含む全run状態、`MANUAL`/`ONBOARDING`
 両entry）を表示したとき、strategy section・radio行・picker関連のfrozen理由行が
@@ -541,6 +543,7 @@ high-risk evidence gateの対象外）。
   re-review [Approve相当](https://github.com/nunu1733/NunuLauncher/issues/368#issuecomment-5742960028)
   @ head `5d5b61ee4e`。statusを`accepted`へ更新。Contract notes 1〜3を受入）。
   実装PRでstatusを`implemented`へ更新する。
+- 2026-10-01: Amended by #453 — T-05 が受ける picker の表示が意図ごとの curated 3択＋非表示選択済み strategy の追加1行へ絞られた（FR-023）。T-05 への移設、`StrategyWriteArbiter`、AUTHORING admission、書込み契約は不変。正本: [spec 453](../453-strategy-choice-reduction/spec.md)。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/368
 [2]: https://github.com/nunu1733/NunuLauncher/issues/366

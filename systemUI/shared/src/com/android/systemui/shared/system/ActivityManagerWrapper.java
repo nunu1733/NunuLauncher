@@ -33,12 +33,9 @@ import android.app.WindowConfiguration;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.content.pm.UserInfo;
-import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.ServiceManager;
@@ -46,23 +43,15 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Display;
-import android.view.IRecentsAnimationController;
-import android.view.RemoteAnimationTarget;
 import android.window.TaskSnapshot;
 
+import app.lawnchair.compat.LawnchairQuickstepCompat;
 import com.android.internal.app.IVoiceInteractionManagerService;
 import com.android.systemui.shared.recents.model.Task;
 import com.android.systemui.shared.recents.model.ThumbnailData;
 
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.HashMap;
 import java.util.List;
-import java.util.function.Consumer;
-
-import app.lawnchair.compat.LawnchairQuickstepCompat;
-import app.lawnchair.compatlib.RecentsAnimationRunnerCompat;
-import app.lawnchair.compatlib.eleven.ActivityManagerCompatVR;
 
 public class ActivityManagerWrapper {
 
@@ -77,7 +66,7 @@ public class ActivityManagerWrapper {
     // Should match the value in AssistManager
     private static final String INVOCATION_TIME_MS_KEY = "invocation_time_ms";
 
-    private final ActivityTaskManager mAtm = ActivityTaskManager.getInstance();
+    private final ActivityTaskManager mAtm = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) ? ActivityTaskManager.getInstance() : null;
     private ActivityManagerWrapper() { }
 
     public static ActivityManagerWrapper getInstance() {
@@ -102,14 +91,6 @@ public class ActivityManagerWrapper {
      */
     public ActivityManager.RunningTaskInfo getRunningTask() {
         return getRunningTask(false /* filterVisibleRecents */);
-    }
-
-    /**
-     * @return a list of the recents tasks.
-     */
-    @NonNull
-    public List<ActivityManager.RecentTaskInfo> getRecentTasks(int numTasks, int userId) {
-        return LawnchairQuickstepCompat.getActivityManagerCompat().getRecentTasks(numTasks, userId);
     }
 
     /**
@@ -157,24 +138,30 @@ public class ActivityManagerWrapper {
     public @NonNull ThumbnailData getTaskThumbnail(int taskId, boolean isLowResolution) {
         TaskSnapshot snapshot = null;
         try {
-            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                Method getTaskSnapshotMethod = getService().getClass().getMethod(
-                    "getTaskSnapshot",
-                    int.class,      // taskId
-                    boolean.class,  // isLowResolution
-                    boolean.class   // isTranslucent (added in Android 14)
-                );
-
-                snapshot = (TaskSnapshot) getTaskSnapshotMethod.invoke(
-                    getService(), taskId, isLowResolution, false);
-                
+            if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                // #545: Android 17 (API 37) removed IActivityTaskManager.getTaskSnapshot(int,
+                // boolean) (device exposes (II)/(IJI); dexdump contrast in
+                // docs/assessment/545-api37-provider-fix-evidence/gettasksnapshot-class-contrast.txt).
+                // Upstream android17-release routes this through
+                // android.window.TaskSnapshotManager, which framework-16.jar does not carry —
+                // invoke it reflectively. The int mapping mirrors upstream
+                // TaskSnapshotManager.convertRetrieveFlag (RESOLUTION_LOW=2 / RESOLUTION_HIGH=1,
+                // device bytecode confirmed in tasksnapshotmanager-reflection-targets.txt).
+                // Any failure is logged and degrades to the empty ThumbnailData path below
+                // instead of crashing the overview thumbnail path.
+                Object tsm = Class.forName("android.window.TaskSnapshotManager")
+                        .getMethod("getInstance").invoke(null);
+                snapshot = (TaskSnapshot) tsm.getClass()
+                        .getMethod("getTaskSnapshot", int.class, int.class)
+                        .invoke(tsm, taskId, isLowResolution ? 2 : 1);
             } else {
                 snapshot = getService().getTaskSnapshot(taskId, isLowResolution);
             }
         } catch (RemoteException e) {
             Log.w(TAG, "Failed to retrieve task snapshot", e);
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-            Log.e(TAG, "Failed to invoke getTaskSnapshot", e);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "TaskSnapshotManager reflection failed (see #545)", e);
         }
         if (snapshot != null) {
             return ThumbnailData.fromSnapshot(snapshot);
@@ -192,9 +179,26 @@ public class ActivityManagerWrapper {
     public ThumbnailData takeTaskThumbnail(int taskId) {
         TaskSnapshot snapshot = null;
         try {
-            snapshot = getService().takeTaskSnapshot(taskId, /* updateCache= */ true);
+            if (Build.VERSION.SDK_INT >= 37 /* #545: CINNAMON_BUN absent from framework-16.jar */) {
+                // #545: Android 17 (API 37) removed IActivityTaskManager.takeTaskSnapshot(int,
+                // boolean) (device exposes only (IZZZ); dexdump contrast in
+                // docs/assessment/545-api37-provider-fix-evidence/taketasksnapshot-contrast.txt).
+                // Upstream android17-release routes this through TaskSnapshotManager —
+                // invoke it reflectively (same target class as getTaskThumbnail's #545 branch).
+                // Failure degrades to the empty ThumbnailData path below instead of crashing.
+                Object tsm = Class.forName("android.window.TaskSnapshotManager")
+                        .getMethod("getInstance").invoke(null);
+                snapshot = (TaskSnapshot) tsm.getClass()
+                        .getMethod("takeTaskSnapshot", int.class, boolean.class)
+                        .invoke(tsm, taskId, true);
+            } else {
+                snapshot = getService().takeTaskSnapshot(taskId, /* updateCache= */ true);
+            }
         } catch (RemoteException e) {
             Log.w(TAG, "Failed to take task snapshot", e);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException
+                | InvocationTargetException e) {
+            Log.e(TAG, "TaskSnapshotManager takeTaskSnapshot reflection failed (see #545)", e);
         }
         if (snapshot != null) {
             return ThumbnailData.fromSnapshot(snapshot);
@@ -220,96 +224,13 @@ public class ActivityManagerWrapper {
     }
 
     /**
-     * Starts the recents activity. The caller should manage the thread on which this is called.
+     * Preloads the recents activity. The caller should manage the thread on which this is called.
      */
-    public void startRecentsActivity(Intent intent, long eventTime,
-            final RecentsAnimationListener animationHandler, final Consumer<Boolean> resultCallback,
-            Handler resultCallbackHandler) {
-        boolean result = startRecentsActivity(intent, eventTime, animationHandler);
-        if (resultCallback != null && resultCallbackHandler != null) {
-            resultCallbackHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    resultCallback.accept(result);
-                }
-            });
-        }
-    }
-
-    /**
-     * Starts the recents activity. The caller should manage the thread on which this is called.
-     */
-    public boolean startRecentsActivity(
-            Intent intent, long eventTime, RecentsAnimationListener animationHandler) {
+    public void preloadRecentsActivity(Intent intent) {
         try {
-            RecentsAnimationRunnerCompat runner = null;
-            if (animationHandler != null) {
-                runner = new RecentsAnimationRunnerCompat() {
-                    @Override
-                    public void onAnimationStart(IRecentsAnimationController controller,
-                                                 RemoteAnimationTarget[] apps, RemoteAnimationTarget[] wallpapers,
-                                                 Rect homeContentInsets, Rect minimizedHomeBounds) {
-                        final RecentsAnimationControllerCompat controllerCompat =
-                                new RecentsAnimationControllerCompat(controller);
-                        animationHandler.onAnimationStart(controllerCompat, apps,
-                                wallpapers, homeContentInsets, minimizedHomeBounds, new Bundle());
-                    }
-
-                    @Override
-                    public void onAnimationCanceled(int[] taskIds, TaskSnapshot[] taskSnapshots) {
-                        animationHandler.onAnimationCanceled(
-                                ThumbnailData.wrap(taskIds, taskSnapshots));
-                    }
-
-
-                    /**
-                     * compat for android 12/11/10
-                     */
-                    public void onAnimationCanceled(Object taskSnapshot) {
-                        if (LawnchairQuickstepCompat.ATLEAST_S) {
-                            animationHandler.onAnimationCanceled(
-                                    ThumbnailData.wrap(new int[]{0}, new TaskSnapshot[]{(TaskSnapshot) taskSnapshot}));
-                        } else if (LawnchairQuickstepCompat.ATLEAST_R) {
-                            ActivityManagerCompatVR compat = (ActivityManagerCompatVR) LawnchairQuickstepCompat.getActivityManagerCompat();
-                            ActivityManagerCompatVR.ThumbnailData data = compat.convertTaskSnapshotToThumbnailData(taskSnapshot);
-                            HashMap<Integer, ThumbnailData> thumbnailDatas = new HashMap<>();
-                            if (data != null) {
-                                thumbnailDatas.put(0, new ThumbnailData());
-                            }
-                            animationHandler.onAnimationCanceled(thumbnailDatas);
-                        } else {
-                            animationHandler.onAnimationCanceled(new HashMap<>());
-                        }
-                    }
-
-                    /**
-                     * compat for android 12/11
-                     */
-                    public void onTaskAppeared(RemoteAnimationTarget app) {
-                        animationHandler.onTasksAppeared(new RemoteAnimationTarget[]{app});
-                    }
-
-                    @Override
-                    public void onTasksAppeared(RemoteAnimationTarget[] apps) {
-                        animationHandler.onTasksAppeared(apps);
-                    }
-                };
-            }
-            LawnchairQuickstepCompat.getActivityManagerCompat().startRecentsActivity(intent, eventTime, runner);
-            return true;
+            getService().preloadRecentsActivity(intent);
         } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
-     * Cancels the remote recents animation started from {@link #startRecentsActivity}.
-     */
-    public void cancelRecentsAnimation(boolean restoreHomeRootTaskPosition) {
-        try {
-            getService().cancelRecentsAnimation(restoreHomeRootTaskPosition);
-        } catch (RemoteException e) {
-            Log.e(TAG, "Failed to cancel recents animation", e);
+            Log.w(TAG, "Failed to preload recents activity", e);
         }
     }
 
@@ -318,24 +239,6 @@ public class ActivityManagerWrapper {
      */
     public boolean startActivityFromRecents(Task.TaskKey taskKey, ActivityOptions options) {
         return startActivityFromRecents(taskKey.id, options);
-    }
-
-    /**
-     * Preloads the recents activity. The caller should manage the thread on which this is called.
-     */
-    public void preloadRecentsActivity(Intent intent) {
-        try {
-            Class<?> activityTaskManagerClass = Class.forName("android.app.ActivityTaskManager");
-            Method getServiceMethod = activityTaskManagerClass.getMethod("getService");
-            Object activityTaskManagerService = getServiceMethod.invoke(null);
-            Method preloadRecentsActivityMethod = activityTaskManagerService.getClass()
-                    .getMethod("preloadRecentsActivity", Intent.class);
-
-            preloadRecentsActivityMethod.invoke(activityTaskManagerService, intent);
-        } catch (Throwable e) {
-            Log.w(TAG, "Failed to preload recents activity", e);
-            startRecentsActivity(intent, 0, null, null, null);
-        }
     }
 
     /**
@@ -360,6 +263,17 @@ public class ActivityManagerWrapper {
             ActivityManager.getService().closeSystemDialogs(reason);
         } catch (RemoteException e) {
             Log.w(TAG, "Failed to close system windows", e);
+        }
+    }
+
+    /**
+     * Sets whether or not the specified task is perceptible.
+     */
+    public boolean setTaskIsPerceptible(int taskId, boolean isPerceptible) {
+        try {
+            return getService().setTaskIsPerceptible(taskId, isPerceptible);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
         }
     }
 
@@ -419,7 +333,7 @@ public class ActivityManagerWrapper {
      * Shows a voice session identified by {@code token}
      * @return true if the session was shown, false otherwise
      */
-    public boolean showVoiceSession(@NonNull IBinder token, @NonNull Bundle args, int flags,
+    public boolean showVoiceSession(IBinder token, @NonNull Bundle args, int flags,
             @Nullable String attributionTag) {
         IVoiceInteractionManagerService service = IVoiceInteractionManagerService.Stub.asInterface(
                 ServiceManager.getService(Context.VOICE_INTERACTION_MANAGER_SERVICE));
@@ -436,22 +350,15 @@ public class ActivityManagerWrapper {
     }
 
     /**
-     * Returns true if the system supports freeform multi-window.
-     */
-    public boolean supportsFreeformMultiWindow(Context context) {
-        final boolean freeformDevOption = Settings.Global.getInt(context.getContentResolver(),
-                Settings.Global.DEVELOPMENT_ENABLE_FREEFORM_WINDOWS_SUPPORT, 0) != 0;
-        return ActivityTaskManager.supportsMultiWindow(context)
-                && (context.getPackageManager().hasSystemFeature(
-                PackageManager.FEATURE_FREEFORM_WINDOW_MANAGEMENT)
-                || freeformDevOption);
-    }
-
-    /**
      * Returns true if the running task represents the home task
      */
     public static boolean isHomeTask(RunningTaskInfo info) {
         return info.configuration.windowConfiguration.getActivityType()
                 == WindowConfiguration.ACTIVITY_TYPE_HOME;
+    }
+
+    public boolean isRunningInTestHarness() {
+        return ActivityManager.isRunningInTestHarness()
+                || ActivityManager.isRunningInUserTestHarness();
     }
 }

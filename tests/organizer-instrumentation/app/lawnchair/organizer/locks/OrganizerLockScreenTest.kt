@@ -75,6 +75,10 @@ import org.junit.runner.RunWith
 class OrganizerLockScreenTest {
 
     @get:Rule
+    // Issue #490: queue IO continuations with composition instead of resuming on IO threads.
+    // G5 (§6.18): CategoryOverride/CustomCategory と同一の撤去（dispatcher付き
+    // compose ruleはCI x86_64上のcompose idle/key deliveryを刺す。#505の
+    // 実験dispatcherは本classでも効果が未実証のため外す）。
     val composeRule = createComposeRule()
 
     private class MutableCapture(var state: LayoutState, var revisionValue: String = "r0") : LockCapturePort {

@@ -1,0 +1,23 @@
+=== matrix (e) geometry normalization static check — candidate2-debug-2987e52.apk ===
+date: 2026-10-07 23:01:45
+artifact: /tmp/545-evidence-apk/candidate2-debug-2987e52.apk (sha256 5098ceb4d7af93c90684e07b1bdbe01408a92356631923fdde367a5fbc213278)
+
+--- aapt2 dump resources (candidate2 debug) | grep -A2 taskbar_phone_size:
+    resource 0x7f0707de dimen/taskbar_phone_size
+      () 48.000000dp
+    resource 0x7f0707df dimen/taskbar_pinning_popup_menu_min_padding_from_screen_edge
+
+--- aapt2 dump resources --values (candidate2 debug):
+
+--- CONTRAST: pre-fix APK (compat-debug-416273c.apk, sha256 4c091d8d0b55f193cb0931341c2c02a58cd62ab1080a0fc22f76da9e4f9f8a8f) — same grep:
+    resource 0x7f0707de dimen/taskbar_phone_size
+      () @0x01050283
+    resource 0x7f0707df dimen/taskbar_pinning_popup_menu_min_padding_from_screen_edge
+
+--- CONTRAST: pre-fix APK --values:
+
+--- meaning:
+  candidate2 (post-fix): literal dimension (0x30 = 48 = 48dp at mdpi-scale encoding; aapt2 --values prints 48dp).
+  pre-fix: reference to framework resource ID 0x01050283 (baked), which mis-resolved on API 36 image to
+  notification_2025_action_list_min_height (~10dp) and crashed on API 37.0 (Resources$NotFoundException).
+  cross-reference: api36-image-framework-res-contrast.txt (pre-existing, device framework-res dump).

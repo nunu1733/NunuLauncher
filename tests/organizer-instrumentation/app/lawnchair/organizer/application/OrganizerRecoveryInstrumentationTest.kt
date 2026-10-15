@@ -180,11 +180,11 @@ class OrganizerRecoveryInstrumentationTest {
         val scenario = ActivityScenario.launch(LawnchairLauncher::class.java)
         val launcher = LauncherAppState.getInstance(context)
         var modelAttempts = 0
-        while (!launcher.model.isModelLoaded && modelAttempts < 240) {
+        while (!launcher.model.isModelLoaded() && modelAttempts < 240) {
             Thread.sleep(250)
             modelAttempts++
         }
-        check(launcher.model.isModelLoaded) { "Launcher model did not load for restart verification" }
+        check(launcher.model.isModelLoaded()) { "Launcher model did not load for restart verification" }
         // Issue #177: the app-owned startup reconciliation runs asynchronously on
         // its own thread and holds the ORGANIZER writer lease (through
         // requestCorrelatedReload + verification) while it advances the fault-run

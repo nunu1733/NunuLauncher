@@ -1,0 +1,35 @@
+# Cold exported settings backup restore
+
+Status: implemented; actual cold-route GREEN and independent source audit complete; publication/current review/gates pending. Refs [#587](https://github.com/nunu1733/NunuLauncher/issues/587) and [#516](https://github.com/nunu1733/NunuLauncher/issues/516). Phase3 is not closed by this packet.
+
+## Problem and accepted oracle
+
+Exported APPLICATION_PREFERENCES and browsable settings can open before native Launcher in a fresh process. Restore then read the uninitialized process layoutApplicationModule and failed before cleanup/quiesce/wipe. This is a supported entry, not an ADB-only exception.
+
+Implemented Spec58 baseline fallback and SR-11, implemented Spec187 restore outcome/unchanged behavior, their accepted plans and accepted ADR0011 own the bug oracle. Restore must complete without an already-created AppState/model, retain cleanup hard-stop/operation-mutex/epoch ordering, and preserve existing serialization. No new product decision or plan contract is introduced. Current main base is c3898c74f32144cd1bc229e1a153ed08a3aeb253; audited source is059f498ec22a298ecdade53d585e4c9d529c74e9. Original candidatee85aa857c7c7ef2327cc207e0cd0f518c217e7ac has identical production bytes; its initial test base was PR584 source5cefa6dfff0d9af3a76bebe9d5ebc1950c5e7da0.
+
+## Change and safety
+
+Initialize the existing LauncherAppState on Dispatchers.Main.immediate before obtaining its existing process module and BEFORE BACKUP_RESTORE lease acquisition. Reuse AppState's post-init hook; do not construct a second module or add asynchronous reconciliation. Mutex/lease, verified cleanup, quiesce/wipe/readZip/reopen, sanitization and correlated reload remain unchanged. Initializing before the lease avoids holding the restore lease during main-thread initialization. The existing absent-app helper fallback remains unchanged; this cold route creates AppState and does not exercise that fallback branch. Rollback is source revert; no schema/wire/format/dependency/permission/network change.
+
+## Actual RED and initialized control
+
+Actual API37 validation16 source75492ec6407b4c36645186c519bdd93583008f5d/APK SHAa02cf76f0557c76cf751d852effb4d724384db33c0225c9ad11cba10fe7bd74e: force-stop→declaredSettings first→realOpenDocument original43 archive→Restore catches UninitializedPropertyAccessException at LawnchairBackup.restore:97 before cleanup/wipe. DB500 raw47ab0d6c3c55d9e94e6aa6c29500c6f3da5d86272ad997d3025a1256e8c7137c and384-byte prefsb96f93e93d4fb282d99487959c4d8e751bdc286c0d5747eb2199481e78cd6f3f remain byte-identical. NativeLauncher-initialized control using the identical archive succeeds43 semantic965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff /317-byte prefsfd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2.
+
+Actual main15 source5ce CI APK424a46c60f238bccdd6906f613d9d230b27775209087b241b18da6663a0884a6 reproduces the same caught failure through the declared Settings-first route in process26428; nativeLauncher was never opened. Local executionAPK14eb2a2fd55656d255dbb7b1277fefe80fb7036e156b99e84a6a91acdfbf5675 differs only by signing:2179 non-signature ZIP entries are byte-identical. Before/after43-row DBraw9641410176d1e99f293c740488a5f63305fd6ed375208094fdeff166ebc4fda8 and317-byte prefsfd46 remain identical. The old08:37 framework crash predates this test and is excluded.
+
+## Actual GREEN and cold persistence
+
+Separate16 source62cd636607ba3662c8f9460b28d7f749143a5a66/APK SHA10580cd2ffeb273ccaa6dbc27eafe619dffb6a41d41f49315ecd84efa937c97c built8m4s. Its complete Backup.kt blob7187149d26123d403e7e928e589970e63d246386 equals audited main059. This changed-file parity is not whole-tree or cutover parity.
+
+Final invocation3 on owned account-free API37 phone-width fixture: PIDabsent afterforce-stop; GoogleHOME; DB5/prefs317 baseline; declaredSettings launchesCOLD11,070ms before nativeLauncher. RealOpenDocument selects original43 archive SHAfdc507b7b7c8c16b443cc4ce0abd24848306617d1fcd0c8e87dd7388fb443dac; preview shows3pages16/13/8, onefolder/onewidget, Layout+settings checked. Restore pressed once; nativeLauncher appears only afterRestore. Independent readonly DB43, quick_check=ok, expected archive semantic965b1986…d2be1bff; prefs317/fd46 match. After anotherforce-stop/PIDabsent, explicitnativeLauncher startCOLD10,515ms/PID7479 retains DB43 raw5036fa8c95e96a79b86bb4bffb94e76d6c2d9ceaef5a8c9c1624bdd569eae63b andprefs317/fd46 byte-identically. Across restore, equality is semantic/prefs, not widget-ID/modified full-column equality. The setup organization prompt was not acted on; noApply.
+
+Invocation1's Settings capture was blocked by a SystemUIService bootANR14:10:17JST, earlier than Settings14:24; preserved blockedreceipt then Wait once. Invocation2 restored only5rows: companion app.lawnchair.debug.test was missing, Loader removed37 fixture rows. Directarchive/manifest comparison finds35 uniqueF01–F35 components across37 rows; exact existing companionAPKf70fb5499ee4be81415b7839bb2d9bc13c2b8433cfd5449d3211ec00ae62f8e4 provides all35, installed without instrumentation before invocation3. An earlierF01–F40 description was corrected. Both invocations are excluded from43-layoutGREEN. Two null-root reads precede successful third post-Restore dump; there was no Restore-button retry. Immediate post-Restore PNG/XML differ on the setup prompt and are excluded from matching UI proof; final post-cold PNG/XML match. The long-lived previous fixture's separate pre-Restore ANR/pixel mismatch and later SystemUI/Wellbeing ANRs remain cause-unknown and excluded; old main-idle nativePollOnce trace establishes no restore deadlock cause.
+
+## Test audit and checks
+
+Protected contract: fresh-process Android application initialization at the declared activity boundary. Existing critical-section and suspension tests own cleanup failure, ordering, exclusion/drain; their JVM boundary cannot reproduce absent Android application initialization. Existing instrumentation setup initializes AppState, so it cannot substitute for the actual first-surface SAF oracle. No new test method/class/lane or test-only production seam is added.
+
+SeparateSpotlessCheck3m7s and repo-contract PASS. Existing LawnchairBackupRestoreCriticalSectionTest3 (0failure/error/skip,0.035s) and RunMutexRestoreSuspensionTest3 (0failure/error/skip,0.359s) PASS, build19m47s. Exact sourceCI [38350644104](https://github.com/nunu1733/NunuLauncher/actions/runs/38350644104) source/style/build/restore-capture/final115144785275 PASS. Independent [audit](./pr-588-cold-settings-restore.md) pins source059, acceptedcriteria and bounded CI/runtime evidence. Full-current publication reviews/checks remain required before merge. Main source CI is not reattributed to a16 cutover.
+
+RawDB/archive/APK/row inventories/logs stay private. Both owned fixtures were stopped with evidence data preserved; fresh installed candidateAPK bytes were independently verified. Protected5554/5556 andphysicalPixel were not mutated. Historical baseline/restoration limits are retained; no fulloriginal-settings restoration or Phase4/T9/Epic completion is claimed.

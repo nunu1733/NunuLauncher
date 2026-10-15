@@ -305,14 +305,22 @@ class SyntheticFixtureGeneratorTest {
     }
 
     @Test
-    fun exampleCorpusHasExactlyElevenIds() {
+    fun exampleCorpusHasExactlyFifteenIds() {
         val ids = ExampleCorpus.allExamples.keys.map { it.value }.sorted()
-        assertEquals(11, ids.size)
+        // Issue #451: the four duplicate-launch-target fixtures join the
+        // example corpus (duplicate-launch-targets, duplicate-locked-
+        // representative, duplicate-min-group-boundary,
+        // duplicate-multi-surplus-folder).
+        assertEquals(15, ids.size)
         assertEquals(
             listOf(
                 "apps-only",
                 "deck-output-compatibility",
                 "device-profile-variation",
+                "duplicate-launch-targets",
+                "duplicate-locked-representative",
+                "duplicate-min-group-boundary",
+                "duplicate-multi-surplus-folder",
                 "empty-home",
                 "folder-container-integrity",
                 "full-grid-no-capacity",

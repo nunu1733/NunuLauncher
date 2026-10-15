@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="1" failures="0" errors="0" skipped="0" time="0.000" timestamp="2026-10-14T18:08:35" hostname="localhost">
+  <testsuite name="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" tests="1" failures="0" errors="0" skipped="0" time="22.310" timestamp="2026-10-14T18:08:35" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5556" />
+    </properties>
+    <testcase name="settingsResumeAfterGrantResumesThroughTheProductionPredicate" classname="app.lawnchair.organizer.ui.UsageAccessJitInstrumentationTest" time="22.310" />
+  </testsuite>
+</testsuites>

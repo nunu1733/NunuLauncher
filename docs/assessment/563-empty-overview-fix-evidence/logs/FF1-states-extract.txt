@@ -1,0 +1,46 @@
+10-11 02:25:10.302 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.303 D/TaskViewModel( 4087): bind: [1008]
+10-11 02:25:10.338 D/RecentsView( 4087): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=19600] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=19601] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=19602] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=19603] null, type=SINGLE task=[id=1008 windowingMode=1 user=0 lastActiveTime=382814] null]
+10-11 02:25:10.354 D/TaskViewModel( 4087): bind: []
+10-11 02:25:10.355 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.355 D/TaskViewModel( 4087): bind: [1008]
+10-11 02:25:10.361 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.361 D/TaskViewModel( 4087): bind: [1005]
+10-11 02:25:10.363 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.363 D/TaskViewModel( 4087): bind: [855]
+10-11 02:25:10.364 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.365 D/TaskViewModel( 4087): bind: [844]
+10-11 02:25:10.368 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.368 D/TaskViewModel( 4087): bind: [843]
+10-11 02:25:10.567 D/RecentsView( 4087): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=19600] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=19601] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=19602] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=19603] null, type=SINGLE task=[id=1008 windowingMode=1 user=0 lastActiveTime=382814] Settings]
+10-11 02:25:10.569 D/TaskViewModel( 4087): bind: []
+10-11 02:25:10.570 D/TaskViewModel( 4087): bind: []
+10-11 02:25:10.570 D/TaskViewModel( 4087): bind: []
+10-11 02:25:10.573 D/TaskViewModel( 4087): bind: []
+10-11 02:25:10.574 D/TaskViewModel( 4087): bind: []
+10-11 02:25:10.576 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.576 D/TaskViewModel( 4087): bind: [1008]
+10-11 02:25:10.577 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.577 D/TaskViewModel( 4087): bind: [1005]
+10-11 02:25:10.578 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.578 D/TaskViewModel( 4087): bind: [855]
+10-11 02:25:10.579 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.579 D/TaskViewModel( 4087): bind: [844]
+10-11 02:25:10.580 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:10.580 D/TaskViewModel( 4087): bind: [843]
+10-11 02:25:31.910 D/RecentsView( 4087): applyLoadPlan - taskGroups: [type=SINGLE task=[id=843 windowingMode=0 user=0 lastActiveTime=19600] null, type=SINGLE task=[id=844 windowingMode=0 user=0 lastActiveTime=19601] null, type=SINGLE task=[id=855 windowingMode=0 user=0 lastActiveTime=19602] null, type=SINGLE task=[id=1005 windowingMode=0 user=0 lastActiveTime=19603] null, type=SINGLE task=[id=1008 windowingMode=1 user=0 lastActiveTime=400385] null]
+10-11 02:25:31.918 D/TaskViewModel( 4087): bind: []
+10-11 02:25:31.919 D/TaskViewModel( 4087): bind: []
+10-11 02:25:31.919 D/TaskViewModel( 4087): bind: []
+10-11 02:25:31.919 D/TaskViewModel( 4087): bind: []
+10-11 02:25:31.920 D/TaskViewModel( 4087): bind: []
+10-11 02:25:31.920 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:31.920 D/TaskViewModel( 4087): bind: [1008]
+10-11 02:25:31.921 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:31.921 D/TaskViewModel( 4087): bind: [1005]
+10-11 02:25:31.922 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:31.922 D/TaskViewModel( 4087): bind: [855]
+10-11 02:25:31.922 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:31.922 D/TaskViewModel( 4087): bind: [844]
+10-11 02:25:31.923 D/TaskView( 4087): onBind app.lawnchair.LawnchairLauncher@530364b com.android.quickstep.LauncherActivityInterface@47d8707
+10-11 02:25:31.923 D/TaskViewModel( 4087): bind: [843]

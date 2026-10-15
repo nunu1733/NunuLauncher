@@ -155,9 +155,9 @@ fun SelectAppsForDrawerFolder(
 
 @Composable
 private fun PositionalAppListPreference(
-    items: List<PositionalListItem<App>>,
+    items: List<PositionalListItem<App, String>>,
     activeCount: Int,
-    onOrderChange: (newList: List<PositionalListItem<App>>, newEnabledCount: Int) -> Unit,
+    onOrderChange: (newList: List<PositionalListItem<App, String>>, newEnabledCount: Int) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -180,7 +180,7 @@ private fun PositionalAppListPreference(
 }
 
 private fun updateViewModel(
-    newList: List<PositionalListItem<App>>,
+    newList: List<PositionalListItem<App, String>>,
     newCount: Int,
     apps: List<App>,
     context: Context,

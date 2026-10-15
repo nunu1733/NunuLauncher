@@ -3,7 +3,7 @@ issue: "#375"
 status: implemented
 requirements: [FR-004, FR-006, FR-017]
 risk: []
-updated: 2026-09-22
+updated: 2026-10-03
 ---
 
 # scope不一致のremedyを原因別に分割し、取り込み済み提案のprocess死後再開（fresh run rebind）を実現する（D-17）
@@ -34,6 +34,13 @@ updated: 2026-09-22
 > 生存runへのdirect attach authorityの2軸へ分離し、scope-bound破棄へのmutation gate適用、
 > 「同一session再取り込みでentryKindだけflip」scenario/SR-AC-07該当oracleの
 > 「再取り込みでentryKind不変」回帰への置換をAmendする。
+> Amended by #418 (spec [418-organizer-run-publication-confinement](../418-organizer-run-publication-confinement/spec.md)):
+> 「gate下のUI待機禁止」へ、run UI状態の同期publication hop（state bus書込みに限定した
+> lock-freeなblock-join hop）の狭い例外を契約化する。deadlock oracleへは
+> 「workerがrun lock + exchange gateを保持してpublication hop完了を待つ間、Main側が
+> run lock / gate待ちへ入らずpublicationを完了でき、gate release時点で`State.Capturing`が
+> 既に可視であること」の不変条件を追加する。詳細は本specの
+> 「gate下のUI待機禁止の例外（#418）」節と SR-AC-08 を参照。
 
 ## Problem
 
@@ -404,7 +411,8 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   作らない（5th review指摘2で固定。実装PRへ残すのはDI提供位置など正当性に影響しない
   詳細のみである）。
 - **gate下のUI待機禁止（4th review指摘1）**: exchange mutation gate保持中は
-  `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**。
+  `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**
+  （次の例外を除く）。
   gate下の処理はIO上で完結する純粋なstore操作と判定のみとし、UI stateへのsettleは
   gate解放後に行う。#374のsave fence
   （`launchDurablePendingIntentSave` がmutex保持下で `withContext(uiDispatcher)` により
@@ -412,6 +420,20 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
   cleanupを完結させて純粋なsettle結果を作り、gate解放後にUIへsettleする**形へ
   本Issueがrefactorする対象に含める。#374のsave fence oracle（cancel/supersede中の
   stale record残存なし）は維持される。
+  - **例外: 同期publication hop（#418で契約化）**。次の条件を **すべて** 満たす
+    1種類の同期hopのみ、gate保持中を含めて許容する。それ以外のMain切替・完了待機は
+    引き続き禁止である:
+    (i) hop taskが行うのは `ManualOrganizationRunStateBus` へのUI状態書込み
+    （State / PreparationPhase / operationActive）のみであり、run lock・exchange
+    mutation gate・usage access gate・journal・durable storeの取得・呼出しを含まない;
+    (ii) run state machineの入口はpublication thread（main）上での実行をfail-fastする
+    guardを持ち、productionでexchange mutation gateを取得する経路
+    （admission anchor等）はmain上で実行されない;
+    (iii) 例外の根拠は、hop先のMainがrun lock・gateを待たないことの構成的保証
+    （machine非main実行）であり、本契約が防ぐ循環
+    （「Main: run lock → gate待ち / IO: gate → Main待ち」）が成立しないことにある。
+    このhopによるgate保持時間へのMain queue待ち込みは「gate下の処理時間の界限」の
+    許容範囲に含める。
 - **gate上への線形化統一と純粋投影settle（5th/6th review指摘1）**: durable saveの
   「有効なcommit」とattempt無効化（cancel / supersede / input edit / RUN_IN owning run消失
   fence）の「無効化commit」の**効力発生点をexchange gate上で1つに固定する**。無効化commitは
@@ -442,7 +464,12 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
 - **gate下の処理時間の界限**: gate保持区間はrecord1件・session1件の小さなlocal file読書き
   （`AtomicFile`）とadmission判定・operation生成のみに限り、readiness gate・model load・
   候補検出等の長時間処理をgate下で行わない。他の面でのcancel/confirmがblockされるのは
-  これらの短い区間のみである。検出開始時点でgateが解放済みであることを構造的に確認する
+  これらの短い区間のみである。#418の同期publication hop（例外条件を満たすものに限る）は、
+  Main queueのscheduling delayがtask実行時間と独立であるため、hopを含むgate保持区間は
+  **wall-clockの短時間保証の対象外**である。この例外に関する停止は、Mainがrun lock /
+  exchange mutation gate / journal / durable store待ちへ入らない構造
+  （spec 418のmachine非main実行）によりdeadlockなしで解消される。それ以外の経路では
+  従来どおり短時間保証が適用される。検出開始時点でgateが解放済みであることを構造的に確認する
   （検出seamへのprobeでgate非保持を観測するtest。SR-AC-08）。
 - **TTL失効との競合の決定性**: TTLは時刻のみの競合であるため、anchorはgate保持下の
   admission区間内でclockを新鮮に読み、検証とadmissionが同一時点の値を共有する。
@@ -579,10 +606,17 @@ And 新規に追加されるのはcause→remedyの対応づけと表示・復�
       例外化せずtyped fail-closed（Invalid清掃・継続拒否）として扱われること**が
       fixture付きでtestされる。anchor拒否後の面の扱い（無効化済み→清掃・クローズ、
       record置換済み→読み直し）がtestされる。
-      **gate下のUI待機禁止のoracle**: durable saveをUI settle直前でbarrier停止させ
-      Main側でrebind admissionを開始する順を決定的に構成し、gate保持中にMain dispatcherへの
-      待機が発生しないこと（双方が進行可能であること）をwall-clock非依存でtestされる
+      **gate下のUI待機禁止のoracle（#418 publication hop例外を除く経路が対象）**: durable saveをUI settle直前でbarrier停止させ
+      Main側でrebind admissionを開始する順を決定的に構成し、例外経路以外のgate保持中に
+      Main dispatcherへの待機が発生しないこと（双方が進行可能であること）を
+      wall-clock非依存でtestされる
       （#374 save fence refactor後の回帰を含む）。
+      **publication hop例外の不変条件oracle（#418で追加）**: workerがrun lock +
+      exchange mutation gateを保持して同期publication hopの完了を待つ状態を決定的に構成し、
+      (a) Main側がrun lock・exchange gate待ちへ入らずにpublicationを完了できること、
+      (b) gate releaseの時点で `State.Capturing` が既に可視であること、
+      (c) 例外条件を満たさないMain切替（hop taskからのlock/gate/journal取得など）が
+      ないことをwall-clock非依存でtestされる。
       **線形化oracle（tombstone正本）**: save完了・gate解放後、UI settle直前で停止した状態で
       cancel/supersede（RUN_IN owning run消失を含む）を実行 → 無効化commit（gate上の
       tombstone commit）が先に効力を持った場合は `State.Capturing` が0件であり、物理削除

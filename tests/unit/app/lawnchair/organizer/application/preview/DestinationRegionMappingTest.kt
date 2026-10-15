@@ -107,7 +107,7 @@ class DestinationRegionMappingTest {
             planned(*fixture.moves.map { movedTo(it) }.toTypedArray()),
         ) as PlanPreviewProjector.Result.Ready
 
-        val destinations = result.details.changes
+        val destinations = result.changes
             .filterIsInstance<MoveChange>()
             .associate { it.item.value to it.destination as PreviewPosition.Workspace }
 
@@ -151,7 +151,7 @@ class DestinationRegionMappingTest {
             planned(*fixture.moves.map { movedTo(it) }.toTypedArray()),
         ) as PlanPreviewProjector.Result.Ready
 
-        val destinations = result.details.changes
+        val destinations = result.changes
             .filterIsInstance<MoveChange>()
             .associate { it.item.value to it.destination as PreviewPosition.Workspace }
         // (0,1) and (1,1) differ only in column: distinct projections now.
@@ -180,7 +180,7 @@ class DestinationRegionMappingTest {
                     fixture.plan,
                     planned(*fixture.moves.map { movedTo(it) }.toTypedArray()),
                 ) as PlanPreviewProjector.Result.Ready
-                val destination = (result.details.changes.single() as MoveChange).destination as PreviewPosition.Workspace
+                val destination = (result.changes.single() as MoveChange).destination as PreviewPosition.Workspace
 
                 // The (row, column) ordinal pair pins exactly one anchor.
                 assertEquals(x + 1, destination.columnOrdinal)
@@ -211,7 +211,7 @@ class DestinationRegionMappingTest {
             fixture.plan,
             planned(*fixture.moves.map { movedTo(it) }.toTypedArray()),
         ) as PlanPreviewProjector.Result.Ready
-        return ((result.details.changes.single() as MoveChange).destination as PreviewPosition.Workspace).columnBand
+        return ((result.changes.single() as MoveChange).destination as PreviewPosition.Workspace).columnBand
     }
 
     private fun intendedCell(fixture: PlanFixture, id: String): GridCell = (

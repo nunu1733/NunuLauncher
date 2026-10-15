@@ -1,0 +1,330 @@
+{
+  "status": "runtime evidence complete; source PR588 audit/publication checks passed and merged; overall closure decision owned by matrix15/PR573",
+  "canonical_500_state": {
+    "active_db_raw_sha256_before_saf": "9e65326b86bdd7a0afbce5e562bfdefd31469fc532a3ce01aa1a161d044f6aec",
+    "semantic_projection_sha256": "f531d7e9db4369d775b0f24134bc4f1e01738cadfa9be84f27655b69902ad527",
+    "favorites_count": 500,
+    "favorites_are_apps": false,
+    "item_types": [
+      [
+        0,
+        500
+      ]
+    ],
+    "screens": 32,
+    "duplicate_coordinate_groups": 0,
+    "quick_check": "ok",
+    "preferences_bytes": 317,
+    "preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2"
+  },
+  "create_document_backup": {
+    "route": "actual CreateBackup UI -> ACTION_CREATE_DOCUMENT -> save",
+    "archive_name": "NunuLauncher_500_AE697_20261012.lawnchairbackup",
+    "private_archive_sha256": "e0965bb5a7ee26dadaef68bae723812bfc8a8168b54c806831781d83424fec26",
+    "private_archive_bytes": 12230321,
+    "zip_integrity_test": "passed",
+    "entries": [
+      "com.android.launcher3.prefs.xml",
+      "info.pb",
+      "launcher.db",
+      "preferences",
+      "preferences.preferences_pb",
+      "screenshot.png"
+    ],
+    "wallpaper_included": false,
+    "recovery_database_included": false,
+    "embedded_db_raw_sha256": "9e65326b86bdd7a0afbce5e562bfdefd31469fc532a3ce01aa1a161d044f6aec",
+    "embedded_db_semantic_projection_sha256": "f531d7e9db4369d775b0f24134bc4f1e01738cadfa9be84f27655b69902ad527",
+    "embedded_preferences_bytes": 317,
+    "embedded_preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2",
+    "active_state_unchanged_by_export": true
+  },
+  "create_document_cancel": {
+    "completed": true,
+    "db_before_and_after_raw_sha256": "9e65326b86bdd7a0afbce5e562bfdefd31469fc532a3ce01aa1a161d044f6aec",
+    "preferences_before_and_after_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2",
+    "preferences_bytes": 317,
+    "zero_write_confirmed": true
+  },
+  "show_labels_toggle_and_restore_preview_cancel": {
+    "show_labels_off_preferences_bytes": 356,
+    "show_labels_off_preferences_sha256": "9ee088dc620793308c2dfc0486b5306ab8dcb76996862c7e4e483e42185fad6a",
+    "restore_picker_and_preview_opened": true,
+    "preview_exit": "Back before Restore",
+    "db_before_and_after_raw_sha256": "9e65326b86bdd7a0afbce5e562bfdefd31469fc532a3ce01aa1a161d044f6aec",
+    "preferences_before_and_after_sha256": "9ee088dc620793308c2dfc0486b5306ab8dcb76996862c7e4e483e42185fad6a",
+    "zero_write_confirmed": true
+  },
+  "positive_restore_and_cold_reload": {
+    "one_row_removed_first": {
+      "favorites_before": 500,
+      "favorites_after": 499,
+      "db_raw_sha256": "dee491c1360dca868261b3efcb663996082fa7b02e903e3830d3b960726273ea",
+      "semantic_projection_sha256": "d42eb60cf6daa1003e94969cd4f7a2a109bf1a59a171357889ecc616a07a719b"
+    },
+    "restore_selected_archive_via_open_document": true,
+    "post_restore_db_raw_sha256": "47ab0d6c3c55d9e94e6aa6c29500c6f3da5d86272ad997d3025a1256e8c7137c",
+    "post_restore_favorites": 500,
+    "post_restore_semantic_projection_sha256": "f531d7e9db4369d775b0f24134bc4f1e01738cadfa9be84f27655b69902ad527",
+    "post_restore_preferences_bytes": 317,
+    "post_restore_preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2",
+    "after_force_stop_start_db_raw_sha256": "47ab0d6c3c55d9e94e6aa6c29500c6f3da5d86272ad997d3025a1256e8c7137c",
+    "after_force_stop_start_projection_matches_archive": true,
+    "after_force_stop_start_preferences_match_archive": true,
+    "quick_check": "ok"
+  },
+  "manual_organization_cancel": {
+    "eligible_off_home_candidate_inventory": 112,
+    "existing_home_favorites": 500,
+    "confirmation": "Stop -> Discard this work; selections and proposal discarded; nothing applied",
+    "before_preview": {
+      "db_raw_sha256": "47ab0d6c3c55d9e94e6aa6c29500c6f3da5d86272ad997d3025a1256e8c7137c",
+      "projection_sha256": "f531d7e9db4369d775b0f24134bc4f1e01738cadfa9be84f27655b69902ad527",
+      "favorites": 500,
+      "preferences_bytes": 317,
+      "preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2"
+    },
+    "during_preview_matches_before": true,
+    "after_stop_discard_matches_before": true,
+    "db_and_preferences_zero_write_confirmed": true,
+    "apply_pressed": false
+  },
+  "native_hotseat_launch_back": {
+    "launched_shortcut": "synthetic Home settings shortcut in personal hotseat",
+    "destination": "Preferences activity",
+    "returned_with": "system Back",
+    "before_and_after_db_raw_sha256": "47ab0d6c3c55d9e94e6aa6c29500c6f3da5d86272ad997d3025a1256e8c7137c",
+    "before_and_after_projection_sha256": "f531d7e9db4369d775b0f24134bc4f1e01738cadfa9be84f27655b69902ad527",
+    "before_and_after_preferences_sha256": "b96f93e93d4fb282d99487959c4d8e751bdc286c0d5747eb2199481e78cd6f3f",
+    "zero_write_confirmed": true
+  },
+  "original_owned_archive_inspection": {
+    "restored_during_this_run": false,
+    "private_archive_sha256": "fdc507b7b7c8c16b443cc4ce0abd24848306617d1fcd0c8e87dd7388fb443dac",
+    "private_archive_bytes": 189913,
+    "embedded_db_sha256": "8ac45c551b77e7485ba96cc4167eb234bf9b7570cbc9ac079ff1c3d0de7dc5a2",
+    "embedded_projection_sha256": "965b1986165c4a15c0bc8b3fea85f52a470b05189e20a68ff5581e89d2be1bff",
+    "embedded_favorites": 43,
+    "embedded_item_types": [
+      [
+        0,
+        41
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        4,
+        1
+      ]
+    ],
+    "embedded_preferences_bytes": 317,
+    "embedded_preferences_sha256": "fd46fa26aaa50214eff2afe80cc1129ac9ba6e150f2413ee0ec476f93b9b4ff2",
+    "folder_open_back_and_drag": "pending at earlier inspection; later evidenced in native_operations_receipt",
+    "final_43_row_restore": "pending at earlier inspection; later evidenced in native_operations_receipt",
+    "older_253_byte_preferences_are_a_distinct_historical_checkpoint": true,
+    "observation_time": "earlier read-only inspection, before the later native restore run",
+    "superseded_by_native_operations_receipt": true
+  },
+  "curated_screenshot_xml_stems": [
+    "ae697-create-backup-screen",
+    "ae697-create-document-save-picker",
+    "ae697-create-document-cancel-return",
+    "ae697-create-document-save-name",
+    "ae697-after-create-save",
+    "ae697-home-labels-off",
+    "ae697-restore-preview",
+    "ae697-restore-preview-cancel",
+    "ae697-one-row-removed",
+    "ae697-positive-restore-preview",
+    "ae697-positive-restore-result",
+    "ae697-after-cold-reload",
+    "ae697-manual-organization-hub",
+    "ae697-manual-planning-preview",
+    "ae697-manual-stop-confirm",
+    "ae697-manual-discard-settled",
+    "ae697-selected-personal-candidate",
+    "ae697-request-review",
+    "ae697-request-saved-review",
+    "ae697-import-entry-active-request",
+    "ae697-import-reply-surface",
+    "ae697-import-picker-open",
+    "ae697-import-picker-canceled",
+    "ae697-valid-reply-picker",
+    "ae697-hotseat-home-settings-launched",
+    "ae697-after-hotseat-back",
+    "754-012-request-review-501",
+    "754-015-named-save",
+    "754-022-local-reply-picker",
+    "754-024-import-success",
+    "754-030-cold-hub",
+    "754-031-cold-review",
+    "754-035-discard-confirmed",
+    "051-restore-preview-after-native-init",
+    "056-folder-open",
+    "058-folder-back",
+    "061-drag-start",
+    "063-drag-result",
+    "091-probe-visible-in-drawer",
+    "113-probe-removed-from-drawer"
+  ],
+  "excluded_private_material": [
+    "APK, database, and archive binaries",
+    "database, archive, and APK binaries",
+    "initial null-root and pre-confirmation captures",
+    "live export ID and candidate reference",
+    "pending-record JSON",
+    "raw request and reply bytes",
+    "raw request and reply content",
+    "reply-editor capture with live identifiers",
+    "valid-reply editor screenshot containing those identifiers",
+    "APK binary",
+    "probe build script and signing material",
+    "null-root transitions and failed ADB swipe captures",
+    "mismatched visual/XML candidate captures 069 and 097"
+  ],
+  "prior_ae697_run_identity": {
+    "source_commit": "ae69715379314f24338304ca5a0b2b4f9e9f7c43",
+    "apk_sha256": "9ff6c8483ff74b00ed50ee295d994a001439fa69f22315f0b39af6436b049bd4",
+    "package": "app.lawnchair.debug",
+    "launcher_component": "app.lawnchair.LawnchairLauncher",
+    "device": "owned API 37 emulator-5560; Android 17 CE2A.260420.019/15611780:userdebug/dev-keys",
+    "active_database": "launcher_5_4_4.db",
+    "schema_version": 33
+  },
+  "historical_ae697_exchange_import_failure": {
+    "actual_export_request_saved_via_create_document": true,
+    "private_request_sha256": "e62910a97feba784e4591cc810b77e631b96964ab96ff8cc5f2e1d0a079bd47a",
+    "private_request_bytes": 165913,
+    "request_schema": "personalization-context-v4",
+    "reply_schema": "personalized-intent-v4",
+    "synthetic_reply_framing": "single fenced json block",
+    "reply_result": "one importance=HIGH result for the actual selected candidate; identifiers omitted from this receipt",
+    "external_ai_or_network_send": false,
+    "open_document_cancel": {
+      "completed": true,
+      "db_raw_sha256_unchanged": "47ab0d6c3c55d9e94e6aa6c29500c6f3da5d86272ad997d3025a1256e8c7137c",
+      "preferences_sha256_unchanged": "b96f93e93d4fb282d99487959c4d8e751bdc286c0d5747eb2199481e78cd6f3f",
+      "zero_write_confirmed": true
+    },
+    "valid_reply_attempt": {
+      "actual_open_document_selection": true,
+      "import_action_pressed": true,
+      "result": "app process crashed before durable pending-import persistence",
+      "exception": "IllegalStateException: organizer run state machine must not run on the publication (main) thread",
+      "stack_frames": [
+        "ManualOrganizationRun.isLiveScopeOwner",
+        "ExchangeFlowStateHolder.settleImport (ExchangeFlowUi.kt:1534)",
+        "ExchangeFlowStateHolder import handler (ExchangeFlowUi.kt:1480)"
+      ],
+      "after_crash_db_raw_sha256": "47ab0d6c3c55d9e94e6aa6c29500c6f3da5d86272ad997d3025a1256e8c7137c",
+      "after_crash_projection_sha256": "f531d7e9db4369d775b0f24134bc4f1e01738cadfa9be84f27655b69902ad527",
+      "after_crash_favorites": 500,
+      "after_crash_preferences_bytes": 384,
+      "after_crash_preferences_sha256": "b96f93e93d4fb282d99487959c4d8e751bdc286c0d5747eb2199481e78cd6f3f",
+      "pending_import_record_observed": false,
+      "apply_reached": false
+    },
+    "tracking": {
+      "bug_issue": 583,
+      "related_merged_fix_commit": "0ef86713b9414f0aa85c028e2e77d3ec14c0f4db",
+      "fixed_build_replay": "completed; see repaired_same_owner_import_cold_recovery"
+    }
+  },
+  "repaired_same_owner_import_cold_recovery": {
+    "installed_source_commit": "75492ec6407b4c36645186c519bdd93583008f5d",
+    "installed_apk_sha256": "a02cf76f0557c76cf751d852effb4d724384db33c0225c9ad11cba10fe7bd74e",
+    "main_production_source_commit": "77b6b97768822158d3a3b13bafa6267a0b57e4f1",
+    "replay_test_tree_source_commit": "5cefa6dfff0d9af3a76bebe9d5ebc1950c5e7da0",
+    "test_only_changes_packaged_in_app_apk": false,
+    "production_parity_to_main16": [
+      {
+        "path": "lawnchair/src/app/lawnchair/organizer/ui/ManualOrganizationRun.kt",
+        "sha256": "eaa8e6b7ad4197a7dea0245dfc05b487bda58cd72793714cb85ce1c475bf2794",
+        "byte_identical": true
+      },
+      {
+        "path": "lawnchair/src/app/lawnchair/organizer/ui/exchange/ExchangeFlowUi.kt",
+        "sha256": "b94ae4360f8a460006194d606407013ff8acd02d0a75c19c725c1c4a4c80539c",
+        "byte_identical": true
+      }
+    ],
+    "import_result": {
+      "actual_open_document_selection": true,
+      "request_items": 501,
+      "existing_home_rows": 500,
+      "recognized_wishes": 1,
+      "unstated_items": 500,
+      "off_home_apps_covered": 1,
+      "proposal_applied": false
+    },
+    "pending_proposal": {
+      "bytes": 32915,
+      "sha256": "94265ca91f2e46bd4d17303cca31ddf91a29b1c610dd990fe1bfcbf643d5e794",
+      "byte_identical_after_cold_restart": true
+    },
+    "cold_restart": {
+      "force_stop_start_pids": [
+        20516,
+        21569
+      ],
+      "cold_hub_and_review_recovered": true
+    },
+    "unchanged_checkpoints": {
+      "labels": [
+        "019-before-import",
+        "025-after-import",
+        "028-after-cold",
+        "032-cold-review-no-write",
+        "036-proposal-discard-complete"
+      ],
+      "db_raw_sha256": "47ab0d6c3c55d9e94e6aa6c29500c6f3da5d86272ad997d3025a1256e8c7137c",
+      "db_semantic_projection_sha256": "f531d7e9db4369d775b0f24134bc4f1e01738cadfa9be84f27655b69902ad527",
+      "favorites_count": 500,
+      "quick_check": "ok",
+      "preferences_bytes": 384,
+      "preferences_sha256": "b96f93e93d4fb282d99487959c4d8e751bdc286c0d5747eb2199481e78cd6f3f"
+    },
+    "confirmed_discard": {
+      "pending_record_deleted": true,
+      "active_request_retained": true,
+      "layout_applied": false
+    },
+    "ci_status_when_packet_prepared": {
+      "historical_run_38321690999": "failure",
+      "source_run_38324607913": "success including independent method-choice rerun",
+      "publication_run_38347440730": "success",
+      "publication_gate_38347440751": "success",
+      "pr584_merge": "c3898c74f32144cd1bc229e1a153ed08a3aeb253"
+    },
+    "issue_586_jit_timeout_cause": "unknown",
+    "curated_png_xml_stems": [
+      "754-012-request-review-501",
+      "754-015-named-save",
+      "754-022-local-reply-picker",
+      "754-024-import-success",
+      "754-030-cold-hub",
+      "754-031-cold-review",
+      "754-035-discard-confirmed"
+    ],
+    "excluded": [
+      "raw request and reply bytes",
+      "reply-editor capture with live identifiers",
+      "live export ID and candidate reference",
+      "pending-record JSON",
+      "database, archive, and APK binaries",
+      "initial null-root and pre-confirmation captures"
+    ],
+    "test_tree_note": "PageCapture retained uncommitted f70 test build edits; test-only changes were not packaged in the production APK."
+  },
+  "remaining_for_closure": [
+    "PR573 exact-head final review/checks/merge; decision owned by matrix15"
+  ],
+  "native_operations_receipt": {
+    "file": "../native-operations/receipts.json",
+    "status": "runtime/owned fixture stop complete; supported cold settings correction and source audit/checks complete; PR588 merged",
+    "phase3_complete_claimed": false,
+    "independent_audit_claimed": false
+  }
+}

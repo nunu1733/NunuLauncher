@@ -9,7 +9,7 @@ requirements:
   - NFR-007
   - NFR-011
   - NFR-012
-updated: 2026-09-10
+updated: 2026-10-03
 ---
 
 # Safe layout application and recovery contract
@@ -185,6 +185,23 @@ The rule does not alter `moveItemsInDatabase`, widget/folder item handling, or
 the exact recovery materialization of an existing recovery record. Capture
 does not reinterpret a NULL-span desktop row as `1×1`; it remains fail-closed.
 
+### Folder-child raw-cell sentinel
+
+The internal schema-33 persistence manifest may retain the paired raw cell
+sentinel `CELLX=-1` and `CELLY=-1` on a folder-child row. This is the ordinary
+Launcher folder-child representation; the public `FolderChild` remains only
+parent identity and rank, with no workspace geometry. A manifest admits this
+pair only when the child's non-negative `CONTAINER` identifies a distinct,
+existing schema-33 folder row in the same profile. The two signed values are
+serialized and recovered exactly. Nullable and non-negative folder-child cell
+values also remain exact. Mixed values, other negative values, missing/non-folder
+parents, and cross-profile parents remain fail-closed.
+
+This exception applies only to raw folder-child persistence. It does not make
+negative workspace geometry public or representable: desktop rows still need
+non-negative cell coordinates and a positive span for canonical capture, and
+the Hotseat and AppPair paths do not gain this sentinel allowance.
+
 ### Revision semantics
 
 `RevisionId` remains the opaque type defined by Issue #10. At capture and
@@ -254,6 +271,7 @@ ApplyResult =
 
 PreWriteRejection =
   | INVALID_PLAN | STALE_REVISION | EXACT_PRECONDITION_FAILED
+  | CANDIDATE_UNAVAILABLE
   | LOCK_STATE_UNAVAILABLE | IDENTITY_EXHAUSTED
   | CHECKPOINT_CREATE_FAILED | CHECKPOINT_VALIDATE_FAILED
   | RECOVERY_STORE_UNAVAILABLE | RECOVERY_POINT_ADMISSION_BLOCKED
@@ -651,3 +669,16 @@ Source observations are fixed to
   desktop-entry `1×1` normalization rule. It closes direct and
   folder → Hotseat → desktop transitions without changing raw folder/Dock
   semantics, strict desktop capture, or exact recovery.
+- 2026-10-03: Issue #293 recorded the `CANDIDATE_UNAVAILABLE` extension that
+  issue #228 added to the closed `PreWriteRejection` set: apply-time candidate
+  availability re-verification sits between the stale-revision recheck and
+  checkpoint creation and rejects with `CANDIDATE_UNAVAILABLE`, failing closed
+  with zero writes, when a selected missing-app candidate is no longer
+  resolvable. Runtime (`PreWriteRejection`) and its `ApplyResultContractTest`
+  pin were fixed by PR #289; this entry is the canonical-set recording only.
+  No other result shape, lifecycle, or behavior change.
+- 2026-10-12: Issue #579 clarified the exact schema-33 folder-child raw-cell
+  sentinel retained by the internal persistence manifest. Only paired `-1`
+  cells with a same-profile folder parent are admitted; recovery keeps both
+  signed values unchanged. Public placement, writer behavior, schema, recovery
+  format, and desktop geometry rules do not change.

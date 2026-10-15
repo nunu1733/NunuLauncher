@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +36,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -346,12 +348,27 @@ internal fun RunUsageAccessJitDialogHost(
     // Injectable for the deterministic settings-return instrumentation: the
     // bounded re-read is driven by ON_RESUME (spec 371 JIT-AC-03).
     lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
+    // Issue #586 (spec 586): test-only passive receipt of the grant-check
+    // tick's entry, so the settings-return timeout diagnostics can
+    // distinguish a never-bumped tick from a post-tick resume stall. The
+    // tracer appends only — it is never a scheduling, progress, or
+    // synchronization condition, and null (every production caller) does
+    // nothing.
+    grantCheckTickTracer: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val gateSnapshot by run.usageAccessGate.snapshot.collectAsStateWithLifecycle()
     val runState by run.stateFlow.collectAsStateWithLifecycle()
     val awaiting = runState as? ManualOrganizationRun.State.AwaitingUsageAccessJit
     val awaitingRunId = awaiting?.runId
+    // Issue #418: the run state machine must never run on the publication
+    // (main) thread — every resume below dispatches through IO, the same
+    // pattern as ManualOrganizationPreferences.execute. Main keeps only the
+    // collected state reads and the presenter flags.
+    val scope = rememberCoroutineScope()
+    fun resumeRunOnWorker() {
+        scope.launch(Dispatchers.IO) { run.continueAfterUsageAccessGate() }
+    }
 
     // Per-pause host state. NOT keyed on awaitingRunId: the lifecycle observer
     // below captures these State objects once, and key-based re-initialization
@@ -375,11 +392,11 @@ internal fun RunUsageAccessJitDialogHost(
     LaunchedEffect(gateSnapshot, awaitingRunId) {
         if (awaitingRunId == null || presenter) return@LaunchedEffect
         when (gateSnapshot.phase) {
-            UsageAccessJitGate.Phase.Resolved -> run.continueAfterUsageAccessGate()
+            UsageAccessJitGate.Phase.Resolved -> resumeRunOnWorker()
 
             UsageAccessJitGate.Phase.Available -> when (run.usageAccessGate.evaluate(awaitingRunId)) {
                 UsageAccessJitGate.Decision.Present -> presenter = true
-                UsageAccessJitGate.Decision.Proceed -> run.continueAfterUsageAccessGate()
+                UsageAccessJitGate.Decision.Proceed -> resumeRunOnWorker()
                 UsageAccessJitGate.Decision.Wait -> Unit
             }
 
@@ -406,10 +423,14 @@ internal fun RunUsageAccessJitDialogHost(
     }
     LaunchedEffect(grantCheckTick, awaitingRunId) {
         if (grantCheckTick == 0 || awaitingRunId == null) return@LaunchedEffect
+        // Issue #586: the tick-entry receipt fires right after the guard —
+        // before the bounded re-read — so a captured receipt means the
+        // grant-check effect actually started with a non-zero tick.
+        grantCheckTickTracer?.invoke(grantCheckTick)
         withContext(Dispatchers.IO) {
             awaitUsageAccessGrant(isGranted = { UsageAccess.isGranted(context) })
         }
-        run.continueAfterUsageAccessGate()
+        resumeRunOnWorker()
     }
 
     if (presenter && awaiting != null) {
@@ -422,7 +443,7 @@ internal fun RunUsageAccessJitDialogHost(
                     settingsLaunchFailed = true
                 }
             },
-            onContinue = { run.continueAfterUsageAccessGate() },
+            onContinue = { resumeRunOnWorker() },
         )
     }
 }

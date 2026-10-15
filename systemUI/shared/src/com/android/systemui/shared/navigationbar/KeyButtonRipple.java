@@ -19,6 +19,7 @@ package com.android.systemui.shared.navigationbar;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ObjectAnimator;
+import android.companion.virtualdevice.flags.Flags;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.CanvasProperty;
@@ -27,6 +28,8 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RecordingCanvas;
 import android.graphics.drawable.Drawable;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES_FULL;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Trace;
@@ -80,6 +83,7 @@ public class KeyButtonRipple extends Drawable {
     private final Interpolator mInterpolator = new LogInterpolator();
     private boolean mSupportHardware;
     private final View mTargetView;
+    private int mTapTimeoutMillis;
     private final Handler mHandler = new Handler();
 
     private final HashSet<Animator> mRunningAnimations = new HashSet<>();
@@ -101,6 +105,23 @@ public class KeyButtonRipple extends Drawable {
         mMaxWidthResource = maxWidthResource;
         mMaxWidth = ctx.getResources().getDimensionPixelSize(maxWidthResource);
         mTargetView = targetView;
+        mTapTimeoutMillis = ViewConfiguration.getTapTimeout();
+        if (VERSION.SDK_INT_FULL >= 3600001) {
+            // #545: android.companion.virtualdevice.flags.Flags exists in the framework-16.jar
+            // compile classpath but is present on API 37.0 devices only under
+            // com.android.internal.hidden_from_bootclasspath (not app-visible), so the direct
+            // reference raises NoClassDefFoundError and crashed the provider bind path (see
+            // docs/assessment/545-api37-provider-fix-evidence/ma-keybuttonripple-flags-class-check.txt).
+            // Degrade to the legacy tap timeout instead of crashing; environments without the
+            // class keep the default-assigned fallback value.
+            try {
+                if (Flags.viewconfigurationApis()) {
+                    mTapTimeoutMillis = ViewConfiguration.get(mTargetView.getContext()).getTapTimeoutMillis();
+                }
+            } catch (NoClassDefFoundError e) {
+                // keep the legacy tap timeout assigned above
+            }
+        }
     }
 
     public void updateResources() {
@@ -338,7 +359,7 @@ public class KeyButtonRipple extends Drawable {
             if (mDelayTouchFeedback) {
                 if (mRunningAnimations.isEmpty()) {
                     mHandler.removeCallbacksAndMessages(null);
-                    mHandler.postDelayed(this::enterSoftware, ViewConfiguration.getTapTimeout());
+                    mHandler.postDelayed(this::enterSoftware, mTapTimeoutMillis);
                 } else if (mVisible) {
                     enterSoftware();
                 }
@@ -383,7 +404,7 @@ public class KeyButtonRipple extends Drawable {
             if (mDelayTouchFeedback) {
                 if (mRunningAnimations.isEmpty()) {
                     mHandler.removeCallbacksAndMessages(null);
-                    mHandler.postDelayed(this::enterHardware, ViewConfiguration.getTapTimeout());
+                    mHandler.postDelayed(this::enterHardware, mTapTimeoutMillis);
                 } else if (mVisible) {
                     enterHardware();
                 }

@@ -287,7 +287,15 @@ AGENTS.md設計規約（小さなinterface・既存seamの再利用・platform�
      の決定的race oracleが成立する。
    - **gate下のUI待機禁止（4th review指摘1の解消）**: gate保持中は
      `withContext(uiDispatcher)` 等によるMain dispatcherへの切替・完了待機を**絶対に行わない**
-     （不変条件）。現行 #374の `launchDurablePendingIntentSave()`（1070-1123行付近）は
+     （不変条件）。
+     **Amendment note（2026-10-03、Issue #418 / spec本文「gate下のUI待機禁止の例外（#418）」）**:
+     この絶対禁止は、条件固定の同期publication hop
+     （hop taskはstate bus書込みのみ・run lock / gate / journal / storeを取得しない・
+     machine入口のmain fail-fast guard・gate取得経路の非main実行）によって
+     supersedesされる。本節のdeadlock解析（「Main: run lock → gate待ち /
+     IO: gate → Main待ち」の循環）は、例外経路ではhop taskがlockを取らないため
+     成立せず、解析自体は例外の根拠として有効である。gate保持時間のwall-clock短時間保証は
+     例外経路を対象外とする（spec本文「gate下の処理時間の界限」参照）。現行 #374の `launchDurablePendingIntentSave()`（1070-1123行付近）は
      `pendingWriteMutex` 保持下で `withContext(uiDispatcher)` によりsettleするため、
      gate配下化すると Main: run lock → gate待ち / IO: gate → mutex → Main待ち の循環が
      成立しうる。本Issueはsave fenceを次へrefactorする:

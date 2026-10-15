@@ -45,6 +45,9 @@ object BuiltInOrganizerPolicyBundleSource : OrganizerPolicyBundleSource {
         // enables both widget-relocating successors on one mainline:
         // -v2.6 for STABLE_PAGE_TIDY_V2 and BOTTOM_FIRST_V2. Issue #398
         // enables the lower-region successor: -v2.7 for BOTTOM_REGION_V1.
+        // Issue #451 is a planner behavior fix (duplicate surplus exclusion
+        // and warnings, spec 451 N-1..N-5) with an unchanged catalog:
+        // -v2.8 (ADR-0007 §8 one-increment rule).
         val layoutStrategies = LayoutStrategyCatalog(
             runtimeSupported = listOf(
                 app.lawnchair.organizer.planning.StrategyId("BOTTOM_FIRST_V1"),

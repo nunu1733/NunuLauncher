@@ -23,7 +23,6 @@ import android.app.ActivityTaskManager;
 import android.app.IActivityTaskManagerHidden;
 import android.app.PendingIntent;
 import android.content.Intent;
-import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 import android.util.Pair;
@@ -37,14 +36,14 @@ import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.util.ActivityOptionsWrapper;
 import com.android.launcher3.widget.LauncherAppWidgetHostView;
 
-import app.lawnchair.LawnchairApp;
-import dev.rikka.tools.refine.Refine;
+import java.util.function.Consumer;
 
-/**
- * Provides a Quickstep specific animation when launching an activity from an
- * app widget.
- */
-public class QuickstepInteractionHandler implements RemoteViews.InteractionHandler {
+import dev.rikka.tools.refine.Refine;
+import app.lawnchair.LawnchairApp;
+
+/** Provides a Quickstep specific animation when launching an activity from an app widget. */
+class QuickstepInteractionHandler implements RemoteViews.InteractionHandler,
+        Consumer<LauncherAppWidgetHostView> {
 
     private static final String TAG = "QuickstepInteractionHandler";
 
@@ -54,15 +53,24 @@ public class QuickstepInteractionHandler implements RemoteViews.InteractionHandl
         mLauncher = launcher;
     }
 
+    @Override
+    public void accept(LauncherAppWidgetHostView host) {
+        host.setInteractionHandler(this);
+    }
+
     @SuppressWarnings("NewApi")
     @Override
     public boolean onInteraction(View view, PendingIntent pendingIntent,
-                                 RemoteViews.RemoteResponse remoteResponse) {
+            RemoteViews.RemoteResponse remoteResponse) {
         LauncherAppWidgetHostView hostView = findHostViewAncestor(view);
         if (hostView == null) {
             Log.e(TAG, "View did not have a LauncherAppWidgetHostView ancestor.");
-            return RemoteViews.startPendingIntent(hostView, pendingIntent,
-                    remoteResponse.getLaunchOptions(view));
+            // NunuLauncher #527: apply the granular BAL opt-in to the widget-provided options.
+            Pair<Intent, ActivityOptions> fallbackOptions = remoteResponse.getLaunchOptions(view);
+            if (fallbackOptions.second != null) {
+                Utilities.allowBGLaunch(fallbackOptions.second);
+            }
+            return RemoteViews.startPendingIntent(hostView, pendingIntent, fallbackOptions);
         }
         if (mLauncher.isSplitSelectionActive()) {
             // Log metric
@@ -72,8 +80,14 @@ public class QuickstepInteractionHandler implements RemoteViews.InteractionHandl
             return true;
         }
         Pair<Intent, ActivityOptions> options = remoteResponse.getLaunchOptions(view);
-        ActivityOptionsWrapper activityOptions = mLauncher.getAppTransitionManager()
-                .getActivityLaunchOptions(hostView);
+
+        ActivityOptionsWrapper activityOptions = null;
+        try {
+            activityOptions = mLauncher.getAppTransitionManager()
+                    .getActivityLaunchOptions(hostView, (ItemInfo) hostView.getTag());
+        } catch (NullPointerException e) {
+            Log.e("pE(C7evQZDJ)", "Failed to get activity launch options");
+        }
         if (!pendingIntent.isActivity()) {
             // In the event this pending intent eventually launches an activity, i.e. a trampoline,
             // use the Quickstep transition animation.
@@ -89,28 +103,41 @@ public class QuickstepInteractionHandler implements RemoteViews.InteractionHandl
                             pendingIntent.getCreatorPackage(),
                             activityOptions.options.getRemoteAnimationAdapter());
                 }
-            } catch (RemoteException e) {
+            } catch (NullPointerException | RemoteException e) {
+                // pE-TODO(C7evQZDJ): Remove NullPointerException after fixing
                 // Do nothing.
             }
         }
         try {
             activityOptions.options.setPendingIntentLaunchFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             activityOptions.options.setSplashScreenStyle(SplashScreen.SPLASH_SCREEN_STYLE_ICON);
-            activityOptions.options.setPendingIntentBackgroundActivityStartMode(
-                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED);
+            // NunuLauncher #527: granular BAL opt-in (version-gated in Utilities.allowBGLaunch).
+            Utilities.allowBGLaunch(activityOptions.options);
         } catch (Throwable t) {
             // ignore
         }
-        options = Pair.create(options.first, activityOptions.options);
+        // pE-TODO(C7evQZDJ): Remove activityOptions null check
+        if (activityOptions != null) {
+            options = Pair.create(options.first, activityOptions.options);
+        }
         if (pendingIntent.isActivity()) {
             logAppLaunch(hostView.getTag());
         }
-        return RemoteViews.startPendingIntent(hostView, pendingIntent, options);
+        if (activityOptions != null) {
+            return RemoteViews.startPendingIntent(hostView, pendingIntent, options);
+        } else {
+            Log.d("pE(C7evQZDJ)", "activityOptions is null!");
+            // NunuLauncher #527: apply the granular BAL opt-in to the widget-provided options.
+            Pair<Intent, ActivityOptions> fallbackOptions = remoteResponse.getLaunchOptions(view);
+            if (fallbackOptions.second != null) {
+                Utilities.allowBGLaunch(fallbackOptions.second);
+            }
+            return RemoteViews.startPendingIntent(hostView, pendingIntent, fallbackOptions);
+        }
     }
 
     /**
      * Logs that the app was launched from the widget.
-     * 
      * @param itemInfo the widget info.
      */
     private void logAppLaunch(Object itemInfo) {
@@ -123,8 +150,7 @@ public class QuickstepInteractionHandler implements RemoteViews.InteractionHandl
 
     private LauncherAppWidgetHostView findHostViewAncestor(View v) {
         while (v != null) {
-            if (v instanceof LauncherAppWidgetHostView)
-                return (LauncherAppWidgetHostView) v;
+            if (v instanceof LauncherAppWidgetHostView) return (LauncherAppWidgetHostView) v;
             v = (View) v.getParent();
         }
         return null;

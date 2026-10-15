@@ -1,0 +1,102 @@
+# Excerpt from system dropbox data_app_anr (emulator-5556, 2026-10-09 23:46 JST, launcher pid 18635).
+# Subject: Input dispatching timed out (Application does not have a focused window).
+# Threads retained: main (Blocked on the fontManager lazy lock) and ViewPool-init tid=32
+# (holds the lazy lock, Waiting in MainThreadInitializedObject.get). Another ViewPool-init
+# tid=33 is also blocked on the same lock in the full trace (not retained here).
+"main" prio=5 tid=1 Blocked
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x73be8f78 self=0xb4000075b8f567b0
+  | sysTid=18635 nice=-10 cgrp=top-app sched=0/0 handle=0x78700bd090
+  | state=S schedstat=( 1799772219 420562999 893 ) utm=136 stm=43 core=3 HZ=100
+  | stack=0x7fd4d79000-0x7fd4d7b000 stackSize=8188KB
+  | held mutexes=
+  at kotlin.SynchronizedLazyImpl.getValue(LazyJVM.kt:81)
+  - waiting to lock <0x051a0dbc> (a kotlin.SynchronizedLazyImpl) held by thread 32
+  at app.lawnchair.LawnchairLayoutFactory.getFontManager(LawnchairLayoutFactory.kt:18)
+  at app.lawnchair.LawnchairLayoutFactory.onCreateView(LawnchairLayoutFactory.kt:34)
+  at android.view.LayoutInflater.tryCreateView(LayoutInflater.java:950)
+  at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:886)
+  at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:850)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1012)
+  at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1015)
+  at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+  at android.view.LayoutInflater.parseInclude(LayoutInflater.java:1147)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1008)
+  at android.view.LayoutInflater.parseInclude(LayoutInflater.java:1116)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1008)
+  at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1015)
+  at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+  at android.view.LayoutInflater.inflate(LayoutInflater.java:571)
+  - locked <@addr=0x20fd738> (a java.lang.Object[])
+  at android.view.LayoutInflater.inflate(LayoutInflater.java:462)
+  at android.view.LayoutInflater.inflate(LayoutInflater.java:413)
+  at com.android.launcher3.statemanager.StatefulActivity.inflateRootView(StatefulActivity.java:73)
+  at com.android.launcher3.Launcher.setupViews(Launcher.java:1310)
+  at com.android.launcher3.uioverrides.QuickstepLauncher.setupViews(QuickstepLauncher.java:323)
+  at com.android.launcher3.Launcher.onCreate(Launcher.java:471)
+  at com.android.launcher3.uioverrides.QuickstepLauncher.onCreate(QuickstepLauncher.java:798)
+  at app.lawnchair.LawnchairLauncher.onCreate(LawnchairLauncher.kt:211)
+  at android.app.Activity.performCreate(Activity.java:9155)
+  at android.app.Activity.performCreate(Activity.java:9133)
+  at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1521)
+  at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:4262)
+  at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:4467)
+  at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:222)
+  at android.app.servertransaction.TransactionExecutor.executeNonLifecycleItem(TransactionExecutor.java:133)
+  at android.app.servertransaction.TransactionExecutor.executeTransactionItems(TransactionExecutor.java:103)
+  at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:80)
+  at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2823)
+  at android.os.Handler.dispatchMessage(Handler.java:110)
+  at android.os.Looper.loopOnce(Looper.java:248)
+  at android.os.Looper.loop(Looper.java:338)
+  at android.app.ActivityThread.main(ActivityThread.java:9067)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:593)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:932)
+DumpLatencyMs: 4.62763
+
+"ViewPool-init" prio=5 tid=32 Waiting
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x21fb320 self=0xb4000075b8fc0840
+  | sysTid=18684 nice=0 cgrp=top-app sched=0/0 handle=0x7477409500
+  | state=S schedstat=( 18471499 6559501 26 ) utm=1 stm=0 core=0 HZ=100
+  | stack=0x7477306000-0x7477308000 stackSize=1037KB
+  | held mutexes=
+  at jdk.internal.misc.Unsafe.park(Native method)
+  - waiting on an unknown object
+  at java.util.concurrent.locks.LockSupport.park(LockSupport.java:221)
+  at com.google.common.util.concurrent.AbstractFutureState.blockingGet(AbstractFutureState.java:239)
+  at com.google.common.util.concurrent.Platform.get(Platform.java:54)
+  at com.google.common.util.concurrent.AbstractFuture.get(AbstractFuture.java:263)
+  at com.google.common.util.concurrent.FluentFuture$TrustedFuture.get(FluentFuture.java:92)
+  at com.android.launcher3.util.MainThreadInitializedObject.get(MainThreadInitializedObject.java:50)
+  at app.lawnchair.LawnchairLayoutFactory.fontManager_delegate$lambda$0(LawnchairLayoutFactory.kt:18)
+  at app.lawnchair.LawnchairLayoutFactory$$ExternalSyntheticLambda0.invoke(D8$$SyntheticClass:0)
+  at kotlin.SynchronizedLazyImpl.getValue(LazyJVM.kt:86)
+  - locked <0x051a0dbc> (a kotlin.SynchronizedLazyImpl)
+  at app.lawnchair.LawnchairLayoutFactory.getFontManager(LawnchairLayoutFactory.kt:18)
+  at app.lawnchair.LawnchairLayoutFactory.onCreateView(LawnchairLayoutFactory.kt:34)
+  at android.view.LayoutInflater.tryCreateView(LayoutInflater.java:950)
+  at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:886)
+  at android.view.LayoutInflater.createViewFromTag(LayoutInflater.java:850)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1012)
+  at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+  at android.view.LayoutInflater.inflate(LayoutInflater.java:571)
+  - locked <@addr=0x221b9e0> (a java.lang.Object[])
+  at android.view.LayoutInflater.inflate(LayoutInflater.java:462)
+  at android.view.ViewStub.inflateViewNoAdd(ViewStub.java:272)
+  at android.view.ViewStub.inflate(ViewStub.java:305)
+  at com.android.quickstep.views.TaskView.inflateViewStubs(TaskView.kt:825)
+  at com.android.quickstep.views.TaskView.onFinishInflate(TaskView.kt:802)
+  at android.view.LayoutInflater.rInflate(LayoutInflater.java:1025)
+  at android.view.LayoutInflater.rInflateChildren(LayoutInflater.java:973)
+  at android.view.LayoutInflater.inflate(LayoutInflater.java:571)
+  - locked <@addr=0x21fb308> (a java.lang.Object[])
+  at android.view.LayoutInflater.inflate(LayoutInflater.java:462)
+  at com.android.launcher3.util.ViewPool.inflateNewView(ViewPool.java:122)
+  at com.android.launcher3.util.ViewPool.lambda$initPool$1(ViewPool.java:82)
+  at com.android.launcher3.util.ViewPool.$r8$lambda$xmRVBUcjhnGyR58wYP_ubVk4Uoo(unavailable:0)
+  at com.android.launcher3.util.ViewPool$$ExternalSyntheticLambda1.run(D8$$SyntheticClass:0)
+  at java.lang.Thread.run(Thread.java:1119)
+DumpLatencyMs: 233.441
+

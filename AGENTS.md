@@ -5,7 +5,7 @@
 ## プロジェクト状態
 
 - GitHub repositoryは `nunu1733/NunuLauncher`、`origin` はそのfork、`upstream` は `LawnchairLauncher/lawnchair` である。
-- `main` baselineはLawnchair `v15.0.0-beta3.0` のcommit `505dbc40e6154c05158b5d0271c45f6a885a411b` である。
+- `main` baselineはLawnchair 16-dev commit `43a21b43d7cc7850ab54e14b1a57dc9646685f35`（ADR-0018 Phase 4 cutover、2026-10-13）である。
 - baseline導入は [Issue #1](https://github.com/nunu1733/NunuLauncher/issues/1) で追跡する。
 - Lawnchair 16への変更は通常updateとして扱わず、専用EpicとADRを要求する。
 
@@ -46,7 +46,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 ## Issue駆動・仕様駆動の手順
 
 1. Issueの問題、成果、非対象、要件ID、リスク、終了条件を確認する。
-2. 機能変更ではspecを作成または更新し、シナリオと失敗時の振る舞いを具体化する。
+2. 機能変更ではspecを作成または更新し、シナリオと失敗時の振る舞いを具体化する。External reference scanの適用対象・省略条件・記録先（spec/research成果物）は、[GitHub workflowのExternal reference scan](./docs/project/github-workflow.md#external-reference-scan設計時の外部参照調査) の正本に従う。
 3. 未決定の製品判断が残る場合は実装せず、research/decision Issueへ分離する。
 4. 階層Hの変更では、spec承認後に `plan.md` を作り、変更するmodule、seam、migration、rollback、検証を記載する。階層Mはaccepted軽量spec（[specs/_template/spec-lite.md](./specs/_template/spec-lite.md)）だけで実装開始でき、`plan.md` は要求しない。
 5. 最小の縦切りで実装し、interfaceを通したテストを先に追加する。
@@ -107,7 +107,7 @@ Issueまたは承認済みspecがない機能実装は開始しない。調査�
 
 ## 検証済みcommand
 
-JDK 21、Android SDK Platform 36.1、Build Tools 36.1.0を使う。環境詳細は [building guide](./docs/engineering/building.md) を正本とする。
+JDK 21、Android SDK Platform 37（minor 2）、Build Tools 37.0.0を使う。環境詳細は [building guide](./docs/engineering/building.md) を正本とする。
 
 ```bash
 git submodule update --init --recursive

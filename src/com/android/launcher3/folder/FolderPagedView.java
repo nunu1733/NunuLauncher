@@ -18,16 +18,19 @@ package com.android.launcher3.folder;
 
 import static com.android.launcher3.AbstractFloatingView.TYPE_ALL;
 import static com.android.launcher3.AbstractFloatingView.TYPE_FOLDER;
+import static com.android.launcher3.Flags.enableLauncherVisualRefresh;
+import static com.android.launcher3.folder.FolderGridOrganizer.createFolderGridOrganizer;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Path;
-import android.graphics.drawable.Drawable;
+import android.graphics.Point;
 import android.util.ArrayMap;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewDebug;
 
@@ -37,7 +40,6 @@ import com.android.launcher3.AbstractFloatingView;
 import com.android.launcher3.BubbleTextView;
 import com.android.launcher3.CellLayout;
 import com.android.launcher3.DeviceProfile;
-import com.android.launcher3.Item;
 import com.android.launcher3.PagedView;
 import com.android.launcher3.R;
 import com.android.launcher3.ShortcutAndWidgetContainer;
@@ -45,6 +47,7 @@ import com.android.launcher3.Utilities;
 import com.android.launcher3.apppairs.AppPairIcon;
 import com.android.launcher3.celllayout.CellLayoutLayoutParams;
 import com.android.launcher3.keyboard.ViewGroupFocusHelper;
+import com.android.launcher3.model.data.AppInfo;
 import com.android.launcher3.model.data.AppPairInfo;
 import com.android.launcher3.model.data.ItemInfo;
 import com.android.launcher3.model.data.ItemInfoWithIcon;
@@ -60,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
@@ -101,11 +105,25 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
     // animating or is open.
     private boolean mViewsBound = false;
 
+    private boolean mCanAnnouncePageDescription;
+    private boolean mDisallowPagedViewInterceptForIconSwipe; // Lawnchair: Icon swipe gesture feature
+
     public FolderPagedView(Context context, AttributeSet attrs) {
+        this(
+                context,
+                attrs,
+                createFolderGridOrganizer(ActivityContext.lookupContext(context).getDeviceProfile())
+        );
+    }
+
+    public FolderPagedView(
+            Context context,
+            AttributeSet attrs,
+            FolderGridOrganizer folderGridOrganizer
+    ) {
         super(context, attrs);
         ActivityContext activityContext = ActivityContext.lookupContext(context);
-        DeviceProfile profile = activityContext.getDeviceProfile();
-        mOrganizer = FolderGridOrganizer.createFolderGridOrganizer(profile);
+        mOrganizer = folderGridOrganizer;
 
         mIsRtl = Utilities.isRtl(getResources());
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
@@ -149,6 +167,91 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
         }
     }
 
+    // Lawnchair: Icon swipe gesture feature
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent ev) {
+        if (shouldSkipPagedViewInterceptionForIconSwipe(ev)) {
+            return false;
+        }
+        return super.onInterceptTouchEvent(ev);
+    }
+
+    // Lawnchair: Icon swipe gesture feature
+    private boolean shouldSkipPagedViewInterceptionForIconSwipe(MotionEvent ev) {
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                mDisallowPagedViewInterceptForIconSwipe = isTouchOnIconWithHorizontalSwipeGesture(
+                        ev.getX(), ev.getY());
+                if (mDisallowPagedViewInterceptForIconSwipe) {
+                    resetTouchState();
+                    return true;
+                }
+                return false;
+
+            case MotionEvent.ACTION_MOVE:
+                return mDisallowPagedViewInterceptForIconSwipe;
+
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                boolean shouldSkip = mDisallowPagedViewInterceptForIconSwipe;
+                mDisallowPagedViewInterceptForIconSwipe = false;
+                if (shouldSkip) {
+                    resetTouchState();
+                }
+                return shouldSkip;
+
+            default:
+                return false;
+        }
+    }
+
+    // Lawnchair: Icon swipe gesture feature
+    private boolean isTouchOnIconWithHorizontalSwipeGesture(float x, float y) {
+        BubbleTextView touchedIcon = findIconAtPosition(x, y);
+        return touchedIcon != null && touchedIcon.hasConfiguredHorizontalIconSwipeGesture();
+    }
+
+    /** Lawnchair: Find icon at specific position */
+    private BubbleTextView findIconAtPosition(float x, float y) {
+        for (int i = getChildCount() - 1; i >= 0; i--) {
+            View page = getChildAt(i);
+            if (!(page instanceof CellLayout cellLayout)) {
+                continue;
+            }
+            float localX = x - page.getLeft();
+            float localY = y - page.getTop();
+            if (!Utilities.pointInView(cellLayout, localX, localY, 0)) {
+                continue;
+            }
+            BubbleTextView foundView = findIconInCellLayout(cellLayout, localX, localY);
+            if (foundView != null) {
+                return foundView;
+            }
+        }
+        return null;
+    }
+
+    /** Lawnchair: Find icon in cell layout */
+    private BubbleTextView findIconInCellLayout(CellLayout cellLayout, float x, float y) {
+        ShortcutAndWidgetContainer container = cellLayout.getShortcutsAndWidgets();
+        float containerX = x - container.getLeft();
+        float containerY = y - container.getTop();
+        for (int i = container.getChildCount() - 1; i >= 0; i--) {
+            View child = container.getChildAt(i);
+            if (!(child instanceof BubbleTextView bubbleTextView)
+                    || child.getVisibility() != View.VISIBLE) {
+                continue;
+            }
+            if (Utilities.pointInView(child,
+                    containerX - child.getLeft(),
+                    containerY - child.getTop(),
+                    0)) {
+                return bubbleTextView;
+            }
+        }
+        return null;
+    }
+
     /**
      * Binds items to the layout.
      */
@@ -158,6 +261,19 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
         }
         arrangeChildren(items.stream().map(this::createNewView).collect(Collectors.toList()));
         mViewsBound = true;
+    }
+
+    void setCanAnnouncePageDescriptionForFolder(boolean canAnnounce) {
+        mCanAnnouncePageDescription = canAnnounce;
+    }
+
+    private boolean canAnnouncePageDescriptionForFolder() {
+        return mCanAnnouncePageDescription;
+    }
+
+    @Override
+    protected boolean canAnnouncePageDescription() {
+        return super.canAnnouncePageDescription() && canAnnouncePageDescriptionForFolder();
     }
 
     /**
@@ -232,7 +348,14 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
                 ((BubbleTextView) icon).applyFromItemInfoWithIcon((ItemInfoWithIcon) item);
             } else {
                 icon = mViewCache.getView(R.layout.folder_application, getContext(), null);
-                ((BubbleTextView) icon).applyFromWorkspaceItem((WorkspaceItemInfo) item);
+                // LC-Note: Allow creation of item from workspace and from other places
+                if (item instanceof WorkspaceItemInfo workspaceItemInfo) {
+                    ((BubbleTextView) icon).applyFromWorkspaceItem(workspaceItemInfo);
+                } else if (item instanceof AppInfo appInfo) {
+                    ((BubbleTextView) icon).applyFromApplicationInfo(appInfo);
+                } else {
+                    ((BubbleTextView) icon).applyFromItemInfoWithIcon((ItemInfoWithIcon) item);
+                }
             }
         }
 
@@ -241,12 +364,11 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
         icon.setOnFocusChangeListener(mFocusIndicatorHelper);
 
         CellLayoutLayoutParams lp = (CellLayoutLayoutParams) icon.getLayoutParams();
+        Point pos = mOrganizer.getPosForRank(item.rank);
         if (lp == null) {
-            icon.setLayoutParams(new CellLayoutLayoutParams(
-                    item.cellX, item.cellY, item.spanX, item.spanY));
+            icon.setLayoutParams(new CellLayoutLayoutParams(pos.x, pos.y, 1, 1));
         } else {
-            lp.setCellX(item.cellX);
-            lp.setCellY(item.cellY);
+            lp.setCellXY(pos);
             lp.cellHSpan = lp.cellVSpan = 1;
         }
 
@@ -267,7 +389,12 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
     private CellLayout createAndAddNewPage() {
         DeviceProfile grid = mFolder.mActivityContext.getDeviceProfile();
         CellLayout page = mViewCache.getView(R.layout.folder_page, getContext(), this);
-        page.setCellDimensions(grid.folderCellWidthPx, grid.folderCellHeightPx);
+        // Lawnchair: Find the correct folder size depending on which parent owned them
+        if (mFolder.isInAppDrawer()) {
+            page.setCellDimensions(grid.getAllAppsProfile().getCellWidthPx(), grid.getAllAppsProfile().getCellHeightPx());
+        } else {
+            page.setCellDimensions(grid.folderCellWidthPx, grid.folderCellHeightPx);
+        }
         page.getShortcutsAndWidgets().setMotionEventSplittingEnabled(false);
         page.setInvertIfRtl(true);
         page.setGridSize(mGridCountX, mGridCountY);
@@ -367,9 +494,13 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
 
         // Update footer
         mPageIndicator.setVisibility(getPageCount() > 1 ? View.VISIBLE : View.GONE);
+        if (enableLauncherVisualRefresh()) {
+            mFolder.onIndicatorVisibilityChanged();
+        }
         // Set the gravity as LEFT or RIGHT instead of START, as START depends on the actual text.
-        mFolder.mFolderName.setGravity(getPageCount() > 1 ?
-                (mIsRtl ? Gravity.RIGHT : Gravity.LEFT) : Gravity.CENTER_HORIZONTAL);
+        int horizontalGravity = getPageCount() > 1
+                ? (mIsRtl ? Gravity.RIGHT : Gravity.LEFT) : Gravity.CENTER_HORIZONTAL;
+        mFolder.getFolderName().setGravity(horizontalGravity | Gravity.CENTER_VERTICAL);
     }
 
     public int getDesiredWidth() {
@@ -378,8 +509,14 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
     }
 
     public int getDesiredHeight()  {
-        return  getPageCount() > 0 ?
-                (getPageAt(0).getDesiredHeight() + getPaddingTop() + getPaddingBottom()) : 0;
+        if (getPageCount() <= 0) {
+            return 0;
+        }
+        int maxPageHeight = 0;
+        for (int i = 0; i < getPageCount(); i++) {
+            maxPageHeight = Math.max(maxPageHeight, getPageAt(i).getDesiredHeightForOccupiedRows());
+        }
+        return maxPageHeight + getPaddingTop() + getPaddingBottom();
     }
 
     /**
@@ -461,6 +598,7 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
         super.notifyPageSwitchListener(prevPage);
         if (mFolder != null) {
             mFolder.updateTextViewFocus();
+            mFolder.updateArrowAlphas();
         }
     }
 
@@ -511,6 +649,16 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
         verifyVisibleHighResIcons(getCurrentPage() + 1);
     }
 
+    int getTotalChildCount() {
+        AtomicInteger count = new AtomicInteger();
+        iterateOverItems((i, v) -> {
+            count.getAndIncrement();
+            return false;
+        });
+
+        return count.get();
+    }
+
     /**
      * Ensures that all the icons on the given page are of high-res
      */
@@ -520,19 +668,10 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
             ShortcutAndWidgetContainer parent = page.getShortcutsAndWidgets();
             for (int i = parent.getChildCount() - 1; i >= 0; i--) {
                 View iconView = parent.getChildAt(i);
-                Drawable d = null;
                 if (iconView instanceof BubbleTextView btv) {
                     btv.verifyHighRes();
-                    d = btv.getIcon();
                 } else if (iconView instanceof AppPairIcon api) {
                     api.verifyHighRes();
-                    d = api.getIconDrawableArea().getDrawable();
-                }
-
-                // Set the callback back to the actual icon, in case
-                // it was captured by the FolderIcon
-                if (d != null) {
-                    d.setCallback(iconView);
                 }
             }
         }
@@ -624,7 +763,7 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
             if (v != null) {
                 if (pageToAnimate != p) {
                     page.removeView(v);
-                    addViewForRank(v, (WorkspaceItemInfo) v.getTag(), moveStart);
+                    addViewForRank(v, (ItemInfo) v.getTag(), moveStart);
                 } else {
                     // Do a fake animation before removing it.
                     final int newRank = moveStart;
@@ -637,7 +776,7 @@ public class FolderPagedView extends PagedView<PageIndicatorDots> implements Cli
                             mPendingAnimations.remove(v);
                             v.setTranslationX(oldTranslateX);
                             ((CellLayout) v.getParent().getParent()).removeView(v);
-                            addViewForRank(v, (WorkspaceItemInfo) v.getTag(), newRank);
+                            addViewForRank(v, (ItemInfo) v.getTag(), newRank);
                         }
                     };
                     v.animate()
