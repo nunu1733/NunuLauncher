@@ -132,6 +132,7 @@ Nuance: 「語そのものが誤り」ではなく「1 段落に 3–4 個の密
 4. **UI レジスタとの適合を問う。** 解説調（「本機能では」「〜することが可能です」「以下の通り」）・文書調の前置き・要約足場は、UI copy としては AI register 以前に register 不適合として指摘する（#161 style guide の「実装語を出さない」「短く、行動と結果が予測できる」原則と整合）。
 5. **安全意味論は常に優先。** AI 感の除去のために warning/failure/recovery の意味・制約・復旧手順を削らない（spec Authority の優先順位 1 > 3）。
 6. **最終判断は人間。** checklist は reviewer と owner の編集起点であり、lint スコアや tell 数を merge gate にしない（Goodhart 回避）。
+7. **適用粒度を明示する（UI microcopy 向け）。** 本 Issue の review unit は button label・error・a11y text 等の短い UI copy が中心であり、長文 corpus 由来の signal（段落構造の均質さ、文長 burstiness、体言止め比率、「表記揺れが完璧にゼロ」等）は single-string unit の `REVISE` 根拠にできない。各 tell は (i) single-string（その文字列単体で判断できるもの: 語彙・定型前置き・hedging・記号残骸等）、(ii) neighboring-copy（同画面の隣接 copy と比較して判断できるもの: 重複・対句・語尾の単調さ）、(iii) flow-level（フロー全体で判断できるもの: 構成の均一性・同じ CTA 式の反復）、(iv) long-form（UI copy には適用しない）の粒度に分類し、checklist（`ai-register-tells.md`）に明記する。UI-role 固有の style 規則（#161 正本の句読点・文体表等）を常に優先し、本 evidence 内で未直接検証の外部 signal は normative rule ではなく補助 evidence として扱う。
 
 ## 6. 出典 index（取得日: 2026-10-15）
 
