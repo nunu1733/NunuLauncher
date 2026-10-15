@@ -1,0 +1,4 @@
+interface:
+  display_name: "Product Language Review"
+  short_description: "Review Nunu user-visible UI copy as product language"
+  default_prompt: "Review the supplied UI copy units with the product-language-review workflow."
