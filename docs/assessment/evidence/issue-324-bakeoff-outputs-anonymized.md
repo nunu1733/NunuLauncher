@@ -155,7 +155,7 @@
 - **Inventory regeneration command:** `unknown`。指定ファイルに記載がないため、再生成せず固定24件を使用。
 - **実行情報:** OpenAI／[identity redacted]、[identity redacted]。正確なモデルID・runtime session IDは未公開。日付：2026-10-15 JST。実行識別ラベル：`issue-324-bakeoff-2026-10-15-root`。入力のfamily rule上、GPT系候補は採点可能だが採用対象外。
 - **Resource契約:** 提案はresource名とplaceholderの数・型・順序を保持。plural categories・escaping・translatableは固定入力に詳細がなく、変更を提案していない。レンダリング確認は未実施。
-- **使用参照:** [SKILL.md](.agents/skills/product-language-review/SKILL.md)、[review-rubric.md](.agents/skills/product-language-review/references/review-rubric.md)、[input-schema.md](.agents/skills/product-language-review/references/input-schema.md)、[output-schema.md](.agents/skills/product-language-review/references/output-schema.md)、[ai-register-tells.md](.agents/skills/product-language-review/references/ai-register-tells.md)、[ja-style-guide.md](docs/localization/ja-style-guide.md)、[ja-glossary.tsv](docs/localization/ja-glossary.tsv)、[固定入力](docs/assessment/evidence/issue-324-bakeoff-context.md)。指定順で参照。Issues・specs・plansは未参照。
+- **使用参照:** `SKILL.md`、`review-rubric.md`、`input-schema.md`、`output-schema.md`、`ai-register-tells.md`、`ja-style-guide.md`、`ja-glossary.tsv`、`固定入力`。指定順で参照。Issues・specs・plansは未参照。
 - **終了点検:** ファイル変更・プロセス起動・ポート使用・worktree作成なし。`git status --short`には既存の未追跡項目4件（`.agents/skills/product-language-review/`、`.[identity redacted]/agents/product-language-reviewer.toml`、`.[identity redacted]/`、固定入力ファイル）。削除せず保持。両`pgrep`はプロセス一覧取得不可、`adb devices`はコマンド未導入のため確認不能。使用ポートがないため`lsof`対象なし。
 - **既存worktree一覧:** 以下11件を確認。今回作成したものはなく、削除していない。
 
