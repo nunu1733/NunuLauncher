@@ -116,3 +116,7 @@ AC-324-13 (on-device rendered evidence, normal + enlarged font) remains open and
 ### Final verdict
 
 **APPROVE** — all three round-4 fixes verified at head `3bb99f0f86a26dc1d4ea8611e8783ace8d9ac8a9`; the packet seal holds, the table is schema-complete at 626/1:1 with the canonical 8 classes and documented post-processing, and the guard record is complete and provenance-bearing. Non-blocking follow-ups: (1) optionally strip the historical Finding-1 identity derivation from this record's earlier rounds; (2) AC-324-13 on-device rendered verification remains an owner gate outside this audit's surfaces.
+
+## Head correction (baseline-only commit)
+
+The verification above ran on the working tree that became commit `af2a2c8b40` (the round-4 fix commit). Final audited head: `af2a2c8b40`.
