@@ -1,6 +1,6 @@
 ---
 issue: "#576"
-status: proposed
+status: accepted
 requirements: []
 updated: 2026-10-15
 ---
@@ -10,6 +10,7 @@ updated: 2026-10-15
 > Risk tier: L (文書 + local実験のみ。恒久test実装の仮定なし)
 > Phase 1はChatGPT review用。plan.mdなし (制御matrixは本書内、tier L)。
 > 詳細な証拠は [discovery assessment](../../docs/assessment/issue-576-compose-measure-discovery.md) が正本であり、本書は重複する生provenance表を持たない。
+> Acceptance: [exact-head review](https://github.com/nunu1733/NunuLauncher/issues/576#issuecomment-6185424111) と [owner-authorized operator decision](https://github.com/nunu1733/NunuLauncher/issues/576#issuecomment-6185465325)。承認対象内容は `5e66359f20afb95f04983b676953d7f9d857864b`。status/linkのみを追記し、実験契約は変更しない。
 
 ## 1. 背景と参照
 
