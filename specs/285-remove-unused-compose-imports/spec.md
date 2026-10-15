@@ -82,7 +82,7 @@ None。UI構造・文言・focus順は変化しないため、accessibility・lo
 ## Acceptance criteria
 
 - [ ] AC-1: `lawnchair/src/app/lawnchair/backup/ui/RestoreBackupScreen.kt` から `androidx.compose.foundation.layout.Column` と `androidx.compose.foundation.verticalScroll` の2 import行が削除され、変更後のdiffはこの2行削除のみ（1 file）である。
-- [ ] AC-2: 使用中の `androidx.compose.foundation.layout.ColumnScope`（L14）と `androidx.compose.foundation.rememberScrollState`（L19）は削除されていない（単語境界での使用確認: `fun ColumnScope.RestoreBackupOptions(`、`rememberScrollState()`）。
+- [ ] AC-2: 使用中の `androidx.compose.foundation.layout.ColumnScope` と `androidx.compose.foundation.rememberScrollState` のimport宣言は削除されていない。post-changeの検証は行番号を契約にせずsymbol/occurrenceベースで行う: 削除後fileで `ColumnScope` がimport行1件 + `fun ColumnScope.RestoreBackupOptions(` の使用1件、`rememberScrollState` がimport行1件 + `rememberScrollState()` の使用1件を、それぞれ保持する。
 - [ ] AC-3: PR上で `./gradlew spotlessCheck` と `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.backup.*'` が成功している。
 - [ ] AC-4: 削除が振る舞い非変化であることを、PRに単語境界検索（`\bColumn\b`、`\bverticalScroll\b` の使用箇所が0件であること）の実行記録として残す。spotless/ktlintは未使用importを検出しないため、CI緑だけでは本cleanupの検証にならない（監査記録 re-audit note 5 と同じ根拠）。
 - [ ] AC-5: 変更対象pathが高リスクpath（`lawnchair/src/app/lawnchair/backup/`）であるため、PRは独立エビデンス要件（検証対象commit上のCI merge gate `final-status` 成功 + `docs/assessment/pr-<PR番号>-<slug>.md` の独立audit記録）を満たしてmergeされる（`high-risk-gate` workflowが機械検証する）。
@@ -92,7 +92,7 @@ None。UI構造・文言・focus順は変化しないため、accessibility・lo
 | AC | Evidence |
 |---|---|
 | AC-1 | PR diffの目視確認（2行削除・1 file）。`git diff --stat` が1 file / 2 deletions / 0 insertions |
-| AC-2 | PR diffで当該2行が残っていることの目視確認 + 削除後のword境界grep（`ColumnScope`、`rememberScrollState` の使用が残る） |
+| AC-2 | PR diffで使用中の隣接2 import（`ColumnScope`、`rememberScrollState`）が削除されていないことの目視確認 + 削除後fileのsymbol/occurrence grep（`ColumnScope` 2件、`rememberScrollState` 2件が残る。行番号は契約にしない） |
 | AC-3 | CI上の `./gradlew spotlessCheck` と `./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.backup.*'` の実行結果 |
 | AC-4 | PR本文に記録したgrep実行結果（使用箇所0件の証跡） |
 | AC-5 | GitHub Actions `CI / final-status` の成功run（head SHA一致）と `docs/assessment/pr-<PR番号>-<slug>.md` |
@@ -105,3 +105,4 @@ None。UI構造・文言・focus順は変化しないため、accessibility・lo
 
 - 2026-09-28: Draft created for #285. Risk tier判定を旧基準（2026-09-13コメントのmaintenance）から現行基準（#444適用後の階層H）へ更新した起草として記録。
 - 2026-10-15: Re-entry rule適用の改訂。検証baselineを `c5a7840b880e`（2026-09-28起草時）から `efa4ff0bec04`（現行main）へ再anchorし、対象fileが不変（297行、L13/L20使用0件、L14/L19使用中）であることを再確認。#482（2026-09-30適用）のExternal reference scan導入に従いPrior art欄を追加（省略）。tier H判定は現行validatorでも不変（`HIGH_RISK_PATH_PREFIXES` に `lawnchair/src/app/lawnchair/backup/` 残存）。受入条件・scope・非対象の実質変更なし。
+- 2026-10-15: PR #600 review対応。AC-2とTest oracle表のAC-2行をpost-changeの検証として削除前行番号（L14/L19）を期待値に使っていた自己矛盾を解消し、symbol/occurrenceベースのoracleへ修正（review: PR #600 comment 6189768951）。AC-1/AC-3〜AC-5とscopeの実質変更なし。

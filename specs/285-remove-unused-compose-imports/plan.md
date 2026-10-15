@@ -61,7 +61,7 @@
 | Acceptance criterion | Automated/manual evidence | Command or environment |
 |---|---|---|
 | AC-1 | diffの目視確認（2行削除・1 file・insertion 0） | `git diff --stat`、PR diff |
-| AC-2 | 使用中importの残存確認 | 削除後fileに対する `grep -n 'ColumnScope'`（L14+L118）、`grep -n 'rememberScrollState'`（L19+L86） |
+| AC-2 | 使用中importの残存確認（symbol/occurrenceベース。post-changeの期待値に行番号を使わない） | 削除後fileに対する `grep -n 'ColumnScope'`（import行 + `fun ColumnScope.RestoreBackupOptions(` の計2 occurrence）、`grep -n 'rememberScrollState'`（import行 + `rememberScrollState()` の計2 occurrence） |
 | AC-3 | style gate + 既存unit test | `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.backup.*'`（JDK 21 / Android SDK Platform 37（minor 2）。正本はdocs/engineering/building.md） |
 | AC-4 | 使用箇所0件のgrep証跡 | `grep -n -E '\bColumn\b'` / `grep -n -E '\bverticalScroll\b'` がimport行のみに一致した実行記録をPR本文へ |
 | AC-5 | 独立エビデンス契約 | CI `CI / final-status` 成功run（head SHA一致）+ `docs/assessment/pr-<PR番号>-<slug>.md`（`high-risk-gate` workflowが機械検証） |
@@ -89,3 +89,4 @@
 
 - 2026-09-28: Draft created（baseline `c5a7840b88`）。
 - 2026-10-15: Re-entry rule適用の改訂。Current evidenceを `efa4ff0bec04` 上で再検証（対象fileは `c5a7840b88` 以降不変）、AC-3の環境参照を現行building guide（SDK Platform 37 minor 2）へ更新、#482（External reference scan）・validator更新の影響なしを記録。変更内容・検証方法の実質変更なし。
+- 2026-10-15: PR #600 review対応。Verification表AC-2をpost-changeの検証として削除前行番号（L14+L118 / L19+L86）を期待値に使っていた自己矛盾を解消し、symbol/occurrenceベースへ修正（review: PR #600 comment 6189768951）。Current evidence節のL番号はpre-change evidence（2026-10-15時点の現状）としてそのまま残す。
