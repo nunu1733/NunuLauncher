@@ -1,11 +1,11 @@
 # Issue #324 owner blind adjudication packet — candidate outputs (sealed ids)
 
 > Status: sealed-id packet for the owner's blind scoring (spec AC-324-04 / #161 §7).
-> The two candidate outputs below are labeled P and Q. These labels are fresh: no model name, vendor, or adapter correspondence for P or Q is published anywhere in this repository, and identity-bearing strings inside the outputs are replaced with `[sealed]`. The id→model mapping is held outside the repository (implementing agent's hand-off) until the owner's scoring is recorded.
+> The two candidate outputs below are labeled candidate-E34A and candidate-2FB9. These labels are fresh random identifiers that have never appeared in this repository's history: no model name, vendor, adapter, or earlier-identifier correspondence for them is published anywhere, and identity-bearing strings inside the outputs are replaced with `[sealed]`. The id→model mapping is held outside the repository (implementing agent's hand-off) until the owner's scoring is recorded.
 > Scoring: for each candidate and each of the 24 units in `issue-324-bakeoff-context.md`, score 0–2 on the 8 axes (Accuracy / Fluency / Terminology / UI style-concision / Context fit / Safety preservation / Resource correctness / AI-register detection); a 0 on Accuracy or Safety preservation for any unit is a hard failure; tie-break by Safety+Accuracy sums then a written rationale. Record per-unit scores and an adoption ruling by appending to this file or the final PR record; the mapping is then unsealed alongside.
 
-## Candidate P output
 
+## Candidate candidate-2FB9 output
 ### 01
 
 | resource_name | disposition | ui_role | user_class | surface | current | proposed | reason | severity | meaning_preserved | layout_risk | rule |
@@ -160,9 +160,7 @@
 - **使用参照:** `SKILL.md`、`review-rubric.md`、`input-schema.md`、`output-schema.md`、`ai-register-tells.md`、`ja-style-guide.md`、`ja-glossary.tsv`、`固定入力`。指定順で参照。Issues・specs・plansは未参照。
 - **終了点検:** ファイル変更・プロセス起動・ポート使用・worktree作成なし。`git status --short`には既存の未追跡項目4件（`.agents/skills/product-language-review/`、`.[identity redacted]/agents/product-language-reviewer.toml`、`.[identity redacted]/`、固定入力ファイル）。削除せず保持。両`pgrep`はプロセス一覧取得不可、`adb devices`はコマンド未導入のため確認不能。使用ポートがないため`lsof`対象なし。
 - **既存worktree一覧:** 以下11件を確認。今回作成したものはなく、削除していない。
-
-## Candidate Q output
-
+## Candidate candidate-E34A output
 # Candidate [sealed] review (identity withheld)
 
 Fixed input: `docs/assessment/evidence/issue-324-bakeoff-context.md` (24 units, pinned to main `25f97aef4d`; audited tree HEAD matches). Canon: `docs/localization/ja-style-guide.md`, `docs/localization/ja-glossary.tsv`, skill references. Fields follow `references/output-schema.md` order. Safety-class units carry an explicit meaning-preservation note.
@@ -593,4 +591,3 @@ Fixed input: `docs/assessment/evidence/issue-324-bakeoff-context.md` (24 units, 
 - Flow-level glossary proposals (for glossary addition, not per-unit rewrites):
   - import = 取り込み vs 読み込み is split across the exchange flow (13/18/22 取り込み, 14/15 読み込み). Pick one canonical user term (提案: 統一先を製品判断で決め、glossary に `import` 行を追加する) — recorded here rather than as piecemeal REVISE.
 - References used: `.agents/skills/product-language-review/SKILL.md`; `references/review-rubric.md`; `references/input-schema.md`; `references/output-schema.md`; `references/ai-register-tells.md`; `docs/localization/ja-style-guide.md`; `docs/localization/ja-glossary.tsv`; `docs/assessment/evidence/issue-324-bakeoff-context.md`.
-
