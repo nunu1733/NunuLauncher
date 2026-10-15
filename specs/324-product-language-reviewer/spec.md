@@ -1,6 +1,6 @@
 ---
 issue: "#324"
-status: accepted
+status: implemented
 requirements:
   - AC-324-01
   - AC-324-02
@@ -22,7 +22,7 @@ updated: 2026-10-15
 
 # Product Language Reviewer subagent による Nunu 固有 UI 文言の再監査
 
-> **Status: accepted**（2026-10-15。PR #602 review round 2 Approve — [comment 6193306647][29]、head `202d9d68bc`。owner の指定する Phase1 フロー（spec/plan → ChatGPT review → 承認後 Phase2）に基づく受け入れ記録である）。実装中の発見が本契約と矛盾する場合は、実装内で代替を選ばず Issue で判断を更新する。
+> **Status: implemented**（2026-10-15 受領: PR #602 review round 2 Approve — [comment 6193306647][29]。実装: PR #603。実装時の残要件 — AC-324-04 の owner blind 採点、fresh-session での Gemini challenger 実行可否確認（plan D2 の adapter discovery 検証を兼ねる）、AC-324-13 の実機 owner 確認 — は PR #603 と Issue に明示済みで、完了をもって本 Issue を close する。実装中の発見が本契約と矛盾する場合は、実装内で代替を選ばず Issue で判断を更新する。
 
 ## Risk tier（[github-workflow.md](../../docs/project/github-workflow.md) Risk tiers 準拠）
 

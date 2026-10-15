@@ -21,3 +21,10 @@ diagnostic	診断情報	診断ジャーナル	診断画面のタイトル/技術
 device profile	画面レイアウト	デバイスプロファイル	diagnosticでは「デバイスプロファイル」を維持可	列・行・Dock枠の利用者向け説明へ置換する。Issue #161
 Dock	Dock	ドック	既存Lawnchair表記を維持	固有UI領域名。
 placement summary	配置の概要	配置サマリー	diagnosticでは「サマリー」を許容	通常UIは日本語の目的語を優先する。
+external agent exchange	外部エージェント交換	エージェント交換、外部AI連携（通常UI）	診断では英語併記可	CONTEXT.md; Issue #205/#324
+consultation request	依頼	相談リクエスト、リクエスト	なし	CONTEXT.md「AI相談の依頼」; Issue #324
+import (exchange)	取り込み	インポート（通常UI）	診断/サポートでは「インポート」を許容	CONTEXT.md; Issue #328/#324
+discard (exchange)	破棄	取り込み破棄（動詞としては使いません）	状態名としては「取り込み破棄」を許容	CONTEXT.md; Issue #328/#324
+materials	材料	マテリアル、資料	なし	CONTEXT.md; Issue #367/#324
+replanning	再計画	再計算、リプランニング	なし	Issue #508/#324
+organizing materials hub	整理ハブ	オーガナイザーハブ	なし	Issue #366/#324

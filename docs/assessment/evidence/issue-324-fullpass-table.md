@@ -1,0 +1,632 @@
+# Issue #324 full-pass review table (626 units)
+
+Consolidated output of the 7 dedicated-reviewer batches (provisional reviewer model, see main evidence). Columns: name | disposition | severity | current | proposed | reason | rule | meaning_preserved. Tab-separated inside code fence.
+
+```
+organizer_lock_menu_title	OK	low	配置ロック	-	メニュー見出しとして短く、glossaryの「配置ロック」許容枠どおり	glossary locked placement	-
+organizer_lock_state_locked	OK	low	ロック中	-	状態語として正しく自然	style-guide 状態/操作の区別	-
+organizer_lock_state_unlocked	OK	low	ロック解除済み	-	状態語（「解除する」操作と区別できている）	style-guide 状態/操作の区別	-
+organizer_lock_state_unknown	OK	low	要確認	-	ガイドが状態語の実例に挙げる形そのもの	style-guide 状態/操作の区別	-
+organizer_lock_dialog_title_lock	OK	medium	この配置をロックしますか？	-	確認要求の疑問形で対象も明示	style-guide dialog 確認要求	yes
+organizer_lock_dialog_title_unlock	OK	medium	この配置のロックを解除しますか？	-	同上。対象と操作が予測できる	style-guide dialog 確認要求	yes
+organizer_lock_dialog_title_review	OK	low	この配置を確認	-	見出しの名詞句として適切。句点なしも正	style-guide heading 句点	yes
+organizer_lock_dialog_current_state	OK	low	現在の状態: %1$s	-	ラベル+値の形式で読み上げも自然	rubric a11y read-aloud	-
+organizer_lock_dialog_target_title	OK	low	対象: %1$s	-	glossary「整理対象」の短縮形として自然	glossary target	-
+organizer_lock_dialog_target_position	OK	low	位置: %1$d 行 %2$d 列	-	座標には「位置」が許容。placeholder順序も保持	glossary placement	-
+organizer_lock_dialog_target_folder	OK	low	フォルダ: %1$s	-	オブジェクト名の提示として十分	rubric CTA predictability	-
+organizer_lock_dialog_target_app_pair	OK	low	アプリペア: %1$s	-	ファイル内で一貫した表記	rubric redundancy/consistency	-
+organizer_lock_dialog_split_top_left	OK	low	メンバー: 上または左	-	ペア要素の位置を示す短ラベルとして許容範囲	rubric implementation leakage	-
+organizer_lock_dialog_split_bottom_right	OK	low	メンバー: 下または右	-	siblingと同構成で対比が分かる	rubric redundancy/consistency	-
+organizer_lock_dialog_review_intro	OK	medium	この配置のロック状態は不明です（アップデート、グリッド変更、バックアップの復元後などに発生します）。現状を維持するかどうかを選択してください。	-	不明理由と判断要求の両方を保持し自然	style-guide 安全・復旧	yes
+organizer_lock_action_lock	OK	low	ロック	-	ボタンは句点なし・短い動詞で正	style-guide button 句点	-
+organizer_lock_action_unlock	OK	low	ロック解除	-	同上	style-guide button 句点	-
+organizer_lock_action_keep_locked	OK	low	ロックしたままにする	-	review文脈の選択肢として対語と釣り合う	rubric redundancy/consistency	-
+organizer_lock_action_mark_unlocked	OK	low	ロック解除に設定	-	keep_lockedと対になり状態設定の意向が伝わる	rubric redundancy/consistency	-
+organizer_lock_effect_own_placement	OK	low	ロックすると、このアイテムは現在の位置に保持され、整理でも移動されません。	-	効果と例外なしを一文で正確に述べる	style-guide 安全・失敗・復旧	yes
+organizer_lock_effect_widget_region	OK	low	ロックすると、このウィジェットのセル・サイズとその占有領域全体が保持されます。	-	保持範囲（領域全体）を削らずに自然	style-guide 安全・失敗・復旧	yes
+organizer_lock_effect_dock_slot	REVISE	low	ロックすると、このアイテムはDockスロット内に保持されます。	ロックすると、このアイテムはDock内の位置に保持されます。	「スロット」は利用者語でない。Dock内の位置で同一意味	style-guide カタカナ・技術語	yes; Dock内の位置を保持する保証は同一
+organizer_lock_effect_folder_scope	OK	low	ロックされたフォルダは、ホーム画面上の位置を保持します。	-	対象と範囲が明確	rubric terminology	yes
+organizer_lock_effect_folder_child_scope	OK	low	ロックされたアイテムは、フォルダ内の位置を保持します。	-	同上	rubric terminology	yes
+organizer_lock_effect_app_pair_scope	OK	low	ロックされたペアは、ホーム画面上の位置を保持します。	-	同上	rubric terminology	yes
+organizer_lock_effect_app_pair_member_scope	OK	low	ロックされたアプリは、ペア内での位置を保持します。	-	同上	rubric terminology	yes
+organizer_lock_effect_folder_parent_covers_children	OK	low	このフォルダをロックすると、中のすべてのアイテムの位置も保持されます。	-	親ロックの効果範囲を正確に伝える	style-guide 安全・失敗・復旧	yes
+organizer_lock_effect_folder_children_own_lock_remains	REVISE	low	中で個別にロックされたアイテムは、ロックされたままになります。	フォルダ内で個別にロックしたアイテムは、ロックされたままになります。	文頭の「中で」の指す先を明示し読みやすく	style-guide 自然さ・語順	yes; 個別ロック維持の制約は不変
+organizer_lock_effect_folder_child_own_lock_binds	OK	low	このアイテムをロックすると、フォルダ自体がロック解除されていても、フォルダ内の位置は保持されます。	-	条件（フォルダ解除中でも）を削らず保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_effect_folder_child_unlock_ineffective	OK	low	フォルダがロックされているため、このアイテムのロック解除は、フォルダのロックを解除するまで反映されません。	-	無効条件と解除順序を正確に保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_effect_app_pair_parent_covers_members	REVISE	low	このペアをロックすると、両方のアプリと分割配置がまとめて保持されます。	このペアをロックすると、両方のアプリとペアとしての配置がまとめて保持されます。	「分割配置」は実装語。ペアとしての配置で同一意味	rubric implementation leakage	yes; ペア全体保持の効果は同一
+organizer_lock_effect_app_pair_member_unlock_ineffective	OK	low	ペアがロックされているため、このアプリのロック解除は、ペアのロックを解除するまで反映されません。	-	folder版と対称で条件が正確	style-guide 安全・失敗・復旧	yes
+organizer_lock_effect_app_pair_member_own_lock_binds	OK	low	このアプリをロックすると、ペア自体がロック解除されていても、ペア内での位置は保持されます。	-	条件を削らず保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_kind_app	OK	low	アプリ	-	種別ラベルとして標準的	style-guide カタカナ・技術語	-
+organizer_lock_kind_shortcut	OK	low	ショートカット	-	標準語	style-guide カタカナ・技術語	-
+organizer_lock_kind_folder	OK	low	フォルダ	-	標準語	style-guide カタカナ・技術語	-
+organizer_lock_kind_widget	OK	low	ウィジェット	-	標準語	style-guide カタカナ・技術語	-
+organizer_lock_kind_app_pair	OK	low	アプリペア	-	ファイル内一貫表記	rubric redundancy/consistency	-
+organizer_lock_kind_unknown	OK	low	アイテム	-	種別不明時の包括語として適切（CONTEXT.md配置アイテム）	CONTEXT.md 配置アイテム	-
+organizer_lock_result_locked	OK	low	配置をロックしました。	-	結果toastに句点。目的語あり	style-guide progress/toast	yes
+organizer_lock_result_unlocked	OK	low	配置のロックを解除しました。	-	同上	style-guide progress/toast	yes
+organizer_lock_result_no_change	REVISE	low	この配置はすでに指定の状態です。	この配置はすでに同じ状態です。	「指定の状態」は硬い。同じ状態で意味は同じ	rubric naturalness	yes; 状態同一で変更不要の意味は保持
+organizer_lock_error_failed	OK	high	変更に失敗しました。変更は適用されていません。	-	失敗と無変更を両文で明示。安全様式どおり	style-guide 安全・失敗・復旧	yes
+organizer_lock_error_stale	OK	high	このアイテムまたはレイアウトが変更されました。変更は適用されていません。もう一度お試しください。	-	変更・無変更・再試行の3要素を保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_error_busy	OK	medium	別のレイアウト変更を実行中です。しばらくしてからもう一度お試しください。	-	状態と再試行導線を保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_error_item_not_found	OK	medium	このアイテムは存在しません。変更は適用されていません。	-	無変更の明示を保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_error_item_not_unknown	OK	medium	このアイテムはすでに確認済みです。変更は適用されていません。	-	review済み状態と無変更を保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_error_profile_unavailable	OK	medium	このアイテムのプロファイルは現在利用できません。変更は適用されていません。	-	理由と無変更を保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_error_unsupported	OK	medium	このアイテムはロックできません。	-	簡潔で制約を正しく伝える	style-guide 安全・失敗・復旧	yes
+organizer_lock_error_intent_required	OK	medium	適用する変更内容を確認してください。	-	確認要求という rejection の意図通り	rubric CTA predictability	yes
+organizer_lock_screen_title	OK	low	配置ロック	-	画面題としてglossary許容形	glossary locked placement	-
+organizer_lock_screen_summary	OK	low	整理時に保持される配置を確認・変更します。	-	保持対象の確認・変更が予測できる	rubric CTA predictability	-
+organizer_lock_screen_known_heading	OK	low	すべての配置	-	見出しとして短い	style-guide heading	-
+organizer_lock_screen_profile_work	OK	low	仕事用プロファイル	-	glossary・AOSP標準形	glossary work profile	-
+organizer_lock_screen_profile_cloned	OK	low	クローンプロファイル	-	Android標準のクローン概念の慣用形	style-guide カタカナ・技術語	-
+organizer_lock_screen_profile_private	OK	low	プライベートスペース	-	Android公式語と一致	style-guide カタカナ・技術語	-
+organizer_lock_screen_profile_other	OK	low	その他のプロファイル	-	残余分類として自然	rubric naturalness	-
+organizer_lock_screen_unknown_banner	OK	medium	整理の前に%1$d件の配置を確認してください。	-	件数と助数詞が正しく要求も明確	style-guide 助数詞	yes
+organizer_lock_screen_unknown_banner_none	OK	low	確認が必要な配置はありません。	-	空状態を正確に	rubric naturalness	yes
+organizer_lock_screen_review_all_keep_locked	OK	low	すべてロックとして確認	-	確認dialogの「として確認」と同型で一貫	rubric redundancy/consistency	-
+organizer_lock_screen_review_all_mark_unlocked	OK	low	すべてロック解除として確認	-	対語として一貫	rubric redundancy/consistency	-
+organizer_lock_screen_review_all_confirm	OK	medium	%1$d件の配置を「%2$s」として確認しますか？ この操作は一覧の配置のみに適用されます。	-	件数・引用・適用範囲限定をすべて保持	style-guide 安全・失敗・復旧	yes
+organizer_lock_screen_effectively_locked	OK	low	所属するフォルダまたはアプリペアのロックにより保護されています	-	parent概念を具体化して意味を保持	rubric terminology	-
+organizer_lock_screen_placement_desktop	OK	low	ホーム画面 %1$d	-	配置先ラベルとして自然	rubric naturalness	-
+organizer_lock_screen_placement_dock	OK	low	Dock %1$d	-	Dock表記はglossaryどおり	glossary Dock	-
+organizer_lock_screen_placement_folder	OK	low	フォルダ内の位置 %1$d	-	座標の「位置」許容枠どおり	glossary placement	-
+organizer_lock_screen_placement_app_pair	OK	low	アプリペア内	-	簡潔で一貫	rubric redundancy/consistency	-
+organizer_lock_screen_item_state_description	OK	low	%1$s、%2$s	-	読点区切りのformat resourceで語順制御できている	style-guide a11y	-
+organizer_lock_screen_placement_summary_double	OK	low	%1$s · %2$s	-	視覚並列の中黒は許容。a11yは別resource担当	style-guide 中黒	-
+organizer_lock_screen_placement_summary_triple	OK	low	%1$s · %2$s · %3$s	-	同上	style-guide 中黒	-
+organizer_diagnostics_title	TECHNICAL_ONLY	low	オーガナイザー診断	-	診断画面題はglossary例外でカタカナmodule名を維持	glossary organizer/diagnostic 例外	-
+organizer_diagnostics_description	REVISE	low	プライバシーに配慮したオーガナイザー診断ジャーナルをサポート用にファイルへ書き出します。	プライバシーに配慮した診断情報を、サポート用にファイルへ書き出します。	「診断ジャーナル」はglossaryのavoid語。診断情報へ	glossary diagnostic	yes; privacy-safe・書出・サポート用の要点を保持
+organizer_diagnostics_recent_import_failure	OK	low	直近の取り込み失敗	-	取り込みはcanon語。診断行として簡潔	CONTEXT.md 持ち帰りIntent取り込み	-
+organizer_diagnostics_export_label	TECHNICAL_ONLY	low	オーガナイザー診断データを書き出す	-	診断surfaceでのカタカナ保持を記録	glossary organizer 例外	-
+organizer_diagnostics_export_subtitle	REVISE	low	オーガナイザー診断ジャーナルをファイルに出力します	診断情報をファイルに書き出します	avoid語「ジャーナル」除外と、隣接copyの「書き出す」へ統一（現状は「出力」）	glossary diagnostic; rubric redundancy/consistency	yes; 書出対象と結果は同一
+organizer_diagnostics_export_success	OK	low	診断データを書き出しました	-	成功toastとして自然	style-guide progress/toast	yes
+organizer_diagnostics_export_error	OK	low	診断データの書き出しに失敗しました	-	失敗を簡潔に伝える	style-guide progress/toast	yes
+organizer_hub_title	REVISE	medium	オーガナイザー	整理ハブ	通常UIでorganizerのカタカナはavoid。CONTEXT.md定義名を使う	glossary organizer; CONTEXT.md 整理ハブ	-
+organizer_hub_summary	REVISE	medium	整理の状態、整理案の確認、材料を1か所で扱えます。	整理の状態、整理の開始、材料を1か所で扱えます。	「整理案の確認」はglossaryの整理案（確定plan）と衝突。原文は開始の意	glossary organization proposal; rubric terminology	-
+organizer_hub_label	REVISE	medium	オーガナイザー	整理ハブ	hub画面題もhub_titleと同一概念・同一語に	glossary organizer; CONTEXT.md 整理ハブ	-
+organizer_hub_materials_heading	OK	low	整理の材料	-	canon「材料」の見出し形として正しい	CONTEXT.md 材料	-
+organizer_hub_request_open	OK	low	依頼を確認	-	canon「依頼」+CTA対象明示	CONTEXT.md 依頼	-
+organizer_hub_proposal_row	OK	low	取り込み済みの提案があります	-	canon「取り込み済み提案」の状態行として正確	CONTEXT.md 取り込み済み提案	-
+organizer_hub_proposal_open	OK	low	提案を確認	-	CTAとして対象が予測できる	rubric CTA predictability	-
+organizer_personalization_recording_label	OK	low	整理のためにアプリ起動を記録する	-	togglelabelとして目的と動作が明確	style-guide CTA/状態	-
+organizer_personalization_recording_description	OK	high	このランチャーから始まった起動を端末内だけで数え、整理の精度を上げます。記録は端末の外に出ず、書き出しもされません。オフにすると記録を停止し、既存の記録を消去します。	-	局所保持・不書出・OFF時消去の保証をすべて保持	style-guide 安全・失敗・復旧	yes
+organizer_personalization_usage_access_label	OK	low	使用状況アクセス権限	-	Android設定の権限名として通じる	style-guide カタカナ・技術語	-
+organizer_personalization_usage_access_granted	REVISE	medium	許可済み — 粗い使用状況のヒント（生の履歴は端末の外に出ず、AI相談に含める場合は送信前に必ず確認されます）が整理の品質を高め、この行は権限の管理・取り消し用ですが、取り消しても整理はすべて利用できます。	許可済み — 使用状況の大まかなヒントで整理の精度を上げられます。生の履歴は端末の外に出ず、AI相談に含める場合は送信前に必ず確認します。権限の管理・取り消しはこの行で行えます。取り消しても整理はすべて利用できます。	一文が長すぎる。一文一要点へ分解し「粗い」を大まかに、精度は隣接行に統一	style-guide 設定説明 一文一要点	yes; 端末外不出・送信前必須確認・取消後も整理可用の3保証を全保持
+organizer_personalization_usage_access_not_granted	REVISE	medium	未許可 — 整理が配置精度を上げる粗い使用状況のヒント（生の履歴は端末の外に出ず、AI相談に含める場合は送信前に必ず確認されます）を初めて使う時点でアプリから尋ね、この行は権限の管理用ですが、許可しなくても整理はすべて利用できます。	未許可 — 整理で使用状況のヒントを初めて必要とする時点で、アプリが許可を求めます。生の履歴は端末の外に出ず、AI相談に含める場合は送信前に必ず確認します。権限の管理はこの行で行えます。許可しなくても整理はすべて利用できます。	主語不明の長文。「整理が…尋ね」を申請主体=アプリと明示し分解	style-guide 設定説明 一文一要点	yes; 初回必要時のみ要求・端末外不出・送信前確認・無許可でも整理可用を保持
+organizer_usage_access_jit_title	REVISE	low	使用状況を使って、より賢く整理する？	使用状況を使って、より賢く整理しますか？	dialog題の疑問形は「しますか」が自然。「する？」は唐突	style-guide 疑問形タイトル	yes
+organizer_usage_access_jit_body	REVISE	medium	今まさに整理が使用状況を読もうとしているため尋ねており、許可すれば粗い使用状況のヒント（生の使用履歴が端末の外に出ることはありません）で配置の精度が上がり、AI相談に含める場合も送信前に必ず確認されますが、許可しなくても整理はすべて利用できます。	整理でアプリの使用状況を読み込むため、いま確認を求めています。許可すると、大まかな使用状況のヒントで配置の精度が上がります。生の使用履歴が端末の外に出ることはありません。ヒントをAI相談に含めるときも、送信前に必ず確認します。許可しなくても、整理はすべて利用できます。	許諾ダイアログの1文が過長で読み切りにくい。保証ごとに文を分割。EN defaultも1文過長のため分割を推奨	style-guide設定説明は一文一要点; ai-register S（—・長文）	yes: なぜ今か/ヒントで精度向上/生履歴は端末外不出/AI相談は送信前確認/拒否しても整理は全機能利用、の5点すべて保持
+organizer_usage_access_jit_open_settings	OK	-	設定を開く		動作と結果が予測できるCTA。句点なしも規約どおり	style-guide CTA原則	-
+organizer_usage_access_jit_continue	REVISE	low	許可せず続行	許可せずに続行	「許可せず続行」は硬く読める。同ダイアログの補足文「許可せずに」と助詞を揃える	rubric redundancy/consistency; style-guide CTA動作句	yes: タップで許可なしの継続という動作は不変
+organizer_usage_access_jit_settings_unavailable	OK	-	システムの使用状況アクセス設定を開けませんでした。許可せずにこのまま続行できます。		失敗事実と代替経路の両方が残る	style-guide 安全・失敗	-
+organizer_strategy_title	OK	-	整理ストラテジー		フローの多数派表記かつCONTEXT.mdのレイアウトストラテジーに整合	rubric terminology	-
+organizer_strategy_summary	OK	-	ホーム画面を整理するときの方針を選択します。		対象と動作が明確な設定概要	style-guide設定概要	-
+organizer_strategy_frozen_operation_active	REVISE	medium	整理操作を実行中のため、中断してから整理方法を変更してください。	整理操作を実行中です。中断してから整理ストラテジーを変更してください。	同画面title「整理ストラテジー」がここでは「整理方法」となり用語不一致。統一し対応関係を明確化	rubric terminology/consistency	yes: 実行中は変更不可・先に中断が必要、は不変
+organizer_strategy_retry_when_busy	REVISE	low	他の整理の変更を実行中です。完了後に再度お試しください。	別の整理の変更が進行中です。完了後に再度お試しください。	「他の…変更を実行中」は読みにくい。apply_concurrentの「別の…が進行中」に揃える	rubric redundancy/consistency	yes: 競合中のため再試行を促す意味は不変
+organizer_generated_folder_fallback_name	OK	-	"フォルダ"		引用符はAndroid resourceのescapingで画面表示は「フォルダ」。default「Folder」と一致	Android resource互換性	-
+manual_organization_title	OK	-	ホームレイアウトを整理		操作対象を含むtitle	CONTEXT.mdホームレイアウト	-
+manual_organization_explainer	OK	-	適用前に整理案を確認できます。現在のレイアウトは自動的に変更されません。		確認必須と自動変更なしの2要点が明示	style-guide設定説明	-
+manual_organization_strategy_section	OK	-	整理ストラテジー		見出し。多数派表記どおり	rubric terminology	-
+manual_organization_preview_strategy	OK	-	ストラテジー: %1$s		placeholder型維持。ラベル形式は兄弟行と同一	style-guide placeholder	-
+manual_organization_cross_page_moved_count	OK	-	ページをまたいで移動: %1$d件		件数表記は規約どおり	style-guide件数	-
+manual_organization_preserved_by_strategy_count	OK	-	ストラテジーにより保持: %1$d件		多数派のストラテジー表記	rubric terminology	-
+manual_organization_start	OK	-	整理を開始		CTAとして明確	style-guide CTA	-
+manual_organization_method_title	OK	-	整理案の作り方		疑問形defaultに対し日本語は名詞句見出しで自然	style-guide title	-
+manual_organization_method_plain	OK	-	このまま整理		選択肢として短く予測可能	style-guide CTA	-
+manual_organization_start_again	OK	-	新しい整理案を確認		対象を含むCTA	glossary organization proposal	-
+manual_organization_retry	OK	-	再試行		標準的な再試行ラベル	style-guide CTA	-
+manual_organization_capturing	OK	-	現在のホームレイアウトを読み込んでいます…		進行中表現と省略記号はsourceどおり	style-guide progress	-
+manual_organization_planning	OK	-	安全に整理できる案を作成しています…		安全性の含意を保持	style-guide progress	-
+manual_organization_input_not_ready_yet	OK	-	ランチャーはまだ起動中です。少し待ってから、もう一度お試しください。		待機と再試行の手引きが明確	style-guide失敗時	-
+manual_organization_input_unavailable_bug	OK	-	必要な整理情報を利用できません。何も変更されていません。繰り返し発生する場合はバグを報告してください。		無変更と報告手引きの両方を保持	style-guide安全・失敗	-
+manual_organization_rejected	OK	-	このレイアウトは安全に整理できません。何も変更されていません。		不可理由と無変更を保持	style-guide安全・失敗	-
+manual_organization_impossible	OK	-	現在の空きスペースでは、このレイアウトを整理できません。何も変更されていません。		空き不足の理由と無変更を保持	style-guide安全・失敗	-
+manual_organization_no_changes	OK	-	必要な変更はありません。何も変更されていません。		変更不要と無変更は別事実で両方残る	style-guide状態訳し分け	-
+manual_organization_preview	OK	-	整理案を確認		目的語付きCTA（ガイドの「確認」例どおり）	style-guide CTA	-
+manual_organization_moved_count	OK	-	移動する配置: %1$d件		状態と件数が読める	glossary placement	-
+manual_organization_widget_moved_count	OK	-	ウィジェット単位で移動: %1$d件		単位の説明が明確	rubric naturalness	-
+manual_organization_preserved_count	OK	-	保持する配置: %1$d件		移動行と対で読める	rubric consistency	-
+manual_organization_new_folders_count	OK	-	新しいフォルダ: %1$d個		助数詞「個」は適切	style-guide件数	-
+manual_organization_new_pages_count	REVISE	low	新しいホーム画面ページ: %1$d枚	ホーム画面の新しいページ: %1$dページ	ページの助数詞はガイド「%1$dページ」準拠。「ホーム画面ページ」の連鎖も解消	style-guide件数・助数詞	yes: 新規ページ数の意味とplaceholderは不変
+manual_organization_confirm	OK	-	確認した整理案を適用		確認済みであることと適用を明示	style-guide CTA	-
+manual_organization_cancel	OK	-	キャンセル		非破壊中止は「キャンセル」で規約どおり	CONTEXT.md中止語彙	-
+manual_organization_cancel_before_checkpoint	OK	-	適用前に中断		zero-write中断の「中断」語が正しい	CONTEXT.md中止語彙D-13	-
+manual_organization_applying	OK	-	確認した整理案を適用しています。この処理は安全に中断できません。		中断不可の警告を保持	style-guide安全・失敗	-
+manual_organization_stale_outcome	OK	-	この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。		不適用と無変更を別文で保持	style-guide状態訳し分け	-
+manual_organization_stale_proposal_discarded	REVISE	low	確認した整理案を安全に適用できなくなったため、整理案は破棄されました。	確認した整理案は安全に適用できなくなったため、破棄されました。	「整理案」の重複を解消。1文で理由と結果がつながる	rubric brevity/naturalness	yes: 不可逆の破棄とその理由（安全に適用不可）は保持
+manual_organization_stale_proposal_not_reviewed	REVISE	low	整理案の作成中にホームレイアウトが変更されたため、確認前に整理案は破棄されました。	整理案の作成中にホームレイアウトが変更されたため、確認前に破棄されました。	同じく「整理案」重複を解消。主語は文頭で明確	rubric brevity/naturalness	yes: 確認前破棄と原因（レイアウト変更）は保持
+manual_organization_recapture	OK	-	もう一度読み込んで確認		再読み込みと確認を示すCTA	style-guide CTA	-
+manual_organization_recapture_summary	OK	-	現在のホームレイアウトを読み込み、確認用の新しい整理案を作成します。		操作の結果が具体的	style-guide設定説明	-
+manual_organization_apply_success	OK	-	整理を適用し、検証しました。		適用と検証完了の2事実を保持	style-guide progress	-
+manual_organization_apply_rejected	OK	-	整理は適用されませんでした。		不適用の事実のみで簡潔	style-guide安全・失敗	-
+manual_organization_apply_rolled_back	OK	-	整理を取り消しました。保存したレイアウトのままです。		取消と現状態を保持	glossary rollback	-
+manual_organization_apply_recovered	OK	-	整理を完了できませんでした。保存したレイアウトを復元しました。		失敗と復元済みを保持	glossary restore	-
+manual_organization_apply_unresolved	OK	-	現在のレイアウトを確認できませんでした。今は別の整理を開始しないでください。		検証不能と再実行禁止を保持	style-guide安全・失敗	-
+manual_organization_apply_recovery_failed	OK	-	自動復旧を確認できませんでした。今は別の整理を開始しないでください。		復旧未検証と再実行禁止を保持	style-guide安全・失敗	-
+manual_organization_safe_terminal	OK	-	現在のレイアウトには安全上の確認が必要です。今は新たに整理を実行しないでください。		要確認と再実行禁止を保持	style-guide安全・失敗	-
+manual_organization_open_diagnostics	OK	-	オーガナイザー診断を開く		診断画面への導線はglossary許容表記	glossary diagnostic	-
+manual_organization_open_diagnostics_summary	OK	-	他の変更を行う前に、プライバシーに配慮した詳細をサポート用に書き出します。		用途とタイミングが明確	style-guide設定説明	-
+manual_organization_apply_concurrent	OK	-	別のレイアウト操作が進行中です。後でもう一度お試しください。		競合と再試行を保持	style-guide安全・失敗	-
+manual_organization_recovery	OK	-	保存したレイアウトに戻す		復元CTAの利用者語（glossary許容）	glossary restore	-
+manual_organization_recovery_inspecting	OK	-	保存したレイアウトを安全に復元できるか確認しています…		安全確認中の進行表現	style-guide progress	-
+manual_organization_recovery_preview	REVISE	medium	保存したレイアウト — この画面で確認した整理を適用する前の状態へ、ホームレイアウトを戻します。実行するには確認が必要です。	保存したレイアウトを復元し、この画面で確認した整理を適用する前の状態へ戻します。実行するには確認が必要です。	長いダッシュ（—）挿入が読みにくい。文を分けて復元先と確認必須を明示	ai-register S記号（—）; style-guide dialog	yes: 復元先＝適用前状態、実行には確認必須、の意味は不変
+manual_organization_recovery_history_prefix	OK	-	直前の整理での変更: %1$s		接頭ラベルとして自然	rubric naturalness	-
+manual_organization_recovery_confirm	OK	-	保存したレイアウトに戻す		確認CTAがrecovery行と同一で一貫	rubric consistency	-
+manual_organization_recovering	REVISE	low	保存されたレイアウトを復元しています…	保存したレイアウトを復元しています…	「保存した/保存された」の揺れを同一フローの多数派「保存した」へ統一	rubric terminology consistency	yes: 復元進行中の意味は不変
+manual_organization_recovery_restored	REVISE	low	保存されたレイアウトを復元しました。	保存したレイアウトを復元しました。	同上の表記統一	rubric terminology consistency	yes: 復元完了の意味は不変
+manual_organization_recovery_not_available	REVISE	low	この保存済みレイアウトは、安全に復元できなくなっています。	この保存したレイアウトは、安全に復元できなくなっています。	「保存済み」も同様に「保存した」へ統一	rubric terminology consistency	yes: 安全に復元不可の状態は不変
+manual_organization_recovery_failed	OK	-	保存したレイアウトに安全に戻せませんでした。		失敗事実が明確	style-guide安全・失敗	-
+manual_organization_durable_status_restorable	REVISE	medium	ホームレイアウトは整理済みです。保存された整理前のバックアップは復元できます。	ホームレイアウトは整理済みです。保存した整理前のレイアウトに戻せます。	recovery pointの利用者語として「バックアップ」はglossary回避語。ハブの通常UIで使用	glossary recovery point	yes: 整理済み状態と復元可能性は保持
+manual_organization_durable_status_restored_or_expired	REVISE	medium	保存された整理前のバックアップは、復元済みまたは期限切れのため、もう復元できません。	保存した整理前のレイアウトは、復元済みまたは期限切れのため、もう戻せません。	同glossary理由。restorable行の「戻せる」と対に統一	glossary recovery point	yes: 復元不可と理由（復元済み/期限切れ）は保持
+manual_organization_durable_status_unresolved	OK	-	整理の変更が安全に完了しませんでした。		未完了状態を簡潔に表現	style-guide状態表示	-
+manual_organization_durable_status_checking	OK	-	保存された整理状態を確認しています…		進行中表現（状態叙述として自然）	style-guide progress	-
+manual_organization_recovery_remaining_under_one_hour	OK	-	残り1時間未満で復元できなくなります。		期限の切れ方が具体的	style-guide設定説明	-
+manual_organization_scope	OK	-	整理対象: %1$d件（%2$d個のプロファイル、%3$dページ）。		glossary対象語・助数詞とも適切	glossary target/profile; style-guide件数	-
+manual_organization_device_scope	OK	-	画面レイアウト: %1$d列 × %2$d行、Dock %3$d枠。		device profile活用語・Dock表記どおり	glossary device profile/Dock	-
+manual_organization_moved_single_placement	OK	-	単独で移動: %1$d件		内訳行として明確	rubric naturalness	-
+manual_organization_moved_folder_member	OK	-	フォルダ内の項目として移動: %1$d件		内訳行として明確	rubric naturalness	-
+manual_organization_moved_folder_unit	OK	-	フォルダ単位で移動: %1$d件		対表現で明確	rubric naturalness	-
+manual_organization_moved_widget_unit	OK	-	ウィジェット単位で移動: %1$d件		widget_moved_countと同一文言で一貫	rubric consistency	-
+manual_organization_preserved_locked	OK	-	ロックされた配置を保持: %1$d件		ロック配置の意味を保持（glossary近形）	glossary locked placement	-
+manual_organization_preserved_reserved_region	OK	-	検索バー領域の配置を保持: %1$d件		予約領域の意味が伝わる	rubric naturalness	-
+manual_organization_preserved_unavailable	OK	-	利用できない配置を保持: %1$d件		状態+保持が明確	rubric naturalness	-
+manual_organization_preserved_dock	OK	-	Dock配置を保持: %1$d件		Dock表記はglossaryどおり	glossary Dock	-
+manual_organization_preserved_widget	OK	-	ウィジェットを保持: %1$d件		簡潔で明確	rubric naturalness	-
+manual_organization_preserved_app_pair	OK	-	アプリペアを保持: %1$d件		用語として確立	rubric naturalness	-
+manual_organization_preserved_legacy_shortcut	OK	-	旧形式のショートカットを保持: %1$d件		glossaryの確定訳どおり	glossary legacy shortcut	-
+manual_organization_preserved_non_target	OK	-	対象外の配置を保持: %1$d件		対象外の意味が明確	rubric naturalness	-
+manual_organization_preserved_strategy	REVISE	low	選択した戦略により保持: %1$d件	選択したストラテジーにより保持: %1$d件	「戦略」はフローの「ストラテジー」と不一致。統一	rubric terminology consistency	yes: 保持理由の意味は不変
+manual_organization_preserved_structural	OK	-	関連する項目を保持: %1$d件		実装語を利用者語へ置換済み	rubric implementation leakage	-
+manual_organization_preserved_duplicate_launch_target	OK	-	重複のため元の位置に保持: %1$d件		重複保持の理由が伝わる	CONTEXT.md重複アイテム	-
+manual_organization_preserved_already_canonical	OK	-	変更不要の配置: %1$d件		glossaryの確定訳どおり	glossary canonical	-
+manual_organization_unplaced_grid	OK	-	画面の範囲を超えるため未配置: %1$d件		理由+結果が読める	rubric naturalness	-
+manual_organization_unplaced_target	OK	-	対象を利用できないため未配置: %1$d件		理由+結果が読める	rubric naturalness	-
+manual_organization_unplaced_strategy_scope	REVISE	low	選択したストラテジーが現在のページとフォルダーを維持するため未配置: %1$d件	選択したストラテジーが現在のページとフォルダを維持するため未配置: %1$d件	「フォルダー」はフロー全体の「フォルダ」と表記揺れ	rubric terminology consistency	yes: 未配置の理由は不変
+manual_organization_selection_stale	REVISE	low	選択後にホーム画面のレイアウトが変わりました。変更は加えられていません。もう一度開始して、ホーム画面にないアプリを再確認してください。	選択後にホーム画面のレイアウトが変わりました。何も変更されていません。もう一度開始して、ホーム画面にないアプリを再確認してください。	「変更なし」の定訳が2種ある。多数派「何も変更されていません」へ統一	style-guide同一状態は同一表現	yes: 無変更と再開手引きは保持
+manual_organization_candidate_unresolved	REVISE	low	選択したアプリを追加できません。変更は加えられていません。もう一度開始して、ホーム画面にないアプリを再確認してください。	選択したアプリを追加できません。何も変更されていません。もう一度開始して、ホーム画面にないアプリを再確認してください。	同上の統一	rubric consistency; style-guide同一状態	yes: 追加不可・無変更・再開手引きは保持
+manual_organization_warning_legacy_shortcut	OK	-	旧形式のショートカットの確認が必要: %1$d件		glossary訳で要確認が伝わる	glossary legacy shortcut	-
+manual_organization_warning_fallback_category	OK	low	代替カテゴリを使用: %1$d件	-	代替user語でfallbackを自然に表現。兄弟行の体裁とも一致	glossary: organization proposal 周辺、rubric: naturalness	-
+manual_organization_warning_unavailable	OK	low	利用できない配置を保持: %1$d件	-	unavailable の基準訳語。単位29/31はこの表記へ統一する	rubric: redundancy/consistency	-
+manual_organization_warning_duplicate_launch_target	OK	low	重複のため移動させなかった配置: %1$d件	-	kept in place=移動させなかった の意味を保持。重複はduplicate専用としoverlapは8で分離	style-guide: 安全、失敗、復旧	yes
+manual_organization_rejection_unknown_item_kind	OK	low	未対応のアイテム種別: %1$d件	-	Unsupported item type の簡潔で正確な訳	rubric: naturalness	yes
+manual_organization_rejection_invalid_container	REVISE	low	無効なコンテナ: %1$d件	無効な格納先: %1$d件	コンテナは実装語。利用者には「フォルダかホーム画面の格納先」が伝わる語へ	style-guide: カタカナ・英語・技術語（実装語を出さない）	yes: 無効な参照先の件数であることに変化なし
+manual_organization_rejection_unknown_page	OK	low	不明なページ参照: %1$d件	-	検証行として正確。冗長な言い換えより簡潔	rubric: brevity	yes
+manual_organization_rejection_bounds	OK	low	範囲外の配置: %1$d件	-	Out-of-bounds の定訳。配置語もglossary準拠	glossary: placement	yes
+manual_organization_rejection_overlap	REVISE	medium	重複する配置: %1$d件	重なっている配置: %1$d件	重複はduplicate(3/12/17)と衝突。overlap=セル重なりは「重なって」で区別	rubric: terminology、style-guide: 表現の原則	yes: 同一セル重複の件数である意味は不変
+manual_organization_rejection_dangling_reference	OK	low	壊れた参照: %1$d件	-	検証warning行として簡潔で意味が取れる	rubric: naturalness	yes
+manual_organization_rejection_malformed_app_pair	OK	low	不正なアプリペア: %1$d件	-	Malformed app pair の定訳。アプリペアはAndroid機能語	rubric: terminology	yes
+manual_organization_rejection_locked_out_of_bounds	REVISE	medium	範囲外のロック済みアイテム: %1$d件	範囲外にあるロックした配置: %1$d件	ロック済みアイテムはglossaryのavoid形。ロックした配置へ	glossary: locked placement（avoid ロック済みアイテム）	yes: 範囲外のロック対象件数の意味は不変
+manual_organization_rejection_duplicate_target	OK	low	重複する整理対象: %1$d件	-	glossaryどおり target=整理対象	glossary: target	yes
+manual_organization_rejection_missing_target	OK	low	見つからない整理対象: %1$d件	-	glossaryどおり。自然な簡潔さ	glossary: target	yes
+manual_organization_rejection_incomplete_target_partition	OK	low	不完全な対象集合: %1$d件	-	Target Set=対象集合 はCONTEXT.mdの定義語	CONTEXT.md: 対象集合 (Target Set)	yes
+manual_organization_rejection_additions	OK	low	全体整理での予期しない追加: %1$d件	-	Full Organization=全体整理 はCONTEXT.md定義語	CONTEXT.md: 全体整理	yes
+manual_organization_rejection_invalid_rules	OK	low	無効なルール: %1$d件	-	検証warning行として簡潔。避免語(設定/XMLルール)不使用	CONTEXT.md: 整理ルール	yes
+manual_organization_rejection_duplicate_item	OK	low	重複するアイテムID: %1$d件	-	plan検証のID重複。正確さ優先の行でこのまま許容	rubric: implementation leakage（精度優先で許容）	yes
+manual_organization_rejection_duplicate_page	OK	low	重複するページ: %1$d件	-	簡潔・正確	rubric: naturalness	yes
+manual_organization_rejection_invalid_dimensions	REVISE	low	無効なデバイス寸法: %1$d件	無効な画面レイアウト寸法: %1$d件	デバイス寸法は硬い直訳。device profile=画面レイアウト の利用者語へ	glossary: device profile	yes: 行列寸法が無効という件数の意味は不変
+manual_organization_rejection_kind_target_mismatch	OK	low	アイテム種別と対象情報の不整合: %1$d件	-	不整合の基準形。21をこれへ合わせる	rubric: redundancy/consistency	yes
+manual_organization_rejection_target_profile_mismatch	REVISE	low	アイテムと対象情報のプロファイル不一致: %1$d件	アイテムと対象情報のプロファイル不整合: %1$d件	同英文mismatchが20は不整合・21は不一致で揺れ。不整合へ統一	rubric: redundancy/consistency	yes: プロファイル間の不一致という意味は不変
+manual_organization_rejection_unknown_signal_item	PRODUCT_DECISION	low	不明なシグナルアイテム: %1$d件	-	signal はplanner語で利用者語が未定義。使用状況ヒント等への対応は語彙決定が必要	rubric: implementation leakage、glossary未収載	-
+manual_organization_rejection_unknown_category	OK	low	不明なカテゴリ: %1$d件	-	カテゴリはglossary語。簡潔	glossary: category	yes
+manual_organization_rejection_invalid_category_provenance	REVISE	medium	(ja無し)	許可されていないカテゴリの割り当て元: %1$d件	ja欠落。Category source not allowed を兄弟行の体裁で補う	style-guide: 安全、失敗、復旧（警告行の欠落）	yes: 許可されない分類元の件数という意味を保持
+manual_organization_available_constraint	OK	low	利用可能な配置: %1$d件	-	簡潔・正確	rubric: naturalness	yes
+manual_organization_disabled_constraint	OK	low	利用できないプロファイルの配置: %1$d件	-	利用できない の統一形に合致	rubric: consistency	yes
+manual_organization_quiet_constraint	OK	low	一時停止中のプロファイルの配置: %1$d件	-	quiet(停止中work profile)を自然な利用者語で表現	rubric: naturalness、glossary: work profile	yes
+manual_organization_private_space_constraint	OK	low	プライベートスペースの配置: %1$d件	-	AOSP機能語の既定表記	rubric: terminology	yes
+manual_organization_unavailable_item_constraint	REVISE	medium	利用不可の配置: %1$d件	利用できない配置: %1$d件	2・89は「利用できない」。同一概念の揺れを統一	rubric: redundancy/consistency	yes: unavailable配置の件数という意味は不変
+manual_organization_locked_constraint	OK	low	ロックした配置を保持: %1$d件	-	glossaryのpreferred形そのもの	glossary: locked placement	yes
+manual_organization_unavailable_constraint	REVISE	medium	利用不可またはプロファイルの制限がある配置: %1$d件	利用できないまたはプロファイルの制限がある配置: %1$d件	利用不可/利用できない の揺れ統一。両条件の列挙は保持	rubric: redundancy/consistency	yes: 二条件のOR列挙と件数の意味は不変
+manual_organization_widget_constraint	OK	low	ウィジェットを保持: %1$d件	-	自然・簡潔	rubric: naturalness	yes
+manual_organization_app_pair_constraint	OK	low	アプリペアを保持: %1$d件	-	機能語を維持	rubric: terminology	yes
+manual_organization_legacy_shortcut_constraint	OK	low	旧形式のショートカットを保持: %1$d件	-	glossaryのpreferred形そのもの	glossary: legacy shortcut	yes
+manual_organization_empty_folder_constraint	OK	low	空のフォルダを保持: %1$d件	-	自然・簡潔	rubric: naturalness	yes
+manual_organization_preview_details_unavailable	REVISE	medium	今回、具体的な変更一覧を用意できませんでした。適用前に下の件数サマリーを確認してください。	今回、具体的な変更一覧を用意できませんでした。適用前に下の件数の内訳を確認してください。	サマリーは通常UI避け語。内訳なら何を見るか具体的	glossary: placement summary（サマリー回避）、style-guide: カタカナ	yes: 一覧不可+適用前に件数確認の要求は不変
+manual_organization_detecting_missing_apps	OK	low	ホーム画面にないアプリを確認しています…	-	進行中表示。省略記号もsourceどおり	style-guide: 句読点と末尾(進行中)	-
+manual_organization_preamble_scope	REVISE	low	この確認ではホーム画面全体を対象に整理案を作ります。確認する前に適用されることはありません。	ホーム画面全体を対象に整理案を作成します。整理案を確認して適用するまで、ホーム画面は変更されません。	「確認」が画面名と操作の二役で曖昧。確定まで変更なしの保証を明確化	style-guide: 安全、失敗、復旧	yes: 確認前は適用しない保証は等価のまま
+manual_organization_preparation	OK	low	準備中	-	進行中ラベルとして十分	style-guide: 句読点と末尾(進行中)	-
+manual_organization_interrupt	OK	low	中断	-	zero-write停止=中断 は中止語彙規約どおり	CONTEXT.md: 中断・破棄・キャンセル	-
+manual_organization_failed	REVISE	medium	実行できませんでした	整理を実行できませんでした	何が実行できなかったか不明。organization run=整理 を補う	glossary: organization run、style-guide: CTA・タイトル・状態	yes: 整理run失敗の意味は不変
+manual_organization_discard_confirm_title	OK	low	破棄しますか？	-	疑問形確認。破棄ラベルも規約どおり	style-guide: 句読点と末尾(確認要求は？)、CONTEXT.md: 破棄	yes
+manual_organization_discard_confirm_text	REVISE	medium	選択と提案を破棄します。ホーム画面への変更はありません。	選択内容と整理案を破棄します。ホーム画面への変更はありません。	提案→整理案 はglossary。選択内容で対象を明確化	glossary: organization proposal（整理案）	yes: 選択と整理案の破棄+未適用の保証は不変
+manual_organization_discard	OK	low	破棄	-	不可逆操作=破棄 は中止語彙規約どおり	CONTEXT.md: 中断・破棄・キャンセル	-
+manual_organization_missing_apps_title	OK	low	整理するアプリを選択	-	目的語を含む操作タイトル	style-guide: CTA、タイトル、状態	-
+manual_organization_missing_apps_search_hint	OK	low	アプリを検索	-	検索ヒントの定形	rubric: naturalness	-
+manual_organization_missing_apps_select_all	OK	low	すべて選択	-	定形ボタン	style-guide: CTA	-
+manual_organization_missing_apps_clear_all	OK	low	選択を解除	-	状態(選択済み)と操作(解除)を混同しない良い訳	style-guide: 状態と操作の区別	-
+manual_organization_missing_apps_continue	OK	low	続行	-	定形CTA	style-guide: CTA	-
+manual_organization_missing_apps_empty_continue	OK	low	未選択で続行します。未配置アプリを追加せずに整理します。	-	追加なし整理の条件を明示し意味を保持	style-guide: 安全、失敗、復旧	yes
+manual_organization_missing_apps_state_checked	OK	low	選択済み	-	状態語(選択 でなく選択済み)は正しい区分	style-guide: 状態と操作の区別	-
+manual_organization_missing_apps_state_unchecked	OK	low	未選択	-	状態語として正しい	style-guide: 状態と操作の区別	-
+manual_organization_preview_unavailable_add	REVISE	medium	新しいアプリを追加するこの提案の変更一覧を表示できませんでした。ホーム画面は変更されていません。追加は、変更一覧を確認できてから行われます。	新しいアプリを追加する整理案の変更一覧を用意できませんでした。ホーム画面は変更されていません。アプリの追加は、変更一覧全体を確認するまで行われません。	修飾の連鎖が直訳調。提案→整理案。「確認できてから」を確認まで不可へ	glossary: organization proposal、style-guide: 安全、失敗、復旧	yes: 一覧不可+未変更+全体確認後のみ追加 の3条件を保持
+manual_organization_preview_retry	OK	low	プレビューを再試行	-	目的語を含むCTA	style-guide: CTA	-
+manual_organization_added_count	OK	low	追加するアプリ: %1$d件	-	簡潔。件数の助数詞も適切	style-guide: 助数詞	yes
+manual_organization_changes_heading	OK	low	変更内容	-	確認画面の見出しとして文脈で提案内容と分かる	style-guide: タイトル	-
+manual_organization_group_moved	OK	low	移動 (%1$d件)	-	兄弟行と同型で統一	rubric: consistency	yes
+manual_organization_group_added	OK	low	追加 (%1$d件)	-	同上	rubric: consistency	yes
+manual_organization_preview_add_descriptor	OK	low	%1$s（%2$s）	-	placeholder順序・全角括弧とも体裁どおり	style-guide: Android resource 互換性	-
+manual_organization_preview_add_row	OK	low	%1$sを%2$sに追加	-	Add → の矢印を自然な語順の文に組み替え	style-guide: 自然さ、簡潔さ、語順	-
+manual_organization_group_new_folders	OK	low	新規フォルダ (%1$d件)	-	兄弟行と同型	rubric: consistency	yes
+manual_organization_group_new_pages	OK	low	新規ページ (%1$d件)	-	兄弟行と同型	rubric: consistency	yes
+manual_organization_group_preserved	OK	low	保持 (%1$d件)	-	兄弟行と同型	rubric: consistency	yes
+manual_organization_group_warnings	OK	low	警告 (%1$d件)	-	兄弟行と同型	rubric: consistency	yes
+manual_organization_preview_show_all	OK	low	すべて表示 (%1$d件)	-	件数を含むCTA	style-guide: CTA	-
+manual_organization_preview_show_fewer	OK	low	先頭%1$d件のみ表示	-	only the first の限定が「のみ」で保持	rubric: brevity without loss	-
+manual_organization_preview_expanded_state	REVISE	low	展開	展開されています	stateDescription(読み上げ専用)。名詞止めは聞いて状態と取れない	style-guide: accessibility-only（聞いて意味の取れる文）	yes: 展開状態であることは不変
+manual_organization_preview_collapsed_state	REVISE	low	折りたたみ	折りたたまれています	stateDescription(読み上げ専用)。状態文として自然に	style-guide: accessibility-only	yes: 折りたたみ状態であることは不変
+manual_organization_preview_move_row	OK	low	%1$s → %2$s（%3$s）	-	移動行の定型。矢印・括弧の体裁維持	style-guide: Android resource 互換性	-
+manual_organization_preview_same_band_move_row	OK	low	%1$s → %2$s内で位置を調整%3$s	-	帯内調整を自然な語順で。位置=座標は許容	glossary: placement（座標は位置を許容）	yes
+manual_organization_preview_workspace_destination	OK	low	%2$s・%1$s・%3$d行目・%4$d列目	-	位置指定付きplaceholderの語順入れ替えは正当。行目/列目は基準形	style-guide: Android resource 互換性	-
+manual_organization_preview_row_ordinal_note	REVISE	medium	（%1$d段目から%2$d段目）	（%1$d行目から%2$d行目）	同じrow概念が71・78は行目、ここだけ段目で揺れ	rubric: redundancy/consistency	yes: 行の移動元/先の注記である意味は不変
+manual_organization_preview_item_row	OK	low	%1$s：%2$s	-	行定型。読点区切りの読み上げとも整合	style-guide: 読点・区切り	-
+manual_organization_preview_item_descriptor	OK	low	「%1$s」(%2$s)・%3$s	-	emダッシュを中黒へ置換した視覚行として自然	ai-register-tells: 記号の残骸(—回避)	-
+manual_organization_preview_item_descriptor_without_kind	OK	low	「%1$s」・%2$s	-	同上の体裁	rubric: consistency	-
+manual_organization_preview_position_unidentified	OK	low	サポート対象外の配置%1$d	-	件なしのid列記はsourceどおり。配置語もglossary準拠	glossary: placement	yes
+manual_organization_preview_position_with_supplement	OK	low	%1$s（%2$s）	-	補足括弧の定型	style-guide: Android resource 互換性	-
+manual_organization_preview_supplement_cell	OK	low	%3$s・%1$d行目・%2$d列目	-	位置指定付き語順入れ替え。行目/列目基準形と一致	style-guide: Android resource 互換性	-
+manual_organization_preview_supplement_parent_with_stage	OK	low	%1$s・%2$s	-	親+領域の連結定型	style-guide: 読点・区切り	-
+manual_organization_preview_supplement_stage_top	OK	low	上側	-	composition内の短い補足語として機能	rubric: brevity	-
+manual_organization_preview_supplement_stage_bottom	OK	low	下側	-	同上	rubric: brevity	-
+manual_organization_preview_move_reason_single_placement	OK	low	単体配置として移動	-	理由断片として簡潔	rubric: naturalness	yes
+manual_organization_preview_move_reason_folder_member	REVISE	low	フォルダメンバーとして移動	フォルダ内のアイテムとして移動	フォルダメンバーは直訳調。何が移動するか具体化	style-guide: 自然さ(カタカナ直訳回避)	yes: フォルダ所属として移動する意味は不変
+manual_organization_preview_move_reason_folder_unit	OK	low	フォルダ単位で移動	-	単位表現として自然	rubric: naturalness	yes
+manual_organization_preview_move_reason_widget_unit	OK	low	ウィジェット単位で移動	-	同上	rubric: naturalness	yes
+manual_organization_preview_move_reason_unspecified	OK	low	移動	-	composition断片の最短形	rubric: brevity	yes
+manual_organization_preview_preserved_reason_locked	OK	low	ロックされているため保持	-	状態理由文として自然。avoid形(ロック済みアイテム)不使用	glossary: locked placement	yes
+manual_organization_preview_preserved_reason_reserved_region	REVISE	low	予約領域のため保持	検索エリアとして確保されているため保持	英文のsearch(検索用)が落ちて何の予約か不明	rubric: brevity without loss（目的語の欠落）	yes: 検索用に確保された領域のため保持する意味を保持
+manual_organization_preview_preserved_reason_unavailable	OK	low	利用できないため保持	-	利用できない の統一形に合致	rubric: consistency	yes
+manual_organization_preview_preserved_reason_dock	REVISE	medium	ドック配置のため保持	Dockにあるため保持	ドックはglossaryのavoid形。Dock表記へ	glossary: Dock（avoid ドック）	yes: Dockにあり保持される意味は不変
+manual_organization_preview_preserved_reason_widget	OK	-	ウィジェットのため保持	—	保持理由の断片として簡潔で自然	-	-
+manual_organization_preview_preserved_reason_app_pair	OK	-	アプリペアのため保持	—	用語（アプリペア）も簡潔さも基準を満たす	-	-
+manual_organization_preview_preserved_reason_legacy_shortcut	OK	-	旧形式のショートカットのため保持	—	glossary の旧形式のショートカットに一致	glossary legacy shortcut	-
+manual_organization_preview_preserved_reason_non_target	OK	-	整理対象外のため保持	—	glossary の整理対象語彙に一致し簡潔	glossary target→整理対象	-
+manual_organization_preview_preserved_reason_structural	REVISE	medium	構造メンバーとして保持	関連する項目のため保持	「構造メンバー」は計画語で伝わらない。同画面の preserved_structural の語に合わせる	rubric implementation leakage; sibling manual_organization_preserved_structural	yes: 構造上の関連で保持される旨は不変
+manual_organization_preview_preserved_reason_strategy	REVISE	medium	選択した整理戦略により保持	選択したストラテジーにより保持	同画面は strategy_section「整理ストラテジー」等ストラテジー表記。戦略は別表記の混入	terminology consistency; siblings strategy_section/preview_strategy	yes: 選択した方法による保持である旨は不変
+manual_organization_preview_preserved_reason_already_canonical	REVISE	low	既に整列済みのため保持	既に所定の位置にあるため保持	「整列済み」は未使用の同義語で正規化済みに近い実装概念。利用者語の位置表現に	glossary canonical→変更不要の配置	yes: 既に置くべき場所にあるため保持、は不変
+manual_organization_preview_preserved_reason_duplicate_launch_target	OK	-	同じ起動先の項目と重複しているため保持	—	重複による保持理由が簡潔に読める。警告版と語幹も一致	CONTEXT.md 重複アイテム（同一起動先）	-
+manual_organization_preview_warning_legacy_shortcut_item	OK	-	旧形式のショートカットのため確認が必要	—	警告として要確認の理由が明確。用語もglossary一致	glossary legacy shortcut	-
+manual_organization_preview_warning_fallback_category_item	REVISE	low	分類を推定できずフォールバックカテゴリを使用	分類を推定できず、代替カテゴリを使用	同画面の warning_fallback_category「代替カテゴリ」が正本表記。読点も補う	terminology consistency with manual_organization_warning_fallback_category	yes: 分類失敗と代替カテゴリ使用の警告内容は不変
+manual_organization_preview_warning_unavailable_item	OK	-	現在利用できないため保持	—	理由と結果が簡潔に読める	-	-
+manual_organization_preview_warning_duplicate_launch_target_item	REVISE	low	同じ起動先の項目と重複しているため、整理では移動させずに保持しています	同じ起動先の項目と重複しているため、移動せずに保持	兄弟の警告行は簡潔体。丁寧文が1行だけ混在し読みの揺れになる	rubric redundancy/consistency; N-granularity register	yes: 重複・未移動・保持の3点はいずれも保持
+manual_organization_preview_page	OK	-	%1$dページ目	—	位置断片の頁番号として自然	style guide 助数詞	-
+manual_organization_preview_new_page_position	REVISE	low	新規ページ (%1$dページ目)	新規ページ（%1$dページ目）	兄弟の new_folder_row は全角括弧。位置断片の表記を揃える	punctuation consistency	-
+manual_organization_preview_position_workspace	OK	-	%1$s・%2$s	—	領域と頁の中黒併記として自然。placeholder位置は維持	style guide 並列	-
+manual_organization_preview_region_top_left	OK	-	上段左	—	領域名9種は同構成で明瞭	-	-
+manual_organization_preview_region_top_center	OK	-	上段中央	—	同上	-	-
+manual_organization_preview_region_top_right	OK	-	上段右	—	同上	-	-
+manual_organization_preview_region_middle_left	OK	-	中段左	—	同上	-	-
+manual_organization_preview_region_middle_center	OK	-	中段中央	—	同上	-	-
+manual_organization_preview_region_middle_right	OK	-	中段右	—	同上	-	-
+manual_organization_preview_region_bottom_left	OK	-	下段左	—	同上	-	-
+manual_organization_preview_region_bottom_center	OK	-	下段中央	—	同上	-	-
+manual_organization_preview_region_bottom_right	OK	-	下段右	—	同上	-	-
+manual_organization_preview_position_dock	REVISE	medium	ドック%1$d番	Dockの%1$d番目	glossary は Dock 表記（ドック不可）。番目表記で位置断片として自然	glossary Dock	-
+manual_organization_preview_position_folder_existing	REVISE	low	フォルダ「%1$s」内の位置 %2$d	フォルダ「%1$s」内の%2$d番目	「位置 2」より序数が自然。Dock 表記案とも揃う	naturalness; style guide 表現の原則	-
+manual_organization_preview_position_folder_planned	REVISE	low	新規フォルダ「%1$s」内の位置 %2$d	新規フォルダ「%1$s」内の%2$d番目	同上（既存フォルダ側と対称に）	naturalness; consistency	-
+manual_organization_preview_position_app_pair	OK	-	アプリペア「%1$s」	—	名前のみの断片として十分	-	-
+manual_organization_preview_kind_application	OK	-	アプリ	—	種別ラベルとして標準的	-	-
+manual_organization_preview_kind_deep_shortcut	OK	-	ショートカット	—	種別ラベルとして標準的	-	-
+manual_organization_preview_kind_shortcut_legacy	OK	-	旧形式のショートカット	—	glossary の preferred ja に一致	glossary legacy shortcut	-
+manual_organization_preview_kind_folder	OK	-	フォルダ	—	種別ラベルとして標準的	-	-
+manual_organization_preview_kind_app_widget	OK	-	ウィジェット	—	種別ラベルとして標準的	-	-
+manual_organization_preview_kind_custom_app_widget	OK	-	カスタムウィジェット	—	種別ラベルとして標準的	-	-
+manual_organization_preview_kind_app_pair	OK	-	アプリペア	—	他のアプリペア表記と一致	-	-
+manual_organization_preview_kind_unknown	OK	-	アイテム	—	不明種別の代表名として自然	-	-
+manual_organization_preview_new_folder_row	REVISE	low	新規フォルダ「%1$s」を%2$sに作成（メンバー: %3$s）	新規フォルダ「%1$s」を%2$sに作成（内容: %3$s）	フォルダ内容に「メンバー」は擬人化した翻訳調。「内容」が自然	naturalness; S translation-ese	-
+manual_organization_preview_new_page_row	OK	-	%1$dページ目に新規ページを追加	—	追加位置と動作が読み取れる	-	-
+manual_organization_diagram_before	OK	-	変更前	—	図ラベルとして対で明瞭	-	-
+manual_organization_diagram_after	OK	-	変更後	—	図ラベルとして対で明瞭	-	-
+manual_organization_diagram_page	OK	-	ページ%1$d	—	図の頁ラベルとして簡潔	-	-
+manual_organization_diagram_new_page	OK	-	新しいページ	—	図ラベルとして明瞭	-	-
+manual_organization_diagram_dock	REVISE	medium	ドック	Dock	glossary は Dock（既存Lawnchair表記維持、ドック不可）	glossary Dock	-
+manual_organization_diagram_widget	OK	-	ウィジェット	—	図ラベルとして標準的	-	-
+manual_organization_diagram_item_a11y	OK	-	%1$s、%2$s、%3$s	—	読点区切りの読み上げとして自然	style guide accessibility-only	-
+manual_organization_exclude_action	OK	-	提案から外す	—	タップ結果が予測できる動作句	rubric CTA predictability	-
+manual_organization_include_action	OK	-	提案に戻す	—	除外操作の逆が予測できる	rubric CTA predictability	-
+manual_organization_excluded_heading	OK	-	提案から外した項目: %1$d件	—	見出し+件数で状態が明確	style guide 助数詞	-
+manual_organization_excluded_unknown_item	OK	-	項目	—	未知項目の代表名として自然	-	-
+manual_organization_exclusion_blocked_kind	REVISE	low	除外できません: この種類の項目は除外対象外です	除外できません: この種類の項目は対象外です	読み上げ文で「除外」が反復。対象は文脈から明確	a11y read-aloud; S repetition	yes: 種別による除外不可の理由は不変
+manual_organization_exclusion_blocked_placement	REVISE	low	除外できません: ドック・フォルダ・アプリペア内の配置は除外対象外です	除外できません: Dock・フォルダ・アプリペア内の配置は対象外です	ドック→Dock（glossary）。除外の反復を削る	glossary Dock; a11y repetition	yes: 対象配置種別の列挙と除外不可は不変
+manual_organization_exclusion_blocked_preserved	REVISE	low	除外できません: より強い保持規則がこの配置を守っています	除外できません: より強い保持ルールがこの配置を守っています	ドメイン語は「整理ルール」。保持ルールで語尾を揃える	CONTEXT.md 整理ルール; terminology	yes: より優先される保持制約の存在は不変
+manual_organization_exclusion_blocked_structural	REVISE	low	除外できません: 再計画が自動的に決定する行です	除外できません: この内容は再計算で自動的に決まります	読み上げで「行」は誤読しやすい。再計画は同画面の再計算に統一	a11y read-aloud; consistency with manual_organization_replanning	yes: 再計算の自動決定のため除外不可、は不変
+manual_organization_exclusion_state_included	OK	-	提案に含まれています	—	状態記述として自然かつ明確	style guide 状態表示	-
+manual_organization_exclusion_state_excluded	OK	-	除外済み	—	状態語で操作語と区別される	style guide 状態と操作	-
+manual_organization_unplaced_candidates_heading	OK	-	この提案では配置されない候補: %1$d件	—	対象と件数が明確	style guide 助数詞	-
+manual_organization_unplaced_candidate_a11y	REVISE	low	%1$s（%2$s）。この提案では配置されない候補	%1$s（%2$s）。この提案では配置されない候補です。	読み上げは完全文が原則。体言止めを避ける	style guide accessibility-only; a11y axis	yes: 未配置候補である旨は不変
+manual_organization_replanning	OK	-	提案を再計算中	—	進行表示として簡潔	-	-
+manual_organization_replanning_summary	OK	-	除外した項目を反映した新しい提案を準備しています。下の図と一覧は直前の提案のものです。	—	再計算中も図と一覧が直前の提案である旨（stale状態）を保持	style guide 安全・失敗・復旧（stale state）	yes
+manual_organization_applied_moved_count	OK	-	other=移動した配置: %1$d件	—	結果行の型として明瞭。件数表記も適切	style guide 助数詞	-
+manual_organization_applied_preserved_count	OK	-	other=保持した配置: %1$d件	—	移動行と対で明瞭	-	-
+manual_organization_applied_new_folders_count	REVISE	low	other=作成した新しいフォルダ: %1$d個	other=作成したフォルダ: %1$d個	「作成した」が既に新規を含み、「新しい」は冗長	rubric brevity without loss	-
+manual_organization_applied_new_pages_count	REVISE	low	other=作成した新しいホーム画面ページ: %1$d枚	other=作成したホーム画面ページ: %1$d枚	同上。作成が新規性を含む	rubric brevity without loss	-
+manual_organization_recovery_history_moved	REVISE	low	other=移動 %1$d 件	other=移動%1$d件	スタイルガイドの助数詞は「%1$d件」（空白なし）。歴史行の並びも揃う	style guide 表現の原則（件数）	yes: 移動件数の意味は不変
+manual_organization_recovery_history_new_folders	REVISE	low	other=新規フォルダ %1$d 個	other=新規フォルダ%1$d個	同上の空白除去	style guide 件数表記	yes: フォルダ数の意味は不変
+manual_organization_recovery_history_new_pages	REVISE	low	other=新規ページ %1$d ページ	other=新規ページ%1$d枚	「新規ページ3ページ」の重複。枚で統一（適用結果行と同一）	style guide 助数詞; brevity	yes: 追加ページ数の意味は不変
+manual_organization_recovery_remaining_hours	OK	-	other=残り約%1$d時間で復元できなくなります。	—	復元可能窓の残り時間と失効を正確に伝える	style guide 安全・復旧; glossary restore→復元	yes
+manual_organization_missing_apps_selected_count	OK	-	other=%1$d件を選択中	—	選択状態の件数として明瞭	style guide 助数詞	-
+manual_organization_applied_added_count	REVISE	low	other=%1$d件のアプリを追加しました	other=追加したアプリ: %1$d件	同画面の適用結果行は「〜: N件」型。文型が1行だけ混在	rubric redundancy/consistency	yes: 追加件数の意味は不変
+organizer_category_overrides_title	OK	-	アプリカテゴリの手動設定	—	glossary の手動設定語彙に一致	glossary override→手動設定	-
+organizer_category_overrides_summary	OK	-	アプリごとにカテゴリを選択できます。自動分類も利用できます。	—	設定概要として操作と代替手段を1文ずつ提示	style guide settings descriptive copy	-
+organizer_category_override_automatic	OK	-	自動分類を使用中	—	状態語で操作語と区別される	style guide 状態表示; glossary automatic classification	-
+organizer_category_override_explicit	OK	-	手動設定: %1$s	—	状態と値が読み取れる	glossary override	-
+organizer_category_override_choose	OK	-	カテゴリを選択	—	画面の目的に合った簡潔な見出し/操作	-	-
+organizer_category_override_use_automatic	OK	-	自動分類を使用	—	glossary が操作ラベルとして認めた形	glossary automatic classification	-
+organizer_category_override_save	OK	-	カテゴリ設定を保存	—	CTAとして結果が予測できる	rubric CTA predictability	-
+organizer_category_override_cancel	OK	-	アプリ一覧に戻る	—	ナビゲーション結果が明確	-	-
+organizer_category_override_saved	OK	-	カテゴリ設定を保存しました。	—	完了メッセージとして簡潔	-	-
+organizer_category_override_no_change	OK	-	変更はありません。現在のカテゴリ設定を維持します。	—	変更なしと現状維持の2状態を保持	style guide 安全・失敗（状態訳し分け）	yes
+organizer_category_override_busy	REVISE	low	整理を実行中です。カテゴリを編集する前に完了してください。	整理を実行中です。完了してからカテゴリを編集してください。	「完了」の対象が不明瞭。順序を示す方が指示として予測できる	rubric CTA predictability / instruction clarity	yes: 実行中は編集不可・完了後に編集、は不変
+organizer_category_override_unavailable	REVISE	low	このアプリまたはプロファイルは利用できません。リストを再読み込みして、もう一度お試しください。	このアプリまたはプロファイルは利用できません。一覧を再読み込みして、もう一度お試しください。	同フローの cancel は「アプリ一覧」。リスト/一覧の混在を解消	flow terminology consistency	yes: 再読み込みと再試行の回復指示は不変
+organizer_category_override_unavailable_store	OK	-	カテゴリ設定を利用できません。変更は保存されていません。	—	不可理由と未保存を明示	style guide 失敗時の状態訳し分け	yes
+organizer_category_override_conflict	REVISE	low	カテゴリの情報が変更されました。リストを再読み込みして、もう一度選択してください。	カテゴリの情報が変更されました。一覧を再読み込みして、もう一度選択してください。	同上（一覧へ統一）	flow terminology consistency	yes: 再読み込みと再選択の回復指示は不変
+organizer_category_override_failed	OK	-	カテゴリ設定を保存できませんでした。変更は確定していません。	—	失敗と未確定の2状態を正確に保持	style guide 失敗時の状態訳し分け	yes
+organizer_category_art	OK	-	アート＆デザイン	—	一般向け表記（Play等と一致）	-	-
+organizer_category_auto	REVISE	low	自動車＆車両	自動車＆乗り物	一般表記は「乗り物」。「車両」は自動車とほぼ同義で冗長	ecosystem terminology; naturalness	-
+organizer_category_beauty	OK	-	美容	—	一般表記と一致	-	-
+organizer_category_books	REVISE	low	書籍＆参考書	書籍＆参考文献	一般表記は「参考文献」。「参考書」は学習書に限定される	ecosystem terminology	-
+organizer_category_business	OK	-	ビジネス	—	一般表記と一致	-	-
+organizer_category_comics	OK	-	コミック	—	一般表記と一致	-	-
+organizer_category_communication	OK	-	通信	-	Play系分類名の定訳と一致し、フォルダ題名・チップとしても短い	glossary category; style guide 自然さ	-
+organizer_category_dating	OK	-	出会い	-	定訳。フォルダ題名として自然	glossary category	-
+organizer_category_education	OK	-	教育	-	定訳。簡潔	glossary category	-
+organizer_category_entertainment	OK	-	エンターテインメント	-	Play系定訳と一致	glossary category	-
+organizer_category_events	OK	-	イベント	-	定訳。簡潔	glossary category	-
+organizer_category_finance	OK	-	ファイナンス	-	Play系定訳と一致	glossary category	-
+organizer_category_food	OK	-	フード＆ドリンク	-	Play系定訳と一致、＆表記も系列と統一	glossary category	-
+organizer_category_game	OK	-	ゲーム	-	定訳	glossary category	-
+organizer_category_health	OK	-	ヘルス＆フィットネス	-	Play系定訳と一致	glossary category	-
+organizer_category_house	OK	-	住まい＆インテリア	-	Play系定訳と一致	glossary category	-
+organizer_category_libraries	OK	-	ライブラリ＆デモ	-	Play系定訳と一致	glossary category	-
+organizer_category_lifestyle	OK	-	ライフスタイル	-	定訳	glossary category	-
+organizer_category_maps	OK	-	地図＆ナビゲーション	-	Play系定訳と一致	glossary category	-
+organizer_category_medical	OK	-	医療	-	定訳	glossary category	-
+organizer_category_music	OK	-	音楽	-	単独のMusicには「音楽」が自然	glossary category	-
+organizer_category_news	OK	-	ニュース	-	定訳	glossary category	-
+organizer_category_other	OK	-	その他	-	定訳。状態語でも操作語でもない	glossary category	-
+organizer_category_parenting	OK	-	子育て	-	Play系定訳と一致	glossary category	-
+organizer_category_personalization	OK	-	カスタマイズ	-	利用者語として自然。AI文脈の「パーソナライゼーション」とは別概念で混同なし	glossary category; CONTEXT.md	-
+organizer_category_photography	OK	-	写真	-	Play系定訳と一致	glossary category	-
+organizer_category_productivity	OK	-	仕事効率化	-	Play系定訳と一致	glossary category	-
+organizer_category_shopping	OK	-	ショッピング	-	定訳	glossary category	-
+organizer_category_social	OK	-	ソーシャル	-	定訳	glossary category	-
+organizer_category_sports	OK	-	スポーツ	-	定訳	glossary category	-
+organizer_category_tools	OK	-	ツール	-	定訳	glossary category	-
+organizer_category_travel	OK	-	旅行＆ローカル	-	系列内で＆複合表記が一貫しており理解可能	glossary category	-
+organizer_category_video	OK	-	動画	-	定訳	glossary category	-
+organizer_category_weather	OK	-	天気	-	定訳	glossary category	-
+organizer_category_override_profile_personal	OK	-	個人用	-	プロファイル行ラベルの短縮形としてAndroid慣用どおり	glossary profile	-
+organizer_category_override_profile_work	OK	-	仕事用	-	glossaryが短い行ラベルの「仕事用」を明示許容	glossary work profile	-
+organizer_category_override_unnamed_app	OK	-	名称未設定のアプリ	-	対象が不明アプリであることを1語群で明示	style guide 対象の明示	-
+organizer_category_override_automatic_description	REVISE	medium	手動設定はありません。次回の全体整理では自動分類を使用します。	手動設定はありません。次回の整理では自動分類を使用します。	「全体整理」はfresh run（新規run全般）を不当に狭める。全体・増分いずれの新規整理でも自動分類は使われる	glossary organization run=整理; rubric terminology	設定行の説明文。「手動設定なし」「次の新規整理で自動分類」の事実関係は不変（安全class外）
+organizer_category_override_category_description	OK	-	カテゴリを%1$sに設定します。	-	設定結果が読み取れる自然な文。placeholder 1件維持	style guide CTA/状態	-
+organizer_category_override_app_status	OK	-	%1$s · %2$s	-	formatのみ。変更不要	Android resource 互換性	-
+organizer_category_override_app_description	OK	-	%1$s、%2$s、%3$s	-	formatのみ。読点区切りも自然	Android resource 互換性	-
+organizer_category_override_app_description_with_profile	OK	-	%1$s、%2$s	-	formatのみ。変更不要	Android resource 互換性	-
+organizer_category_override_custom_marker	OK	-	カスタム	-	短い識別ラベルとして自然	style guide 簡潔さ	-
+organizer_category_override_custom_label	OK	-	%1$s（カスタム）	-	全角括弧で補足。placeholder維持	style guide 句読点	-
+organizer_category_override_custom_description	REVISE	low	明示的なカテゴリとして%1$sを使用します。	カテゴリを%1$sに設定します。	同一英語源文の兄弟行（category_description）と訳が不一致。「明示的な」は契約語の漏出で硬い	rubric consistency/implementation leakage; glossary override=手動設定	-（設定説明文、placeholder 1件・型は不変）
+organizer_category_custom_unnamed	OK	-	カスタムカテゴリ	-	名称なしカテゴリのフォールバック表示として自然	rubric naturalness	-
+organizer_custom_category_title	PRODUCT_DECISION	medium	カスタムカテゴリ	-	同一対象が「カスタムカテゴリ」（整理側約25行）と「ユーザー定義カテゴリ」（exchange_privacy_labels_warning）に分岐。正規用語の決定が必要	rubric terminology; CONTEXT.md ユーザー定義カテゴリ	用語統一は広範囲の更新になる。owner: spec 336 / split issue
+organizer_custom_category_summary	REVISE	low	自分専用のカテゴリを作成してアプリを整理できます。カスタムカテゴリは、明示的な割り当てによってのみアプリを受け付けます。	自分専用のカテゴリを作成してアプリを整理できます。カスタムカテゴリに入るアプリは、自分で割り当てたものだけです。	「明示的な割り当てによってのみ受け付けます」は契約文調。同一invariantを利用者語で伝える	style guide 実装語を出さない; glossary override=手動設定	自動分類はカスタムカテゴリへ入れない（明示割り当てのみ）という保証は保持
+organizer_custom_category_create	OK	-	カテゴリを作成	-	CTAとして対象と動作が明確	style guide CTA	-
+organizer_custom_category_name_label	OK	-	カテゴリ名	-	入力欄ラベルとして簡潔	style guide CTA/タイトル	-
+organizer_custom_category_rename_label	OK	-	新しい名前	-	rename先の入力欄として自然	style guide CTA/タイトル	-
+organizer_custom_category_save	OK	-	カテゴリを保存	-	CTAとして対象と動作が明確	style guide CTA	-
+organizer_custom_category_rename_confirm	OK	-	カテゴリの名前を変更	-	Android標準のrename表現	style guide CTA	-
+organizer_custom_category_cancel	OK	-	キャンセル	-	中止語彙規約どおり（破壊なしの中止）	CONTEXT.md 中止語彙規約	yes（キャンセル対象は破壊的操作でない）
+organizer_custom_category_back_to_list	OK	-	カテゴリ一覧に戻る	-	導線と対象が明確	style guide CTA	-
+organizer_custom_category_retry	OK	-	カテゴリの削除を完了する	-	未完了削除の再開CTAとして対象と結果が明確	style guide 安全・復旧; CTA	yes（削除完了という結果は不変）
+organizer_custom_category_partial_delete	REVISE	low	割り当てはすでに解除されています。空のカテゴリが残っています。削除を完了すると取り除かれます。	アプリの割り当てはすでに解除されています。空のカテゴリが残っています。削除を完了すると、一覧から消去されます。	何の割り当てか、「取り除かれる」対象かが不明瞭。回復案内の各文の対象を明示	style guide 対象の限定範囲は短縮しない; naturalness	割当解除済み・空カテゴリ残存・完了で消える、の3状態は不変（安全class）
+organizer_custom_category_error_invalid_name	OK	-	1〜50文字で、改行と「｜」は使用できません。	-	制約を過不足なく1文で伝える。※実resourceは半角「	」	-（表では区切り子のため全角｜で記載）
+organizer_custom_category_error_duplicate_name	OK	-	同じ名前のカテゴリが既に存在します。	-	重複エラーとして簡潔で明確	style guide dialog/error	yes（失敗理由と再入力を促す意味は不変）
+organizer_custom_category_error_capacity	OK	-	カスタムカテゴリの上限に達しました。新しく作成する前に削除してください。	-	上限と次の操作を過不足なく提示	style guide dialog/error	yes（救済手順は不変）
+organizer_custom_category_busy	OK	-	整理処理が実行中です。終了してからカテゴリを編集してください。	-	実行中制約と待機指示が規約どおりに明確	style guide 確認/警告; glossary organization run=整理	yes（run中の編集不可という制約は不変）
+organizer_custom_category_conflict	REVISE	medium	カテゴリソースが変更されました。一覧を再読み込みしてやり直してください。	カテゴリの一覧が変更されています。再読み込みしてやり直してください。	「カテゴリソース」は実装語の漏出。利用者に必要なのは一覧が変わった事実と再読み込み指示のみ	style guide 実装語を出さない; rubric implementation leakage	外部変更検知・再読み込みと再試行の指示は保持（失敗文・安全class）
+organizer_custom_category_unavailable	OK	-	カスタムカテゴリは利用できません。変更は保存されていません。	-	「保存されていない」結果状態を規約どおり訳し分け	style guide 安全・失敗・復旧	yes（何も保存されていない事実は不変）
+organizer_custom_category_failed	OK	-	変更を確認できませんでした。一覧を再読み込みしてやり直してください。	-	確認不能状態と再試行指示を保持	style guide 安全・失敗・復旧	yes（保存成否が不明である事実は不変）
+organizer_custom_category_delete_title	OK	-	カスタムカテゴリを削除しますか？	-	確認タイトルは全角？で規約どおり	style guide 句読点（確認要求は？）	yes（削除確認の要求は不変）
+organizer_custom_category_delete_confirm	OK	-	削除	-	確認ダイアログCTAとして標準	style guide CTA	yes（破壊操作の確認直後に置かれたまま）
+organizer_custom_category_delete_row	OK	-	このカテゴリを削除	-	行 scoped のCTAとして対象が明確	style guide CTA	yes（対象は当該1カテゴリのみ）
+organizer_custom_category_delete_action	OK	-	%1$sを削除	-	対象名入りCTA。placeholder維持	style guide CTA; Android resource 互換性	yes（対象は当該1カテゴリのみ）
+organizer_custom_category_rename_action	OK	-	%1$sの名前を変更	-	対象名入りCTA。placeholder維持	style guide CTA	-
+organizer_custom_category_entry_count	OK	-	割り当て済みのアプリ: %1$d個	-	jaはotherのみで正、助数詞「個」も適切。plurals集合・placeholder不変	style guide 助数詞; Android resource 互換性	-
+organizer_custom_category_delete_text	OK	-	%1$sには%2$d個のアプリが割り当てられています。これらは次回の整理で自動分類に戻ります。アプリが別のカテゴリへ移動されることはありません。	-	自動分類へ戻る・他カテゴリへ移動しない保証を過不足なく保持	style guide 安全・失敗・復旧; glossary automatic classification	yes（他カテゴリへ移動しない保証・自動分類復帰は不変）
+exchange_ai_consultation_toggle_label	REVISE	medium		AIに相談	ja未設定。方法選択面のラベル（AIに相談）と同一の語で揃え、設定行の効果が予測できる	rubric terminology/consistency; CONTEXT.md 方法選択面	-（実験的機能の設定トグル行）
+exchange_ai_consultation_toggle_description	REVISE	medium		実験的な機能です。既定ではオフです。オフの間は、AIの選択肢を使わずに整理を実行できます。有効な依頼や取り込み済みの提案は、期限が切れるまで整理ハブに残ります。	ja未設定。オフでも整理は可能で、依頼・取り込み済み提案は期限まで消えないことを1文1要点で明示	style guide settings/help; CONTEXT.md 依頼・取り込み済み提案・整理ハブ	オフにしても依頼・提案を破棄しない保証と、AIなしで整理可能な事実を保持
+exchange_entry_subtitle	REVISE	medium	ChatGPT等の外部AIへの依頼文を作成し、回答を検証付きで取り込めます。	ChatGPT等の外部AIへの依頼文を作成し、回答を確認してから適用できる提案として取り込めます。	「検証付きで」は実装語で、源文の「確認できる計画」という利用者価値が落ちている。確認から適用の流れを復元	style guide 実装語/brevity without loss; rubric CTA predictability	取り込み前に確認・適用はその後、という流れは源文どおり（検証は取り込み手順に内包）
+exchange_method_consult	OK	-	AIに相談	-	方法選択面の規定ラベルと一致	CONTEXT.md 方法選択面	-
+exchange_capability_title	OK	-	AIでできること	-	見出しとして簡潔で内容を言い当てる	style guide タイトル	-
+exchange_capability_example_frequent	OK	-	よく使うアプリを優先的に配置する	-	優先配置の例として自然。前ページ寄せの例（front）と役割が分かれる	rubric redundancy/consistency	-
+exchange_capability_example_group	OK	-	関連するアプリをまとめる	-	自然な依頼例	style guide naturalness	-
+exchange_capability_example_keep	REVISE	low	動かしたくないアプリはそのまま維持する	動かしたくないアプリはそのままにしておく	「そのまま維持する」は硬い漢語調。「そのままにしておく」が依頼文として自然	ai-register 硬い漢語優先の直訳調(S); style guide naturalness	-（ capability例示。移動しない意味は不変）
+exchange_capability_example_front	OK	-	重要なアプリを前のページに寄せる	-	「最初のページ」の意図を自然に伝える	style guide naturalness	-
+exchange_capability_example_minimal_change	OK	-	今の配置をできるだけ崩さない	-	「ほぼ維持」を簡潔な利用者語で表現	style guide naturalness	-
+exchange_capability_no_direct_change	REVISE	low	AIがホーム画面を直接変更することはありません。再整理に使う「あなたの希望・傾向」を作ります。	AIがホーム画面を直接変更することはありません。再整理の計画に使う、あなたの好みや傾向をまとめるだけです。	鉤括弧の「あなたの希望・傾向」は直訳調の残骸。「まとめるだけ」で直接変更しない保証を自然に保持	ai-register 記号の残骸(S); style guide 安全 copy	「直接変更しない」「計画用の下書きのみ」の保証はそのまま（安全class）
+exchange_capability_flow	REVISE	low	相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。	相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問（2〜4問）に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。	半角括弧を全角に統一（organizer側（カスタム）等と揃う）。文面の意味は一切不変	rubric consistency; style guide 句読点	送信回数・質問数・方針確認・会話非送信保証は全て不変（安全class）
+exchange_entry_import	OK	-	回答を取り込む	-	取り込みの流程語（取り込み済みの提案）と一致するCTA	CONTEXT.md 持ち帰りIntent取り込み	-
+exchange_request_title	OK	-	AIに相談する依頼を作る	-	「依頼」語彙どおり。作る対象が明確	CONTEXT.md 依頼; style guide CTA	-
+exchange_request_active_line	OK	-	有効な依頼があります。	-	active依頼の規定語。状態表示として明確	CONTEXT.md 依頼	-
+exchange_request_remaining_under_hour	OK	-	残り1時間未満	-	短い残時間状態表示として自然	style guide 状態表示	-
+exchange_expectation_fixed_home	REVISE	medium	この依頼は作成時点のホームで固定されます。会話中にホームや分類を変更すると、回答を取り込めなくなります。	この依頼は作成時点のホームで固定されます。会話中にホームやカテゴリを変更すると、回答を取り込めなくなります。	「分類」はカテゴリ値を指す語でglossaryのavoid。カテゴリ変更も取り込み不可条件に含まれる	glossary category（分類はavoid）	取り込み不可になる条件（ホーム・カテゴリ変更）は不変（安全class）
+exchange_privacy_title	OK	-	外部送信のプライバシー	-	外部送信という目的語が利用者語で明確	style guide タイトル	-
+exchange_privacy_redacted	REVISE	low	情報を減らして送る (既定)	情報を減らして送る（既定）	半角括弧を全角へ統一。既定値である意味は不変	rubric consistency; style guide 句読点	-（選択肢ラベル）
+exchange_privacy_labels	OK	-	ラベル付きで送る	-	対になる選択肢と構文が一致	rubric redundancy/consistency	-
+exchange_privacy_labels_warning	OK	-	依頼文にアプリ名・フォルダ名、およびユーザー定義カテゴリの名前が含まれます。	-	送出される情報種別を列挙。源文（user-defined categories）と一致。用語統一はPD行（organizer_custom_category_title）参照	style guide 安全 copy	yes（ラベル送信時に含まれる情報種別の列挙は不変・安全class）
+exchange_replacement_notice	OK	-	未完了の依頼があります。新規作成すると既存の依頼は破棄され、その回答は取り込めなくなります。取り込み済みの提案も破棄されます。	-	破棄の不可逆性・取り込み不可・提案も破棄を保持。「破棄」語彙も規約どおり	CONTEXT.md 中止語彙規約; style guide 安全 copy	yes（破棄は不可逆、取り込み済み提案も破棄、は不変）
+exchange_replacement_title	REVISE	low	既存の依頼を破棄して新規作成しますか?	既存の依頼を破棄して新規作成しますか？	疑問形タイトルは全角？が規約。半角?はexchange面内でも不統一	style guide 句読点（確認要求は？）	確認要求の意味は不変（安全class）
+exchange_replacement_warning	REVISE	low	新規作成すると以前の依頼は破棄され、その回答は取り込めなくなります。取り込み済みの提案も破棄されます。続行しますか?	新規作成すると既存の依頼は破棄され、その回答は取り込めなくなります。取り込み済みの提案も破棄されます。続行しますか？	同一対象の呼称をnotice行の「既存の依頼」へ統一し、？を全角に	rubric consistency; style guide 句読点	破棄の不可逆性・取り込み不可・提案も破棄・継続確認は全て不変（安全class）
+exchange_replacement_confirm	OK	-	破棄して作成	-	確認直後のCTAとして予測可能。「破棄」語彙も規約どおり	CONTEXT.md 中止語彙規約; style guide CTA	yes（不可逆操作のCTAは確認のまま）
+exchange_replacement_decline	REVISE	low	既存を維持	既存の依頼を維持	「既存」だけでは何を維持するか不明。対象語「依頼」を補う	style-guide CTA目的語; CONTEXT 依頼	維持側を選ぶ動作は不変。置換確認の意味も不変
+exchange_generate	OK	-	依頼を作成	-	ドメイン語「依頼」どおりの自然なCTA	CONTEXT 依頼	-
+exchange_generating	OK	-	依頼文を生成しています…	-	進行表現・省略記号とも適切	style-guide progress	-
+exchange_cancel	OK	-	キャンセル	-	不可逆でない中止の「キャンセル」規約どおり	CONTEXT 中止語彙規約	-
+exchange_close	OK	-	閉じる	-	標準的な閉じるラベル	-	-
+exchange_disclosure_title	OK	-	送信前の確認	-	ドメイン語「送信前確認」と一致	CONTEXT 送信前確認	-
+exchange_disclosure_redacted	OK	-	この依頼文にアプリ名・パッケージ名・生の使用状況は含まれません。カテゴリの一覧 (ユーザー定義を含む) は含まれますが、その名前は含まれません。	-	除外物と含まれる物の対比が正確で読みやすい	style-guide 安全; CONTEXT privacy tier	除外/包含の保証は現行どおり維持すべき
+exchange_disclosure_labels_included	OK	-	この依頼文にはアプリ名・フォルダ名と、ユーザー定義カテゴリの名前が含まれます。	-	含まれる物の列挙が過不足ない	-	-
+exchange_disclosure_summary_items	OK	-	対象項目数: %1$d件	-	助数詞付きでplaceholder整合	style-guide 助数詞	-
+exchange_disclosure_summary_limit	OK	-	1回の依頼で送れる上限は対象項目512件・依頼文256KBです。	-	上限値512件/256KBを保持しつつ簡潔	-	-
+exchange_disclosure_expand	OK	-	全文を確認	-	collapseと対の操作ラベル	-	-
+exchange_disclosure_collapse	OK	-	全文を隠す	-	expandと対で明確	-	-
+exchange_disclosure_hint	REVISE	low	この内容を任意のAIアプリへ送信します。送信方法を選ぶまで何も送信されません。	この内容を任意のAIアプリへ送信してください。送信方法を選ぶまで何も送信されません。	「送信します」はアプリ自動送信と誤読できる。利用者の手操作と明示	style-guide 安全(誰が何をするか)	自動送信なしの保証文は一字不変
+exchange_discard	OK	-	破棄	-	不可逆操作の「破棄」規約どおり	CONTEXT 中止語彙規約	-
+exchange_discard_confirm_title	REVISE	low	依頼を破棄しますか?	依頼を破棄しますか？	疑問形は全角？。半角?は規則違反	style-guide 句読点と末尾(確認要求は？)	破棄確認の意味は不変
+exchange_discard_confirm_body	OK	-	破棄するとこの依頼は無効になり、AIの回答を取り込めなくなります。この操作は取り消せません。	-	無効化・取り込み不可・取り消し不可の3点が削れず残る	style-guide 破壊的操作	安全文言は現行維持
+exchange_discard_confirm_confirm	OK	-	破棄する	-	破壊確認ボタンとしての重量あり	-	-
+exchange_copy	OK	-	コピー	-	標準ラベル	-	-
+exchange_share	OK	-	共有…	-	sourceの…を保持	-	-
+exchange_save_file	OK	-	ファイルに保存	-	対象と動作が明確	-	-
+exchange_transport_success	OK	-	依頼文をコピー・共有・保存しました。外部AIアプリへ渡した後、質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。その回答を貼り付けて取り込んでください。	-	外部AIでの手順(質問→整理方針確認→最終案)が正確	CONTEXT 整理方針確認	-
+exchange_transport_clipboard_failed	OK	-	クリップボードを利用できません。共有またはファイル保存を試してください。	-	失敗と代替手段が対で簡潔	style-guide 失敗・復旧	-
+exchange_transport_share_absent	OK	-	共有先のアプリが見つかりません。コピーまたはファイル保存を利用してください。	-	失敗理由と代替2案が明確	-	-
+exchange_transport_file_failed	OK	-	ファイル操作に失敗しました。再試行するか別の送信方法を利用してください。	-	再試行と代替手段を保持	-	-
+exchange_import_title	OK	-	AIの回答を取り込む	-	取り込みドメイン語どおり	CONTEXT 持ち帰りIntent取り込み	-
+exchange_import_hint	OK	-	回答の全文を貼り付け	-	入力欄ラベルとして自然な動作句	-	-
+exchange_import_action	OK	-	取り込む	-	主要CTAとして明確	-	-
+exchange_import_from_file	REVISE	low	ファイルから	ファイルから取り込む	動詞が無くタップ後の操作が予測できない。隣のクリップボード導線と構成を揃える	rubric CTA predictability	開くファイル選択操作は同じ
+exchange_import_result_title	OK	-	取り込み結果	-	簡潔な結果タイトル	-	-
+exchange_import_result_unknown	OK	-	回答を利用できませんでした。	-	失敗を簡潔に伝える	-	-
+exchange_import_failure_action_reimport	OK	-	もう一度取り込む	-	再試行CTA明確	-	-
+exchange_import_failure_action_repost	OK	-	貼り直す	-	失敗文の指示語と一致	-	-
+exchange_import_failure_action_recreate	OK	-	依頼を作り直す	-	失敗文の指示語と一致	-	-
+exchange_import_interrupt	OK	-	中断する	-	zero-write中断の規約語どおり	CONTEXT 中止語彙規約	-
+exchange_import_open_diagnostics	OK	-	診断を開く	-	導線先を明示	-	-
+exchange_import_failure_detail_show	OK	-	詳細を表示	-	hideと対のラベル	-	-
+exchange_import_failure_detail_hide	OK	-	詳細を隠す	-	showと対	-	-
+exchange_import_failure_detail_type_format	OK	-	種別: %1$s	-	診断行として簡潔	-	-
+exchange_run_busy	OK	-	整理が実行中のため取り込めません。終了後に再度取り込んでください。	-	organization run=整理の語彙どおり。理由と再試行を保持	glossary organization run	busy状態と再試行条件は不変
+exchange_import_from_clipboard	REVISE	low	クリップボードから読み込む	クリップボードから取り込む	同一面で「取り込む」と「読み込む」が混在。ドメイン語に統一	CONTEXT 取り込み; rubric terminology	クリップボード読み込み操作は同じ
+exchange_import_fallback_toggle	PRODUCT_DECISION	medium	詳細 / うまく読み込めない場合	-	ラベルが「詳細開示」と「代替手段導線」の二役でCTAとして予測不能(英語defaultも同様)。単一目的の決定が必要。候補: うまく取り込めない場合はこちら/詳細を表示	rubric CTA predictability; ai-register 記号濫用	owner resolutionまたはsplit issue。決定後に「読み込めない→取り込めない」統一も併せ実施
+exchange_import_clear	OK	-	クリア	-	入力欄クリアの標準ラベル	-	-
+exchange_import_file_types	OK	-	テキスト (.txt) またはJSON (.json)・最大1 MiB	-	対応形式と上限を正確に提示	-	-
+exchange_status_clipboard_empty	REVISE	low	クリップボードが空か、読み取れませんでした。AIアプリで回答をコピーし直し、このアプリに戻ってからもう一度読み込んでください。うまくいかない場合はファイル読み込みか手動貼り付けをお使いください。	クリップボードが空か、読み取れませんでした。AIアプリで回答をコピーし直し、このアプリに戻ってからもう一度取り込んでください。うまくいかない場合はファイルからの取り込みか手動貼り付けをお使いください。	再実行と代替手段の呼び名をフローの「取り込む」へ統一。原因文は維持	rubric consistency; CONTEXT 取り込み	失敗原因・回復3歩・代替2案はすべて不変
+exchange_status_clipboard_not_text	OK	-	クリップボードにテキストがありません。AIアプリで回答のテキストをコピーし直してください。	-	失敗と再コピー指示が簡潔	-	-
+exchange_status_file_read_failed	REVISE	low	ファイルを読み込めませんでした。もう一度ファイルを選択するか、対応形式 (.txt / .json・最大1 MiB) を確認してください。うまくいかない場合はクリップボード読み込みか手動貼り付けをお使いください。	ファイルを読み込めませんでした。もう一度ファイルを選択するか、対応形式 (.txt / .json・最大1 MiB) を確認してください。うまくいかない場合はクリップボードからの取り込みか手動貼り付けをお使いください。	代替手段の呼称を「取り込み」へ統一。ファイル読込失敗の記述はそのまま	rubric consistency	原因・形式案内・代替手段は不変
+exchange_recognized_framing	OK	-	認識した形式	-	詳細行ラベルとして自然	-	-
+exchange_recognized_version	REVISE	low	認識version	認識したバージョン	英単語混在。兄弟「認識した形式」と同構成へ	style-guide カタカナ・技術語; rubric consistency	表示する値(番号)は不変
+exchange_recognized_entries	REVISE	low	認識エントリ数	認識したエントリ数	兄弟行と「認識したX」の構成に統一	rubric redundancy/consistency	件数の意味は不変
+exchange_framing_marker	OK	-	マーカー形式	-	詳細行の値として十分	-	-
+exchange_framing_fenced_json	REVISE	low	fenced JSONブロック	JSONコードブロック	fencedは利用者語でない。失敗文の「```jsonコードブロック」に統一	style-guide 技術語; rubric terminology	形式の区別(コードブロック)は保持
+exchange_framing_standalone_json	OK	-	単独JSON	-	fencedと対をなす値として明確	-	-
+exchange_generation_input_not_ready	OK	-	現在のレイアウトを取得できませんでした。しばらくしてから再試行してください。	-	失敗と再試行指示を保持	-	-
+exchange_generation_store_failure	REVISE	medium	交換セッションを作成できませんでした。何も送信されていません。	依頼を作成できませんでした。何も送信されていません。	「交換セッション」は実装語。利用者語の「依頼」へ	style-guide 技術語(実装語を出さない); CONTEXT 依頼	「何も送信されていない」保証文は一字不変
+exchange_generation_oversize	OK	-	レイアウトが大きすぎて依頼文を作成できません。	-	原因と結果が簡潔	-	-
+exchange_failure_primary_input_oversize	OK	-	回答が大きすぎます。前後の文章を減らして、もう一度取り込んでください。	-	失敗と対処が対で自然	-	-
+exchange_failure_primary_framing_missing	OK	-	回答の中に取り込める整理案がありません。AIアプリで最終案を送り直してもらい、貼り直してください。	-	整理案の語彙どおり。対処も具体的	glossary organization proposal	-
+exchange_failure_primary_framing_ambiguous	OK	-	回答に複数の整理案が含まれています。最終案を1つだけ送り直してもらい、貼り直してください。	-	状態と対処が明確	-	-
+exchange_failure_primary_framing_empty	OK	-	整理案が空でした。AIアプリで最終案を送り直してもらい、貼り直してください。	-	簡潔で対処を保持	-	-
+exchange_failure_primary_normalization_ambiguous	OK	-	回答に複数のコードブロックがあります。整理案のJSONだけをコピーして貼り直してください。	-	対処(提案JSONだけコピー)が具体的手順	-	-
+exchange_failure_primary_normalization_unrecognized	OK	-	取り込める形式がありません。AIアプリで最終案を送り直してもらい、貼り直してください。	-	対処を保持	-	-
+exchange_failure_primary_schema_mismatch	OK	-	回答を整理案として読み取れませんでした。AIアプリで送り直してもらい、貼り直してください。	-	専門語を出さず失敗を伝える	-	-
+exchange_failure_primary_export_mismatch	OK	-	この回答は現在の依頼宛ではありません。依頼を作り直してください。	-	宛先不一致を利用者語で説明	CONTEXT export session	再作成導線は不変
+exchange_failure_primary_session_expired	OK	-	依頼の有効期限が切れています。依頼を作り直してください。	-	期限切れと再作成を保持	style-guide stale照合済	期限・再作成の意味は不変
+exchange_failure_primary_context_stale	OK	-	依頼の内容が古くなりました。依頼を作り直してください。	-	stale理由を簡潔に。再作成導線保持	-	-
+exchange_failure_primary_oversize	OK	-	整理案本体が大きすぎます。より小さい整理案を依頼して、貼り直してください。	-	対処を保持	-	-
+exchange_failure_primary_unknown_ref	OK	-	整理案が依頼に存在しない項目を参照しています。AIアプリで送り直してもらい、貼り直してください。	-	失敗理由が理解可能	-	-
+exchange_failure_primary_duplicate_ref	OK	-	整理案に重複した項目があります。AIアプリで送り直してもらい、貼り直してください。	-	対処を保持	-	-
+exchange_failure_primary_incomplete_coverage	OK	-	整理案の項目指定に重複があります。AIアプリで送り直してもらい、貼り直してください。	-	duplicate_refとほぼ同文だが対処が同一のため許容	rubric redundancy(要merge判断)	-
+exchange_failure_primary_invalid_enum	REVISE	low	整理案に未知の値が含まれています。AIアプリで送り直してもらい、貼り直してください。	整理案に不明な値が含まれています。AIアプリで送り直してもらい、貼り直してください。	「未知」は直訳調。UI標準の「不明」へ	rubric naturalness	失敗理由・再送と貼り直しの対処は不変
+exchange_failure_primary_forbidden_content	REVISE	low	整理案に禁止された指示が含まれています。AIアプリで送り直してもらい、貼り直してください。	整理案に許可されていない指示が含まれています。AIアプリで送り直してもらい、貼り直してください。	「禁止された指示」は不自然な受身結合。「許可されていない指示」が自然	rubric naturalness	拒否理由と再送の対処は不変
+exchange_failure_primary_mobility_contradiction	OK	-	整理案が動かせない項目を動かそうとしています。AIアプリで送り直してもらい、貼り直してください。	-	移動不可の意味が利用者語で伝わる	-	-
+exchange_failure_primary_capability_unsupported	OK	-	整理案が未対応の機能を使用しています。AIアプリで送り直してもらい、貼り直してください。	-	対処を保持	-	-
+exchange_failure_primary_scope_mismatch	OK	-	この回答は現在の依頼内容と一致していません。依頼を作り直してください。	-	scope不一致を平易に。再作成導線保持	CONTEXT 対象scope凍結	-
+exchange_failure_primary_unknown_category_ref	OK	-	回答が参照したカテゴリが現在利用できません。依頼を作り直してください。	-	理由と対処が明確	-	-
+exchange_failure_input_oversize	OK	-	回答が大きすぎます。前後の文章を減らして再度取り込んでください。	-	詳細文として十分	-	-
+exchange_failure_framing_missing	TECHNICAL_ONLY	low	回答にマーカーで囲まれた整理案がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください。	-	失敗詳細面。```json/markerの技術精度は意図的	style-guide 診断では技術語を許容	-
+exchange_failure_framing_ambiguous	REVISE	low	回答に複数のマーカー囲みの領域があります。最終のJSONを1つだけ送ってもらってください。	回答にマーカーで囲まれた部分が複数あります。最終のJSONを1つだけ送ってもらってください。	「マーカー囲みの領域」は不自然な複合語。兄弟文の表現に揃える	rubric naturalness	状態と対処(最終JSONを1つ)は不変
+exchange_failure_framing_empty	REVISE	medium	マーカー内が空です。AIに最終JSONを```jsonコードブロック1つで再送してください。	マーカー内が空です。AIに最終JSONを```jsonコードブロック1つで再送してもらってください。	「AIに再送して」は利用者がAIへ送ると読める誤り。依頼の向きを修正	style-guide 安全(誰が何をするか)	対処内容(AIに```json1つで再送させる)は不変
+exchange_failure_normalization_ambiguous	OK	-	回答に複数のコードブロックがあります。最後のJSONブロックだけをコピーして、再度取り込んでください。	-	具体的対処を保持	-	-
+exchange_failure_normalization_unrecognized	OK	-	取り込める形式がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください（従来のマーカー形式も利用できます）。	-	旧形式案内を保持	-	-
+exchange_failure_schema_mismatch	TECHNICAL_ONLY	low	回答が期待するintent形式ではありません。	-	詳細面。契約語intentの精度は意図的	style-guide 診断では技術語を許容	-
+exchange_failure_export_mismatch	OK	-	回答が古い依頼宛です。新しい依頼文を作成して再依頼してください。	-	理由と対処を保持	-	-
+exchange_failure_session_expired	OK	-	依頼の有効期限 (24時間) が切れています。新しい依頼文を作成してください。	-	24時間の具体値を保持	-	-
+exchange_failure_context_stale	OK	-	依頼作成後にホーム画面が変化しました。新しい依頼文を作成してください。	-	stale理由が平易	-	-
+exchange_failure_oversize	OK	-	整理案本体が大きすぎます。	-	簡潔	-	-
+exchange_failure_unknown_ref	OK	-	整理案が依頼に存在しない項目を参照しています。	-	primary版と整合	-	-
+exchange_failure_duplicate_ref	OK	-	整理案に重複した項目があります。	-	primary版と整合	-	-
+exchange_failure_incomplete_coverage	TECHNICAL_ONLY	low	整理案が同じ項目を複数回列挙しています。各項目は「itemIntents」と「unresolvedRefs」の合計で一度だけ指定できます。	-	詳細面。itemIntents/unresolvedRefsのfield名精度は意図的	style-guide 診断では技術語を許容	-
+exchange_failure_invalid_enum	REVISE	low	整理案に未知の値が含まれています。	整理案に不明な値が含まれています。	primary版修正に合わせ直訳調「未知」を「不明」へ	rubric consistency	失敗理由の意味は不変
+exchange_failure_forbidden_content	REVISE	medium	整理案に禁止された指示 (座標・サイズ・データベース変更) が含まれています。	回答に禁止された指示 (座標・サイズ・データベース変更) が含まれています。	整理案はorganizer計画語でAI回答と混同。同族失敗文(schema_mismatch等)は「回答」主体で統一	glossary organization proposal=整理案; rubric terminology	禁止指示の検出と括弧内詳細は不変。主体語のみ修正
+exchange_failure_mobility_contradiction	REVISE	medium	整理案が移動できない項目を動かそうとしています。	回答が移動できない項目を動かそうとしています。	失敗詳細文の主体を「回答」へ揃え、整理案(plan preview語)との概念混同を防ぐ	glossary organization proposal=整理案	移動不可項目への指示という失敗理由は不変
+exchange_failure_capability_unsupported	REVISE	medium	整理案が未対応の機能を使用しています。	回答が未対応の機能を使用しています。	同上。失敗詳細文の主体語を回答へ統一	glossary organization proposal=整理案	未対応機能による失敗理由は不変
+exchange_failure_scope_mismatch	REVISE	low	選択したアプリが依頼内容と一致していません。同じアプリを選び直すか、依頼を再作成してください。	選択したアプリが依頼内容と一致していません。同じアプリを選び直すか、依頼を作り直してください。	再作成→作り直す。ボタン「依頼を作り直す」や隣接失敗文と動詞を統一	rubric CTA predictability/consistency	再選択か再作成の2救済は同じ
+exchange_scope_set_mismatch	REVISE	low	選択したアプリが依頼内容と一致していません。強調表示されたアプリを選択すると、同じ提案で続行できます。	選択したアプリが依頼内容と一致していません。強調表示されたアプリを選択すると、この提案で続けられます。	同じ提案で続行→この提案で続けられる。CTA「この提案で続ける」と動詞統一	rubric consistency; style guide CTA	強調アプリ選択で同一提案が継続する条件は不変
+exchange_scope_unresolvable_mismatch	OK	-	選択を修正してもこの依頼とは一致させられません。依頼を作り直してください。	-	再編集不可の理由と再作成救済が簡潔	-	-
+exchange_scope_diff_missing	REVISE	low	依頼では対象	依頼に必要	「依頼では対象」は不自然なバッジ文。「必要/外」の対で即理解できる	style guide 状態表示の明確さ; naturalness	バッジの意味(依頼に必須)は不変
+exchange_scope_diff_extra	OK	-	依頼外	-	簡潔で対比(必要/外)が明確	-	-
+exchange_import_continue	OK	-	この提案で続ける	-	CTAとして対象と動作が予測できる	-	-
+exchange_rebind_context_stale	OK	-	この依頼は古くなっています。依頼を作り直してください。	-	stale状態と救済動作が過不足ない	-	-
+exchange_rebind_anchor_refused	PRODUCT_DECISION	medium	この提案は利用できなくなりました。ホームのハブから開き直してください。	—（決定待ち）	「ホームのハブ」はUI上のどのラベルとも不一致(現hub題名はオーガナイザー)。参照先表面の利用者向け名称確定が先決	CONTEXT.md整理ハブ vs organizer_hub_title; rubric terminology	-（名称決定後に再提案。書き換えなし）
+exchange_rebind_start_failed	REVISE	low	この提案で続行できませんでした。もう一度お試しください。	この提案で続けられませんでした。もう一度お試しください。	続行→続ける。CTA語と統一し失敗文の対象を一致させる	rubric consistency	失敗と再試行の救済は同じ
+exchange_failure_unknown_category_ref	REVISE	low	回答が参照したカテゴリは現在利用できません。依頼を再作成して、もう一度回答を得てください。	回答が参照したカテゴリは現在利用できません。依頼を作り直して、もう一度AIに相談してください。	再作成→作り直し。「回答を得て」→製品語「AIに相談」で手段を明示	rubric CTA/terminology	カテゴリ消失理由と再依頼の救済は同じ
+exchange_scoped_freeze_notice	REVISE	medium	AI依頼の作成中はアプリの選択を変更できません。取り消すと再編集できます。	AI依頼の作成中はアプリの選択を変更できません。キャンセルすると再編集できます。	同画面のボタンは「キャンセル」。「取り消す」はUndo語彙と衝突し対象ボタンが分からない	rubric CTA predictability; CONTEXT.md中止語彙規約	ロック理由と解除経路は不変。実ボタン名へ合わせるのみ
+exchange_entry_import_only_notice	REVISE	medium	この依頼はここで取り込めます。凍結した選択用の新しい依頼の作成は、整理を開始して「AIに相談」から行えます。	この依頼はここで取り込めます。凍結した選択で新しい依頼を作るには、整理を開始して「AIに相談」を選んでください。	名詞構文「作成は…行えます」を動詞文に。「〜用の」連続も解消	ai-register-tells S 名詞化の冗長さ	ここで取り込み可・新依頼は整理開始→AIに相談、の両方維持
+exchange_generation_not_confirmed	OK	-	整理の実行が確定済みの選択を保持していません。何も作成されていません。	-	stale失敗と「何も作成していない」保証が共に明示	-	-
+exchange_export_cleanup_failed	OK	-	未使用の依頼を破棄できませんでした。何も送信されていません。もう一度お試しください。	-	破棄失敗・未送信・再試行の3点が過不足ない	-	-
+exchange_scope_discard_failed	OK	-	依頼を破棄できませんでした。選択はロックされたままです。もう一度お試しください。	-	破棄失敗・ロック継続(状態)・再試行が正確	-	-
+exchange_recreate_request_title	OK	-	この回答は別の依頼のものです	-	タイトルとして簡潔で帰属不一致が伝わる	-	-
+exchange_recreate_request_body	OK	-	取り込んだ回答は、この整理の実行で確定した選択から作成されたものではないため、ここでは利用できません。この選択用に依頼を作り直してください。	-	帰属不一致の理由と救済が明確	-	-
+exchange_recreate_request_action	OK	-	依頼を作り直す	-	本文の指示と一致するCTA	-	-
+exchange_import_success_title	OK	-	提案を取り込みました	-	取り込み済み提案の用語と一致	-	-
+exchange_import_success_warning_title	OK	-	提案を取り込みました (判断なしの項目があります)	-	判断なし(CONTEXT.md用語)を付記し状態が分かる	-	-
+exchange_import_not_applied	OK	-	まだホーム画面には適用されていません。	-	未適用状態を明示。style guideの状態訳し分け通り	-	-
+exchange_import_cta_idle	OK	-	この提案で続ける	-	exchange_import_continueと同一CTAで一貫	-	-
+exchange_import_cta_run_in	OK	-	この提案で続けて選択へ戻る	-	継続と復帰先が予測できる	-	-
+exchange_import_discard	OK	-	破棄して閉じる	-	破棄(D-13)語で確認ダイアログへ繋がる予測がある	-	-
+exchange_import_discard_confirm_title	REVISE	low	取り込みを破棄しますか?	取り込みを破棄しますか？	疑問形は全角？。style guide明文化。同フロー他タイトルも全角？	style guide 句読点と末尾(dialog)	約物のみ。破棄確認の意味は不変
+exchange_import_discard_confirm_body	OK	-	取り込み済みの提案を破棄します。依頼が有効な間は、同じ回答を再度取り込めます。	-	破棄結果と再取り込み可能条件が過不足ない	-	-
+exchange_import_discard_confirm_confirm	OK	-	破棄	-	確認ダイアログの動詞と一致	-	-
+exchange_import_discarded_guidance	OK	-	取り込みを破棄しました。依頼が有効な間は、同じ回答を再度取り込めます。	-	確認文と同じ条件を事後文でも正確に反復	-	-
+exchange_import_persist_failed_title	OK	-	提案を保存できませんでした	-	失敗タイトルとして簡潔	-	-
+exchange_import_persist_failed_body	OK	-	提案はまだ保存されていません。端末の状態を確認して、もう一度保存を試してください。保存せず閉じると、この提案は失われます（依頼が有効な間は同じ回答を再度取り込めます）。	-	失われる警告と再取り込み救済を削らず保持	-	-
+exchange_import_persist_retry	OK	-	もう一度保存する	-	本文の指示と一致するCTA	-	-
+exchange_import_discard_failed	OK	-	破棄できませんでした。もう一度お試しください。	-	失敗と再試行のみで簡潔	-	-
+exchange_import_review_unavailable	OK	-	取り込み済みの提案を開けませんでした。期限切れまたは無効になっています。	-	失敗と原因(期限切れ/無効化)が明確	-	-
+exchange_import_summary_global_minimize	OK	-	全体方針: 現状の配置をなるべく維持する	-	方針行として明快。配置語もglossary通り	-	-
+exchange_import_cta_failed	OK	-	整理を開始できませんでした。もう一度お試しください。	-	失敗と再試行が簡潔	-	-
+exchange_request_remaining_hours	OK	-	<item quantity="other">残り約%1$d時間</item>	-	plurals/placeholder維持、自然	-	-
+exchange_scope_intent_count	REVISE	low	<item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するにはそれらを選択してください。</item>	<item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するには、これらのアプリを選択してください。</item>	「それらを」は直訳調。対象がアプリと分かる読み下せる文に	rubric naturalness; ai-register S 直訳調	件数と選択要求は同じ。plurals/placeholder不変
+exchange_import_summary_recognized	OK	-	<item quantity="other">提案から%1$d件の希望を認識しました。</item>	-	希望認識の要約として自然	-	-
+exchange_import_summary_no_judgment	OK	-	<item quantity="other">判断なしの項目が%1$d件あります (希望なしとして整理されます)。</item>	-	判断なし(CONTEXT.md)と整理時の扱いを両方明示	-	-
+exchange_import_summary_scope_candidates	OK	-	<item quantity="other">この依頼にはホームに未配置のアプリ%1$d件が含まれます。</item>	-	40番と同じ構文で一貫	-	-
+exchange_import_summary_priority	OK	-	<item quantity="other">優先度の指定: %1$d件</item>	-	要約行として簡潔	-	-
+exchange_import_summary_existing_category	OK	-	<item quantity="other">既存カテゴリを参照する項目: %1$d件</item>	-	既存カテゴリ参照の用語通り	-	-
+exchange_import_summary_proposed_group	REVISE	low	<item quantity="other">今回だけの新しいグループ提案: %1$d件 (保存されません)。</item>	<item quantity="other">今回限りのグループ提案: %1$d件 (保存されません)。</item>	名詞連鎖を圧縮。run限り・未保存の2制約はそのまま	rubric brevity	run限り・未保存の両制約維持
+exchange_import_summary_group	OK	-	<item quantity="other">グループの希望: %1$d件</item>	-	要約行として簡潔	-	-
+exchange_import_summary_placement	OK	-	<item quantity="other">配置先の希望: %1$d件</item>	-	配置語がglossary通り	-	-
+exchange_import_summary_keep	REVISE	low	<item quantity="other">位置の維持の希望: %1$d件</item>	<item quantity="other">配置を維持する希望: %1$d件</item>	二重の「の」を解消し、placement語を配置に統一	glossary placement=配置	現状維持希望の件数の意味は不変
+homeedit_menu_move_to_page	OK	-	ページへ移動…	-	spec 448の操作名と一致。ellipsis維持	-	-
+homeedit_menu_add_to_folder	OK	-	フォルダへ入れる…	-	同上	-	-
+homeedit_menu_remove_from_home	OK	-	ホームから外す	-	同上	-	-
+homeedit_dialog_title_move_to_page	OK	-	移動先のページ	-	メニュー動詞と対応する目的地	-	-
+homeedit_dialog_title_add_to_folder	OK	-	入れるフォルダ	-	メニュー「フォルダへ入れる」と動詞が対応	-	-
+homeedit_dialog_title_new_folder_page	REVISE	low	新しいフォルダの置き先ページ	新しいフォルダを置くページ	「置き先ページ」の名詞連鎖より自然。兄弟タイトルと同等の読みやすさ	rubric naturalness	新規フォルダの置き先ページという対象は不変
+homeedit_list_new_folder	OK	-	新しいフォルダ	-	標準的なリストラベル	-	-
+homeedit_page_label	OK	-	ページ %1$d	-	placeholder維持、簡潔	-	-
+homeedit_folder_entry	OK	-	%1$s（%2$d件）	-	placeholder維持、助数詞自然	-	-
+homeedit_folder_default_label	OK	-	フォルダ	-	既定ラベルとして最小	-	-
+homeedit_lock_note_locked	OK	-	このアイコンは配置ロック中です。移動してもロックは保持されます。	-	ロック保持の保証を明示。glossary配置ロック許容	-	-
+homeedit_lock_note_locked_remove	OK	-	このアイコンは配置ロック中です。外すとロックも削除されます。	-	「外す」がメニュー語と一致し副作用を明示	-	-
+homeedit_error_stale	OK	-	レイアウトが変化したため実行できません。もう一度お試しください。	-	stale理由と再試行が明確	-	-
+homeedit_error_item_gone	OK	-	アイコンはすでにありません。	-	簡潔で状態が明確	-	-
+homeedit_error_no_space	OK	-	選んだページに空きがありません。	-	失敗理由が具体的	-	-
+homeedit_error_redundant	OK	-	アイコンはすでにその位置にあります。	-	位置(座標指す)は許容用法	-	-
+homeedit_error_folder_gone	OK	-	フォルダはすでにありません。	-	簡潔で状態が明確	-	-
+homeedit_error_profile_mismatch	OK	-	仕事用プロファイルのアイコンはこのフォルダに入れられません。	-	glossary仕事用プロファイル通り	-	-
+homeedit_error_unsupported	OK	-	このアイコンは編集アクションの対象外です。	-	編集アクションは製品の操作語。対象外と簡潔	-	-
+homeedit_error_write_failed	REVISE	medium	書き込みに失敗しました。レイアウトは変更されていません。	変更できませんでした。レイアウトは変更されていません。	「書き込み」はDB実装語。利用者語「変更」へ(default英文のwriteも併せ改善候補)	style guide 実装語を出さない; rubric implementation leakage	失敗＋レイアウト不変の保証は完全維持
+homeedit_undo_label	REVISE	medium	編集を適用しました	変更しました	「適用」は編集アクションのavoid語(organizer計画適用と混同)。Snackbar確認文としても自然	CONTEXT.md編集アクション avoid適用(apply)	編集が反映された事実通知は同じ。undo操作(R.string.undo)は不変
+homeedit_undo_error_stale	OK	-	元に戻せません: アイコンがその後移動されています。	-	undo失敗理由が具体的	-	-
+homeedit_undo_error_no_space	OK	-	元に戻せません: 元の位置に空きがありません。	-	失敗理由が具体的	-	-
+homeedit_undo_error_folder_changed	OK	-	元に戻せません: 作成したフォルダの状態が変わっています。	-	失敗理由が具体的	-	-
+homeedit_undo_error_item_unavailable	OK	-	元に戻せません: アプリが端末にありません。	-	失敗理由が具体的	-	-
+homeedit_undo_error_write_failed	OK	-	元に戻せませんでした。レイアウトは変更されていません。	-	undo失敗とレイアウト不変の保証が正確	-	-
+homeedit_undo_error_stale_revision	OK	-	元に戻せません: 確定後にホーム画面が変更されています。	-	失敗理由が具体的	-	-
+homeedit_undo_error_not_restorable	OK	-	元に戻せません: 復元点はもう利用できません。	-	復元点はCONTEXT.md編集セッション語と一致	-	-
+homeedit_undo_error_busy	OK	-	現在元に戻せません: 整理処理が実行中です。	-	一時不可の理由が具体的	-	-
+homeedit_undo_error_restore_failed	OK	-	元に戻せませんでした。整理機能から復元できます。	-	整理機能/復元ともglossary通り、救済先を明示	-	-
+organization_onboarding_proposal_title	OK	-	ホーム画面を整理しますか？	-	全角？使用、簡潔	-	-
+organization_onboarding_proposal_summary	OK	-	まず整理案を確認できます。プレビューを確定するまで、何も変更されません。	-	確認先行と確定まで不変の保証が過不足ない	-	-
+organization_onboarding_proposal_defer	OK	-	後で	-	標準的なラベル	-	-
+organization_onboarding_proposal_skip	OK	-	スキップ	-	標準的なラベル	-	-
+organization_onboarding_proposal_review	OK	-	整理案を確認	-	目的語付きCTA(glossary変形許容)	-	-
+organization_onboarding_reentry_hint_title	OK	-	整理はいつでもできます	-	簡潔で再入口を示す	-	-
+organization_onboarding_reentry_hint_body	OK	-	ホーム画面を長押し → %1$s → %2$s → %3$s	-	placeholder 3つ維持、経路表示として自然	-	-
+```
