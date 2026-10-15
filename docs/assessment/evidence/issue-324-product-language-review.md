@@ -6,8 +6,9 @@
 ## Inventory
 
 - Base SHA: branch `issue-324-implementation` from main `25f97aef4d` (post PR #602; resource values identical to main — resource reflection happens only in this change set).
+- **Status note:** this pass and its reflection are recorded while spec AC-324-04's owner blind adjudication and the fresh-session Gemini check (D1/D2) are still pending; if the adopted model changes, re-running the pass against the fixed inventory and reconciling the diff is the documented follow-up.
 - Regeneration: Nunu prefixes `organizer_` / `manual_organization_` / `organization_onboarding_` / `exchange_` / `homeedit_` across both roots (`lawnchair/res`, root `res`), strings+plurals, `translatable != false` (0 excluded). Total 626 units (lawnchair 540 + root 86). The prefix set now matches the oracle's extended `NUNU_PREFIXES`.
-- 8-class mapping per spec AC-324-09 was assigned per unit by the reviewer (ui_role/user_class in the table); class coverage: CTA/title, onboarding/progress/status, warning/confirmation/failure/stale/recovery, settings/category/lock, progress/result/empty, a11y, diagnostics.
+- Eight-class coverage (recorded per unit in the table): primary action / title 92, settings / help descriptive copy 316, confirmation / warning / failure / stale / recovery 168, progress / result / empty state 19, diagnostics / support 31. (Onboarding units map into the descriptive and progress classes; accessibility-class strings did not occur in this inventory — the a11y-format lock-state string was dispositioned `OK`.)
 
 ## Reviewer provenance
 
@@ -17,7 +18,7 @@
 ## Dispositions (626 units)
 
 - `OK` 494 / `REVISE` 123 (low 83 / medium 40) / `PRODUCT_DECISION` 4 / `TECHNICAL_ONLY` 5.
-- Semantic guard (independent GLM session, functional side): 123/123 ACCEPT, 0 reject — placeholder contracts, default-meaning preservation, and safety semantics verified per row (verdicts in the implementing session's scratch `guard-verdicts.tsv`; rejected set empty).
+- Semantic guard (independent GLM-family session, functional side, 2026-10-15): **123/123 ACCEPT, 0 reject** — per-proposal verification against the default-English source, placeholder/plural contracts, and safety-class meaning. Checked-in record: [issue-324-semantic-guard.tsv](./issue-324-semantic-guard.tsv) (1:1 with the 123 `REVISE` rows; provenance in its header).
 - Default English: no `REVISE` proposed an English-default change; the pass confirmed the Japanese side is the locus of the accepted revisions (spec AC-324-10 satisfied vacuously this round — developer-oriented defaults flagged as `PRODUCT_DECISION` where rewriting would change meaning).
 
 ## `PRODUCT_DECISION` (owner resolution pending; resources unchanged)

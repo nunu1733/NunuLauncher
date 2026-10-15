@@ -1,0 +1,127 @@
+# Issue #324 semantic guard record (spec AC-324-11)
+# Guard session: independent implementing-session subagent (GLM family, functional side; agent id in session log sess_28f8ae8c-d812-49f3-aa27-75e75919e46d), 2026-10-15.
+# Method: per proposal, verified against the default-English source (values/strings.xml), placeholder/plural contract, and safety-class meaning (states/constraints/irreversibility/recovery steps). Verdicts ACCEPT/REJECT with defect note.
+resource_name	verdict	note
+organizer_lock_effect_dock_slot	ACCEPT|EN 'keeps this item in its Dock slot' preserved; Dock kept; slot->位置 same guarantee
+organizer_lock_effect_folder_children_own_lock_remains	ACCEPT|EN 'items inside locked on their own stay locked' preserved; フォルダ内明示 same constraint
+organizer_lock_effect_app_pair_parent_covers_members	ACCEPT|EN 'keeps both apps and their split placement together' preserved as ペアとしての配置
+organizer_lock_result_no_change	ACCEPT|EN 'already in that state' preserved; no-op state unchanged
+organizer_diagnostics_description	ACCEPT|privacy-safe(プライバシーに配慮した)/file export/for support all preserved; organizer qualifier dropped but row sits under オーガナイザー診断 title
+organizer_diagnostics_export_subtitle	ACCEPT|export object and result identical; 出力->書き出す unification only
+organizer_hub_title	ACCEPT|CONTEXT.md:220 defines 'Organizer hub (整理ハブ)'; feature-name JA aligned to defined term; same referent
+organizer_hub_summary	ACCEPT|hub actually holds status + manual_organization_start entry + materials (OrganizerHubPreferences.kt:363); 整理の開始 = 'starting a review'
+organizer_hub_label	ACCEPT|same term unification as hub_title; EN 'Organizer'
+organizer_personalization_usage_access_granted	ACCEPT|all 5 EN guarantees kept: coarse hints improve quality / raw history never leaves device / AI consult confirms before send / row manages+revokes / organizing works fully regardless
+organizer_personalization_usage_access_not_granted	ACCEPT|all 5 EN guarantees kept; asker made explicit as アプリ = the JIT dialog shown by the app (UsageAccessJitRequest), no behavior change
+organizer_usage_access_jit_title	ACCEPT|question form only; meaning identical
+organizer_usage_access_jit_body	ACCEPT|all 5 EN points kept: why-now / permission->quality / raw history never leaves / AI-consult pre-send confirm / works fully without; JA split needs no EN change
+organizer_usage_access_jit_continue	ACCEPT|same action (proceed without granting); EN 'Skip for now' semantics unchanged
+organizer_strategy_frozen_operation_active	ACCEPT|in-progress + interrupt-first constraint unchanged; 整理ストラテジー matches organizer_strategy_title (values-ja:335)
+organizer_strategy_retry_when_busy	ACCEPT|busy + retry-after-finish preserved; aligns with apply_concurrent 別の…進行中 (values-ja:287)
+manual_organization_new_pages_count	ACCEPT|%1$d preserved; new-page count meaning unchanged
+manual_organization_stale_proposal_discarded	ACCEPT|discard + reason (not safely applicable) preserved; irreversibility kept
+manual_organization_stale_proposal_not_reviewed	ACCEPT|pre-review discard + cause (layout changed) preserved
+manual_organization_recovery_preview	ACCEPT|restore target = pre-organization state reviewed on this screen + confirmation required, both preserved
+manual_organization_recovering	ACCEPT|表記統一 only; progress meaning unchanged
+manual_organization_recovery_restored	ACCEPT|表記統一 only; completion meaning unchanged
+manual_organization_recovery_not_available	ACCEPT|'no longer safely restorable' preserved
+manual_organization_durable_status_restorable	ACCEPT|EN 'saved pre-organization backup is restorable' -> 保存した整理前のレイアウトに戻せます; same referent (recovery point), restorability kept
+manual_organization_durable_status_restored_or_expired	ACCEPT|not restorable + reasons (restored/expired) preserved; pairs with restorable row
+manual_organization_preserved_strategy	ACCEPT|%1$d preserved; ストラテジー matches screen terms
+manual_organization_unplaced_strategy_scope	ACCEPT|%1$d preserved; フォルダ spelling unified; reason (strategy keeps pages/folders) unchanged
+manual_organization_selection_stale	ACCEPT|no-change guarantee + restart guidance preserved; 何も変更されていません is majority form (4 vs 2 in values-ja)
+manual_organization_candidate_unresolved	ACCEPT|cannot-add + no-change + restart guidance preserved
+manual_organization_rejection_invalid_container	ACCEPT|%1$d preserved; 'invalid container' -> 無効な格納先 same referent
+manual_organization_rejection_overlap	ACCEPT|EN 'Overlapping placement' -> 重なっている配置; distinct from duplicate strings which keep 重複; %1$d preserved
+manual_organization_rejection_locked_out_of_bounds	ACCEPT|%1$d preserved; locked + out-of-bounds count unchanged
+manual_organization_rejection_invalid_dimensions	ACCEPT|%1$d preserved; invalid device-profile dimensions unchanged
+manual_organization_rejection_target_profile_mismatch	ACCEPT|%1$d preserved; mismatch meaning unchanged
+manual_organization_rejection_invalid_category_provenance	ACCEPT|JA missing in repo; EN 'Category source not allowed: %1$d' -> fills with sibling format; %1$d preserved
+manual_organization_unavailable_item_constraint	ACCEPT|%1$d preserved; 利用できない is majority form (7 vs 2)
+manual_organization_unavailable_constraint	ACCEPT|%1$d preserved; both OR conditions (unavailable / profile-constrained) kept
+manual_organization_preview_details_unavailable	ACCEPT|list-not-prepared + review counts before applying preserved
+manual_organization_preamble_scope	ACCEPT|whole-home scope + nothing-applied-before-confirm guarantee preserved as equivalent phrasing
+manual_organization_failed	ACCEPT|EN 'Could not run the organization' -> subject 整理 clarified; failure meaning unchanged
+manual_organization_discard_confirm_text	ACCEPT|selections+proposal discarded + nothing applied, both preserved; 提案->整理案 per glossary
+manual_organization_preview_unavailable_add	ACCEPT|all 3 kept: list not prepared / nothing changed / additions only after full-list review (matches EN 'full list is reviewed')
+manual_organization_preview_expanded_state	ACCEPT|verified stateDescription usage (ManualOrganizationPreferences.kt:2358); state predicate form appropriate
+manual_organization_preview_collapsed_state	ACCEPT|verified stateDescription usage; state predicate form appropriate
+manual_organization_preview_row_ordinal_note	ACCEPT|%1$d %2$d preserved; 行目 matches workspace_destination/supplement_cell (values-ja:461,468)
+manual_organization_preview_move_reason_folder_member	ACCEPT|EN 'moves as a folder member' preserved
+manual_organization_preview_preserved_reason_reserved_region	ACCEPT|restores EN 'search' qualifier (kept for the reserved search area)
+manual_organization_preview_preserved_reason_dock	ACCEPT|EN 'kept in the Dock' preserved; Dock per glossary
+manual_organization_preview_preserved_reason_structural	ACCEPT|consistent with same-screen manual_organization_preserved_structural 関連する項目を保持 (values-ja:329)
+manual_organization_preview_preserved_reason_strategy	ACCEPT|ストラテジー unification; kept-by-selected-strategy unchanged
+manual_organization_preview_preserved_reason_already_canonical	ACCEPT|EN 'already in its canonical place' -> 既に所定の位置にある preserved
+manual_organization_preview_warning_fallback_category_item	ACCEPT|代替カテゴリ is canonical (manual_organization_warning_fallback_category values-ja:370); warning content unchanged
+manual_organization_preview_warning_duplicate_launch_target_item	ACCEPT|duplicate / not moved / kept — all 3 preserved; fragment style matches sibling warning rows
+manual_organization_preview_new_page_position	ACCEPT|%1$d preserved; full-width parens match new_folder_row
+manual_organization_preview_position_dock	ACCEPT|EN 'Dock slot %1$d' -> Dockの%1$d番目; %1$d preserved
+manual_organization_preview_position_folder_existing	ACCEPT|%1$s %2$d preserved; ordinal natural for position fragment
+manual_organization_preview_position_folder_planned	ACCEPT|%1$s %2$d preserved; symmetric with existing-folder side
+manual_organization_preview_new_folder_row	ACCEPT|%1$s %2$s %3$s preserved; members->内容 same referent (folder contents)
+manual_organization_diagram_dock	ACCEPT|Dock notation unification only
+manual_organization_exclusion_blocked_kind	ACCEPT|type-based non-excludable reason preserved
+manual_organization_exclusion_blocked_placement	ACCEPT|dock/folder/app-pair enumeration + non-excludable preserved; Dock notation
+manual_organization_exclusion_blocked_preserved	ACCEPT|stronger preservation rule preserved
+manual_organization_exclusion_blocked_structural	ACCEPT|auto-decided by replanning preserved; 再計算 matches manual_organization_replanning 提案を再計算中 (values-ja:542)
+manual_organization_unplaced_candidate_a11y	ACCEPT|%1$s %2$s preserved; full sentence for TalkBack; not-placed-by-this-proposal unchanged
+manual_organization_applied_new_folders_count	ACCEPT|plural other-only kept; %1$d preserved; 作成した entails new
+manual_organization_applied_new_pages_count	ACCEPT|plural other-only kept; %1$d preserved
+manual_organization_recovery_history_moved	ACCEPT|plural other-only kept; %1$d preserved; spacing style only
+manual_organization_recovery_history_new_folders	ACCEPT|plural other-only kept; %1$d preserved
+manual_organization_recovery_history_new_pages	ACCEPT|plural other-only kept; %1$d preserved; ページ重複解消
+manual_organization_applied_added_count	ACCEPT|plural other-only kept; %1$d preserved; added-count meaning unchanged
+organizer_category_override_busy	ACCEPT|finish-before-editing constraint preserved (res/values-strings)
+organizer_category_override_unavailable	ACCEPT|reload + retry recovery preserved; リスト->一覧 unification
+organizer_category_override_conflict	ACCEPT|reload + re-choose recovery preserved
+organizer_category_auto	ACCEPT|EN 'Auto & Vehicles' -> 自動車＆乗り物; category name meaning unchanged
+organizer_category_books	ACCEPT|EN 'Books & Reference' -> 書籍＆参考文献; unchanged referent
+organizer_category_override_automatic_description	ACCEPT|planner classifies on every new run (DeterministicOrganizationPlanner always calls classify; PlanningPlacement handles incremental inside); fresh=new run, not full-only — proposed closer to EN; no-override fact kept
+organizer_category_override_custom_description	ACCEPT|EN identical to category_description ('Use %1$s as the explicit category.'); proposed matches its JA (values-ja-root:252); %1$s preserved
+organizer_custom_category_summary	ACCEPT|explicit-assignment-only invariant preserved in user language (nothing enters unless self-assigned)
+organizer_custom_category_partial_delete	ACCEPT|3 states kept: already unassigned / empty category remains / finish delete removes it
+organizer_custom_category_conflict	ACCEPT|failure + reload/retry recovery preserved; source->list is user-observable equivalent
+exchange_ai_consultation_toggle_label	ACCEPT|JA missing; EN 'AI consultation'; matches method label AIに相談 (exchange_method_consult values-ja:569)
+exchange_ai_consultation_toggle_description	ACCEPT|JA missing; all EN points kept: experimental / off by default / off=organizing without AI option / request+proposal stay until expiry / at organizer hub
+exchange_entry_subtitle	ACCEPT|EN 'import its proposal as a reviewable plan' restored (確認してから適用できる提案); review-before-apply flow per default
+exchange_capability_example_keep	ACCEPT|keep-unmoved meaning unchanged
+exchange_capability_no_direct_change	ACCEPT|never-changes-directly guarantee + drafts-for-plan both preserved
+exchange_capability_flow	ACCEPT|punctuation only; send counts, question range, plan confirm, never-sent guarantee all unchanged
+exchange_expectation_fixed_home	ACCEPT|import-invalidation condition (home or categories changed) preserved; カテゴリ per glossary
+exchange_privacy_redacted	ACCEPT|punctuation only; default marker unchanged
+exchange_replacement_title	ACCEPT|punctuation only
+exchange_replacement_warning	ACCEPT|irreversibility (reply not importable) + imported proposal also discarded + continue confirm, all preserved
+exchange_replacement_decline	ACCEPT|object 依頼 added; keep-existing action unchanged
+exchange_disclosure_hint	ACCEPT|imperative matches EN 'Send this exact text'; nothing-sent-until-choose guarantee unchanged verbatim; fixes auto-send misreading without behavior change
+exchange_discard_confirm_title	ACCEPT|punctuation only
+exchange_import_from_file	ACCEPT|same file-import action; verb added for predictability
+exchange_import_from_clipboard	ACCEPT|term unification 取り込む; same action
+exchange_status_clipboard_empty	ACCEPT|cause + 3-step recovery + 2 alternatives all preserved
+exchange_status_file_read_failed	ACCEPT|cause + format constraint (.txt/.json, 1 MiB) + alternatives preserved
+exchange_recognized_version	ACCEPT|value displayed unchanged
+exchange_recognized_entries	ACCEPT|count meaning unchanged
+exchange_framing_fenced_json	ACCEPT|format distinction kept; consistent with framing_empty ```jsonコードブロック
+exchange_generation_store_failure	ACCEPT|'exchange session' is the internal object created during request generation; 依頼 is the user-facing referent; nothing-was-sent guarantee verbatim
+exchange_failure_primary_invalid_enum	ACCEPT|unknown values + resend/re-paste recovery preserved
+exchange_failure_primary_forbidden_content	ACCEPT|prohibited-instructions reason + recovery preserved
+exchange_failure_framing_ambiguous	ACCEPT|multiple marked blocks + single final JSON preserved
+exchange_failure_framing_empty	ACCEPT|proposed value already equals current repo value (input current stale); text matches EN direction (AI resends); no-op
+exchange_failure_invalid_enum	ACCEPT|unknown-value reason preserved
+exchange_failure_forbidden_content	ACCEPT|subject 整理案->回答 aligns with EN 'The intent' (parsed from AI reply) and sibling exchange failures using 回答; forbidden list (座標・サイズ・データベース変更) unchanged
+exchange_failure_mobility_contradiction	ACCEPT|same subject alignment; immovable-item failure unchanged
+exchange_failure_capability_unsupported	ACCEPT|same subject alignment; unsupported-capability failure unchanged
+exchange_failure_scope_mismatch	ACCEPT|both remedies (reselect same apps / recreate request) preserved; 作り直す matches buttons (values-ja:641,726)
+exchange_scope_set_mismatch	ACCEPT|highlight-apps-to-continue condition preserved; CTA この提案で続ける exists (values-ja:711,737)
+exchange_scope_diff_missing	ACCEPT|EN 'Required by the request' -> 依頼に必要; pairs with 依頼外 (values-ja:709)
+exchange_rebind_start_failed	ACCEPT|failure + retry preserved; CTA verb alignment
+exchange_failure_unknown_category_ref	ACCEPT|category-gone cause + recreate/ask-again preserved; AIに相談 is the product term
+exchange_scoped_freeze_notice	ACCEPT|lock reason + release path unchanged; actual button is キャンセル (exchange_cancel via onCancel, ExchangeFlowUi.kt:2659)
+exchange_entry_import_only_notice	ACCEPT|importable-here + new request via 整理開始→AIに相談, both preserved; quoted term matches method label
+exchange_import_discard_confirm_title	ACCEPT|punctuation only
+exchange_scope_intent_count	ACCEPT|plural other-only kept; %1$d preserved; selection requirement unchanged
+exchange_import_summary_proposed_group	ACCEPT|plural other-only kept; %1$d preserved; this-run-only + not-saved both kept
+exchange_import_summary_keep	ACCEPT|plural other-only kept; %1$d preserved; keep-position wish unchanged
+homeedit_dialog_title_new_folder_page	ACCEPT|EN 'Page for the new folder' preserved
+homeedit_error_write_failed	ACCEPT|failure + layout-unchanged guarantee preserved; no EN change proposed in batch so no EN/JA divergence
+homeedit_undo_label	ACCEPT|edit-applied notification preserved as 変更しました; undo action (R.string.undo) untouched

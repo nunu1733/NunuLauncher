@@ -227,6 +227,17 @@ def _contract_compatible(kind: str, default_value, ja_value) -> bool:
             _tokens_compatible(default_quantities[q], ja_quantities[q])
             for q in ja_quantities
         )
+    if kind in {"string-array", "array", "integer-array"}:
+        # Array values hold one token sequence per item (prefixed by the
+        # item index). Compare item counts and then token sequences
+        # position-by-position; reordering across items would change the
+        # rendered list, so the positionality rules apply within an item
+        # only.
+        if len(default_value) != len(ja_value):
+            return False
+        return all(
+            _tokens_compatible(d, j) for d, j in zip(default_value, ja_value)
+        )
     return _tokens_compatible(default_value, ja_value)
 
 
