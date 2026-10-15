@@ -1,6 +1,6 @@
 ---
 issue: "#324"
-status: proposed
+status: accepted
 requirements:
   - AC-324-01
   - AC-324-02
@@ -22,7 +22,7 @@ updated: 2026-10-15
 
 # Product Language Reviewer subagent による Nunu 固有 UI 文言の再監査
 
-> **Status: proposed.** 本 spec は Issue [#324][1] の提案契約であり、本準備 task が自己承認したものではない。実装は Issue 上で owner が本 spec を承認するまで開始しない。実装中の発見が本契約と矛盾する場合は、実装内で代替を選ばず Issue で判断を更新する。
+> **Status: accepted**（2026-10-15。PR #602 review round 2 Approve — [comment 6193306647][29]、head `202d9d68bc`。owner の指定する Phase1 フロー（spec/plan → ChatGPT review → 承認後 Phase2）に基づく受け入れ記録である）。実装中の発見が本契約と矛盾する場合は、実装内で代替を選ばず Issue で判断を更新する。
 
 ## Risk tier（[github-workflow.md](../../docs/project/github-workflow.md) Risk tiers 準拠）
 
@@ -234,3 +234,4 @@ accessibility text は視覚 label の短縮を流用せず、読み上げて自
 [26]: https://github.com/nunu1733/NunuLauncher/blob/main/docs/adr/0018-lawnchair-16-rebase.md "ADR-0018: Lawnchair 16 rebase (Epic #516, accepted)"
 [27]: https://github.com/nunu1733/NunuLauncher/blob/main/docs/assessment/evidence/issue-324-ai-register-research.md "AI register (AI 感) detection/removal research evidence (2026-10-15)"
 [28]: https://github.com/nunu1733/NunuLauncher/pull/602#issuecomment-6193112079 "PR #602 ChatGPT review round 1 (Changes requested)"
+[29]: https://github.com/nunu1733/NunuLauncher/pull/602#issuecomment-6193306647 "PR #602 ChatGPT review round 2 (Approve)"

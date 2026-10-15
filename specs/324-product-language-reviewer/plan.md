@@ -2,7 +2,7 @@
 
 > Issue: [#324][1]
 > Spec: [spec.md](./spec.md)
-> Status: **proposed** — 本 plan は spec 準備 task が作成した計画であり、owner による spec 承認前は実装を開始しない。承認後も、full pass 開始時に inventory と runtime 状態を再確認してから着手する。
+> Status: **accepted**（2026-10-15。PR #602 review round 2 Approve — comment 6193306647、head `202d9d68bc`）。full pass 開始時に inventory と runtime 状態を再確認してから着手する。
 
 ## Current evidence
 
