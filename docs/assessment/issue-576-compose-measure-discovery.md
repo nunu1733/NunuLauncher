@@ -25,6 +25,13 @@ keyword is appropriate.
 | Failing test | `ManualOrganizationPreferencesInstrumentationTest#staleApplyAttemptExplainsOutcomeAndNextStep`, 3.790s |
 | XML SHA-256 | `48f070c75c78d2362aae73298d24893f3fcb4fa3ca79b32da84af705f83e88fb` |
 | Per-test logcat SHA-256 | `15af0378dabd6434cb67429d5fbe84167d37d000a134a7569f4f34986687c455` |
+| Device properties | SDK 36 (`sdk_full=36.0`), ABI `x86_64` |
+| Image fingerprint | `google/sdk_gphone64_x86_64/emu64xa:16/BE2A.250530.026.F3/13894323:userdebug/dev-keys` |
+
+The original-head workflow configures `google_apis`, `x86_64`, `pixel_7_pro`,
+disabled animations and Zulu JDK 21. Device properties from the failure-time
+artifact confirm the SDK/ABI/image above. A local arm64 run is not the same
+environment even when its API level matches.
 
 Downloaded both artifacts on 2026-10-15 using:
 
