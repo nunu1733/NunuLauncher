@@ -1,0 +1,12 @@
+diff --git a/tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt b/tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt
+index 075e5c1c2e..ca11bcc664 100644
+--- a/tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt
++++ b/tests/organizer-instrumentation/app/lawnchair/organizer/ui/ManualOrganizationPreferencesInstrumentationTest.kt
+@@ -2797,6 +2797,7 @@ class ManualOrganizationPreferencesInstrumentationTest {
+         val runner = ManualOrganizationRun(
+             application,
+             OrganizationPlanner { planningResult() },
++            publicationThread = HandlerRunPublicationThread(),
+         )
+ 
+         composeRule.setContent {
