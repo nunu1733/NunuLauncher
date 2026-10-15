@@ -1,14 +1,11 @@
 # Issue #324 owner blind adjudication packet — candidate outputs (sealed ids)
 
-> Status: preserved verbatim from the 2026-10-15 bake-off run, with self-identifying model/runtime strings replaced by `[identity redacted]` so the owner can score blind. The identity mapping is recorded in issue-324-bakeoff.md and must be consulted only after scoring.
-
-
-
 > Status: sealed-id packet for the owner's blind scoring (spec AC-324-04 / #161 §7).
-> Candidate ids below are fresh random labels with no published correspondence to any model, adapter, or earlier α/β record. The identity mapping is held outside the repository until the owner's scoring is recorded; do not search git history or earlier PR/Issue comments before scoring — that defeats the purpose.
-> Score each candidate per unit on the 8 axes (0–2) defined in `issue-324-bakeoff.md` §Protocol, using `issue-324-bakeoff-context.md` as the fixed input. A 0 on Accuracy or Safety preservation for any unit is a hard failure. Record your per-unit scores and adoption ruling by appending to this file or the final PR record; the mapping is then unsealed alongside.
+> The two candidate outputs below are labeled P and Q. These labels are fresh: no model name, vendor, or adapter correspondence for P or Q is published anywhere in this repository, and identity-bearing strings inside the outputs are replaced with `[sealed]`. The id→model mapping is held outside the repository (implementing agent's hand-off) until the owner's scoring is recorded.
+> Scoring: for each candidate and each of the 24 units in `issue-324-bakeoff-context.md`, score 0–2 on the 8 axes (Accuracy / Fluency / Terminology / UI style-concision / Context fit / Safety preservation / Resource correctness / AI-register detection); a 0 on Accuracy or Safety preservation for any unit is a hard failure; tie-break by Safety+Accuracy sums then a written rationale. Record per-unit scores and an adoption ruling by appending to this file or the final PR record; the mapping is then unsealed alongside.
 
 ## Candidate P output
+
 ### 01
 
 | resource_name | disposition | ui_role | user_class | surface | current | proposed | reason | severity | meaning_preserved | layout_risk | rule |
@@ -79,7 +76,7 @@
 
 | resource_name | disposition | ui_role | user_class | surface | current | proposed | reason | severity | meaning_preserved | layout_risk | rule |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| exchange_capability_flow | OK | summary | safety-critical | 外部AI連携の導入説明 | 相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。 | — | 操作の順序と回数、会話の場所、プライバシー境界が具体的。必要な説明量であり、長さだけを理由に削らない。 | high | yes：外部AI内での相談、依頼1回、質問2〜4問、方針確認、最終案1回、会話内容をNunuLauncherへ送信しない保証を保持。 | 変更なし | スタイルガイド「安全、失敗、復旧」／AI-register：安全意味優先・単独の文末反復を誤検出しない |
+| exchange_capability_flow | OK | summary | safety-critical | 外部AI連携の導入説明 | 相談はChat[sealed]。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。 | — | 操作の順序と回数、会話の場所、プライバシー境界が具体的。必要な説明量であり、長さだけを理由に削らない。 | high | yes：外部AI内での相談、依頼1回、質問2〜4問、方針確認、最終案1回、会話内容をNunuLauncherへ送信しない保証を保持。 | 変更なし | スタイルガイド「安全、失敗、復旧」／AI-register：安全意味優先・単独の文末反復を誤検出しない |
 
 ### 13
 
@@ -158,13 +155,15 @@
 - **対象・件数:** 固定入力01–24の全24件。OK 9／REVISE 13／PRODUCT_DECISION 1／TECHNICAL_ONLY 1。スキップなし。
 - **Base SHA:** `25f97aef4d353566b442a4c40552c49e77fbd9c0`。HEADは固定入力のpinと一致。
 - **Inventory regeneration command:** `unknown`。指定ファイルに記載がないため、再生成せず固定24件を使用。
-- **実行情報:** OpenAI／[identity redacted]、[identity redacted]。正確なモデルID・runtime session IDは未公開。日付：2026-10-15 JST。実行識別ラベル：`issue-324-bakeoff-2026-10-15-root`。入力のfamily rule上、GPT系候補は採点可能だが採用対象外。
+- **実行情報:** [sealed]／[identity redacted]、[identity redacted]。正確なモデルID・runtime session IDは未公開。日付：2026-10-15 JST。実行識別ラベル：`issue-324-bakeoff-2026-10-15-root`。入力のfamily rule上、[sealed]。
 - **Resource契約:** 提案はresource名とplaceholderの数・型・順序を保持。plural categories・escaping・translatableは固定入力に詳細がなく、変更を提案していない。レンダリング確認は未実施。
 - **使用参照:** `SKILL.md`、`review-rubric.md`、`input-schema.md`、`output-schema.md`、`ai-register-tells.md`、`ja-style-guide.md`、`ja-glossary.tsv`、`固定入力`。指定順で参照。Issues・specs・plansは未参照。
 - **終了点検:** ファイル変更・プロセス起動・ポート使用・worktree作成なし。`git status --short`には既存の未追跡項目4件（`.agents/skills/product-language-review/`、`.[identity redacted]/agents/product-language-reviewer.toml`、`.[identity redacted]/`、固定入力ファイル）。削除せず保持。両`pgrep`はプロセス一覧取得不可、`adb devices`はコマンド未導入のため確認不能。使用ポートがないため`lsof`対象なし。
 - **既存worktree一覧:** 以下11件を確認。今回作成したものはなく、削除していない。
+
 ## Candidate Q output
-# Candidate β review (identity withheld)
+
+# Candidate [sealed] review (identity withheld)
 
 Fixed input: `docs/assessment/evidence/issue-324-bakeoff-context.md` (24 units, pinned to main `25f97aef4d`; audited tree HEAD matches). Canon: `docs/localization/ja-style-guide.md`, `docs/localization/ja-glossary.tsv`, skill references. Fields follow `references/output-schema.md` order. Safety-class units carry an explicit meaning-preservation note.
 
@@ -366,8 +365,8 @@ Fixed input: `docs/assessment/evidence/issue-324-bakeoff-context.md` (24 units, 
 | ui_role | summary |
 | user_class | safety-critical |
 | surface | exchange capability onboarding explanation |
-| current | 相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。 / `The conversation happens inside your external AI app (such as ChatGPT). Send the request once, answer a few short questions (2–4), confirm the plan, and receive one final proposal. Your conversation is never sent to NunuLauncher.` |
-| proposed | 相談はChatGPTなどの外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問（2〜4問）に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。 |
+| current | 相談はChat[sealed]。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。 / `The conversation happens inside your external AI app (such as Chat[sealed]). Send the request once, answer a few short questions (2–4), confirm the plan, and receive one final proposal. Your conversation is never sent to NunuLauncher.` |
+| proposed | 相談はChat[sealed]。依頼文は1回送り、AIからの質問（2〜4問）に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。 |
 | reason | 半角括弧+前後スペース `(2〜4問)` は翻訳由来のタイポグラフィで、日本語では全角括弧（2〜4問）が標準的。「等」→「など」は書き言葉語気が強い regist を通常UIへ寄せる。本文の構成・情報量は変更しない。 |
 | severity | low |
 | meaning_preserved | yes — privacy 保証文（会話の内容がNunuLauncherに送信されることはありません）は一字も変更しない。フロー各段階（依頼文1回送信→2〜4問に回答→整理方針を確認→最終案を1回受け取り）も全て不変 |
@@ -594,3 +593,4 @@ Fixed input: `docs/assessment/evidence/issue-324-bakeoff-context.md` (24 units, 
 - Flow-level glossary proposals (for glossary addition, not per-unit rewrites):
   - import = 取り込み vs 読み込み is split across the exchange flow (13/18/22 取り込み, 14/15 読み込み). Pick one canonical user term (提案: 統一先を製品判断で決め、glossary に `import` 行を追加する) — recorded here rather than as piecemeal REVISE.
 - References used: `.agents/skills/product-language-review/SKILL.md`; `references/review-rubric.md`; `references/input-schema.md`; `references/output-schema.md`; `references/ai-register-tells.md`; `docs/localization/ja-style-guide.md`; `docs/localization/ja-glossary.tsv`; `docs/assessment/evidence/issue-324-bakeoff-context.md`.
+
