@@ -1,6 +1,6 @@
 ---
 issue: "#285"
-status: draft
+status: accepted
 tier: H
 requirements: []
 updated: 2026-10-15
@@ -106,3 +106,4 @@ None。UI構造・文言・focus順は変化しないため、accessibility・lo
 - 2026-09-28: Draft created for #285. Risk tier判定を旧基準（2026-09-13コメントのmaintenance）から現行基準（#444適用後の階層H）へ更新した起草として記録。
 - 2026-10-15: Re-entry rule適用の改訂。検証baselineを `c5a7840b880e`（2026-09-28起草時）から `efa4ff0bec04`（現行main）へ再anchorし、対象fileが不変（297行、L13/L20使用0件、L14/L19使用中）であることを再確認。#482（2026-09-30適用）のExternal reference scan導入に従いPrior art欄を追加（省略）。tier H判定は現行validatorでも不変（`HIGH_RISK_PATH_PREFIXES` に `lawnchair/src/app/lawnchair/backup/` 残存）。受入条件・scope・非対象の実質変更なし。
 - 2026-10-15: PR #600 review対応。AC-2とTest oracle表のAC-2行をpost-changeの検証として削除前行番号（L14/L19）を期待値に使っていた自己矛盾を解消し、symbol/occurrenceベースのoracleへ修正（review: PR #600 comment 6189768951）。AC-1/AC-3〜AC-5とscopeの実質変更なし。
+- 2026-10-15: Accepted。round 2 reviewのApprove（head `8f22bf9936bc3b281ffc56d53a81cdac8e4ee64b`、PR #600 comment 6189840130）をowner確認のうえ受入。実装開始のstart gateを満たす。

@@ -2,7 +2,7 @@
 
 > Issue: #285
 > Spec: [spec.md](./spec.md)
-> Status: draft
+> Status: accepted
 > Risk tier: H — 変更path `lawnchair/src/app/lawnchair/backup/ui/RestoreBackupScreen.kt` が高リスクpath一覧（`tools/repo-contract/validate_high_risk_evidence.py` の `HIGH_RISK_PATH_PREFIXES` に含まれる `lawnchair/src/app/lawnchair/backup/`。docs/project/github-workflow.md「高リスクPRへの独立エビデンス要求」節と同じ正本）に当たるため。現行workflow（#444、2026-09-27適用）の判定規則「判定の第一基準は変更pathである。高リスクpath一覧に当たる場合は階層H」「高リスクpath上のbehavior-preservingなrefactorも階層Hである」により、本issueのような2行の未使用import削除も階層Hとして扱う。手順: accepted spec + plan.md、Execution and approval contract、および高リスクpathであることによる独立エビデンス契約（CI `final-status` 成功 + `docs/assessment/pr-<PR番号>-<slug>.md` 独立audit。`high-risk-gate` workflowが機械検証）。
 
 ## Current evidence
