@@ -3,7 +3,7 @@ issue: "#285"
 status: draft
 tier: H
 requirements: []
-updated: 2026-09-28
+updated: 2026-10-15
 ---
 
 # RestoreBackupScreen の未使用 Compose import が残存しない（振る舞いは一切変化しない）
@@ -39,6 +39,10 @@ repoのspotless/ktlint構成は未使用importを検出しない（監査記録 
 ## Domain language
 
 追加・変更する用語なし。
+
+## Prior art
+
+- 省略（理由: [External reference scan](../../docs/project/github-workflow.md#external-reference-scan設計時の外部参照調査) のtrigger（新規seam/interface、非自明な状態管理、Android/platform APIの新規扱い、失敗・復旧契約、test strategyの新規設計を含むfeature/research変更）に当たらない。behavior非変化の未使用import 2行削除であり、外部の類似実装・best practiceが設計判断に影響し得る設計上の決定が本変更に存在しない）
 
 ## Behavior scenarios
 
@@ -100,3 +104,4 @@ None。UI構造・文言・focus順は変化しないため、accessibility・lo
 ## Change history
 
 - 2026-09-28: Draft created for #285. Risk tier判定を旧基準（2026-09-13コメントのmaintenance）から現行基準（#444適用後の階層H）へ更新した起草として記録。
+- 2026-10-15: Re-entry rule適用の改訂。検証baselineを `c5a7840b880e`（2026-09-28起草時）から `efa4ff0bec04`（現行main）へ再anchorし、対象fileが不変（297行、L13/L20使用0件、L14/L19使用中）であることを再確認。#482（2026-09-30適用）のExternal reference scan導入に従いPrior art欄を追加（省略）。tier H判定は現行validatorでも不変（`HIGH_RISK_PATH_PREFIXES` に `lawnchair/src/app/lawnchair/backup/` 残存）。受入条件・scope・非対象の実質変更なし。

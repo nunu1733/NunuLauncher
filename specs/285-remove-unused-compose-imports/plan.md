@@ -7,7 +7,7 @@
 
 ## Current evidence
 
-本planの `path:line` 根拠は2026-09-28に `origin/main` `c5a7840b880ed4c436b67170930ca87d4ef7f148` 上で検証した（worktree `issue-285-spec-plan`）。前回snapshot（2026-09-13、baseline `c5274b5d0d`）以降に当該fileへ触れたcommitはない（`git log c5274b5d0d..origin/main -- <file>` が空）。
+本planの `path:line` 根拠は2026-10-15に `origin/main` `efa4ff0bec04feaae96667eeb6a48416560dd323` 上で再検証した（re-entry rule適用の改訂）。前回snapshot（2026-09-28、baseline `c5a7840b88`）以降に当該fileへ触れたcommitはない（`git log c5a7840b88..origin/main -- <file>` が空）。#482（2026-09-30適用）によるworkflow更新（External reference scan導入）とvalidator更新（`--base-sha` option追加）は本planの判定へ影響しない（`HIGH_RISK_PATH_PREFIXES` は不変で `lawnchair/src/app/lawnchair/backup/` を含む。外部参照調査はspecのPrior art欄に省略記録済み）。
 
 **対象fileの現状（`lawnchair/src/app/lawnchair/backup/ui/RestoreBackupScreen.kt`、297行）**
 
@@ -62,7 +62,7 @@
 |---|---|---|
 | AC-1 | diffの目視確認（2行削除・1 file・insertion 0） | `git diff --stat`、PR diff |
 | AC-2 | 使用中importの残存確認 | 削除後fileに対する `grep -n 'ColumnScope'`（L14+L118）、`grep -n 'rememberScrollState'`（L19+L86） |
-| AC-3 | style gate + 既存unit test | `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.backup.*'`（JDK 21 / Android SDK 36.1。docs/engineering/building.md） |
+| AC-3 | style gate + 既存unit test | `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.backup.*'`（JDK 21 / Android SDK Platform 37（minor 2）。正本はdocs/engineering/building.md） |
 | AC-4 | 使用箇所0件のgrep証跡 | `grep -n -E '\bColumn\b'` / `grep -n -E '\bverticalScroll\b'` がimport行のみに一致した実行記録をPR本文へ |
 | AC-5 | 独立エビデンス契約 | CI `CI / final-status` 成功run（head SHA一致）+ `docs/assessment/pr-<PR番号>-<slug>.md`（`high-risk-gate` workflowが機械検証） |
 
@@ -84,3 +84,8 @@
 - [ ] Migration/recovery verified — 適用外（migrationなし）。
 - [ ] Full relevant verification completed（AC-3/AC-5）。
 - [ ] PR evidence and remaining risks recorded（AC-4証跡、未確認範囲なしを明記）。
+
+## Revision history
+
+- 2026-09-28: Draft created（baseline `c5a7840b88`）。
+- 2026-10-15: Re-entry rule適用の改訂。Current evidenceを `efa4ff0bec04` 上で再検証（対象fileは `c5a7840b88` 以降不変）、AC-3の環境参照を現行building guide（SDK Platform 37 minor 2）へ更新、#482（External reference scan）・validator更新の影響なしを記録。変更内容・検証方法の実質変更なし。
