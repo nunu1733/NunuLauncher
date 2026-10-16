@@ -28,19 +28,25 @@ import app.lawnchair.DeviceProfileOverrides
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.InvariantDeviceProfile
+import com.android.launcher3.LauncherFiles.SHARED_PREFERENCES_KEY
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.LauncherSettings.Favorites
+import com.android.launcher3.logging.FileLog
 import com.android.launcher3.model.DeviceGridState
 import java.io.File
 import java.io.FileOutputStream
+import java.io.PrintWriter
+import java.io.StringWriter
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import javax.xml.parsers.DocumentBuilderFactory
 import com.patrykmichalik.opto.core.firstBlocking
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 
 /**
@@ -78,6 +84,22 @@ abstract class NovaConverterBoundaryScenarioBase : NovaRestoreCaptureTestBase() 
     protected abstract val smartspaceEnabled: Boolean
 
     private var originalSmartspace: Boolean? = null
+
+    // Issue #605: FileLog dump length recorded before the restore; the
+    // append-only suffix is this scenario's restore window for the trace-order
+    // oracle.
+    private var traceOffsetBeforeRestore: Int = -1
+
+    private companion object {
+        // Production FileLog trace markers (NovaBackupConverter grid-application
+        // steps and InvariantDeviceProfile.applyGridInfo). Literal copies:
+        // changing a marker in production must update it here in the same PR.
+        const val MARKER_METADATA_WRITE =
+            "Grid restore: writing converted grid to DeviceGridState metadata"
+        const val MARKER_COMMITTED_VALUES = "Committing converted grid to prefs"
+        const val MARKER_LIVE_BINDING = "applyGridInfo: dbFile"
+        const val MARKER_DURABILITY_BARRIER = "Grid restore: durability barrier"
+    }
 
     protected fun context(): Context = ApplicationProvider.getApplicationContext()
 
@@ -232,6 +254,7 @@ abstract class NovaConverterBoundaryScenarioBase : NovaRestoreCaptureTestBase() 
 
     /** Restores the boundary fixture through the converter's normal entry. */
     protected fun restoreBoundaryBackup(zip: File): NovaBackupConverter.NovaBackupInfo {
+        traceOffsetBeforeRestore = fileLogDump().length
         val converter = NovaBackupConverter(context(), Uri.fromFile(zip))
         val info = runBlocking { converter.parseInfo() }
         runBlocking { converter.convertAndRestore(info) }
@@ -293,6 +316,126 @@ abstract class NovaConverterBoundaryScenarioBase : NovaRestoreCaptureTestBase() 
             expectedDbFile,
             InvariantDeviceProfile.INSTANCE.get(context).dbFile,
         )
+        assertLawnchairTypedPrefsPersisted()
+        assertGridApplicationTraceOrder()
+    }
+
+    // -----------------------------------------------------------------
+    // Issue #605: the restarted process rebuilds the grid from the
+    // lawnchair typed prefs (DeviceProfileOverrides.DBGridInfo(prefs)) —
+    // the exact store the #532 S3a rebase dropped from the complete-grid
+    // branch. Assert the typed-pref values AND the persisted file content
+    // at return (the synchronous commit() barrier flushed the batchEdit
+    // apply() writes on the same SharedPreferences file).
+    // -----------------------------------------------------------------
+    private fun assertLawnchairTypedPrefsPersisted() {
+        val context = context()
+        val prefs = PreferenceManager.getInstance(context)
+        assertEquals(
+            "lawnchair typed pref workspaceColumns must carry the converted grid",
+            fixtureColumns,
+            prefs.workspaceColumns.get(),
+        )
+        assertEquals(
+            "lawnchair typed pref workspaceRows must carry the smartspace compensation",
+            expectedCommittedRows,
+            prefs.workspaceRows.get(),
+        )
+        assertEquals(
+            "lawnchair typed pref hotseatColumns must carry the converted grid",
+            fixtureHotseat,
+            prefs.hotseatColumns.get(),
+        )
+        val prefsXml = File(context.applicationInfo.dataDir, "shared_prefs/${SHARED_PREFERENCES_KEY}.xml")
+        assertTrue("persisted launcher prefs XML must exist at $prefsXml", prefsXml.exists())
+        val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(prefsXml)
+        fun persistedInt(key: String): Int {
+            val nodes = doc.documentElement.getElementsByTagName("int")
+            for (i in 0 until nodes.length) {
+                val node = nodes.item(i)
+                val attrs = node.attributes ?: continue
+                val name = attrs.getNamedItem("name")?.nodeValue ?: continue
+                if (name == key) {
+                    return attrs.getNamedItem("value")?.nodeValue?.toIntOrNull()
+                        ?: throw AssertionError("non-int value persisted for $key")
+                }
+            }
+            throw AssertionError("key $key must be persisted in $prefsXml")
+        }
+        assertEquals(
+            "the persisted XML workspaceRows must survive the restore's self-restart",
+            expectedCommittedRows,
+            persistedInt("pref_workspaceRows"),
+        )
+        assertEquals(
+            "the persisted XML workspaceColumns must survive the restore's self-restart",
+            fixtureColumns,
+            persistedInt("pref_workspaceColumns"),
+        )
+        assertEquals(
+            "the persisted XML hotseatColumns must survive the restore's self-restart",
+            fixtureHotseat,
+            persistedInt("pref_hotseatColumns"),
+        )
+    }
+
+    // -----------------------------------------------------------------
+    // Issue #605: pin the spec #168 Behavior 1 ordering deterministically.
+    // A post-return XML readback alone cannot distinguish barrier-last
+    // from barrier-first (a pending apply() may flush before the read),
+    // so the converter's grid-application steps carry FileLog trace
+    // markers; FileLog enqueues writes on a single handler thread in call
+    // order, so the file order equals the call order. This is runtime
+    // durability evidence on top of AC-1, with red (regression head) and
+    // barrier-first mutation sensitivity recorded in the PR.
+    // -----------------------------------------------------------------
+    private fun assertGridApplicationTraceOrder() {
+        val window = fileLogWindow()
+        fun markerIndex(marker: String): Int = window.indexOf(marker)
+        val metadata = markerIndex(MARKER_METADATA_WRITE)
+        val committed = markerIndex(MARKER_COMMITTED_VALUES)
+        val binding = markerIndex(MARKER_LIVE_BINDING)
+        val barrier = markerIndex(MARKER_DURABILITY_BARRIER)
+        assertTrue(
+            "the DeviceGridState metadata-write marker must be in the restore window",
+            metadata >= 0,
+        )
+        assertTrue(
+            "the committed lawnchair grid-values marker must be in the restore window " +
+                "(its absence is the #605 S3a regression: the complete-grid branch " +
+                "never wrote the lawnchair typed prefs)",
+            committed >= 0,
+        )
+        assertTrue("the applyGridInfo binding marker must be in the restore window", binding >= 0)
+        assertTrue("the durability-barrier marker must be in the restore window", barrier >= 0)
+        assertTrue(
+            "grid-application order must be metadata write -> committed values -> " +
+                "live binding -> durability barrier; got metadata=$metadata committed=$committed " +
+                "binding=$binding barrier=$barrier",
+            metadata < committed && committed < binding && binding < barrier,
+        )
+    }
+
+    private fun fileLogWindow(): String {
+        check(traceOffsetBeforeRestore >= 0) {
+            "restoreBoundaryBackup must run before the trace-order assertion"
+        }
+        val after = fileLogDump()
+        assertTrue(
+            "FileLog dump must be append-only within the test window (day rotation?)",
+            after.length >= traceOffsetBeforeRestore &&
+                after.startsWith(after.take(traceOffsetBeforeRestore)),
+        )
+        return after.substring(traceOffsetBeforeRestore)
+    }
+
+    private fun fileLogDump(): String {
+        val out = StringWriter()
+        assertTrue(
+            "FileLog flush must complete",
+            FileLog.flushAll(PrintWriter(out)),
+        )
+        return out.toString()
     }
 
     /** parseInfo (read-only) must parse a normal grid without the warning flag. */
