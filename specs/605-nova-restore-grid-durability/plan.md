@@ -46,11 +46,12 @@ Backup/restore contract (spec #168 Behavior 1) on the restore path;
 
 | Module | Path | Change |
 |---|---|---|
-| NovaBackupConverter | `lawnchair/src/app/lawnchair/backup/NovaBackupConverter.kt` | Complete-grid branch: restore `writeGridToLawnchairPrefs(info, smartspaceEnabled)` and the spec #168 ordering — `writeToPrefs(context)` → `writeGridToLawnchairPrefs` → `applyConvertedGrid` → `writeToPrefs(context, true)` last. Comments updated to cite #168 and #605. |
-| NovaConverterBoundaryScenarioBase | `tests/organizer-instrumentation/app/lawnchair/backup/NovaConverterBoundaryScenarioBase.kt` | `assertCommittedGrid()` additionally asserts the lawnchair typed prefs equal the converted values and the persisted `com.android.launcher3.prefs.xml` on disk contains them at return time. |
+| NovaBackupConverter | `lawnchair/src/app/lawnchair/backup/NovaBackupConverter.kt` | Complete-grid branch: restore `writeGridToLawnchairPrefs(info, smartspaceEnabled)` and the spec #168 ordering — `writeToPrefs(context)` → `writeGridToLawnchairPrefs` → `applyConvertedGrid` → `writeToPrefs(context, true)` last. Add FileLog trace markers on the converter-owned steps (metadata write, barrier) and route the existing "Committing converted grid to prefs" line through `FileLog.i` (which mirrors to logcat) so the whole ordering is deterministically observable. Comments cite #168 and #605. |
+| NovaConverterBoundaryScenarioBase | `tests/organizer-instrumentation/app/lawnchair/backup/NovaConverterBoundaryScenarioBase.kt` | `assertCommittedGrid()` additionally asserts: (1) the lawnchair typed prefs equal the converted values; (2) the persisted `com.android.launcher3.prefs.xml` on disk contains them at return time; (3) the FileLog trace order of the restore window is metadata write → committed values → `applyGridInfo` binding → durability barrier (window-scoped by pre-recorded file offset, `FileLog.flushAll` before each read — single-handler FIFO makes file order equal call order). |
 
 No other production path changes. The partial-grid `else` branch is
-untouched (spec Non-goals).
+untouched (spec Non-goals). No new lanes, no `ci.yml` filter change, no
+change to the lane script's class list.
 
 ## Seam and invariants
 
@@ -60,9 +61,9 @@ untouched (spec Non-goals).
 - The restore-family lease, `restored.db` rename, reload completion barrier,
   and `cleanUpDatabases` guard are unchanged.
 - The test oracle stays inside the existing converter-boundary surface and
-  the one-restore-per-process execution contract (#299): no new lane, no
-  class list change in `tools/ci/run-restore-capture-instrumentation.sh`,
-  no `ci.yml` filter change.
+  the one-restore-per-process execution contract (#299). The order oracle
+  uses the production `FileLog` trace only — no new production seam,
+  interface, or test-only adapter (AGENTS.md: 仮想interfaceを増やさない).
 
 ## Migration / rollback
 
@@ -72,10 +73,16 @@ No schema, pref-format, or backup-format change. Rollback = revert the PR.
 
 1. Extended `NovaConverterBoundaryTest` and
    `NovaConverterBoundarySmartspaceOffTest` (existing restore-capture lane;
-   one restore per process): `assertCommittedGrid()` also asserts the
-   lawnchair typed prefs and the persisted XML file. Red on the regression
-   head, green on the fix head (AC-3 evidence recorded in the PR).
-2. Existing suites keep passing: `NovaRestoreGridApplicationTest`, the
+   one restore per process): `assertCommittedGrid()` asserts the lawnchair
+   typed prefs, the persisted XML file, and the FileLog trace order.
+2. Red/green and sensitivity evidence (AC-2), recorded in the PR:
+   - red on the base (regression) head: typed-prefs value assertion fails and
+     the committed-values / barrier markers are absent from the trace;
+   - sensitivity: a local barrier-first mutation of the fixed code makes the
+     trace-order assertion fail (the oracle detects wrong ordering, not only
+     absence);
+   - green on the fix head.
+3. Existing suites keep passing: `NovaRestoreGridApplicationTest`, the
    capture classes (`NovaRestoreCaptureControlTest`,
    `NovaRestoreCaptureWidgetWindowTest`,
    `NovaRestoreCaptureUnknownProviderTest`,
@@ -86,16 +93,21 @@ No schema, pref-format, or backup-format change. Rollback = revert the PR.
 
 - `./gradlew spotlessCheck`
 - `./gradlew assembleLawnWithQuickstepGithubDebug`
-- Red check of the extended assertion on the regression head
-  (`b18a98af48ab10f4c5339edff1f2728fb505b65d`'s current descendant = base),
-  then the restore-capture lane (`tools/ci/run-restore-capture-instrumentation.sh`)
-  on a local emulator after the fix.
-- Runtime emulator reproduction with a synthetic complete-grid backup
-  (converted 6x5x5) from the default grid: one UI restore → self-restart →
+- Red check of the extended assertions on the base head, sensitivity run of
+  the barrier-first mutation, then the restore-capture lane
+  (`tools/ci/run-restore-capture-instrumentation.sh`) on a local API
+  emulator after the fix.
+- Runtime emulator reproduction (AC-3/AC-4), per the original report
+  procedure on the API 37 environment: synthetic complete-grid backup
+  (converted 6x5x5) from the default grid — one UI restore → self-restart →
   converted DB active, prefs 6/5/5, no unmatched-deletion log; a further cold
-  start keeps the state; a custom-layout start-state observation is recorded.
-- Physical API 37 device owner confirmation if reachable; otherwise recorded
-  as pending in the PR (#168 precedent).
+  start keeps the state. AC-4: custom-layout start state — a failed/cancelled
+  restore keeps the existing layout and active DB; a successful restore
+  produces the import; observations recorded in the PR.
+- Physical device: the issue's 「API 37実機」 owner-confirmation reading is an
+  explicit owner decision requested on the issue (no device attached in this
+  session); if required and unreachable it stays pending in the handoff
+  packet (#168 precedent).
 - High-risk PR requirements: `final-status` CI gate on the verification
   commit plus the independent audit record `docs/assessment/pr-<n>-<slug>.md`
   before merge.
