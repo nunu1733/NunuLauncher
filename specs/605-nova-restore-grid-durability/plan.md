@@ -101,13 +101,23 @@ No schema, pref-format, or backup-format change. Rollback = revert the PR.
   procedure on the API 37 environment: synthetic complete-grid backup
   (converted 6x5x5) from the default grid — one UI restore → self-restart →
   converted DB active, prefs 6/5/5, no unmatched-deletion log; a further cold
-  start keeps the state. AC-4: custom-layout start state — a failed/cancelled
-  restore keeps the existing layout and active DB; a successful restore
-  produces the import; observations recorded in the PR.
-- Physical device: the issue's 「API 37実機」 owner-confirmation reading is an
-  explicit owner decision requested on the issue (no device attached in this
-  session); if required and unreachable it stays pending in the handoff
-  packet (#168 precedent).
+  start keeps the state. AC-4, custom-layout start state, three recorded
+  observations: (a) a restore attempt failing or cancelled **before the
+  converted DB is bound** (invalid backup file, cancellation at the
+  confirmation screen) keeps the existing layout, grid prefs, and active DB;
+  (b) one representative late failure — forced process stop mid-restore
+  (after the grid writes, before the reload completion) — its resulting state
+  and recovery means are recorded as an observation under the unchanged #168
+  semantics (staged `restored.db` blocks cleanup; the pre-restore DB is not
+  deleted; re-running the restore recovers), with no generalized
+  all-failures claim; (c) a successful restore produces the authoritative
+  import.
+- Physical device (AC-5): the issue's 「API 37実機の元報告手順でowner確認する」
+  stays a required final verification for closing #605. Closing without it
+  requires an owner decision permalink on #605 accepting the emulator
+  execution as equivalent; no such decision exists yet and none is assumed.
+  The PR itself merges on the standard high-risk gate; the issue-close gate
+  additionally checks AC-5.
 - High-risk PR requirements: `final-status` CI gate on the verification
   commit plus the independent audit record `docs/assessment/pr-<n>-<slug>.md`
   before merge.

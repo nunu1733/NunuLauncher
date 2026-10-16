@@ -138,14 +138,29 @@ When one restore completes
 Then the `else` branch behavior (typed-prefs write only, null-safe per field)
 is unchanged from the pre-fix code.
 
-### Scenario: custom-layout start state — failed restore preserves the layout
+### Scenario: custom-layout start state — restore attempt failing before the converted DB is bound preserves the layout
 
 Given a device with an existing custom layout (non-default placements) and a
-backup file that cannot be restored (invalid or interrupted before commit)
-When the restore attempt fails or is cancelled before the converted DB is
-bound
+backup file that cannot be restored (invalid content, or the user cancels at
+the confirmation screen)
+When the restore attempt fails or is cancelled **before the converter's grid
+writes and DB bind** (the failure boundary this fix's verification observes)
 Then the existing layout, grid prefs, and active DB are unchanged and the
-workspace remains usable (no partial import, no deleted active DB).
+workspace remains usable (no partial import, no deleted active DB)
+And no claim is made here about protection in later failure windows beyond
+the representative observation below — those windows keep the existing #168
+/#299 semantics, which this fix does not change.
+
+### Scenario: custom-layout start state — one representative late failure is observed and recorded
+
+Given a device with an existing custom layout and a restorable backup
+When a representative late failure occurs — the process dies mid-restore
+(after the grid writes, before the reload completion; forced process stop)
+Then the actual resulting state and recovery means are observed and recorded
+as a runtime observation (expected under the unchanged #168 semantics: the
+staged `restored.db` blocks DB cleanup, the pre-restore DB is not deleted,
+and re-running the restore recovers), without generalizing the result into an
+all-failures protection claim.
 
 ### Scenario: custom-layout start state — successful restore is explainable
 
@@ -194,13 +209,21 @@ None — no user-visible copy or interaction changes.
       active DB is the converted DB, the converted DB is not deleted by
       cleanup in the restore window, and the live IDP binding matches the
       committed stores (existing #168 oracles keep passing).
-- [ ] AC-4: Custom-layout start state: a failed or cancelled restore preserves
-      the existing layout and active DB (recoverable, no partial import), and
-      a successful restore's outcome is the explainable authoritative import;
-      both are recorded as runtime observations following the original report
-      procedure on the API 37 environment (the report's own environment). The
-      physical-device reading of the issue's owner-confirmation item is
-      tracked as an explicit owner decision on the issue (see Open questions).
+- [ ] AC-4: Custom-layout start state, executed per the original report
+      procedure on the API 37 environment: (a) a restore attempt failing or
+      being cancelled **before the converted DB is bound** preserves the
+      existing layout, grid prefs, and active DB; (b) one representative late
+      failure (process death mid-restore) is observed and its resulting state
+      and recovery means recorded — recorded as an observation, not
+      generalized into an all-failures protection claim; (c) a successful
+      restore's outcome is the explainable authoritative import.
+- [ ] AC-5: The issue's 「API 37実機の元報告手順でowner確認する」 item is
+      maintained as a required final verification for closing #605: the owner
+      confirmation happens on a physical API 37 device, unless the owner
+      records a decision on #605 accepting the emulator execution recorded
+      under AC-4/AC-1..3 as the equivalent. This PR records the emulator
+      execution; closing the issue without the physical pass requires that
+      owner decision permalink.
 
 ## Test oracle
 
@@ -209,18 +232,15 @@ None — no user-visible copy or interaction changes.
 | AC-1 | `NovaConverterBoundaryScenarioBase.assertCommittedGrid()` extended: lawnchair typed-prefs assertions plus persisted-XML file readback; exercised by `NovaConverterBoundaryTest` (ON) and `NovaConverterBoundarySmartspaceOffTest` (OFF) via `tools/ci/run-restore-capture-instrumentation.sh` |
 | AC-2 | Same classes: FileLog trace-order assertion over the restore window (offset-scoped, `FileLog.flushAll` before reads); red on the regression head (missing write / missing markers) plus a recorded barrier-first mutation run showing the order assertion fails |
 | AC-3 | The same restore-capture lane (control/widget/unknown-provider/no-callbacks classes, `NovaRestoreGridApplicationTest`, cross-process pair) plus a recorded runtime emulator reproduction (converted DB active after restart; no unmatched-deletion log) |
-| AC-4 | Recorded runtime emulator observation: custom-layout start state → failed/cancelled restore keeps the existing layout; successful restore produces the import; both per the original report procedure |
+| AC-4 | Recorded runtime emulator observations: custom-layout start state → (a) failed/cancelled-before-bind restore keeps the existing layout; (b) forced mid-restore process stop — resulting state and recovery means recorded; (c) successful restore produces the import; all per the original report procedure |
+| AC-5 | Issue-close gate: physical-device owner confirmation record on #605, or an owner decision permalink on #605 accepting the emulator execution as equivalent |
 
 ## Open questions
 
-- The issue's acceptance text says 「API 37実機の元報告手順でowner確認する」.
-  The report's own environment is an API 37 emulator (Pixel 9a AVD), and no
-  physical device is attached to the fix session. AC-4 is executed on the API
-  37 emulator with the original report procedure; whether the owner requires
-  an additional physical-device pass is an explicit owner decision requested
-  on the issue — it is not silently dropped. If required and no device is
-  reachable, it stays a pending item in the handoff packet (#168 precedent).
-- None otherwise blocking.
+- AC-5 is the only open item and it is deliberate: the physical-device owner
+  confirmation is kept as a required issue-close verification. The owner may
+  replace it by recording an emulator-equivalence decision on #605; no such
+  decision exists yet and none is assumed.
 
 ## Change history
 
@@ -230,3 +250,9 @@ None — no user-visible copy or interaction changes.
   FileLog trace order + mutation sensitivity); added AC-4 for the
   custom-layout start state and made the 実機 owner-confirmation reading an
   explicit owner decision instead of a silent pending.
+- 2026-10-17: Round-2 review (#606 comment 6221286996) response: narrowed AC-4
+  to the verified failure boundary (failed/cancelled before the converted DB
+  is bound) plus one representative late-failure observation (process death
+  mid-restore) recorded as an observation, not a protection claim; AC-5 now
+  keeps the physical-device owner confirmation as a required issue-close
+  verification (no owner decision is assumed or fabricated).
