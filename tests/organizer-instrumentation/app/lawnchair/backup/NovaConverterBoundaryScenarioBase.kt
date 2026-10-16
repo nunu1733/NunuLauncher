@@ -26,6 +26,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.test.core.app.ApplicationProvider
 import app.lawnchair.DeviceProfileOverrides
 import app.lawnchair.LawnchairLauncher
+import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherFiles.SHARED_PREFERENCES_KEY
