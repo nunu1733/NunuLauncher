@@ -1,6 +1,6 @@
 ---
 issue: "#605"
-status: draft
+status: accepted
 requirements: []
 updated: 2026-10-17
 ---
@@ -256,3 +256,6 @@ None — no user-visible copy or interaction changes.
   mid-restore) recorded as an observation, not a protection claim; AC-5 now
   keeps the physical-device owner confirmation as a required issue-close
   verification (no owner decision is assumed or fabricated).
+- 2026-10-17: Phase 1 design review approved (PR #606 comment 6221495547,
+  head bc463afc12469caee4b490db6dd0b354a60d79dc); frontmatter flipped to
+  accepted to pin the approved content before implementation.
