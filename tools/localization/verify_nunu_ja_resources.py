@@ -7,6 +7,14 @@ baseline and the current default resources, then checks the corresponding
 ``values-ja`` files. Resources marked ``translatable="false"`` are reported as
 non-translatable and excluded from the required Japanese set. Required
 resources must preserve the source ``translatable`` contract in Japanese.
+
+The Nunu set covers the organizer, manual organization, onboarding, external
+agent exchange (``exchange_``), and per-item edit (``homeedit_``) prefixes.
+Format contracts are compared locale-aware (issue #324): a Japanese resource
+may omit plural categories Japanese does not use (``one``/``zero``/``two``/
+``few``) and may reorder placeholders when every placeholder is explicitly
+positional; unnumbered placeholder sequences must match exactly. Structural
+emptiness is asserted only for Nunu-owned resources.
 """
 
 from __future__ import annotations
@@ -25,7 +33,16 @@ RESOURCE_PAIRS = (
     ("res/values/strings.xml", "res/values-ja/strings.xml"),
 )
 RESOURCE_TAGS = {"string", "plurals", "string-array", "array", "integer-array"}
-NUNU_PREFIXES = ("organizer_", "manual_organization_", "organization_onboarding_")
+NUNU_PREFIXES = (
+    "organizer_",
+    "manual_organization_",
+    "organization_onboarding_",
+    "exchange_",
+    "homeedit_",
+)
+# Plural categories that Japanese (CLDR ja) does not use; a ja resource may
+# legitimately omit them when the default resource defines them.
+JA_UNUSED_QUANTITIES = frozenset({"one", "zero", "two", "few"})
 FORMAT_RE = re.compile(
     r"%(?:(?P<position>\d+)\$)?"
     r"(?P<flags>[-#+ 0,(<]*)"
@@ -145,16 +162,23 @@ def parse_resources(text: str, source: str) -> tuple[dict[str, ResourceEntry], l
             findings.append(f"{source}: duplicate resource name {name!r}")
             continue
         text_value = _text(node)
-        if node.tag == "string" and not text_value.strip():
-            findings.append(f"{source}: empty resource {name!r}")
-        if node.tag == "plurals" and not any(child.tag == "item" for child in node):
-            findings.append(f"{source}: plural {name!r} has no item")
-        for index, child in enumerate(node):
-            if child.tag == "item" and not _text(child).strip():
-                quantity = child.get("quantity", str(index))
-                findings.append(
-                    f"{source}: empty {node.tag} item {name!r}[{quantity!r}]"
-                )
+        # Structural emptiness is only asserted for Nunu-owned resources;
+        # upstream strings outside the required set are not this oracle's
+        # contract (e.g. Lawnchair 16 ships empty translatable="false"
+        # placeholders such as work_profile_scheduler_intent).
+        if is_nunu_resource(name):
+            if node.tag == "string" and not text_value.strip():
+                findings.append(f"{source}: empty resource {name!r}")
+            if node.tag == "plurals" and not any(
+                child.tag == "item" for child in node
+            ):
+                findings.append(f"{source}: plural {name!r} has no item")
+            for index, child in enumerate(node):
+                if child.tag == "item" and not _text(child).strip():
+                    quantity = child.get("quantity", str(index))
+                    findings.append(
+                        f"{source}: empty {node.tag} item {name!r}[{quantity!r}]"
+                    )
         for error in _entry_format_errors(node):
             findings.append(f"{source}: {name!r}: {error}")
         entries[name] = ResourceEntry(
@@ -168,6 +192,53 @@ def parse_resources(text: str, source: str) -> tuple[dict[str, ResourceEntry], l
 
 def is_nunu_resource(name: str) -> bool:
     return name.startswith(NUNU_PREFIXES)
+
+
+def _tokens_compatible(default_tokens, ja_tokens) -> bool:
+    """Compare one ordered format-token sequence across locales.
+
+    Exact equality always passes. When every placeholder in both locales
+    carries an explicit positional index (``%1$s`` style), the argument
+    binding is order-independent, so Japanese grammar may reorder the
+    placeholders; compare such sequences as multisets. Sequences that rely
+    on implicit ordering (unnumbered tokens) must match exactly.
+    """
+
+    default_tokens = tuple(default_tokens)
+    ja_tokens = tuple(ja_tokens)
+    if default_tokens == ja_tokens:
+        return True
+    if all(t[1] for t in default_tokens) and all(t[1] for t in ja_tokens):
+        return sorted(default_tokens) == sorted(ja_tokens)
+    return False
+
+
+def _contract_compatible(kind: str, default_value, ja_value) -> bool:
+    """Locale-aware placeholder/plural contract comparison."""
+
+    if kind == "plurals":
+        default_quantities = {q: t for q, t in default_value}
+        ja_quantities = {q: t for q, t in ja_value}
+        if set(ja_quantities) - set(default_quantities):
+            return False
+        if (set(default_quantities) - set(ja_quantities)) - JA_UNUSED_QUANTITIES:
+            return False
+        return all(
+            _tokens_compatible(default_quantities[q], ja_quantities[q])
+            for q in ja_quantities
+        )
+    if kind in {"string-array", "array", "integer-array"}:
+        # Array values hold one token sequence per item (prefixed by the
+        # item index). Compare item counts and then token sequences
+        # position-by-position; reordering across items would change the
+        # rendered list, so the positionality rules apply within an item
+        # only.
+        if len(default_value) != len(ja_value):
+            return False
+        return all(
+            _tokens_compatible(d, j) for d, j in zip(default_value, ja_value)
+        )
+    return _tokens_compatible(default_value, ja_value)
 
 
 def required_names(
@@ -213,7 +284,9 @@ def validate_pair(
                 f"{japanese_source}: {name!r} translatable mismatch: "
                 f"default={source_entry.translatable}, ja={translated.translatable}"
             )
-        if source_entry.value != translated.value:
+        if not _contract_compatible(
+            source_entry.kind, source_entry.value, translated.value
+        ):
             findings.append(
                 f"{japanese_source}: {name!r} placeholder contract mismatch: "
                 f"default={source_entry.value!r}, ja={translated.value!r}"

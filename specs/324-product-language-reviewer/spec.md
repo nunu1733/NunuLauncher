@@ -22,7 +22,7 @@ updated: 2026-10-15
 
 # Product Language Reviewer subagent による Nunu 固有 UI 文言の再監査
 
-> **Status: accepted**（2026-10-15。PR #602 review round 2 Approve — [comment 6193306647][29]、head `202d9d68bc`。owner の指定する Phase1 フロー（spec/plan → ChatGPT review → 承認後 Phase2）に基づく受け入れ記録である）。実装中の発見が本契約と矛盾する場合は、実装内で代替を選ばず Issue で判断を更新する。
+> **Status: accepted**（2026-10-15 受領: PR #602 review round 2 Approve — [comment 6193306647][29]）。実装: PR #603（skill / adapter / bake-off provisional / full pass 626 unit / resource 反映 / oracle 拡張 / workflow §10 まで完了）。**実装の残 gate は owner 操作であり、完了をもって本 Issue を close する**: (1) [sealed packet][30] による owner blind 採点と採用裁定（AC-324-04）、(2) fresh ZCode session での Gemini challenger 実行可否確認（D1 fallback の確定。user-level adapter 自体の呼出しは新 session で実証済み — bake-off evidence D2 記録）、(3) 実機 normal + enlarged font での代表画面確認（AC-324-13）、(4) `PRODUCT_DECISION` 4件の resolution。実装中の発見が本契約と矛盾する場合は、実装内で代替を選ばず Issue で判断を更新する。
 
 ## Risk tier（[github-workflow.md](../../docs/project/github-workflow.md) Risk tiers 準拠）
 
@@ -235,3 +235,4 @@ accessibility text は視覚 label の短縮を流用せず、読み上げて自
 [27]: https://github.com/nunu1733/NunuLauncher/blob/main/docs/assessment/evidence/issue-324-ai-register-research.md "AI register (AI 感) detection/removal research evidence (2026-10-15)"
 [28]: https://github.com/nunu1733/NunuLauncher/pull/602#issuecomment-6193112079 "PR #602 ChatGPT review round 1 (Changes requested)"
 [29]: https://github.com/nunu1733/NunuLauncher/pull/602#issuecomment-6193306647 "PR #602 ChatGPT review round 2 (Approve)"
+[30]: https://github.com/nunu1733/NunuLauncher/blob/main/docs/assessment/evidence/issue-324-owner-blind-packet.md "Owner blind adjudication packet (sealed ids)"

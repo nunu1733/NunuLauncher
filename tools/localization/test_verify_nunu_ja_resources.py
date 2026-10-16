@@ -114,6 +114,145 @@ class ResourceValidatorTests(unittest.TestCase):
         self.assertTrue(any("empty resource 'organizer_styled'" in item for item in findings))
         self.assertTrue(any("empty plurals item 'organizer_plural'" in item for item in findings))
 
+    # Issue #324: locale-aware contract comparison and coverage rules.
+
+    def test_positional_reorder_is_accepted_when_every_placeholder_is_numbered(self) -> None:
+        findings = validator.validate_pair(
+            xml('<string name="old">old</string>'),
+            xml('<string name="organizer_pair">%1$s of %2$d</string>'),
+            xml('<string name="organizer_pair">%2$d の %1$s</string>'),
+            "res/values/strings.xml",
+            "res/values-ja/strings.xml",
+        )
+        self.assertEqual(findings, [])
+
+    def test_implicit_order_mismatch_is_reported(self) -> None:
+        findings = validator.validate_pair(
+            xml('<string name="old">old</string>'),
+            xml('<string name="organizer_pair">%s of %d</string>'),
+            xml('<string name="organizer_pair">%d の %s</string>'),
+            "res/values/strings.xml",
+            "res/values-ja/strings.xml",
+        )
+        self.assertTrue(any("placeholder contract mismatch" in item for item in findings))
+
+    def test_japanese_may_omit_unused_plural_categories_but_not_other(self) -> None:
+        default = xml(
+            '<plurals name="organizer_count">'
+            '<item quantity="one">%1$d item</item>'
+            '<item quantity="other">%1$d items</item>'
+            "</plurals>"
+        )
+        ja_without_one = xml(
+            '<plurals name="organizer_count"><item quantity="other">%1$d件</item></plurals>'
+        )
+        self.assertEqual(
+            validator.validate_pair(
+                xml('<string name="old">old</string>'),
+                default,
+                ja_without_one,
+                "res/values/strings.xml",
+                "res/values-ja/strings.xml",
+            ),
+            [],
+        )
+        ja_without_other = xml(
+            '<plurals name="organizer_count"><item quantity="one">%1$d個</item></plurals>'
+        )
+        self.assertTrue(
+            any(
+                "placeholder contract mismatch" in item
+                for item in validator.validate_pair(
+                    xml('<string name="old">old</string>'),
+                    default,
+                    ja_without_other,
+                    "res/values/strings.xml",
+                    "res/values-ja/strings.xml",
+                )
+            )
+        )
+
+    def test_japanese_may_not_invent_plural_categories(self) -> None:
+        findings = validator.validate_pair(
+            xml('<string name="old">old</string>'),
+            xml('<plurals name="organizer_count"><item quantity="other">%1$d</item></plurals>'),
+            xml(
+                '<plurals name="organizer_count">'
+                '<item quantity="many">%1$d</item>'
+                '<item quantity="other">%1$d</item>'
+                "</plurals>"
+            ),
+            "res/values/strings.xml",
+            "res/values-ja/strings.xml",
+        )
+        self.assertTrue(any("placeholder contract mismatch" in item for item in findings))
+
+    def test_empty_upstream_resource_outside_nunu_prefixes_is_not_reported(self) -> None:
+        findings = validator.validate_pair(
+            xml('<string name="old">old</string>'),
+            xml('<string name="work_profile_scheduler_intent" translatable="false"/>'),
+            xml(),
+            "res/values/strings.xml",
+            "res/values-ja/strings.xml",
+        )
+        self.assertEqual(
+            [item for item in findings if "empty resource" in item],
+            [],
+        )
+
+    def test_exchange_and_homeedit_names_require_japanese(self) -> None:
+        findings = validator.validate_pair(
+            xml('<string name="old">old</string>'),
+            xml(
+                '<string name="exchange_entry_title">Exchange</string>'
+                '<string name="homeedit_undo_label">Edit applied</string>'
+            ),
+            xml(),
+            "lawnchair/res/values/strings.xml",
+            "lawnchair/res/values-ja/strings.xml",
+        )
+        self.assertTrue(any("missing Japanese resource 'exchange_entry_title'" in item for item in findings))
+        self.assertTrue(any("missing Japanese resource 'homeedit_undo_label'" in item for item in findings))
+
+    def test_array_contract_is_compared_per_item_without_crashing(self) -> None:
+        default = xml(
+            '<string-array name="organizer_modes">'
+            "<item>%1$d row</item>"
+            "<item>Fill from the top-left</item>"
+            "</string-array>"
+        )
+        ja_matching = xml(
+            '<string-array name="organizer_modes">'
+            "<item>%1$d行</item>"
+            "<item>左上から詰めます</item>"
+            "</string-array>"
+        )
+        self.assertEqual(
+            validator.validate_pair(
+                xml('<string name="old">old</string>'),
+                default,
+                ja_matching,
+                "res/values/strings.xml",
+                "res/values-ja/strings.xml",
+            ),
+            [],
+        )
+        ja_item_count_mismatch = xml(
+            '<string-array name="organizer_modes"><item>%1$d行</item></string-array>'
+        )
+        self.assertTrue(
+            any(
+                "placeholder contract mismatch" in item
+                for item in validator.validate_pair(
+                    xml('<string name="old">old</string>'),
+                    default,
+                    ja_item_count_mismatch,
+                    "res/values/strings.xml",
+                    "res/values-ja/strings.xml",
+                )
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

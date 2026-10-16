@@ -139,3 +139,14 @@ closing evidenceは少なくとも次を保持する。
 - 代表before/after、screenshot/UI dump、font scale、a11y確認
 - resource validator、format、lint、test、buildの正確なcommandと結果
 - 未解決・分離Issue
+
+## 10. Ongoing review pass（導入後の継続運用 — Issue #324）
+
+初回 full pass（Issue #324）以降の copy 変更に対する専任 Product Language Reviewer（`.agents/skills/product-language-review/`）の利用規則。正本はこの節とする。
+
+- **Trigger:** Nunu 固有の user-visible copy を新規追加または意味・文面を materially に変更する PR は Product Language Review の対象である。文言の体裁だけの変更（句読点・表記統一）や diagnostics 専用面の追加は対象外でよい。
+- **呼び出し:** reviewer は名前付き subagent（Codex: `.codex/agents/product-language-reviewer.toml`、ZCode: user-level `~/.zcode/agents/product-language-reviewer.md`。設置手順は `docs/assessment/evidence/issue-324-bakeoff.md` の D2 記録）または Skill 単体で呼ぶ。reviewer model は実装 worker / functional reviewer と異なる model family を必須とし、採用時点の family は provenance に記録する。
+- **Skip rule:** reviewer が利用できない場合、fallback は明示的な skip reason を PR に記録することを要件とする（黙示的な review 済み扱いは不可）。実装 worker / functional reviewer と同一 model family への代替は reviewer 実行として扱わず skip reason に記録する。skip した PR は次の full pass または追review で拾い直す。
+- **`PRODUCT_DECISION`:** high severity の `PRODUCT_DECISION` を実装 worker が自己解決しない。owner resolution または split Issue とする。
+- **Vision UX review（#199）との境界:** #199 は見た目・第一印象・affordance を visual evidence から評価し、本 reviewer は copy の言語品質を behavior context 付きで評価する。両者は相互代替しない。
+- **CI:** 初版は CI hard gate にしない。oracle（`tools/localization/verify_nunu_ja_resources.py`）の CI 組込みは別 Issue で扱う。

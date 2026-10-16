@@ -19,18 +19,18 @@
     <string name="accessibility_smartspace_page">%1$d/%2$d ページ</string>
     <!-- Issue #138: supported release Settings route for the diagnostics journal export -->
     <string name="organizer_diagnostics_title">オーガナイザー診断</string>
-    <string name="organizer_diagnostics_description">プライバシーに配慮したオーガナイザー診断ジャーナルをサポート用にファイルへ書き出します。</string>
+    <string name="organizer_diagnostics_description">プライバシーに配慮した診断情報を、サポート用にファイルへ書き出します。</string>
     <!-- Issue #373: the transient "recent import failure" auxiliary row, shown
          only while the process-scoped holder keeps a recorded failure -->
     <string name="organizer_diagnostics_recent_import_failure">直近の取り込み失敗</string>
     <string name="organizer_diagnostics_export_label">オーガナイザー診断データを書き出す</string>
-    <string name="organizer_diagnostics_export_subtitle">オーガナイザー診断ジャーナルをファイルに出力します</string>
+    <string name="organizer_diagnostics_export_subtitle">診断情報をファイルに書き出します</string>
     <string name="organizer_diagnostics_export_success">診断データを書き出しました</string>
     <string name="organizer_diagnostics_export_error">診断データの書き出しに失敗しました</string>
     <!-- Issue #366: Organizer hub (T-01), the persistent organizing workspace -->
-    <string name="organizer_hub_title">オーガナイザー</string>
-    <string name="organizer_hub_summary">整理の状態、整理案の確認、材料を1か所で扱えます。</string>
-    <string name="organizer_hub_label">オーガナイザー</string>
+    <string name="organizer_hub_title">整理ハブ</string>
+    <string name="organizer_hub_summary">整理の状態、整理の開始、材料を1か所で扱えます。</string>
+    <string name="organizer_hub_label">整理ハブ</string>
     <string name="organizer_hub_materials_heading">整理の材料</string>
     <!-- Issue #374 (DI-AC-11): status cardのsession-scoped行（依頼行の操作・
          提案行の状態と操作）。依頼行の状態文と両行の残期限は#372 T-15の語彙
@@ -43,15 +43,15 @@
     <!-- Issue #371: 権限copy契約（spec 203 U-2 + TO-BE §7.3）は #371 が所有:
          用途・この行で確認/管理する理由・断った場合の影響を1文で。配置は #367 のまま。 -->
     <string name="organizer_personalization_usage_access_label">使用状況アクセス権限</string>
-    <string name="organizer_personalization_usage_access_granted">許可済み — 粗い使用状況のヒント（生の履歴は端末の外に出ず、AI相談に含める場合は送信前に必ず確認されます）が整理の品質を高め、この行は権限の管理・取り消し用ですが、取り消しても整理はすべて利用できます。</string>
-    <string name="organizer_personalization_usage_access_not_granted">未許可 — 整理が配置精度を上げる粗い使用状況のヒント（生の履歴は端末の外に出ず、AI相談に含める場合は送信前に必ず確認されます）を初めて使う時点でアプリから尋ね、この行は権限の管理用ですが、許可しなくても整理はすべて利用できます。</string>
+    <string name="organizer_personalization_usage_access_granted">許可済み — 使用状況の大まかなヒントで整理の精度を上げられます。生の履歴は端末の外に出ず、AI相談に含める場合は送信前に必ず確認します。権限の管理・取り消しはこの行で行えます。取り消しても整理はすべて利用できます。</string>
+    <string name="organizer_personalization_usage_access_not_granted">未許可 — 整理で使用状況のヒントを初めて必要とする時点で、アプリが許可を求めます。生の履歴は端末の外に出ず、AI相談に含める場合は送信前に必ず確認します。権限の管理はこの行で行えます。許可しなくても整理はすべて利用できます。</string>
     <!-- Issue #371: JIT要求（spec 371）。TO-BE §7.3の3要素（何のため/なぜ今/断ったらどうなるか）
          に任意性と修飾されたprivacy記述（生の履歴は端末外に出ない、AI相談でも送信前に確認）を
          1文で満たす。 -->
-    <string name="organizer_usage_access_jit_title">使用状況を使って、より賢く整理する？</string>
-    <string name="organizer_usage_access_jit_body">今まさに整理が使用状況を読もうとしているため尋ねており、許可すれば粗い使用状況のヒント（生の使用履歴が端末の外に出ることはありません）で配置の精度が上がり、AI相談に含める場合も送信前に必ず確認されますが、許可しなくても整理はすべて利用できます。</string>
+    <string name="organizer_usage_access_jit_title">使用状況を使って、より賢く整理しますか？</string>
+    <string name="organizer_usage_access_jit_body">整理でアプリの使用状況を読み込むため、いま確認を求めています。許可すると、大まかな使用状況のヒントで配置の精度が上がります。生の使用履歴が端末の外に出ることはありません。ヒントをAI相談に含めるときも、送信前に必ず確認します。許可しなくても、整理はすべて利用できます。</string>
     <string name="organizer_usage_access_jit_open_settings">設定を開く</string>
-    <string name="organizer_usage_access_jit_continue">許可せず続行</string>
+    <string name="organizer_usage_access_jit_continue">許可せずに続行</string>
     <string name="organizer_usage_access_jit_settings_unavailable">システムの使用状況アクセス設定を開けませんでした。許可せずにこのまま続行できます。</string>
     <!-- Issue #38: placement locks -->
     <string name="organizer_lock_menu_title">配置ロック</string>
@@ -61,7 +61,7 @@
     <string name="homeedit_menu_remove_from_home">ホームから外す</string>
     <string name="homeedit_dialog_title_move_to_page">移動先のページ</string>
     <string name="homeedit_dialog_title_add_to_folder">入れるフォルダ</string>
-    <string name="homeedit_dialog_title_new_folder_page">新しいフォルダの置き先ページ</string>
+    <string name="homeedit_dialog_title_new_folder_page">新しいフォルダを置くページ</string>
     <string name="homeedit_list_new_folder">新しいフォルダ</string>
     <string name="homeedit_page_label">ページ %1$d</string>
     <string name="homeedit_folder_entry">%1$s（%2$d件）</string>
@@ -75,7 +75,7 @@
     <string name="homeedit_error_folder_gone">フォルダはすでにありません。</string>
     <string name="homeedit_error_profile_mismatch">仕事用プロファイルのアイコンはこのフォルダに入れられません。</string>
     <string name="homeedit_error_unsupported">このアイコンは編集アクションの対象外です。</string>
-    <string name="homeedit_error_write_failed">書き込みに失敗しました。レイアウトは変更されていません。</string>
+    <string name="homeedit_error_write_failed">変更できませんでした。レイアウトは変更されていません。</string>
     <!-- Issue #497: 新規アプリの配置先ポリシー -->
     <string name="destination_policy_label">新しいアプリの配置先</string>
     <string name="destination_policy_summary_upstream">上流の既定（最初の空きセル）</string>
@@ -104,7 +104,7 @@
     <string name="destination_policy_notice_constraint">指定フォルダの配置制約を満たせないため、新しいアプリは既定の位置へ置かれました</string>
     <string name="destination_policy_notice_snapshot">配置先を確認できなかったため、新しいアプリは既定の位置へ置かれました</string>
     <!-- Issue #450: undo -->
-    <string name="homeedit_undo_label">編集を適用しました</string>
+    <string name="homeedit_undo_label">変更しました</string>
     <string name="homeedit_undo_error_stale">元に戻せません: アイコンがその後移動されています。</string>
     <string name="homeedit_undo_error_no_space">元に戻せません: 元の位置に空きがありません。</string>
     <string name="homeedit_undo_error_folder_changed">元に戻せません: 作成したフォルダの状態が変わっています。</string>
@@ -179,16 +179,16 @@
     <string name="organizer_lock_action_mark_unlocked">ロック解除に設定</string>
     <string name="organizer_lock_effect_own_placement">ロックすると、このアイテムは現在の位置に保持され、整理でも移動されません。</string>
     <string name="organizer_lock_effect_widget_region">ロックすると、このウィジェットのセル・サイズとその占有領域全体が保持されます。</string>
-    <string name="organizer_lock_effect_dock_slot">ロックすると、このアイテムはDockスロット内に保持されます。</string>
+    <string name="organizer_lock_effect_dock_slot">ロックすると、このアイテムはDock内の位置に保持されます。</string>
     <string name="organizer_lock_effect_folder_scope">ロックされたフォルダは、ホーム画面上の位置を保持します。</string>
     <string name="organizer_lock_effect_folder_child_scope">ロックされたアイテムは、フォルダ内の位置を保持します。</string>
     <string name="organizer_lock_effect_app_pair_scope">ロックされたペアは、ホーム画面上の位置を保持します。</string>
     <string name="organizer_lock_effect_app_pair_member_scope">ロックされたアプリは、ペア内での位置を保持します。</string>
     <string name="organizer_lock_effect_folder_parent_covers_children">このフォルダをロックすると、中のすべてのアイテムの位置も保持されます。</string>
-    <string name="organizer_lock_effect_folder_children_own_lock_remains">中で個別にロックされたアイテムは、ロックされたままになります。</string>
+    <string name="organizer_lock_effect_folder_children_own_lock_remains">フォルダ内で個別にロックしたアイテムは、ロックされたままになります。</string>
     <string name="organizer_lock_effect_folder_child_own_lock_binds">このアイテムをロックすると、フォルダ自体がロック解除されていても、フォルダ内の位置は保持されます。</string>
     <string name="organizer_lock_effect_folder_child_unlock_ineffective">フォルダがロックされているため、このアイテムのロック解除は、フォルダのロックを解除するまで反映されません。</string>
-    <string name="organizer_lock_effect_app_pair_parent_covers_members">このペアをロックすると、両方のアプリと分割配置がまとめて保持されます。</string>
+    <string name="organizer_lock_effect_app_pair_parent_covers_members">このペアをロックすると、両方のアプリとペアとしての配置がまとめて保持されます。</string>
     <string name="organizer_lock_effect_app_pair_member_unlock_ineffective">ペアがロックされているため、このアプリのロック解除は、ペアのロックを解除するまで反映されません。</string>
     <string name="organizer_lock_effect_app_pair_member_own_lock_binds">このアプリをロックすると、ペア自体がロック解除されていても、ペア内での位置は保持されます。</string>
     <string name="organizer_lock_kind_app">アプリ</string>
@@ -199,7 +199,7 @@
     <string name="organizer_lock_kind_unknown">アイテム</string>
     <string name="organizer_lock_result_locked">配置をロックしました。</string>
     <string name="organizer_lock_result_unlocked">配置のロックを解除しました。</string>
-    <string name="organizer_lock_result_no_change">この配置はすでに指定の状態です。</string>
+    <string name="organizer_lock_result_no_change">この配置はすでに同じ状態です。</string>
     <string name="organizer_lock_error_failed">変更に失敗しました。変更は適用されていません。</string>
     <string name="organizer_lock_error_stale">このアイテムまたはレイアウトが変更されました。変更は適用されていません。もう一度お試しください。</string>
     <string name="organizer_lock_error_busy">別のレイアウト変更を実行中です。しばらくしてからもう一度お試しください。</string>
@@ -238,6 +238,7 @@
     <!-- Issue #417: 方法選択面（scope確定後に表示。両肢とも同じ凍結scopeを消費する）。 -->
     <string name="manual_organization_method_title">整理案の作り方</string>
     <string name="manual_organization_method_plain">このまま整理</string>
+    <string name="exchange_ai_consultation_toggle_description">実験的な機能です。既定ではオフです。オフの間は、AIの選択肢を使わずに整理を実行できます。有効な依頼や取り込み済みの提案は、期限が切れるまで整理ハブに残ります。</string>
     <string name="manual_organization_start_again">新しい整理案を確認</string>
     <string name="manual_organization_retry">再試行</string>
     <string name="manual_organization_capturing">現在のホームレイアウトを読み込んでいます…</string>
@@ -252,14 +253,14 @@
     <string name="manual_organization_widget_moved_count">ウィジェット単位で移動: %1$d件</string>
     <string name="manual_organization_preserved_count">保持する配置: %1$d件</string>
     <string name="manual_organization_new_folders_count">新しいフォルダ: %1$d個</string>
-    <string name="manual_organization_new_pages_count">新しいホーム画面ページ: %1$d枚</string>
+    <string name="manual_organization_new_pages_count">ホーム画面の新しいページ: %1$dページ</string>
     <string name="manual_organization_confirm">確認した整理案を適用</string>
     <string name="manual_organization_cancel">キャンセル</string>
     <string name="manual_organization_cancel_before_checkpoint">適用前に中断</string>
     <string name="manual_organization_applying">確認した整理案を適用しています。この処理は安全に中断できません。</string>
     <string name="manual_organization_stale_outcome">この整理案は適用されませんでした。この操作によるホーム画面の変更はありません。</string>
-    <string name="manual_organization_stale_proposal_discarded">確認した整理案を安全に適用できなくなったため、整理案は破棄されました。</string>
-    <string name="manual_organization_stale_proposal_not_reviewed">整理案の作成中にホームレイアウトが変更されたため、確認前に整理案は破棄されました。</string>
+    <string name="manual_organization_stale_proposal_discarded">確認した整理案は安全に適用できなくなったため、破棄されました。</string>
+    <string name="manual_organization_stale_proposal_not_reviewed">整理案の作成中にホームレイアウトが変更されたため、確認前に破棄されました。</string>
     <string name="manual_organization_recapture">もう一度読み込んで確認</string>
     <string name="manual_organization_recapture_summary">現在のホームレイアウトを読み込み、確認用の新しい整理案を作成します。</string>
     <string name="manual_organization_apply_success">整理を適用し、検証しました。</string>
@@ -271,10 +272,10 @@
         <item quantity="other">保持した配置: %1$d件</item>
     </plurals>
     <plurals name="manual_organization_applied_new_folders_count">
-        <item quantity="other">作成した新しいフォルダ: %1$d個</item>
+        <item quantity="other">作成したフォルダ: %1$d個</item>
     </plurals>
     <plurals name="manual_organization_applied_new_pages_count">
-        <item quantity="other">作成した新しいホーム画面ページ: %1$d枚</item>
+        <item quantity="other">作成したホーム画面ページ: %1$d枚</item>
     </plurals>
     <string name="manual_organization_apply_rejected">整理は適用されませんでした。</string>
     <string name="manual_organization_apply_rolled_back">整理を取り消しました。保存したレイアウトのままです。</string>
@@ -287,24 +288,24 @@
     <string name="manual_organization_apply_concurrent">別のレイアウト操作が進行中です。後でもう一度お試しください。</string>
     <string name="manual_organization_recovery">保存したレイアウトに戻す</string>
     <string name="manual_organization_recovery_inspecting">保存したレイアウトを安全に復元できるか確認しています…</string>
-    <string name="manual_organization_recovery_preview">保存したレイアウト — この画面で確認した整理を適用する前の状態へ、ホームレイアウトを戻します。実行するには確認が必要です。</string>
+    <string name="manual_organization_recovery_preview">保存したレイアウトを復元し、この画面で確認した整理を適用する前の状態へ戻します。実行するには確認が必要です。</string>
     <string name="manual_organization_recovery_history_prefix">直前の整理での変更: %1$s</string>
     <plurals name="manual_organization_recovery_history_moved">
-        <item quantity="other">移動 %1$d 件</item>
+        <item quantity="other">移動%1$d件</item>
     </plurals>
     <plurals name="manual_organization_recovery_history_new_folders">
-        <item quantity="other">新規フォルダ %1$d 個</item>
+        <item quantity="other">新規フォルダ%1$d個</item>
     </plurals>
     <plurals name="manual_organization_recovery_history_new_pages">
-        <item quantity="other">新規ページ %1$d ページ</item>
+        <item quantity="other">新規ページ%1$d枚</item>
     </plurals>
     <string name="manual_organization_recovery_confirm">保存したレイアウトに戻す</string>
-    <string name="manual_organization_recovering">保存されたレイアウトを復元しています…</string>
-    <string name="manual_organization_recovery_restored">保存されたレイアウトを復元しました。</string>
-    <string name="manual_organization_recovery_not_available">この保存済みレイアウトは、安全に復元できなくなっています。</string>
+    <string name="manual_organization_recovering">保存したレイアウトを復元しています…</string>
+    <string name="manual_organization_recovery_restored">保存したレイアウトを復元しました。</string>
+    <string name="manual_organization_recovery_not_available">この保存したレイアウトは、安全に復元できなくなっています。</string>
     <string name="manual_organization_recovery_failed">保存したレイアウトに安全に戻せませんでした。</string>
-    <string name="manual_organization_durable_status_restorable">ホームレイアウトは整理済みです。保存された整理前のバックアップは復元できます。</string>
-    <string name="manual_organization_durable_status_restored_or_expired">保存された整理前のバックアップは、復元済みまたは期限切れのため、もう復元できません。</string>
+    <string name="manual_organization_durable_status_restorable">ホームレイアウトは整理済みです。保存した整理前のレイアウトに戻せます。</string>
+    <string name="manual_organization_durable_status_restored_or_expired">保存した整理前のレイアウトは、復元済みまたは期限切れのため、もう戻せません。</string>
     <string name="manual_organization_durable_status_unresolved">整理の変更が安全に完了しませんでした。</string>
     <string name="manual_organization_durable_status_checking">保存された整理状態を確認しています…</string>
     <plurals name="manual_organization_recovery_remaining_hours">
@@ -325,7 +326,7 @@
     <string name="manual_organization_preserved_app_pair">アプリペアを保持: %1$d件</string>
     <string name="manual_organization_preserved_legacy_shortcut">旧形式のショートカットを保持: %1$d件</string>
     <string name="manual_organization_preserved_non_target">対象外の配置を保持: %1$d件</string>
-    <string name="manual_organization_preserved_strategy">選択した戦略により保持: %1$d件</string>
+    <string name="manual_organization_preserved_strategy">選択したストラテジーにより保持: %1$d件</string>
     <string name="manual_organization_preserved_structural">関連する項目を保持: %1$d件</string>
     <!-- Issue #451: 重複超過分は元の位置に保持される（削除は行わない）。 -->
     <string name="manual_organization_preserved_duplicate_launch_target">重複のため元の位置に保持: %1$d件</string>
@@ -334,8 +335,8 @@
          organizer hub materials section; the run surface no longer hosts the picker. -->
     <string name="organizer_strategy_title">整理ストラテジー</string>
     <string name="organizer_strategy_summary">ホーム画面を整理するときの方針を選択します。</string>
-    <string name="organizer_strategy_frozen_operation_active">整理操作を実行中のため、中断してから整理方法を変更してください。</string>
-    <string name="organizer_strategy_retry_when_busy">他の整理の変更を実行中です。完了後に再度お試しください。</string>
+    <string name="organizer_strategy_frozen_operation_active">整理操作を実行中です。中断してから整理ストラテジーを変更してください。</string>
+    <string name="organizer_strategy_retry_when_busy">別の整理の変更が進行中です。完了後に再度お試しください。</string>
     <string name="organization_strategy_canonical_name">標準コンパクト</string>
     <string name="organization_strategy_canonical_description">各ページを左上から詰めます。</string>
     <string name="organization_strategy_tidy_name">ページ内で隙間を詰める（ウィジェットは移動しません）</string>
@@ -363,22 +364,22 @@
     <string name="manual_organization_preserved_already_canonical">変更不要の配置: %1$d件</string>
     <string name="manual_organization_unplaced_grid">画面の範囲を超えるため未配置: %1$d件</string>
     <string name="manual_organization_unplaced_target">対象を利用できないため未配置: %1$d件</string>
-    <string name="manual_organization_unplaced_strategy_scope">選択したストラテジーが現在のページとフォルダーを維持するため未配置: %1$d件</string>
-    <string name="manual_organization_selection_stale">選択後にホーム画面のレイアウトが変わりました。変更は加えられていません。もう一度開始して、ホーム画面にないアプリを再確認してください。</string>
-    <string name="manual_organization_candidate_unresolved">選択したアプリを追加できません。変更は加えられていません。もう一度開始して、ホーム画面にないアプリを再確認してください。</string>
+    <string name="manual_organization_unplaced_strategy_scope">選択したストラテジーが現在のページとフォルダを維持するため未配置: %1$d件</string>
+    <string name="manual_organization_selection_stale">選択後にホーム画面のレイアウトが変わりました。何も変更されていません。もう一度開始して、ホーム画面にないアプリを再確認してください。</string>
+    <string name="manual_organization_candidate_unresolved">選択したアプリを追加できません。何も変更されていません。もう一度開始して、ホーム画面にないアプリを再確認してください。</string>
     <string name="manual_organization_warning_legacy_shortcut">旧形式のショートカットの確認が必要: %1$d件</string>
     <string name="manual_organization_warning_fallback_category">代替カテゴリを使用: %1$d件</string>
     <string name="manual_organization_warning_unavailable">利用できない配置を保持: %1$d件</string>
     <!-- Issue #451: 重複は警告で示すのみで、削除は促さない。 -->
     <string name="manual_organization_warning_duplicate_launch_target">重複のため移動させなかった配置: %1$d件</string>
     <string name="manual_organization_rejection_unknown_item_kind">未対応のアイテム種別: %1$d件</string>
-    <string name="manual_organization_rejection_invalid_container">無効なコンテナ: %1$d件</string>
+    <string name="manual_organization_rejection_invalid_container">無効な格納先: %1$d件</string>
     <string name="manual_organization_rejection_unknown_page">不明なページ参照: %1$d件</string>
     <string name="manual_organization_rejection_bounds">範囲外の配置: %1$d件</string>
-    <string name="manual_organization_rejection_overlap">重複する配置: %1$d件</string>
+    <string name="manual_organization_rejection_overlap">重なっている配置: %1$d件</string>
     <string name="manual_organization_rejection_dangling_reference">壊れた参照: %1$d件</string>
     <string name="manual_organization_rejection_malformed_app_pair">不正なアプリペア: %1$d件</string>
-    <string name="manual_organization_rejection_locked_out_of_bounds">範囲外のロック済みアイテム: %1$d件</string>
+    <string name="manual_organization_rejection_locked_out_of_bounds">範囲外にあるロックした配置: %1$d件</string>
     <string name="manual_organization_rejection_duplicate_target">重複する整理対象: %1$d件</string>
     <string name="manual_organization_rejection_missing_target">見つからない整理対象: %1$d件</string>
     <string name="manual_organization_rejection_incomplete_target_partition">不完全な対象集合: %1$d件</string>
@@ -386,37 +387,38 @@
     <string name="manual_organization_rejection_invalid_rules">無効なルール: %1$d件</string>
     <string name="manual_organization_rejection_duplicate_item">重複するアイテムID: %1$d件</string>
     <string name="manual_organization_rejection_duplicate_page">重複するページ: %1$d件</string>
-    <string name="manual_organization_rejection_invalid_dimensions">無効なデバイス寸法: %1$d件</string>
+    <string name="manual_organization_rejection_invalid_dimensions">無効な画面レイアウト寸法: %1$d件</string>
     <string name="manual_organization_rejection_kind_target_mismatch">アイテム種別と対象情報の不整合: %1$d件</string>
-    <string name="manual_organization_rejection_target_profile_mismatch">アイテムと対象情報のプロファイル不一致: %1$d件</string>
+    <string name="manual_organization_rejection_target_profile_mismatch">アイテムと対象情報のプロファイル不整合: %1$d件</string>
     <string name="manual_organization_rejection_unknown_signal_item">不明なシグナルアイテム: %1$d件</string>
     <string name="manual_organization_rejection_unknown_category">不明なカテゴリ: %1$d件</string>
+    <string name="manual_organization_rejection_invalid_category_provenance">許可されていないカテゴリの割り当て元: %1$d件</string>
     <string name="manual_organization_available_constraint">利用可能な配置: %1$d件</string>
     <string name="manual_organization_disabled_constraint">利用できないプロファイルの配置: %1$d件</string>
     <string name="manual_organization_quiet_constraint">一時停止中のプロファイルの配置: %1$d件</string>
     <string name="manual_organization_private_space_constraint">プライベートスペースの配置: %1$d件</string>
-    <string name="manual_organization_unavailable_item_constraint">利用不可の配置: %1$d件</string>
+    <string name="manual_organization_unavailable_item_constraint">利用できない配置: %1$d件</string>
     <string name="manual_organization_locked_constraint">ロックした配置を保持: %1$d件</string>
-    <string name="manual_organization_unavailable_constraint">利用不可またはプロファイルの制限がある配置: %1$d件</string>
+    <string name="manual_organization_unavailable_constraint">利用できないまたはプロファイルの制限がある配置: %1$d件</string>
     <string name="manual_organization_widget_constraint">ウィジェットを保持: %1$d件</string>
     <string name="manual_organization_app_pair_constraint">アプリペアを保持: %1$d件</string>
     <string name="manual_organization_legacy_shortcut_constraint">旧形式のショートカットを保持: %1$d件</string>
     <string name="manual_organization_empty_folder_constraint">空のフォルダを保持: %1$d件</string>
     <!-- Issue #195: concrete change list on the confirmation surface -->
-    <string name="manual_organization_preview_details_unavailable">今回、具体的な変更一覧を用意できませんでした。適用前に下の件数サマリーを確認してください。</string>
+    <string name="manual_organization_preview_details_unavailable">今回、具体的な変更一覧を用意できませんでした。適用前に下の件数の内訳を確認してください。</string>
     <!-- Issue #228: missing-app selection and Add rows -->
     <string name="manual_organization_detecting_missing_apps">ホーム画面にないアプリを確認しています…</string>
     <!-- Issue #369 RD-1/RD-5、#417で再配置: 入口面 — scope要約のみ（方法選択は方法選択面へ移動）。 -->
-    <string name="manual_organization_preamble_scope">この確認ではホーム画面全体を対象に整理案を作ります。確認する前に適用されることはありません。</string>
+    <string name="manual_organization_preamble_scope">ホーム画面全体を対象に整理案を作成します。整理案を確認して適用するまで、ホーム画面は変更されません。</string>
     <!-- Issue #369: T-09統合準備中面 -->
     <string name="manual_organization_preparation">準備中</string>
     <!-- Issue #369: D-13語彙「中断」（zero-write。runを止めてhubへ戻る） -->
     <string name="manual_organization_interrupt">中断</string>
     <!-- Issue #369: T-13統合失敗面の見出し -->
-    <string name="manual_organization_failed">実行できませんでした</string>
+    <string name="manual_organization_failed">整理を実行できませんでした</string>
     <!-- Issue #369: D-13 破棄/中断の確認dialog -->
     <string name="manual_organization_discard_confirm_title">破棄しますか？</string>
-    <string name="manual_organization_discard_confirm_text">選択と提案を破棄します。ホーム画面への変更はありません。</string>
+    <string name="manual_organization_discard_confirm_text">選択内容と整理案を破棄します。ホーム画面への変更はありません。</string>
     <string name="manual_organization_discard">破棄</string>
     <string name="manual_organization_missing_apps_title">整理するアプリを選択</string>
     <plurals name="manual_organization_missing_apps_selected_count">
@@ -430,11 +432,11 @@
     <string name="manual_organization_missing_apps_empty_continue">未選択で続行します。未配置アプリを追加せずに整理します。</string>
     <string name="manual_organization_missing_apps_state_checked">選択済み</string>
     <string name="manual_organization_missing_apps_state_unchecked">未選択</string>
-    <string name="manual_organization_preview_unavailable_add">新しいアプリを追加するこの提案の変更一覧を表示できませんでした。ホーム画面は変更されていません。追加は、変更一覧を確認できてから行われます。</string>
+    <string name="manual_organization_preview_unavailable_add">新しいアプリを追加する整理案の変更一覧を用意できませんでした。ホーム画面は変更されていません。アプリの追加は、変更一覧全体を確認するまで行われません。</string>
     <string name="manual_organization_preview_retry">プレビューを再試行</string>
     <string name="manual_organization_added_count">追加するアプリ: %1$d件</string>
     <plurals name="manual_organization_applied_added_count">
-        <item quantity="other">%1$d件のアプリを追加しました</item>
+        <item quantity="other">追加したアプリ: %1$d件</item>
     </plurals>
     <string name="manual_organization_changes_heading">変更内容</string>
     <string name="manual_organization_group_moved">移動 (%1$d件)</string>
@@ -447,8 +449,8 @@
     <string name="manual_organization_group_warnings">警告 (%1$d件)</string>
     <string name="manual_organization_preview_show_all">すべて表示 (%1$d件)</string>
     <string name="manual_organization_preview_show_fewer">先頭%1$d件のみ表示</string>
-    <string name="manual_organization_preview_expanded_state">展開</string>
-    <string name="manual_organization_preview_collapsed_state">折りたたみ</string>
+    <string name="manual_organization_preview_expanded_state">展開されています</string>
+    <string name="manual_organization_preview_collapsed_state">折りたたまれています</string>
     <!-- Issue #208: 行テンプレートの第1引数は source descriptor (種別つき引用名 +
          現在位置)。引用符は descriptor 側の文字列が持つため、同名 placement 行も
          区別できる。同帯内調整行も descriptor を再利用し、移動先部分だけを
@@ -459,7 +461,7 @@
          %1 = page, %3 = row ordinal, %4 = column ordinal)。4 要素を常に表示し、
          resolved anchor をどの grid でも一意に特定できるようにする。 -->
     <string name="manual_organization_preview_workspace_destination">%2$s・%1$s・%3$d行目・%4$d列目</string>
-    <string name="manual_organization_preview_row_ordinal_note">（%1$d段目から%2$d段目）</string>
+    <string name="manual_organization_preview_row_ordinal_note">（%1$d行目から%2$d行目）</string>
     <string name="manual_organization_preview_item_row">%1$s：%2$s</string>
     <string name="manual_organization_preview_item_descriptor">「%1$s」(%2$s)・%3$s</string>
     <string name="manual_organization_preview_item_descriptor_without_kind">「%1$s」・%2$s</string>
@@ -470,29 +472,29 @@
     <string name="manual_organization_preview_supplement_stage_top">上側</string>
     <string name="manual_organization_preview_supplement_stage_bottom">下側</string>
     <string name="manual_organization_preview_move_reason_single_placement">単体配置として移動</string>
-    <string name="manual_organization_preview_move_reason_folder_member">フォルダメンバーとして移動</string>
+    <string name="manual_organization_preview_move_reason_folder_member">フォルダ内のアイテムとして移動</string>
     <string name="manual_organization_preview_move_reason_folder_unit">フォルダ単位で移動</string>
     <string name="manual_organization_preview_move_reason_widget_unit">ウィジェット単位で移動</string>
     <string name="manual_organization_preview_move_reason_unspecified">移動</string>
     <string name="manual_organization_preview_preserved_reason_locked">ロックされているため保持</string>
-    <string name="manual_organization_preview_preserved_reason_reserved_region">予約領域のため保持</string>
+    <string name="manual_organization_preview_preserved_reason_reserved_region">検索エリアとして確保されているため保持</string>
     <string name="manual_organization_preview_preserved_reason_unavailable">利用できないため保持</string>
-    <string name="manual_organization_preview_preserved_reason_dock">ドック配置のため保持</string>
+    <string name="manual_organization_preview_preserved_reason_dock">Dockにあるため保持</string>
     <string name="manual_organization_preview_preserved_reason_widget">ウィジェットのため保持</string>
     <string name="manual_organization_preview_preserved_reason_app_pair">アプリペアのため保持</string>
     <string name="manual_organization_preview_preserved_reason_legacy_shortcut">旧形式のショートカットのため保持</string>
     <string name="manual_organization_preview_preserved_reason_non_target">整理対象外のため保持</string>
-    <string name="manual_organization_preview_preserved_reason_structural">構造メンバーとして保持</string>
-    <string name="manual_organization_preview_preserved_reason_strategy">選択した整理戦略により保持</string>
-    <string name="manual_organization_preview_preserved_reason_already_canonical">既に整列済みのため保持</string>
+    <string name="manual_organization_preview_preserved_reason_structural">関連する項目のため保持</string>
+    <string name="manual_organization_preview_preserved_reason_strategy">選択したストラテジーにより保持</string>
+    <string name="manual_organization_preview_preserved_reason_already_canonical">既に所定の位置にあるため保持</string>
     <!-- Issue #451: 重複のため整理では移動させずに残した（削除は促さない）。 -->
     <string name="manual_organization_preview_preserved_reason_duplicate_launch_target">同じ起動先の項目と重複しているため保持</string>
     <string name="manual_organization_preview_warning_legacy_shortcut_item">旧形式のショートカットのため確認が必要</string>
-    <string name="manual_organization_preview_warning_fallback_category_item">分類を推定できずフォールバックカテゴリを使用</string>
+    <string name="manual_organization_preview_warning_fallback_category_item">分類を推定できず、代替カテゴリを使用</string>
     <string name="manual_organization_preview_warning_unavailable_item">現在利用できないため保持</string>
-    <string name="manual_organization_preview_warning_duplicate_launch_target_item">同じ起動先の項目と重複しているため、整理では移動させずに保持しています</string>
+    <string name="manual_organization_preview_warning_duplicate_launch_target_item">同じ起動先の項目と重複しているため、移動せずに保持</string>
     <string name="manual_organization_preview_page">%1$dページ目</string>
-    <string name="manual_organization_preview_new_page_position">新規ページ (%1$dページ目)</string>
+    <string name="manual_organization_preview_new_page_position">新規ページ（%1$dページ目）</string>
     <string name="manual_organization_preview_position_workspace">%1$s・%2$s</string>
     <string name="manual_organization_preview_region_top_left">上段左</string>
     <string name="manual_organization_preview_region_top_center">上段中央</string>
@@ -503,11 +505,11 @@
     <string name="manual_organization_preview_region_bottom_left">下段左</string>
     <string name="manual_organization_preview_region_bottom_center">下段中央</string>
     <string name="manual_organization_preview_region_bottom_right">下段右</string>
-    <string name="manual_organization_preview_position_dock">ドック%1$d番</string>
+    <string name="manual_organization_preview_position_dock">Dockの%1$d番目</string>
     <!-- Issue #208: フォルダ内の位置で同名フォルダ内 item を区別する
          (placement locks 画面の語彙と一致)。 -->
-    <string name="manual_organization_preview_position_folder_existing">フォルダ「%1$s」内の位置 %2$d</string>
-    <string name="manual_organization_preview_position_folder_planned">新規フォルダ「%1$s」内の位置 %2$d</string>
+    <string name="manual_organization_preview_position_folder_existing">フォルダ「%1$s」内の%2$d番目</string>
+    <string name="manual_organization_preview_position_folder_planned">新規フォルダ「%1$s」内の%2$d番目</string>
     <string name="manual_organization_preview_position_app_pair">アプリペア「%1$s」</string>
     <string name="manual_organization_preview_kind_application">アプリ</string>
     <string name="manual_organization_preview_kind_deep_shortcut">ショートカット</string>
@@ -517,28 +519,28 @@
     <string name="manual_organization_preview_kind_custom_app_widget">カスタムウィジェット</string>
     <string name="manual_organization_preview_kind_app_pair">アプリペア</string>
     <string name="manual_organization_preview_kind_unknown">アイテム</string>
-    <string name="manual_organization_preview_new_folder_row">"新規フォルダ「%1$s」を%2$sに作成（メンバー: %3$s）"</string>
+    <string name="manual_organization_preview_new_folder_row">新規フォルダ「%1$s」を%2$sに作成（内容: %3$s）</string>
     <string name="manual_organization_preview_new_page_row">%1$dページ目に新規ページを追加</string>
     <!-- Issue #508: 変更前後の図・項目単位の除外・再計画の進行（確認面。零書込みの表示state）。 -->
     <string name="manual_organization_diagram_before">変更前</string>
     <string name="manual_organization_diagram_after">変更後</string>
     <string name="manual_organization_diagram_page">ページ%1$d</string>
     <string name="manual_organization_diagram_new_page">新しいページ</string>
-    <string name="manual_organization_diagram_dock">ドック</string>
+    <string name="manual_organization_diagram_dock">Dock</string>
     <string name="manual_organization_diagram_widget">ウィジェット</string>
     <string name="manual_organization_diagram_item_a11y">"%1$s、%2$s、%3$s"</string>
     <string name="manual_organization_exclude_action">提案から外す</string>
     <string name="manual_organization_include_action">提案に戻す</string>
     <string name="manual_organization_excluded_heading">"提案から外した項目: %1$d件"</string>
     <string name="manual_organization_excluded_unknown_item">"項目"</string>
-    <string name="manual_organization_exclusion_blocked_kind">"除外できません: この種類の項目は除外対象外です"</string>
-    <string name="manual_organization_exclusion_blocked_placement">"除外できません: ドック・フォルダ・アプリペア内の配置は除外対象外です"</string>
-    <string name="manual_organization_exclusion_blocked_preserved">"除外できません: より強い保持規則がこの配置を守っています"</string>
-    <string name="manual_organization_exclusion_blocked_structural">"除外できません: 再計画が自動的に決定する行です"</string>
+    <string name="manual_organization_exclusion_blocked_kind">除外できません: この種類の項目は対象外です</string>
+    <string name="manual_organization_exclusion_blocked_placement">除外できません: Dock・フォルダ・アプリペア内の配置は対象外です</string>
+    <string name="manual_organization_exclusion_blocked_preserved">除外できません: より強い保持ルールがこの配置を守っています</string>
+    <string name="manual_organization_exclusion_blocked_structural">除外できません: この内容は再計算で自動的に決まります</string>
     <string name="manual_organization_exclusion_state_included">"提案に含まれています"</string>
     <string name="manual_organization_exclusion_state_excluded">"除外済み"</string>
     <string name="manual_organization_unplaced_candidates_heading">"この提案では配置されない候補: %1$d件"</string>
-    <string name="manual_organization_unplaced_candidate_a11y">"%1$s（%2$s）。この提案では配置されない候補"</string>
+    <string name="manual_organization_unplaced_candidate_a11y">%1$s（%2$s）。この提案では配置されない候補です。</string>
     <string name="manual_organization_replanning">提案を再計算中</string>
     <string name="manual_organization_replanning_summary">"除外した項目を反映した新しい提案を準備しています。下の図と一覧は直前の提案のものです。"</string>
     <!-- Issue #201: safe generic title for generated folders whose semantic name cannot be resolved. -->
@@ -565,17 +567,17 @@
          choice onto the method-choice face. The subtitle survives as the
          short description of that face's 「AIに相談」 row; the import label
          survives as the T-15 import lead-in. -->
-    <string name="exchange_entry_subtitle">ChatGPT等の外部AIへの依頼文を作成し、回答を検証付きで取り込めます。</string>
+    <string name="exchange_entry_subtitle">ChatGPT等の外部AIへの依頼文を作成し、回答を確認してから適用できる提案として取り込めます。</string>
     <string name="exchange_method_consult">AIに相談</string>
     <!-- Issue #327: user-facing capability explanation (ja正本) -->
     <string name="exchange_capability_title">AIでできること</string>
     <string name="exchange_capability_example_frequent">よく使うアプリを優先的に配置する</string>
     <string name="exchange_capability_example_group">関連するアプリをまとめる</string>
-    <string name="exchange_capability_example_keep">動かしたくないアプリはそのまま維持する</string>
+    <string name="exchange_capability_example_keep">動かしたくないアプリはそのままにしておく</string>
     <string name="exchange_capability_example_front">重要なアプリを前のページに寄せる</string>
     <string name="exchange_capability_example_minimal_change">今の配置をできるだけ崩さない</string>
-    <string name="exchange_capability_no_direct_change">AIがホーム画面を直接変更することはありません。再整理に使う「あなたの希望・傾向」を作ります。</string>
-    <string name="exchange_capability_flow">相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問 (2〜4問) に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。</string>
+    <string name="exchange_capability_no_direct_change">AIがホーム画面を直接変更することはありません。再整理の計画に使う、あなたの好みや傾向をまとめるだけです。</string>
+    <string name="exchange_capability_flow">相談はChatGPT等の外部AIアプリ内で行われます。依頼文は1回送り、AIからの質問（2〜4問）に答えて整理方針を確認すると、最終案を1回だけ受け取れます。会話の内容がNunuLauncherに送信されることはありません。</string>
     <string name="exchange_entry_import">回答を取り込む</string>
     <!-- Issue #372: T-15 request-creation face (ja正本) -->
     <string name="exchange_request_title">AIに相談する依頼を作る</string>
@@ -588,21 +590,21 @@
     </plurals>
     <string name="exchange_request_remaining_under_hour">残り1時間未満</string>
     <!-- Issue #372 (D-09): the expectation statement, shown on T-15 and T-16. -->
-    <string name="exchange_expectation_fixed_home">この依頼は作成時点のホームで固定されます。会話中にホームや分類を変更すると、回答を取り込めなくなります。</string>
+    <string name="exchange_expectation_fixed_home">この依頼は作成時点のホームで固定されます。会話中にホームやカテゴリを変更すると、回答を取り込めなくなります。</string>
     <string name="exchange_privacy_title">外部送信のプライバシー</string>
     <!-- Issue #372 (D-14): the two-choice tier vocabulary; LOCAL_FULL never appears. -->
-    <string name="exchange_privacy_redacted">情報を減らして送る (既定)</string>
+    <string name="exchange_privacy_redacted">情報を減らして送る（既定）</string>
     <string name="exchange_privacy_labels">ラベル付きで送る</string>
     <!-- Issue #372 (review): the warning matches the v4 free-text set exactly
          (app and folder names plus user-defined category names, spec 337). -->
     <string name="exchange_privacy_labels_warning">依頼文にアプリ名・フォルダ名、およびユーザー定義カテゴリの名前が含まれます。</string>
     <string name="exchange_replacement_notice">未完了の依頼があります。新規作成すると既存の依頼は破棄され、その回答は取り込めなくなります。取り込み済みの提案も破棄されます。</string>
-    <string name="exchange_replacement_title">既存の依頼を破棄して新規作成しますか?</string>
+    <string name="exchange_replacement_title">既存の依頼を破棄して新規作成しますか？</string>
     <!-- Issue #374 (spec 374 DI-AC-03): 置換は取り込み済みの提案も破棄する
          (3つの保持場所すべてに適用される旨を確認文言へ追記)。 -->
-    <string name="exchange_replacement_warning">新規作成すると以前の依頼は破棄され、その回答は取り込めなくなります。取り込み済みの提案も破棄されます。続行しますか?</string>
+    <string name="exchange_replacement_warning">新規作成すると既存の依頼は破棄され、その回答は取り込めなくなります。取り込み済みの提案も破棄されます。続行しますか？</string>
     <string name="exchange_replacement_confirm">破棄して作成</string>
-    <string name="exchange_replacement_decline">既存を維持</string>
+    <string name="exchange_replacement_decline">既存の依頼を維持</string>
     <string name="exchange_generate">依頼を作成</string>
     <string name="exchange_generating">依頼文を生成しています…</string>
     <string name="exchange_cancel">キャンセル</string>
@@ -617,10 +619,10 @@
     <string name="exchange_disclosure_summary_limit">1回の依頼で送れる上限は対象項目512件・依頼文256KBです。</string>
     <string name="exchange_disclosure_expand">全文を確認</string>
     <string name="exchange_disclosure_collapse">全文を隠す</string>
-    <string name="exchange_disclosure_hint">この内容を任意のAIアプリへ送信します。送信方法を選ぶまで何も送信されません。</string>
+    <string name="exchange_disclosure_hint">この内容を任意のAIアプリへ送信してください。送信方法を選ぶまで何も送信されません。</string>
     <!-- Issue #372 (D-13): the pre-send cancel is 破棄 with one confirmation. -->
     <string name="exchange_discard">破棄</string>
-    <string name="exchange_discard_confirm_title">依頼を破棄しますか?</string>
+    <string name="exchange_discard_confirm_title">依頼を破棄しますか？</string>
     <string name="exchange_discard_confirm_body">破棄するとこの依頼は無効になり、AIの回答を取り込めなくなります。この操作は取り消せません。</string>
     <string name="exchange_discard_confirm_confirm">破棄する</string>
     <string name="exchange_copy">コピー</string>
@@ -633,7 +635,7 @@
     <string name="exchange_import_title">AIの回答を取り込む</string>
     <string name="exchange_import_hint">回答の全文を貼り付け</string>
     <string name="exchange_import_action">取り込む</string>
-    <string name="exchange_import_from_file">ファイルから</string>
+    <string name="exchange_import_from_file">ファイルから取り込む</string>
     <string name="exchange_import_result_title">取り込み結果</string>
     <string name="exchange_import_result_unknown">回答を利用できませんでした。</string>
     <string name="exchange_import_failure_action_reimport">もう一度取り込む</string>
@@ -645,21 +647,21 @@
     <string name="exchange_import_failure_detail_hide">詳細を隠す</string>
     <string name="exchange_import_failure_detail_type_format">種別: %1$s</string>
     <string name="exchange_run_busy">整理が実行中のため取り込めません。終了後に再度取り込んでください。</string>
-    <string name="exchange_import_from_clipboard">クリップボードから読み込む</string>
+    <string name="exchange_import_from_clipboard">クリップボードから取り込む</string>
     <string name="exchange_import_fallback_toggle">詳細 / うまく読み込めない場合</string>
     <string name="exchange_import_clear">クリア</string>
     <string name="exchange_import_file_types">テキスト (.txt) またはJSON (.json)・最大1 MiB</string>
-    <string name="exchange_status_clipboard_empty">クリップボードが空か、読み取れませんでした。AIアプリで回答をコピーし直し、このアプリに戻ってからもう一度読み込んでください。うまくいかない場合はファイル読み込みか手動貼り付けをお使いください。</string>
+    <string name="exchange_status_clipboard_empty">クリップボードが空か、読み取れませんでした。AIアプリで回答をコピーし直し、このアプリに戻ってからもう一度取り込んでください。うまくいかない場合はファイルからの取り込みか手動貼り付けをお使いください。</string>
     <string name="exchange_status_clipboard_not_text">クリップボードにテキストがありません。AIアプリで回答のテキストをコピーし直してください。</string>
-    <string name="exchange_status_file_read_failed">ファイルを読み込めませんでした。もう一度ファイルを選択するか、対応形式 (.txt / .json・最大1 MiB) を確認してください。うまくいかない場合はクリップボード読み込みか手動貼り付けをお使いください。</string>
+    <string name="exchange_status_file_read_failed">ファイルを読み込めませんでした。もう一度ファイルを選択するか、対応形式 (.txt / .json・最大1 MiB) を確認してください。うまくいかない場合はクリップボードからの取り込みか手動貼り付けをお使いください。</string>
     <string name="exchange_recognized_framing">認識した形式</string>
-    <string name="exchange_recognized_version">認識version</string>
-    <string name="exchange_recognized_entries">認識エントリ数</string>
+    <string name="exchange_recognized_version">認識したバージョン</string>
+    <string name="exchange_recognized_entries">認識したエントリ数</string>
     <string name="exchange_framing_marker">マーカー形式</string>
-    <string name="exchange_framing_fenced_json">fenced JSONブロック</string>
+    <string name="exchange_framing_fenced_json">JSONコードブロック</string>
     <string name="exchange_framing_standalone_json">単独JSON</string>
     <string name="exchange_generation_input_not_ready">現在のレイアウトを取得できませんでした。しばらくしてから再試行してください。</string>
-    <string name="exchange_generation_store_failure">交換セッションを作成できませんでした。何も送信されていません。</string>
+    <string name="exchange_generation_store_failure">依頼を作成できませんでした。何も送信されていません。</string>
     <string name="exchange_generation_oversize">レイアウトが大きすぎて依頼文を作成できません。</string>
     <string name="exchange_failure_primary_input_oversize">回答が大きすぎます。前後の文章を減らして、もう一度取り込んでください。</string>
     <string name="exchange_failure_primary_framing_missing">回答の中に取り込める整理案がありません。AIアプリで最終案を送り直してもらい、貼り直してください。</string>
@@ -675,15 +677,15 @@
     <string name="exchange_failure_primary_unknown_ref">整理案が依頼に存在しない項目を参照しています。AIアプリで送り直してもらい、貼り直してください。</string>
     <string name="exchange_failure_primary_duplicate_ref">整理案に重複した項目があります。AIアプリで送り直してもらい、貼り直してください。</string>
     <string name="exchange_failure_primary_incomplete_coverage">整理案の項目指定に重複があります。AIアプリで送り直してもらい、貼り直してください。</string>
-    <string name="exchange_failure_primary_invalid_enum">整理案に未知の値が含まれています。AIアプリで送り直してもらい、貼り直してください。</string>
-    <string name="exchange_failure_primary_forbidden_content">整理案に禁止された指示が含まれています。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_invalid_enum">整理案に不明な値が含まれています。AIアプリで送り直してもらい、貼り直してください。</string>
+    <string name="exchange_failure_primary_forbidden_content">整理案に許可されていない指示が含まれています。AIアプリで送り直してもらい、貼り直してください。</string>
     <string name="exchange_failure_primary_mobility_contradiction">整理案が動かせない項目を動かそうとしています。AIアプリで送り直してもらい、貼り直してください。</string>
     <string name="exchange_failure_primary_capability_unsupported">整理案が未対応の機能を使用しています。AIアプリで送り直してもらい、貼り直してください。</string>
     <string name="exchange_failure_primary_scope_mismatch">この回答は現在の依頼内容と一致していません。依頼を作り直してください。</string>
     <string name="exchange_failure_primary_unknown_category_ref">回答が参照したカテゴリが現在利用できません。依頼を作り直してください。</string>
     <string name="exchange_failure_input_oversize">回答が大きすぎます。前後の文章を減らして再度取り込んでください。</string>
     <string name="exchange_failure_framing_missing">回答にマーカーで囲まれた整理案がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください。</string>
-    <string name="exchange_failure_framing_ambiguous">回答に複数のマーカー囲みの領域があります。最終のJSONを1つだけ送ってもらってください。</string>
+    <string name="exchange_failure_framing_ambiguous">回答にマーカーで囲まれた部分が複数あります。最終のJSONを1つだけ送ってもらってください。</string>
     <string name="exchange_failure_framing_empty">マーカー内が空です。AIに最終JSONを```jsonコードブロック1つで再送してもらってください。</string>
     <string name="exchange_failure_normalization_ambiguous">回答に複数のコードブロックがあります。最後のJSONブロックだけをコピーして、再度取り込んでください。</string>
     <string name="exchange_failure_normalization_unrecognized">取り込める形式がありません。AIに最終JSONを```jsonコードブロック1つで再送してもらうか、JSONだけを貼り付けてください（従来のマーカー形式も利用できます）。</string>
@@ -695,29 +697,29 @@
     <string name="exchange_failure_unknown_ref">整理案が依頼に存在しない項目を参照しています。</string>
     <string name="exchange_failure_duplicate_ref">整理案に重複した項目があります。</string>
     <string name="exchange_failure_incomplete_coverage">整理案が同じ項目を複数回列挙しています。各項目は「itemIntents」と「unresolvedRefs」の合計で一度だけ指定できます。</string>
-    <string name="exchange_failure_invalid_enum">整理案に未知の値が含まれています。</string>
-    <string name="exchange_failure_forbidden_content">整理案に禁止された指示 (座標・サイズ・データベース変更) が含まれています。</string>
-    <string name="exchange_failure_mobility_contradiction">整理案が移動できない項目を動かそうとしています。</string>
-    <string name="exchange_failure_capability_unsupported">整理案が未対応の機能を使用しています。</string>
-    <string name="exchange_failure_scope_mismatch">選択したアプリが依頼内容と一致していません。同じアプリを選び直すか、依頼を再作成してください。</string>
+    <string name="exchange_failure_invalid_enum">整理案に不明な値が含まれています。</string>
+    <string name="exchange_failure_forbidden_content">回答に禁止された指示 (座標・サイズ・データベース変更) が含まれています。</string>
+    <string name="exchange_failure_mobility_contradiction">回答が移動できない項目を動かそうとしています。</string>
+    <string name="exchange_failure_capability_unsupported">回答が未対応の機能を使用しています。</string>
+    <string name="exchange_failure_scope_mismatch">選択したアプリが依頼内容と一致していません。同じアプリを選び直すか、依頼を作り直してください。</string>
     <!-- Issue #375（spec SR-AC-01/02）: SCOPE_MISMATCHの救済を原因別に分割 — 選択集合の差は
          選択面で修正でき、解決不能・投影差は依頼の作り直しのみが継続手段。 -->
-    <string name="exchange_scope_set_mismatch">選択したアプリが依頼内容と一致していません。強調表示されたアプリを選択すると、同じ提案で続行できます。</string>
+    <string name="exchange_scope_set_mismatch">選択したアプリが依頼内容と一致していません。強調表示されたアプリを選択すると、この提案で続けられます。</string>
     <string name="exchange_scope_unresolvable_mismatch">選択を修正してもこの依頼とは一致させられません。依頼を作り直してください。</string>
     <!-- Issue #375（spec SR-AC-01）: 候補行の非色依存の差分強調。 -->
-    <string name="exchange_scope_diff_missing">依頼では対象</string>
+    <string name="exchange_scope_diff_missing">依頼に必要</string>
     <string name="exchange_scope_diff_extra">依頼外</string>
     <!-- Issue #375（spec「再開面CTAの有効化」）: 再bind継続 — TO-BE T-18語彙。 -->
     <string name="exchange_import_continue">この提案で続ける</string>
     <!-- Issue #375: rebindのtyped案内。 -->
     <string name="exchange_rebind_context_stale">この依頼は古くなっています。依頼を作り直してください。</string>
     <string name="exchange_rebind_anchor_refused">この提案は利用できなくなりました。ホームのハブから開き直してください。</string>
-    <string name="exchange_rebind_start_failed">この提案で続行できませんでした。もう一度お試しください。</string>
-    <string name="exchange_failure_unknown_category_ref">回答が参照したカテゴリは現在利用できません。依頼を再作成して、もう一度回答を得てください。</string>
-    <string name="exchange_scoped_freeze_notice">AI依頼の作成中はアプリの選択を変更できません。取り消すと再編集できます。</string>
+    <string name="exchange_rebind_start_failed">この提案で続けられませんでした。もう一度お試しください。</string>
+    <string name="exchange_failure_unknown_category_ref">回答が参照したカテゴリは現在利用できません。依頼を作り直して、もう一度AIに相談してください。</string>
+    <string name="exchange_scoped_freeze_notice">AI依頼の作成中はアプリの選択を変更できません。キャンセルすると再編集できます。</string>
     <!-- Issue #417: 取り込み専用の入口面、方法選択面の他由来依頼の作り直し案内、
          run所有のcleanup/破棄のtypedな再試行可能失敗。 -->
-    <string name="exchange_entry_import_only_notice">この依頼はここで取り込めます。凍結した選択用の新しい依頼の作成は、整理を開始して「AIに相談」から行えます。</string>
+    <string name="exchange_entry_import_only_notice">この依頼はここで取り込めます。凍結した選択で新しい依頼を作るには、整理を開始して「AIに相談」を選んでください。</string>
     <string name="exchange_generation_not_confirmed">整理の実行が確定済みの選択を保持していません。何も作成されていません。</string>
     <string name="exchange_export_cleanup_failed">未使用の依頼を破棄できませんでした。何も送信されていません。もう一度お試しください。</string>
     <string name="exchange_scope_discard_failed">依頼を破棄できませんでした。選択はロックされたままです。もう一度お試しください。</string>
@@ -725,7 +727,7 @@
     <string name="exchange_recreate_request_body">取り込んだ回答は、この整理の実行で確定した選択から作成されたものではないため、ここでは利用できません。この選択用に依頼を作り直してください。</string>
     <string name="exchange_recreate_request_action">依頼を作り直す</string>
     <plurals name="exchange_scope_intent_count">
-        <item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するにはそれらを選択してください。</item>
+        <item quantity="other">AIの提案にはホームに未配置のアプリ%1$d件が含まれます。提案を利用するには、これらのアプリを選択してください。</item>
     </plurals>
 
     <!-- Issue #328: 取り込み成功状態とtyped案内。Issue #374: CTA copyはT-18語彙
@@ -737,7 +739,7 @@
     <string name="exchange_import_cta_idle">この提案で続ける</string>
     <string name="exchange_import_cta_run_in">この提案で続けて選択へ戻る</string>
     <string name="exchange_import_discard">破棄して閉じる</string>
-    <string name="exchange_import_discard_confirm_title">取り込みを破棄しますか?</string>
+    <string name="exchange_import_discard_confirm_title">取り込みを破棄しますか？</string>
     <string name="exchange_import_discard_confirm_body">取り込み済みの提案を破棄します。依頼が有効な間は、同じ回答を再度取り込めます。</string>
     <string name="exchange_import_discard_confirm_confirm">破棄</string>
     <string name="exchange_import_discarded_guidance">取り込みを破棄しました。依頼が有効な間は、同じ回答を再度取り込めます。</string>
@@ -768,7 +770,7 @@
         <item quantity="other">既存カテゴリを参照する項目: %1$d件</item>
     </plurals>
     <plurals name="exchange_import_summary_proposed_group">
-        <item quantity="other">今回だけの新しいグループ提案: %1$d件 (保存されません)</item>
+        <item quantity="other">今回限りのグループ提案: %1$d件 (保存されません)。</item>
     </plurals>
     <plurals name="exchange_import_summary_group">
         <item quantity="other">グループの希望: %1$d件</item>
@@ -777,7 +779,7 @@
         <item quantity="other">配置先の希望: %1$d件</item>
     </plurals>
     <plurals name="exchange_import_summary_keep">
-        <item quantity="other">位置の維持の希望: %1$d件</item>
+        <item quantity="other">配置を維持する希望: %1$d件</item>
     </plurals>
 
     <!-- Issue #528: custom suggestion LAN permission guard and typed fetch outcomes -->
@@ -795,4 +797,5 @@
     <string name="custom_suggestion_status_generic_network_failure">検索候補: 失敗しました。アドレスに接続できませんでした。</string>
     <string name="custom_suggestion_url_not_https">http/httpsのURLのみ対応しています。平文（http）のエンドポイントはAndroidによってブロックされます。</string>
     <string name="custom_suggestion_url_invalid">URLテンプレートが無効です。http://またはhttps://で始まり、検索クエリの位置に&#37;sを含めてください。</string>
+    <string name="exchange_ai_consultation_toggle_label">AIに相談</string>
 </resources>
