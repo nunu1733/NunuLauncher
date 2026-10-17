@@ -16,7 +16,8 @@ updated: 2026-10-17
 > trigger契約）、[spec 370](../370-onboarding-hub-connection/spec.md)（現行の「確認→run
 > admission直行」接続。本specが意図的にsupersedeする）、hub・材料集約（#366/#367）、
 > [spec 452](../452-organizer-home-entry/spec.md)（workspace直接run導線。本Issueで不変）。
-> 本specは[Issue #607][1]の成果物である。statusは **draft** であり、受入（accepted）ではない。
+> 本specは[Issue #607][1]の成果物である。statusは **accepted** である（2026-10-17 owner受入。
+> 実装は未着手）。
 
 ## Problem
 
@@ -380,5 +381,12 @@ Issue #607の受入条件7件に対応する（AC-1〜AC-7 = Issue本文のチ�
   1 entry / admission試行0）を追加。提案側one-shot guard（`reviewInFlight` + button
   disable）の維持をoracleへ含める。製品scopeの変更（DEFERRED / hub navigationのみ /
   `Started` 後の `REVIEWED`）はなし。
+- 2026-10-17: Accepted（owner受入。review Approveは
+  [round-2 review comment](https://github.com/nunu1733/NunuLauncher/issues/607#issuecomment-6231082701)、
+  対象head `588194f8efcb`、受入記録commit `6299eba07b`）。受入時に本文冒頭blockquoteへ
+  draft時のsnapshot wording（「statusは **draft** であり、受入（accepted）ではない」）が
+  残っていたため、canonical documentation amendment（正典更新phase）でfrontmatter
+  （`status: accepted`）へ同期した。metadataのみの変更であり、AC・behavior・scope・
+  oracleの変更はない。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/607
