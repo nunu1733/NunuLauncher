@@ -86,10 +86,10 @@ abstract class NovaConverterBoundaryScenarioBase : NovaRestoreCaptureTestBase() 
 
     private var originalSmartspace: Boolean? = null
 
-    // Issue #605: FileLog dump length recorded before the restore; the
-    // append-only suffix is this scenario's restore window for the trace-order
-    // oracle.
-    private var traceOffsetBeforeRestore: Int = -1
+    // Issue #605: FileLog dump recorded before the restore; the append-only
+    // suffix beyond that exact content is this scenario's restore window for
+    // the trace-order oracle.
+    private var traceBeforeRestore: String? = null
 
     private companion object {
         // Production FileLog trace markers (NovaBackupConverter grid-application
@@ -255,7 +255,7 @@ abstract class NovaConverterBoundaryScenarioBase : NovaRestoreCaptureTestBase() 
 
     /** Restores the boundary fixture through the converter's normal entry. */
     protected fun restoreBoundaryBackup(zip: File): NovaBackupConverter.NovaBackupInfo {
-        traceOffsetBeforeRestore = fileLogDump().length
+        traceBeforeRestore = fileLogDump()
         val converter = NovaBackupConverter(context(), Uri.fromFile(zip))
         val info = runBlocking { converter.parseInfo() }
         runBlocking { converter.convertAndRestore(info) }
@@ -317,8 +317,12 @@ abstract class NovaConverterBoundaryScenarioBase : NovaRestoreCaptureTestBase() 
             expectedDbFile,
             InvariantDeviceProfile.INSTANCE.get(context).dbFile,
         )
-        assertLawnchairTypedPrefsPersisted()
+        // Issue #605 round-4 review: the trace-order oracle runs FIRST so a
+        // regression-head RED demonstrates the order oracle itself detecting the
+        // missing lawnchair write (the typed-prefs assertion below would stop the
+        // test earlier and mask it).
         assertGridApplicationTraceOrder()
+        assertLawnchairTypedPrefsPersisted()
     }
 
     // -----------------------------------------------------------------
@@ -418,16 +422,20 @@ abstract class NovaConverterBoundaryScenarioBase : NovaRestoreCaptureTestBase() 
     }
 
     private fun fileLogWindow(): String {
-        check(traceOffsetBeforeRestore >= 0) {
+        val before = checkNotNull(traceBeforeRestore) {
             "restoreBoundaryBackup must run before the trace-order assertion"
         }
         val after = fileLogDump()
+        // Round-4 review: compare the pre-restore dump CONTENT, not its length —
+        // a length-only guard is tautological. The dump is append-only within a
+        // lane invocation (connected runs wipe app data; the flushAll dump order
+        // is fixed), so any truncate/rotate/reorder must fail loudly here instead
+        // of silently reading a wrong window.
         assertTrue(
-            "FileLog dump must be append-only within the test window (day rotation?)",
-            after.length >= traceOffsetBeforeRestore &&
-                after.startsWith(after.take(traceOffsetBeforeRestore)),
+            "FileLog dump must be append-only within the test window (day rotation or truncation?)",
+            after.length >= before.length && after.startsWith(before),
         )
-        return after.substring(traceOffsetBeforeRestore)
+        return after.removePrefix(before)
     }
 
     private fun fileLogDump(): String {
