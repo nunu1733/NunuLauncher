@@ -79,10 +79,11 @@ Confirmed は current revision に対する条件付き同意であり、write �
 
 Onboarding は non-blocking の提案だけを行う。skip/defer は有効な選択であり、
 layout、settings、target set を変更しない。user が「review organization」を
-選んだ場合は、§2.1 の**完全に同一の Manual full organization state machine**へ
-遷移する。従って reject、stale、checkpoint failure、apply/verify failure、recovery、
-cancel、process-death path もすべて §2.1 と §5 を継承する。retry は常に新しい
-Capture から始め、古い preview/plan を再利用しない。
+選んだ場合は既存Organizer hubが表示され（#607改訂。tap自体はrunを開始・admissionしない）、
+run面開始行のadmissionが成功した時点で、§2.1 の**完全に同一の Manual full
+organization state machine**へ遷移する。従って reject、stale、checkpoint failure、
+apply/verify failure、recovery、cancel、process-death path もすべて §2.1 と §5 を
+継承する。retry は常に新しい Capture から始め、古い preview/plan を再利用しない。
 
 入口（TO-BE）: 提案はfloating surface（T-19）に現れ、「確認」は既存Organizer hubを表示する
 （離脱時は既存defer semanticsを適用。run admissionは発生しない。#607改訂）。
