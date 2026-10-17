@@ -91,7 +91,11 @@ copyは実UI labelからの合成（locale追従）を維持する。設定 → 
 manual organization直行rowを廃止し、organizer由来rowをhub入口row 1件にする（D-01の完成。
 #367まで暫定併存していた直行rowとの併存を解消する）。spec 53は接続先の表記更新のみを受け、
 spec 232はAC-1案内先とAC-3入口row構成をhub時代へ改訂する。outcome・eligibility・再表示の
-契約（spec 53 AC-001/AC-002）は1行も変わらない。
+契約（spec 53 AC-001/AC-002）は1行も変わらない（以上、#370当時のdelivery記録。
+#607改訂後の現行契約: spec 53は表記更新に加え、admission ownership（run面開始行）と
+`REVIEWED`記録タイミング（`Started`後）を
+[spec 607](../607-onboarding-organizer-hub/spec.md)どおり更新済み。outcome表のmechanism
+（`SKIPPED` / `DEFERRED` / dismiss=defer）とeligibility・再表示規則の基盤は不変）。
 
 ## Scope
 
@@ -113,7 +117,7 @@ spec 232はAC-1案内先とAC-3入口row構成をhub時代へ改訂する。outc
   （`MANUAL_FULL` trigger導出はhub CTAと同一の`HomeScreenManualOrganization()` routeを
   通るため不変）。`manual_organization_title` / `manual_organization_summary` resourceの
   削除は行わない（run面scaffold title等の実在用途が残る。resource cleanupは#377所有）。
-- **spec 53の表記更新**（実装PRで実施）: §3.2（entry契約に「T-07前置きを省略し
+- **spec 53の表記更新**（実装PRで実施。#370当時のdelivery記録）: §3.2（entry契約に「T-07前置きを省略し
   方法は『そのまま整理』で固定される」旨を追記。加えて、同節のobservable workflow block
   （`explicit Review/Start -> Capture -> Plan -> Preview -> ...` の直結列挙）は#369が
   固定したcanonical順序（検出→[候補あり時のみ選択]→capture/plan→確認）を反映していない
@@ -121,7 +125,11 @@ spec 232はAC-1案内先とAC-3入口row構成をhub時代へ改訂する。outc
   workflowを辿る」旨の参照化へ更新する）、§5.2/§5.3（review surface /
   Review destination ownerの接続先表記をhub時代のrun面参照へ更新）。
   AC-003「#52 workflow再利用」の文言は不変。outcome表・eligibility・§3.3/§3.4・
-  diagnostics契約には触れない。
+  diagnostics契約には触れない（以上、当時の#370契約。#607改訂後の現行契約:
+  workflow再利用のintentは維持しつつ、admission ownership（run面開始行）と
+  `REVIEWED`記録タイミング（`Started`後）は
+  [spec 607](../607-onboarding-organizer-hub/spec.md)どおり更新済みであり、
+  AC-003とoutcome表のReview rowも#607改訂を反映する）。
 - **spec 232の改訂**（実装PRで実施）: AC-1の案内先をhub入口rowへ、AC-3を
   「organizer由来rowはhub入口row 1件（manual organization直行rowは廃止済み）」構成へ更新。
   該当するBehavior scenario・Test oracle行を連動して更新する。
@@ -317,15 +325,24 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
       （spec 232 AC-3改訂と同一PR）。他の設定行の構成・挙動は変化しない。（Issue受入3）
 - [ ] **OCB-AC-04**: defer/skip/outcome永続化・再表示規則（spec 53 AC-001/AC-002）、
       proposal/hint actionのrun-journal非発行、onboarding由来retryの`ONBOARDING_PROPOSAL`保持
-      （spec 53 §3.3）に変更がない。persistent state・diagnostics契約へのdiffが存在しない。
-      （Issue受入4）
+      （spec 53 §3.3）のsemanticsに変更がない。persistent state・diagnostics契約の
+      format・provenance・skip/defer・journal semanticsは維持する。
+      （#607改訂後の現行契約: `REVIEWED`記録タイミング（`Started`後）へのcontroller wiring
+      変更と、それに伴うtest oracleの移設・更新は本ACの範囲内であり、「persistent store /
+      diagnostics契約コードの無編集」をhard promiseしない。不変を検証する対象はsemanticsで
+      あり、diffの有無ではない）。（Issue受入4）
 - [ ] **OCB-AC-05**: spec 53（§3.2の接続表記・workflow block参照化。§5.2/§5.3の接続先表記。
-      AC-003不変）とspec 232（AC-1案内先、AC-3入口row 1件構成）が本specの定義どおり更新され、
+      AC-003不変——ここまで#370当時の契約）とspec 232（AC-1案内先、AC-3入口row 1件構成）が
+      本specの定義どおり更新され、
       §3.2に旧 `explicit Review/Start -> Capture -> Plan` 直結workflow表記がnormative textとして
       残留しないこと、旧案内先・旧入口構成を固定したtest（hint label構成assert、
       General group直行row assert（暫定併存oracle含む）、「確認」経路の遷移assert）の更新と
       obsolete理由がPRに記録されている。既存organizer unit gateとinstrumentation laneが
-      greenである。（Issue受入5）
+      greenである。（#607改訂後の現行契約: spec 53側はAC-003を含め#607改訂を反映する
+      （workflow再利用intentは維持、admission ownershipと`REVIEWED`記録タイミングは
+      [spec 607](../607-onboarding-organizer-hub/spec.md)どおり）。「確認」経路のtest oracleも
+      #607のhub版へ更新され、unit gateとinstrumentation laneのgreenはその反映後のtest群に
+      対して要求される）。（Issue受入5）
 
 ## Test oracle
 
@@ -334,8 +351,8 @@ None。新規permission、外部送信、sensitive dataの扱い追加はない�
 | OCB-AC-01 | instrumentation（「確認」tap後の遷移先が既存Organizer hubであること・run面直行なし・admission発生なし・離脱時の`DEFERRED`永続化。hub開始→T-07前置き表示→run面開始→admission→run面表示のoracle。旧guard test `realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface`（proposal tap自体が実runnerをstartし`PREAMBLE=0`を証明する旧契約のoracle）は、assertのみでなく**test名・fixture責務・obsolete理由**を含めて#607のhub版へ更新する。proposal上Busy系の既存testも同様に名前・fixture責務・obsolete理由を更新する）。unit（`OrganizationOnboardingProposalTest`: 「確認」単独では`REVIEWED`を記録しないことの回帰。既存`admittedReviewRecordsReviewedOnlyAfterFreshRunAdmission`相当は「run面開始の`Started`後」へ移設。face mapping純関数のtable-driven test `ManualOrganizationFaceTest`はadmitted状態→対応面のcomponent-level証拠として併用） |
 | OCB-AC-02 | instrumentation（`laterTapShowsTheReentryHintAndPreservesTheDeferOutcome`のlabel構成assert更新: hub入口row label `organizer_hub_title` を含み`manual_organization_title`を含まないこと。EN/ja双方のformat resource合成assert）。string diff（`values/` / `values-ja/` のname集合・placeholder一致）+ emulator screenshot（light/dark × ja/default） |
 | OCB-AC-03 | instrumentation（`homeScreenSettingsShowsTheOrganizerEntryInGeneralAboveTheFold`の入口row assertをhub入口row版へ更新、`OrganizerDiagnosticsRouteInstrumentationTest.homeScreenMaterialsRelocationRoutesDiagnosticsThroughHub`の暫定併存assertを「直行row不在＋hub入口row表示」へ更新）。obsolete理由（D-01完成・#370のrow廃止）をPRに記録 |
-| OCB-AC-04 | 既存unit/instrumentationの無編集green（outcome・provenance・journal非発行の回帰群）。実装PR diff上、persistent store / diagnostics契約コードの無編集確認 |
-| OCB-AC-05 | specs 53/232のdiff review（本specのScopeに対応する行のみの変更、change history追記。spec 53 §3.2に旧直結workflow列がnormative textとして残留しないことをdiff上で確認）+ test更新の obsolete理由のPR記録 + `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、対象instrumentation lane、CI `final-status` green |
+| OCB-AC-04 | unit/instrumentationのgreen（outcome・provenance・journal非発行の回帰群。#607改訂後は、`REVIEWED`記録タイミング（`Started`後）へのcontroller wiring変更を反映したtest群に対して要求する）。persistent store / diagnostics契約のformat・provenance・skip/defer・journal semanticsの不変をoracleで検証する（diff上の無編集確認はhard条件としない） |
+| OCB-AC-05 | specs 53/232のdiff review（#370当時は本specのScopeに対応する行のみの変更。#607改訂後はspec 53側に#607 amendment分（AC-003・outcome表Review row・§3.2 entry契約等）を含む。change history追記。spec 53 §3.2に旧直結workflow列がnormative textとして残留しないことをdiff上で確認）+ test更新の obsolete理由のPR記録 + `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、対象instrumentation lane、CI `final-status` green（#607改訂を反映したtest群に対して） |
 
 ## Open questions
 
