@@ -16,6 +16,7 @@ import com.android.launcher3.GridType
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings.Favorites
+import com.android.launcher3.logging.FileLog
 import com.android.launcher3.model.DatabaseHelper
 import com.android.launcher3.model.DeviceGridState
 import com.android.launcher3.model.LayoutWriteCoordinator
@@ -206,13 +207,30 @@ class NovaBackupConverter(
                             gridInfo.dbFile,
                             GridType.GRID_TYPE_NON_ONE_GRID,
                         )
-                        gridState.writeToPrefs(context, true)
+                        // Issue #605: restore the spec #168 Behavior 1 ordering that the
+                        // #532 S3a rebase (b18a98af48ab) broke: both DeviceGridState
+                        // stores, then the lawnchair typed setters, then the live
+                        // binding, and the synchronous commit() LAST. The S3a reorder
+                        // left the restart-time recompute
+                        // (DeviceProfileOverrides.DBGridInfo(prefs)) reading defaults,
+                        // reverting the grid and deleting the restored DB as unmatched.
+                        FileLog.i(TAG, "Grid restore: writing converted grid to DeviceGridState metadata")
                         gridState.writeToPrefs(context)
+                        writeGridToLawnchairPrefs(info, smartspaceEnabled)
                         // Issue #168: keep the live IDP dbFile binding authoritative and
                         // synchronous (main thread, under this lease) so performRestore
                         // and the correlated reload bind the DB the sanitizer wrote,
                         // instead of depending on pref-change listener timing.
                         applyConvertedGrid(gridInfo)
+                        // Issue #168 review follow-up (dropped by the #532 S3a rebase,
+                        // restored for Issue #605): the lawnchair grid prefs are
+                        // persisted via batchEdit (apply, async disk). This synchronous
+                        // commit() on the same SharedPreferences file is the durability
+                        // barrier — when it returns, the grid values survive the
+                        // restore's self-restart even if the pending apply has not
+                        // flushed yet.
+                        FileLog.i(TAG, "Grid restore: durability barrier (synchronous commit on launcher prefs)")
+                        gridState.writeToPrefs(context, true)
                     } else {
                         writeGridToLawnchairPrefs(info, smartspaceEnabled)
                     }
@@ -377,8 +395,9 @@ class NovaBackupConverter(
         val prefs = PreferenceManager.getInstance(context)
         val adjustedRows = if (smartspaceEnabled && info.rows != null) info.rows + 1 else info.rows
         // Issue #168: trace the committed grid values (Open item A of the two-pass
-        // restore investigation).
-        Log.i(
+        // restore investigation). FileLog keeps the logcat line (it mirrors to
+        // Log.i) and adds the FIFO-persisted file copy the #605 order oracle reads.
+        FileLog.i(
             TAG,
             "Committing converted grid to prefs: rows=$adjustedRows columns=${info.columns} " +
                 "hotseat=${info.hotseatCount}",
