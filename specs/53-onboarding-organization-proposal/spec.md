@@ -92,7 +92,7 @@ The proposal may first appear only after the launcher is resumed, interactive, a
 |---|---|---|
 | Skip | `SKIPPED` | Never for the current installation. The persistent manual Issue #52 entry remains available. |
 | Later / Defer | `DEFERRED` | Suppressed for the remainder of the current app process/session. It may be presented again on the next qualifying launcher cold start. No timer or same-session retry is allowed. Repeated defer keeps the same behavior. |
-| Review organization | Applies defer (`DEFERRED`) on leaving the proposal, then shows the existing Organizer hub. `REVIEWED` is recorded only after the onboarding-originated admission at the shared run surface start row succeeds (`Started`; Issue #607 amendment) | Never. Cancellation/failure of that run does not resurrect the onboarding proposal; retry remains inside the reused Issue #52 surface. |
+| Review organization | Applies defer (`DEFERRED`) on leaving the proposal, then shows the existing Organizer hub. `REVIEWED` is recorded only after the onboarding-originated admission at the shared run surface start row succeeds (`Started`; Issue #607 amendment) | While the outcome is `DEFERRED` (proposal left without an admitted run): same as defer — suppressed for the current process/session and may be presented again on the next qualifying launcher cold start. Once `REVIEWED` is recorded (admission returned `Started`): never. Cancellation/failure of that run does not resurrect the onboarding proposal; retry remains inside the reused Issue #52 surface. |
 
 System Back, outside-dismiss, or an equivalent user dismissal of the proposal is treated as `defer`, not `skip` and never as confirmation.
 
