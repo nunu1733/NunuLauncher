@@ -71,7 +71,7 @@ And dismiss が `Later` / `Skip` の選択として扱われず、persistence �
 Given onboarding proposal が表示されている
 When `Skip` または `Review organization` を選択する、または proposal 外を dismiss する
 Then [spec 53](../53-onboarding-organization-proposal/spec.md) §3.1 の既存 outcome (`SKIPPED` / `REVIEWED` / defer on dismiss) が変更なく適用される
-And `Review organization` の fresh-run admission と `ONBOARDING_PROPOSAL` trigger ([spec 53](../53-onboarding-organization-proposal/spec.md) §3.2) は変化しない
+And `Review organization` の fresh-run admission と `ONBOARDING_PROPOSAL` trigger ([spec 53](../53-onboarding-organization-proposal/spec.md) §3.2) は変化しない（#607改訂後も、run面開始行で発生するfresh-run admissionとtriggerの契約は不変。提案tap自体はadmissionを行わず、既存defer semanticsの適用+既存Organizer hubの表示である）
 
 ### Scenario: Home settings の Organizer 入口が上位セクションで発見できる
 
