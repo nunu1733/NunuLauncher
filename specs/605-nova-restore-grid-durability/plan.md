@@ -121,3 +121,13 @@ No schema, pref-format, or backup-format change. Rollback = revert the PR.
 - High-risk PR requirements: `final-status` CI gate on the verification
   commit plus the independent audit record `docs/assessment/pr-<n>-<slug>.md`
   before merge.
+
+## Implementation record (2026-10-17)
+
+Implemented in PR #606 (merge commit `eb9ad248c8`, source/test head
+`efbea18a09e67206b39eaec236212bb6ca9c5199`) exactly as planned: the
+converter ordering fix plus the boundary-surface regression oracle; the
+implementation review round 4 findings (window guard, oracle-first RED)
+were addressed within the same test file. AC-5 was satisfied by the owner
+decision accepting the API 37 emulator execution as the physical-device
+equivalent ([#605 comment 6229601982](https://github.com/nunu1733/NunuLauncher/issues/605#issuecomment-6229601982)).
