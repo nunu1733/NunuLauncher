@@ -1,6 +1,7 @@
 package app.lawnchair.organizer.ui
 
 import app.lawnchair.organizer.application.public.RunId
+import app.lawnchair.organizer.diagnostics.model.Trigger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -35,8 +36,7 @@ class OrganizationOnboardingProposalTest {
         assertFalse(OrganizationOnboardingProposalController(skipped).isEligible())
 
         val reviewed = FakeStore()
-        val controller = OrganizationOnboardingProposalController(reviewed)
-        controller.review { ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)) }
+        reviewed.record(OrganizationOnboardingProposalOutcome.REVIEWED)
         assertFalse(OrganizationOnboardingProposalController(reviewed).isEligible())
     }
 
@@ -101,33 +101,46 @@ class OrganizationOnboardingProposalTest {
     }
 
     @Test
-    fun busyReviewDoesNotRecordReviewedOrNavigateAsAnAdmittedRun() {
-        val store = FakeStore()
-        val controller = OrganizationOnboardingProposalController(store)
-        var admissions = 0
+    fun busyAndRefusedOnboardingStartsPreserveDeferred() {
+        // Issue #607: the proposal's 確認 no longer admits; the run surface's
+        // start row owns admission. Busy and refused outcomes must leave the
+        // stored outcome untouched so the proposal stays DEFERRED and
+        // re-displayable per the cold-start rules.
+        listOf(
+            ManualOrganizationRun.StartOutcome.Busy,
+            ManualOrganizationRun.StartOutcome.AdmissionRefused,
+        ).forEach { outcome ->
+            val store = FakeStore()
+            store.record(OrganizationOnboardingProposalOutcome.DEFERRED)
 
-        val outcome = controller.review {
-            admissions++
-            ManualOrganizationRun.StartOutcome.Busy
+            recordOnboardingReviewedOnStart(store, Trigger.ONBOARDING_PROPOSAL, outcome)
+
+            assertEquals(OrganizationOnboardingProposalOutcome.DEFERRED, store.value)
         }
-
-        assertEquals(ManualOrganizationRun.StartOutcome.Busy, outcome)
-        assertEquals(1, admissions)
-        assertEquals(null, store.value)
-        assertTrue(controller.isEligible())
     }
 
     @Test
-    fun admittedReviewRecordsReviewedOnlyAfterFreshRunAdmission() {
-        val store = FakeStore()
-        val controller = OrganizationOnboardingProposalController(store)
+    fun startedOnboardingStartRecordsReviewedOnlyForTheOnboardingTrigger() {
+        // Issue #607: REVIEWED is recorded only when an ONBOARDING_PROPOSAL
+        // start actually returns Started. The same Started outcome under the
+        // settings trigger (MANUAL_FULL) must not mark the proposal reviewed.
+        val onboarding = FakeStore()
+        onboarding.record(OrganizationOnboardingProposalOutcome.DEFERRED)
+        recordOnboardingReviewedOnStart(
+            onboarding,
+            Trigger.ONBOARDING_PROPOSAL,
+            ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)),
+        )
+        assertEquals(OrganizationOnboardingProposalOutcome.REVIEWED, onboarding.value)
 
-        val outcome = controller.review {
-            ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID))
-        }
-
-        assertEquals(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)), outcome)
-        assertEquals(OrganizationOnboardingProposalOutcome.REVIEWED, store.value)
+        val manual = FakeStore()
+        manual.record(OrganizationOnboardingProposalOutcome.DEFERRED)
+        recordOnboardingReviewedOnStart(
+            manual,
+            Trigger.MANUAL_FULL,
+            ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)),
+        )
+        assertEquals(OrganizationOnboardingProposalOutcome.DEFERRED, manual.value)
     }
 
     private class FakeStore(

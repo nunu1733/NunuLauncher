@@ -105,7 +105,7 @@ fun HomeScreenPreferences(
             // materials, diagnostics, and the run surface.
             NavigationActionPreference(
                 label = stringResource(id = R.string.organizer_hub_title),
-                destination = HomeScreenOrganizer,
+                destination = HomeScreenOrganizer(),
                 subtitle = stringResource(id = R.string.organizer_hub_summary),
             )
         }
