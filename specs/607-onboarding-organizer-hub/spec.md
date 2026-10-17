@@ -16,8 +16,7 @@ updated: 2026-10-17
 > trigger契約）、[spec 370](../370-onboarding-hub-connection/spec.md)（現行の「確認→run
 > admission直行」接続。本specが意図的にsupersedeする）、hub・材料集約（#366/#367）、
 > [spec 452](../452-organizer-home-entry/spec.md)（workspace直接run導線。本Issueで不変）。
-> 本specは[Issue #607][1]の成果物である。statusは **accepted** である（2026-10-17 owner受入。
-> 実装は未着手）。
+> 本specは[Issue #607][1]の成果物である。statusは **accepted** である（2026-10-17 owner受入）。
 
 ## Problem
 
@@ -387,6 +386,7 @@ Issue #607の受入条件7件に対応する（AC-1〜AC-7 = Issue本文のチ�
   draft時のsnapshot wording（「statusは **draft** であり、受入（accepted）ではない」）が
   残っていたため、canonical documentation amendment（正典更新phase）でfrontmatter
   （`status: accepted`）へ同期した。metadataのみの変更であり、AC・behavior・scope・
-  oracleの変更はない。
+  oracleの変更はない。併せて、本文labelの進捗aside（「実装は未着手」）を除去した
+  （進捗状態の正本はIssueであり、spec本文に記載しない）。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/607
