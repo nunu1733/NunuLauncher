@@ -1,6 +1,6 @@
 ---
 issue: "#605"
-status: accepted
+status: implemented
 requirements: []
 updated: 2026-10-17
 ---
@@ -195,21 +195,21 @@ None — no user-visible copy or interaction changes.
 
 ## Acceptance criteria
 
-- [ ] AC-1: On the complete-grid path the converter commits the converted grid
+- [x] AC-1: On the complete-grid path the converter commits the converted grid
       to all three pref stores, and after `convertAndRestore` returns the
       lawnchair typed pref API reads the converted values and the persisted
       prefs XML file on disk contains them, for both extra-row ON and OFF.
-- [ ] AC-2: The spec #168 ordering contract (metadata write → lawnchair typed
+- [x] AC-2: The spec #168 ordering contract (metadata write → lawnchair typed
       setters under `batchEdit` → live `applyGridInfo` binding → synchronous
       `commit()` barrier last) is pinned by a deterministic order oracle in
       the existing converter-boundary surface, and the oracle is demonstrated
       to detect both regressions: the missing lawnchair write (red on the
       regression head) and a barrier-before-typed-setters mutation (red).
-- [ ] AC-3: Grid mismatch and grid match: after the restore lifecycle the
+- [x] AC-3: Grid mismatch and grid match: after the restore lifecycle the
       active DB is the converted DB, the converted DB is not deleted by
       cleanup in the restore window, and the live IDP binding matches the
       committed stores (existing #168 oracles keep passing).
-- [ ] AC-4: Custom-layout start state, executed per the original report
+- [x] AC-4: Custom-layout start state, executed per the original report
       procedure on the API 37 environment: (a) a restore attempt failing or
       being cancelled **before the converted DB is bound** preserves the
       existing layout, grid prefs, and active DB; (b) one representative late
@@ -217,7 +217,7 @@ None — no user-visible copy or interaction changes.
       and recovery means recorded — recorded as an observation, not
       generalized into an all-failures protection claim; (c) a successful
       restore's outcome is the explainable authoritative import.
-- [ ] AC-5: The issue's 「API 37実機の元報告手順でowner確認する」 item is
+- [x] AC-5: The issue's 「API 37実機の元報告手順でowner確認する」 item is
       maintained as a required final verification for closing #605: the owner
       confirmation happens on a physical API 37 device, unless the owner
       records a decision on #605 accepting the emulator execution recorded
@@ -259,3 +259,10 @@ None — no user-visible copy or interaction changes.
 - 2026-10-17: Phase 1 design review approved (PR #606 comment 6221495547,
   head bc463afc12469caee4b490db6dd0b354a60d79dc); frontmatter flipped to
   accepted to pin the approved content before implementation.
+- 2026-10-17: Implementation merged via PR #606 (merge commit `eb9ad248c8`,
+  source/test head `efbea18a09e67206b39eaec236212bb6ca9c5199`); all ACs
+  evidenced — AC-5 satisfied by the owner decision
+  ([#605 comment 6229601982](https://github.com/nunu1733/NunuLauncher/issues/605#issuecomment-6229601982)
+  accepting the API 37 emulator execution of the original report procedure as
+  the equivalent of the physical-device pass). Frontmatter flipped to
+  `implemented`.
