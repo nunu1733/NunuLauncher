@@ -71,6 +71,11 @@ onboarding起点のこのadmissionが実際に成功（`Started`）したとき�
   現在のfaceを表示する。admissionはrun面の開始行が引き続き排他的に所有する（既存
   admission gateをhubが再実装・迂回しない）。coordinatorの状態にかかわらず
   hub→run面のnavigationは阻害されない（設定経由と同一）。
+- hub開始CTAの重複navigation防止は最小seamとして本specの実装範囲に含める
+  （single-top相当または当該CTA限定guard）。現行の `NavigationActionPreference` は
+  `navController.navigate(route = destination)` の単純呼び出しであり
+  `launchSingleTop` / click guardを持たないため、この防止は本specが新規に要求する
+  最小差分である。generic navigation全体の再設計は行わない。
 - run面の開始行からのadmission契約（RUN lease、readiness、coordinator）は既存のまま再利用する。
   onboarding起点のentry contextはtrigger/contextの引渡しのみに使い、
   coordinator/run/applicationの内部は均さない。
@@ -101,24 +106,53 @@ onboarding起点のこのadmissionが実際に成功（`Started`）したとき�
 
 ## 必須となる正本更新（source coding前に必要）
 
-次のaccepted文書は「確認→run admission直行」「onboardingはT-07前置きを省略する」を
-normativeとして固定しており、本specの受入後・source coding前に **normative更新が必須**
-である（同じbranch内でspec受入後〜実装PRの間に実施してよい）。更新は実装PRが所有する。
-歴史的記録（各specのChange history、処分文書
+現行のaccepted文書・正典TO-BEのliveなnormative textに残る
+「確認→run admission直行」「onboardingはT-07前置きを省略する」「proposal（確認）tap上の
+admission / Busy契約」「確認時点での `REVIEWED` 記録」の参照は、**すべて** 本specの契約
+（確認=defer適用+hub表示、admissionはrun面開始行が所有、`REVIEWED` は `Started` 後）へ
+更新する。これは節番号の限定列挙ではなく契約であり、実装PRは上記旧契約をliveなnormative
+textに残さないことを確認する（歴史的記録は除く）。本specの受入後・source coding前に
+**normative更新が必須** である（同じbranch内でspec受入後〜実装PRの間に実施してよい）。
+更新は実装PRが所有する。歴史的記録（各specのChange history、処分文書
 [organizer-disposition-migration.md](../../docs/product/organizer-disposition-migration.md) §3.4の
-当時の判断）は歴史として残し、書き換えない。各文書の現行節へは本specへのamendment pointerを残す:
+当時の判断）は歴史として残し、書き換えない。各文書の現行節へは本specへのamendment pointerを残す。
+現時点で旧契約をnormativeに固定している箇所には少なくとも以下がある:
 
-- [spec 53](../53-onboarding-organization-proposal/spec.md) §3.2（「確認」= admission直行の
-  entry契約 → 「確認」= defer適用 + hub表示。admissionはrun面開始行へ移動）、
-  §3.1 outcome表の `REVIEWED` 行（記録タイミングの注記）、§5.2/§5.3（Review destination
-  ownerの接続先表記）。AC-003「#52 workflow再利用」の文言は不変。
-- [spec 370](../370-onboarding-hub-connection/spec.md) OCB-AC-01および
-  「確認は前置き面を経ずにadmitted runの進行表示へ直接到達する」scenario。
-  **T-07前置き省略の契約は本specにより意図的にsupersedeされる**（onboardingはhub →
-  標準T-07前置きを経由する）。歴史的な#370記録は歴史として残す。
+- [spec 53](../53-onboarding-organization-proposal/spec.md):
+  - §3.2（「確認」= admission直行のentry契約 → 「確認」= defer適用 + hub表示。
+    admissionはrun面開始行へ移動）、
+  - §3.1 outcome表の `REVIEWED` 行（記録タイミングの注記）、
+  - **AC-003**（「`review organization` がnavigationの前にadmitする」のadmission所有点を
+    run面開始行へ書き換える。#52 workflow再利用の意図は維持する）、
+  - **§4.1**（journal起点の「When `review organization` successfully admits...」を
+    run面開始行のadmission（trigger `ONBOARDING_PROPOSAL`）へ書き換える）、
+  - **§8 Required test/QA scenarios**（「Review while idle/terminal: admits ... then
+    opens...」とactive-run時のproposal上Busy scenarioを、確認=defer+hub表示・
+    Busy観測点=run面開始行へ書き換える）、
+  - §5.2/§5.3（Review destination ownerの接続先表記）。
+- [spec 370](../370-onboarding-hub-connection/spec.md):
+  - **Outcome** 段落と **Scope の先頭項目**（「確認」の接続契約の固定）—
+    「確認→`start(ONBOARDING_PROPOSAL)`→T-07省略」をhub経由契約へ書き換える。
+    **T-07前置き省略の契約は本specにより意図的にsupersedeされる**（onboardingはhub →
+    標準T-07前置きを経由する）。歴史的な#370記録は歴史として残す。
+  - **OCB-AC-01** および「確認は前置き面を経ずにadmitted runの進行表示へ直接到達する」
+    scenario、
+  - **「Busy時の確認」scenario**（proposal tap上のBusy契約 → run面開始行のBusy観測点へ）、
+  - **「outcome semanticsと再表示規則は1行も変わらない」scenario**（`確認` → `REVIEWED` の
+    Given/Then前提 → 確認=deferへ）、
+  - **「onboarding由来routeからのretry」scenarioのGiven**（「確認」からadmitした前提 →
+    run面開始でadmitした前提へ）、
+  - **OCB-AC-01のTest oracle**（proposal tap自体が実runnerをstartし `PREAMBLE=0` を証明する
+    旧guard test契約 → hub遷移・run面開始のoracleへ）。
 - 正本TO-BE [organizer-to-be-ux.md](../../docs/product/organizer-to-be-ux.md)
   D-16（「確認」はrun admissionへ直行 → hub経由）、T-19（確認の遷移先）、
   §6.1 初回ユーザー journey 2（「確認」→ run admission直行 → hub経由 + 標準前置き）。
+
+上記に挙げない箇所でも、liveなnormative textに旧契約が残る場合は本契約の対象である
+（歴史的記録・Change historyは対象外）。旧契約を名前・fixture責務に含むtest
+（例: `realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface`、proposal上Busy系）は、
+assertのみでなく **test名・fixture責務・obsolete理由** を同じ変更で更新する
+（旧名のままgreenにしない）。
 
 ## Behavior scenarios
 
@@ -195,8 +229,13 @@ And 以後の再表示は既存のdefer/cold-start規則（spec 53 §3.1・AC-00
 Given 初回メニューが表示されている（またはonboarding起点のhubが表示されている）
 When ユーザーが「確認」を短時間に繰り返しタップする（またはhubの「整理を開始」を
 繰り返しタップする）
-Then hub設定Activityは1回だけ起動され（二重のactivity起動・destination積み増しなし）、
-hub→run面のnavigationも1回である
+Then hub設定Activityは1回だけ起動され（二重のactivity起動なし）、
+hub→run面のnavigationは `HomeScreenManualOrganization` のback-stack entryが
+1件だけである（destination積み増しなし。hub開始CTAの重複navigation防止seam:
+single-top相当または当該CTA限定guardによる。現行の `NavigationActionPreference` には
+この保証がない）
+And hub開始CTAの二重activateではadmission試行が発生しない
+（admission試行はrun面開始行の明示的操作まで0である）
 And run面の開始の繰り返しは既存の単一admitted run / Busy gateに従う
 （正当な再試行ごとの `start()` 呼び出しを本specは1回に制限しない）。
 `REVIEWED` はonboarding起点の実際に成功したadmissionに対してのみ記録される
@@ -243,7 +282,12 @@ Issue #607の受入条件7件に対応する（AC-1〜AC-7 = Issue本文のチ�
       readinessの再利用。coordinator内部は均さない）へ進む。
       onboarding起点のadmission成功（`Started`）後のみ `REVIEWED` を記録し、そのrunの
       triggerは `ONBOARDING_PROPOSAL` である。設定起点のhub開始は `MANUAL_FULL` のまま。
-      （Issue受入4 + trigger/記録タイミング契約）
+      hub開始CTAの短時間の二重activateでも `HomeScreenManualOrganization` の
+      back-stack entryは1件であり、admission試行は開始行の明示的操作まで0である
+      （重複navigation防止seam: single-top相当または当該CTA限定guard）。
+      提案側の現行one-shot guard（`reviewInFlight` + button disable）に相当する
+      二重起動防止は、hub遷移への変更でも失わない。
+      （Issue受入4 + trigger/記録タイミング契約 + 重複navigation防止契約）
 - [ ] **AC-5**: 初回経由でhubから戻る/閉じる操作をしてもOrganizerは実行されず、
       onboardingが誤って完了扱いにならない。outcomeは `DEFERRED` のまま追加変更されず、
       defer/skip/cold-start規則は不変である。（Issue受入5）
@@ -253,17 +297,21 @@ Issue #607の受入条件7件に対応する（AC-1〜AC-7 = Issue本文のチ�
 - [ ] **AC-7**: spec 370由来のnavigation test / specで「確認→run admission直行」を固定している
       箇所を更新し、初回→hub→整理開始→run面、およびhubから戻るケースを検証する。
       「必須となる正本更新」節の対象（spec 53/370、TO-BE D-16/T-19/§6.1）の更新と
-      obsolete理由がPRに記録されている。（Issue受入7）
+      obsolete理由がPRに記録されている。Change history等の歴史記録を除き、liveな
+      normative textに旧direct-admission契約（確認→admission直行 / T-07前置き省略 /
+      proposal上Busy / 確認時 `REVIEWED`）が残っていないことを確認する。
+      旧契約を名前・fixture責務に含むtestは、test名・fixture責務・obsolete理由を
+      同じ変更で更新する（assertのみの更新でない）。（Issue受入7）
 
 ## Test oracle
 
 | AC | Evidence |
 |---|---|
-| AC-1/AC-3 | instrumentation（「確認」tap後の遷移先がhubであること、run面・admissionが発生しないこと、離脱時の `DEFERRED` 永続化。spec 370 OCB-AC-01のguard test `realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface` の遷移先assertをhub版へ更新）+ unit（「確認」単独では `REVIEWED` を記録しないこと。既存 `admittedReviewRecordsReviewedOnlyAfterFreshRunAdmission` 相当を「run面開始の `Started` 後」へ移設） |
+| AC-1/AC-3 | instrumentation（「確認」tap後の遷移先がhubであること、run面・admissionが発生しないこと、離脱時の `DEFERRED` 永続化。spec 370 OCB-AC-01のguard test `realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface` は遷移先assertのみでなく **test名・fixture責務・obsolete理由** を含めてhub版へ更新する。proposal上Busy系の既存testも同様に名前・fixture責務・obsolete理由を更新する）+ unit（「確認」単独では `REVIEWED` を記録しないこと。既存 `admittedReviewRecordsReviewedOnlyAfterFreshRunAdmission` 相当を「run面開始の `Started` 後」へ移設） |
 | AC-2/AC-6 | instrumentation（hub材料行の既存回帰群の無編集green + 初回経由hubで材料行が到達可能であること）+ 実機スクリーンショット（初回経由hubの表示。emulatorは補助のみ） |
-| AC-4 | instrumentation（hub開始→T-07前置き表示→run面開始→admission→run面表示。onboarding起点のtriggerが `ONBOARDING_PROPOSAL` であることのjournal/状態assert、設定起点が `MANUAL_FULL` であることの既存assert維持）+ unit（Busy時に `REVIEWED` を記録しない回帰の維持。既存 `busyReviewDoesNotRecordReviewedOrNavigateAsAnAdmittedRun` 相当をrun面開始試行のoracleへ移設） |
+| AC-4 | instrumentation（hub開始→T-07前置き表示→run面開始→admission→run面表示。onboarding起点のtriggerが `ONBOARDING_PROPOSAL` であることのjournal/状態assert、設定起点が `MANUAL_FULL` であることの既存assert維持。**repeated-tap back-stack oracle**: real-touch instrumentationでhub開始CTAを短時間に二重activateし、`HomeScreenManualOrganization` のback-stack entryが1件であること・admission試行が開始行の明示的操作まで0であることを決定的に確認する（1 Activity / 1 nav destination。提案側の `reviewInFlight` + button disableに相当するone-shot guard維持のassertを含む））+ unit（Busy時に `REVIEWED` を記録しない回帰の維持。既存 `busyReviewDoesNotRecordReviewedOrNavigateAsAnAdmittedRun` 相当をrun面開始試行のoracleへ移設） |
 | AC-5 | instrumentation（run面前置きBack→hub、hub Back/Up/Close→launcher、outcome追加変更なし・run非開始・次cold start再表示の既存規則）+ unit（defer/skip/outcome回帰群の無編集green） |
-| AC-7 | specs 53/370・TO-BE文書のdiff review（「必須となる正本更新」節どおりの変更のみ。歴史的記録の非書き換えとamendment pointerをdiff上で確認）+ obsolete理由のPR記録 + `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、対象instrumentation lane、CI `final-status` green |
+| AC-7 | specs 53/370・TO-BE文書のdiff review（「必須となる正本更新」節どおりの変更のみ。歴史的記録の非書き換えとamendment pointerをdiff上で確認。**liveなnormative textへの旧direct-admission契約の残留なし** を列挙箇所（spec 53: AC-003 / §4.1 / §8の該当scenario、spec 370: Outcome / Scope先頭項目 / 該当scenario群 / OCB-AC-01とそのTest oracle）のdiff上で確認する）+ obsolete理由のPR記録 + `./gradlew spotlessCheck`、`./gradlew testLawnWithQuickstepGithubDebugUnitTest --tests 'app.lawnchair.organizer.*'`、対象instrumentation lane、CI `final-status` green |
 
 ## Verification
 
@@ -274,8 +322,9 @@ Issue #607の受入条件7件に対応する（AC-1〜AC-7 = Issue本文のチ�
   実機確認の現在の実施状況はIssue/PR packetへ記録する（本specへは進行状況を書かない）。
 - 書込み経路を追加しないことの確認: 実装PRのdiffで触れるpathはonboarding提案の遷移先・
   onboarding outcome controller/storeの既存範囲内refactor（`organizer/ui` 配下）・
-  run UIの開始呼び出しwiring（`ManualOrganizationPreferences.kt`）・navigation構成・
-  navigation test・specs/docs更新に限る。`ManualOrganizationRun` のstate machineや
+  run UIの開始呼び出しwiring（`ManualOrganizationPreferences.kt`）・navigation構成
+  （hub開始CTAの重複navigation防止の最小差分: `NavigationActionPreference` /
+  `OrganizerHubPreferences`）・navigation test・specs/docs更新に限る。`ManualOrganizationRun` のstate machineや
   application module等のcoordinator/run/application内部、`src/com/android/launcher3/model/**`、
   DB・migrationに関わるpathを含まないことをdiff列挙で確認する。
 - 上流のUIだけに触れるbridgeに該当する変更がない場合（navigation構成の変更のみで
@@ -316,5 +365,20 @@ Issue #607の受入条件7件に対応する（AC-1〜AC-7 = Issue本文のチ�
   （active runの観察に開始CTAの前提を要求しない。Busy/refusedは `DEFERRED` と既存UI/gate
   挙動を保持）、Open questions節の削除、Verificationから進行状況表記を除去
   （実機owner確認のmerge必須条件とemulator補助の位置付けは維持）。
+- 2026-10-17: Round-1 review（`6a93d15d02`への「Request changes」2点）対応revision。
+  (1) 「必須となる正本更新」を節番号の限定列挙から、liveなnormative textに残る旧契約
+  （direct-admission / T-07前置き省略 / proposal上Busy / 確認時 `REVIEWED`）の全参照を
+  更新する契約へ書き換え、spec 53 AC-003（admission所有点をrun面開始行へ書き換え。
+  #52 workflow再利用の意図は維持）/ §4.1 / §8該当scenario、spec 370 Outcome /
+  Scope先頭項目 / 「Busy時の確認」/「outcome semanticsと再表示規則」/
+  「onboarding由来routeからのretry」Given / OCB-AC-01とそのTest oracleを明示。
+  AC-7とそのoracleへ「歴史記録を除きlive normative textに旧契約の残留なし」確認と、
+  旧契約名testのtest名・fixture責務・obsolete理由の同一変更更新を追加。
+  (2) repeated-tap契約に所有seam（hub開始CTAの重複navigation防止: single-top相当または
+  CTA限定guard。現行 `NavigationActionPreference` には `launchSingleTop` / click guardの
+  保証がない）と決定的oracle（real-touch二重activate後の `HomeScreenManualOrganization`
+  1 entry / admission試行0）を追加。提案側one-shot guard（`reviewInFlight` + button
+  disable）の維持をoracleへ含める。製品scopeの変更（DEFERRED / hub navigationのみ /
+  `Started` 後の `REVIEWED`）はなし。
 
 [1]: https://github.com/nunu1733/NunuLauncher/issues/607
