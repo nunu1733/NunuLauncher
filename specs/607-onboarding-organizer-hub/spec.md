@@ -1,6 +1,6 @@
 ---
 issue: "#607"
-status: draft
+status: accepted
 tier: M
 requirements: [FR-006, NFR-011, NFR-014]
 updated: 2026-10-17
