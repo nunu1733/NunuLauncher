@@ -167,9 +167,13 @@ typed outcome、journal相関の安全契約は一切変わらず、既存契約
 - 安全契約（spec 13/194/210のgate構造、spec 52の表）の変更。preview seam、確認=authority、
   checkpoint/apply/recoveryの適用semantics、zero-write保証はすべて現行どおり。
 - strategy（#368で完了済みが前提）。run面にstrategy picker・読み取り専用表示は存在しない。
-- onboarding提案のflow接続変更（D-16表記、#370）。現行のonboarding「確認」は
+- onboarding提案のflow接続変更（D-16表記、#370）。当時の契約: 現行のonboarding「確認」は
   `start(Trigger.ONBOARDING_PROPOSAL)`によるadmission直行であり、T-07前置きを経ない
-  （現行契約どおり。T-07はMANUAL entryの開始点としてのみ導入する）。
+  （T-07はMANUAL entryの開始点としてのみ導入する）。
+  **#607 amendment (2026-10-17)**: 旧直行契約（T-07前置きを経ない）は
+  [spec 607](../607-onboarding-organizer-hub/spec.md)により意図的にsupersedeされた。
+  現行契約: 「確認」=既存defer semanticsの適用+既存Organizer hubの表示（admissionなし）、
+  hub「整理を開始」=navigationのみ（標準T-07前置きを経由）、admissionはrun面開始行が所有する。
 - exchange失敗の手段別再投影（D-11、#373）。exchange導線の表示は現行のまま。
 - T-08選択面の復元初期値（D-17、#375）とscope mismatch remedyの原因別明文化（#375）。
 - Idle/Cancelled面のdurable status表示（spec 271）の移設・削除。hub status card（#366）との

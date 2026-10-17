@@ -7,6 +7,7 @@
 > Revision 4: 2026-09-18 — re-review指摘1点を反映（遷移図のidle/run-in分離と正規復帰経路の固定、status card可視化のidle限定）
 > Revision 5: 2026-09-18 — re-review指摘1点を反映（取り込み済み提案の再開経路を`Hub → ImportReview`に固定し、process生存/死の両ケースを表現）
 > Revision 6: 2026-09-24 — #417 revision（accepted [spec 417](../../specs/417-scope-first-method-choice/spec.md)）。D-04/D-05/D-06/D-17、§5.1 T-07/T-08、§5.2 secondary entry、§5.3 canonical順序をscope-first順序へAmendする: 前置き面T-07は方法選択を含まない入口面となり、manual runは「開始→admission→検出→対象選択（候補あり時）→scope確定（凍結）→方法選択面（このまま整理/AIに相談）→planning」の順。候補0件時は選択面を介さず方法選択面へ進む（D-06改訂）。idle AI相談の新規作成入口はRetire、entry面のexchange hostingはimport-only、AI相談はscope凍結後の方法選択面から開く（D-04/D-17改訂）。onboarding固定経路（D-16）は不変である
+> Revision 7: 2026-10-17 — #607 revision（accepted [spec 607](../../specs/607-onboarding-organizer-hub/spec.md)）。D-16、T-19、§5.2 secondary entry 1、§6.1 初回journey、§9 hub Back、§11 spec 53行をonboarding hub経由へAmendする: onboarding「確認」は既存defer semanticsの適用+既存Organizer hubの表示であり、run admissionは発生しない。hubの「整理を開始」はnavigationのみで標準T-07前置きへ進み、admissionはrun面開始行が所有する。`REVIEWED`はonboarding起点のadmission成功（`Started`）後に記録される。旧D-16の「確認→run admission直行（T-07前置きを省略）」は意図的にsupersedeされる
 > Input fact base: [Organizer AS-IS UX/data flow audit](../assessment/organizer-as-is-ux-data-flow-audit.md)（Phase A #357–#360、audited HEAD `b728ed4d9f30ee797f6e086da110fdc86215da92`、audit date 2026-09-18）
 > Parent: [Issue #356](https://github.com/nunu1733/NunuLauncher/issues/356)。本書は [Issue #361](https://github.com/nunu1733/NunuLauncher/issues/361) の成果物である。
 > 既存正本への処分（Continue / Amend-Supersede / Defer / Retire）の実行と migration 順序は [Issue #362](https://github.com/nunu1733/NunuLauncher/issues/362) が所有する。本書は方針と必要改訂を決定するのみで、spec/実装の改訂を行わない。
@@ -52,7 +53,7 @@
 | D-13 | **Back/Cancel/破棄の語彙規約**（§9）を全体に適用する。不可逆な破棄（依頼の無効化・取り込み破棄）は「破棄」ラベル+確認、zero-write中断は「中断」、確認不要の中止は「キャンセル」とする。pre-send cancel（未送信依頼の無効化）は「キャンセル」から「破棄」へ改める | F-09 |
 | D-14 | **`LOCAL_FULL` tierをUI語彙から外す**。ユーザー向け選択肢は「情報を減らして送る / ラベル付きで送る」の2tierに固定し、契約上の`LOCAL_FULL`値は将来のlocal LLM向け余地として維持する | D-2 |
 | D-15 | **durable statusからの復元操作を接続する**。hub status cardの「復元できる提案あり」から検査→復元確認→復元へ進める（cold process起点を許可する）。spec 271がNon-goalsとしたfollow-upの実現であり、新specを要求する | F-10, D-6 |
-| D-16 | onboarding提案の契約（fresh install判定・defer/skip outcome・再表示規則）は**継続**とする。「確認」はrun admissionへ直行し（T-07前置きを省略、方法は「そのまま整理」固定）、「後で」の6秒hintはhub入口を案内する | 継続判断 |
+| D-16 | onboarding提案の契約（fresh install判定・defer/skip outcome・再表示規則）は**継続**とする。「確認」は既存defer semantics（`DEFERRED`永続化・process内抑制）を適用して既存Organizer hubを表示し、run admissionは発生しない（#607改訂。旧「run admission直行・T-07前置き省略」は意図的にsupersede）。hubの「整理を開始」はnavigationのみで標準T-07前置き→run面開始行のadmissionへ進み、onboarding起点のadmission成功（`Started`）後に`REVIEWED`を記録する。「後で」の6秒hintはhub入口を案内する | 継続判断 |
 | D-17 | **AI相談とrun境界**（#417改訂: idle/run-inの2形態から、scope凍結後の方法選択面から開く単一入口へ）。**AI相談の新規作成はscope凍結後の方法選択面からのみ**行われ、admitted runを保持したままの相談である（**RUN leaseは継続・選択は凍結・恒常authoringは不可**。旧idle AI相談（pre-run request flow・依頼の作成・待機・取り込み中も恒常authoring可）の新規作成入口はRetireし、既存依頼のimport・再開契約は維持する）。**process死後のみ**runと選択が消え、取り込み済み提案（D-08）はdurableで残るため、**fresh run → 検出 → 選択面で依頼時scopeとの完全一致を検証（fail-closed維持）**し、一致する場合は前回の明示選択を初期値として復元したうえで「続行」の明示確認を1回要求する。不一致のうち**選択集合の差（SET_MISMATCH）**は差分強調のうえ選択を修正して同じ提案で続行できるが、**候補の投影差（availability/分類の変化、PROJECTION_MISMATCH）は同じ提案での続行を許さず依頼の作り直しを要求する**。status cardからの再開は「取り込み済み提案を開く（`Hub → ImportReview`）→『この提案で続ける』でrun admission」の一経路とし、選択復元初期値の適用は選択面で行う。process死後のrun-in由来提案は、再開時のCTAもfresh run側（「この提案で続ける」）へ統一される（§5.3）。確認なしの完全自動復元は明示選択契約（#228）を弱めるため採らない。**#443凍結注記（2026-09-26）**: 方法選択面からの新規作成入口は実験的機能toggle（既定OFF）の背後に移され、OFFの間は到達しない。status cardからの再開経路（既存依頼のimport・再開契約）はtoggle OFFでも維持される | F-03, E-4 |
 
 ## 4. 採用案と比較
@@ -125,14 +126,14 @@ AS-ISは40 view（監査§4）。TO-BEのユーザー認識面は次の20面へ�
 | T-16 AI: 送信前確認 | 外部開示の同意点 | 種別・件数・上限の要約+全文展開、期待明示（D-09）、コピー/共有/保存 | コピー等で送出 | V-32 |
 | T-17 AI: 取り込み | 回答の持ち帰り | clipboard/file/paste、1MiB gate | 取り込む | V-33 |
 | T-18 AI: 取り込み結果 | 成功=未適用状態/失敗=手段別 | 成功: 件数サマリ+「この提案で続ける」+破棄。失敗: D-11の手段別表示 | この提案で続ける/もう一度取り込む | V-34/V-35統合 |
-| T-19 onboarding提案+hint | 初回の提案（floating） | 後で/スキップ/確認。hintはhub入口案内 | 整理内容を確認 | V-01/V-02 |
+| T-19 onboarding提案+hint | 初回の提案（floating） | 後で/スキップ/確認（確認は既存Organizer hubの表示へ。離脱時にdefer適用。#607）。hintはhub入口案内 | 整理内容を確認 | V-01/V-02 |
 | T-20 lock dialog（workspace） | 長押しpopupからのlock付与 | 現行どおりflow外入口 | dialog確認 | V-39 |
 
 ### 5.2 Entry points（primary / secondary）
 
 - **primary entry**: 設定 → Home screen → Organizer（T-01）。整理の開始・材料・再発見・AI依頼はすべてhub起点。
 - **secondary entry**:
-  1. onboarding floating proposal（T-19）→ 確認でrun admissionへ直行（ONBOARDING trigger、T-07前置き省略）。
+  1. onboarding floating proposal（T-19）→ 確認で既存Organizer hubを表示（離脱時に既存defer semanticsを適用。run admissionは発生しない。#607改訂）。hubの「整理を開始」以降はprimary entryと同一（T-07前置き→run面開始行のadmission。trigger `ONBOARDING_PROPOSAL`）。
   2. workspace長押しpopupのlock付与（T-20）→ lock材料への直接導線（書込みはwriter leaseでrunと排他のまま）。
   3. 対象選択面（T-08）のscope凍結AI相談 → **Supersede（#417）**: 選択面上のAI entryは廃止され、AI相談はscope確定後の方法選択面から開く（admitted runを保持し、RUN lease継続・選択凍結・authoring不可の下で行う点はD-17のまま）。
   4. safe terminal（T-12の部分的失敗）からの診断 → diagnostics export。
@@ -187,7 +188,7 @@ stateDiagram-v2
 ### 6.1 初回ユーザー
 
 1. fresh install → launcher resume → floating proposal（T-19）。
-2. 「確認」→ run admission（ONBOARDING trigger。T-07前置きは省略され、方法は「そのまま整理」固定）→ T-09準備中で検出 →（候補があればT-08）→ capture+plan → T-10提案の確認 → 「この内容で適用」→ T-11適用中 → T-12結果。
+2. 「確認」→ 既存Organizer hub表示（離脱時に既存defer semanticsを適用。run admissionは発生しない。#607改訂）→ hubの「整理を開始」→ T-07前置き → run面開始行でrun admission（ONBOARDING trigger。`Started`後に`REVIEWED`記録）→ T-09準備中で検出 →（候補があればT-08）→ capture+plan → T-10提案の確認 → 「この内容で適用」→ T-11適用中 → T-12結果。
 3. T-12成功 → 「復元」が可能。以後の再訪はhub status cardに結果と復元可否が現れる。
 4. 「後で」→ 6秒hint（hub入口案内）+ 次cold startで再表示。「スキップ」→ 永続（現行outcome契約）。
 
@@ -323,7 +324,7 @@ AS-ISの全dataのtiming matrixは監査§7.1がfact baseである。本節はTO
 
 規則: **破壊的・不可逆な操作だけが「破棄」であり必ず確認を伴う。zero-write中断は「中断/キャンセル」であり、失う作業があるときだけ1回確認する。** 現行の「Cancel」ラベルがzero-write中断と不可逆session無効化の両方を指していた箇所（pre-send cancel）は「破棄」へ改める。適用中の操作可否は3段階に固定する: (1) authority取得前（T-07〜T-10）は中断可、(2) 適用開始後checkpoint完了前は中断可（zero-write）、(3) checkpoint後はBack・中断とも不受理（atomic writeと検証の完了まで）。CTA処理中の不受理規則も現行契約を維持する。
 
-再入場: durableまたは24h期限の状態（依頼・取り込み済み提案・復元可否）はhub status cardに反映される（D-02）。最近のrun結果はprocess内のみであり、status cardにはdurable事実だけが残る（§8.2）。hub Back=設定へ。run flow Back=中断確認→hub（適用中checkpoint後を除く）。
+再入場: durableまたは24h期限の状態（依頼・取り込み済み提案・復元可否）はhub status cardに反映される（D-02）。最近のrun結果はprocess内のみであり、status cardにはdurable事実だけが残る（§8.2）。hub Back=設定へ（設定起点。onboarding起点でhubが導線のactual rootである場合はlauncherへ戻る。#607。設定起点の既存Up/Back挙動は変化しない）。run flow Back=中断確認→hub（適用中checkpoint後を除く）。
 
 ## 10. 用語（user-facing vocabulary）
 
@@ -357,7 +358,7 @@ AS-ISの全dataのtiming matrixは監査§7.1がfact baseである。本節はTO
 | spec 203 | JIT要求の追加（常設row維持）（D-07） | Amend |
 | spec 205 / 328 / 331 / 332 / 337 | 依頼card可視化（D-02）、pending intent durable化（D-08、要migration/compat評価）、送信前確認の要約主面化（D-10）、失敗再投影（D-11）、差分強調（E-4）、run-in attach契約の拡張（process死後のfresh run rebind + 選択復元初期値、D-17）、scope mismatch remedyの原因別明文化（SET_MISMATCH=選択修正で継続可 / PROJECTION_MISMATCH=再依頼のみ） | Amend（影響評価後） |
 | spec 204 | `LOCAL_FULL`のUI語彙除外（D-14、契約値維持） | Amend（文言のみ） |
-| spec 53 | onboarding接続先の表記更新（run admissionへ直行、T-07省略。D-16、契約変更なし） | Continue（表記のみ） |
+| spec 53 | onboarding接続先の表記更新（run admissionへ直行、T-07省略。D-16、契約変更なし）。**#607 amendment (2026-10-17)**: 直行・T-07省略の契約は[spec 607](../../specs/607-onboarding-organizer-hub/spec.md)によりhub経由へ改訂（D-16も改訂） | Continue（表記のみ） |
 
 `organization-run-ux.md`をsupersedeしない理由: 同書の本体はtrigger policy（D-004）とpreview/confirmation/recoveryの安全契約（D-005）であり、本書が変えるのは入口と表示面のみ。DESIGN.md gate 2が同書を参照しており、置換は契約の追跡性を壊す。
 

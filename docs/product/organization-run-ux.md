@@ -3,6 +3,7 @@
 > Status: Implemented for manual/onboarding MVP; package-event incremental placement is Later/deferred
 > Reviewed: 2026-08-23
 > Revised: 2026-09-19 — 入口表示を [organizer-to-be-ux.md](./organizer-to-be-ux.md)（Organizer TO-BE IA/navigation、accepted）のとおりOrganizer hub経由へ改訂し、§3へdurable statusからの復元導線（D-15、実装は後続Issue）を予定として追記。既存の安全契約規定（D-004/D-005、§4/§5/§6）は変更していない
+> Revised: 2026-10-17 — #607 revision（accepted [spec 607](../../specs/607-onboarding-organizer-hub/spec.md)）。§2.2の入口契約をonboarding hub経由へ改訂（「確認」=defer適用+既存hub表示、admissionなし。旧「前置きを省略してrun admissionへ直行」は意図的にsupersede）。§2.1 state machineと安全契約規定は変更していない
 > Baseline: Lawnchair `v15.0.0-beta3.0` / commit `505dbc40e6154c05158b5d0271c45f6a885a411b`
 > Requirements: FR-004, FR-006, FR-007, FR-008, FR-009, NFR-001, NFR-009, NFR-011
 > Decision gates: D-004 (trigger), D-005 (safe UX)
@@ -78,13 +79,16 @@ Confirmed は current revision に対する条件付き同意であり、write �
 
 Onboarding は non-blocking の提案だけを行う。skip/defer は有効な選択であり、
 layout、settings、target set を変更しない。user が「review organization」を
-選んだ場合は、§2.1 の**完全に同一の Manual full organization state machine**へ
-遷移する。従って reject、stale、checkpoint failure、apply/verify failure、recovery、
-cancel、process-death path もすべて §2.1 と §5 を継承する。retry は常に新しい
-Capture から始め、古い preview/plan を再利用しない。
+選んだ場合は既存Organizer hubが表示され（#607改訂。tap自体はrunを開始・admissionしない）、
+run面開始行のadmissionが成功した時点で、§2.1 の**完全に同一の Manual full
+organization state machine**へ遷移する。従って reject、stale、checkpoint failure、
+apply/verify failure、recovery、cancel、process-death path もすべて §2.1 と §5 を
+継承する。retry は常に新しい Capture から始め、古い preview/plan を再利用しない。
 
-入口（TO-BE）: 提案はfloating surface（T-19）に現れ、「確認」は方法選択の前置きを
-省略してrun admissionへ直行する（方法は「そのまま整理」固定）。「後で」を選んだ場合の
+入口（TO-BE）: 提案はfloating surface（T-19）に現れ、「確認」は既存Organizer hubを表示する
+（離脱時は既存defer semanticsを適用。run admissionは発生しない。#607改訂）。
+hubの「整理を開始」は既存run面前置き（T-07）へのnavigationのみであり、admissionは
+run面の開始行が排他的に所有する。「後で」を選んだ場合の
 hintはOrganizer hubの入口を案内する（[organizer-to-be-ux.md](./organizer-to-be-ux.md) D-16）。
 §2.1 state machine への遷移とoutcome契約（defer=次cold start再表示 / skip=永続）は変わらない。
 
@@ -94,8 +98,9 @@ stateDiagram-v2
     Eligible --> Proposal: non-blocking suggestion
     Proposal --> Skipped: skip
     Proposal --> Deferred: later
-    Proposal --> ManualStart: review organization
-    ManualStart --> ManualFullRun: exact §2.1 state machine
+    Proposal --> Hub: review organization (defer適用+hub表示。admissionなし。#607)
+    Hub --> ManualStart: 整理を開始 (navigationのみ)
+    ManualStart --> ManualFullRun: run面開始行のadmission (exact §2.1 state machine)
 ```
 
 ### 2.3 Incremental placement after package events

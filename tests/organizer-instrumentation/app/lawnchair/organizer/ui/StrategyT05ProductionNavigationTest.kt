@@ -219,7 +219,7 @@ class StrategyT05ProductionNavigationTest {
         // operation is STILL alive — the onDispose -> dismiss() cleanup has
         // not run yet.
         composeRule.runOnUiThread {
-            navController!!.navigate(HomeScreenOrganizer)
+            navController!!.navigate(HomeScreenOrganizer())
         }
         composeRule.mainClock.advanceTimeBy(64L)
         composeRule.waitUntil(5_000) {

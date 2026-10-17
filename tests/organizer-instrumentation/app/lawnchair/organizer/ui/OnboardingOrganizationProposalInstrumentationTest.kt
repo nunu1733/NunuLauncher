@@ -15,7 +15,25 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.Lifecycle
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -39,7 +57,9 @@ import app.lawnchair.organizer.application.public.RunId
 import app.lawnchair.organizer.application.public.ValidatedLayoutPlan
 import app.lawnchair.organizer.application.protocol.ReadinessGate
 import app.lawnchair.organizer.diagnostics.DiagnosticsPort
+import app.lawnchair.organizer.diagnostics.model.PhaseCode
 import app.lawnchair.organizer.diagnostics.model.RunEvent
+import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.organizer.integration.CandidateDetectionResult
 import app.lawnchair.organizer.integration.DetectionUnavailableReason
 import app.lawnchair.organizer.integration.InputProvenance
@@ -84,14 +104,19 @@ import app.lawnchair.organizer.planning.WarningCode
 import app.lawnchair.organizer.rules.PolicyBundleIdentity
 import app.lawnchair.organizer.rules.PolicyInputIdentity
 import app.lawnchair.organizer.rules.PolicySourceKind
+import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.PreferenceActivity
 import app.lawnchair.ui.preferences.navigation.HomeScreen
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
+import app.lawnchair.ui.preferences.navigation.OrganizationEntry
+import app.lawnchair.ui.preferences.navigation.PreferenceNavigation
+import app.lawnchair.ui.theme.LawnchairTheme
+import app.lawnchair.ui.util.ProvideBottomSheetHandler
+import app.lawnchair.util.ProvideLifecycleState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
@@ -101,14 +126,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import java.util.Collections
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class OnboardingOrganizationProposalInstrumentationTest {
+    @get:Rule
+    val composeRule = createEmptyComposeRule()
+
     @Before
     fun keepProductionProposalOwnerFailClosedForThisProcess() {
         // The production singleton freezes its install provenance at first construction, which
@@ -324,15 +351,12 @@ class OnboardingOrganizationProposalInstrumentationTest {
         // mirroring it here exercises the real claim lifecycle across recreation.
         val sharedProcessState = OrganizationOnboardingProposalProcessState()
         val store = FakeStore()
-        val admissions = AtomicInteger()
+        val application = GuardRunApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { guardPlanningResult() })
 
         fun makeOwner(launcher: LawnchairLauncher) = OrganizationOnboardingProposal(
             launcher = launcher,
             controller = OrganizationOnboardingProposalController(store, sharedProcessState),
-            admitReview = {
-                admissions.incrementAndGet()
-                ManualOrganizationRun.StartOutcome.Busy
-            },
             isWorkspaceReady = { true },
         )
 
@@ -344,6 +368,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             )
             startLauncher(context)
             val launcherBeforeRecreation = awaitResumedLauncher()
+            installProcessLocalRunner(runner)
             instrumentation.runOnMainSync {
                 AbstractFloatingView.closeOpenViews(launcherBeforeRecreation, false, AbstractFloatingView.TYPE_ALL)
                 val ownerBefore = makeOwner(launcherBeforeRecreation)
@@ -365,131 +390,138 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 )
             }
             assertEquals(null, store.value)
-            assertEquals(0, admissions.get())
+            assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+            assertTrue(application.diagnostics.snapshot().isEmpty())
         } finally {
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
+            installProcessLocalRunner(null)
         }
     }
 
     @Test
-    fun busyReviewKeepsProposalOutcomeUntouchedAndRetryableByRealTouch() {
-        val gate = TouchActivationGate()
-        gate.show()
-        try {
-            gate.awaitInitialFocus()
-            gate.deliveredTap(gate.content.reviewButton)
-            awaitAdmissionCount(gate.admissions, 1)
-            awaitReviewActionEnabled(gate.content)
-            assertTrue(gate.isOpen())
-            assertEquals(null, gate.store.value)
-
-            gate.deliveredTap(gate.content.reviewButton)
-            awaitAdmissionCount(gate.admissions, 2)
-            awaitReviewActionEnabled(gate.content)
-            assertTrue("a busy admission must keep the proposal touch-retryable", gate.isOpen())
-            assertEquals(null, gate.store.value)
-        } finally {
-            gate.restore()
-        }
-    }
-
-    @Test
-    fun realTouchStreamOnReviewAdmitsAFreshRunAndRoutesToTheReviewSurface() {
-        // Issue #370: this guard drives the PRODUCTION admission path — the view is
-        // constructed with its default `admitReview`, so the tap starts a real runner
-        // through the installed process-local `ManualOrganizationModule` fixture instead
-        // of a stubbed outcome. The admitted run completes detection→capture→plan inside
-        // `start()` before `Started` returns (spec 53: admission precedes navigation), so
-        // the opened route must render the admitted run's face directly and never the
-        // T-07 preamble face (post-#369 run face contract, spec RD-1/RD-7).
+    fun confirmOpensHubOnceAndHubBackOrUpLeavesDeferredWithoutStarting() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        val gate = TouchActivationGate(useProductionAdmission = true)
-        gate.show()
-        // Deterministic render record (ManualOrganizationRunFaceTrace): every face the
-        // route's composition commits is reported here, so "the T-07 preamble never
-        // rendered" is a count over committed faces, not a sampled absence scan.
+        // #607 supersedes proposal-level Busy/retry: Confirm is navigation, not admission.
+        for (useUp in listOf(false, true)) {
+            val gate = TouchActivationGate(persistOutcome = true)
+            val application = GuardRunApplication()
+            val monitor = instrumentation.addMonitor(PreferenceActivity::class.java.name, null, false)
+            var activity: PreferenceActivity? = null
+            gate.show()
+            try {
+                installProcessLocalRunner(ManualOrganizationRun(application, OrganizationPlanner { guardPlanningResult() }))
+                gate.awaitInitialFocus()
+                gate.deliveredTap(gate.content.reviewButton)
+                activity = awaitResumedPreferenceActivity()
+                awaitAccessibilityTextBounds(activity, context.getString(R.string.organizer_hub_label), "onboarding hub")
+                // Even stale activations of the detached proposal cannot launch a second Activity.
+                instrumentation.runOnMainSync {
+                    assertFalse(gate.content.reviewButton.isEnabled)
+                    gate.content.reviewButton.performClick()
+                    gate.content.reviewButton.performClick()
+                    assertFalse(gate.proposal.isOpen)
+                }
+                instrumentation.waitForIdleSync()
+                assertEquals(1, monitor.hits)
+                assertDeferredWithoutRun(application)
+                if (useUp) {
+                    // The existing toolbar icon has no label. It is the hub's only
+                    // Role.Button (material rows are links, usage controls are switches).
+                    composeRule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                        .performTouchInput { click() }
+                } else {
+                    instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+                }
+                assertTrue(awaitResumedLauncher() === gate.launcher)
+                instrumentation.runOnMainSync { assertNoProposalViewChild(gate.launcher, "Confirm must suppress same-process redisplay") }
+                assertDeferredWithoutRun(application)
+            } finally {
+                activity?.let { instrumentation.runOnMainSync { it.finish() } }
+                instrumentation.removeMonitor(monitor)
+                gate.restore()
+                installProcessLocalRunner(null)
+            }
+        }
+    }
+
+    @Test
+    fun realTouchConfirmThenHubThenRunStartPersistsReviewedForTheActualOnboardingRun() {
+        // #607 replaces #370's direct-admission/no-preamble oracle. Only the actual run
+        // Start owns admission; both earlier surfaces must remain zero-run and DEFERRED.
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val gate = TouchActivationGate(persistOutcome = true)
+        val application = GuardRunApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { guardPlanningResult() })
         val renderTrace = Collections.synchronizedList(mutableListOf<ManualOrganizationFace>())
-        val faceTrace = Collections.synchronizedList(mutableListOf<ManualOrganizationRun.State>())
-        var traceJob: Job? = null
+        var activity: PreferenceActivity? = null
+        gate.show()
         try {
+            installProcessLocalRunner(runner)
+            ManualOrganizationRunFaceTrace.recorder = { renderTrace.add(it) }
             gate.awaitInitialFocus()
-            // Installed after the launcher is up so no production reconciliation can
-            // replace the fixture before the tap; from now on the proposal's default
-            // admission starts THIS runner and the route's `ManualOrganizationPreferences`
-            // observes the same instance.
-            installProcessLocalRunner(
-                ManualOrganizationRun(GuardRunApplication(), OrganizationPlanner { guardPlanningResult() }),
-            )
-            ManualOrganizationRunFaceTrace.recorder = { face -> renderTrace.add(face) }
-            traceJob = CoroutineScope(Dispatchers.Main).launch {
-                ManualOrganizationModule.get(context).stateFlow.collect { faceTrace.add(it) }
-            }
             gate.deliveredTap(gate.content.reviewButton)
-            val activity = awaitResumedPreferenceActivity()
-            // The run parks at the preview confirmation face, so the route must open on
-            // it — auxiliary observation of the parked admitted run.
-            awaitAccessibilityTextBounds(
-                activity,
-                context.getString(R.string.manual_organization_preview),
-                "admitted run preview face",
-            )
-            instrumentation.runOnMainSync {
-                assertEquals(
-                    "the route must render the admitted run's face, not the T-07 preamble",
-                    ManualOrganizationFace.CONFIRMATION,
-                    manualOrganizationFace(ManualOrganizationModule.get(context).state),
-                )
+            activity = awaitResumedPreferenceActivity()
+            awaitAccessibilityTextBounds(activity, context.getString(R.string.organizer_hub_label), "onboarding hub")
+            assertTrue(renderTrace.isEmpty())
+            assertDeferredWithoutRun(application)
+
+            tapOrganizationStart()
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_preamble_scope)).assertIsDisplayed()
+            assertEquals(ManualOrganizationFace.PREAMBLE, synchronized(renderTrace) { renderTrace.first() })
+            assertDeferredWithoutRun(application)
+
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            awaitAccessibilityTextBounds(activity, context.getString(R.string.organizer_hub_label), "hub after preamble Back")
+            assertDeferredWithoutRun(application)
+
+            // Recreate the REAL Activity and graph: restored caller context cannot admit.
+            val beforeRecreation = activity
+            instrumentation.runOnMainSync { beforeRecreation.recreate() }
+            composeRule.waitUntil(15_000) { beforeRecreation.isDestroyed }
+            activity = awaitResumedPreferenceActivity()
+            awaitAccessibilityTextBounds(activity, context.getString(R.string.organizer_hub_label), "restored onboarding hub")
+            assertDeferredWithoutRun(application)
+            tapOrganizationStart()
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_preamble_scope)).assertIsDisplayed()
+            assertDeferredWithoutRun(application)
+
+            tapOrganizationStart()
+            composeRule.waitUntil(15_000) {
+                LauncherPrefs.get(context).get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME) ==
+                    OrganizationOnboardingProposalOutcome.REVIEWED.name
             }
-            // Auxiliary rendered-level absence of the T-07 preamble CTA (settle-checked
-            // scan; the committed-face record below is the render-count proof).
-            awaitAccessibilityTextAbsent(
-                activity,
-                context.getString(R.string.manual_organization_start),
-                "T-07 preamble start CTA",
-            )
-            // Deterministic render oracle: the T-07 preamble face must have zero
-            // committed compositions on this route, and the first committed face must
-            // be the admitted run's preview confirmation face.
-            val faces = synchronized(renderTrace) { renderTrace.toList() }
-            assertTrue(
-                "the run face must have committed at least one composition (faces=$faces)",
-                faces.isNotEmpty(),
-            )
-            assertEquals(
-                "the first committed run face must be the admitted run's preview face " +
-                    "(faces=$faces)",
-                ManualOrganizationFace.CONFIRMATION,
-                faces.first(),
-            )
-            assertTrue(
-                "the T-07 preamble face must never compose on the onboarding route " +
-                    "(faces=$faces)",
-                faces.none { it == ManualOrganizationFace.PREAMBLE },
-            )
-            // Auxiliary coordinator-state record: no post-admission state maps to the
-            // preamble face either (face is a pure function of state, RD-7).
-            val trace = synchronized(faceTrace) { faceTrace.toList() }
-            val postAdmission = trace.dropWhile { it == ManualOrganizationRun.State.Idle }
-            assertTrue(
-                "the state trace must contain the admitted progression (trace=$trace)",
-                postAdmission.isNotEmpty(),
-            )
-            assertTrue(
-                "no post-admission state may map to the T-07 preamble face: $postAdmission",
-                postAdmission.all { manualOrganizationFace(it) != ManualOrganizationFace.PREAMBLE },
-            )
+            awaitAccessibilityTextBounds(activity, context.getString(R.string.manual_organization_preview), "admitted run preview")
+            val started = application.diagnostics.snapshot().filter { it.phase == PhaseCode.RUN_STARTED }
+            assertEquals(1, started.size)
+            assertEquals(RUN_ID, started.single().runId)
+            assertEquals(Trigger.ONBOARDING_PROPOSAL, started.single().trigger)
+            assertEquals(ManualOrganizationFace.CONFIRMATION, manualOrganizationFace(runner.state))
+            // This is the production run UI's LauncherPrefs store, never the gate's fake store.
+            assertEquals(OrganizationOnboardingProposalOutcome.REVIEWED.name,
+                LauncherPrefs.get(context).get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME))
         } finally {
             ManualOrganizationRunFaceTrace.recorder = null
-            traceJob?.cancel()
+            activity?.let { instrumentation.runOnMainSync { it.finish() } }
+            runner.dismiss()
             gate.restore()
             installProcessLocalRunner(null)
         }
-        assertEquals(
-            OrganizationOnboardingProposalOutcome.REVIEWED,
-            gate.store.value,
-        )
-        assertFalse(gate.isOpen())
+    }
+
+    private fun tapOrganizationStart() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(R.string.manual_organization_start))
+            .performScrollTo().performTouchInput { click() }
+    }
+
+    private fun assertDeferredWithoutRun(application: GuardRunApplication) {
+        assertEquals(OrganizationOnboardingProposalOutcome.DEFERRED.name,
+            LauncherPrefs.get(InstrumentationRegistry.getInstrumentation().targetContext)
+                .get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME))
+        assertTrue("hub/preamble/Back must never start a run: ${application.diagnostics.snapshot()}",
+            application.diagnostics.snapshot().isEmpty())
     }
 
     @Test
@@ -751,9 +783,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
     }
 
     /**
-     * Issue #370: swaps the process-local runner behind `ManualOrganizationModule` the
-     * same way the diagnostics route tests do, so the proposal's production default
-     * `admitReview` starts a controlled fixture and the opened run face observes it.
+     * Installs the shared runner observed by the production hub and run surfaces.
+     * Proposal and hub navigation cannot start it; the actual run Start owns admission.
      */
     private fun installProcessLocalRunner(runner: ManualOrganizationRun?) {
         val field = ManualOrganizationModule.javaClass.getDeclaredField("instance")
@@ -762,8 +793,8 @@ class OnboardingOrganizationProposalInstrumentationTest {
     }
 
     /**
-     * Issue #370 admission fixture: the minimal `ManualOrganizationApplication` for the
-     * production-admission guard. Detection reports unavailable (legacy full flow), the
+     * Application boundary fixture for the real run UI start and diagnostics oracles.
+     * Detection reports unavailable (legacy full flow), the
      * planner returns one moved placement with a fallback-category warning, and the
      * preview seam keeps the legacy count-only flow — so `start()` parks the run at the
      * preview confirmation face before `Started` returns, with zero writes.
@@ -783,9 +814,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
         override fun recover(request: app.lawnchair.organizer.application.public.RecoveryRequest): app.lawnchair.organizer.application.public.RecoveryResult =
             error("not reached in this test")
 
+        private val events = Collections.synchronizedList(mutableListOf<RunEvent>())
         override val diagnostics = object : DiagnosticsPort {
-            override fun emit(event: RunEvent) = Unit
-            override fun snapshot(): List<RunEvent> = emptyList()
+            override fun emit(event: RunEvent) { events.add(event) }
+            override fun snapshot(): List<RunEvent> = synchronized(events) { events.toList() }
         }
 
         override fun newRunId() = RunId(RUN_ID)
@@ -855,6 +887,10 @@ class OnboardingOrganizationProposalInstrumentationTest {
         // gate observes (and repairs) that premise before the walk (TS-AC-04).
         InjectedInputEnvironment.ensureWindowFocused(activity)
         repeat(50) {
+            // This class owns the Compose test clock. Raw accessibility polling cannot
+            // advance pending navigation/recomposition frames after touch or system Back.
+            // Settle those frames before reading the real Android accessibility tree.
+            composeRule.waitForIdle()
             // rootInActiveWindow returns the sealed node tree of the frontmost window; plain
             // createAccessibilityNodeInfo children are unsealed on API 36 and refuse getChild.
             val root = instrumentation.uiAutomation.rootInActiveWindow
@@ -921,18 +957,19 @@ class OnboardingOrganizationProposalInstrumentationTest {
     }
 
     @Test
-    fun productionOwnerDefersBindWhilePausedThenShowsAndRoutesReviewAfterResume() {
+    fun productionOwnerDefersBindWhilePausedThenShowsAndOpensHubDeferredAfterResume() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val proposalPrefs = LauncherPrefs.get(context)
         val originalProposalOutcome = proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
-        val reviewOutcome = AtomicReference<ManualOrganizationRun.StartOutcome>(ManualOrganizationRun.StartOutcome.Busy)
-        val admissionCount = AtomicInteger()
+        val application = GuardRunApplication()
+        var hubActivity: PreferenceActivity? = null
         try {
             // Prevent the launcher-owned singleton owner from claiming the shared process slot.
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, OrganizationOnboardingProposalOutcome.SKIPPED.name)
             startLauncher(context)
             val launcher = awaitResumedLauncher()
+            installProcessLocalRunner(ManualOrganizationRun(application, OrganizationPlanner { guardPlanningResult() }))
             lateinit var owner: OrganizationOnboardingProposal
             instrumentation.runOnMainSync {
                 owner = OrganizationOnboardingProposal(
@@ -944,10 +981,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
                         ),
                         OrganizationOnboardingProposalProcessState(),
                     ),
-                    admitReview = {
-                        admissionCount.incrementAndGet()
-                        reviewOutcome.get()
-                    },
                     isWorkspaceReady = { true },
                 )
             }
@@ -992,41 +1025,22 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 owner.onLauncherResumed()
             }
             proposal = awaitProductionProposal(launcher)
+            awaitInputFocus({ (proposal.getChildAt(0) as OrganizationOnboardingProposalContent).title }, "resumed proposal title")
             lateinit var content: OrganizationOnboardingProposalContent
             instrumentation.runOnMainSync {
                 content = proposal.getChildAt(0) as OrganizationOnboardingProposalContent
                 content.reviewButton.performClick()
             }
-            // The admission runs on a lifecycleScope coroutine that hops to Dispatchers.IO;
-            // under a loaded shared emulator that hop has stalled past a 5s window (Issue #142).
-            fun reviewPipelineDiagnostics(): String {
-                var state = "diagnostics unavailable"
-                instrumentation.runOnMainSync {
-                    state = "proposalOpen=${proposal.isOpen}, attached=${proposal.isAttachedToWindow}, " +
-                        "reviewEnabled=${content.reviewButton.isEnabled}, " +
-                        "lifecycle=${launcher.lifecycle.currentState}, launcherDestroyed=${launcher.isDestroyed}"
-                }
-                return state
-            }
-            awaitAdmissionCount(admissionCount, 1, ::reviewPipelineDiagnostics)
-            awaitReviewActionEnabled(content)
-            instrumentation.runOnMainSync {
-                assertTrue(proposal.isOpen)
-            }
-            assertEquals("", proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME))
-
-            reviewOutcome.set(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)))
-            instrumentation.runOnMainSync {
-                content.reviewButton.performClick()
-            }
-            awaitAdmissionCount(admissionCount, 2, ::reviewPipelineDiagnostics)
-            awaitResumedPreferenceActivity()
-            assertEquals(
-                OrganizationOnboardingProposalOutcome.REVIEWED.name,
-                proposalPrefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME),
-            )
+            // The real owner still waits for resumed+bound, but Confirm now defers
+            // and routes to the hub. Busy/refused start outcomes are unit-owned.
+            hubActivity = awaitResumedPreferenceActivity()
+            awaitAccessibilityTextBounds(hubActivity, context.getString(R.string.organizer_hub_label), "hub after owner resume")
+            assertDeferredWithoutRun(application)
+            instrumentation.runOnMainSync { assertFalse(proposal.isOpen) }
         } finally {
+            hubActivity?.let { instrumentation.runOnMainSync { it.finish() } }
             proposalPrefs.put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, originalProposalOutcome)
+            installProcessLocalRunner(null)
         }
     }
 
@@ -1105,28 +1119,119 @@ class OnboardingOrganizationProposalInstrumentationTest {
     }
 
     @Test
-    fun reviewBusyDoesNotConsumeTheProposalOutcome() {
-        val store = FakeStore()
-        val controller = OrganizationOnboardingProposalController(store)
-
-        val outcome = controller.review { ManualOrganizationRun.StartOutcome.Busy }
-
-        assertEquals(ManualOrganizationRun.StartOutcome.Busy, outcome)
-        assertEquals(null, store.value)
-        assertTrue(controller.isEligible())
+    fun onboardingHubMaterialRoundTripAndRepeatedTouchKeepOneRunEntryWithoutAdmission() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val gate = TouchActivationGate(persistOutcome = true)
+        val application = GuardRunApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { guardPlanningResult() })
+        lateinit var navController: NavHostController
+        var activity: PreferenceActivity? = null
+        gate.show()
+        try {
+            installProcessLocalRunner(runner)
+            gate.deliveredTap(gate.content.reviewButton)
+            activity = awaitResumedPreferenceActivity()
+            val host = activity
+            // Own only the controller, never a parallel graph or a navigation fake. The
+            // production Activity keeps the proposal-selected root and Android Back owner.
+            instrumentation.runOnMainSync {
+                host.setContent {
+                    ProvideLifecycleState {
+                        ProvideBottomSheetHandler {
+                            LawnchairTheme {
+                                navController = rememberNavController()
+                                CompositionLocalProvider(LocalNavController provides navController) {
+                                    PreferenceNavigation(
+                                        navController = navController,
+                                        startDestination = HomeScreenOrganizer(OrganizationEntry.ONBOARDING),
+                                        runOverride = runner,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            val strategyLabel = context.getString(R.string.organizer_strategy_title)
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(strategyLabel))
+            composeRule.onNodeWithText(strategyLabel).performTouchInput { click() }
+            composeRule.runOnIdle {
+                assertTrue(navController.currentBackStackEntry!!.destination.hasRoute<HomeScreenOrganizerStrategy>())
+            }
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            composeRule.runOnIdle {
+                assertEquals(OrganizationEntry.ONBOARDING,
+                    navController.currentBackStackEntry!!.toRoute<HomeScreenOrganizer>().entry)
+            }
+            assertDeferredWithoutRun(application)
+            val startLabel = context.getString(R.string.manual_organization_start)
+            composeRule.onNode(hasScrollAction()).performScrollToNode(hasText(startLabel))
+            // Hold composition/transition frames until both real touch sequences have
+            // hit the SAME hub CTA. Without singleTop this deterministically stacks two
+            // typed run entries; testing two settled screens could tap run Start instead.
+            composeRule.mainClock.autoAdvance = false
+            try {
+                composeRule.onNodeWithText(startLabel).performTouchInput {
+                    click()
+                    advanceEventTime(40)
+                    click()
+                }
+            } finally {
+                composeRule.mainClock.autoAdvance = true
+            }
+            composeRule.runOnIdle {
+                val entries = navController.currentBackStack.value.filter {
+                    it.destination.hasRoute<HomeScreenManualOrganization>()
+                }
+                assertEquals(1, entries.size)
+                assertEquals(OrganizationEntry.ONBOARDING, entries.single().toRoute<HomeScreenManualOrganization>().entry)
+            }
+            composeRule.onNodeWithText(context.getString(R.string.manual_organization_preamble_scope)).assertIsDisplayed()
+            assertEquals(ManualOrganizationRun.State.Idle, runner.state)
+            assertDeferredWithoutRun(application)
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            composeRule.runOnIdle {
+                assertTrue(navController.currentBackStackEntry!!.destination.hasRoute<HomeScreenOrganizer>())
+            }
+            assertDeferredWithoutRun(application)
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+            activity?.let { instrumentation.runOnMainSync { it.finish() } }
+            gate.restore()
+            installProcessLocalRunner(null)
+        }
     }
 
     @Test
-    fun reviewRecordsReviewedOnlyWhenTheFreshRunIsAdmitted() {
-        val store = FakeStore()
-        val controller = OrganizationOnboardingProposalController(store)
-
-        val outcome = controller.review {
-            ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID))
+    fun observingAnExistingManualRunFromOnboardingNeverRelabelsOrCompletesOnboarding() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val gate = TouchActivationGate(persistOutcome = true)
+        val application = GuardRunApplication()
+        val runner = ManualOrganizationRun(application, OrganizationPlanner { guardPlanningResult() })
+        var activity: PreferenceActivity? = null
+        gate.show()
+        try {
+            installProcessLocalRunner(runner)
+            assertTrue(runner.start(Trigger.MANUAL_FULL) is ManualOrganizationRun.StartOutcome.Started)
+            val before = application.diagnostics.snapshot()
+            assertEquals(Trigger.MANUAL_FULL, before.single { it.phase == PhaseCode.RUN_STARTED }.trigger)
+            gate.deliveredTap(gate.content.reviewButton)
+            activity = awaitResumedPreferenceActivity()
+            awaitAccessibilityTextBounds(activity, context.getString(R.string.organizer_hub_label), "hub observing manual run")
+            tapOrganizationStart()
+            awaitAccessibilityTextBounds(activity, context.getString(R.string.manual_organization_preview), "existing manual run")
+            assertEquals(ManualOrganizationFace.CONFIRMATION, manualOrganizationFace(runner.state))
+            assertEquals(before, application.diagnostics.snapshot())
+            assertEquals(OrganizationOnboardingProposalOutcome.DEFERRED.name,
+                LauncherPrefs.get(context).get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME))
+        } finally {
+            activity?.let { instrumentation.runOnMainSync { it.finish() } }
+            runner.dismiss()
+            gate.restore()
+            installProcessLocalRunner(null)
         }
-
-        assertEquals(ManualOrganizationRun.StartOutcome.Started(RunId(RUN_ID)), outcome)
-        assertEquals(OrganizationOnboardingProposalOutcome.REVIEWED, store.value)
     }
 
     @Test
@@ -1262,34 +1367,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
         return description
     }
 
-    private fun awaitAdmissionCount(
-        admissionCount: AtomicInteger,
-        expected: Int,
-        describeFailureContext: () -> String = { "" },
-    ) {
-        repeat(REVIEW_ADMISSION_ITERATIONS) {
-            if (admissionCount.get() == expected) return
-            SystemClock.sleep(100)
-        }
-        error(
-            "Expected $expected onboarding review admissions, got ${admissionCount.get()} " +
-                "after ${REVIEW_ADMISSION_ITERATIONS * 100}ms. ${describeFailureContext()}",
-        )
-    }
-
-    private fun awaitReviewActionEnabled(content: OrganizationOnboardingProposalContent) {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        repeat(50) {
-            var enabled = false
-            instrumentation.runOnMainSync {
-                enabled = content.reviewButton.isEnabled
-            }
-            if (enabled) return
-            SystemClock.sleep(100)
-        }
-        error("Onboarding review action did not become enabled after admission completed")
-    }
-
     private fun awaitProductionProposal(
         launcher: LawnchairLauncher,
     ): OrganizationOnboardingProposal.OrganizationOnboardingProposalView {
@@ -1389,7 +1466,7 @@ class OnboardingOrganizationProposalInstrumentationTest {
             candidate?.let { return it }
             SystemClock.sleep(100)
         }
-        error("PreferenceActivity did not resume after onboarding review admission")
+        error("PreferenceActivity did not resume after onboarding navigation")
     }
 
     /**
@@ -1527,22 +1604,19 @@ class OnboardingOrganizationProposalInstrumentationTest {
      * Shows the real floating-host proposal on a resumed launcher and records the touch/focus
      * observations required by the Issue #137 Phase 0 gate. `showHint` overrides the Issue #232
      * re-entry hint entry point (default: the production display path).
+     *
+     * Issue #607: the proposal no longer admits — 確認 defers and opens the hub — so the
+     * former admission stubs/counters are gone. The gate's [store] owns touch/hint tests;
+     * [persistOutcome] selects the real LauncherPrefs store for the navigation journey.
      */
     private inner class TouchActivationGate(
         private val showHint: ((LawnchairLauncher) -> Unit)? = null,
         private val beforeShow: ((LawnchairLauncher) -> Unit)? = null,
-        // Issue #370: construct the proposal view with its production default
-        // `admitReview` (a real `ManualOrganizationModule` start) instead of the stubbed
-        // outcome, so the admission guard exercises the path the proposal actually drives.
-        private val useProductionAdmission: Boolean = false,
+        private val persistOutcome: Boolean = false,
     ) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val store = FakeStore()
         val touchLog: MutableList<String> = Collections.synchronizedList(mutableListOf<String>())
-        val admissions = AtomicInteger()
-        val reviewOutcome = AtomicReference<ManualOrganizationRun.StartOutcome>(
-            ManualOrganizationRun.StartOutcome.Busy,
-        )
         lateinit var launcher: LawnchairLauncher
             private set
         lateinit var proposal: OrganizationOnboardingProposal.OrganizationOnboardingProposalView
@@ -1572,23 +1646,19 @@ class OnboardingOrganizationProposalInstrumentationTest {
                 // Runs inside the same main-sync block as proposal.show() so state prepared
                 // here (e.g. a focused pre-proposal target) is what the proposal captures.
                 beforeShow?.invoke(launcher)
-                proposal = if (useProductionAdmission) {
-                    OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
-                        launcher,
-                        OrganizationOnboardingProposalController(store),
-                        showHint = showHint ?: { OrganizationOnboardingReentryHint.showOrganizationReentryHint(it) },
-                    )
-                } else {
-                    OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
-                        launcher,
-                        OrganizationOnboardingProposalController(store),
-                        admitReview = {
-                            admissions.incrementAndGet()
-                            reviewOutcome.get()
-                        },
-                        showHint = showHint ?: { OrganizationOnboardingReentryHint.showOrganizationReentryHint(it) },
-                    )
+                if (persistOutcome) {
+                    LauncherPrefs.get(launcher).putSync(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME.to(""))
                 }
+                proposal = OrganizationOnboardingProposal.OrganizationOnboardingProposalView(
+                    launcher,
+                    OrganizationOnboardingProposalController(
+                        if (persistOutcome) OrganizationOnboardingProposal.LauncherProposalStore(
+                            launcher,
+                            OrganizationOnboardingInstallProvenance.FRESH_INSTALL,
+                        ) else store,
+                    ),
+                    showHint = showHint ?: { OrganizationOnboardingReentryHint.showOrganizationReentryHint(it) },
+                )
                 content = proposal.getChildAt(0) as OrganizationOnboardingProposalContent
                 listOf(content.laterButton, content.skipButton, content.reviewButton).forEach { button ->
                     button.setOnTouchListener { view, event ->
@@ -1830,12 +1900,6 @@ class OnboardingOrganizationProposalInstrumentationTest {
          * slack alone unless the timer actually fired.
          */
         const val AWAIT_HINT_TIMEOUT_ITERATIONS = 130
-
-        /**
-         * Admission waits span the click → lifecycleScope coroutine → Dispatchers.IO hop, whose
-         * tail latency under a loaded shared emulator exceeded the previous fixed 5s window.
-         */
-        const val REVIEW_ADMISSION_ITERATIONS = 150
 
         // Issue #370 guard fixture constants (same shapes as the diagnostics route tests).
         private const val POINT_ID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

@@ -12,11 +12,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.organizer.diagnostics.model.Trigger
 import app.lawnchair.ui.preferences.PreferenceActivity
-import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
+import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizer
 import app.lawnchair.ui.preferences.navigation.OrganizationEntry
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.LauncherPrefs
@@ -25,9 +24,6 @@ import com.android.launcher3.provider.RestoreDbTask
 import com.android.launcher3.util.OnboardingPrefs
 import com.android.launcher3.util.Themes
 import com.android.launcher3.views.BaseDragLayer
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * The only persisted state owned by the organization proposal. None of these choices starts an
@@ -116,17 +112,23 @@ internal class OrganizationOnboardingProposalController(
         processState.suppressForProcess()
         store.record(OrganizationOnboardingProposalOutcome.DEFERRED)
     }
+}
 
-    /**
-     * Starts the shared coordinator before marking the proposal reviewed or opening its screen.
-     * A busy coordinator remains untouched and the proposal stays actionable.
-     */
-    fun review(admit: () -> ManualOrganizationRun.StartOutcome): ManualOrganizationRun.StartOutcome {
-        val outcome = admit()
-        if (outcome is ManualOrganizationRun.StartOutcome.Started) {
-            store.record(OrganizationOnboardingProposalOutcome.REVIEWED)
-        }
-        return outcome
+/**
+ * Issue #607: the run surface's start rows exclusively own onboarding admission.
+ * A `Started` outcome from an `ONBOARDING_PROPOSAL`-triggered start is the only
+ * point where `REVIEWED` is recorded; Busy/refused admissions and every other
+ * trigger leave the stored outcome untouched (spec 607 recording contract).
+ */
+internal fun recordOnboardingReviewedOnStart(
+    store: OrganizationOnboardingProposalStore,
+    trigger: Trigger,
+    outcome: ManualOrganizationRun.StartOutcome,
+) {
+    if (trigger == Trigger.ONBOARDING_PROPOSAL &&
+        outcome is ManualOrganizationRun.StartOutcome.Started
+    ) {
+        store.record(OrganizationOnboardingProposalOutcome.REVIEWED)
     }
 }
 
@@ -212,9 +214,6 @@ internal class OrganizationOnboardingProposal(
         LauncherProposalStore(launcher),
         processState,
     ),
-    private val admitReview: () -> ManualOrganizationRun.StartOutcome = {
-        ManualOrganizationModule.get(launcher).start(Trigger.ONBOARDING_PROPOSAL)
-    },
     private val isWorkspaceReady: () -> Boolean = { !launcher.isWorkspaceLoading },
 ) {
     private var resumed = false
@@ -245,30 +244,29 @@ internal class OrganizationOnboardingProposal(
         }
         if (AbstractFloatingView.getTopOpenView(launcher) != null) return
         if (!controller.claimPresentation()) return
-        OrganizationOnboardingProposalView(launcher, controller, admitReview).show()
+        OrganizationOnboardingProposalView(launcher, controller).show()
     }
 
+    // Issue #607: Context-based so the run surface's REVIEWED recording reuses
+    // this persistence owner without holding a LawnchairLauncher.
     internal class LauncherProposalStore(
-        private val launcher: LawnchairLauncher,
-        private val installProvenance: OrganizationOnboardingInstallProvenance = classifyInstallProvenance(launcher),
+        private val context: android.content.Context,
+        private val installProvenance: OrganizationOnboardingInstallProvenance = classifyInstallProvenance(context),
     ) : OrganizationOnboardingProposalStore {
         override fun provenance(): OrganizationOnboardingInstallProvenance = installProvenance
 
-        override fun outcome(): OrganizationOnboardingProposalOutcome? = LauncherPrefs.get(launcher).get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
+        override fun outcome(): OrganizationOnboardingProposalOutcome? = LauncherPrefs.get(context).get(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME)
             .takeIf { it.isNotEmpty() }
             ?.let { value -> OrganizationOnboardingProposalOutcome.entries.firstOrNull { it.name == value } }
 
         override fun record(outcome: OrganizationOnboardingProposalOutcome) {
-            LauncherPrefs.get(launcher).put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, outcome.name)
+            LauncherPrefs.get(context).put(OnboardingPrefs.ORGANIZATION_PROPOSAL_OUTCOME, outcome.name)
         }
     }
 
     internal class OrganizationOnboardingProposalView(
         private val launcher: LawnchairLauncher,
         private val controller: OrganizationOnboardingProposalController,
-        private val admitReview: () -> ManualOrganizationRun.StartOutcome = {
-            ManualOrganizationModule.get(launcher).start(Trigger.ONBOARDING_PROPOSAL)
-        },
         // Issue #232: shown after `Later` records its defer; injectable so tests can prove a
         // hint display failure never undoes the already-recorded outcome.
         private val showHint: (LawnchairLauncher) -> Unit = {
@@ -409,29 +407,26 @@ internal class OrganizationOnboardingProposal(
 
         override fun getAccessibilityInitialFocusView(): View = (getChildAt(0) as OrganizationOnboardingProposalContent).title
 
+        /**
+         * Issue #607: 確認 applies the existing defer semantics and opens the
+         * existing Organizer hub with the onboarding entry context. No admission
+         * happens here — the run surface's start row exclusively owns it — and the
+         * one-shot guard keeps a rapid double tap from launching the hub twice.
+         */
         private fun beginReview() {
             if (reviewInFlight) return
             reviewInFlight = true
             val reviewButton = (getChildAt(0) as OrganizationOnboardingProposalContent).reviewButton
             reviewButton.isEnabled = false
-            launcher.lifecycleScope.launch {
-                val outcome = withContext(Dispatchers.IO) {
-                    controller.review(admitReview)
-                }
-                if (outcome is ManualOrganizationRun.StartOutcome.Started) {
-                    resolved = true
-                    close(false)
-                    launcher.startActivity(
-                        PreferenceActivity.createIntent(
-                            launcher,
-                            HomeScreenManualOrganization(OrganizationEntry.ONBOARDING),
-                        ),
-                    )
-                } else {
-                    reviewInFlight = false
-                    reviewButton.isEnabled = true
-                }
-            }
+            resolved = true
+            controller.defer()
+            close(false)
+            launcher.startActivity(
+                PreferenceActivity.createIntent(
+                    launcher,
+                    HomeScreenOrganizer(OrganizationEntry.ONBOARDING),
+                ),
+            )
         }
 
         /** Issue #232: the defer outcome is already recorded; the hint is best-effort. */
@@ -443,14 +438,14 @@ internal class OrganizationOnboardingProposal(
     private companion object {
         val processState = OrganizationOnboardingProposalProcessState()
 
-        fun classifyInstallProvenance(launcher: LawnchairLauncher): OrganizationOnboardingInstallProvenance {
-            val prefs = LauncherPrefs.get(launcher)
+        fun classifyInstallProvenance(context: android.content.Context): OrganizationOnboardingInstallProvenance {
+            val prefs = LauncherPrefs.get(context)
             val packageInfo = runCatching {
                 @Suppress("DEPRECATION")
-                launcher.packageManager.getPackageInfo(launcher.packageName, 0)
+                context.packageManager.getPackageInfo(context.packageName, 0)
             }.getOrNull()
             return classifyOrganizationOnboardingInstallProvenance(
-                restorePending = RestoreDbTask.isPending(launcher) || prefs.get(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE),
+                restorePending = RestoreDbTask.isPending(context) || prefs.get(LauncherPrefs.IS_FIRST_LOAD_AFTER_RESTORE),
                 firstInstallTime = packageInfo?.firstInstallTime,
                 lastUpdateTime = packageInfo?.lastUpdateTime,
                 restoreSnapshot = prefs.get(OnboardingPrefs.ORGANIZATION_PROPOSAL_RESTORE_SEEN),

@@ -195,7 +195,7 @@ class OrganizerHubPreferencesInstrumentationTest {
             if (captureNav != null) captureNav(navController)
             CompositionLocalProvider(LocalNavController provides navController) {
                 LawnchairTheme {
-                    NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
+                    NavHost(navController = navController, startDestination = HomeScreenOrganizer()) {
                         composable<HomeScreenOrganizer> {
                             OrganizerHubPreferences(run = runner)
                         }
