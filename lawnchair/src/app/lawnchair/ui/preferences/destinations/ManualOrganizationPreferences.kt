@@ -92,6 +92,7 @@ import app.lawnchair.organizer.ui.ManualOrganizationModule
 import app.lawnchair.organizer.ui.ManualOrganizationRun
 import app.lawnchair.organizer.ui.ManualOrganizationRunFaceTrace
 import app.lawnchair.organizer.ui.MissingAppSelectionState
+import app.lawnchair.organizer.ui.OrganizationOnboardingProposal
 import app.lawnchair.organizer.ui.OrganizationPreviewContent
 import app.lawnchair.organizer.ui.OrganizationPreviewSection
 import app.lawnchair.organizer.ui.OrganizationPreviewWording
@@ -107,6 +108,7 @@ import app.lawnchair.organizer.ui.exchange.exchangeFlowItems
 import app.lawnchair.organizer.ui.manualOrganizationFace
 import app.lawnchair.organizer.ui.missingAppSelectionItems
 import app.lawnchair.organizer.ui.openUsageAccessSettings
+import app.lawnchair.organizer.ui.recordOnboardingReviewedOnStart
 import app.lawnchair.ui.diagram.DiagramItemContent
 import app.lawnchair.ui.diagram.DiagramPageSurface
 import app.lawnchair.ui.diagram.DiagramReservedSurface
@@ -342,6 +344,19 @@ fun ManualOrganizationPreferences(
     fun execute(action: () -> Unit) {
         scope.launch {
             withContext(Dispatchers.IO) { action() }
+        }
+    }
+
+    // Issue #607: the run surface's start rows exclusively own onboarding
+    // admission. Every start call site goes through this wrapper so a
+    // `Started` outcome from an `ONBOARDING_PROPOSAL`-triggered start records
+    // `REVIEWED` through the existing proposal store; Busy/refused outcomes
+    // and every other trigger leave the stored outcome untouched.
+    val onboardingProposalStore = remember { OrganizationOnboardingProposal.LauncherProposalStore(context) }
+    fun startRun() {
+        execute {
+            val outcome = coordinator.start(trigger)
+            recordOnboardingReviewedOnStart(onboardingProposalStore, trigger, outcome)
         }
     }
 
@@ -702,7 +717,7 @@ fun ManualOrganizationPreferences(
                                 .focusRequester(focusRequester)
                                 .focusable()
                                 .then(focusTargetModifier),
-                            onClick = { execute { coordinator.start(trigger) } },
+                            onClick = { startRun() },
                         )
                     }
                 }
@@ -968,7 +983,7 @@ fun ManualOrganizationPreferences(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             ClickablePreference(
                                 label = stringResource(R.string.manual_organization_retry),
-                                onClick = { execute { coordinator.start(trigger) } },
+                                onClick = { startRun() },
                             )
                             // D-13 §9: 終端には提案も選択もない — 中断は確認なしで
                             // runを止めてhubへ戻る（zero-write）。
@@ -1000,7 +1015,7 @@ fun ManualOrganizationPreferences(
                     )
                     ClickablePreference(
                         label = stringResource(R.string.manual_organization_start_again),
-                        onClick = { execute { coordinator.start(trigger) } },
+                        onClick = { startRun() },
                     )
                 }
 
@@ -1210,7 +1225,7 @@ fun ManualOrganizationPreferences(
                                 ClickablePreference(
                                     label = stringResource(R.string.manual_organization_recapture),
                                     subtitle = stringResource(R.string.manual_organization_recapture_summary),
-                                    onClick = { execute { coordinator.start(trigger) } },
+                                    onClick = { startRun() },
                                 )
                             }
                         }
@@ -1239,7 +1254,7 @@ fun ManualOrganizationPreferences(
                                     ClickablePreference(
                                         label = stringResource(R.string.manual_organization_recapture),
                                         subtitle = stringResource(R.string.manual_organization_recapture_summary),
-                                        onClick = { execute { coordinator.start(trigger) } },
+                                        onClick = { startRun() },
                                     )
                                     // D-13 §9: 終端には提案も選択もない — 中断は
                                     // 確認なしでrunを止めてhubへ戻る（zero-write）。
@@ -1301,7 +1316,7 @@ fun ManualOrganizationPreferences(
                         item {
                             ClickablePreference(
                                 label = stringResource(R.string.manual_organization_start_again),
-                                onClick = { execute { coordinator.start(trigger) } },
+                                onClick = { startRun() },
                             )
                         }
                     }
@@ -1389,7 +1404,7 @@ fun ManualOrganizationPreferences(
                         item {
                             ClickablePreference(
                                 label = stringResource(R.string.manual_organization_start_again),
-                                onClick = { execute { coordinator.start(trigger) } },
+                                onClick = { startRun() },
                             )
                         }
                     }

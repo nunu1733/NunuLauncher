@@ -31,11 +31,19 @@ fun NavigationActionPreference(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     endWidget: (@Composable () -> Unit)? = null,
+    // Issue #607: opt-in single-top navigation for the hub start CTA — rapid
+    // double activation must not stack a second identical run destination.
+    // Default false keeps every existing caller unchanged.
+    singleTop: Boolean = false,
 ) {
     val navController = LocalNavController.current
 
     PreferenceTemplate(
-        modifier = modifier.clickable { navController.navigate(route = destination) },
+        modifier = modifier.clickable {
+            navController.navigate(route = destination) {
+                if (singleTop) launchSingleTop = true
+            }
+        },
         title = { Text(text = label) },
         description = { subtitle?.let { Text(text = it) } },
         endWidget = endWidget,

@@ -142,7 +142,12 @@ fun PreferenceNavigation(
         composable<HomeScreenOrganizerDiagnostics> { OrganizerDiagnosticsPreferences() }
         // Issue #366: Organizer hub (T-01), the persistent organizing
         // workspace. Its material rows navigate via their own destinations.
-        composable<HomeScreenOrganizer> { OrganizerHubPreferences(run = runOverride) }
+        // Issue #607: the hub route's entry is the caller context only; the
+        // hub start CTA threads it into the shared run destination.
+        composable<HomeScreenOrganizer> { backStackEntry ->
+            val route: HomeScreenOrganizer = backStackEntry.toRoute()
+            OrganizerHubPreferences(run = runOverride, entry = route.entry)
+        }
         // Issue #368: strategy materials surface (T-05), the picker's only
         // home; reached from the hub materials section.
         composable<HomeScreenOrganizerStrategy> {

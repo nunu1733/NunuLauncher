@@ -122,10 +122,12 @@ data object HomeScreenCustomCategories : PreferenceRoute
 data object HomeScreenOrganizerDiagnostics : PreferenceRoute
 
 // Issue #366: Organizer hub (T-01) — the persistent organizing workspace.
-// Argument-less like the other organizer destinations: it carries no run
-// state and no write authority.
+// Issue #607: the defaulted entry is the stable caller context only (settings
+// = MANUAL, onboarding proposal = ONBOARDING); no run state, no write authority.
 @Serializable
-data object HomeScreenOrganizer : PreferenceRoute
+data class HomeScreenOrganizer(
+    val entry: OrganizationEntry = OrganizationEntry.MANUAL,
+) : PreferenceRoute
 
 // Issue #368: strategy materials surface (TO-BE T-05) — the permanent home
 // of the strategy picker, reached only from the hub materials section.

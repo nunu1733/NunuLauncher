@@ -80,6 +80,7 @@ import app.lawnchair.ui.preferences.navigation.HomeScreenManualOrganization
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerDiagnostics
 import app.lawnchair.ui.preferences.navigation.HomeScreenOrganizerStrategy
 import app.lawnchair.ui.preferences.navigation.HomeScreenPlacementLocks
+import app.lawnchair.ui.preferences.navigation.OrganizationEntry
 import com.android.launcher3.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -99,11 +100,19 @@ import kotlinx.coroutines.withContext
  * owned by #369). Issue #376 (D-15) adds the status card's restore CTA: it
  * navigates with the durable-recovery flag and the run destination owns the
  * admission, so the restore flow reuses the existing #84/#13 seams.
+ *
+ * Issue #607: the hub is also the onboarding proposal's 確認 destination. The
+ * defaulted [entry] is the stable caller context threaded from the hub route;
+ * the start CTA hands it to the shared run destination so the onboarding
+ * entry reaches the run surface's start row as trigger `ONBOARDING_PROPOSAL`.
+ * The CTA opts into single-top navigation: rapid double activation must not
+ * stack a second identical run destination.
  */
 @Composable
 fun OrganizerHubPreferences(
     modifier: Modifier = Modifier,
     run: ManualOrganizationRun? = null,
+    entry: OrganizationEntry = OrganizationEntry.MANUAL,
 ) {
     val context = LocalContext.current
     val coordinator = run ?: remember { ManualOrganizationModule.get(context) }
@@ -361,7 +370,10 @@ fun OrganizerHubPreferences(
             item(key = "organizer-hub-start") {
                 NavigationActionPreference(
                     label = stringResource(R.string.manual_organization_start),
-                    destination = HomeScreenManualOrganization(),
+                    destination = HomeScreenManualOrganization(entry = entry),
+                    // Issue #607: rapid double activation of this CTA must not
+                    // stack a second identical run destination.
+                    singleTop = true,
                     // clickable() owns the focus target and the Enter/Space
                     // activation; focusRequester only aims at that same target
                     // so keyboard focus and activation stay one node.

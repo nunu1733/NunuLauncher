@@ -180,7 +180,7 @@ class OrganizerRestoreColdProcessEvidenceTest {
             val navController: NavHostController = rememberNavController()
             CompositionLocalProvider(LocalNavController provides navController) {
                 LawnchairTheme {
-                    NavHost(navController = navController, startDestination = HomeScreenOrganizer) {
+                    NavHost(navController = navController, startDestination = HomeScreenOrganizer()) {
                         composable<HomeScreenOrganizer> {
                             OrganizerHubPreferences(run = coordinator)
                         }
